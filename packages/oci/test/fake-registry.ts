@@ -15,6 +15,7 @@ export interface Recorded {
   url: string;
   authorization?: string;
   accept?: string;
+  contentType?: string;
 }
 
 export interface FakeServer {
@@ -35,6 +36,7 @@ export function startServer(handler: Handler): Promise<FakeServer> {
     const record: Recorded = { method: req.method ?? '', url: req.url ?? '' };
     if (typeof req.headers.authorization === 'string') record.authorization = req.headers.authorization;
     if (typeof req.headers.accept === 'string') record.accept = req.headers.accept;
+    if (typeof req.headers['content-type'] === 'string') record.contentType = req.headers['content-type'];
     requests.push(record);
     Promise.resolve(handler(req, res)).catch((err: unknown) => {
       res.destroy(err instanceof Error ? err : new Error(String(err)));

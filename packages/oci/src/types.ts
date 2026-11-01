@@ -82,3 +82,41 @@ export interface OciManifestResult {
 
 /** The parts of a reference that address a repository. */
 export type OciRepositoryRef = Pick<OciReference, 'origin' | 'registry' | 'repository'>;
+
+/** What `pushBlob` stored (or found already stored). */
+export interface OciPushedBlob {
+  /** `sha256:<hex>` computed from the bytes sent. */
+  digest: string;
+  size: number;
+}
+
+export interface OciPushManifestOptions {
+  signal?: AbortSignal;
+  /**
+   * Replace an existing tag. Without it, a tag that already exists is
+   * `TAG_EXISTS`. The check is not atomic (see `pushManifest`).
+   */
+  allowOverwrite?: boolean;
+}
+
+export interface OciPushedManifest {
+  /** `sha256:<hex>` computed from the manifest bytes sent. */
+  digest: string;
+}
+
+export interface OciImageManifestInput {
+  artifactType?: string;
+  /** Default: the OCI empty descriptor (`application/vnd.oci.empty.v1+json`, `{}`, 2 bytes). */
+  config?: OciDescriptor;
+  layers: OciDescriptor[];
+  annotations?: Record<string, string>;
+}
+
+export interface OciBuiltManifest {
+  /** The serialized manifest; push exactly these bytes. */
+  bytes: Uint8Array;
+  /** `application/vnd.oci.image.manifest.v1+json`. */
+  mediaType: string;
+  /** `sha256:<hex>` of `bytes`. */
+  digest: string;
+}

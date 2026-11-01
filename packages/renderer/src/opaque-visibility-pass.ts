@@ -68,6 +68,9 @@ export class OpaqueVisibilityPass {
 
   getBinding(): GPUBindGroup | undefined { return this.active ? this.binding ?? undefined : undefined; }
 
+  /** The orthographic geometric-depth target while allocated, for render-target telemetry. */
+  renderTarget(): GPUTexture | null { return this.texture; }
+
   private ensureSize(width: number, height: number): void {
     if (this.texture && width === this.width && height === this.height) return;
     this.texture?.destroy(); this.width = width; this.height = height;

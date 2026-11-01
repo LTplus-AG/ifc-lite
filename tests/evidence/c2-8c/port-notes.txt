@@ -55,7 +55,8 @@ Move checks (commit 69ddedd5e7; the rebased a66ef92c92 has the same Rust tree)
 Ratchets
 - module_size_allowlist: the prism_cut.rs row is deleted (facade 262 lines);
   its history comment ends with a note; rust/geometry digest
-  3907445196249583160 -> 12548491589669219613.
+  re-pinned to this layer's allowlist: the value is the one in
+  module_size_ratchet.rs, recomputed on every rebase.
 - function_length_allowlist: build_face_cap 161 -> prism_cut/caps.rs and
   Execution::try_prism_cut 297 -> prism_cut/driver.rs (both measured
   unchanged). No ratchet raised.

@@ -6,8 +6,9 @@ name: Nightly Vercel Deploy
 
 # Fast-forwards the `production` branch to `main` once a day. The Vercel
 # projects deploy from `production`, so this is the only thing that triggers a
-# billable build; pushes to `main` reach Vercel as previews, which each
-# project's Ignored Build Step skips for free.
+# build. Every other branch, `main` and PR heads included, is switched off by
+# `git.deploymentEnabled` in each project's vercel.json, so Vercel creates no
+# deployment and posts no check for them.
 #
 # To ship before the next nightly, run this workflow manually (Actions →
 # Nightly Vercel Deploy → Run workflow). The ref it takes must already be
@@ -371,13 +372,14 @@ jobs:
             exit 0
           fi
 
-          # MATCHING ON THE SHA ALONE WOULD BE VACUOUS. The same commit was
-          # already pushed to `main`, where it produced a PREVIEW deployment
-          # that the Ignored Build Step cancelled — so a SHA-only match finds
-          # that cancelled preview and reports success even when the
-          # production build never ran. `target=production` excludes it, and
-          # CANCELED is rejected because that is exactly what an Ignored Build
-          # Step skip looks like on the production target too.
+          # MATCHING ON THE SHA ALONE WOULD BE VACUOUS. Older commits on
+          # `main` produced a PREVIEW deployment that the Ignored Build Step
+          # cancelled (before `git.deploymentEnabled` turned previews off), and
+          # a CLI preview can carry the same SHA, so a SHA-only match could find
+          # one of those and report success even when the production build
+          # never ran. `target=production` excludes them, and CANCELED is
+          # rejected because that is exactly what an Ignored Build Step skip
+          # looks like on the production target too.
           #
           # `sha=` is a SERVER-side filter, not a scan of the newest N rows.
           # That matters on the `identical` path — a re-run when nothing has
@@ -521,7 +523,8 @@ jobs:
             fi
             echo "::error::No READY production deployment for $SHA on:$pending"
             echo "::error::If the API answered, check each project's Production Branch is"
-            echo "::error::'production' and its Ignored Build Step still exits 1 for production."
+            echo "::error::'production', its Ignored Build Step still exits 1 for production, and"
+            echo "::error::vercel.json git.deploymentEnabled still sets \"production\": true."
             echo "::error::A project that never created a deployment was given one via the API"
             echo "::error::above; if that failed too, VERCEL_TOKEN cannot deploy and the project's"
             echo "::error::Git integration must be checked in the dashboard."
@@ -545,7 +548,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 40 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n4. The ref write returned HTTP 403: check that DEPLOY_PAT is configured, unexpired, organization-approved, and has Contents and Workflows write permission. GITHUB_TOKEN cannot move production across workflow-file changes.\n5. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
+          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 40 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch, its Ignored Build Step, and `git.deploymentEnabled` in its vercel.json).\n4. The ref write returned HTTP 403: check that DEPLOY_PAT is configured, unexpired, organization-approved, and has Contents and Workflows write permission. GITHUB_TOKEN cannot move production across workflow-file changes.\n5. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
             "$(date -u +%FT%TZ)" "${{ job.status }}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
           existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --label production-branch-stuck --limit 1 --json number --jq '.[0].number // empty')"

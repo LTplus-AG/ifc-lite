@@ -61,3 +61,76 @@ export function OpDropdown<T extends string>({
     </DropdownMenu>
   );
 }
+
+interface SetRuleEditorProps {
+  values: string[];
+  op: SetOp;
+  options: Array<{ label: string; value: string }>;
+  onChange: (values: string[], op: SetOp) => void;
+}
+
+/** Op + multi-select over `options`, with removable value chips. */
+export function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
+  const { t } = useTranslation();
+  const toggle = (v: string) => {
+    const next = values.includes(v) ? values.filter((x) => x !== v) : [...values, v];
+    onChange(next, op);
+  };
+  return (
+    <>
+      <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono">
+            {values.length === 0
+              ? t('searchModal.filterEditors.pickValues')
+              : t('searchModal.filterEditors.selectedCount', { count: values.length })}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          {options.length === 0 && (
+            <DropdownMenuItem disabled className="text-muted-foreground italic">
+              {t('searchModal.filterEditors.noOptionsAvailable')}
+            </DropdownMenuItem>
+          )}
+          {options.map((o) => (
+            <DropdownMenuItem
+              key={o.value}
+              onSelect={(e) => {
+                // Keep the menu open for multi-select.
+                e.preventDefault();
+                toggle(o.value);
+              }}
+              className="font-mono"
+            >
+              <span className="mr-2 inline-block w-3 text-center">
+                {values.includes(o.value) ? '✓' : ''}
+              </span>
+              {o.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {values.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {values.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-2xs font-mono dark:bg-zinc-800"
+            >
+              {v}
+              <button
+                type="button"
+                aria-label={t('searchModal.filterEditors.removeValueAriaLabel', { value: v })}
+                onClick={() => toggle(v)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

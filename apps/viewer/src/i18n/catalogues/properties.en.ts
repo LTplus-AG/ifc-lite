@@ -141,6 +141,7 @@ export const propertiesEn = {
   'properties.materialTotals.byClassHeading': 'By Class',
   'properties.materialTotals.materialPropertiesHeading': 'Material Properties',
   'properties.materialTotals.noData': 'No data for this material',
+  'properties.materialTotals.pendingEditsMissing': 'Totals show the loaded file only: pending edits could not be included.',
 
   // RawStepRow
   'properties.rawStepRow.positionalIndexAriaLabel': 'positional index {index}',
@@ -180,6 +181,7 @@ export const propertiesEn = {
   'properties.bsdd.editedCount': '{countDisplay} added · Edit in Properties',
   'properties.bsdd.addAllTooltip': { one: 'Add all {countDisplay} property', other: 'Add all {countDisplay} properties' },
   'properties.bsdd.addToElementTooltip': 'Add to element',
+  'properties.bsdd.quantityValueAriaLabel': 'Value for {name}',
   'properties.bsdd.viewOnBsdd': 'View on bSDD',
 
   // ScheduleCard

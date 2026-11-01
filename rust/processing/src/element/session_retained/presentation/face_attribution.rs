@@ -37,7 +37,9 @@ pub(crate) enum Segment {
 #[derive(Debug, Clone)]
 pub(crate) enum Extent { Plane, Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace }
+pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace,
+    /// One authored row of an `IfcTessellatedFaceSet` (`CoordIndex` row or `Faces` position).
+    FaceSetRow { row: u32 } }
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let end = |end: bool| if end { "end" } else { "start" };
@@ -47,6 +49,7 @@ impl std::fmt::Display for Role {
             Self::DiskWall => f.write_str("disk(wall)"),
             Self::HalfSpace => f.write_str("halfspace"),
             Self::DiskCap { end: e } => write!(f, "disk({})", end(e)),
+            Self::FaceSetRow { row } => write!(f, "row({row})"),
         }
     }
 }
@@ -68,6 +71,9 @@ pub(crate) struct Operand {
     pub stretch: f64,
     pub faces: Vec<SourceFace>,
     pub region: Option<Region>,
+    /// An uncut source-exact face set: each kernel-free face index IS its row, so
+    /// no incidence search applies (coplanar rows would be indistinguishable).
+    pub rows_identify_faces: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Unproven { Unattributed { entity: Option<u32> }, Ambiguous { entity: Option<u32> } }

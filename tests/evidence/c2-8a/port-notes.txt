@@ -63,7 +63,8 @@ math::v3 (commit ac4a384d3d, separate)
 
 Ratchets
 - module_size_allowlist: prism_cut.rs 2921 -> 1926; rust/geometry digest
-  re-pinned 12052342407275843233 -> 4843835844353277487 (no other scope moved).
+  re-pinned to this layer's allowlist: the value is the one in
+  module_size_ratchet.rs, recomputed on every rebase (no other scope moved).
 - function_length_allowlist: detect_prism 185 follows the function into
   prism_cut/detect.rs (measured 185, unchanged).
 

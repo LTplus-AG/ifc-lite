@@ -1,0 +1,14 @@
+diff --git b/rust/geometry/src/router/voids/probe/rectangular.rs a/rust/geometry/src/router/voids/probe/rectangular.rs
+index f3ebf75915..4812a2cf86 100644
+--- b/rust/geometry/src/router/voids/probe/rectangular.rs
++++ a/rust/geometry/src/router/voids/probe/rectangular.rs
+@@ -30,8 +30,7 @@ fn rect_profile_position(profile: &DecodedEntity, decoder: &mut EntityDecoder) -
+     if position.ifc_type != IfcType::IfcAxis2Placement2D {
+         return None;
+     }
+-    let frame = Axis2Placement::read_2d(&position, decoder)
+-        .unwrap_or(Axis2Placement { location: [0.0; 3], axis: None, ref_direction: None, planar: true });
++    let frame = Axis2Placement::read_2d(&position, decoder).ok()?;
+     // The probe's own degenerate-axis policy, unchanged: a zero-length
+     // RefDirection keeps +X. Valid input is bit-identical to the old reader.
+     let (mut cos_t, mut sin_t) = (1.0, 0.0);

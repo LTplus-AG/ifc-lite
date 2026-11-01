@@ -1,0 +1,21 @@
+diff --git a/packages/cli/src/commands/oci-push-input.ts b/packages/cli/src/commands/oci-push-input.ts
+--- a/packages/cli/src/commands/oci-push-input.ts
++++ b/packages/cli/src/commands/oci-push-input.ts
+@@ -140,6 +140,17 @@ export async function readIfcForPush(path: string): Promise<IfcForPush> {
+     fatal(`cannot read ${path} (${code})`);
+   }
+   if (isZip(bytes)) fatal(zipRefusal);
++  try {
++    await validateStepInput(bytes, path);
++  } catch (error) {
++    if (error instanceof IfcInputError) fatal(`cannot push ${path}: ${error.message}`);
++    throw error;
++  }
++  const schemas = parseSourceHeader(bytes)?.schemaIdentifiers ?? [];
++  if (!schemas.some((s) => /^IFC/i.test(s.trim()))) {
++    const declared = schemas.length === 0 ? 'declares no FILE_SCHEMA' : `declares FILE_SCHEMA ${schemas.join(', ')}`;
++    fatal(`cannot push ${path}: it is a STEP file but ${declared}, not an IFC schema`);
++  }
+   const ext = extname(fileName);
+   return { bytes, fileName, title: ext === '' ? fileName : fileName.slice(0, -ext.length) };
+ }

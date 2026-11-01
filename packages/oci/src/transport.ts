@@ -37,7 +37,7 @@ export interface FollowOptions {
   registryOrigin: string;
   authorization?: string;
   headers: Record<string, string>;
-  method?: 'GET';
+  method?: 'GET' | 'HEAD';
   signal?: AbortSignal;
   insecureHosts: readonly string[] | undefined;
   what: string;
@@ -50,7 +50,7 @@ export interface FollowResult {
 }
 
 /**
- * GET with `redirect: 'manual'`, following up to five redirects itself so it
+ * GET (or HEAD) with `redirect: 'manual'`, following up to five redirects itself so it
  * controls what each hop receives: `Authorization` goes to the registry
  * origin only, never to a redirect target on another origin (a blob CDN), and
  * a hop to plain `http:` is refused unless its host is listed insecure.
@@ -106,4 +106,43 @@ export async function fetchFollowing(startUrl: string, options: FollowOptions): 
     }
     url = next.href;
   }
+}
+
+export interface SendOnceOptions {
+  fetch: typeof fetch;
+  /** Only this origin ever receives `authorization`. */
+  registryOrigin: string;
+  authorization?: string;
+  headers: Record<string, string>;
+  method: 'POST' | 'PUT';
+  body: Uint8Array<ArrayBuffer>;
+  signal?: AbortSignal;
+  what: string;
+}
+
+/**
+ * One upload request with `redirect: 'manual'`. Uploads are never
+ * redirected by a conforming registry, so a 3xx is `PROTOCOL` rather than a
+ * hop that would resend the body (and the credentials) somewhere else.
+ * `Authorization` is attached only when `url` is on the registry origin.
+ */
+export async function sendOnce(url: string, options: SendOnceOptions): Promise<FollowResult> {
+  const headers: Record<string, string> = { ...options.headers };
+  if (options.authorization !== undefined && new URL(url).origin === options.registryOrigin) {
+    headers.authorization = options.authorization;
+  }
+  const response = await guardedFetch(options.fetch, url, {
+    method: options.method,
+    headers,
+    body: options.body,
+    redirect: 'manual',
+    signal: options.signal,
+  });
+  if (response.type === 'opaqueredirect' || REDIRECT_STATUSES.has(response.status)) {
+    await response.body?.cancel();
+    throw new OciError('PROTOCOL', `${options.what}: the registry redirected an upload request; not followed`, {
+      status: response.status || undefined,
+    });
+  }
+  return { response, url };
 }

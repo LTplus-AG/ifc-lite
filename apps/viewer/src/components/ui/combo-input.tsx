@@ -37,7 +37,9 @@ export interface ComboInputProps {
 interface Anchor { left: number; top: number; width: number }
 
 export function ComboInput({
-  value,
+  // Runtime callers can violate the string contract (PostHog 5.1.3). Keep
+  // the input controlled and filtering usable while the original caller is unknown.
+  value = '',
   onChange,
   options,
   placeholder,

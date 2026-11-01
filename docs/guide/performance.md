@@ -18,6 +18,14 @@ Recovery preserves the setting and advances the epoch. Turn timing off to free
 its query and readback resources. Instrumentation changes the workload, so use
 the same setting when comparing measurements.
 
+`__ifc_lite_render_stats__().gpu.renderTargets` (SDK:
+`renderer.getRenderTargetBytes()`) reports the screen-sized attachments the
+renderer holds, by owner: the multisampled main-pass colour, object-id and depth
+surfaces, the GPU picker's targets (allocated on the first GPU pick), the
+post-pass targets, and the shadow map. `gpu.total` stays the geometry sum. The
+figures come from texture descriptors, so they are a lower bound on what the
+driver allocates, and the canvas swap chain is not included.
+
 ## Bundle Size
 
 The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 7.9 MB, about 2.6 MB gzipped over the wire (measured on the published `@ifc-lite/wasm` tarball: `npm pack @ifc-lite/wasm` then `gzip -9 -c pkg/ifc-lite_bg.wasm | wc -c`). It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.

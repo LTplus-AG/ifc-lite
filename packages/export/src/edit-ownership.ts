@@ -45,7 +45,7 @@ export function editOwnershipRefusal(
   const baseline = sourceInverse(store), inverse = new Map<number, number[]>();
   const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
   for (const entity of view.getNewEntities()) changed.add(entity.expressId);
-  const encoder = new TextEncoder(), decoder = new TextDecoder();
+  const encoder = new TextEncoder();
   for (const expressId of changed) {
     if (view.getTombstones().has(expressId)) continue;
     const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
@@ -57,7 +57,9 @@ export function editOwnershipRefusal(
       refs = collectRefsInByteRange(bytes, 0, bytes.length);
     } else if (source) {
       if (view.getPositionalMutationsForEntity(expressId)?.size || view.getAttributeMutationsForEntity(expressId).length || view.getEntityTypeMutation(expressId)) {
-        const text = decoder.decode(store.source.slice(source.byteOffset, source.byteOffset + source.byteLength));
+        // A resident source's slice is a view over its (usually shared) buffer, which a browser
+        // TextDecoder rejects; decodeUtf8 is the source's SAB-safe decode.
+        const text = store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength);
         const effective = effectiveSourceRecord(view, expressId, text, source.type, store.schemaVersion);
         const bytes = encoder.encode(effective.text);
         refs = collectRefsInByteRange(bytes, 0, bytes.length);

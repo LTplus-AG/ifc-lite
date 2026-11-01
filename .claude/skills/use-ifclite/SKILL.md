@@ -57,6 +57,8 @@ ifc-lite diff v1.ifc v2.ifc --by-entity --json
 # Models in an OCI registry: any model argument may be oci://host/repo:tag
 # (creds via IFC_LITE_OCI_USERNAME+IFC_LITE_OCI_PASSWORD or IFC_LITE_OCI_TOKEN)
 ifc-lite info oci://ghcr.io/acme/tower-model:rev-b --json
+# Publish a local .ifc (refuses an existing tag unless --overwrite; .ifczip not yet)
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --json
 
 # Structural sanity check
 ifc-lite validate model.ifc --json

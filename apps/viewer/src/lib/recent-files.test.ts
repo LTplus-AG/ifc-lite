@@ -234,4 +234,43 @@ describe('IndexedDB blob cache — round trip', () => {
   it('answers null for a name that was never cached', async () => {
     assert.strictEqual(await getCachedFile('never-seen.ifc'), null);
   });
+
+  // Memory lever: the cache used to `await file.arrayBuffer()` every eligible
+  // file (up to 5 x 150 MB) onto the main-thread heap before writing. The File
+  // itself is a valid IndexedDB value, so its bytes are never read here.
+  it('stores the File without reading its bytes into memory', async () => {
+    const file = new File([new Uint8Array([4, 5, 6])], 'no-read.ifc');
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: () => { throw new Error('cacheFileBlobs must not read the file into an ArrayBuffer'); },
+    });
+    await cacheFileBlobs([file]);
+    assert.deepStrictEqual(warnings, [], 'the write must succeed without reading the file');
+    const back = await getCachedFile('no-read.ifc');
+    assert.ok(back, 'the cached file must come back');
+    assert.deepStrictEqual(new Uint8Array(await back.arrayBuffer()), new Uint8Array([4, 5, 6]));
+  });
+
+  it('still reads records written as ArrayBuffers before the File change', async () => {
+    await cacheFileBlobs([new File([new Uint8Array([0])], 'seed.ifc')]); // creates the v2 store
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME_UNDER_TEST);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    try {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').put({
+        name: 'legacy.ifc', blob: new Uint8Array([7, 8, 9]).buffer, size: 3, type: '', timestamp: Date.now(),
+      });
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+    const back = await getCachedFile('legacy.ifc');
+    assert.ok(back, 'a legacy ArrayBuffer record must still load');
+    assert.deepStrictEqual(new Uint8Array(await back.arrayBuffer()), new Uint8Array([7, 8, 9]));
+  });
 });

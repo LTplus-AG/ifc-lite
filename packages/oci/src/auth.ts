@@ -98,6 +98,11 @@ export function pullScope(repository: string): string {
   return `repository:${repository}:pull`;
 }
 
+/** Push needs pull too: a blob existence check and the tag check are reads. */
+export function pushScope(repository: string): string {
+  return `repository:${repository}:pull,push`;
+}
+
 export interface AuthOptions {
   fetch: typeof fetch;
   credentials?: OciCredentials;

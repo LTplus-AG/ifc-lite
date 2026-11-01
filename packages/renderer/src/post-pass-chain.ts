@@ -66,12 +66,21 @@ export interface PostPassFrame {
 
 type PassName = 'ambient occlusion' | 'edges' | 'eye-dome lighting' | 'selection outline';
 
+/**
+ * Frames without any selection or hover before the outline's mask targets
+ * (three screen-sized textures, one 4x multisampled) are freed. Long enough
+ * that sweeping the pointer across gaps between elements does not reallocate
+ * them on every hover change.
+ */
+export const OUTLINE_IDLE_RELEASE_FRAMES = 120;
+
 export class PostPassChain {
   private ao: AoPass | null = null;
   private edges: EdgePass | null = null;
   private edl: EdlPass | null = null;
   private selectionMask: SelectionMaskPass | null = null;
   private readonly failed = new Set<PassName>();
+  private framesWithoutOutline = 0;
 
   constructor(
     private readonly device: WebGPUDevice,
@@ -127,6 +136,8 @@ export class PostPassChain {
       });
     }
 
+    this.framesWithoutOutline = needsOutline ? 0 : this.framesWithoutOutline + 1;
+    if (this.framesWithoutOutline === OUTLINE_IDLE_RELEASE_FRAMES) this.selectionMask?.releaseTargets();
     if (needsOutline && frame.selectionOutline) {
       this.selectionMask ??= this.build('selection outline', () =>
         new SelectionMaskPass(this.device, this.meshBindGroupLayout, this.sampleCount));
@@ -159,6 +170,11 @@ export class PostPassChain {
         { ...frame.edl, radiusPx: frame.edl.radiusPx * frame.pixelRatio },
       );
     }
+  }
+
+  /** Screen-sized post-pass targets currently allocated, for render-target telemetry. */
+  renderTargets(): (GPUTexture | null)[] {
+    return [...(this.ao?.renderTargets() ?? []), ...(this.selectionMask?.renderTargets() ?? [])];
   }
 
   private build<T>(name: PassName, create: () => T): T | null {

@@ -138,8 +138,7 @@ so a mirrored map cannot publish without its signed-volume gate.
 The decoder-only M10 oracle uses IFC's +Y default for an omitted Axis2 of a 3D
 operator. (A 2D operator derives Y as the counter-clockwise complement of X, as
 IfcBaseAxis 2D and the router both do, so a 2D Axis1 = −X with no Axis2 is a
-rotation, not a mirror.) For 3D, the default router currently derives that axis
-by a cross product; an omitted Axis2 with Axis1 = −X therefore differs. M10 fixtures use explicit axes, and a source-only
-witness pins the omitted-axis semantics against IfcOpenShell. Fixing the default
-router is outside this retained-only slice and would require new default identity
-qualification.
+rotation, not a mirror.) The default router derives the same +Y default since
+#8308, so an omitted Axis2 with Axis1 = −X is a mirror on both. M10 fixtures use
+explicit axes, and a source-only witness pins the omitted-axis semantics against
+IfcOpenShell.

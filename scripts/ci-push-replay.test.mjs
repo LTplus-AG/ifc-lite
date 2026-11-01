@@ -152,6 +152,45 @@ test('the queue route keeps every guard the PR route has', () => {
   assert.equal(decidePushReplay(queued(evidence, { pulls: [] })).replay, false, 'no merged PR');
 });
 
+test('a cache-keying commit replays only when a later main commit re-keys the caches', () => {
+  const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
+  const workflow = { changedFiles: ['.github/workflows/test.yml'] };
+  assert.deepEqual(
+    decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['.github/workflows/test.yml', 'x.ts'] })),
+    { replay: true, runId: 9, pr: 7, queue: true },
+  );
+  // A workflow-only full run does not run the Rust lanes, so it cannot re-key for Cargo.lock.
+  const cargo = { changedFiles: ['Cargo.lock'], laterChangedFiles: ['.github/workflows/cancel-closed-pr-runs.yml'] };
+  assert.match(decidePushReplay(queued(evidence, cargo)).reason, /re-keyed/, 'a different cache-keying file');
+  const both = { changedFiles: ['Cargo.lock', '.github/workflows/test.yml'], laterChangedFiles: ['Cargo.lock'] };
+  assert.match(decidePushReplay(queued(evidence, both)).reason, /re-keyed/, 'every such file must change again');
+  assert.match(decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['x.ts'] })).reason, /re-keyed/, 'nothing later re-keys');
+  assert.match(decidePushReplay(queued(evidence, workflow)).reason, /re-keyed/, 'it is the newest');
+  assert.match(
+    decidePushReplay(queued([{ tree: TREE, runs: [] }], { ...workflow, laterChangedFiles: workflow.changedFiles })).reason,
+    /re-keyed/,
+    'a later re-key without a proven tree is still a full run',
+  );
+  // A PR run never ran the push-only lanes, so it cannot stand in for a queue run here.
+  assert.equal(decidePushReplay(base({ ...workflow, laterChangedFiles: workflow.changedFiles })).replay, false);
+});
+
+test('a full page of later files may be truncated, so it does not count as a re-key', () => {
+  const evidence = [{ tree: TREE, runs: [batchRun()] }];
+  const changedFiles = ['Cargo.lock'];
+  const page = (n) => ['Cargo.lock', ...Array.from({ length: n - 1 }, (_, i) => `f${i}`)];
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, laterChangedFiles: page(99) })).replay, true);
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, laterChangedFiles: page(100) })).replay, false);
+});
+
+test('--verify does not re-judge the re-key, however many files the push changed', () => {
+  const evidence = [{ tree: TREE, runs: [batchRun()] }];
+  const changedFiles = ['Cargo.lock', ...Array.from({ length: 99 }, (_, i) => `f${i}`)];
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, rekeyAlreadyJudged: true })).replay, true);
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles })).replay, false);
+  assert.equal(decidePushReplay(queued([{ tree: TREE, runs: [batchRun({ conclusion: 'failure' })] }], { changedFiles, rekeyAlreadyJudged: true })).replay, false, 'a run gone red still refuses');
+});
+
 test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {
   const d = decidePushReplay(base({ repo: REPO, queueEvidence: [{ tree: TREE, runs: [batchRun()] }] }));
   assert.deepEqual(d, { replay: true, runId: 1, pr: 7 });

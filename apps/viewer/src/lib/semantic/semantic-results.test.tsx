@@ -5,6 +5,8 @@
 import '@/test/setup-dom.js';
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { act, useState } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { DEFAULT_MAPPING } from '@ifc-lite/semantic';
@@ -105,4 +107,23 @@ test('#8556 bulk selection never guesses a model and candidate choices can be ad
   assert.equal(checkbox(ui, 1).disabled, false);
   click(namedButton(ui, 'Select all mapped results'));
   assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.modelId), ['model-0']);
+});
+
+
+test('#8556 real ArchiCAD doors support checkbox and bulk selection', async context => {
+  const fixture = new URL('../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
+  if (!existsSync(fixture)) { context.skip('Run pnpm fixtures for the real ArchiCAD fixture'); return; }
+  const bytes = new Uint8Array(await readFile(fixture));
+  const data = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const doors = [...data.entities.expressId].filter(id => data.entities.getTypeName(id) === 'IfcDoor').slice(0, 3);
+  assert.equal(doors.length, 3);
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('archicad'), ifcDataStore: data, maxExpressId: Math.max(...data.entities.expressId) }), ifcDataStore: data, mutationViews: new Map(), selectedEntityId: null, selectedEntityIds: new Set() });
+  useSemanticSession.setState({ strategy: 'ifc-global-id' });
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: doors.map(id => guidRow(data.entities.getGlobalId(id))) }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  click(checkbox(ui, 1)); click(checkbox(ui, 2));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.expressId).sort((a, b) => a - b), doors.slice(0, 2).sort((a, b) => a - b));
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.expressId).sort((a, b) => a - b), doors.sort((a, b) => a - b));
+  assert.equal(useViewerStore.getState().selectedEntityIds.size, 3);
 });

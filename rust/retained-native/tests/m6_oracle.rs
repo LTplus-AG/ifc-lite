@@ -53,6 +53,30 @@ fn m6_circle_boundary_clearance_remains_analytic() {
     assert_eq!(e.removed_clearance([1.6,1.,3.]),0.);
 }
 
+// #7955: an arc in the host profile (ISSUE_129's curved walls) is tessellated
+// chordally, so the section volume is judged against the curved tolerance.
+#[test]
+fn m6_curved_host_profile_marks_the_expectation_curved() {
+    let text=std::str::from_utf8(SOURCE).unwrap().replace("#11=IFCRECTANGLEPROFILEDEF(.AREA.,$,#10,4.,4.);",
+        "#11=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#9100);\n\
+#9100=IFCCOMPOSITECURVE((#9101,#9102),.F.);\n\
+#9101=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#9103);\n#9102=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#9104);\n\
+#9103=IFCPOLYLINE((#9105,#9106,#9107,#9108));\n\
+#9104=IFCTRIMMEDCURVE(#9109,(IFCPARAMETERVALUE(2.5535900500422257)),(IFCPARAMETERVALUE(3.7295952571373605)),.T.,.PARAMETER.);\n\
+#9105=IFCCARTESIANPOINT((0.,0.));\n#9106=IFCCARTESIANPOINT((4.,0.));\n#9107=IFCCARTESIANPOINT((4.,4.));\n#9108=IFCCARTESIANPOINT((0.,4.));\n\
+#9109=IFCCIRCLE(#9110,3.605551275463989);\n#9110=IFCAXIS2PLACEMENT2D(#9111,$);\n#9111=IFCCARTESIANPOINT((3.,2.));");
+    assert!(text.contains("#9109="),"host profile replaced");
+    let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
+    let e=bounded::expected(text.as_bytes(),&sources,1000).expect("curved host expectation");
+    // The bulge west of x=0 adds a circular segment to the 4 m square host.
+    let (r,half)=(13f64.sqrt(),(2f64/3.).atan());
+    assert!((e.host_volume-4.*(16.+r*r*(half-half.sin()*half.cos()))).abs()<1e-9,"host {}",e.host_volume);
+    assert!(e.curved,"a host arc is curved even though the boundary is a polyline");
+    let rectangle=bounded::expected(SOURCE,&sources_of(SOURCE),1000).unwrap();
+    assert!(!rectangle.curved,"the rectangular host stays linear");
+}
+fn sources_of(bytes:&[u8])->ifc_lite_processing::AnalyticQuantitySources { ifc_lite_processing::extract_analytic_quantity_sources(bytes,None) }
+
 #[test]
 fn m6_fzk_sections_are_available_for_both_bounded_chains() {
     let Some(bytes)=ifc_lite_testkit::fixture_bytes("ara3d/AC20-FZK-Haus.ifc") else {return;};

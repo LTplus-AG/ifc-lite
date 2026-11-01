@@ -3267,15 +3267,17 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: "1"
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
-        run: cargo nextest run --workspace --profile ci
-      # nextest writes the report under the target dir, which the self-hosted
-      # lane keeps outside the workspace and a cache can restore: copy only the
-      # one this run wrote (the checkout made Cargo.toml earlier in this job).
+        # The report lives under the target dir, which the self-hosted lane
+        # keeps across jobs and a cache can restore. Delete it first: nextest
+        # writes none when the build fails, and an old one must not be uploaded.
+        run: |
+          rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+          cargo nextest run --workspace --profile ci
       - name: Collect the nextest JUnit report
         if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
         run: |
           report="${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
-          if [ "$report" -nt Cargo.toml ]; then cp "$report" mergify-junit.xml; fi
+          if [ -f "$report" ]; then cp "$report" mergify-junit.xml; fi
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27

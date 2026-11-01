@@ -280,7 +280,7 @@ the model automatically using its committed `IfcMapConversion` and
 missing coordinate systems or unavailable exact datum transformations produce
 an error instead of a guessed placement.
 
-The **Appearance → Reference drawing** workspace lists the background under
+The **Appearance → Place as reference** workspace lists the background under
 **Registered drawings**. Use its eye, opacity and remove controls to compare
 imagery with the model; removal supports Undo. The background is a flat display
 plane just below the loaded geometry, not a terrain elevation measurement or

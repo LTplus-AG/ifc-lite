@@ -10,7 +10,7 @@ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionOperation } from '@/lib/geo/reproject';
 import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
-import { planOrthophotoBackground, sampleBackgroundRow } from '@/lib/terrain-imagery/background-plan';
+import { planOrthophotoBackground, sampleBackgroundRow, type BackgroundProjection } from '@/lib/terrain-imagery/background-plan';
 import { decodeDrapeTexture } from '@/lib/terrain-imagery/raster-texture';
 import type { LoadedGeoRaster } from '@/lib/terrain-imagery/read-raster';
 import { toast } from '@/components/ui/toast';
@@ -45,16 +45,21 @@ export function backgroundReference(frameKey: string): ModelSpatialReference {
 
 /** A same-CRS image needs only native-unit conversion, never a datum grid.
  * Cross-CRS placement retains federation's exact-operation requirement. */
-export async function orthophotoProjection(sourceCrs: string, targetCrs: string) {
+export async function orthophotoProjection(sourceCrs: string, targetCrs: string): Promise<BackgroundProjection> {
   if (sourceCrs.toUpperCase() === targetCrs.toUpperCase()) {
     const entry = await lookupEpsgByCode(sourceCrs.split(':')[1]);
     if (!entry?.proj4 || entry.kind !== 'Projected') throw new Error('The image/model CRS has no supported projected definition.');
-    return proj4(entry.proj4, projectedDefinitionInMetres(entry.proj4));
+    const parsed = new proj4.Proj(entry.proj4);
+    const unit = 'to_meter' in parsed && typeof parsed.to_meter === 'number' ? parsed.to_meter : 1;
+    if (!(unit > 0) || !Number.isFinite(unit)) throw new Error('The raster CRS has invalid units.');
+    return { forward: p => [p[0] * unit, p[1] * unit], inverse: p => [p[0] / unit, p[1] / unit] };
   }
   const [source, target] = await Promise.all([resolveProjectionOperation(sourceCrs), resolveProjectionOperation(targetCrs)]);
   if (source.kind !== 'exact' || target.kind !== 'exact') throw new Error('An exact coordinate transformation is unavailable for this image/model pair. Load the required datum grid or reproject the image first.');
   // Raster tags use native CRS units; the model spatial contract uses metres.
-  return proj4(source.definition, projectedDefinitionInMetres(target.definition));
+  const converter = proj4(source.definition, projectedDefinitionInMetres(target.definition));
+  return { forward: p => converter.forward([p[0], p[1]]) as [number, number],
+    inverse: p => converter.inverse([p[0], p[1]]) as [number, number] };
 }
 
 /** An imagery load owns no IFC entities and never resets the model session. */

@@ -158,6 +158,30 @@ describe('draping imagery through the load path (#5942)', () => {
     assert.equal(after.appearanceSources.length, before.appearanceSources.length, 'no image source is retained after refusal');
   });
 
+  it('keeps incomplete LandXML on the terrain path rather than placing an IFC background (#8552)', async () => {
+    const id = await loadTerrain();
+    const terrain = useViewerStore.getState().models.get(id)!;
+    for (const incomplete of [
+      { ...terrain, geometryResult: null },
+      { ...terrain, landXmlDocument: undefined },
+      { ...terrain, loadState: 'streaming-geometry' as const },
+    ]) {
+      useViewerStore.setState({ models: new Map([[id, incomplete]]) });
+      const before = useViewerStore.getState();
+      const errors: string[] = [];
+      const original = toast.error;
+      toast.error = message => { errors.push(message); };
+      try {
+        await act(async () => hookApi!.loadFile(orthoBundle(), { kind: 'primary' }));
+      } finally { toast.error = original; }
+      assert.equal(errors.length, 1);
+      assert.match(errors[0], /Terrain data is not ready/);
+      assert.equal(useViewerStore.getState().models, before.models);
+      assert.equal(useViewerStore.getState().appearanceReferences.size, before.appearanceReferences.size);
+      assert.equal(useViewerStore.getState().appearanceSources.length, before.appearanceSources.length);
+    }
+  });
+
   it('refuses a raster when no terrain is loaded, naming what to do', async () => {
     await assert.rejects(async () => drapeRasterOnTerrains(await orthoRaster()), /load a LandXML terrain first/);
   });

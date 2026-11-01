@@ -77,10 +77,15 @@ async function toTerrainCrs(imageCrs: string, terrainCrs: string): Promise<Parse
 }
 
 /** Loaded LandXML models with rendered geometry, optionally only `modelIds`. */
+function terrainCandidates(): FederatedModel[] {
+  return [...useViewerStore.getState().models.values()].filter(model => (
+    model.sourceSchema !== undefined && isLandXmlSchema(model.sourceSchema)
+  ));
+}
+
 export function terrainModels(modelIds?: readonly string[]): FederatedModel[] {
-  return [...useViewerStore.getState().models.values()].filter((model) => (
-    model.sourceSchema !== undefined && isLandXmlSchema(model.sourceSchema) && model.landXmlDocument && model.geometryResult
-    && (!modelIds || modelIds.includes(model.id))
+  return terrainCandidates().filter(model => (
+    model.landXmlDocument && model.geometryResult && (!modelIds || modelIds.includes(model.id))
   ));
 }
 
@@ -212,10 +217,15 @@ export async function drapeGeoRasterBundle(bundle: GeoRasterBundle): Promise<voi
     const read = await readGeoRasterBundle(bundle);
     if (!read.ok) { toast.error(`Imagery not draped: ${read.reason}`); return; }
     const loaded = read.value;
-    if (terrainModels().length === 0) {
+    const terrains = terrainCandidates();
+    if (terrains.length === 0) {
       const { addOrthophotoBackground } = await import('./orthophotoBackground.js');
       await addOrthophotoBackground(loaded);
       return;
+    }
+    if (terrains.some(model => !model.landXmlDocument || !model.geometryResult
+      || (model.loadState !== undefined && model.loadState !== 'complete'))) {
+      throw new Error('Terrain data is not ready. Wait for terrain loading to finish, or reload a failed terrain, then open its imagery again.');
     }
     reportDrapeOutcomes(await drapeRasterOnTerrains({
       name: loaded.name, source: 'file', placement: loaded.placement,

@@ -6,6 +6,13 @@
 // intentionally still accepted: moving the existing corpus to v2 requires a
 // rights review for every historical byte, not a mechanical JSON rewrite.
 
+// Registry classification is independent of optional metadata: Gaussian PLY
+// belongs under gaussian/, while .splat is intrinsically Gaussian anywhere.
+// Ordinary PLY retains historical validation and discovery behavior (#8580).
+export function isGaussianFixturePath(path) {
+  return typeof path === 'string' && (/\.splat$/i.test(path) || /^gaussian\/.+\.ply$/i.test(path));
+}
+
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
 const CAPABILITY_STATES = new Set(['rendered', 'preserved-only', 'unsupported', 'refused']);
@@ -229,7 +236,10 @@ export function validateManifest(manifest) {
     // its own rights review. LandXML files are reviewed per entry, so adding
     // one cannot bypass provenance simply by retaining a v1 root header.
     if (isLandXmlPath(entry.path)) validateReviewedLandXmlEntry(entry, index, errors);
-    if (/\.(ply|splat)$/i.test(entry.path)) validateReviewedGaussianEntry(entry, index, errors);
+    if (isGaussianFixturePath(entry.path)) validateReviewedGaussianEntry(entry, index, errors);
+    else if (entry.gaussian !== undefined) {
+      invalid(errors, `${where}.path`, 'Gaussian PLY fixtures must use the reserved gaussian/ directory');
+    }
   });
   return errors;
 }

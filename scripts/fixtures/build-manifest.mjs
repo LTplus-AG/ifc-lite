@@ -21,7 +21,7 @@ import { createReadStream, readFileSync, readdirSync, statSync, writeFileSync } 
 import { createHash } from 'node:crypto';
 import { resolve, relative, posix } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { assertValidManifest } from './manifest-validation.mjs';
+import { assertValidManifest, isGaussianFixturePath } from './manifest-validation.mjs';
 import { upstreamBlobUrl } from './download-url.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -143,7 +143,7 @@ const SKIP_DIRS = new Set(['local']);
 // Recognised fixture extensions. Add new types here when needed.
 // .ifczip: zip container fixtures (textured models ship images as siblings
 // of the .ifc inside the archive, #1781).
-const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml|ply|splat)$/i;
+const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml)$/i;
 const LANDXML_EXT = /\.(xml|landxml)$/i;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
@@ -179,7 +179,7 @@ const newFiles = [];
 for (const { abs, size, name } of walk(MODELS_DIR)) {
   const relFromModels = posix.normalize(relative(MODELS_DIR, abs).split(/[\\/]/).join('/'));
   if (META_FILES.has(name) && !relFromModels.includes('/')) continue;
-  if (!FIXTURE_EXT.test(name)) continue;
+  if (!FIXTURE_EXT.test(name) && !isGaussianFixturePath(relFromModels)) continue;
 
   // Redistribution guard: never manifest (and thus never upload) an ignored file.
   if (isIgnored(relFromModels)) {
@@ -247,7 +247,7 @@ function retainLandXmlProvenance(entry) {
 }
 
 function retainGaussianProvenance(entry) {
-  if (!/\.(ply|splat)$/i.test(entry.path)) return entry;
+  if (!isGaussianFixturePath(entry.path)) return entry;
   const previous = previousEntries.get(entry.path);
   if (!previous?.gaussian || previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
     throw new Error(`refusing to add or alter ${entry.path} without reviewed Gaussian provenance`);

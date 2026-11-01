@@ -24,3 +24,23 @@ test('public Gaussian metadata is required even in a historical v1 catalogue (#8
     assert.notDeepEqual(validateManifest({ version: 1, files: [entry] }), []);
   }
 });
+
+test('ordinary PLY retains historical manifest acceptance (#8580)', () => {
+  assert.deepEqual(validateManifest({ version: 1, files: [
+    { path: 'pointcloud/ordinary.ply', size: 123, sha256: 'a'.repeat(64) },
+  ] }), []);
+});
+
+test('reserved Gaussian paths require provenance even after deleting classification metadata (#8580)', () => {
+  for (const path of ['gaussian/control.ply', 'gaussian/nested/control.PLY', 'elsewhere/control.splat']) {
+    const entry = { ...structuredClone(source), path };
+    assert.deepEqual(validateManifest({ version: 1, files: [entry] }), []);
+    delete entry.gaussian;
+    delete entry.provenance;
+    const errors = validateManifest({ version: 1, files: [entry] });
+    assert.ok(errors.some(error => error.includes('provenance')));
+    assert.ok(errors.some(error => error.includes('Gaussian metadata')));
+  }
+  const misplaced = { ...structuredClone(source), path: 'pointcloud/misplaced.ply' };
+  assert.ok(validateManifest({ version: 1, files: [misplaced] }).some(error => error.includes('reserved gaussian/')));
+});

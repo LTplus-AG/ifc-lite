@@ -23,6 +23,7 @@ test('SH3 coefficients and 32 overlapping batches survive real upstream PLY deco
   const z = column(table, 'z');
   const depths = Float32Array.from(z, value => -value);
   const sorted = getSortedSplatIndicesByDepth(depths);
+  assert.equal(sorted.length, table.numRows); // #8580: empty/truncated output must fail.
   for (let i = 0; i < sorted.length; i++) {
     // Far-to-near must interleave ALL batches, not concatenate local sorts.
     const depthRank = table.numRows - i - 1;

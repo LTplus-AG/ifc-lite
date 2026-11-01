@@ -8,6 +8,8 @@
 // the manifest builder all read that decision from `upstreamBlobUrl`, so the
 // uploader can never publish a file the fetcher takes from upstream.
 
+import { isGaussianFixturePath } from './manifest-validation.mjs';
+
 const BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([a-f0-9]{40})\/(.+)$/;
 
 export function pinnedBlobRawUrl(blobUrl) {
@@ -25,7 +27,7 @@ export function upstreamBlobUrl(entry) {
   if (entry.upstream_archive) return entry.upstream_archive.blob_url;
   const source = entry.provenance?.source;
   const reviewedSourceBytes =
-    /\.(xml|landxml|ply|splat)$/i.test(entry.path) &&
+    (/\.(xml|landxml)$/i.test(entry.path) || isGaussianFixturePath(entry.path)) &&
     entry.provenance?.modification?.status === 'unmodified' &&
     source?.sha256 === entry.sha256 &&
     typeof source?.blob_url === 'string' &&

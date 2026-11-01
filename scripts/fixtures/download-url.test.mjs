@@ -55,3 +55,14 @@ test('reviewed Gaussian corpus uses immutable upstream bytes (#8567)', () => {
       `https://raw.githubusercontent.com/example/producer/${COMMIT}/exports/example.xml`);
   }
 });
+
+test('ordinary PLY keeps release URL even when carrying matching immutable provenance (#8580)', () => {
+  const entry = reviewedEntry({ path: 'pointcloud/ordinary.ply' });
+  assert.equal(fixtureDownloadUrl(BASE_URL, entry), `${BASE_URL}/${SHA256}`);
+  // The reserved path, not the optional Gaussian metadata object, selects policy.
+  entry.path = 'gaussian/nested/control.ply';
+  assert.equal(fixtureDownloadUrl(BASE_URL, entry),
+    `https://raw.githubusercontent.com/example/producer/${COMMIT}/exports/example.xml`);
+  entry.provenance.modification.status = 'modified';
+  assert.equal(fixtureDownloadUrl(BASE_URL, entry), `${BASE_URL}/${SHA256}`);
+});

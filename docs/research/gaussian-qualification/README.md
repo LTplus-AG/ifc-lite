@@ -26,8 +26,16 @@ typecheck, real WASM, required CI and integrated hardware acceptance remain sepa
 
 Only `tests/models/manifest.json` is committed for captured binaries; normal
 fixture fetch/hash verification, `.manifest-ignore`, and `local/` privacy guards
-apply. Gaussian metadata is mandatory even in the historical version-1 registry.
-Regeneration refuses new/unreviewed or changed PLY/.splat bytes. Reviewed unmodified
+apply. Gaussian PLY uses the reserved `gaussian/` directory (including subdirectories);
+`.splat` is Gaussian at any path. This path policy, independent of whether metadata
+is present, requires reviewed Gaussian metadata even in the version-1 registry.
+Deleting metadata cannot declassify either kind. A Gaussian declaration outside
+that namespace is rejected: move Gaussian PLY into `gaussian/` before admission.
+Ordinary PLY outside it retains historical manifest acceptance, content-addressed
+release URLs, and exclusion from automatic manifest regeneration. This is registry
+classification, not binary format detection; reviewers must place Gaussian PLY in
+the reserved namespace. Regeneration refuses new/unreviewed or changed Gaussian
+PLY/.splat bytes. Reviewed unmodified
 bytes fetch from immutable upstream blobs and are excluded from fixture uploads.
 Direct downloads stop at the declared byte budget before publishing a file.
 The two captures total 15,943,584 bytes. Do not run unscoped corpus downloads for

@@ -16,6 +16,7 @@ export function gateCommands(base) {
   return [
     { name: 'source-text-assertions', args: ['scripts/check-source-text-assertions.mjs', '--base', base], deps: ['typescript'] },
     { name: 'test-wiring', args: ['scripts/check-test-wiring.mjs'] },
+    { name: 'test-teardown-order', args: ['scripts/check-test-teardown-order.mjs'], deps: ['typescript'] },
     { name: 'module-size', args: ['scripts/check-module-size.mjs', '--base', base] },
     { name: 'ci-path-coverage', args: ['scripts/check-ci-path-coverage.mjs'] },
     { name: 'ci-aggregate-coverage', args: ['scripts/check-ci-aggregate-coverage.mjs'] },

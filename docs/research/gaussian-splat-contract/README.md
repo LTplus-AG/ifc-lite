@@ -4,6 +4,14 @@ Tracking: [#8564](https://github.com/LTplus-AG/ifc-lite/issues/8564), part of [#
 
 **Public enablement remains blocked.** This witness demonstrates that `SplatRenderer.drawMixed` cannot correctly compose transparent geometry between splats. It does not qualify the production viewer or complete the remaining rendering contract.
 
+This directory contains an external luma browser-harness reproducer and static
+research results. IFC-Lite does not import these files, and its root test command
+does not execute the patch. They live under `docs/research` to distinguish that
+evidence from runnable example code; the existing changed-tests oracle excludes
+documentation. No oracle classification rule or acceptance requirement is changed.
+The earlier [spike results](../../../examples/gaussian-splat-spike/results-summary.json) likewise record a
+historical measurement, not a runtime configuration.
+
 ## Measured behavior
 
 On upstream luma commit `700f1400fc6b0d32a82f1a22f57c1e747b255a01` with the depth-convention fix, render a near red Gaussian, a 50%-transparent green triangle at the intermediate depth, and a far blue Gaussian. The independent reference submits far splat, green triangle, near splat. The helper submits both sorted splats before the transparent triangle.

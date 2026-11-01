@@ -68,6 +68,10 @@ outside this continuation. Upstream maintainer review/merge and the native viewe
 contract tracked in #8564 remain outstanding; upstream CI does not qualify
 production integration.
 
+The [native transparency contract research](../../docs/research/gaussian-splat-contract/README.md)
+contains the external upstream diagnostic patch and its measured results. These
+are research evidence, not runtime inputs or tests invoked by this package.
+
 ## Reproduce
 
 Use the root pinned pnpm toolchain. Install dependencies normally, then prepare
@@ -207,7 +211,8 @@ fixture tests decode all 498,237 Gaussians through upstream code and check finit
 positions, positive scales, valid opacity and quaternion norms. Locally supplied
 IFC/scan results and their scene metrics or images are excluded.
 
-The recorded `baseCommit` is the original worker's **pre-edit HEAD**, not a
+The [recovered source provenance](../../docs/research/gaussian-splat-spike-provenance.json)
+clarifies that the recorded `baseCommit` is the original worker's **pre-edit HEAD**, not a
 checkout that contains the measured example. The original successful receipt
 `b922c7d9-578f-4fc8-8031-364e7400ded0` records a dirty working tree; its recovered
 output confirms the public counts and `[50, 0, 189, 255]` probe. All 12 recorded

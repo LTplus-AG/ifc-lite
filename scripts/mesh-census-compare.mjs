@@ -23,8 +23,9 @@
  * - `neutral`: anything else that changed.
  *
  * An empty census file is refused (exit 2). Models that emitted no meshes are
- * read from the runner's `<file>.empty` sidecars: listed, and a failure when
- * base and branch disagree. A sidecar on one side only is refused (exit 2).
+ * read from the runner's `<file>.empty` sidecars: listed in text output or
+ * included as `emptyModels` in JSON, and a failure when base and branch
+ * disagree. A sidecar on one side only is refused (exit 2).
  *
  * Meshes present on one side only are reported as `missing` / `added`; a
  * missing mesh is a regression, and so is an added one carrying open or
@@ -158,19 +159,22 @@ function main(argv) {
     console.error(`${baseEmpty ? branchPath : basePath}.empty is missing; run both sides with mesh-census-corpus.sh`);
     return 2;
   }
-  const emptyDiffers = baseEmpty && branchEmpty && baseEmpty.join('\n') !== branchEmpty.join('\n');
+  const emptyDiffers = Boolean(baseEmpty && branchEmpty && baseEmpty.join('\n') !== branchEmpty.join('\n'));
   if (argv.includes('--json')) {
-    console.log(JSON.stringify(verdicts, null, 2));
+    const output = baseEmpty || branchEmpty
+      ? { ...verdicts, emptyModels: { base: baseEmpty, branch: branchEmpty, differs: emptyDiffers } }
+      : verdicts;
+    console.log(JSON.stringify(output, null, 2));
   } else {
     for (const [name, list] of Object.entries(verdicts)) {
       console.log(`${name}: ${list.length}`);
       for (const entry of list.slice(0, 50)) console.log(`  ${entry.branch && entry.base ? describe(entry) : entry.key}`);
       if (list.length > 50) console.log(`  ... ${list.length - 50} more`);
     }
-  }
-  if (baseEmpty || branchEmpty) {
-    console.log(`models with no meshes: base ${baseEmpty?.length ?? '?'}, branch ${branchEmpty?.length ?? '?'}${emptyDiffers ? ' (DIFFERENT)' : ''}`);
-    for (const m of branchEmpty ?? baseEmpty) console.log(`  ${m}`);
+    if (baseEmpty || branchEmpty) {
+      console.log(`models with no meshes: base ${baseEmpty?.length ?? '?'}, branch ${branchEmpty?.length ?? '?'}${emptyDiffers ? ' (DIFFERENT)' : ''}`);
+      for (const m of branchEmpty ?? baseEmpty) console.log(`  ${m}`);
+    }
   }
   const failing = ['regression', 'qualityWorse', 'unmeasured', 'missing'];
   return emptyDiffers || failing.some((v) => verdicts[v].length > 0) ? 1 : 0;

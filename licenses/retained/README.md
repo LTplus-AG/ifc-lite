@@ -193,7 +193,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | wit-bindgen | 0.57.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5.txt), [3](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | zerocopy-derive | 0.8.48 | BSD-2-Clause OR Apache-2.0 OR MIT | [1](texts/9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3.txt), [2](texts/83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32.txt), [3](texts/1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df.txt) |
 | zerocopy | 0.8.48 | BSD-2-Clause OR Apache-2.0 OR MIT | [1](texts/9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3.txt), [2](texts/83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32.txt), [3](texts/1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df.txt) |
-| zip | 9.0.4 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
+| zip | 9.0.5 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
 | zlib-rs | 0.6.4 | Zlib | [1](texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt) |
 | zmij | 1.0.21 | MIT | [1](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | zopfli | 0.8.3 | Apache-2.0 | [1](texts/018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513.txt) |

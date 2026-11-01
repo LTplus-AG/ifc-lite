@@ -26,7 +26,7 @@
  * submission would make the earlier pass read the later camera's deltas.
  */
 
-import { tryPackRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
+import { MAX_RTE_EYE_RELATIVE_METRES, MAX_RTE_SOURCE_ABS_METRES, splitFloat64ForRte, type WorldPoint } from './relative-to-eye.js';
 
 /** Bytes per occurrence in a delta stream: high vec4 + low vec4. */
 export const INSTANCED_RTE_DELTA_STRIDE_BYTES = 32;
@@ -102,16 +102,7 @@ export function uploadInstancedRteDeltas(
     }
     const stream = template.rteDeltas;
     if (sameCamera(stream.camera, camera)) return stream.runs;
-    const anchors = template.canonicalAnchors;
-    const runs = collectInstanceRuns(template.instanceCount, (instance) => {
-      const source = instance * 3;
-      return tryPackRteDrawableDelta(
-        [anchors[source]!, anchors[source + 1]!, anchors[source + 2]!],
-        camera,
-        stream.scratch,
-        instance * DELTA_FLOATS,
-      );
-    });
+    const runs = packInstanceDeltas(template.canonicalAnchors, template.instanceCount, camera, stream.scratch);
     if (runs.length > 0) {
       const first = runs[0]!.first;
       const last = runs[runs.length - 1]!;
@@ -125,6 +116,44 @@ export function uploadInstancedRteDeltas(
     stream.camera = [camera[0], camera[1], camera[2]];
     stream.runs = runs;
     return runs;
+  });
+}
+
+/** Throws `splitFloat64ForRte`'s own error unless `value` lies in the f64 source envelope. */
+function checkSourceAxis(value: number): void {
+  // |value| <= 1e9 also guarantees a finite f32 high part.
+  if (!(Math.abs(value) <= MAX_RTE_SOURCE_ABS_METRES)) splitFloat64ForRte(value);
+}
+
+/**
+ * Pack every occurrence's `(anchor - camera)` high/low lanes into `scratch`
+ * and return the drawable runs: byte-for-byte what `tryPackRteDrawableDelta`
+ * writes per instance, in the same check order (anchor, then camera on the
+ * first instance, then the eye envelope), without its per-instance tuple
+ * allocations and repeated camera validation. A camera move repacks every
+ * occurrence of every visible template, so this loop was the largest single
+ * main-thread cost of orbiting a large instanced model.
+ */
+function packInstanceDeltas(anchors: Float64Array, count: number, camera: WorldPoint, scratch: Float32Array): InstanceRun[] {
+  const [cx, cy, cz] = camera;
+  let cameraChecked = false;
+  return collectInstanceRuns(count, (instance) => {
+    const source = instance * 3;
+    const ax = anchors[source]!, ay = anchors[source + 1]!, az = anchors[source + 2]!;
+    checkSourceAxis(ax); checkSourceAxis(ay); checkSourceAxis(az);
+    if (!cameraChecked) {
+      checkSourceAxis(cx); checkSourceAxis(cy); checkSourceAxis(cz);
+      cameraChecked = true;
+    }
+    const dx = ax - cx, dy = ay - cy, dz = az - cz;
+    // Inside the eye envelope (|d| <= 1e6) every split precondition holds.
+    if (!(Math.abs(dx) <= MAX_RTE_EYE_RELATIVE_METRES && Math.abs(dy) <= MAX_RTE_EYE_RELATIVE_METRES
+      && Math.abs(dz) <= MAX_RTE_EYE_RELATIVE_METRES)) return false;
+    const o = instance * DELTA_FLOATS;
+    const hx = Math.fround(dx), hy = Math.fround(dy), hz = Math.fround(dz);
+    scratch[o] = hx; scratch[o + 1] = hy; scratch[o + 2] = hz; scratch[o + 3] = 0;
+    scratch[o + 4] = Math.fround(dx - hx); scratch[o + 5] = Math.fround(dy - hy); scratch[o + 6] = Math.fround(dz - hz); scratch[o + 7] = 0;
+    return true;
   });
 }
 

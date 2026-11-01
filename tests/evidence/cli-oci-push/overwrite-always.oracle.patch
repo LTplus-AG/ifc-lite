@@ -1,0 +1,12 @@
+diff --git a/packages/cli/src/commands/oci-push.ts b/packages/cli/src/commands/oci-push.ts
+--- a/packages/cli/src/commands/oci-push.ts
++++ b/packages/cli/src/commands/oci-push.ts
+@@ -65,7 +65,7 @@ export async function ociPushCommand(args: string[]): Promise<void> {
+       layers: [{ mediaType: IFC_LAYER_MEDIA_TYPE, ...layer, annotations: { [TITLE_ANNOTATION]: model.fileName } }],
+       annotations: { [CREATED_ANNOTATION]: created, ...extra, [TITLE_ANNOTATION]: model.title },
+     });
+-    const pushed = await client.pushManifest(ref, manifest.bytes, manifest.mediaType, { allowOverwrite: true });
++    const pushed = await client.pushManifest(ref, manifest.bytes, manifest.mediaType, { allowOverwrite: options.overwrite });
+     if (options.json) {
+       printJson({
+         reference: options.reference,

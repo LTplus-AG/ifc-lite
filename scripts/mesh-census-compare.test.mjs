@@ -1,0 +1,114 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The per-mesh no-worse verdicts of `mesh-census-compare.mjs` (#8190). Each
+ * row pins the verdict for the one metric it changes.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { classify, compare, parseCensus } from './mesh-census-compare.mjs';
+
+const base = {
+  model: 'm.ifc', id: 7, ord: 0, type: 'IfcWall', tris: 100, open: 2, nonmanifold: 0,
+  open10: 2, nonmanifold10: 0, slivers: 10, degenerate: 0, maxAspect: 100, area: 5, thinArea: 0, coincidentArea: 0, thinCapped: 0, badIndices: 0,
+};
+const row = (patch) => ({ ...base, ...patch });
+
+test('an unchanged mesh has no verdict', () => {
+  assert.equal(classify(base, row({})), null);
+});
+
+test('gaining any edge kind is a regression', () => {
+  for (const m of ['open', 'nonmanifold', 'open10', 'nonmanifold10']) {
+    assert.equal(classify(base, row({ [m]: base[m] + 1 })), 'regression', m);
+  }
+});
+
+test('thin material counts past 1e-6 m2 and not below', () => {
+  assert.equal(classify(base, row({ thinArea: 2e-6 })), 'regression');
+  assert.equal(classify(base, row({ thinArea: 5e-7 })), null, 'under 1e-6 m2 is unchanged');
+  assert.equal(classify(base, row({ coincidentArea: 2e-6 })), 'regression');
+});
+
+test('a large sheet growing past 1e-6 m2 is a regression, not relatively unchanged', () => {
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.000005 })), 'regression');
+  assert.equal(classify(row({ thinArea: 10000 }), row({ thinArea: 10000.0000005 })), null);
+});
+
+test('a mesh collapsing with no open edges is a regression', () => {
+  assert.equal(classify(base, row({ degenerate: 4, area: 0 })), 'regression');
+  assert.equal(classify(base, row({ degenerate: 1 })), 'regression');
+  assert.equal(classify(base, row({ area: 5 * 0.98 })), 'regression');
+  assert.equal(classify(base, row({ area: 5 * 0.995 })), 'neutral');
+});
+
+test('gaining a triangle with an out-of-range index is a regression', () => {
+  assert.equal(classify(base, row({ badIndices: 1, open: 1, open10: 1 })), 'regression');
+});
+
+test('more slivers without closing an edge is quality-worse', () => {
+  assert.equal(classify(base, row({ slivers: 11 })), 'qualityWorse');
+});
+
+test('max aspect above 1.5x without closing an edge is quality-worse, at 1.5x it is not', () => {
+  assert.equal(classify(base, row({ maxAspect: 151 })), 'qualityWorse');
+  assert.equal(classify(base, row({ maxAspect: 150 })), 'neutral');
+});
+
+test('closing an open edge excuses more slivers', () => {
+  assert.equal(classify(base, row({ open: 0, open10: 0, slivers: 40 })), 'improved');
+});
+
+test('losing thin material is an improvement', () => {
+  assert.equal(classify(row({ thinArea: 2.3 }), row({ thinArea: 0, tris: 88 })), 'improved');
+});
+
+test('float metrics equal to 1e-9 relative are unchanged', () => {
+  assert.equal(classify(base, row({ area: 5 * (1 + 1e-12) })), null);
+  assert.equal(classify(base, row({ area: 5 * (1 + 1e-6) })), 'neutral');
+});
+
+test('a tessellation-only change is neutral', () => {
+  assert.equal(classify(base, row({ tris: 102, area: 5.0000001 })), 'neutral');
+});
+
+test('a mesh missing from the branch and one added are both reported', () => {
+  const a = parseCensus(`${JSON.stringify(base)}\n`);
+  const b = parseCensus(`${JSON.stringify(row({ ord: 1, open: 0, open10: 0 }))}\n`);
+  const v = compare(a, b);
+  assert.equal(v.missing.length, 1);
+  assert.equal(v.added.length, 1);
+});
+
+test('a capped thin census on either side is unmeasured, even when identical', () => {
+  assert.equal(classify(row({ thinCapped: 1 }), row({ thinCapped: 1 })), 'unmeasured');
+  assert.equal(classify(base, row({ thinCapped: 2 })), 'unmeasured');
+});
+
+test('a new mesh with defects is a regression, a clean one is added', () => {
+  const clean = row({ open: 0, open10: 0, ord: 9 });
+  const v = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ open: 12, open10: 12 }))}\n${JSON.stringify(clean)}\n`));
+  assert.equal(v.regression.length, 1);
+  assert.equal(v.added.length, 1);
+  const collapsed = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ open: 0, open10: 0, degenerate: 1 }))}\n`));
+  assert.equal(collapsed.regression.length, 1, 'a new mesh with a collapsed triangle');
+});
+
+test('a capped mesh new to the branch is unmeasured, not added', () => {
+  const v = compare(parseCensus(''), parseCensus(`${JSON.stringify(row({ thinCapped: 1 }))}\n`));
+  assert.equal(v.unmeasured.length, 1);
+  assert.equal(v.added.length, 0);
+});
+
+test('a row missing a metric is refused, not read as neutral', () => {
+  const { open, ...partial } = base;
+  assert.throws(() => parseCensus(`${JSON.stringify(partial)}\n`), /missing or invalid open/);
+});
+
+test('a mesh key appearing twice is refused', () => {
+  const line = JSON.stringify(base);
+  assert.throws(() => parseCensus(`${line}\n${line}\n`), /appears twice/);
+});

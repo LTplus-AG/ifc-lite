@@ -9,7 +9,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TREE_ARTIFACT_PREFIX, decidePushReplay } from './ci-push-replay.mjs';
+import { TREE_ARTIFACT_PREFIX, decidePushReplay, laterFilesFrom } from './ci-push-replay.mjs';
 
 const h = (c) => c.repeat(40);
 const PUSH = h('a');
@@ -156,18 +156,32 @@ test('a cache-keying commit replays only when a later main commit re-keys the ca
   const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
   const workflow = { changedFiles: ['.github/workflows/test.yml'] };
   assert.deepEqual(
-    decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['Cargo.lock', 'x.ts'] })),
+    decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['.github/workflows/test.yml', 'x.ts'] })),
     { replay: true, runId: 9, pr: 7, queue: true },
   );
+  // A workflow-only full run does not run the Rust lanes, so it cannot re-key for Cargo.lock.
+  const cargo = { changedFiles: ['Cargo.lock'], laterChangedFiles: ['.github/workflows/cancel-closed-pr-runs.yml'] };
+  assert.match(decidePushReplay(queued(evidence, cargo)).reason, /re-keyed/, 'a different cache-keying file');
+  const both = { changedFiles: ['Cargo.lock', '.github/workflows/test.yml'], laterChangedFiles: ['Cargo.lock'] };
+  assert.match(decidePushReplay(queued(evidence, both)).reason, /re-keyed/, 'every such file must change again');
   assert.match(decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['x.ts'] })).reason, /re-keyed/, 'nothing later re-keys');
   assert.match(decidePushReplay(queued(evidence, workflow)).reason, /re-keyed/, 'it is the newest');
   assert.match(
-    decidePushReplay(queued([{ tree: TREE, runs: [] }], { ...workflow, laterChangedFiles: ['Cargo.lock'] })).reason,
+    decidePushReplay(queued([{ tree: TREE, runs: [] }], { ...workflow, laterChangedFiles: workflow.changedFiles })).reason,
     /re-keyed/,
     'a later re-key without a proven tree is still a full run',
   );
   // A PR run never ran the push-only lanes, so it cannot stand in for a queue run here.
-  assert.equal(decidePushReplay(base({ ...workflow, laterChangedFiles: ['Cargo.lock'] })).replay, false);
+  assert.equal(decidePushReplay(base({ ...workflow, laterChangedFiles: workflow.changedFiles })).replay, false);
+});
+
+test('only a complete file list from an ahead comparison counts as later changes', () => {
+  const files = (n) => Array.from({ length: n }, (_, i) => ({ filename: `f${i}` }));
+  assert.deepEqual(laterFilesFrom({ status: 'ahead', files: files(2) }), ['f0', 'f1']);
+  assert.deepEqual(laterFilesFrom({ status: 'ahead', files: files(100) }), [], 'a full page may be truncated');
+  assert.deepEqual(laterFilesFrom({ status: 'identical', files: files(2) }), []);
+  assert.deepEqual(laterFilesFrom({ status: 'diverged', files: files(2) }), []);
+  assert.deepEqual(laterFilesFrom({ status: 'ahead' }), []);
 });
 
 test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {

@@ -186,3 +186,22 @@ host. Early setup failures are not tests: the first Pop request lacked Vite, its
 follow-up failed storage job-open, and the first local browser run exposed the
 published unimplemented `attach()` API. The final recorded run completed the
 assertions with no skipped cases; it does not erase those earlier outcomes.
+
+### CPU behavioral regression coverage (#8564)
+
+Root `pnpm test --filter=ifc-lite-gaussian-splat-spike` also executes the exact-run
+plugin against the hash-pinned upstream renderer in Node. A CPU-backed subclass
+of luma's `Buffer` and `Device` exercises the actual resource lifecycle without a
+GPU driver. Tests verify 96/128 alternating source runs, contiguous row partitioning,
+index-buffer bytes, populated-buffer preservation on 129-run rejection, reuse on
+shrink, and exactly-once cleanup. Source sorting, shaders and frame submission are
+not executed by these tests. The original native overflow witness still starts
+empty; populated-buffer preservation is now dynamically tested at the CPU resource
+boundary only, not newly GPU-qualified. Original GPU evidence is unchanged.
+
+The ordinary changed-test oracle removes the new plugin and executes the same
+tests against the published upstream renderer; ordering and overflow assertions
+then fail. A separate `populated-overflow.oracle.patch` under
+`tests/evidence/gaussian-8564-exact-runs/` deliberately detaches populated buffers
+before throwing, so the preservation assertion must fail even though rejection
+still occurs. Neither negative control changes gate classification or acceptance.

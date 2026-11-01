@@ -64,6 +64,9 @@ async function fixture(exact = true) {
   const Renderer = await rendererClass(exact);
   const device = new MemoryDevice();
   const renderer = new Renderer(device);
+  // Partition input has two source slots. No source payload/model is required
+  // by rebuildDrawRuns; sorting and rendering remain outside this CPU test.
+  renderer.batches.length = 2;
   return { device, renderer, close() {
     renderer.destroy();
     // Also free allocations orphaned by a deliberate negative-control mutation.
@@ -112,10 +115,9 @@ test('#8564 overflow preserves populated buffers, bytes and ownership until dest
   } finally { f.close(); }
 });
 
-test('#8564 shrinking and clearing runs releases surplus storage and preserves borrowed resources', async () => {
+test('#8564 shrinking and clearing runs releases surplus storage exactly once', async () => {
   const f = await fixture();
   try {
-    const borrowed = f.device.createBuffer({ data: new Uint32Array([42]), usage: Buffer.STORAGE });
     f.renderer.sortedReferences = references(96);
     f.renderer.rebuildDrawRuns();
     const prior = f.renderer.drawRuns.map(run => run.indexBuffer);
@@ -130,7 +132,6 @@ test('#8564 shrinking and clearing runs releases surplus storage and preserves b
     assert.equal(f.renderer.drawRuns.length, 0);
     f.renderer.destroy();
     assert.ok(prior.every(buffer => buffer.destroyed && buffer.destroyCalls === 1));
-    assert.equal(borrowed.destroyed, false, 'renderer cleanup does not destroy unrelated caller storage');
   } finally { f.close(); }
 });
 

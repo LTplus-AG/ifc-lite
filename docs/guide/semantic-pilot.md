@@ -270,3 +270,17 @@ modelRevision bindings. Arbitrary analytical columns remain visible without
 these fields. **Advanced: associate revision with model** is available for
 revision-scoped data; a basic single-model URI mapping needs no association.
 Ambiguous matches across models still require an explicit candidate choice.
+
+
+### Select multiple query results
+
+Use row checkboxes to add or remove mapped IFC entities from the viewer
+selection. Duplicate rows for one entity share its selection state.
+**Select all mapped results** replaces the viewer selection with all resolved
+entities across every result page, skipping unmatched and ambiguous rows.
+If no row resolves, Select all leaves the current selection unchanged.
+**Clear selection** clears the viewer selection. Clicking a mapping normally
+selects just that entity; Ctrl/Cmd-click adds or removes it. For ambiguous rows,
+use the row checkbox (including from the keyboard), or Ctrl/Cmd-click the mapping,
+then toggle an explicit model candidate. Candidate buttons expose their selected
+state, and the row checkbox reflects whether any candidate is selected.

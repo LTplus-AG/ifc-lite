@@ -101,3 +101,19 @@ for (const action of ['cancel', 'supersede'] as const) it(`a ${action} during ex
   assert.equal(useViewerStore.getState().loading, false);
   assert.equal(useViewerStore.getState().activeLoadCanceller, null);
 });
+
+// PR #8580's real upstream decoder preserves NaN positions. Until the decoder
+// boundary exists, the disabled gate must still prevent any such asset publication.
+for (const format of ['ply', 'splat'] as const) it(`nonfinite ${format} payload cannot publish an asset while admission is disabled (#8565)`, async () => {
+  const bytes = new Uint8Array(format === 'ply' ? 56 : 32);
+  const view = new DataView(bytes.buffer);
+  view.setFloat32(0, NaN, true);
+  view.setFloat32(12, Infinity, true);
+  const file = new File(format === 'ply' ? [gaussianHeader, bytes] : [bytes], `nonfinite.${format}`);
+  await act(async () => loader!.loadFile(file, { kind: 'primary', modelId: 'nonfinite' }));
+  const state = useViewerStore.getState();
+  assert.match(state.error ?? '', /Gaussian splat loading is disabled/);
+  assert.equal(state.models.get('nonfinite')?.loadState, 'error');
+  assert.equal(state.models.get('nonfinite')?.geometryResult, null);
+  assert.equal(state.pointCloudAssetCount, 0);
+});

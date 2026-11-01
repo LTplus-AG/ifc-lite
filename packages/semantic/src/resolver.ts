@@ -54,7 +54,7 @@ export class ResolverRegistry {
   ids(): string[] { return [...this.strategies.keys()]; }
 }
 export function resolveResource(record: IdentityRecord, entities: readonly LiveEntity[], revisions: ReadonlyMap<string, string>, modelScope?: string): Resolution {
-  return IFC_GLOBAL_ID_STRATEGY.resolve(record, { entities, entitiesByGlobalId, revisions, modelScope });
+  return IFC_GLOBAL_ID_STRATEGY.resolve(record, { entities, revisions, modelScope });
 }
 /** Portable association references semantic revision and IFC GlobalId, never express ids. */
 export interface ResourceIdentityLink { resourceId: string; modelRevision: string; GlobalId: string }

@@ -1058,10 +1058,6 @@ jobs:
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
-          # Teardown-order gate: inverting the change deletes the new script, so its
-          # test cannot load. Keep it; record no violation.
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/test-teardown-order/behaviour.oracle.patch | grep -Fxq 'tests/evidence/test-teardown-order/behaviour.oracle.patch'; then
-            oracle_args+=(--mutation tests/evidence/test-teardown-order/behaviour.oracle.patch --test scripts/check-test-teardown-order.test.mjs)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
@@ -1943,6 +1939,10 @@ jobs:
           # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
+          # Teardown-order gate: inverting the change deletes the new script, so its
+          # test cannot load. Keep it; record no violation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/test-teardown-order/behaviour.oracle.patch | grep -Fxq 'tests/evidence/test-teardown-order/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/test-teardown-order/behaviour.oracle.patch --test scripts/check-test-teardown-order.test.mjs)
           fi
           # CLI oci:// model input: a whole-file revert deletes model-input.ts /
           # oci-input.ts and the witnesses die at import. Keep the modules and

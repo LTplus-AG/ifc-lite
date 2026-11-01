@@ -37,7 +37,7 @@ impl Buckets {
     }
 }
 
-fn component_signature(components: &HashMap<JsString, JsString>) -> JsString {
+fn component_signature(components: &crate::model::ComponentMap) -> JsString {
     let mut keys: Vec<_> = components.keys().collect();
     keys.sort_by(cmp_code_units);
     let mut units = Vec::new();

@@ -17,6 +17,13 @@ import { parseModelReference } from '../oci-input.js';
 
 export const TITLE_ANNOTATION = 'org.opencontainers.image.title';
 export const CREATED_ANNOTATION = 'org.opencontainers.image.created';
+/**
+ * Provisional IFC release profile v0 keys, shared with subsoil. An experimental
+ * convention, not a buildingSMART standard: https://github.com/LTplus-AG/ifc-lite/discussions/8339
+ */
+export const IFC_PROFILE_ANNOTATION = 'org.buildingsmart.ifc.profile';
+export const IFC_SCHEMA_ANNOTATION = 'org.buildingsmart.ifc.schema';
+export const IFC_RELEASE_PROFILE = 'ifc-release/0';
 
 export const PUSH_USAGE =
   'Usage: ifc-lite oci push <oci://host/repository:tag> <model.ifc> [--overwrite] [--annotation key=value]... [--json]';
@@ -69,8 +76,8 @@ export function pushTarget(arg: string): OciReference & { tag: string } {
 
 /**
  * Manifest annotations from `--annotation key=value`: the key is non-empty
- * and on one line, a later duplicate wins, and the title is reserved (it is
- * the file name).
+ * and on one line, a later duplicate wins, and the title (the file name) and
+ * the profile keys (they describe the file) are reserved.
  */
 export function parseAnnotations(values: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -82,6 +89,9 @@ export function parseAnnotations(values: readonly string[]): Record<string, stri
     if (/[\r\n]/.test(key)) fatal('--annotation keys cannot contain a line break');
     if (key === TITLE_ANNOTATION) {
       fatal(`--annotation cannot set ${TITLE_ANNOTATION}: it is the file name (the layer's title) without its extension; rename the file instead`);
+    }
+    if (key === IFC_PROFILE_ANNOTATION || key === IFC_SCHEMA_ANNOTATION) {
+      fatal(`--annotation cannot set ${key}: it is written from the file itself`);
     }
     out[key] = raw.slice(eq + 1);
   }
@@ -114,6 +124,8 @@ export interface IfcForPush {
   fileName: string;
   /** The basename without its extension: the manifest title. */
   title: string;
+  /** The `FILE_SCHEMA` entry naming the IFC schema, for example `IFC4`. */
+  schema: string;
 }
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
@@ -147,10 +159,11 @@ export async function readIfcForPush(path: string): Promise<IfcForPush> {
     throw error;
   }
   const schemas = parseSourceHeader(bytes)?.schemaIdentifiers ?? [];
-  if (!schemas.some((s) => /^IFC/i.test(s.trim()))) {
+  const schema = schemas.map((s) => s.trim()).find((s) => /^IFC/i.test(s));
+  if (schema === undefined) {
     const declared = schemas.length === 0 ? 'declares no FILE_SCHEMA' : `declares FILE_SCHEMA ${schemas.join(', ')}`;
     fatal(`cannot push ${path}: it is a STEP file but ${declared}, not an IFC schema`);
   }
   const ext = extname(fileName);
-  return { bytes, fileName, title: ext === '' ? fileName : fileName.slice(0, -ext.length) };
+  return { bytes, fileName, title: ext === '' ? fileName : fileName.slice(0, -ext.length), schema };
 }

@@ -70,7 +70,13 @@ const excludeOne = { path: 'm01.ifc', reason: 'did not finish in budget', eviden
 
 test('an excluded model is in no shard and is reported as not checked', (context) => {
   const dir = mkdtempSync(join(tmpdir(), 'corpus-shards-'));
-  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const previousSummary = process.env.GITHUB_STEP_SUMMARY;
+  // One hook: restore the summary variable that points into dir, then remove dir.
+  context.after(() => {
+    if (previousSummary === undefined) delete process.env.GITHUB_STEP_SUMMARY;
+    else process.env.GITHUB_STEP_SUMMARY = previousSummary;
+    rmSync(dir, { recursive: true, force: true });
+  });
   const manifest = join(dir, 'manifest.json');
   const exclusions = join(dir, 'exclusions.json');
   writeFileSync(manifest, JSON.stringify({ version: 1, files }));
@@ -85,7 +91,6 @@ test('an excluded model is in no shard and is reported as not checked', (context
   assert.ok(!seen.includes('m01.ifc'));
   const summary = join(dir, 'summary.md');
   process.env.GITHUB_STEP_SUMMARY = summary;
-  context.after(() => { delete process.env.GITHUB_STEP_SUMMARY; });
   const line = main(['excluded', '--manifest', manifest, '--exclusions', exclusions]);
   assert.match(line, /1 model NOT CHECKED: m01\.ifc/);
   assert.match(readFileSync(summary, 'utf8'), /NOT CHECKED[\s\S]*m01\.ifc/);

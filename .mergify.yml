@@ -1,12 +1,24 @@
 # Batches PRs for the merge queue: one full `Test` run on a temporary
 # `mergify/merge-queue/*` PR covers up to five PRs, and a failure is split to find
 # the culprit. Ordinary PR pushes keep the fast lane (scripts/ci-pr-lane.mjs).
+#
+# A batch is tested only at its TIP, but Mergify then squashes each PR onto
+# `main` as its own commit, so every commit before the tip lands untested. For
+# code that is a small gap. For a PR that edits tests/perf-ratchets/*.json it is
+# the common case: a lowering PR moves a ceiling down to what main measured
+# hours earlier, and when a later PR in the same batch shrinks the bundle, the
+# tip passes while the lowering commit alone is above its new ceiling. That is
+# how #8459 turned main red at c306ff57d4: batch #8497 failed its ratchet, and
+# the retry batch #8501 passed only because #8411, also in it, cut eager JS.
+# So ceiling PRs get their own queue with batch_size 1: the commit that lands is
+# the tip that was tested (scripts/perf-ratchet/merge-queue.test.mjs).
 queue_rules:
   - name: default
     # TRIAL: only labelled PRs. GitHub's own queue stays on until this is proven.
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - -files~=^tests/perf-ratchets/
     # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
     # lane cannot merge even if branch detection in test.yml ever broke.
     merge_conditions:
@@ -18,14 +30,37 @@ queue_rules:
     batch_max_failure_resolution_attempts: 3
     merge_method: squash
 
+  # Ceiling edits, one at a time (see the header). Same gate as `default`.
+  - name: ceilings
+    queue_conditions:
+      - label=mergify-trial
+      - -draft
+      - files~=^tests/perf-ratchets/
+    merge_conditions:
+      - check-success=Build + WASM + Rust + Node
+      - check-success=Viewer tests (shard 0)
+      - check-success=Rust tests (feature builds)
+    batch_size: 1
+    merge_method: squash
+
 pull_request_rules:
   - name: queue PRs labelled for the Mergify trial
     conditions:
       - label=mergify-trial
       - -draft
+      - -files~=^tests/perf-ratchets/
     actions:
       queue:
         name: default
+
+  - name: queue ceiling PRs labelled for the Mergify trial, alone
+    conditions:
+      - label=mergify-trial
+      - -draft
+      - files~=^tests/perf-ratchets/
+    actions:
+      queue:
+        name: ceilings
 
 merge_protections_settings:
   auto_merge_conditions: true

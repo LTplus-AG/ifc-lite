@@ -7,7 +7,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { nativeSample, main as nativeMain } from './retained-qual-native-memory.mjs';
-import { assertNativeSummary } from './retained-qual-assert.mjs';
+import { assertCliRetained, assertNativeSummary } from './retained-qual-assert.mjs';
+import { readReportEnvelope } from './retained-qual-cli.mjs';
 import { roundSides, resultEnvelope } from './retained-qual-lib.mjs';
 import { compare, format, readRows } from './retained-qual-report.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
@@ -333,4 +334,31 @@ test('8413: a compared metric appears once in the report', async () => {
   const names = fixture.columns.map(c => c.column);
   assert.equal(names.filter(n => n === 'productMs').length, 1);
   assert.equal(names.filter(n => n === 'longTaskMs').length, 1);
+});
+
+test('#7955 Holter: a failed CLI row keeps the fatal end of stderr', () => {
+  const stderr = `retained object release retired captured worker Error: worker incarnation retired\n${'    at frame\n'.repeat(60)}RangeError: Invalid string length\n`;
+  assert.throws(() => assertCliRetained({ exitCode: 1, stdout: '', stderr, report: null, objHead: '' }), /RangeError: Invalid string length/);
+});
+
+test('#7955 Holter: the CLI runner reads a report a row at a time and refuses a bad row or count', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-envelope-'));
+  try {
+    const path = join(dir, 'report.json');
+    const envelope = (published = 1) => ({ engine: { sdk: 'x' }, format: 'ifc-lite.retained-report/1',
+      settings: { kernel: 'retained' }, summary: { candidates: 2, published, byCode: { a: 1 } } });
+    const text = (rows, summary = envelope()) => JSON.stringify({ engine: summary.engine, format: summary.format, products: rows,
+      settings: summary.settings, summary: summary.summary }, null, 2);
+    const rows = [{ id: 1, status: 'published', parts: [{ normals: [0, 1] }] }, { id: 2, status: 'refused' }];
+    writeFileSync(path, text(rows));
+    assert.deepEqual(await readReportEnvelope(path), envelope());
+    writeFileSync(path, text(rows).replace('"status": "refused"', 'NOT JSON'));
+    await assert.rejects(readReportEnvelope(path), SyntaxError);
+    writeFileSync(path, text(rows, envelope(2)));
+    await assert.rejects(readReportEnvelope(path), /rows 1\/2 != summary 2\/2/);
+    writeFileSync(path, text(rows.slice(1)));
+    await assert.rejects(readReportEnvelope(path), /rows 0\/1 != summary 1\/2/);
+    writeFileSync(path, text(rows).split('\n').slice(0, 12).join('\n'));
+    await assert.rejects(readReportEnvelope(path), /truncated/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

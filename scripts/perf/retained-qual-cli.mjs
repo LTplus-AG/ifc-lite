@@ -17,7 +17,8 @@
 // `startupControlMs` is `node dist/index.js --version` in the same round: process and
 // module-load cost without any export. Report-only.
 
-import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, appendFileSync, existsSync } from 'node:fs';
+import { closeSync, createReadStream, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, appendFileSync, existsSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -33,6 +34,36 @@ const TIME = existsSync('/usr/bin/time') ? '/usr/bin/time' : null;
 function head(path, bytes = 4096) {
   const fd = openSync(path, 'r'), buffer = Buffer.alloc(bytes);
   try { return buffer.subarray(0, readSync(fd, buffer, 0, bytes, 0)).toString('utf8'); } finally { closeSync(fd); }
+}
+
+/**
+ * The report without its product rows, each row parsed and counted against the summary.
+ * A whole-model report can exceed the maximum string length (#7955 Holter), so it is read
+ * a product at a time; the writer puts every row between fixed two- and four-space lines.
+ */
+export async function readReportEnvelope(path) {
+  const outer = [];
+  let row = null, inProducts = false, total = 0, published = 0;
+  for await (const line of createInterface({ input: createReadStream(path), crlfDelay: Infinity })) {
+    if (row) {
+      row.push(line);
+      if (line !== '    }' && line !== '    },') continue;
+      if (JSON.parse(row.join('\n').replace(/,$/, '')).status === 'published') published++;
+      total++;
+      row = null;
+    } else if (inProducts) {
+      if (line === '    {') row = [line];
+      else if (line === '  ],') inProducts = false;
+      else throw new Error(`malformed retained report row: ${line.slice(0, 80)}`);
+    } else if (line === '  "products": [') inProducts = true;
+    else outer.push(line);
+  }
+  if (row || inProducts) throw new Error('truncated retained report');
+  const envelope = JSON.parse(outer.join('\n'));
+  if (total !== envelope.summary?.candidates || published !== envelope.summary?.published) {
+    throw new Error(`retained report rows ${published}/${total} != summary ${envelope.summary?.published}/${envelope.summary?.candidates}`);
+  }
+  return envelope;
 }
 
 /** Run one command to completion under /usr/bin/time -v with the process-tree sampler; times with hrtime. */
@@ -77,7 +108,7 @@ export async function cliSample({ arm, fixture, round, options, expectation }) {
     Object.assign(row, { totalMs: run.totalMs, startupControlMs: control.totalMs, maxRssKiB: run.maxRssKiB,
       processHwmKiB: run.memory.maxIndividualHwmKiB, concurrentRssKiB: run.memory.maxObservedConcurrentRssKiB, memorySamples: run.memory.samples,
       memoryCaveat: `Node CLI process tree (own WASM/worker transport), not native SMLib worker RSS; ${run.memory.caveat}` });
-    const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+    const report = existsSync(reportPath) ? await readReportEnvelope(reportPath) : null;
     assertCliRetained({ exitCode: run.exitCode, stdout: run.stdout, stderr: run.stderr, report, expectedManifestSha256: arm.identity.engine.manifestSha256,
       objHead: existsSync(obj) ? head(obj) : '', expectation });
     Object.assign(row, { ok: true, candidates: report.summary.candidates, published: report.summary.published,

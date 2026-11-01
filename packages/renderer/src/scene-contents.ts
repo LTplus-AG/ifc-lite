@@ -45,6 +45,7 @@
 
 import type { Mesh, BatchedMesh } from './types.js';
 import type { MeshData, DecodedInstancedShard } from '@ifc-lite/geometry';
+import type { SceneSnapshot } from './scene-snapshot.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BoundingBox } from './scene-raycaster.js';
 import type { ResidentGpuBytes } from './render-stats.js';
@@ -80,6 +81,18 @@ export interface SceneContents {
   limitStreamingFragments(maxIndices: number): void;
   isEphemeralStreaming(): boolean;
   finishEphemeralStreaming(): void;
+
+  // ─── Finished-scene snapshot (scene-snapshot.ts) ─────────────────────
+  /** Everything outside the source geometry that decides a snapshot's bytes. */
+  sceneSnapshotPolicy(): string;
+  isSceneSnapshotHydrating(): boolean;
+  /** Report the next finalized scene as a snapshot, when it is exactly the pieces queued from now on. */
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void;
+  /** Replace the flat scene with these batches; pass the handle to `hydrateSceneSnapshot`. Null: refused, scene untouched. */
+  adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null;
+  /** Attach the source meshes with no upload. False: the adoption is gone or they do not match, so nothing adopted remains. */
+  hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean;
+  abandonSceneSnapshot(adoption: object): void;
 
   // ─── Geometry read-back ──────────────────────────────────────────────
   getMeshes(): Mesh[];

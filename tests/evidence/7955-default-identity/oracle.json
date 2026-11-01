@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/lib/retained-default-identity.mjs",
+  "mutation": "tests/evidence/7955-default-identity/behaviour.oracle.patch",
+  "test": "scripts/retained-default-identity.test.mjs",
+  "why": "Cached-only and partially compiled arms must fail rather than establish byte identity."
+}

@@ -4,7 +4,7 @@ mod layers;
 mod clips;
 pub(crate) mod bounded;
 pub mod faces;
-mod face_sets;
+pub(crate) mod face_sets;
 use ifc_lite_retained_native::ShapeOnlyProduct;
 use ifc_lite_processing::AnalyticQuantitySources;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityIndex, SourceBundle};

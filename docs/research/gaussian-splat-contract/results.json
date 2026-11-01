@@ -1,0 +1,96 @@
+{
+  "issue": 8564,
+  "upstreamBase": "700f1400fc6b0d32a82f1a22f57c1e747b255a01",
+  "backend": "Chromium WebGPU / SwiftShader",
+  "receipt": "789755f5-c913-4b1c-afdb-b7a7ee23e45b",
+  "productionReady": false,
+  "tests": {
+    "passed": 14,
+    "skipped": 1,
+    "skip": "existing configured-canvas reattachment case"
+  },
+  "composition": {
+    "reference": [
+      189,
+      33,
+      24,
+      255
+    ],
+    "upstreamMixed": [
+      94,
+      128,
+      24,
+      255
+    ],
+    "exactCompositionPasses": false,
+    "upstream": "SplatRenderer.drawMixed",
+    "gpu": {
+      "type": "webgpu",
+      "vendor": "google",
+      "renderer": "",
+      "version": "",
+      "gpu": "software",
+      "gpuType": "cpu",
+      "gpuBackend": "unknown",
+      "gpuArchitecture": "swiftshader",
+      "fallback": true,
+      "featureLevel": "core",
+      "subgroupMinSize": 4,
+      "subgroupMaxSize": 4,
+      "shadingLanguage": "wgsl",
+      "shadingLanguageVersion": 100
+    }
+  },
+  "ownership": {
+    "borrowedDeviceSurvivesWrapperDestroy": true
+  },
+  "upstreamFix": "71e2be2394ecd9bdfb6f1d36ce23e6af92978015",
+  "originalMeasurement": {
+    "receipt": "789755f5-c913-4b1c-afdb-b7a7ee23e45b",
+    "sourceCommit": "700f1400fc6b0d32a82f1a22f57c1e747b255a01",
+    "sourceClean": false,
+    "recordedPatchSha256": "bff9eadfaaa03b2ef94ef1560cc70df08721b88ca495b3eb3dd586da97538b0a",
+    "note": "Top-level pixels, ownership and 14-pass/1-skip counts remain the original measurement. The shipped reproducer was subsequently revised for deterministic raw-device cleanup."
+  },
+  "revisedReproducerValidation": {
+    "receipt": "c7670da1-8e1a-4503-9cfd-6cc195dd0063",
+    "upstreamCommit": "71e2be2394ecd9bdfb6f1d36ce23e6af92978015",
+    "patchSha256": "1775dc89e0c01c1776aa669213c9c42376a93f0b20b2aa40a99ab4359ecf1162",
+    "buildReceipt": "5b9a81d2-e5c0-4da6-8081-5aa032617ce9",
+    "host": "pc-wsl",
+    "node": "22.23.4",
+    "yarn": "4.13.0",
+    "backend": "Chromium WebGPU / SwiftShader",
+    "tests": {
+      "passed": 18,
+      "skipped": 1,
+      "skip": "existing configured-canvas reattachment case"
+    },
+    "composition": {
+      "reference": [
+        189,
+        33,
+        24,
+        255
+      ],
+      "upstreamMixed": [
+        94,
+        128,
+        24,
+        255
+      ],
+      "exactCompositionPasses": false
+    },
+    "borrowedDeviceSurvivesWrapperDestroy": true,
+    "faultCases": [
+      "assertion before attach",
+      "attach rejects",
+      "composition assertion",
+      "ownership assertion after witness buffer creation"
+    ],
+    "faultAssertions": "Raw GPUDevice.destroy called exactly once on all four failures; witness GPUBuffer.destroy called exactly once when allocated. Spies delegate to real WebGPU destroy methods.",
+    "patchApplyCheck": "passed against an isolated export of the pinned upstream source",
+    "notStartedReceipt": "6d97fef7-c11a-4e53-aec8-e03cb92a2bc2",
+    "notStartedReason": "Storage job-open failed during preceding build publication; original receipt confirms projectStarted=false. Browser validation was submitted only after that build finalized."
+  }
+}

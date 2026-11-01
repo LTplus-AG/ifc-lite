@@ -129,7 +129,7 @@ test('#7955 M4 and M11 committed extrusion OBJ differs from its base golden only
     }
   }
   const previous = (await readFile('tests/fixtures/cli-retained/m11-0-base.obj', 'utf8')).split('\n');
-  const obj = retainedObj(outcomes);
+  const obj = Buffer.concat(retainedObj(outcomes)).toString();
   assert.equal(obj, await readFile('tests/fixtures/cli-retained/m11-z-final.obj', 'utf8'),
     'M11-Z OBJ golden from a green real native/Node/CLI run');
   const written = obj.split('\n');

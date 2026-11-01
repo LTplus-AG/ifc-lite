@@ -36,6 +36,8 @@
  */
 
 import { register } from 'node:module';
+// Viewer tests run offline; see the module for the shard-12 timeout it ends.
+import './no-external-network.mjs';
 
 // The hooks themselves live in a sibling module because they run on the loader
 // thread, which cannot import from here.

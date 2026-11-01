@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { DEFAULT_PROFILE, profileToDictionary, type ProfileDefinition } from '@ifc-lite/semantic';
 import { SemanticProfileControls } from '@/components/viewer/SemanticProfileControls';
 import { render, type as input, click, cleanup } from '@/test/render';
@@ -35,4 +36,63 @@ test('charter #6643: neutral dictionary import rejects unknown configuration and
   input(textarea, JSON.stringify({ id: 'urn:dictionary', properties: [] })); click(button);
   assert.equal(profiles.length, 0); assert.equal(errors.length, 2);
   assert.match(errors[0], /Unsupported neutral dictionary member/); assert.match(errors[1], /dictionary envelope/);
+});
+
+
+test('#8554 bSDD search and profile import use the same-origin proxy', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: URL[] = []; const profiles: ProfileDefinition[] = []; const errors: string[] = [];
+  const uri = 'https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWindow';
+  globalThis.fetch = async request => {
+    assert.equal(typeof request, 'string');
+    const url = new URL(String(request), 'https://viewer.example'); requests.push(url);
+    assert.equal(url.origin, 'https://viewer.example');
+    if (url.pathname === '/api/bsdd/api/Class/Search/v1') {
+      assert.equal(url.searchParams.get('SearchText'), 'IfcWindow');
+      return Response.json({ classes: [{ uri, code: 'IfcWindow', name: 'Window', dictionaryUri: 'https://example.org/dictionary' }] });
+    }
+    assert.equal(url.pathname, '/api/bsdd/api/Class/v1');
+    assert.equal(url.searchParams.get('Uri'), uri);
+    return Response.json({ uri, code: 'IfcWindow', name: 'Window', classProperties: [
+      { name: 'IsExternal', propertyUri: 'https://example.org/IsExternal', dataType: 'Boolean' },
+    ] });
+  };
+  try {
+    const ui = render(<SemanticProfileControls profile={DEFAULT_PROFILE} onProfile={profile => profiles.push(profile)} onError={error => errors.push(error)} />);
+    input(ui.querySelector('input')!, 'IfcWindow');
+    await act(async () => { click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Search bSDD and choose a class')!); });
+    const result = [...ui.querySelectorAll('li button')][0]; assert.ok(result);
+    await act(async () => { click(result); });
+    assert.deepEqual(errors, []);
+    assert.equal(requests.length, 2);
+    assert.equal(profiles.length, 1);
+    assert.equal(profiles[0].fields.IsExternal.kind, 'boolean');
+    assert.equal(profiles[0].types.IfcWindow.iri, uri);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('#8554 hostile search text stays a search value and proxy failures leave the profile untouched', async () => {
+  const originalFetch = globalThis.fetch;
+  const profiles: ProfileDefinition[] = []; const errors: string[] = [];
+  const query = 'IfcWindow&Uri=https://untrusted.example/path?x=1#fragment';
+  let requests = 0;
+  globalThis.fetch = async request => {
+    const url = new URL(String(request), 'https://viewer.example');
+    requests++;
+    assert.equal(url.origin, 'https://viewer.example');
+    assert.equal(url.pathname, '/api/bsdd/api/Class/Search/v1');
+    assert.deepEqual([...url.searchParams], [['SearchText', query]]);
+    assert.equal(url.hash, '');
+    return new Response('Unavailable', { status: 502, statusText: 'Bad Gateway' });
+  };
+  try {
+    const ui = render(<SemanticProfileControls profile={DEFAULT_PROFILE} onProfile={profile => profiles.push(profile)} onError={error => errors.push(error)} />);
+    input(ui.querySelector('input')!, query);
+    await act(async () => { click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Search bSDD and choose a class')!); });
+    assert.equal(requests, 1); assert.deepEqual(profiles, []);
+    assert.equal(errors.length, 1); assert.match(errors[0], /502/);
+    assert.equal(ui.querySelectorAll('li button').length, 0);
+    assert.equal([...ui.querySelectorAll('button')].find(button => button.textContent === 'Search bSDD and choose a class')?.disabled, false, 'failed request releases the busy state');
+  } finally { globalThis.fetch = originalFetch; }
 });

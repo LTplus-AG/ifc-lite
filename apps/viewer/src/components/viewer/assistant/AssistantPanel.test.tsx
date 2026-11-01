@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, type, press, cleanup } from '@/test/render';
+import { render, click, type, press, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { AssistantSourceContext, AssistantAction } from './AssistantAction';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -55,9 +55,11 @@ test('context action opens the registered assistant with frozen evidence and ref
 });
 
 // The registered host must supply source context to native panel headers.
-test('registered Clash and Data validation headers expose the actual contextual action', () => {
+test('registered Clash and Data validation headers expose the actual contextual action', async () => {
   useViewerStore.setState(fixtureModels(fixtureModel('m')));
   const clash = render(renderPanelBody('clash', () => undefined));
+  // #8520: the registered panel mounts through React.lazy.
+  await waitFor(() => !!clash.querySelector('button[aria-label="Discuss with AI"]'), 'Clash panel mounted');
   const discuss = clash.querySelector('button[aria-label="Discuss with AI"]');
   assert.ok(discuss, 'Clash native header includes Discuss with AI');
   click(discuss);

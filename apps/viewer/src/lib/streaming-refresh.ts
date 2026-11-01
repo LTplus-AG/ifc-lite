@@ -29,11 +29,17 @@ export function isModelStreaming(model: FederatedModel): boolean {
   return model.loadState === 'pending' || model.loadState === 'streaming-geometry';
 }
 
-/** Every model field except its geometry is the same: only geometry may be held. */
+/**
+ * Every model field except its geometry is the same: only geometry may be held.
+ * The retained run summary counts as geometry progress: it changes four times a second
+ * while streaming, no held panel reads it, and comparing it would release the hold on
+ * every report (#7955: Holter's tree rebuilt each time, 1.8 products/s). An exact-kernel
+ * model has no such field, so this comparison is unchanged for it.
+ */
 export function sameModelExceptGeometry(prev: FederatedModel, next: FederatedModel): boolean {
   const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
   for (const key of keys) {
-    if (key === 'geometryResult' || key === 'preAlignment') continue;
+    if (key === 'geometryResult' || key === 'preAlignment' || key === 'retainedGeometry') continue;
     if (prev[key as keyof FederatedModel] !== next[key as keyof FederatedModel]) return false;
   }
   return true;

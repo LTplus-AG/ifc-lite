@@ -245,3 +245,28 @@ TEST_SHARD=4237 TEST_SHARDS=10007 pnpm test --filter=@ifc-lite/viewer --env-mode
 The narrow shard selects the pilot test file; ordinary viewer test runs include
 it automatically. Browser geometry needs the built WASM runtime; use
 `pnpm build:wasm:fetch` when local Rust compilation is unavailable.
+
+
+### bSDD in the browser
+
+Profile and Dictionary searches class names such as `IfcWindow`; the search box
+is not a dictionary-URI selector. Search and class-definition requests use the
+viewer's same-origin `/api/bsdd` route. The Vite development server and the
+Vercel deployment already proxy this route to `https://api.bsdd.buildingsmart.org`.
+Other self-hosted deployments must configure the same route; serving only static
+files without a proxy does not provide bSDD access.
+
+
+### Basic SPARQL bindings
+
+For `SELECT ?id`, leave **Resource binding (without ?)** set to `id`. When the
+resource URI contains the IFC GlobalId, select **Resource URI contains IFC
+GlobalId** under **IFC identity strategy** and configure its URI template.
+A separate GlobalId column is not required for this strategy. Other variable
+names work too: for `SELECT ?resource`, change the resource binding to `resource`.
+
+**Advanced result bindings** holds optional type, label, GlobalId and
+modelRevision bindings. Arbitrary analytical columns remain visible without
+these fields. **Advanced: associate revision with model** is available for
+revision-scoped data; a basic single-model URI mapping needs no association.
+Ambiguous matches across models still require an explicit candidate choice.

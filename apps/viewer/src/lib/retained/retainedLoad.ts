@@ -62,7 +62,7 @@ function phaseText(phase: RetainedPhase): { phase: string; percent: number } {
 const RETAINED_POLICY: GeometryKernelLoad = {
   kind: 'retained',
   serverEnabled: false,
-  cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false, persistSource: false }),
+  cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false }),
   refuseSource: () => true,
 };
 

@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "4ac27f25a22420e6f435e5421bcef36d4aab1894515cb998d5811b7990f02087",
+  "manifestSha256": "c63e5aa37efc9e3280cd9f386dfd996129ff831b3a65402168088cf1b6d75241",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1062,9 +1062,9 @@
         },
         {
           "name": "zip",
-          "version": "9.0.4",
+          "version": "9.0.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+          "checksum": "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
         },
         {
           "name": "zlib-rs",
@@ -4862,7 +4862,7 @@
     },
     {
       "name": "zip",
-      "version": "9.0.4",
+      "version": "9.0.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",

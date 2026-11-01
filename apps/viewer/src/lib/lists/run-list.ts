@@ -20,7 +20,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ListDataProvider, ListDefinition, ListResult } from '@ifc-lite/lists';
 import { executeList, listConditionMatcher, summariseListRows } from '@ifc-lite/lists';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { evaluateFilterGroupsFederated, resolveCapturedEntityScope, type EvaluatorModel } from '@ifc-lite/rules';
+import { customGroupOfElement, evaluateFilterGroupsFederated, resolveCapturedEntityScope, type EvaluatorModel } from '@ifc-lite/rules';
 import { mergeResultColumns } from './merge-result-columns.js';
 import { scopeModelPairs, type ListModelTagState } from './model-tag-scope.js';
 
@@ -67,18 +67,19 @@ export async function runListFederated(
     }, provider, modelId, captured?.get(modelId)).rows.map(({ entityId }) => entityId)] as const));
     const hasRules = definition.groups.some((group) => group.rules.length > 0);
     const matchedByModel = new Map<string, Set<number>>();
+    const canonical = new Map(options.evaluatorModels?.map((model) => [model.id, model] as const));
+    const models: EvaluatorModel[] = scoped.map(({ modelId, provider, store, mutationView }) => ({
+      ...canonical.get(modelId), id: modelId, store,
+      tagIds: state.modelTagAssignments.get(modelId),
+      mutationView: canonical.get(modelId)?.mutationView ?? mutationView,
+      // `listCondition` rules read through this model's own Lists provider (#6190).
+      listConditions: listConditionMatcher(provider),
+    }));
+    const definedModelTagIds = new Set(state.modelTags.keys());
     if (hasRules) {
-      const canonical = new Map(options.evaluatorModels?.map((model) => [model.id, model] as const));
-      const models: EvaluatorModel[] = scoped.map(({ modelId, provider, store, mutationView }) => ({
-        ...canonical.get(modelId), id: modelId, store,
-        tagIds: state.modelTagAssignments.get(modelId),
-        mutationView: canonical.get(modelId)?.mutationView ?? mutationView,
-        // `listCondition` rules read through this model's own Lists provider (#6190).
-        listConditions: listConditionMatcher(provider),
-      }));
       const matched = await evaluateFilterGroupsFederated(models, definition.groups, {
         candidateExpressIdsByModel: candidates,
-        definedModelTagIds: new Set(state.modelTags.keys()),
+        definedModelTagIds,
         limit: [...candidates.values()].reduce((count, ids) => count + ids.length, 0),
         signal: options.signal,
       });
@@ -88,10 +89,13 @@ export async function runListFederated(
         ids.add(expressId);
       }
     }
-    parts = scoped.map(({ modelId, provider }) => executeList({
+    parts = scoped.map(({ modelId, provider }, i) => executeList({
       ...definition, groups: [], legacyConditions: [],
       expressIdsByModel: { [modelId]: (candidates.get(modelId) ?? []).filter((id) => !hasRules || matchedByModel.get(modelId)?.has(id)) },
-    }, provider, modelId, captured?.get(modelId)));
+    }, {
+      // A `customGrouping` column (#8425) reads the group the rule itself would match.
+      ...provider, getCustomGroup: (expressId, ref) => customGroupOfElement(models[i], expressId, ref, { definedModelTagIds }) ?? null,
+    }, modelId, captured?.get(modelId)));
     // Include the Rules scan in the user-visible execution time below.
     scanDuration = performance.now() - start;
   }

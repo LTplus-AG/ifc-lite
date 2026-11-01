@@ -122,4 +122,4 @@
 3 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
 1 rust/wasm-bindings/src/utils.rs
-17 rust/geometry/src/router/voids/probe/rectangular.rs
+10 rust/geometry/src/router/voids/probe/rectangular.rs

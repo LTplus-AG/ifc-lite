@@ -332,6 +332,9 @@ function makeHarness(): Harness {
                     case 'getQuantizedPipelineVariant': return () => null;
                     // Stable identities so a test can tell which pipeline drew what.
                     case 'getPipeline': return () => OPAQUE_PIPELINE;
+                    // Opaque draws resolve through opaquePipeline (its twin or the base); the
+                    // stub answers with the base, as before the twins compile.
+                    case 'opaquePipeline': return (kind: string) => kind === 'instanced' ? {} : OPAQUE_PIPELINE;
                     case 'getTransparentPipeline': return () => TRANSPARENT_PIPELINE;
                     case 'getGhostPipeline': return () => GHOST_PIPELINE;
                     case 'setEntityColorTableBuffer': return (buffer: unknown) => { stats.boundColorTables.push(buffer); };
@@ -1135,6 +1138,17 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     }
 
     /**
+     * The picker allocates its id/depth targets and per-mesh slot buffers on
+     * its first pick and keeps them; they are not per-pick transients. Warm it
+     * so an allocation count taken afterwards measures one pick's own buffers.
+     */
+    async function warm(h: Harness, picker: Picker): Promise<Picker> {
+        await picker.pick(0, 0, 64, 64, [], new Float32Array(16));
+        h.stats.mapAsync = 0;
+        return picker;
+    }
+
+    /**
      * Run the pick up to the point where it is parked on `mapAsync`. Boxed in
      * an object because `await` unwraps a promise-of-a-promise — returning the
      * in-flight promise directly would await the very thing we want to keep
@@ -1151,7 +1165,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const kind of ['point', 'rectangle'] as const) {
         it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => kind === 'point'
                 ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
@@ -1264,7 +1278,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     it('point-pick transient allocation stays bounded across viewport sizes (#6881)', async () => {
         for (const [width, height] of [[64, 64], [1292, 1047]]) {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => picker.pick(0, 0, width, height, [], new Float32Array(16)));
             const owned = h.stats.createdBuffers.slice(before);
@@ -1280,7 +1294,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'depth-encode', 'depth-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`point-pick releases every owned buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1302,7 +1316,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`rectangle-pick releases its staging buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1340,7 +1354,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         // device. Promise.all rejects the moment ONE map fails, so the other
         // buffer can be mapped and live at that point — both must be freed.
         const h = makeHarness();
-        installPicker(h);
+        await warm(h, installPicker(h));
         const before = h.stats.createdBuffers.length;
         const { inflight } = await park(h, () => h.renderer.pick(10, 10));
         h.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
@@ -2382,5 +2396,74 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
             assert.strictEqual(f[2], 0, 'flags.z (was edgeEnabled) must stay 0');
             assert.strictEqual(f[3], 0, 'flags.w (was edgeIntensityMilli) must stay 0');
         }
+    });
+});
+
+/**
+ * Opaque draws pick the discard-free / no-object-id twin only on frames where
+ * it draws the same pixels (opaque-draw-variants.ts): no clipping of any kind,
+ * and the object id only while the edge pass reads it.
+ */
+describe('per-frame opaque draw mode', () => {
+    type Mode = { discardFree: boolean; objectId: boolean };
+    function recordModes(h: Harness): { kind: string; mode: Mode }[] {
+        const modes: { kind: string; mode: Mode }[] = [];
+        const stub = h.renderer['pipeline'] as unknown as Record<string | symbol, unknown>;
+        (h.renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy(stub, {
+            get(target, prop) {
+                if (prop === 'opaquePipeline') return (kind: string, mode: Mode) => { modes.push({ kind, mode }); return OPAQUE_PIPELINE; };
+                return Reflect.get(target, prop);
+            },
+        });
+        return modes;
+    }
+
+    it('an unclipped perspective frame without edges asks for the discard-free twin without object-id writes', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const modes = recordModes(h);
+        h.render();
+        assert.ok(modes.length >= 2, 'both colour batches resolve their pipeline');
+        for (const { kind, mode } of modes) {
+            assert.strictEqual(kind, 'flat');
+            assert.deepStrictEqual(mode, { discardFree: true, objectId: false });
+        }
+    });
+
+    it('a section plane, clip box or terrain clip keeps the discards', () => {
+        const box = { enabled: true, min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] };
+        for (const clip of [
+            { sectionPlane: { enabled: true, axis: 'down', position: 50 } },
+            { clipBox: box },
+            { terrainClipY: 0 },
+        ] as RenderOptions[]) {
+            const h = makeHarness();
+            seedBatches(h);
+            const modes = recordModes(h);
+            h.render(clip);
+            assert.ok(modes.length > 0);
+            assert.ok(modes.every(({ mode }) => !mode.discardFree), JSON.stringify(clip));
+        }
+    });
+});
+
+describe('the GPU picker allocates on its first pick', () => {
+    it('holds no id/depth targets or 100K mesh slots until a pick, then sizes them to it', async () => {
+        const h = makeHarness();
+        const texturesBefore = h.stats.textures.length;
+        const picker = new Picker(h.renderer['device'], 256, 256);
+        assert.strictEqual(h.stats.textures.length, texturesBefore, 'construction allocates no texture');
+        assert.deepStrictEqual(picker.renderTargets(), [null, null]);
+        assert.ok(!h.stats.createdBuffers.some((b) => b.size >= 1024 * 1024), 'no megabyte-scale slot buffer up front');
+
+        (h.renderer as unknown as Record<string, unknown>)['picker'] = picker;
+        h.renderer['pickingManager'].setPicker(picker);
+        await h.renderer.pick(10, 10);
+        const pickTextures = h.stats.textures.slice(texturesBefore).filter((t) => t.label.startsWith('pick-'));
+        assert.deepStrictEqual(pickTextures.map((t) => [t.label, t.width, t.height]), [['pick-id', 256, 256], ['pick-depth', 256, 256]]);
+        assert.ok(picker.renderTargets().every((t) => t !== null));
+
+        await h.renderer.pick(20, 20);
+        assert.strictEqual(h.stats.textures.filter((t) => t.label.startsWith('pick-')).length, 2, 'a same-size pick reuses them');
     });
 });

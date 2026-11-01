@@ -171,6 +171,8 @@ function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
       return { reason: 'a model-level fact (georeferencing, units, header) has no IDS facet' };
     case 'listCondition':
       return { reason: 'a Lists condition reads viewer list data and has no IDS facet' };
+    case 'customGrouping':
+      return { reason: 'a custom grouping reference names user-authored groups and has no IDS facet' };
     case 'globalId':
       return { facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' }, value: simpleOrEnumeration(rule.values) } };
     case 'name':

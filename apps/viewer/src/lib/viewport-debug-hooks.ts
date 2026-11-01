@@ -113,7 +113,9 @@ export function installViewportDebugHooks(
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
     frame: renderer.getFrameStats(),
-    gpu: renderer.getScene().getResidentGpuBytes(),
+    // `total` stays the scene geometry sum; `renderTargets` carries the
+    // screen-sized attachments (MSAA colour/object-id/depth, picker, post passes).
+    gpu: { ...renderer.getScene().getResidentGpuBytes(), renderTargets: renderer.getRenderTargetBytes() },
     cpuBytes: renderer.getScene().getResidentCpuBytes(),
     // GPU-resident point-cloud points: what COPC LOD bounds by its budget (#6869).
     pointCloudPoints: renderer.getPointCloudPointCount(),

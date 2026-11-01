@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/perf/elf-rw-loads.mjs",
+  "mutation": "tests/evidence/elf-rw-loads-8359/behaviour.oracle.patch",
+  "test": "scripts/perf/elf-rw-loads.test.mjs",
+  "why": "A preflight that never flags mergeable writable loads must fail the #8359 CI-binary and in-page .bss witnesses."
+}

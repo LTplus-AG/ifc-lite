@@ -1,0 +1,35 @@
+
+AC20-FZK-Haus.ifc  (5 complete pairs)
+  observed readiness ms            base      1046  head      1003  -4.11%  base spread ±12.3%  head spread ±14.6%
+  stream-complete ms               base       690  head       657  -4.78%  base spread ±10.4%  head spread ±10.7%
+  renderer peak RSS KiB            missing
+  largest Chrome process peak RSS KiB base    520096  head    524216  +0.79%  base spread ±3.2%  head spread ±3.1%
+  GPU-process peak RSS KiB         missing
+  browser-tree peak RSS sum KiB    base   1625512  head   1629928  +0.27%  base spread ±1.2%  head spread ±1.2%
+  payload identical: true (0e509f83f6bbc4e1… / 0e509f83f6bbc4e1…)
+  diagnostic lines identical: true
+  targets: {"medianTimingWithinOnePct":true,"timingDeltaBeyondBaseSpread":false,"peakMemoryMedianAtOrBelowBase":false}
+
+duplex.ifc  (5 complete pairs)
+  observed readiness ms            base      1095  head      1090  -0.46%  base spread ±4.5%  head spread ±6.5%
+  stream-complete ms               base       722  head       713  -1.25%  base spread ±7.6%  head spread ±8.1%
+  renderer peak RSS KiB            missing
+  largest Chrome process peak RSS KiB base    529148  head    531712  +0.48%  base spread ±3.6%  head spread ±3.3%
+  GPU-process peak RSS KiB         missing
+  browser-tree peak RSS sum KiB    base   1639444  head   1639964  +0.03%  base spread ±1.3%  head spread ±1.4%
+  payload identical: true (0cf59aa6fec17cf8… / 0cf59aa6fec17cf8…)
+  diagnostic lines identical: true
+  targets: {"medianTimingWithinOnePct":true,"timingDeltaBeyondBaseSpread":false,"peakMemoryMedianAtOrBelowBase":false}
+
+ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc  (5 complete pairs)
+  observed readiness ms            base      5201  head      5210  +0.17%  base spread ±3.8%  head spread ±1.2%
+  stream-complete ms               base      4843  head      4818  -0.52%  base spread ±4.2%  head spread ±2.8%
+  renderer peak RSS KiB            missing
+  largest Chrome process peak RSS KiB base    624252  head    611684  -2.01%  base spread ±7.4%  head spread ±10.0%
+  GPU-process peak RSS KiB         missing
+  browser-tree peak RSS sum KiB    base   1754848  head   1746308  -0.49%  base spread ±2.6%  head spread ±3.4%
+  payload identical: true (f0f3ea7c59b4eed2… / f0f3ea7c59b4eed2…)
+  diagnostic lines identical: true
+  targets: {"medianTimingWithinOnePct":true,"timingDeltaBeyondBaseSpread":false,"peakMemoryMedianAtOrBelowBase":true}
+
+failed samples: 0

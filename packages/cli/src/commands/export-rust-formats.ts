@@ -10,7 +10,7 @@
  * diagnostics pass.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import {
   countGlbMeshes,
@@ -25,7 +25,7 @@ import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js
 import type { IfcDataStore } from '@ifc-lite/parser';
 
 /**
- * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
+ * Resolve the raw IFC bytes (the parsed store source, never a second read) plus a
  * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
  *
  * Every Rust exporter below takes the WHOLE file, so the source is genuinely
@@ -36,15 +36,9 @@ import type { IfcDataStore } from '@ifc-lite/parser';
  */
 async function rustExportContext(
   store: IfcDataStore,
-  filePath: string,
 ): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
-  let bytes: Uint8Array;
-  if (store.source.byteLength > 0) {
-    bytes = store.source.materialize();
-  } else {
-    const buf = await readFile(filePath);
-    bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  }
+  if (store.source.byteLength === 0) throw new Error('Export: the parsed model kept no source bytes');
+  const bytes = store.source.materialize();
   const gp = new GeometryProcessor();
   await gp.init();
   return { bytes, gp };
@@ -84,7 +78,6 @@ export async function exportRustFormat(
   format: string,
   args: string[],
   store: IfcDataStore,
-  filePath: string,
   refs: Array<{ expressId: number }>,
   filterRequested: boolean,
   wholeModelFormat: boolean,
@@ -110,7 +103,7 @@ export async function exportRustFormat(
   // fixed-overhead split the throughput plan needs for tiny inputs.
   const profileFlag = hasFlag(args, '--profile');
   const tInit = performance.now();
-  const { bytes, gp } = await rustExportContext(store, filePath);
+  const { bytes, gp } = await rustExportContext(store);
   if (profileFlag) {
     process.stderr.write(`profile: wasm init ${(performance.now() - tInit).toFixed(0)}ms\n`);
   }

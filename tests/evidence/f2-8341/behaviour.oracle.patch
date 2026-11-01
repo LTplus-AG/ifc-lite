@@ -1,0 +1,12 @@
+diff --git b/rust/processing/src/discovery_type_admission.rs a/rust/processing/src/discovery_type_admission.rs
+--- b/rust/processing/src/discovery_type_admission.rs
++++ a/rust/processing/src/discovery_type_admission.rs
+@@ -51,7 +51,7 @@ impl TypeGeometryPlan {
+             let maps = self.maps_for(*id, &authored);
+             match decoded {
+                 Ok(_) => self.products.push((*id, *start, *end, ty.clone(), maps)),
+-                Err(_) if maps.is_empty() => omitted.push(*id),
++                Err(_) if !maps.is_empty() => omitted.push(*id),
+                 Err(_) => {}
+             }
+         }

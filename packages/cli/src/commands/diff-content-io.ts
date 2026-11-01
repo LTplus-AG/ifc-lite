@@ -9,11 +9,12 @@
  * `diff-content.ts` for size.
  */
 
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Stats } from 'node:fs';
 import { unwrapIfcZipView } from '@ifc-lite/parser';
 import { fatal } from '../output.js';
+import { ModelInputError, openModelInput } from '../model-input.js';
 
 /**
  * Refuse to run at all if `--identity-out` names one of the two input models.
@@ -80,15 +81,16 @@ function isSameFile(a: Stats | undefined, b: Stats | undefined): boolean {
 }
 
 /**
- * Read one of the two input models, reporting a missing or unreadable path the
- * way the rest of the command reports problems rather than throwing a raw
- * `ENOENT` stack at the user — the same treatment `readVerifiedSidecar` gives
- * the sidecar.
+ * Read one of the two input models (a path or an `oci://` reference),
+ * reporting a missing or unreadable one the way the rest of the command
+ * reports problems rather than throwing a raw `ENOENT` stack at the user — the
+ * same treatment `readVerifiedSidecar` gives the sidecar.
  */
 export async function readModel(path: string): Promise<Uint8Array> {
   try {
-    return await readFile(path);
+    return (await openModelInput(path)).bytes;
   } catch (error) {
+    if (error instanceof ModelInputError) return fatal(error.message);
     return fatal(`Cannot read ${path}: ${(error as Error).message}`);
   }
 }

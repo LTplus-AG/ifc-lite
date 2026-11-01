@@ -16,11 +16,12 @@
  * counts always describe the whole file, filters only narrow which
  * per-product rows are shown/printed).
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { GeometryProcessor, type GeometryDiagnostics } from '@ifc-lite/geometry';
 import { getFlag, hasFlag, fatal } from '../output.js';
 import { logger } from '../logger.js';
 import { loadIfcBytes } from '../loader.js';
+import { readModelInput } from '../model-input.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 
 type WorstHost = GeometryDiagnostics['worstHosts'][number];
@@ -59,8 +60,7 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
   const productArg = getFlag(args, '--product');
   const typeArg = getFlag(args, '--type');
 
-  const buf = await readFile(filePath);
-  const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const { bytes, label } = await readModelInput(filePath);
 
   const gp = new GeometryProcessor();
   let diag: ReturnType<typeof gp.diagnoseGeometry>;
@@ -80,7 +80,7 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
           // — the geometry pass above already loaded them, so this avoids a
           // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
           // columnar parse is still required to map GlobalId → expressId).
-          const store = await loadIfcBytes(bytes, filePath);
+          const store = await loadIfcBytes(bytes, label);
           const resolved = store.entities.getExpressIdByGlobalId(productArg);
           if (resolved === -1) {
             fatal(`--product: no entity found with GlobalId "${productArg}"`);

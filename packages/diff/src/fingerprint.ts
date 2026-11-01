@@ -122,8 +122,9 @@ export interface DataFingerprintInput {
  *
  * - `attr:core`        — direct attributes (Name, Description, ObjectType,
  *                        PredefinedType, Tag) + the IFC type itself
- * - `pset:<PsetName>`  — one hash per property set
- * - `qset:<QsetName>`  — one hash per quantity set
+ * - `pset:<PsetName>`  — one hash per property set; a later set of the same
+ *                        name is `pset#2:<PsetName>`, `pset#3:…` (#8136)
+ * - `qset:<QsetName>`  — one hash per quantity set, numbered the same way
  * - `type-assignment`  — assigned type entities, by name + IFC class
  * - `material`         — resolved material names (see
  *                        {@link DataFingerprintInput.materials})

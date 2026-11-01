@@ -37,6 +37,7 @@ import {
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
+import { annotatePrepassComplete } from './omitted-type-records.js'; // F2 #8341
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -1424,6 +1425,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
+        annotatePrepassComplete(ifcApi, event);
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         postPrepassEvent(event);
       };
@@ -1505,6 +1507,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // zero-copy view first, fall back to a materialised copy only if
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
+        annotatePrepassComplete(ifcApi, event);
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         postPrepassEvent(event);
       };

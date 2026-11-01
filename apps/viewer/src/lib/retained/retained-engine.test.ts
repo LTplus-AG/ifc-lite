@@ -16,7 +16,12 @@ import { retainedEngine } from '../../../vite-plugins/retained-engine';
 const digest = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
 async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'viewer-engine-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  // After hooks run in registration order, so servers close here before their root goes.
+  const closers: Array<() => Promise<void>> = [];
+  t.after(async () => {
+    for (const close of closers) await close();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
   const directory = join(root, 'engine');
   // Inert inventory, not a geometry engine. validateEngine remains real.
   const paths = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm', 'pkg-retained/package.json',
@@ -35,7 +40,7 @@ async function fixture(t: TestContext) {
   await writeFile(join(directory, 'engine-manifest.json'), manifest);
   await mkdir(join(root, 'dist'));
   await writeFile(join(root, 'dist/index.html'), 'exact viewer fixture');
-  return { root, directory, etag: `"${digest(manifest)}"` };
+  return { root, directory, closers, etag: `"${digest(manifest)}"` };
 }
 function get(port: number, path: string, headers = {}) {
   return new Promise<{ status: number; headers: import('node:http').IncomingHttpHeaders; body: string }>((resolve, reject) => {
@@ -54,7 +59,7 @@ for (const mode of ['dev', 'preview'] as const) {
       plugins: [retainedEngine({ enabled: true, directory: f.directory })],
       server: { host: '127.0.0.1', port: 0 }, preview: { host: '127.0.0.1', port: 0 } };
     const server = mode === 'dev' ? await createServer(config) : await preview(config);
-    t.after(() => server.close());
+    f.closers.push(() => server.close());
     if ('listen' in server) await server.listen();
     const address = server.httpServer!.address();
     assert(address && typeof address !== 'string');

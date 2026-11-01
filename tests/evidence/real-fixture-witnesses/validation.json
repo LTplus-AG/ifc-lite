@@ -1,0 +1,57 @@
+{
+  "sourceCommit": "51934e40da2c0df14f2e9e3aa13587a56e1d5703",
+  "request": "auto-724446bdd4c54d428175efdf95605ee0",
+  "job": "195eba8d-5546-43bf-874a-01bdf2aa4dfc",
+  "receiptExit": 1,
+  "cliTestsPassed": 3,
+  "viewerTestsPassed": 18,
+  "cliWitnessesObserved": 5,
+  "viewerWitnessesObserved": 7,
+  "testSkips": 0,
+  "grepControl": {
+    "runnerPassed": true,
+    "witnessGateExit": 1,
+    "missingViewerWitnesses": 6
+  },
+  "fileShardControl": {
+    "scenariosRun": 7,
+    "witnessGateExit": 0,
+    "wrapperFailureCause": "Default file-level sharding kept all seven cases together; expecting this complete log to fail was an experiment error."
+  },
+  "correctedTestShardRequest": "auto-6172fdfc14394faaab712ab88907d17b",
+  "correctedTestShardState": "completed",
+  "sublogSha256": {
+    "cli.log": "2c4330bf885aa034c1896795612e484b4055bc21038499fcb62258895a370375",
+    "viewer.log": "83cd21484b5eca7077f64adb4eb44f356d12c7eaadb6b7e84ddcba8e94a7bad5",
+    "grep.log": "1590f58149f44b28df5b549b492aa2fd6aee9953c8fa4b837ba9a159a64f85ea",
+    "grep-check.log": "14364dc5243c4a06927be53db573b3f808924c5208b2bd7b15eb99509a707361",
+    "shard.log": "1009f383272d1e7b438c3e980192285968724da9db6583ff0a58dbecd423b0f1",
+    "shard-check.log": "5bbf31ba060bcce4b27d8ee552da27ff76b9098b47788b76f7dffaea07b56960"
+  },
+  "correctedNegativeControls": {
+    "sourceCommit": "7b7217b4c0d9c7e73209000209363b3656560bd1",
+    "job": "916389a3-fddd-4f39-a3b5-33bd45ff5105",
+    "exit": 0,
+    "sourceUnchanged": true,
+    "evidencePublication": "published",
+    "viewer": {
+      "runnerPassed": 4,
+      "requiredWitnesses": 7,
+      "missingWitnesses": 3,
+      "witnessGateExit": 1
+    },
+    "cli": {
+      "runnerPassed": 1,
+      "runnerSkips": 0,
+      "requiredWitnesses": 5,
+      "missingWitnesses": 4,
+      "witnessGateExit": 1
+    }
+  },
+  "negativeControlSublogSha256": {
+    "shard.log": "38140f5bc05c0fcb4a629dd0102efcc76948f7aaa3b27e32262e3928e743e847",
+    "shard-check.log": "652dd3318f760656a26f7e72c282a1527f6f44567038593813a08316554d2ee0",
+    "cli-filtered.log": "47d012b302da14d29e5aae8829bb4132760e43c73316c353ee2a028bc5039849",
+    "cli-filtered-check.log": "eede4cd7f38d5ff009b0d1fd438c4acec7b423440aaf8d178656a15c87522e94"
+  }
+}

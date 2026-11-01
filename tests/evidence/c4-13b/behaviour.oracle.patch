@@ -1,0 +1,11 @@
+--- a/rust/processing/src/types/response.rs
++++ b/rust/processing/src/types/response.rs
+@@ -65,7 +65,7 @@ impl ParseResponse {
+         Self {
+             cache_key,
+             meshes,
+-            mesh_coordinate_space: None,
++            mesh_coordinate_space: Some(mesh_coordinate_space),
+             site_transform,
+             building_transform,
+             metadata,

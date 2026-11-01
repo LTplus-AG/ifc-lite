@@ -146,7 +146,7 @@ fn run(
 fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
     let source = include_str!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc");
     // Plain syntax failures are omitted, as on native, not admission refusals.
-    // F2 visibility of the dropped type record is a separate follow-up.
+    // F2 (#8341): the dropped type record is counted separately, once per load.
     let source = source.replace("ENDSEC;\nEND-ISO", "#400=IFCWALL('bad',$,$,$,INVALID,#5,#303,$,.NOTDEFINED.);\n#500=IFCBOILERTYPE('bad',$,$,$,INVALID,$,(#501),$,$,.NOTDEFINED.);\n#501=IFCREPRESENTATIONMAP(#4,#302);\nENDSEC;\nEND-ISO");
     let api = IfcAPI::new();
     let pre = api.build_prepass_once_data(source.as_bytes());
@@ -154,6 +154,7 @@ fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
         !pre.complex_jobs.iter().any(|j| j.0 == 500),
         "undecodable type stays omitted"
     );
+    assert_eq!(api.pipeline_diagnostics.lock().unwrap().omitted_type_records, 1);
     let mut jobs = vec![0; pre.total_jobs() * 3];
     pre.write_jobs(|i, v| jobs[i as usize] = v);
     // Deliberately repeat the two bad-leaf attempts in another batch. The good
@@ -166,6 +167,7 @@ fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
     let second = api.pipeline_diagnostics.lock().unwrap().clone();
     assert_eq!(second.refused_input_elements, 4);
     assert_eq!(second.refused_prepass_records, 1);
+    assert_eq!((first.omitted_type_records, second.omitted_type_records), (1, 1), "batches never recount");
     api.clear_pre_pass_cache();
     assert_eq!(
         api.pipeline_diagnostics
@@ -174,12 +176,57 @@ fn c4_10a_refusals_are_per_attempt_and_distinct_per_load_7782() {
             .refused_prepass_records,
         1
     );
+    assert_eq!(api.pipeline_diagnostics.lock().unwrap().omitted_type_records, 1, "cleanup preserves it");
     api.build_prepass_once_data(include_bytes!(
         "../../../../processing/tests/fixtures/c4_bare_type_map_7782.ifc"
     ));
     let new = api.pipeline_diagnostics.lock().unwrap();
     assert_eq!(new.refused_input_elements, 0);
     assert_eq!(new.refused_prepass_records, 0);
+    assert_eq!(new.omitted_type_records, 0, "a new load resets the omission");
+}
+
+#[test]
+fn f2_repeated_plans_count_each_omitted_type_record_once_per_load_8341() {
+    let source = include_bytes!("../../../../processing/tests/fixtures/f2_omitted_type_record_8341.ifc");
+    let api = IfcAPI::new();
+    let pre = api.build_prepass_once_data(source);
+    assert!(!pre.complex_jobs.iter().any(|j| j.0 == 500));
+    assert!(pre.complex_jobs.iter().any(|j| j.0 == 100), "valid neighbour planned");
+    // Prepass-only, before any batch (the JS getter's presence is pinned by
+    // the wasm contract `f2` case).
+    assert_eq!(api.pipeline_diagnostics.lock().unwrap().omitted_type_records, 1);
+    // A second plan of the same load (the streaming tail re-deciding types)
+    // reports the same identity: unioned, not summed.
+    api.note_omitted_type_records(&[500]);
+    api.note_omitted_type_records(&[500, 501]);
+    let diag = api.pipeline_diagnostics.lock().unwrap().clone();
+    assert_eq!(diag.omitted_type_records, 2);
+    assert_eq!((diag.refused_input_elements, diag.refused_prepass_records), (0, 0));
+    let json = serde_json::to_value(&diag).unwrap();
+    assert_eq!(json["omittedTypeRecords"], 2);
+    assert_eq!(json["schemaVersion"], 1);
+}
+
+#[test]
+fn f2_instantiated_type_counts_in_the_browser_prepass_8341() {
+    // Browser plans are EmitTagged, so an instantiated malformed type would
+    // draw and counts; native SuppressInstanced draws nothing and does not.
+    let source = String::from_utf8(
+        include_bytes!("../../../../processing/tests/fixtures/f2_omitted_type_record_8341.ifc").to_vec(),
+    )
+    .unwrap()
+    .replace(
+        "ENDSEC;\nEND-ISO",
+        "#200=IFCRELDEFINESBYTYPE('7777777777777777777200',$,$,$,(#31),#500);\nENDSEC;\nEND-ISO",
+    );
+    assert!(source.contains("IFCRELDEFINESBYTYPE"), "fixture line endings changed");
+    let api = IfcAPI::new();
+    let pre = api.build_prepass_once_data(source.as_bytes());
+    assert!(!pre.complex_jobs.iter().any(|j| j.0 == 500));
+    let diag = api.pipeline_diagnostics.lock().unwrap().clone();
+    assert_eq!(diag.omitted_type_records, 1);
+    assert_eq!((diag.refused_input_elements, diag.refused_prepass_records), (0, 0));
 }
 
 #[test]

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/affine_classify.rs",
+  "mutation": "tests/evidence/m10-followups/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/m10_classification.rs",
+  "why": "Reverse application makes an undecodable mapped body Rigid, stops the scan at Boolean operands and rejects 2D transformation operators; the unmodelled-never-rigid, Boolean-operand and 2D-operator witnesses must fail."
+}

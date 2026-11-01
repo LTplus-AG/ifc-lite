@@ -37,7 +37,7 @@
 //! same key: its membership decides where each walk stops, exactly as the
 //! colour walks stop, and its colour is what the fallback compares against.
 
-use crate::prepass::{resolve_geometry_finishes, PrepassSpans};
+use crate::prepass::{resolve_geometry_finishes, PrepassSpans, Span};
 use crate::style::{GeometryStyleInfo, SpecularMaterial};
 use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
@@ -170,6 +170,8 @@ pub struct ModelFinishes<'c> {
 
 impl<'c> ModelFinishes<'c> {
     pub fn from_content(content: &'c [u8]) -> Self {
+        #[cfg(feature = "parity-test-support")]
+        crate::parity_test_support::record_finish_rescan();
         let mut spans = PrepassSpans::default();
         let mut index = EntityIndex::default();
         let mut scanner = EntityScanner::new(content);
@@ -177,12 +179,28 @@ impl<'c> ModelFinishes<'c> {
             index.insert(id, (start, end));
             spans.stash(type_name, id, start, end);
         }
-        let mut decoder = EntityDecoder::with_index(content, index);
-        let finishes = resolve_geometry_finishes(&spans.styled_items, &mut decoder);
+        Self::from_spans(&spans.styled_items, EntityDecoder::with_index(content, index))
+    }
+
+    /// The join over a scan the caller already did: the file's styled-item spans (from
+    /// `canonical_element_jobs_and_styled_items`)
+    /// and `source`'s own entity index, which its decoder shares instead of rebuilding.
+    /// Equal to [`Self::from_content`] over `source.bytes()`, without that scan or its second index
+    /// (about 16 bytes per entity of heap, ~100-200 MB on a large model).
+    pub fn from_source(source: &'c std::sync::Arc<ifc_lite_core::SourceBundle>, styled_items: &[Span]) -> Self {
+        Self::from_spans(styled_items, source.decoder())
+    }
+
+    /// The same join over a scan already done: the file's styled-item spans
+    /// and a lossless decoder with the file's whole index installed. The
+    /// native pass builds it this way for `Features::finishes`, so the server
+    /// no longer scans the file a second time.
+    pub(crate) fn from_spans(styled_items: &[Span], mut decoder: EntityDecoder<'c>) -> Self {
+        let finishes = resolve_geometry_finishes(styled_items, &mut decoder);
         let mut geometry_styles = FxHashMap::default();
         if !finishes.is_empty() {
             crate::prepass::resolve_styled_items_into(
-                &spans.styled_items,
+                styled_items,
                 &mut decoder,
                 false,
                 &mut FxHashMap::default(),

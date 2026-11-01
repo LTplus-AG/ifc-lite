@@ -1,0 +1,22 @@
+{
+  "family": "browser-frames",
+  "description": "Rows of the nightly deterministic frame rig (.github/workflows/browser-frames.yml: chrome-headless-shell, CDP BeginFrame at 120 Hz, WebGPU on SwiftShader) that repeat within one build, read from an ADMITTED artifact by scripts/perf-ratchet/measure-browser-frames.mjs; partial or GPU-contaminated artifacts are refused. Each ceiling and tolerance is the verdict in scripts/perf/evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json (the seed build's maximum; twice the widest same-build spread, rounded up to 0.5%), recomputed by scripts/perf/frame-ratchet-evidence.test.mjs. Every other rig row is informational. Nightly only, not a PR gate. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job, from the latest successful browser-frames run on main.",
+  "entries": [
+    {
+      "id": "snowdon/streaming-load/gpu-write-kib",
+      "metric": "gpu-write-kib",
+      "unit": "KiB",
+      "fixture": "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "description": "GPUQueue.writeBuffer payload during the streaming load (geometry plus per-frame uploads), from the file-input change until the scene has rendered and gone idle",
+      "ceiling": 39259.9,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.005
+      },
+      "provenance": {
+        "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
+        "measuredAt": "2026-10-15T06:52:31Z"
+      }
+    }
+  ]
+}

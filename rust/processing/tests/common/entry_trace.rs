@@ -75,6 +75,8 @@ pub fn result_digest(result: &ProcessingResult) -> String {
 /// One event a sink saw, with the facts the ordering contract is stated over.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
+    /// F2 (#8341): the type records the scan omitted.
+    OmittedTypeRecords(Vec<u32>),
     Bootstrap { entities: usize },
     /// The frame event; the basis is compared by value, not recorded.
     Frame,
@@ -91,6 +93,8 @@ impl Event {
 
 /// The order-sensitive facts about a recorded trace, for assertions.
 pub fn assert_ordering_contract(events: &[Event], what: &str) {
+    let omitted = positions(events, |e| matches!(e, Event::OmittedTypeRecords(_)));
+    assert!(omitted.is_empty() || omitted == [0], "{what}: omitted type records fire once, first");
     let bootstraps: Vec<usize> = positions(events, |e| matches!(e, Event::Bootstrap { .. }));
     assert!(bootstraps.len() <= 1, "{what}: bootstrap fired {} times", bootstraps.len());
     let first_batch = positions(events, |e| matches!(e, Event::Batch { .. })).first().copied();
@@ -135,6 +139,9 @@ pub struct Recorder {
 }
 
 impl ProcessingSink for Recorder {
+    fn on_omitted_type_records(&mut self, records: &[u32]) {
+        self.events.push(Event::OmittedTypeRecords(records.to_vec()));
+    }
     fn on_bootstrap(&mut self, bootstrap: &QuickMetadataBootstrap) {
         self.events.push(Event::bootstrap(bootstrap));
     }

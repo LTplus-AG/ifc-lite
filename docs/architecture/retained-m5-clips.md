@@ -63,7 +63,8 @@ bake before the clip, typed outcome and native/browser agreement only. It has
 no analytic qualification expectation. Schema validation must reject it.
 
 The schema-valid outer mapping bakes after clipping; its affine final output
-is deferred to M10. All other candidate qualification cases stay in
+is published by M10 (mirrors and nonuniform scales are baked into the clipped
+mesh, with winding reversed for reflections). All other candidate qualification cases stay in
 `f-e-clips.ifc`, with hand expectations in `expected.d/m5.json` (the task's
 slice-name convention also replaces the spec's `m5-clips.json` here).
 The survey case places the rotation and offset on the extrusion itself, so

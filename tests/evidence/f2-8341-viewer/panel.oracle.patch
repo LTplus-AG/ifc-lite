@@ -1,0 +1,12 @@
+diff --git b/apps/viewer/src/lib/loadReport.ts a/apps/viewer/src/lib/loadReport.ts
+--- b/apps/viewer/src/lib/loadReport.ts
++++ a/apps/viewer/src/lib/loadReport.ts
+@@ -126,7 +126,7 @@ export interface LoadReportSummary {
+ 
+ /** True when this load is known to have left type geometry out (#8341). */
+ export function hasOmittedTypeRecords(report: Pick<LoadReportSummary, 'omittedTypeRecords'>): boolean {
+-  return (report.omittedTypeRecords ?? 0) >= 0;
++  return (report.omittedTypeRecords ?? 0) > 0;
+ }
+ 
+ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): string[] {

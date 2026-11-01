@@ -1,0 +1,12 @@
+diff --git a/packages/oci/src/auth.ts b/packages/oci/src/auth.ts
+--- a/packages/oci/src/auth.ts
++++ b/packages/oci/src/auth.ts
+@@ -207,7 +207,7 @@ export class RegistryAuth {
+     const headers: Record<string, string> = { ...this.options.baseHeaders, accept: 'application/json' };
+     const credentials = this.options.credentials;
+     if (credentials && 'username' in credentials) {
+-      const trusted = true;
++      const trusted = realm.origin === origin || this.options.trustedRealms.has(realm.origin);
+       if (trusted) headers.authorization = basicHeader(credentials);
+     }
+     const response = await guardedFetch(this.options.fetch, realm.href, { method: 'GET', headers, redirect: 'manual', signal });

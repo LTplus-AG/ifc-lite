@@ -16,9 +16,12 @@
 //! Every read of a mesh field goes through `Deref`, so the transports treat
 //! this as the processing mesh; only the four places meshes enter the server
 //! (the JSON, Parquet and optimized-Parquet routes, and the streaming producer)
-//! build it, through [`finish_meshes`].
+//! build it, from the pass's own `on_finishes` events (#8341 C4-13a): each
+//! asks for them with [`with_finishes`], and the three full-pass routes
+//! collect them with [`CollectedFinishes`].
 
-use ifc_lite_processing::style::{ModelFinishes, SpecularMaterial};
+use ifc_lite_processing::style::SpecularMaterial;
+use ifc_lite_processing::{ProcessingRequest, ProcessingSink};
 use serde::{Deserialize, Serialize};
 
 /// One produced mesh as the server transports ship it.
@@ -36,7 +39,7 @@ pub struct MeshData {
 }
 
 impl MeshData {
-    /// Attach the finish `ifc_lite_processing::style::ModelFinishes` joined.
+    /// Attach the finish the pass's `on_finishes` reported for `mesh`.
     pub fn with_finish(mesh: ifc_lite_processing::MeshData, finish: Option<SpecularMaterial>) -> Self {
         let finish = finish.unwrap_or_default();
         Self { mesh, metallic: finish.metallic, roughness: finish.roughness }
@@ -69,20 +72,43 @@ impl std::ops::DerefMut for MeshData {
     }
 }
 
-/// Join each produced mesh's finish (see `ifc_lite_processing::style::finish_join`
-/// for the rule: the finish of the style the mesh's colour came from). A file
-/// that authors none skips the join entirely.
-pub fn finish_meshes(finishes: &mut ModelFinishes, meshes: Vec<ifc_lite_processing::MeshData>) -> Vec<MeshData> {
-    if finishes.is_empty() {
-        return meshes.into_iter().map(MeshData::from).collect();
+/// `request` with `Features::finishes` on: the pass raises `on_finishes`
+/// before every batch, joined by `ifc_lite_processing::style::finish_join`'s
+/// rule (the finish of the style the mesh's colour came from) over the pass's
+/// own scan, so no route reads the file a second time for it.
+pub fn with_finishes(request: ProcessingRequest) -> ProcessingRequest {
+    let features = request.features.finishes(true);
+    request.features(features)
+}
+
+/// The sink of a full-pass route that reads its meshes off the result: every
+/// `on_finishes` entry, in emission order.
+#[derive(Default)]
+pub struct CollectedFinishes(Vec<Option<SpecularMaterial>>);
+
+impl ProcessingSink for CollectedFinishes {
+    fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
+        self.0.extend_from_slice(finishes);
     }
-    meshes
-        .into_iter()
-        .map(|mesh| {
-            let finish = finishes.finish_for_mesh(&mesh);
-            MeshData::with_finish(mesh, finish)
-        })
-        .collect()
+}
+
+impl CollectedFinishes {
+    /// Pair each retained mesh with its finish. Without instancing (no route
+    /// arms it) the pass retains exactly the meshes it emitted, in emission
+    /// order, so entry `i` is mesh `i`'s.
+    pub fn attach(self, meshes: Vec<ifc_lite_processing::MeshData>) -> Vec<MeshData> {
+        debug_assert_eq!(self.0.len(), meshes.len(), "one finish per emitted mesh");
+        pair(meshes, self.0)
+    }
+}
+
+/// Mesh `i` with finish `i`; a mesh past the end of `finishes` has none.
+pub fn pair(
+    meshes: impl IntoIterator<Item = ifc_lite_processing::MeshData>,
+    finishes: Vec<Option<SpecularMaterial>>,
+) -> Vec<MeshData> {
+    let finishes = finishes.into_iter().chain(std::iter::repeat(None));
+    meshes.into_iter().zip(finishes).map(|(mesh, finish)| MeshData::with_finish(mesh, finish)).collect()
 }
 
 /// Test builders mirroring the processing mesh's, so a fixture reads the same

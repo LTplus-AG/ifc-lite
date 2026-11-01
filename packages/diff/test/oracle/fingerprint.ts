@@ -253,6 +253,24 @@ function sortedTypeAssignments(input: DataFingerprintInput) {
 }
 
 /**
+ * Component keys for one sorted set collection (#8136). The first set of a
+ * name keeps `pset:<Name>`; later same-named sets get `pset#<n>:<Name>` rather
+ * than overwriting it, so the components cover everything `dataHash` covers.
+ * The ordinal sits in the prefix because a name may contain `#` or `:`;
+ * everything after the first `:` is the name. Sets arrive sorted by name then
+ * content, so ordinals follow content order.
+ */
+function setOrdinals(kind: 'pset' | 'qset'): (name: string) => string {
+  let last: string | undefined;
+  let ordinal = 0;
+  return (name) => {
+    ordinal = name === last ? ordinal + 1 : 1;
+    last = name;
+    return ordinal === 1 ? `${kind}:${name}` : `${kind}#${ordinal}:${name}`;
+  };
+}
+
+/**
  * Opt-in per-componentKey sub-hash mode (the whole-blob
  * {@link buildDataFingerprint} stays the default). Sub-hashes make the
  * conflict unit (entity, componentKey): an architect editing placement and
@@ -287,11 +305,13 @@ export function buildComponentFingerprints(
 
   components['attr:core'] = stableHash(JSON.stringify(coreAttributes(input)));
 
+  const psetKey = setOrdinals('pset');
   for (const set of sortedPropertySets(input)) {
-    components[`pset:${set.name}`] = stableHash(JSON.stringify(set.properties));
+    components[psetKey(set.name)] = stableHash(JSON.stringify(set.properties));
   }
+  const qsetKey = setOrdinals('qset');
   for (const set of sortedQuantitySets(input)) {
-    components[`qset:${set.name}`] = stableHash(JSON.stringify(set.quantities));
+    components[qsetKey(set.name)] = stableHash(JSON.stringify(set.quantities));
   }
 
   const typeAssignments = sortedTypeAssignments(input);

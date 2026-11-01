@@ -1,0 +1,19 @@
+diff --git b/packages/geometry/src/geometry.worker.ts a/packages/geometry/src/geometry.worker.ts
+--- b/packages/geometry/src/geometry.worker.ts
++++ a/packages/geometry/src/geometry.worker.ts
+@@ -1425,6 +1425,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
+       const disabledTypes = e.data.disabledTypes ?? undefined;
+       const skipTypeGeometry = e.data.skipTypeGeometry === true;
+       const onEvent = (event: unknown) => {
++        annotatePrepassComplete(ifcApi, event);
+         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
+         postPrepassEvent(event);
+       };
+@@ -1506,6 +1507,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
+       // zero-copy view first, fall back to a materialised copy only if
+       // wasm-bindgen rejects the view.
+       const onEvent = (event: unknown) => {
++        annotatePrepassComplete(ifcApi, event);
+         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
+         postPrepassEvent(event);
+       };

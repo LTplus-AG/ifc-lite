@@ -24,7 +24,11 @@ import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
 import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './manual-report-types.js';
 
 /** A ring chart on the page; the PDF renders `ringSvg(counts, size)` into it. */
-export interface RingDrawnItem { kind: 'ring'; x: number; y: number; size: number; counts: ManualReportCounts; role?: 'overall' | 'group' }
+export interface RingDrawnItem {
+  kind: 'ring'; x: number; y: number; size: number; counts: ManualReportCounts; role?: 'overall' | 'group';
+  /** What this ring measures and its rate, when an IDS report draws two (#8417). */
+  label?: string; passRate?: number;
+}
 
 export type ManualReportLayoutBlock = ManualReportBlock;
 

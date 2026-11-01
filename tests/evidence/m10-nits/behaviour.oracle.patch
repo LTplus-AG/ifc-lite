@@ -1,0 +1,36 @@
+--- a/rust/retained-native/src/oracle/affine_classify.rs
++++ b/rust/retained-native/src/oracle/affine_classify.rs
+@@ -99,8 +99,12 @@ fn scan(d:&mut EntityDecoder<'_>,id:u32) -> Result<bool,String> {
+ /// and a singular or nonfinite frame (any entry, translation included) cannot certify anything,
+ /// so it fails closed.
+ pub fn winding_positive(parts:&[crate::ShapePart]) -> Vec<bool> {
+-    parts.iter().map(|part|
+-        mesh_moments(&part.positions,&part.indices,&part.world_from_object).is_some_and(|v|v.0>0.)).collect()
++    parts.iter().map(|part|{
++        let m=&part.world_from_object;
++        let det=dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]));
++        m.iter().all(|v|v.is_finite())&&det.is_finite()&&det!=0.
++            &&mesh_moments(&part.positions,&part.indices,m).is_some_and(|v|v.0*det.signum()>0.)
++    }).collect()
+ }
+ /// The classification the winding gate keys on; see `scan` for what fails closed.
+ pub(super) fn classify(d:&mut EntityDecoder<'_>,id:u32) -> Classification {
+--- a/rust/retained-native/src/oracle/affine_operator.rs
++++ b/rust/retained-native/src/oracle/affine_operator.rs
+@@ -42,6 +42,7 @@ pub(super) fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option
+     // project, and production takes Z x X (a rigid rotation). Only that collapse falls back.
+     let y=match unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x)))) {
+         Some(y)=>y,
++        None if axis2.is_none()=>unit(cross(z,x))?,
+         None=>return None,
+     };
+     let s=op.real_at(O::SCALE).unwrap_or(1.);
+@@ -75,7 +76,7 @@ pub(super) fn stretches(m:&Frame) -> Option<(f64,f64)> {
+ }
+ pub(super) fn nonrigid(m:&Frame) -> bool {
+     // No singular values to report means a singular map: never rigid.
+-    let Some((min,max))=stretches(m) else {return false};
++    let Some((min,max))=stretches(m) else {return true};
+     dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
+         || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
+ }

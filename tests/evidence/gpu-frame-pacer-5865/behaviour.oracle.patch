@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/components/viewer/gpuFramePacer.ts b/apps/viewer/src/components/viewer/gpuFramePacer.ts
+index d20a6af..65fb548 100644
+--- a/apps/viewer/src/components/viewer/gpuFramePacer.ts
++++ b/apps/viewer/src/components/viewer/gpuFramePacer.ts
+@@ -76,7 +76,7 @@ export class GpuFramePacer {
+     for (const [id, at] of this.submitted) {
+       if (now - at > this.staleMs) this.submitted.delete(id);
+     }
+-    return false;
++    return this.submitted.size >= this.maxInFlight;
+   }
+ 
+   private adopt(device: PacedDevice | null): void {

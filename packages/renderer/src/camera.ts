@@ -245,6 +245,15 @@ export class Camera {
   }
 
   /**
+   * Whether a timed pose tween (preset view, frame, home) has started and its
+   * final pose has not yet been applied by `update()`. Independent of whether
+   * any frame has run since, so it is safe for a host to wait on.
+   */
+  isTweening(): boolean {
+    return this.animator.isTweening();
+  }
+
+  /**
    * Frame/center view on a point (keeps current distance and direction)
    * Standard CAD "Frame Selection" behavior
    */

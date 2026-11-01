@@ -1,0 +1,241 @@
+{
+ "issue": 8341,
+ "host": "pop-os (fleet controller); PC/WSL benchmark admission disabled, Mac disabled",
+ "browserCohort": {
+  "base": "a7164756b7d031a799e0075e141555185d7b8ef3",
+  "head": "2f028bb080e8e5a1a0fb89539480de404e425400",
+  "driverCommit": "f1f661a4349b9d2b7db5a490e6d829294ef36cc7",
+  "storageTask": "c4-browser-8341-v1",
+  "measurementManifestSha256": "dda206a73014292639f07621177e439ed843c5d1441bf34d8dc4248956023928",
+  "runsJsonlSha256": "812ab0e8f3f25580600f4e2695c40c2c9dc67bc5564528b184091e708eacb0fb",
+  "builds": {
+   "base": {
+    "source": "a7164756b7d031a799e0075e141555185d7b8ef3",
+    "tree": "5fb8134626717f826c4d87afc14ca6606a243f5b",
+    "wasmSha256": "362719d04d118c6dfb28ccebf0bc3ec77fae01afaa9e15bba483217c624aa38b",
+    "toolchain": {
+     "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+     "wasm-pack": "wasm-pack 0.15.0",
+     "node": "v24.22.0",
+     "pnpm": "10.8.1"
+    },
+    "servedAssetCount": 972
+   },
+   "branch": {
+    "source": "2f028bb080e8e5a1a0fb89539480de404e425400",
+    "tree": "459516a8f98a6928a2d1b2b3e67ecfb18e63f4a1",
+    "wasmSha256": "11c134736aa66ab6c3b1634312a8ae11b4946cddf07b0ff5890dc0058d7a8887",
+    "toolchain": {
+     "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+     "wasm-pack": "wasm-pack 0.15.0",
+     "node": "v24.22.0",
+     "pnpm": "10.8.1"
+    },
+    "servedAssetCount": 977
+   }
+  },
+  "chrome": "playwright chromium-1248, 156.0.8078.4, headed DISPLAY :1, --use-angle=vulkan; adapter nvidia lovelace (RTX 4000 Ada Laptop), fallback=false",
+  "cpuPolicy": {
+   "no_turbo": 1,
+   "min_perf_pct": 16,
+   "max_perf_pct": 50
+  }
+ },
+ "nativeC4_10b": {
+  "layer1": {
+   "base": "70da3ece1be6a9b19730cb894d033ee30167650d",
+   "branch": "5287a9a5bbf5997dd70447a1a1f64eeea3c08e4b",
+   "id": "c4-10b-l1-native-8341-r3",
+   "task": "prepared-c4-10b-l1-native-8341-r3"
+  },
+  "layer2": {
+   "base": "c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1",
+   "branch": "79cda2ec79f77eb428efb28d018b0351fb56f2bc",
+   "id": "c4-10b-l2-native-8341-r3",
+   "task": "prepared-c4-10b-l2-native-8341-r3"
+  }
+ },
+ "requests": [
+  {
+   "request": "c4-browser-8341-v1-base-prepare",
+   "commit": "a7164756b7d031a799e0075e141555185d7b8ef3",
+   "kind": "ordinary",
+   "job": "bceeb2ce-2fff-457c-9efb-a59626735750",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "3d863ba96832de4539b200e9c1428ac931a79dd10af4669ec841ed9d720a3048"
+  },
+  {
+   "request": "c4-browser-8341-v1-branch-prepare",
+   "commit": "2f028bb080e8e5a1a0fb89539480de404e425400",
+   "kind": "ordinary",
+   "job": "4b7f6741-2778-428c-aafa-b0370ed9b9fa",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "afd181e7fd0c8d4279d25053464e00d7c5f1352ed7976a9648de4b429934b570"
+  },
+  {
+   "request": "c4-browser-8341-v1-smoke",
+   "commit": "f1401184ea05a8cdd8fc301a04c68e9a5ba7b0a9",
+   "kind": "ordinary",
+   "job": "93d0bf42-2e4e-44ec-bf77-512380acba18",
+   "exitCode": 1,
+   "error": "admission timed out; use status to inspect blockers",
+   "sourceUnchanged": true,
+   "receiptSha256": "c11cfe6201b4d67313d7c74b3f38af4e898d053173a174396d200e58f67f6e54"
+  },
+  {
+   "request": "c4-browser-8341-v1-measure",
+   "commit": "f1401184ea05a8cdd8fc301a04c68e9a5ba7b0a9",
+   "kind": "benchmark",
+   "job": "e09e214a-fa86-475b-8e60-d712e1a3c901",
+   "exitCode": 1,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "8766eb8a0b4cf931ffe03927eda4d77925cd46ba87ff31b515e8fdc06e93146f"
+  },
+  {
+   "request": "c4-browser-8341-v1-measure-r2",
+   "commit": "f1f661a4349b9d2b7db5a490e6d829294ef36cc7",
+   "kind": "benchmark",
+   "job": "cff5df63-f1f7-4225-a48d-92b0b070ba51",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "69b3a4f4f387f6463999632b19083c501e3b2282bf30ec7098a34d0ed8fa257a"
+  },
+  {
+   "request": "c4-10b-l1-native-8341-base",
+   "commit": "70da3ece1be6a9b19730cb894d033ee30167650d",
+   "kind": "ordinary",
+   "job": "7503fa2c-aad9-4a32-9b8b-58f94200e100",
+   "exitCode": 1,
+   "error": "host capacity guard refused admission",
+   "sourceUnchanged": true,
+   "receiptSha256": "9f4508920d275d55213dfe4fa734e3a5a6290ceed513ead592a884c3526d3aaf"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-base",
+   "commit": "c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1",
+   "kind": "ordinary",
+   "job": "260dbc3d-b30a-4e6c-9305-ead953801489",
+   "exitCode": 1,
+   "error": "host capacity guard refused admission",
+   "sourceUnchanged": true,
+   "receiptSha256": "8709ca9c068908b47c2f5db4c3a594bd864e9c26c40b7574b822d50a7af1e861"
+  },
+  {
+   "request": "c4-10b-l1-native-8341-r2-base",
+   "commit": "70da3ece1be6a9b19730cb894d033ee30167650d",
+   "kind": "ordinary",
+   "job": "1a2cc726-eb8f-4c3e-9f90-439450cf0d7f",
+   "exitCode": 1,
+   "error": "host capacity guard refused admission",
+   "sourceUnchanged": true,
+   "receiptSha256": "a76fd8e5bdafc24a14cb5db4c171f12410cc15f0dace3f27b3f06261d2c37259"
+  },
+  {
+   "request": "c4-10b-l1-native-8341-r3-base",
+   "commit": "70da3ece1be6a9b19730cb894d033ee30167650d",
+   "kind": "ordinary",
+   "job": "aa4cdbb6-396c-47e9-af55-e1768e5bc4fe",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "a90d31f6be1339586699a08947921ada9d71e327b445ea9a36a706f2ca6651ca"
+  },
+  {
+   "request": "c4-10b-l1-native-8341-r3-branch",
+   "commit": "5287a9a5bbf5997dd70447a1a1f64eeea3c08e4b",
+   "kind": "ordinary",
+   "job": "72a690ab-809b-4d32-9c21-e4f0a723bbc0",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "0d78d7a649d1ec4346a5739a98063e9707826e868cd9fa3910d20258fee2f41b"
+  },
+  {
+   "request": "c4-10b-l1-native-8341-r3-measure",
+   "commit": "5287a9a5bbf5997dd70447a1a1f64eeea3c08e4b",
+   "kind": "benchmark",
+   "job": "eed6dcee-4d4d-4b44-9a06-4935c382d141",
+   "exitCode": 1,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "e09fd6d026bc735417ba82f2aa57db99bf5acfad885c5f5f6bec099ae89c9fe1"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r2-base",
+   "commit": "c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1",
+   "kind": "ordinary",
+   "job": "22f877ff-5b8a-4fe9-9e08-11e9da868043",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "d36f853b89ebf8d45f1030b098c82882fb832e02df8c64645c028ed57c6cacd0"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r2-branch",
+   "commit": "79cda2ec79f77eb428efb28d018b0351fb56f2bc",
+   "kind": "ordinary",
+   "job": "c1442b49-c0b3-4d68-a0a9-232e0fbb3da5",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "74119dd9771cdcc658495ebc8a44f3e7b622dfd70f83476062dd86483eb8e0a1"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r2-measure",
+   "commit": "79cda2ec79f77eb428efb28d018b0351fb56f2bc",
+   "kind": "benchmark",
+   "job": "c2941648-3766-402e-9da3-18cb675427a7",
+   "exitCode": 1,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "0620456ba7ab51df17fa5dc878bb17e593b7e6fa8b304c28dcccf9455ead3853"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r3-base",
+   "commit": "c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1",
+   "kind": "ordinary",
+   "job": "8789dad4-15fa-4cef-97b9-c1c509f3cb13",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "6ed6df4f582a514715c8ec0d96c46a5ab68bdf704864ae917cfc5f3373260515"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r3-branch",
+   "commit": "79cda2ec79f77eb428efb28d018b0351fb56f2bc",
+   "kind": "ordinary",
+   "job": "cc17b714-8032-4be8-9a2b-2f1c5957b63f",
+   "exitCode": 0,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "67567e9063aa5e1953000cc39f9f9d04f09f3ba98ab4a4bea4ab3a1f9a0a6f8f"
+  },
+  {
+   "request": "c4-10b-l2-native-8341-r3-measure",
+   "commit": "79cda2ec79f77eb428efb28d018b0351fb56f2bc",
+   "kind": "benchmark",
+   "job": "d136889f-6265-44b3-8507-ee35f0de8866",
+   "exitCode": 1,
+   "error": null,
+   "sourceUnchanged": true,
+   "receiptSha256": "9208470c36bb7305214810fb688dd134ae85c4e7815a287dee444299f9f4e7cc"
+  }
+ ],
+ "otherAttempts": {
+  "fleetDriverProbe": {
+   "request": "auto-57658744957341b39207cac7bc896177",
+   "job": "a92b0657-715b-4912-9f72-8756f72214a6",
+   "exitCode": 1,
+   "note": "node_modules absent; followed by an explicit pnpm install job; storage lifecycle evidence_pending"
+  },
+  "browserMeasureAttempt1": "all 30 samples recorded ok=false: page.evaluate ReferenceError __name is not defined (tsx keepNames) at the payload step; fixed in f1f661a4",
+  "smoke": "ordinary admission queue timeout (3600 s) behind another session on a shared cache lane; project command never ran; the exclusive measure was submitted with the identical committed request instead (submit-measure.py)",
+  "guardRefusals": "three native preparations refused before start by the host disk guard (free 626.9 GiB < required 634-684 GiB with 4 storage slots reserved)"
+ }
+}

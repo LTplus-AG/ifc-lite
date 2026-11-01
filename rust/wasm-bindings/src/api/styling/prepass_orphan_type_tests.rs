@@ -2,14 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The streaming pre-pass stashes `IfcMappedItem` and `IfcTypeProduct`
-//! candidate spans during its one scan; `collect_type_geometry_jobs_from_spans`
-//! reuses them instead of re-walking the file. These are the two-paths-that-
-//! must-agree tests for that twin, plus the #3187 legacy-keyword fixtures that
-//! make the widened gate distinguishable from the pre-#3187 one.
+//! Both pre-passes stash `IfcMappedItem` and `IfcTypeProduct` candidate spans
+//! during their one scan and plan type jobs from them instead of re-walking the
+//! file. These are the two-paths-that-must-agree tests for that span plan, plus
+//! the #3187 legacy-keyword fixtures that make the widened gate distinguishable
+//! from the pre-#3187 one.
 //!
 //! Split out of `prepass.rs` to keep that module under its size ratchet.
-use super::collect_type_geometry_jobs_from_spans;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 /// Build the mapped-item + type-candidate spans exactly as the streaming
@@ -30,7 +29,12 @@ fn assert_match(content: &[u8]) -> usize {
         }
     }
     let mut d2 = EntityDecoder::with_arc_index(content, index);
-    let new = collect_type_geometry_jobs_from_spans(content, &mapped, &cands, &mut d2);
+    // Type jobs do not depend on instantiation in tagged mode: planning without
+    // the defines must schedule the same jobs.
+    let new = ifc_lite_processing::discovery::TypeGeometryPlan::from_spans(
+        content, &mapped, &[], &cands, &mut d2,
+        ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
+    ).jobs();
     for mode in [
         ifc_lite_processing::element::TypeGeometryMode::EmitTagged,
         ifc_lite_processing::element::TypeGeometryMode::SuppressInstanced,

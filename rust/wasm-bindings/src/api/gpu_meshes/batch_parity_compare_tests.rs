@@ -66,6 +66,8 @@ pub(super) enum Axis {
     RefusalCounters,
     PlannedJobs,
     UnitRefusal,
+    /// F2 (#8341): native omitted type records versus `omittedTypeRecords`.
+    OmittedTypeRecords,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -643,6 +645,28 @@ pub(super) fn compare_refusals(
     }
 }
 
+/// `OmittedTypeRecords` (F2 #8341): the distinct records native reported via
+/// `on_omitted_type_records` against the browser's `omittedTypeRecords`. An
+/// absent browser key is not zero, as for the refusal counters.
+pub(super) fn compare_omitted_type_records(
+    fixture: &'static str,
+    native: &[u32],
+    browser_pipeline: Option<&serde_json::Value>,
+    drifts: &mut Vec<Drift>,
+) {
+    let browser = browser_pipeline
+        .and_then(|p| p.get("omittedTypeRecords"))
+        .and_then(serde_json::Value::as_u64);
+    if browser != Some(native.len() as u64) {
+        drifts.push(Drift {
+            fixture,
+            axis: Axis::OmittedTypeRecords,
+            element: None,
+            detail: format!("native {native:?} vs browser omittedTypeRecords={browser:?}"),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! The comparators must be able to fail: each test builds the smallest
@@ -937,6 +961,20 @@ mod tests {
                 "equal nonzero detail-only objects match"
             );
         }
+    }
+
+    #[test]
+    fn f2_omitted_type_record_count_must_match_and_be_present_8341() {
+        let mut drifts = Vec::new();
+        let one = serde_json::json!({"omittedTypeRecords": 1});
+        compare_omitted_type_records("t", &[500], Some(&one), &mut drifts);
+        assert!(drifts.is_empty());
+        compare_omitted_type_records("t", &[], Some(&one), &mut drifts);
+        compare_omitted_type_records("u", &[500], Some(&serde_json::json!({})), &mut drifts);
+        assert_eq!(
+            drifts.iter().map(Drift::key).collect::<Vec<_>>(),
+            [("t", Axis::OmittedTypeRecords, None), ("u", Axis::OmittedTypeRecords, None)]
+        );
     }
 
     #[test]

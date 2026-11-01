@@ -3,7 +3,6 @@
 //! state; immutable production maps are captured once for the owned producer.
 use crate::api::IfcAPI;
 use super::batch_wire::BatchWire;
-use super::void_index::reconstruct_void_index;
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::{GeometryRouter, SharedMappedItemCache};
 use ifc_lite_processing::element::{GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionContext, OwnedMeshProductionData};
@@ -64,8 +63,8 @@ impl IfcAPI {
 
         // Reconstruct void_index from the flat wire arrays. Length-guarded so
         // upstream drift drops the index instead of trapping the whole wasm
-        // instance under panic=abort (see reconstruct_void_index).
-        let void_index = reconstruct_void_index(void_keys, void_counts, void_values);
+        // instance under panic=abort (see `prepass::voids_from_flat`).
+        let void_index = ifc_lite_processing::prepass::voids_from_flat(void_keys, void_counts, void_values);
 
         // #1097: the wire styles are session-constant, so build the colour map
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
@@ -190,7 +189,7 @@ impl IfcAPI {
                     std::sync::Arc::clone(arc)
                 }
                 _ => {
-                    let colors = super::batch_partition::style_colors_from_wire(
+                    let colors = ifc_lite_processing::prepass::style_colors_from_flat(
                         style_ids,
                         style_colors,
                     );

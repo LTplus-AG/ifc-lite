@@ -125,6 +125,8 @@ pub struct IfcAPI {
     /// Distinct refused record identities for the current load; repeated reads
     /// and batches are unioned before publishing the diagnostics counter.
     pipeline_refusals: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
+    /// F2 (#8341): distinct omitted type records for the current load.
+    pipeline_omitted_type_records: std::sync::Mutex<rustc_hash::FxHashSet<u32>>,
 
     /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
     /// contract, see `api::pipeline_diagnostics`): every
@@ -159,6 +161,7 @@ impl IfcAPI {
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
             pipeline_refusals: std::sync::Mutex::default(),
+            pipeline_omitted_type_records: std::sync::Mutex::default(),
             pipeline_diagnostics: std::sync::Mutex::new(
                 ifc_lite_processing::PipelineDiagnosticsReport::default(),
             ),

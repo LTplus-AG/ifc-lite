@@ -1,0 +1,13 @@
+diff --git a/rust/diff/src/key_diff.rs b/rust/diff/src/key_diff.rs
+index e3176cfa7c..6bd937b4b0 100644
+--- a/rust/diff/src/key_diff.rs
++++ b/rust/diff/src/key_diff.rs
+@@ -61,7 +61,7 @@ pub(crate) fn changed_components(base: &ComponentMap, head: &ComponentMap) -> Ve
+         Some(other) => other != *value,
+         None => { shared = false; true },
+     }).map(|(key, _)| key.clone()).collect();
+-    if shared {
++    if shared && base.len() == head.len() {
+         keys.sort_by(cmp_code_units);
+         return keys;
+     }

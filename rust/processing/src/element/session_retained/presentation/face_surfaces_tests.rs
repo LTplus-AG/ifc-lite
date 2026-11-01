@@ -42,3 +42,17 @@ fn clockwise_boundary_is_reversed_by_the_encoder_but_keys_stay_authored() {
     // The request reverses the loop: each side runs end -> start of its authored segment.
     for (k, a, b) in sides { assert_eq!((a, b), (points[(k as usize + 1) % 4], points[k as usize])); }
 }
+#[test]
+fn issue_8291_rows_whose_triangles_all_dropped_keep_their_slots() {
+    // 105 authored rows, one surviving triangle: more rows than the request has bytes.
+    let mut document = ifc_lite_geometry::document::GeometryDocument::new();
+    let handle = document.add_retained_face_set(ifc_lite_geometry::document::RetainedFaceSet {
+        source_id: 7, positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.], triangles: vec![0, 1, 2],
+        rows: vec![104], row_count: 105, length_unit_scale: 1.,
+    }).unwrap();
+    let payload = document.retained_payload(handle).unwrap();
+    assert!(payload.bytes.len() < 105);
+    let (faces, _) = faces(document.retained_recipe(handle).unwrap(), payload).unwrap();
+    assert_eq!(faces.len(), 105);
+    assert_eq!(faces[104].role, Role::FaceSetRow { row: 104 });
+}

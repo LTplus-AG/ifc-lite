@@ -1,0 +1,96 @@
+{
+  "seed": 8341,
+  "iters": 5,
+  "revisions": {
+    "base": "a7164756b7d031a799e0075e141555185d7b8ef3",
+    "branch": "2f028bb080e8e5a1a0fb89539480de404e425400"
+  },
+  "dists": {
+    "base": "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/base-dist",
+    "branch": "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/branch-dist"
+  },
+  "fixtures": [
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/AC20-FZK-Haus.ifc",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/duplex.ifc",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+  ],
+  "order": {
+    "AC20-FZK-Haus.ifc": [
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "branch",
+        "base"
+      ],
+      [
+        "branch",
+        "base"
+      ]
+    ],
+    "duplex.ifc": [
+      [
+        "branch",
+        "base"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "branch",
+        "base"
+      ]
+    ],
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": [
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "branch",
+        "base"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "branch",
+        "base"
+      ]
+    ]
+  },
+  "launchOptions": {
+    "headless": false,
+    "executablePath": "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/hardware-chrome",
+    "args": [
+      "--enable-gpu",
+      "--enable-webgpu",
+      "--enable-unsafe-webgpu",
+      "--use-angle=default",
+      "--ignore-gpu-blocklist"
+    ]
+  }
+}

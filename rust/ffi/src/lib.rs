@@ -94,19 +94,10 @@ fn parse_impl(path_str: &str, mode: OpeningFilterMode, layer_slicing: bool) -> R
         // JSON buffer is built next to the meshes.
         drop(content);
 
-        let response = ParseResponse {
-            cache_key: String::new(),
-            meshes: result.meshes,
-            mesh_coordinate_space: Some(result.mesh_coordinate_space),
-            site_transform: result.site_transform,
-            building_transform: result.building_transform,
-            metadata: result.metadata,
-            stats: result.stats,
-            // This fork's `ParseResponse` carries 2D symbol data; the FFI parse path
-            // is geometry-only, so emit an empty (default) set. `ProcessingResult`
-            // has no `symbolic_data` to forward here.
-            symbolic_data: Default::default(),
-        };
+        // The mapping the server shares (#8341). Geometry only: no symbol
+        // data, no Y-up swap and no IFC-authored finish, which are server
+        // additions (the FFI buffer is pinned without them).
+        let response = ParseResponse::from_result(String::new(), result);
 
         serde_json::to_vec(&response).map_err(|_| 4)
     })

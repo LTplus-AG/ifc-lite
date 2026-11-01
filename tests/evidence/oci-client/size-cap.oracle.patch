@@ -1,0 +1,12 @@
+diff --git a/packages/oci/src/digest.ts b/packages/oci/src/digest.ts
+--- a/packages/oci/src/digest.ts
++++ b/packages/oci/src/digest.ts
+@@ -60,7 +60,7 @@ export async function readBody(response: Response, options: ReadBodyOptions): Pr
+     for (;;) {
+       const { done, value } = await reader.read();
+       if (done) break;
+-      if (false && total + value.byteLength > cap) {
++      if (total + value.byteLength > cap) {
+         await reader.cancel();
+         throw tooLarge(what, cap);
+       }

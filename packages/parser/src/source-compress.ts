@@ -117,14 +117,18 @@ export function compressSource(
  *
  * The win scales with size but the risk surface (LRU, stitching, the swap,
  * a worker) is constant, so there is a floor below which this is all cost.
- * The threshold is deliberately the size above which the viewer already stops
- * persisting the source to IndexedDB: above it the source is always
- * SharedArrayBuffer-backed, so handing it to the compression worker is
- * zero-copy. Gating lower would drag in the IndexedDB-restore path, which
- * would hand the worker a plain ArrayBuffer and pay a full structured clone
- * on every cache restore.
+ *
+ * 32 MiB, lowered from 150 MiB when the viewer started compacting sources. The
+ * old floor was chosen to keep the viewer's IndexedDB-restored source (a plain
+ * ArrayBuffer, structured-cloned into the worker) out of scope. The viewer no
+ * longer persists the source; a fresh parse hands the worker the
+ * SharedArrayBuffer the load already holds (no copy), and a cache restore pays
+ * one transient clone of the freshly read file into the worker. Federations
+ * are the case the old floor missed: seven typical 100-150 MB models kept every
+ * source resident while a single 343 MB model compressed. At 32 MiB a model
+ * returns roughly 25 MB or more, for one worker deflate after load.
  */
-export const COMPRESSION_MIN_BYTES = 150 * 1024 * 1024;
+export const COMPRESSION_MIN_BYTES = 32 * 1024 * 1024;
 
 export function shouldCompressSource(byteLength: number): boolean {
   return byteLength >= COMPRESSION_MIN_BYTES;

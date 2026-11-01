@@ -1,0 +1,11 @@
+--- a/packages/cli/src/oci-input.ts
++++ b/packages/cli/src/oci-input.ts
+@@ -39,7 +39,7 @@ type Env = Readonly<Record<string, string | undefined>>;
+ 
+ /** Parses an `oci://` reference with the CLI's loopback-only plain-http rule. */
+ export function parseModelReference(arg: string): OciReference {
+-  return parseReference(arg, { insecureHosts: [...LOOPBACK_HOSTS, parseReference(arg).registry] });
++  return parseReference(arg, { insecureHosts: LOOPBACK_HOSTS });
+ }
+ 
+ /** An unset or empty variable counts as absent (CI expands a missing secret to ''). */

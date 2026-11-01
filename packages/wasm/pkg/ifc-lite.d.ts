@@ -919,7 +919,8 @@ export class IfcAPI {
      * `processGeometryBatch*` call since the last load reset
      * (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
      * `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
-     * Returns `undefined` until a batch runs or a prepass refusal is recorded;
+     * Returns `undefined` until a batch runs or a prepass refusal or omitted
+     * type record (`omittedTypeRecords`, #8341) is recorded;
      * `clearPrePassCache` preserves the report for post-load inspection.
      * Includes per-batch summed geometry wall time, mesh/triangle counts,
      * the degenerate-backstop drop count, and the CSG failure aggregates.

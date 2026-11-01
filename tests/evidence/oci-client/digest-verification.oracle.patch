@@ -1,0 +1,29 @@
+diff --git a/packages/oci/src/client.ts b/packages/oci/src/client.ts
+--- a/packages/oci/src/client.ts
++++ b/packages/oci/src/client.ts
+@@ -178,11 +178,11 @@ export class OciClient {
+       onChunk: hasher ? (chunk) => hasher.update(chunk) : undefined,
+     });
+     const digest = await finishDigest(bytes, hasher);
+-    if (false && ref.digest !== undefined && ref.digest !== digest) {
++    if (ref.digest !== undefined && ref.digest !== digest) {
+       throw new OciError('DIGEST_MISMATCH', `${what}: received bytes hash to ${digest}`);
+     }
+     const header = response.headers.get('docker-content-digest');
+-    if (false && header !== null && header.trim() !== digest) {
++    if (header !== null && header.trim() !== digest) {
+       throw new OciError('DIGEST_MISMATCH', `${what}: Docker-Content-Digest ${header.trim()} does not match received bytes (${digest})`);
+     }
+     const value = parseManifestDocument(bytes, response.headers.get('content-type'));
+diff --git a/packages/oci/src/fetch-blob.ts b/packages/oci/src/fetch-blob.ts
+--- a/packages/oci/src/fetch-blob.ts
++++ b/packages/oci/src/fetch-blob.ts
+@@ -51,7 +51,7 @@ export async function readVerifiedBlob(
+     onChunk: hasher ? (chunk) => hasher.update(chunk) : undefined,
+   });
+   const actual = await finishDigest(bytes, hasher);
+-  if (false && actual !== descriptor.digest) {
++  if (actual !== descriptor.digest) {
+     throw new OciError('DIGEST_MISMATCH', `${what}: received bytes hash to ${actual}`);
+   }
+   return bytes;

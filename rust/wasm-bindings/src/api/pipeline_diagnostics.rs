@@ -24,7 +24,8 @@ impl IfcAPI {
     /// `processGeometryBatch*` call since the last load reset
     /// (`buildPrePassOnce` / streaming prepass / `setEntityIndex` /
     /// `setSourceBytes`), as a plain JS object with a `schemaVersion` field.
-    /// Returns `undefined` until a batch runs or a prepass refusal is recorded;
+    /// Returns `undefined` until a batch runs or a prepass refusal or omitted
+    /// type record (`omittedTypeRecords`, #8341) is recorded;
     /// `clearPrePassCache` preserves the report for post-load inspection.
     /// Includes per-batch summed geometry wall time, mesh/triangle counts,
     /// the degenerate-backstop drop count, and the CSG failure aggregates.
@@ -34,7 +35,9 @@ impl IfcAPI {
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if diag.is_empty() && diag.refused_input_elements == 0 && diag.refused_prepass_records == 0 {
+        if diag.is_empty() && diag.refused_input_elements == 0 && diag.refused_prepass_records == 0
+            && diag.omitted_type_records == 0
+        {
             return JsValue::UNDEFINED;
         }
         // Serde flatten uses serialize_map; keep the v1 plain-object JS boundary
@@ -92,6 +95,18 @@ impl IfcAPI {
         true
     }
 
+    /// F2 (#8341): union the type records a prepass plan omitted, so repeated
+    /// plans of one load count each record once.
+    pub(crate) fn note_omitted_type_records(&self, ids: &[u32]) {
+        if ids.is_empty() { return; }
+        let mut records = self.pipeline_omitted_type_records.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        records.extend(ids);
+        self.pipeline_diagnostics.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .omitted_type_records = records.len() as u64;
+    }
+
     pub(crate) fn record_input_refusals(&self, decoder: &ifc_lite_core::EntityDecoder, refused_unit: bool) {
         if self.collect_pipeline_refusals(decoder) || refused_unit {
             self.note_refused_input();
@@ -108,6 +123,8 @@ impl IfcAPI {
     /// load-start entry points. End-of-load cleanup preserves the counters.
     pub(crate) fn reset_pipeline_diagnostics(&self) {
         self.pipeline_refusals.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner).clear();
+        self.pipeline_omitted_type_records.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner).clear();
         let mut acc = self
             .pipeline_diagnostics

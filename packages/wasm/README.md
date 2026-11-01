@@ -116,7 +116,8 @@ source and unfinished stash, preserving diagnostics and user settings. See the
 `getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
 additive `refusedInputElements` (attempted jobs, including retries) and
 `refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
-Syntax-invalid type drops are excluded. Prepass-only refusals are reportable;
+Syntax-invalid type drops are excluded there and counted instead, per distinct
+record, in `omittedTypeRecords`. Prepass-only refusals and omissions are reportable;
 load installation resets counters and cleanup preserves them. See the
 [diagnostics contract](../../docs/api/wasm.md#diagnostics-and-tuning).
 
@@ -444,8 +445,11 @@ Every published part carries `faces`: a string table of persistent source keys
 and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
 Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
 `appearance_unsupported` is the typed refusal for a binding that carries a texture or an
-indexed colour palette (origin `{site: 'appearance', entity, cause}`). Textures and indexed
-palettes are proven absent for retained-eligible products; tessellated bodies still refuse.
+indexed colour palette (origin `{site: 'appearance', entity, cause}`). An uncut
+`IfcTriangulatedFaceSet` or `IfcPolygonalFaceSet` publishes its authored triangles in full f64
+with no Worker call, including an open shell, with one face key `row(k)` per authored row. No kernel is involved: its `revisionLocalFaces` are
+those rows and nothing cross-checks its keys. A
+Boolean, opening or affine copy of a face set refuses `operation_unsupported` or `incomplete`.
 A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
 A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
 and its nonempty list; consumers show shape-only for those products. Final describes published

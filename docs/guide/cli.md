@@ -80,6 +80,45 @@ Available on every command:
 | `--debug` | Verbose plus stack traces on error |
 | `--log-level <level>` | `error`, `warn`, `info`, or `debug` (explicit level wins over the shorthands) |
 
+### Models in OCI registries
+
+Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
+store) accept `oci://host[:port]/repository[:tag][@sha256:<hex>]` in place of a
+path, and pull the model layer from the registry:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite info --json oci://ghcr.io/acme/tower-model:rev-b
+```
+
+Loopback hosts (`localhost`, `127.0.0.1`, `[::1]`) use plain `http`, all others
+`https`. Credentials come only from `IFC_LITE_OCI_USERNAME` +
+`IFC_LITE_OCI_PASSWORD` or `IFC_LITE_OCI_TOKEN`; the layer is capped at 1 GiB
+(`IFC_LITE_OCI_MAX_BYTES`). A multi-layer artifact must have exactly one layer
+typed `application/x-step` or titled `*.ifc` / `*.ifczip`. The
+[CLI README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#opening-models-from-oci-registries)
+has the full rules and a GitHub Actions example.
+
+`ifc-lite oci push` publishes a model:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
+# Pushed oci://ghcr.io/acme/tower-model:rev-c → sha256:… (layer sha256:…, 225635 bytes)
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --overwrite --json \
+  --annotation org.opencontainers.image.revision=abc123
+```
+
+The artifact has type `application/vnd.ifc-lite.ifc.v1`, the OCI empty config,
+and one `application/x-step` layer titled with the file name; the manifest
+carries `org.opencontainers.image.created` (from `SOURCE_DATE_EPOCH` when set,
+so equal files give equal digests), `org.opencontainers.image.title` (the file
+name without extension), and the provisional `org.buildingsmart.ifc.profile` and
+`org.buildingsmart.ifc.schema` keys (a convention shared with subsoil, not a
+buildingSMART standard). The file must pass the loader's IFC check before
+any request is made, and `.ifczip` is not supported yet. The reference needs a
+tag; an existing tag is refused unless `--overwrite` is given (exit 1). Same
+credentials and http/https rule as above. `--json` prints
+`{ reference, digest, layer: { digest, size, mediaType }, artifactType }`.
+
 ## Installation diagnostics
 
 ```bash
@@ -1769,6 +1808,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
+| `oci` | Publish an IFC file to an OCI registry (any model argument may also be oci://...) |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
 | `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
@@ -1821,7 +1861,7 @@ bakes every occurrence, regardless of its instance group.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
 
-Retained mapped finals support mirrors and nonuniform scales. Their linear transform is baked into object-local vertices, with outward triangle winding preserved; translation stays in the rigid world frame. Curved finals currently permit contraction or isometry only (largest singular value ≤ 1); larger scales refuse with `incomplete` before any kernel work. Mapped results whose profile has a partial arc (for example an arched door) or whose extrusion is oblique also refuse with `incomplete`, because the kernel cannot certify an affine copy of those swept surfaces. Other SDK construction and conversion refusals still apply. The retained comparison harness reports the transform condition number (`affine_kappa`); it does not certify an unchanged facet-angle bound after nonuniform scale.
+Retained mapped finals support mirrors and nonuniform scales. Their linear transform is baked into object-local vertices, with outward triangle winding preserved; translation stays in the rigid world frame. Curved finals currently permit contraction or isometry only (largest singular value ≤ 1); larger scales refuse with `incomplete` before any kernel work. Mapped results whose profile has a partial arc (for example an arched door), whose extrusion is oblique, or that are swept disks also refuse with `incomplete`, because the kernel cannot certify an affine copy of those swept surfaces (swept disks use another SDK constructor with no surface-class certificate). Other SDK construction and conversion refusals still apply. The retained comparison harness reports the transform condition number (`affine_kappa`); it does not certify an unchanged facet-angle bound after nonuniform scale.
 
 Retained opening subtraction runs each opening body value separately in relationship order.
 A consumed host part refuses the complete product with `empty_result`; partial or whole-product
@@ -1836,12 +1876,14 @@ and areas; unproven faces refuse `face_provenance_unproven`. Every published par
 resolved appearance (`color`, `materialName`, `geometryItemId`): the IFC source decides, through the same
 colour resolver the exact engine uses, so the retained and exact colours of a part are bitwise equal.
 A product whose binding carries a texture or an indexed colour palette refuses with
-`appearance_unsupported` instead of publishing a plain colour; none exists in the committed
-corpus, and tessellated bodies, the only carriers, refuse upstream. Band parts carry their own
+`appearance_unsupported` instead of publishing a plain colour. An uncut `IfcTriangulatedFaceSet`
+or `IfcPolygonalFaceSet` publishes its authored triangles in full f64 without a kernel call,
+including an open shell, one persistent face key `row(k)` per authored row. A Boolean, opening
+or affine copy of a face set refuses `operation_unsupported` or `incomplete`. Band parts carry their own
 material ID, colour and material name through exact’s resolver.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°
-guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored frames refuse `incomplete` until winding and normals can be flipped together. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
+guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored mapped finals are baked (reflection into positions and winding) before normals are generated, so their normals follow the outward winding; a part still carrying an unbaked negative frame refuses `incomplete`. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
 products; unsupported tessellated bodies continue to refuse explicitly.
 
 Retained material layers on supported straight and circular wall axes publish open

@@ -233,10 +233,23 @@ pub(super) fn native_selected(content: &[u8], id: u32) -> ProcessingResult {
 /// The native pass the server, CLI and exporters run: one chunk, no
 /// instancing, every mesh retained.
 pub(super) fn native(content: &[u8]) -> ProcessingResult {
-    let result = process(content, &ProcessingRequest::full_pass(), &mut ());
+    native_observed(content).0
+}
+
+/// The native pass plus the F2 type records it reported omitted (#8341).
+pub(super) fn native_observed(content: &[u8]) -> (ProcessingResult, Vec<u32>) {
+    #[derive(Default)]
+    struct Omitted(Vec<u32>);
+    impl ifc_lite_processing::ProcessingSink for Omitted {
+        fn on_omitted_type_records(&mut self, records: &[u32]) {
+            self.0.extend_from_slice(records);
+        }
+    }
+    let mut sink = Omitted::default();
+    let result = process(content, &ProcessingRequest::full_pass(), &mut sink);
     assert!(
         result.instances.is_empty(),
         "the flat native request emits no instance records"
     );
-    result
+    (result, sink.0)
 }

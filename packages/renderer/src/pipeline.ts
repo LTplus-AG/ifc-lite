@@ -11,7 +11,9 @@ import { WebGPUDevice } from './device.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { ghostShaderSource } from './shaders/ghost.wgsl.js';
-import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { OpaqueDrawVariants, type OpaqueDrawKind, type OpaqueDrawMode } from './opaque-draw-variants.js';
+import { opaqueFastShaderSource } from './shaders/main-opaque-fast.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
@@ -33,6 +35,8 @@ const SHADOW_UNIFORM_SIZE = 96;
 
 export class RenderPipeline {
     readonly visibility: OpaqueVisibilityPass;
+    /** Discard-free / no-object-id twins of the opaque pipelines (opaque-draw-variants.ts). */
+    readonly opaqueVariants: OpaqueDrawVariants;
     private device: GPUDevice;
     private webgpuDevice: WebGPUDevice;
     private pipeline: GPURenderPipeline;
@@ -233,16 +237,7 @@ export class RenderPipeline {
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main',
-                buffers: [
-                    {
-                        arrayStride: 28, // 7 floats * 4 bytes
-                        attributes: [
-                            { shaderLocation: 0, offset: 0, format: 'float32x3' }, // position
-                            { shaderLocation: 1, offset: 12, format: 'float32x3' }, // normal
-                            { shaderLocation: 2, offset: 24, format: 'uint32' }, // expressId
-                        ],
-                    },
-                ],
+                buffers: MESH_VERTEX_BUFFERS, // position, normal, expressId (28 bytes)
             },
             fragment: {
                 module: shaderModule,
@@ -295,16 +290,7 @@ export class RenderPipeline {
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main',
-                buffers: [
-                    {
-                        arrayStride: 28,
-                        attributes: [
-                            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-                            { shaderLocation: 1, offset: 12, format: 'float32x3' },
-                            { shaderLocation: 2, offset: 24, format: 'uint32' },
-                        ],
-                    },
-                ],
+                buffers: MESH_VERTEX_BUFFERS,
             },
             fragment: {
                 module: shaderModule,
@@ -341,16 +327,7 @@ export class RenderPipeline {
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main',
-                buffers: [
-                    {
-                        arrayStride: 28,
-                        attributes: [
-                            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-                            { shaderLocation: 1, offset: 12, format: 'float32x3' },
-                            { shaderLocation: 2, offset: 24, format: 'uint32' },
-                        ],
-                    },
-                ],
+                buffers: MESH_VERTEX_BUFFERS,
             },
             fragment: {
                 module: shaderModule,
@@ -411,16 +388,7 @@ export class RenderPipeline {
             vertex: {
                 module: shaderModule,
                 entryPoint: 'vs_main',
-                buffers: [
-                    {
-                        arrayStride: 28,
-                        attributes: [
-                            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-                            { shaderLocation: 1, offset: 12, format: 'float32x3' },
-                            { shaderLocation: 2, offset: 24, format: 'uint32' },
-                        ],
-                    },
-                ],
+                buffers: MESH_VERTEX_BUFFERS,
             },
             fragment: {
                 module: shaderModule,
@@ -471,6 +439,11 @@ export class RenderPipeline {
                 },
             ],
         };
+        this.opaqueVariants = new OpaqueDrawVariants(this.device, opaqueFastShaderSource, {
+            flat: pipelineDescriptor,
+            quantized: { ...pipelineDescriptor, vertex: quantizedVertex },
+            instanced: { ...pipelineDescriptor, vertex: instancedVertex },
+        });
         this.makeQuantizedPipelineAsync = (kind) => {
             const base = kind === 'opaque' ? pipelineDescriptor : transparentPipelineDescriptor;
             return this.visibility.createAsync({ ...base, vertex: quantizedVertex });
@@ -782,6 +755,12 @@ export class RenderPipeline {
         return this.pipeline;
     }
 
+    /** An opaque draw of `kind` under this frame's `mode`: its ready twin (opaque-draw-variants.ts), else the base pipeline. */
+    opaquePipeline(kind: OpaqueDrawKind, mode: OpaqueDrawMode): GPURenderPipeline {
+        const base = kind === 'instanced' ? this.instancedPipeline : kind === 'quantized' ? this.quantizedPipelines.opaque ?? this.pipeline : this.pipeline;
+        return this.opaqueVariants.get(kind, mode) ?? base;
+    }
+
     /** GPU-instancing pipeline (template vertex buffer at slot 0 + per-instance buffer at slot 1). */
     getInstancedPipeline(): GPURenderPipeline {
         return this.instancedPipeline;
@@ -894,6 +873,11 @@ export class RenderPipeline {
         return this.objectIdTextureView;
     }
 
+    /** Screen-sized attachments this pipeline owns, for render-target telemetry. */
+    renderTargets(): (GPUTexture | null)[] {
+        return [this.depthTexture, this.objectIdTexture, this.multisampleTexture, this.visibility.renderTarget()];
+    }
+
     /**
      * Get multisample texture view (for MSAA rendering)
      */
@@ -932,6 +916,7 @@ export class RenderPipeline {
      */
     destroy(): void {
         this.visibility.destroy();
+        this.opaqueVariants.destroy();
         if (this.destroyed) return;
         this.destroyed = true;
         this.makeQuantizedPipelineAsync = null;

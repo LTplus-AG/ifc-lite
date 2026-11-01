@@ -13,7 +13,7 @@
  * flat CSV table with both elements' GlobalIds per row (--csv, #3944).
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
@@ -84,10 +84,10 @@ async function getProcessor(): Promise<GeometryProcessor> {
 }
 
 /**
- * Mesh the whole model. Prefers the parsed `store.source` bytes; falls back to
- * reading the file path from disk when the store did not retain its source.
+ * Mesh the whole model from the parsed `store.source` bytes: the bytes the
+ * loader already read (or pulled from a registry), never a second read.
  */
-async function meshModel(store: IfcDataStore, modelId: string, filePath: string): Promise<MeshedModel> {
+async function meshModel(store: IfcDataStore, modelId: string): Promise<MeshedModel> {
   const cached = meshCache.get(modelId);
   if (cached) return cached;
 
@@ -100,13 +100,8 @@ async function meshModel(store: IfcDataStore, modelId: string, filePath: string)
   // The wasm mesher is a genuine whole-file consumer, so the source is
   // materialised — but scoped, so the buffer cannot outlive the mesh pass
   // (only the meshes are cached).
-  let meshed: MeshedModel;
-  if (store.source.byteLength > 0) {
-    meshed = await store.source.withMaterializedAsync(mesh);
-  } else {
-    const buffer = await readFile(filePath);
-    meshed = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
-  }
+  if (store.source.byteLength === 0) throw new Error(`${modelId}: the parsed model kept no source bytes to mesh`);
+  const meshed = await store.source.withMaterializedAsync(mesh);
   meshCache.set(modelId, meshed);
   return meshed;
 }
@@ -265,7 +260,7 @@ export async function clashCommand(args: string[]): Promise<void> {
   try {
     const modelId = basename(filePath);
     if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
-    const { meshes, coordinateInfo } = await meshModel(store, modelId, filePath);
+    const { meshes, coordinateInfo } = await meshModel(store, modelId);
 
     const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
 

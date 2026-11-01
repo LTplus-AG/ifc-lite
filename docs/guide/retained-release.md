@@ -17,12 +17,11 @@ node scripts/retained-package-proof.mjs npm
 ```
 
 `cargo` invokes `cargo package --list` and `cargo publish --dry-run --locked`
-for every entry in `scripts/lib/crates-io.mjs` **plus the unbootstrapped runtime
-candidate**, followed by a feature-on runtime dry-run. The qualification list
-is separate from the automatic release list. Runtime stays out of `CRATES`
-until its first registry release exists: the always-on semver gate correctly
-rejects a listed crate without a baseline. Both crate-count floors remain eight.
-`cargo-graph` runs a combined dry-run of those same nine crates, first default
+for every entry in `scripts/lib/crates-io.mjs` (the runtime is enrolled there
+since its 27.1.0 bootstrap), followed by a feature-on runtime dry-run. The
+always-on semver gate rejects a listed crate without a baseline, which is why
+enrolment waited for the first registry release. Both crate-count floors are
+nine. `cargo-graph` runs a combined dry-run of those same nine crates, first default
 and then with runtime/processing/browser retained features. Cargo's multi-package
 mode can stage their real normalized archives together before the prerequisite
 versions exist in the registry; it does not use path patches or remove edges.
@@ -59,8 +58,55 @@ normalized archives before their prerequisites have been published.
 
 Before release, run `node scripts/check-rust-semver.mjs` and
 `node scripts/check-rust-api-surface.mjs`, plus release-order/version-sync checks.
-`publish = false` is removed for explicit runtime bootstrap qualification; the
-automatic list and both crate floors remain at their original eight crates.
+The runtime is in the automatic list and both crate floors are nine.
+
+## Refreshing retained notices after a dependency change
+
+`node scripts/retained-notices.mjs --check` (the `node-guards` job) fails when a
+`Cargo.lock` change touches the WASM dependency closure, including the weekly
+Dependabot Cargo group, because new package versions need their archive texts.
+Pick the refresh by what changed:
+
+* **Only Cargo closures changed** (the SDK pin `IFCLITE_SMLIB_REVISION`, the emsdk
+  ref, the Emscripten version and `rust-toolchain.toml` are untouched): on the PR
+  branch run
+
+  ```sh
+  node scripts/retained-notices.mjs --refresh --cargo-only
+  ```
+
+  It needs only the pinned Rust toolchain and the Cargo registry, no usd-brep
+  checkout and no emsdk. It re-reads the Cargo archive texts and reuses the
+  committed SDK, Emscripten, musl/LLVM, dlmalloc and Rust standard-library
+  components verbatim. It refuses (and writes nothing) when the committed
+  `manifest.json` fails its `manifestSha256` digest, when any of those four pins
+  differs from the committed manifest, when the committed SDK/Emscripten entries do
+  not carry the pinned SMLib revision and Emscripten version, or when the committed
+  components are not laid out as SDK/Emscripten, Cargo block (exactly the crates the
+  committed inputs list), Rust std. Passing `--sdk` or
+  `--emscripten` with `--cargo-only` is an error. Only the SMLib revision and the
+  Emscripten version are checked against the reused entries (plus the
+  `emsdkRef`/`rustChannel` pins against the committed inputs); the musl/LLVM,
+  dlmalloc and Rust standard-library texts are reused on that basis alone. The
+  result is built in memory and validated like `--check` before anything is
+  written, so a refusal leaves `licenses/retained/` untouched. A recorded licence
+  election or supplement in `supplemental.json` is applied to reused components too. Commit the regenerated
+  `licenses/retained/`, `packages/*/THIRD_PARTY_NOTICES.txt` and review the new
+  component rows and any `OPEN:` entries.
+* **A pin or the toolchain changed**: run the full
+  `--refresh --sdk /absolute/pinned-usd-brep --emscripten /absolute/emsdk/upstream/emscripten`
+  (SDK at the pinned revision and clean, emsdk 4.0.15 at the pinned ref). The
+  release owner owns this step.
+
+`--write` regenerates the bundle from the committed manifest and never recomputes
+`manifestSha256`, so it cannot paper over a damaged manifest: if a merge conflict
+in `manifest.json` loses a licence text or skews `inputs` against `components`,
+`--check` and `--write` both fail until `manifest.json` is restored or `--refresh`
+rebuilds it. The digest covers `inputs` and `components`. It catches accidental
+loss and hand edits; it is not a signature, because `--refresh` legitimately
+recomputes it. Review of the diff still applies. An open PR that carries a
+manifest from before the digest (or the earlier `componentsSha256` field) must
+re-run `--refresh` after this lands; `--cargo-only` refuses such a manifest.
 
 ## First crates.io publication (human operation)
 
@@ -73,7 +119,8 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
 2. Let `release.yml` publish the eight existing crates, confirm their approved
    versions appear in the sparse index, and bootstrap **only the runtime by
    hand**. Do not hand-publish those eight crates with a personal token. Runtime
-   stays outside the automatic list until bootstrap. Its first upload cannot
+   stayed outside the automatic list until bootstrap (history; it is now
+   enrolled per step 7). Its first upload cannot
    resolve the required geometry version until that version is indexed.
 3. Before uploading runtime, repeat `cargo package -p ifc-lite-geometry-runtime`
    and both dry-runs (default and `--features retained-runtime`). Retain the
@@ -99,8 +146,14 @@ publication. Do not reuse older 22.6 bootstrap authorization for this source.
    private release evidence; absence of a public API result is not a verified
    setting. Revoke the bootstrap token after registry confirmation.
 7. **Only after bootstrap and publisher verification, add
-   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, after
-   geometry.** In that same reviewed change, run `pnpm rust-api-surface:update`
+   `ifc-lite-geometry-runtime` to `CRATES` in `scripts/lib/crates-io.mjs`, at the
+   END of the list (after `ifc-lite-wasm`; it only has to follow geometry).**
+   The release stops at the first failed `cargo publish`, so until one release
+   has proven the runtime's OIDC Trusted Publisher, a refusal must strand only
+   the runtime, not the crates after it; it may move next to geometry later.
+   The runtime's 27.1.0 baseline came from commit f113d9c7fd, not a tag, so
+   semver-baseline's tag-rebuild fallback could raise `BASELINE_SOURCE_MISMATCH`
+   if that baseline ever stops resolving from the registry. In that same reviewed change, run `pnpm rust-api-surface:update`
    and commit the newly enrolled API snapshot; run the semver and API-surface
    gates plus release-order and version-sync checks. Do not lower `CRATE_FLOOR`
    or exempt `NO_BASELINE`. The crate already inherits `version.workspace` and
@@ -136,3 +189,68 @@ bytes; `buildAttestation: false` remains explicit. Binding hashes to source is
 recommended evidence, not a licence obligation. Then install the
 actual release archives into a clean consumer and run browser/CLI/Python smoke
 checks. Staged fixtures and dry-runs cannot substitute for that final step.
+
+## Released-artifact smoke
+
+`scripts/smoke-released-retained.mjs` is the post-publication check that stands in
+for the "install the actual release archives into a clean consumer" step above. It
+installs only from the public registries and changes no registry state.
+
+```sh
+node scripts/smoke-released-retained.mjs \
+  --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
+  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep]
+```
+
+`--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
+accept `latest`, recorded as resolved). The scratch project is created under the
+OS temp directory, never inside the repository, with empty npm configuration and a
+private `CARGO_HOME`. No workspace path, link or patch is used, and the lock files
+are checked to contain only registry sources. Cargo outside the repository does not
+see `rust-toolchain.toml`, so the toolchain is passed explicitly: `--toolchain`, else
+`RUSTUP_TOOLCHAIN`, else the channel pinned in the repo's `rust-toolchain.toml`. The
+chosen toolchain, where it came from and `cargo -V` are recorded in the JSON summary.
+Code taken from the registries (the WASM glue and `retained.js`) runs only in child
+processes with a cleaned environment (no `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`,
+`CARGO_REGISTRY_TOKEN` or other inherited variables) and a scratch `HOME`, so registry code cannot read `~/.npmrc` or `~/.cargo/credentials`.
+
+| Step | What it proves |
+|---|---|
+| `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry, and each locked `integrity` must equal the `npm pack` tarball inspected by the archive steps (one set of bytes) |
+| `wasm-default-engine` | the published default engine loads and processes the committed `tests/fixtures/cli-retained/layered-wall.ifc` (jobs, meshes, triangles) |
+| `cli-default-export` | the published CLI exports that IFC to OBJ with the default (exact) kernel |
+| `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine()` fails with exactly `ERR_MODULE_NOT_FOUND` for `pkg-retained/ifc-lite.js` when no engine is deployed (any other failure, such as a `TypeError`, fails the step) |
+| `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives are extracted into fresh directories and hold no SDK sources, native binaries or unexpected wasm, judged by path **and** by content (ELF, Mach-O, PE and wasm magic, so a renamed binary is caught); the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
+| `npm-signatures` | `npm audit signatures --json --include-attestations` reports 0 invalid and 0 missing, and lists both exact `@ifc-lite/wasm` and `@ifc-lite/cli` versions as verified with a provenance attestation |
+| `provenance:*` | per package, the SLSA attestation bundle **that `npm audit signatures` verified** (taken from the audit report, never from a second fetch of the registry, whose signature nothing would check): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here; a forged copy of the attestations cannot reach the policy. The git ref/tag and the specific run are recorded by the registry but not constrained |
+| `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
+| `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; manylinux for this arch with a `cpXY`/`abi3` tag that fits the local CPython; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
+| `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products. The evidence records the report's `engine.sdk` and `engine.manifestSha256` and the manifest's `qualified` and `buildAttestation`. A staged engine is a **locally staged engine, not a released artifact, with provenance unverified** (`qualified:false`, `buildAttestation:false`, no ifc-lite commit): the step is `pass` only when the manifest sha256 matches an explicit `--expect-engine-manifest-sha256` (the manifest's asset hashes cover the staged adapter files, so it identifies one engine build). `--expect-sdk-revision` is an extra check only: the SDK pin does not change across adapter fixes, so it cannot tell an old engine from a current one. Otherwise the step is the distinct `pass-local-engine`, which is not release sign-off |
+| `crate-checksum` | the sha256 of the `.crate` fetched from `static.crates.io` equals the `checksum` Cargo resolved into the consumer's `Cargo.lock` |
+
+`retained-export-e2e` runs only when an engine directory is supplied
+(`--retained-engine` or `IFCLITE_SMOKE_RETAINED_ENGINE`; build it with
+`scripts/stage-cli-retained-engine.mjs`). Otherwise it is reported `skip` with
+"not run", never `pass`. An engine that is supplied but not pinned to an expected
+manifest hash or SDK commit is `pass-local-engine`: the export worked, but nothing
+ties that engine to the release. The JSON summary lists every step as `pass`,
+`pass-local-engine`, `fail` or `skip` with its detail; the overall `status` is `fail`,
+`pass-with-skips`, `pass-local-engine` or `pass`, and the process exits 1 when any step
+failed.
+
+`--strict` is the release sign-off mode: a step that would be skipped (crate builds
+without a usable toolchain, `--wheel skip`, no engine directory) is recorded as a
+failure (`skipped under --strict`) and the exit code is 1. `--strict` also requires an
+explicit `--wheel X.Y.Z` (a moving `latest` is not release evidence; the resolved wheel
+version is recorded in `resolved`) and, when an engine is supplied, an explicit
+`--expect-engine-manifest-sha256`; an SDK revision alone fails under `--strict`. `--wheel` accepts only
+`latest`, `skip` or a version. Use it for the run whose evidence goes into the release
+handoff. The pure checks live in
+`scripts/lib/released-smoke-checks.mjs` and run offline in the `scripts/lib/*.test.mjs`
+`node --test` lane.
+
+What it does not cover: the Python **wheel build** from release source (the
+`python-wheels.yml` build/import checks on the release commit), the runtime
+crate's Trusted Publisher (only an OIDC `release.yml` run proves it), the licence
+signature, and any hosted browser or deploy smoke. The published `ifclite-geom`
+wheel is a separate release train from the npm and crate versions.

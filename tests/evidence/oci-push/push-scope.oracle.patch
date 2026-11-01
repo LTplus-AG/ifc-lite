@@ -1,0 +1,12 @@
+diff --git a/packages/oci/src/auth.ts b/packages/oci/src/auth.ts
+--- a/packages/oci/src/auth.ts
++++ b/packages/oci/src/auth.ts
+@@ -100,7 +100,7 @@ export function pullScope(repository: string): string {
+ 
+ /** Push needs pull too: a blob existence check and the tag check are reads. */
+ export function pushScope(repository: string): string {
+-  return `repository:${repository}:pull`;
++  return `repository:${repository}:pull,push`;
+ }
+ 
+ export interface AuthOptions {

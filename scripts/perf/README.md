@@ -4,6 +4,136 @@
 
 # Performance diagnosis kit
 
+## Retained qualification runners (#7955)
+
+Viewer first retained frame, built-CLI retained export, browser and native memory
+runners, report-only: [retained-qual.md](retained-qual.md).
+
+## Native diff compare (#8351)
+
+**Shipped: the key pass and per-call setup, not the transport.** The warm
+handle gap after #8042 was neither the boundary nor content matching. On the
+large revision the GlobalId key pass took nearly all native time, hashing and
+comparing `JsString` keys and component values through SipHash and two pointer
+hops per string. On small models, about 30 µs per call went to rebuilding the
+default class families twice, even with no split or successor candidates.
+Each JS option key also cost several host crossings, including undefined ones.
+
+What won: a keyed per-process digest cached in each `JsString`, reused by a
+pass-through `JsHash` for component maps and the key index; skipping the
+head-only component pass when equal cardinality already proves equal key sets;
+recording paired head rows instead of re-probing; one process-wide default
+family map; sending only set options. Warm handle compare is now at TS parity on
+Haus, ahead of TS on large, and about 1.2× TS on demo, where the remaining cost
+is boundary encode/decode and reference restore.
+
+What lost: inline small-string storage beside the digest (no measurable gain once
+hashing was cheap) and a linear scan for small component maps (faster on Haus,
+slower on large). Both were dropped.
+
+Lesson: on this engine, time the passes separately before touching transport.
+The cost sat in one pass and one per-call constructor, and both were invisible
+in boundary-level splits. Output identity was gated before timing in every run.
+These are ordinary interleaved diagnostics, not a protocol v4 cohort; the
+[sources, WASM hashes, receipts and per-run medians](../../tests/evidence/diff-8351/warm-handle-diagnostics.json)
+record the limits.
+
+## Scenoptic-axes viewer levers (`scenoptic-bench.mjs`, 2026-10-31)
+
+Measured on Pop's RTX 4000 Ada with an identical WASM hash per cohort, on the
+343 MB Sixty5 model and a 7-file federation. Numbers are in each PR.
+
+**Won: cache reopen (#8438).** Federated models had no cache at all, so a warm
+open equalled a cold one. Single-file reopens gain from uploading once on a hit
+and from taking two whole-source hashes off the main thread. Adding a federated
+model was O(N^2) in copies and GPU batches.
+
+**Won: frame CPU (#8439).** One uniform write per arena page, rather than one per
+batch, is why a CPU change also cut GPU time.
+
+**Won, with a cost: one compressed source (#8441).** Memory falls by about a
+quarter on a warm open, paid for by a one-off worker deflate after each load. It
+leaves settled orbit CPU alone.
+
+**Not the warm-open gap.** Even with all of these, warm geometry takes seconds.
+The profile is flat, so more trimming will not close it: the time is the rebuild
+itself (streaming, drain, regroup). The next lever is storing the finished batches.
+
+**Measurement traps.** Timer queries move with DVFS on this GPU and the clock
+cannot be locked without root, so compare Mcycles. A cold `scene.finalize` is
+bimodal in every build including base, so one slow round says nothing. Wait for
+post-load CPU to settle before an orbit, or source compaction reads as a
+frame-CPU regression.
+
+## C4-14 independent levers (#8341)
+
+**Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item
+index read the file twice, once per record kind; one scan now records both and
+decodes in the old order. Callgrind puts `extract_symbolic_data` roughly a
+seventh lower on Haus, HouseZ, dental_clinic, duplex and schependomlaan with
+byte-identical symbolic JSON, because entity scans dominate that extractor.
+Counts, sources and receipts: [evidence](../../tests/evidence/c4-14-symbolic-style/README.md).
+Instructions only, no wall-time claim.
+
+**Declined: opening filter allocations (PROCESSING-17).** "Filter after the
+metadata phase" no longer has a home: identity metadata is now resolved per
+chunk inside the streaming pass, with thread-local uncached decoders, while
+the filter must settle skips and the void index before the first chunk. The
+remaining levers (allocation-free `glas` matching, handing back the void index
+instead of cloning it) moved at most 0.05% of the main thread's instructions
+under IgnoreOpaque and 0.015% on the default path, far below the 0.5% bar, with
+identical meshes, while the native geometry phase it does not touch moved
++0.04% to +0.05% from code layout alone. Do not re-spike without a mechanism that removes the
+per-opening representation decode itself.
+
+**Declined: a common reserve-capped index builder (PROCESSING-19).** No
+measurable lever. The browser serial index already carries the 40 M reserve
+cap (#8259/C4-11b); native sources from 32 MiB use the paged compact builder;
+the remaining `len / 50` reservations bind the cap only above a 2 GB source.
+An exact record count would not change the hash table either: Haus (44,249
+records against 50,530 estimated) and HouseZ (81,806 against 101,455) round
+to the same 65,536 and 131,072 buckets. Sharing the builder is DRY work, not
+a performance claim; the browser index must also answer metadata lookups
+mid-scan, which the paged builder cannot.
+
+## C4-7b fallback full-file work (#8341)
+
+Verdict: shipped. Instruction counts only, for the slice that reaches the lazy
+fallbacks; no worker-pool wall-time or browser memory claim. Output hashes are
+identical on six fixtures, merge layers off and on. Counts, fixtures and receipts
+are in `tests/evidence/c4-7b/README.md`.
+
+Two kinds of duplicate work remained. With merge layers on, every geometry worker's
+parts-to-skip rebuilt the material-layer index with an ungated full scan, even
+though the prepass had injected the same index, and then walked the aggregates.
+Passing the per-content index and returning early when nothing is sliceable
+removes both walks on files with no sliceable buildup, and the index walk on the
+rest. `buildPrePassOnce` (remesh, viewer-html, the C4-0 gate) rescanned for type
+jobs, then its first batch scanned again for the type plan and the layer index.
+Building both pre-passes' columns once from scan spans (`PrepassColumns`) and
+installing them on the once path removes all three.
+
+Lesson: an injected column helps only consumers that read the slot. Look for
+drivers that rebuild their own input. The keyword-gated indexed-colour and texture
+fallbacks remain, because the worker wire carries no spans for them.
+
+## C4 default browser worker-pool measurement (#8341)
+
+**Cumulative C4 window neutral within noise; peak memory not strictly at or below base.**
+One fresh-WASM, hardware-GPU browser cohort compared main before C4-10a with the
+last C4-11b merge: five randomized pairs on three fixtures, identical CPU payload roots
+and diagnostic lines. Observed readiness stays inside the base spread on every fixture.
+Peak RSS is lower on the CSG model and marginally higher, within spread, on the two small
+models. One reporter flag remains: later spatial-tree readiness on the CSG model,
+offset by earlier first paint. The window also contains retained and diff commits, so no
+single lane is attributed. Both native C4-10b layers show identical counts and no phase
+outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](../../tests/evidence/c4-browser-8341/README.md).
+
+Lessons: pass `page.evaluate` bodies as source text, because tsx wraps named closures
+in a `__name` helper that is absent in the page. Chrome rewrites process titles, so
+`/proc/*/cmdline` needs a whitespace split to find `--type=`. A fixture with
+sub-millisecond phases makes the native reporter inconclusive by construction.
+
 ## Retained diff boundary A3 (#8042)
 
 **Hold: the tested transport changes do not close the retained gap.** Five
@@ -3473,12 +3603,18 @@ loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
 deployed build: per (event, metric, journey, person, model) cell,
 `median(recent) / median(baseline)`, where recent is the judged build's rows
 and the divisor comes from the baseline window (the 14 days before that build
-first appeared) and from the `default` arm only. A group's pooled ratio is the
-median of its cell ratios, reported per journey and pooled across journeys,
-each per `perf_flags` arm. The threshold is on speed (1 / ratio): pooled speed
-below 0.95 with at least 5 paired cells is `regressed`; fewer cells is
-`insufficient`, which is the common case at current volume and is not a
-pass. `was_hidden = true` rows and bot traffic are excluded in the query.
+first appeared) and from the `default` arm only. A group is one (event, metric,
+journey, arm); its ratio is each person's median cell ratio, then the median
+across people. Cells are not the unit because one federated batch is dozens of
+them: on build `8d3ffe9d1f62` two people owned 28 of 42 cells, so the cell
+median read 1.86 while the median person read 0.96. `regressed` needs speed
+(1 / ratio) below 0.95 and a 99% person bootstrap interval excluding 1; past the
+threshold without that is `inconclusive`. Fewer than 5 paired people is
+`insufficient`, the common case at current volume, and is not a pass.
+`file_read_ms` and `federated_session_loads` are reported, never judged: the
+first barely depends on the app, so the output warns when it moves, and the
+second shows when a J4 change comes with bigger batches. `was_hidden = true`
+rows and bot traffic are excluded in the query.
 
 ```bash
 node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
@@ -3497,9 +3633,9 @@ pooled group regresses is the next step and is not wired yet.
 The HogQL the script expects (`__BUILD__` is the 12-character
 `app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
 from this block). It already aggregates to one row per (person, model,
-journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
-appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
-complete, and fails rather than judge a partial one:
+journey, arm, metric, window) cell, not per load. `field-verdict-fetch.mjs`
+appends one `LIMIT` and fails rather than judge a result that reaches it.
+PostHog answers 400 to `OFFSET` on a personal API key, so it cannot page:
 
 <!-- field-verdict-hogql -->
 ```sql
@@ -3537,6 +3673,9 @@ FROM (
     if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
     arrayJoin(arrayFilter(m -> isNotNull(m.2), [
       tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
+      tuple('file_read_ms', toFloat(properties.file_read_ms)),
+      -- Bigger batches lengthen J4 timings without any code change.
+      tuple('federated_session_loads', if(event = 'ifc_model_loaded' AND properties.load_target = 'federated', toFloat(countIf(event = 'ifc_model_loaded' AND properties.load_target = 'federated') OVER (PARTITION BY properties.$session_id)), NULL)),
       tuple('first_visible_geometry_ms', toFloat(properties.first_visible_geometry_ms)),
       tuple('spatial_ready_ms', toFloat(properties.spatial_ready_ms)),
       tuple('metadata_complete_ms', toFloat(properties.metadata_complete_ms)),
@@ -5704,3 +5843,33 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+## The app-start task: no top-level-await wrapper on the app build
+
+On a production build the app-start task (module evaluation, before a model is
+read) was far longer than on the dev server, because only the build ran
+`vite-plugin-top-level-await`. The plugin wraps every chunk that has a dynamic
+`import()` in one `async` arrow function. Chrome compiles a module's top level
+while the script streams in, off the main thread, but a nested function only
+when it first runs, on the main thread, so each wrapped chunk was parsed whole
+inside the task. The build target is `esnext`, so the app build now emits
+native top-level await; the worker build keeps the plugin.
+`@ifc-lite/flow-nodes`' `xlsx-io.ts` also imported `exceljs` statically through
+the package barrel, which ran all of it at start; it is now loaded on first use.
+
+Lessons:
+- Measure start-up on a production build: the dev server skips build-only
+  plugins and under-reports this task.
+- A CPU profile shows lazy compilation as `(program)` with no script;
+  `--js-flags=--log-function-events` gives each `parse-function` with its
+  script id, offsets and duration.
+- `scripts/check-tla-chunk-await.mjs` now fails if a chunk the page evaluates
+  at start (`index.html`'s module scripts and their static imports) is wrapped.
+
+### Retained finish join shares the candidate scan (#7955, #8415)
+
+The retained browser session now joins styled-item spans against its existing SourceBundle decoder.
+Allocation checks and finish equality checks support removing the duplicate index; the measurements
+are finish-join attribution, not end-to-end worker-pool throughput. No speedup or performance-neutrality
+claim is established. The exact default path does not call the new join. Preserve the shared scan
+rather than rebuilding a whole-file entity index to resolve a small styled subset.

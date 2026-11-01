@@ -8,7 +8,8 @@
 //! installed, the shared pre-pass resolution (styles, voids, materials), the
 //! lookup phase, the opening and id filters, both unit scales, the quick
 //! bootstrap, the auxiliary router, the site and building placements and the
-//! mesh frame. It raises `on_bootstrap` and `on_frame` on the sink. The pass
+//! mesh frame. It raises `on_omitted_type_records`, `on_bootstrap` and `on_frame`
+//! on the sink. The pass
 //! after it ([`super::pass`]) only meshes.
 
 use super::diagnostics;
@@ -53,8 +54,9 @@ pub(super) struct Facts {
     pub(super) georeferencing_candidates: Vec<(u32, IfcType)>,
     pub(super) times: Times,
     /// Kept alive to the end of the pass, like the router: freeing them is not
-    /// part of any timed phase.
-    pub(super) _prepass_spans: crate::prepass::PrepassSpans,
+    /// part of any timed phase. The pass reads the styled-item spans for
+    /// `Features::finishes`.
+    pub(super) prepass_spans: crate::prepass::PrepassSpans,
     pub(super) _prepass_rest: ResolvedPrepass,
     pub(super) _rel_defines_spans: Vec<(usize, usize)>,
     pub(super) router: GeometryRouter,
@@ -96,6 +98,7 @@ struct Scanned<'c> {
     building_pos: Option<(usize, usize)>,
     defer_style_updates: bool,
     prepass: ResolvedPrepass,
+    omitted_type_records: Vec<u32>,
 }
 
 pub(super) fn resolve<'c>(
@@ -118,6 +121,12 @@ pub(super) fn resolve<'c>(
     scan_span.record("geometry_entities", scanned.jobs.len() as u64);
     scan_span.record("phase_ms", entity_scan_time.as_millis() as u64);
     drop(scan_guard);
+    if !scanned.omitted_type_records.is_empty() {
+        tracing::warn!(target: "ifc_lite_processing::processor",
+            omitted_type_records = scanned.omitted_type_records.len(),
+            "type records the full decoder rejects: their type geometry is omitted (#8341)");
+        sink.on_omitted_type_records(&scanned.omitted_type_records);
+    }
 
     let lookup_time = lookup_phase(req, &mut scanned);
 
@@ -204,7 +213,7 @@ pub(super) fn resolve<'c>(
                 preprocess: preprocess_time,
                 parse: parse_time,
             },
-            _prepass_spans: spans,
+            prepass_spans: spans,
             _prepass_rest: prepass,
             _rel_defines_spans: rel_defines_spans,
             router,
@@ -255,6 +264,7 @@ fn scan_phase<'c>(content: &'c [u8], req: &ProcessingRequest) -> Scanned<'c> {
         total_entities,
         site_entity_pos,
         building_entity_pos,
+        omitted_type_records,
     } = scan::scan_entities(
         content,
         req,
@@ -299,6 +309,7 @@ fn scan_phase<'c>(content: &'c [u8], req: &ProcessingRequest) -> Scanned<'c> {
         building_pos: building_entity_pos,
         defer_style_updates,
         prepass,
+        omitted_type_records,
     }
 }
 

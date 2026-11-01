@@ -319,6 +319,18 @@ const georefAssumptionShape = {
   "assumed": [],
 } as const satisfies Record<GeorefAssumptionKey, readonly string[]>;
 
+import type { ifcFederationAssumptionsEn } from './catalogues/ifc-federation-assumptions.en';
+
+type IfcFederationKey = keyof typeof ifcFederationAssumptionsEn extends `settings.ifcFederation.${infer Key}` ? Key : never;
+const ifcFederationShape = {
+  "title": [],
+  "sharedVertical": [],
+  "hint": [],
+  "assumed": [],
+  "appliedUnresolved": [],
+  "applied": [],
+} as const satisfies Record<IfcFederationKey, readonly string[]>;
+
 export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('flowReview.')) {
     const tail = key.slice('flowReview.'.length);
@@ -331,6 +343,10 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
   if (key.startsWith('landXmlGeorefAssumptions.')) {
     const tail = key.slice('landXmlGeorefAssumptions.'.length);
     return Object.hasOwn(georefAssumptionShape, tail) ? georefAssumptionShape[tail as GeorefAssumptionKey] : null;
+  }
+  if (key.startsWith('settings.ifcFederation.')) {
+    const tail = key.slice('settings.ifcFederation.'.length);
+    return Object.hasOwn(ifcFederationShape, tail) ? ifcFederationShape[tail as IfcFederationKey] : null;
   }
   if (key.startsWith('reviewWorkspace.')) {
     const tail = key.slice('reviewWorkspace.'.length);

@@ -1,0 +1,26 @@
+diff --git b/rust/wasm-bindings/src/api/content_lazy.rs a/rust/wasm-bindings/src/api/content_lazy.rs
+index 79b37e67e6..00d57ca20e 100644
+--- b/rust/wasm-bindings/src/api/content_lazy.rs
++++ a/rust/wasm-bindings/src/api/content_lazy.rs
+@@ -19,7 +19,7 @@ impl IfcAPI {
+         content: &[u8],
+         decoder: &mut ifc_lite_core::EntityDecoder,
+     ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
+-        let layers = std::sync::Arc::new(ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder));
++        let layers = self.get_or_build_material_layer_index(content, decoder);
+         self.content.cached_parts_to_skip.get_or_init(|| {
+             // The layer/void driver lives in the geometry crate next to its
+             // kernels (#913 Phase 4 / §2.6); this caches its result per content.
+diff --git b/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs a/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
+index c7993c3e93..550d9e2d69 100644
+--- b/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
++++ a/rust/wasm-bindings/src/api/gpu_meshes/prepass_once.rs
+@@ -116,7 +116,7 @@ impl IfcAPI {
+             &mut decoder,
+         );
+         pre_pass.complex_jobs.extend(columns.type_plan.jobs());
+-        drop(columns);
++        self.install_prepass_columns(columns);
+ 
+         self.collect_pipeline_refusals(&decoder);
+         self.note_omitted_type_records(&omitted_type_records);

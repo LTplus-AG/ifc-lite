@@ -45,6 +45,10 @@ export interface ModelLoadReportFields {
   /** Whether small-cut skipping (fast geometry mode) ran; `undefined` where
    *  the setting does not apply, not a claim that it was off. */
   skipSmallCuts?: boolean;
+  /** Type records whose type geometry this load left out because they could
+   *  not be decoded (F2, #8341), from the geometry stream's `complete` event.
+   *  `undefined` = unknown (older wasm, cache/server/GLB/IFCX), never "none". */
+  omittedTypeRecords?: number;
 }
 
 /**
@@ -60,9 +64,11 @@ export function buildModelLoadReportPatch(
   loadDiagnostics: GeometryDiagnostics | null,
   format: string,
   patch?: Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>,
+  omittedTypeRecords?: number,
 ): ModelLoadReportFields {
   return {
     diagnostics: loadDiagnostics,
+    omittedTypeRecords,
     loadFormat: format,
     loadPath: patch?.loadPath,
     tessellationTier: patch?.tessellationTier,
@@ -107,6 +113,8 @@ export interface LoadReportSummary {
    *  never conflated with a load that captured diagnostics and found nothing. */
   diagnosticsAvailable: boolean;
   diagnostics: GeometryDiagnostics | null;
+  /** See `ModelLoadReportFields.omittedTypeRecords`; the panel words it per locale. */
+  omittedTypeRecords: number | undefined;
   /** Actionable, human-readable lines — each names what happened AND what a
    *  user can do about it. Empty when nothing diagnostic-worthy was found. */
   actions: string[];
@@ -114,6 +122,11 @@ export interface LoadReportSummary {
   /** True only when diagnostics were captured AND report nothing: the
    *  "quiet report" state distinct from "unavailable". */
   isClean: boolean;
+}
+
+/** True when this load is known to have left type geometry out (#8341). */
+export function hasOmittedTypeRecords(report: Pick<LoadReportSummary, 'omittedTypeRecords'>): boolean {
+  return (report.omittedTypeRecords ?? 0) > 0;
 }
 
 function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): string[] {
@@ -181,6 +194,7 @@ export function buildLoadReport(model: FederatedModel): LoadReportSummary {
   const diagnosticsAvailable = d != null;
   const actions = buildActions(model, d);
   const affectedEntities = buildAffectedEntities(model, d);
+  const omittedTypeRecords = model.omittedTypeRecords;
   return {
     modelId: model.id,
     name: model.name,
@@ -194,9 +208,11 @@ export function buildLoadReport(model: FederatedModel): LoadReportSummary {
     skipSmallCuts: model.skipSmallCuts,
     diagnosticsAvailable,
     diagnostics: d,
+    omittedTypeRecords,
     actions,
     affectedEntities,
-    isClean: diagnosticsAvailable && actions.length === 0 && affectedEntities.length === 0,
+    isClean: diagnosticsAvailable && actions.length === 0 && affectedEntities.length === 0
+      && !hasOmittedTypeRecords({ omittedTypeRecords }),
   };
 }
 
@@ -223,6 +239,7 @@ export function buildLoadReportJSON(reports: readonly LoadReportSummary[]): Reco
       skipSmallCuts: r.skipSmallCuts,
       diagnosticsAvailable: r.diagnosticsAvailable,
       diagnostics: r.diagnostics,
+      omittedTypeRecords: r.omittedTypeRecords,
       actions: r.actions,
       affectedEntities: r.affectedEntities,
       isClean: r.isClean,

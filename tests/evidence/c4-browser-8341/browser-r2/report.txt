@@ -1,0 +1,37 @@
+Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.
+
+browser cold-load A/B  base=a7164756b7d031a799e0075e141555185d7b8ef3  branch=2f028bb080e8e5a1a0fb89539480de404e425400
+
+  AC20-FZK-Haus.ifc  (5 a7164756b7d031a799e0075e141555185d7b8ef3 sample(s), 5 2f028bb080e8e5a1a0fb89539480de404e425400 sample(s))
+    metric                         a7164756b7d031a799e0075e141555185d7b8ef3 2f028bb080e8e5a1a0fb89539480de404e425400   delta    noise
+    first-batch (geom submitted)         221       226    +2.3%    ±19%  ·
+    first-visible (actual paint)         581       563    -3.1%    ±17%  ·
+    stream-complete                      690       657    -4.8%    ±10%  ·
+    spatial-ready                        803       779    -3.0%    ±11%  ·
+    metadata-complete                    893       895    +0.2%    ±13%  ·
+    METADATA + RENDER (observed)        1046      1003    -4.1%    ±12%  ·
+    app total (legacy CI metric)         943       944    +0.1%    ±12%  ·
+
+  duplex.ifc  (5 a7164756b7d031a799e0075e141555185d7b8ef3 sample(s), 5 2f028bb080e8e5a1a0fb89539480de404e425400 sample(s))
+    metric                         a7164756b7d031a799e0075e141555185d7b8ef3 2f028bb080e8e5a1a0fb89539480de404e425400   delta    noise
+    first-batch (geom submitted)         320       351    +9.7%    ±17%  ·
+    first-visible (actual paint)         658       659    +0.2%     ±9%  ·
+    stream-complete                      722       713    -1.2%     ±8%  ·
+    spatial-ready                        853       841    -1.4%     ±5%  ·
+    metadata-complete                    980       958    -2.2%     ±4%  ·
+    METADATA + RENDER (observed)        1095      1090    -0.5%     ±4%  ·
+    app total (legacy CI metric)        1040      1014    -2.5%     ±4%  ·
+
+  ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc  (5 a7164756b7d031a799e0075e141555185d7b8ef3 sample(s), 5 2f028bb080e8e5a1a0fb89539480de404e425400 sample(s))
+    metric                         a7164756b7d031a799e0075e141555185d7b8ef3 2f028bb080e8e5a1a0fb89539480de404e425400   delta    noise
+    first-batch (geom submitted)         933       815   -12.6%    ±21%  ·
+    first-visible (actual paint)        1423      1242   -12.7%     ±2%  ✅
+    stream-complete                     4843      4818    -0.5%     ±4%  ·
+    spatial-ready                       1139      1267   +11.2%    ±11%  ⛔
+    metadata-complete                   1288      1431   +11.1%    ±17%  ·
+    METADATA + RENDER (observed)        5201      5210    +0.2%     ±4%  ·
+    app total (legacy CI metric)        4970      4943    -0.5%     ±4%  ·
+
+VERDICT: a metric moved beyond the noise floor (✅ faster / ⛔ slower). a7164756b7d031a799e0075e141555185d7b8ef3 vs 2f028bb080e8e5a1a0fb89539480de404e425400. totalMeshes matched across all rounds on every fixture with comparable samples.
+
+(machine-readable report → /home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/measurement-r2/report.json)

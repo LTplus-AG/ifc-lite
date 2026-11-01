@@ -163,7 +163,7 @@ build_status=$?
 # not silently publish them.
 OUT_DIR="apps/viewer/dist"
 if [ $build_status -eq 0 ] && [ "$SOURCEMAPS_ON" = 1 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
-  # Every chunk vite-plugin-top-level-await wraps is re-printed by SWC after the
+  # Every worker chunk vite-plugin-top-level-await wraps is re-printed by SWC after the
   # bundler ran, which drops the trailing `//# sourceMappingURL=` comment (the
   # map itself is kept in step by our patch to that plugin). posthog-cli documents that it
   # locates maps via that comment (see its --public-path-prefix flag: "we need

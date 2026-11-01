@@ -1,0 +1,12 @@
+{
+  "source": "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/src-5287a9a5bb",
+  "branch": "5287a9a5bbf5997dd70447a1a1f64eeea3c08e4b",
+  "base": "70da3ece1be6a9b19730cb894d033ee30167650d",
+  "fixtures": {
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/AC20-FZK-Haus.ifc": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/duplex.ifc": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/c4-browser-8341-v1/fixtures/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+  },
+  "iters": 5,
+  "task": "prepared-c4-10b-l1-native-8341-r3"
+}

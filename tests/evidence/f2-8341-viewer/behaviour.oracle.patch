@@ -1,0 +1,12 @@
+diff --git b/packages/geometry/src/geometry-parallel.ts a/packages/geometry/src/geometry-parallel.ts
+--- b/packages/geometry/src/geometry-parallel.ts
++++ a/packages/geometry/src/geometry-parallel.ts
+@@ -1296,7 +1296,7 @@ export async function* processParallel(
+         drainQueuedChunksIfReady();
+       } else if (evt.type === 'complete') {
+         prepassJobsTotal = evt.totalJobs as number;
+-        omittedTypeRecords = undefined;
++        omittedTypeRecords = parseOmittedTypeRecords(evt.omittedTypeRecords);
+         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
+         trace.milestone('prepass.complete');
+         // Unconditionally drive the prepass-complete handler here.

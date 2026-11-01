@@ -180,6 +180,26 @@ describe('buildLoadReport', () => {
   });
 });
 
+describe('omitted type records (#8341)', () => {
+  it('carries a known count and stops a clean CSG report from reading as clean', () => {
+    const r = buildLoadReport(model({ diagnostics: diag(), omittedTypeRecords: 2 }));
+    assert.equal(r.omittedTypeRecords, 2);
+    assert.equal(r.isClean, false);
+  });
+
+  it('keeps a 0 or unknown count out of the way: a clean load stays clean', () => {
+    assert.equal(buildLoadReport(model({ diagnostics: diag(), omittedTypeRecords: 0 })).isClean, true);
+    const unknown = buildLoadReport(model({ diagnostics: diag() }));
+    assert.equal(unknown.omittedTypeRecords, undefined);
+    assert.equal(unknown.isClean, true);
+  });
+
+  it('exports the count in the JSON report', () => {
+    const json = buildLoadReportJSON([buildLoadReport(model({ omittedTypeRecords: 4 }))]);
+    assert.equal((json.models as Array<Record<string, unknown>>)[0].omittedTypeRecords, 4);
+  });
+});
+
 describe('buildLoadReports', () => {
   it('builds one report per model, in map order', () => {
     const models = new Map([

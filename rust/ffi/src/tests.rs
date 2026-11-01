@@ -10,6 +10,11 @@
 use super::*;
 use std::ptr;
 
+// The golden pin format shared with the server route pins (`output_pin`).
+#[path = "../../export/tests/support/golden.rs"]
+#[allow(dead_code)] // shared helper; this binary uses `check`, not `finish`
+mod golden;
+
 /// A self-contained, well-formed IFC4 file (no external fixture coupling).
 /// Project-only: it parses successfully and yields an empty mesh set, which
 /// still exercises the full read → process → serialize → allocate path.
@@ -378,5 +383,155 @@ fn issue_7782_d66_flags_reach_layer_slicing() {
             ifc_lite_free(ptr, len);
             assert_eq!(data["meshes"].as_array().unwrap().len(), count);
         }
+    }
+}
+
+/// #8341 C4-13b: the FFI parse buffer, pinned byte for byte per file in
+/// `rust/ffi/tests/golden/ffi-parse.json` with the wall-clock fields and the
+/// rayon-split point-cache counters zeroed (as the server route pins do). The
+/// response mapping is shared with the server, which adds Y-up and finishes
+/// on top; neither may reach this buffer.
+mod output_pin {
+    use super::*;
+
+    /// Owner decision on #8341: no IFC-authored finish in the FFI buffer. A
+    /// #957 type map and an occurrence's `IfcMappedItem`, both styled glossy
+    /// (`SpecularColour = 0.75`), which the server answers with
+    /// `roughness: 0.25`.
+    const GLOSSY: &str = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-8341 ffi'),'2;1');
+FILE_NAME('t.ifc','2026-10-30T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#43=IFCBOILERTYPE('2n5ASfQfT84eP9h$zLLJ4A',$,'Boiler',$,$,$,(#44),$,$,.NOTDEFINED.);
+#44=IFCREPRESENTATIONMAP(#45,#46);
+#45=IFCAXIS2PLACEMENT3D(#4,$,$);
+#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));
+#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#50=IFCSTYLEDITEM(#48,(#52),$);
+#52=IFCSURFACESTYLE($,.POSITIVE.,(#54));
+#54=IFCSURFACESTYLERENDERING(#56,$,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);
+#56=IFCCOLOURRGB($,0.6,0.5,0.4);
+#57=IFCBOILERTYPE('3n5ASfQfT84eP9h$zLLJ4A',$,'Boiler2',$,$,$,(#58),$,$,.NOTDEFINED.);
+#58=IFCREPRESENTATIONMAP(#45,#59);
+#59=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#60));
+#60=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4)),$);
+#100=IFCBUILDINGELEMENTPROXY('1occurrenceMapped0000',$,'Occ',$,$,#101,#102,$,.NOTDEFINED.);
+#101=IFCLOCALPLACEMENT($,#5);
+#102=IFCPRODUCTDEFINITIONSHAPE($,$,(#103));
+#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#104));
+#104=IFCMAPPEDITEM(#58,#105);
+#105=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
+#110=IFCSTYLEDITEM(#104,(#52),$);
+ENDSEC;
+END-ISO-10303-21;
+";
+
+    /// `(case, catalogued fixture)`; `None` is [`GLOSSY`]. FZK-Haus and the
+    /// BIMcollab file author finishes too; IfcOpenHouse authors none.
+    const CASES: &[(&str, Option<&str>)] = &[
+        ("glossy-synthetic", None),
+        ("AC20-FZK-Haus", Some("ara3d/AC20-FZK-Haus.ifc")),
+        ("BIMcollab_STR_IFC2X3", Some("various/02_BIMcollab_Example_STR_random_C_ebkp.ifc")),
+        ("IfcOpenHouse_IFC4", Some("ara3d/IfcOpenHouse_IFC4.ifc")),
+    ];
+
+    /// Keys whose number is not a function of the file: every `*_ms` timing
+    /// and the per-thread point-cache counters.
+    const UNSTABLE_KEYS: [&[u8]; 3] = [b"_ms\":", b"point_cache_hits\":", b"point_cache_misses\":"];
+
+    /// Zero each unstable key's integer value, on the bytes as emitted. Text,
+    /// not a JSON round trip, so the pin never depends on how a reader
+    /// re-formats floats. A key cannot occur inside a JSON string value: its
+    /// closing quote would be escaped there.
+    fn zero_unstable(buffer: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(buffer.len());
+        let mut i = 0;
+        while i < buffer.len() {
+            out.push(buffer[i]);
+            i += 1;
+            if UNSTABLE_KEYS.iter().any(|key| out.ends_with(key)) && buffer.get(i).is_some_and(u8::is_ascii_digit) {
+                while buffer.get(i).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                }
+                out.push(b'0');
+            }
+        }
+        out
+    }
+
+    fn ffi_buffer(path: &std::path::Path) -> Vec<u8> {
+        let path = path.to_str().unwrap();
+        let (mut out_ptr, mut out_len) = (ptr::null_mut(), 0usize);
+        let code = unsafe { ifc_lite_parse(path.as_ptr(), path.len(), &mut out_ptr, &mut out_len) };
+        assert_eq!(code, 0, "{path} must parse");
+        let buffer = unsafe { slice::from_raw_parts(out_ptr, out_len) }.to_vec();
+        unsafe { ifc_lite_free(out_ptr, out_len) };
+        buffer
+    }
+
+    #[test]
+    fn zero_unstable_rewrites_only_the_unstable_numbers() {
+        let raw = br#"{"a_ms":12,"x":"b_ms\":3","point_cache_hits":40,"c":[7],"total_ms":0}"#;
+        let zeroed = br#"{"a_ms":0,"x":"b_ms\":3","point_cache_hits":0,"c":[7],"total_ms":0}"#;
+        assert_eq!(zero_unstable(raw), zeroed.to_vec());
+    }
+
+    #[test]
+    fn ffi_buffer_carries_no_ifc_authored_finish_8341() {
+        let path = temp_path("glossy-finish");
+        std::fs::write(&path, GLOSSY).unwrap();
+        let buffer = ffi_buffer(&path);
+        let _ = std::fs::remove_file(&path);
+        let parsed: serde_json::Value = serde_json::from_slice(&buffer).unwrap();
+        let meshes = parsed["meshes"].as_array().expect("meshes");
+        assert!(meshes.len() >= 2, "both glossy reaches render");
+        for mesh in meshes {
+            for key in ["metallic", "roughness"] {
+                assert!(mesh.get(key).is_none(), "FFI mesh {} carries `{key}`", mesh["express_id"]);
+            }
+        }
+    }
+
+    #[test]
+    fn ffi_parse_buffers_match_their_pins_8341() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden");
+        let mut pins = golden::Golden::new(&dir, "ffi-parse", "cargo test -p ifc-lite-ffi ffi_parse_buffers_match_their_pins");
+        let mut produced = Vec::new();
+        for (case, fixture) in CASES {
+            let buffer = match fixture {
+                None => {
+                    let path = temp_path("glossy-pin");
+                    std::fs::write(&path, GLOSSY).unwrap();
+                    let buffer = ffi_buffer(&path);
+                    let _ = std::fs::remove_file(&path);
+                    buffer
+                }
+                Some(rel) if ifc_lite_testkit::fixture_present(rel) => ffi_buffer(&ifc_lite_testkit::fixture_path(rel)),
+                Some(rel) => {
+                    eprintln!("skip {rel}: absent (run `pnpm fixtures`)");
+                    continue;
+                }
+            };
+            pins.record(*case, &zero_unstable(&buffer));
+            produced.push(case.to_string());
+        }
+        // A skipped fixture keeps its pin: check only what ran, unless every case ran.
+        let expected: Vec<String> = if produced.len() == CASES.len() {
+            produced
+        } else {
+            CASES.iter().map(|(case, _)| case.to_string()).collect()
+        };
+        let report = pins.check(&expected);
+        assert!(report.is_empty(), "{report}");
     }
 }

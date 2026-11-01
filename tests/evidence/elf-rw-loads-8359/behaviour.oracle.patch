@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/elf-rw-loads.mjs b/scripts/perf/elf-rw-loads.mjs
+--- a/scripts/perf/elf-rw-loads.mjs
++++ b/scripts/perf/elf-rw-loads.mjs
+@@ -64,7 +64,7 @@ export function mergedWritableLoads(loads) {
+     const end = pageUp(a.vaddr + a.memsz);
+     const noAnonTail = pageUp(a.vaddr + a.filesz) === end;
+     const adjacent = end === Math.floor(b.vaddr / PAGE) * PAGE;
+-    if (false && sameDelta && noAnonTail && adjacent) hazards.push([a, b]);
++    if (sameDelta && noAnonTail && adjacent) hazards.push([a, b]);
+   }
+   return hazards;
+ }

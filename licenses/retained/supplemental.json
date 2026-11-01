@@ -49,6 +49,32 @@
     ]
   },
   {
+    "name": "r-efi",
+    "version": "5.3.0",
+    "election": "MIT",
+    "attribution": "r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+    "notices": [
+      {
+        "origin": "AUTHORS",
+        "file": "texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt",
+        "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+      }
+    ]
+  },
+  {
+    "name": "wide",
+    "version": "1.4.0",
+    "election": "Zlib",
+    "attribution": "wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT",
+    "notices": [
+      {
+        "origin": "LICENSE-ZLIB.md",
+        "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
+        "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
+      }
+    ]
+  },
+  {
     "name": "wasm_sync",
     "version": "0.1.2",
     "election": "Apache-2.0",

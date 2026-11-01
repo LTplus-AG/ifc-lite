@@ -54,6 +54,8 @@ pub(super) struct ScanOutput {
     pub(super) total_entities: usize,
     pub(super) site_entity_pos: Option<(usize, usize)>,
     pub(super) building_entity_pos: Option<(usize, usize)>,
+    /// F2 (#8341): type records dropped from the type plan, distinct, ascending.
+    pub(super) omitted_type_records: Vec<u32>,
 }
 
 /// The scan loop's state: what it reads, what it fills, and the inline index.
@@ -97,6 +99,7 @@ pub(super) fn scan_entities(
         total_entities: 0,
         site_entity_pos: None,
         building_entity_pos: None,
+        omitted_type_records: Vec::new(),
     };
     let mut scan = Scan {
         content,
@@ -116,10 +119,13 @@ pub(super) fn scan_entities(
     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     let discovery = scan.discovery;
-    let type_plan = crate::discovery::TypeGeometryPlan::from_scan(
+    let mut type_plan = crate::discovery::TypeGeometryPlan::from_scan(
         discovery.types, discovery.mapped_item_plan,
         crate::element::TypeGeometryMode::SuppressInstanced,
     );
+    // F2 (#8341): the browser's full-decoder admission, so neither side
+    // schedules a type job that can only fail, and both report the record.
+    scan.out.omitted_type_records = type_plan.retain_decodable_products(scan.decoder);
     for (id, start, end, ty, maps) in type_plan.products {
         for (map, _) in maps {
             scan.out

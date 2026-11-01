@@ -170,15 +170,17 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
 
     check_property_sets(&input.property_sets, true, &mut check)?;
     assert_eq!(input.property_sets.holes(), 0, "component property sets require present records");
+    let mut ordinals = SetOrdinals::default();
     for (name, set) in sorted_property_sets(input) {
         let members = member_array(set, "properties");
-        components.insert(JsString::surround("pset:", &name, ""), stable_hash_json(&members));
+        components.insert(ordinals.key("pset", &name), stable_hash_json(&members));
     }
     check_quantity_sets(&input.quantity_sets, true, &mut check)?;
     assert_eq!(input.quantity_sets.holes(), 0, "component quantity sets require present records");
+    let mut ordinals = SetOrdinals::default();
     for (name, set) in sorted_quantity_sets(input) {
         let members = member_array(set, "quantities");
-        components.insert(JsString::surround("qset:", &name, ""), stable_hash_json(&members));
+        components.insert(ordinals.key("qset", &name), stable_hash_json(&members));
     }
 
     check_type_assignments(&input.type_assignments, true, &mut check)?;
@@ -204,6 +206,23 @@ pub fn build_component_fingerprint_entries_checked<E>(input: &DataFingerprintInp
     }
 
     Ok(components.0)
+}
+
+/// Component keys for one sorted set collection (#8136). The first set of a
+/// name keeps `pset:<Name>`; later same-named sets get `pset#<n>:<Name>`
+/// instead of overwriting it, so `dataHash` and the components still cover the
+/// same content. The ordinal sits in the prefix because a name may contain
+/// `#` or `:`; everything after the first `:` is the name. Sets arrive sorted
+/// by name then content, so ordinals follow content order.
+#[derive(Default)]
+pub(super) struct SetOrdinals { last: Option<JsString>, ordinal: u32 }
+impl SetOrdinals {
+    pub(super) fn key(&mut self, kind: &str, name: &JsString) -> JsString {
+        if self.last.as_ref() == Some(name) { self.ordinal += 1; }
+        else { self.last = Some(name.clone()); self.ordinal = 1; }
+        if self.ordinal == 1 { JsString::surround(&format!("{kind}:"), name, "") }
+        else { JsString::surround(&format!("{kind}#{}:", self.ordinal), name, "") }
+    }
 }
 
 pub(super) struct OrderedComponents(pub(super) Vec<(JsString, String)>);

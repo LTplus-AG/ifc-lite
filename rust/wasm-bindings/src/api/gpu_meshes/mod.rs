@@ -35,7 +35,6 @@ mod prepass_sharded;
 mod source_fingerprint;
 pub(super) mod style_finishes;
 mod prepass_from_source;
-mod void_index;
 mod prepass_affinity;
 mod source_fingerprint_prepass;
 
@@ -55,3 +54,7 @@ pub(crate) use batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENC
 #[cfg(test)]
 #[path = "c4_11a_tests.rs"]
 mod c4_11a_tests;
+
+#[cfg(test)]
+#[path = "c4_7b_tests.rs"]
+mod c4_7b_tests;

@@ -89,3 +89,21 @@ test.skipIf(!existsSync(binary))('#8042 bounded dense batches snapshot all adapt
     dataHash: oracle.buildDataFingerprint(input), components: oracle.buildComponentFingerprints(input),
   })));
 });
+
+test.skipIf(!existsSync(binary))('#8136 same-named sets keep one ordinal key each, unary and batch, in oracle order', async () => {
+  const { initDiffSync } = await import('./wasm-runtime.js');
+  initDiffSync({ module: readFileSync(binary) });
+  const { buildFingerprintBatch } = await import('./internal.js');
+  const { buildComponentFingerprints } = await import('./wasm-fingerprint.js');
+  const set = (name: string, value: unknown) => ({ name, properties: [{ name: 'p', value }] });
+  const input: DataFingerprintInput = {
+    ifcType: 'IfcWall',
+    propertySets: [set('X', 2), set('X#2', 1), set('X', 1), set('2:X', 1), set('X', 3)],
+    quantitySets: [{ name: 'Q', quantities: [{ name: 'a', value: 2 }] }, { name: 'Q', quantities: [{ name: 'a', value: 1 }] }],
+  };
+  const expected = Object.entries(oracle.buildComponentFingerprints(input));
+  expect(expected.map(([key]) => key)).toEqual(
+    ['attr:core', 'pset:2:X', 'pset:X', 'pset#2:X', 'pset#3:X', 'pset:X#2', 'qset:Q', 'qset#2:Q']);
+  expect(Object.entries(buildComponentFingerprints(input))).toEqual(expected);
+  expect(Object.entries(buildFingerprintBatch([input])[0].components)).toEqual(expected);
+});

@@ -43,7 +43,7 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     crate::resource::charge(crate::resource::Cost {
         work: (positions.len() / 3 + rows.len()) as u64,
         live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4) as u64
-            + u64::from(row_count).saturating_sub(rows.len() as u64) * DROPPED_ROW_BYTES,
+            + u64::from(row_count).saturating_sub(emitted_rows(&rows)) * DROPPED_ROW_BYTES,
         ..Default::default()
     })?.retain();
     Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, length_unit_scale: scale })
@@ -56,6 +56,14 @@ const DROPPED_ROW_BYTES: u64 = 256;
 /// One f32 step here is a visible length: distinct levels can round together though every
 /// point stays distinct, leaving a real face collinear.
 const COARSE_F32_STEP_METRES: f64 = 1e-3;
+
+/// How many authored rows still hold a triangle: one polygon row can hold many.
+fn emitted_rows(rows: &[u32]) -> u64 {
+    let mut distinct = rows.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    distinct.len() as u64
+}
 
 /// Whether f32 cannot be trusted with these points: its step is coarse at their magnitude, or
 /// two distinct authored points become one. Below that, a collapse is a sub-millimetre sliver,

@@ -139,3 +139,19 @@ fn issue_8291_dropped_rows_are_paid_for_at_capture() {
     // Each collapsed row leaves the arrays but keeps a slot downstream: 100 of them must not be free.
     assert!(account().scope(|| capture_source(&set(&",(1,1,1)".repeat(100)), 2)).is_err());
 }
+
+#[test]
+fn issue_8291_a_polygon_of_many_triangles_does_not_hide_dropped_rows() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    // One convex row of 101 triangles: counting triangles as rows would make 100 dropped rows free.
+    let points: Vec<String> = (0..103).map(|i| { let a = f64::from(i) * std::f64::consts::TAU / 103.; format!("({:.3},{:.3},0.)", 1000. * a.cos(), 1000. * a.sin()) }).collect();
+    let ring: Vec<String> = (1..=103).map(|i| i.to_string()).collect();
+    let set = |dropped: u32| {
+        let faces: Vec<String> = (0..=dropped).map(|f| format!("#{}", 10 + f)).collect();
+        let empties: String = (1..=dropped).map(|f| format!("#{}=IFCINDEXEDPOLYGONALFACE((1,999,2));\n", 10 + f)).collect();
+        format!("#1=IFCCARTESIANPOINTLIST3D(({}));\n#10=IFCINDEXEDPOLYGONALFACE(({}));\n{empties}#6=IFCPOLYGONALFACESET(#1,.F.,({}),$);", points.join(","), ring.join(","), faces.join(","))
+    };
+    let account = || ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { live_bytes: Some(10_000), ..Default::default() }));
+    assert_eq!(account().scope(|| capture_source(&set(0), 6)).unwrap().rows.len(), 101);
+    assert!(account().scope(|| capture_source(&set(100), 6)).is_err());
+}

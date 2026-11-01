@@ -32,7 +32,7 @@ async function run() {
       }));
       const renderer = new SplatRenderer(device, { data: batches, viewportSize: [64, 64],
         modelViewProjectionMatrix: projection(orthographic, true), depthConvention: 'reverse', depthCompare: 'greater' });
-      async function sample(name, props, clearDepth) {
+      const sample = async (name, props, clearDepth) => {
         renderer.setProps(props);
         const encoder = device.createCommandEncoder({});
         renderer.predraw(encoder);
@@ -42,7 +42,7 @@ async function run() {
         const { centerPixel } = await captureTexture(device.handle, color.handle, 64, 64);
         results.push({ projection: orthographic ? 'orthographic' : 'perspective', name, centerPixel,
           order: Array.from(renderer.getSortedIndices()), visible: renderer.stats.visibleSplatCount });
-      }
+      };
       try {
         await sample('reverse-constructor', {}, 0);
         // Keep the projection fixed: catches failure to invalidate cached sorting.

@@ -44,7 +44,9 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
     move() { alternate = !alternate; pose(); app.renderNextFrame = true; },
     toggle(kind) { const target = kind === 'ifc' ? ifc : kind === 'points' ? pointRoot : captureRoot; target.enabled = !target.enabled; app.renderNextFrame = true; },
     addPoints(chunk) {
-      for (const child of [...pointRoot.children]) child.destroy();
+      // destroy() removes children from the parent, so iterate a snapshot.
+      const children = pointRoot.children.slice();
+      for (const child of children) child.destroy();
       const mesh = new pc.Mesh(device); mesh.setPositions(chunk.positions);
       if (chunk.colors) mesh.setColors(chunk.colors, 3);
       mesh.update(pc.PRIMITIVE_POINTS, false); ownedMeshes.push(mesh);

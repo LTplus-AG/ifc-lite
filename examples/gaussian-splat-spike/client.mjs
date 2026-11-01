@@ -23,7 +23,7 @@ try {
   const name = new URLSearchParams(location.search).get('backend') ?? 'luma';
   status.textContent = `Creating ${name} shared scene…`;
   const backend = await (name === 'playcanvas' ? playcanvasBackend : lumaBackend)(canvas, meshes, captures, placements);
-  function update() { status.textContent = JSON.stringify(backend.stats(), null, 2); }
+  const update = () => { status.textContent = JSON.stringify(backend.stats(), null, 2); };
   for (const kind of ['ifc', 'points', 'splats']) document.querySelector(`#hide-${kind}`).onclick = () => { backend.toggle(kind); update(); };
   document.querySelector('#move').onclick = () => { backend.move(); update(); };
   document.querySelector('#dispose').onclick = async () => { await backend.destroy(); update(); };

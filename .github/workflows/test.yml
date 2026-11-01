@@ -3287,6 +3287,13 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
+    # DISK (hosted runners): at full DWARF these legs leave a 22.9 GB target
+    # dir (CARGO_INCREMENTAL=0), and a hosted runner ran out of disk here
+    # (merge-queue #8502, job 124766198979). Line tables, as rust-tests uses:
+    # 9.1 GB for the same legs.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3373,6 +3380,9 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
       - name: Mark warm target dir finished
         if: always() && env.CARGO_TARGET_DIR != ''
         run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
@@ -3675,6 +3685,18 @@ jobs:
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
+    # DISK (hosted runners). Three feature builds of ifc-lite-geometry's 174
+    # test binaries each, in one target dir, at full DWARF: 18.7, 36.8 and
+    # 55.1 GB after each leg (CARGO_INCREMENTAL=0, as rust-cache sets it).
+    # Hosted runners ran out of disk mid-job (merge-queue #8503, job
+    # 124761262718, "No space left on device"). Line tables, as rust-tests
+    # uses, keep file:line in panics; each leg's geometry artifacts are
+    # cleaned after it, since the next leg rebuilds the crate with other
+    # features anyway, so the peak is one leg rather than the sum: 7.5 GB,
+    # measured in this exact shape.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3737,10 +3759,14 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
+      - name: Free the previous leg's geometry artifacts
+        run: cargo clean -p ifc-lite-geometry && df -h .
       - name: Rust tests (csg_topology_gate)
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
+      - name: Free the previous leg's geometry artifacts (again)
+        run: cargo clean -p ifc-lite-geometry && df -h .
 
       # The combined build, because the third set of pins is asserted by nothing
       # else: under both gates issue_098_v5c measures 552 unpaired edges and
@@ -3751,6 +3777,9 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
 
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math

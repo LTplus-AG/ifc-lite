@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { webgpuAdapter } from '@luma.gl/webgpu';
 import { makeGPUSplatData, SplatRenderer } from '@luma.gl/splats';
+import { intersectionWitness } from './intersection-witness.mjs';
 import { MathUtils } from '../../../packages/renderer/src/math.ts';
 
 async function readPixels(raw, texture, size) {
@@ -40,6 +41,7 @@ async function run() {
   raw.addEventListener('uncapturederror', e => errors.push(e.error.message));
   const device = await webgpuAdapter.attach(raw, { createCanvasContext: false, onError: e => errors.push(e.message) });
   const results = [];
+  let intersection;
   try {
     // One renderer is resized in-place between 64 and 80, using native-owned
     // attachments/encoder/pass/submission. No canvas, loader, or splat shader.
@@ -102,6 +104,7 @@ async function run() {
         } finally { combined.destroy(); reference.destroy(); batches.forEach(b => b.destroy()); referenceData.destroy(); }
       }
     }
+    intersection = await intersectionWitness(device, raw, readPixels);
   } finally { device.destroy(); }
   raw.pushErrorScope('validation');
   const survivor = raw.createBuffer({ size: 4, usage: GPUBufferUsage.COPY_DST });
@@ -109,6 +112,6 @@ async function run() {
   await raw.queue.onSubmittedWorkDone();
   const ownershipError = await raw.popErrorScope();
   survivor.destroy(); raw.destroy();
-  return { results, errors, ownershipError: ownershipError?.message ?? null, gpu: device.info };
+  return { results, intersection, errors, ownershipError: ownershipError?.message ?? null, gpu: device.info };
 }
 window.nativeWitness = run().then(result => ({ result }), error => ({ error: error.stack }));

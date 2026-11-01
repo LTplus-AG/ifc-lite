@@ -40,6 +40,8 @@ try {
       assert.deepEqual(witness.result.errors, []);
       assert.equal(witness.result.ownershipError, null);
       assert.equal(witness.result.results.length, 16);
+      assert.ok(witness.result.intersection.glassFirstDifferentChannels > 0);
+      assert.ok(witness.result.intersection.splatsFirstDifferentChannels > 0);
       for (const row of witness.result.results) {
         assert.equal(row.drawRuns, exact ? 96 : 64);
         assert.equal(row.changedPixels === 0, exact, JSON.stringify(row));

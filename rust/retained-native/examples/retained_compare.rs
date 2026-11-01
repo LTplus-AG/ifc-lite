@@ -113,17 +113,17 @@ fn compare(
     let exact_ms = start.elapsed().as_secs_f64() * 1000.;
     report.exact_ms += exact_ms;
     let exact_rss = report::rss(false)?;
-    let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
     let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
     let layer_candidates = layer_report::candidates(&bytes);
     let exact_metrics = measure_exact(&exact, &layer_candidates)?;
+    // #7955 ruling 2: the gated retained-vs-exact rows use exact before its world
+    // f32 rounding. The default run above keeps owning the universe and reports.
+    let unrounded_start = Instant::now();
+    let unrounded = measure_exact(&precision::exact_unrounded(&bytes), &layer_candidates)?;
+    report.exact_unrounded_ms += unrounded_start.elapsed().as_secs_f64() * 1000.;
     for mesh in &exact.meshes {
         let items = exact_items.entry(mesh.express_id).or_default();
         match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
-        exact_origins
-            .entry(mesh.express_id)
-            .or_default()
-            .push(mesh.origin);
     }
     let source = SourceBundle::new(bytes.clone());
     let candidates: BTreeSet<_> = canonical_element_jobs(&source)
@@ -203,12 +203,15 @@ fn compare(
                             report.violations.push(format!("{model}:{id}: {e}"));
                         }
                     }
+                    if exact_metrics.contains_key(&id) && !unrounded.contains_key(&id) {
+                        report.violations.push(format!("{model}:{id}: exact has no mesh before f32 rounding"));
+                    }
                     // An authored face set claims no closed solid: an open shell is its source, and
                     // the authored-row oracles prove the published triangles are exactly that.
                     let closed_shell = actual.defects == 0;
                     if shape.parts.iter().any(|part| part.source_exact) {
                         // Measure closure over what the kernel built: authored parts claim none.
-                        let mut built = metrics::Metrics::default();
+                        let mut built = Metrics::default();
                         for part in shape.parts.iter().filter(|part| !part.source_exact) {
                             let points: Vec<_> = part.positions.chunks_exact(3)
                                 .map(|p| transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();
@@ -218,12 +221,6 @@ fn compare(
                         }
                         actual.defects = built.defects;
                     }
-                    let rounded = exact_origins.get(&id).and_then(|origins| {
-                        match precision::measure(&shape, exact.frame, origins) {
-                            Ok(metrics) => Some(metrics),
-                            Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
-                        }
-                    });
                     let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
                         // A face set has no analytic quantity: its authored-row oracle is the authority.
@@ -244,8 +241,8 @@ fn compare(
                         &model,
                         &shape,
                         &actual,
-                        rounded.as_ref(),
-                        exact_metrics.get(&id),
+                        Some(&actual),
+                        exact_metrics.get(&id).and(unrounded.get(&id)),
                         expectation,
                         tolerances,
                         ms,

@@ -5,7 +5,7 @@
 //! equal the analytic source's. Exact item projection is reported, never gated.
 use super::OracleResult;
 use ifc_lite_processing::AnalyticQuantitySources;
-use ifc_lite_retained_native::{oracle::faces, ShapeOnlyProduct};
+use ifc_lite_retained_native::{oracle::faces::{self, FaceAreas}, ShapeOnlyProduct};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -88,7 +88,83 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
         else { return results };
     // Face-set rows have no analytic quantity: the authored-row oracles (checks/face_sets.rs) gate them.
     let actual: BTreeMap<_, _> = actual.into_iter().filter(|(key, _)| !key.contains(":row(")).collect();
+    let runs = faces::collinear_runs(sources, product.product_id).unwrap_or_default();
+    results.extend(compare(&expected, &actual, &runs, tolerances));
+    results
+}
+
+/// #7955 ruling 3: the only missing key the comparison allows is a 2-4 mm side
+/// the kernel folded into a collinear neighbour of the same authored run
+/// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074). The
+/// 1 nm slack only absorbs the rounding of the width's own arithmetic, so an
+/// authored 2.0 or 4.0 mm side is not lost a few ulps short of the bound.
+pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.002 - 1e-9..=0.004 + 1e-9;
+
+/// Receiver assignments searched per run. Single-receiver sides cost nothing; only
+/// sides with a present neighbour on both ends double it (16 such sides).
+pub const MAX_MERGE_CHOICES: usize = 1 << 16;
+
+/// Missing keys of one run folded into a present neighbour, when some choice of
+/// neighbour per missing key makes every receiving key's area equal its own source
+/// area plus the areas it absorbed, within the frozen linear face-area limit.
+fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &FaceAreas, actual: &BTreeMap<String, f64>, limit: f64) -> Vec<(usize, usize)> {
+    let present = |i: usize| actual.contains_key(&run.keys[i]);
+    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i]) && MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]);
+    let missing: Vec<usize> = (0..run.keys.len()).filter(|&i| absorbable(i)).collect();
+    // Nearest present key on each side, skipping only other absorbable sides.
+    let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {
+        let left = (0..i).rev().find(|&j| !absorbable(j)).filter(|&j| present(j));
+        let right = (i + 1..run.keys.len()).find(|&j| !absorbable(j)).filter(|&j| present(j));
+        left.into_iter().chain(right).collect()
+    }).collect();
+    if missing.is_empty() || candidates.iter().any(Vec::is_empty) { return Vec::new(); }
+    // Only a side between two present neighbours has a choice. Fail closed past
+    // MAX_MERGE_CHOICES assignments rather than search unboundedly (#8531).
+    let Some(total) = candidates.iter().try_fold(1usize, |n, c| n.checked_mul(c.len())).filter(|&n| n <= MAX_MERGE_CHOICES)
+        else { return Vec::new(); };
+    for choice in 0..total {
+        let (mut rest, mut assignment) = (choice, Vec::new());
+        for (&i, options) in missing.iter().zip(&candidates) {
+            assignment.push((i, options[rest % options.len()]));
+            rest /= options.len();
+        }
+        let mut receiving: BTreeMap<usize, f64> = BTreeMap::new();
+        for &(i, into) in &assignment {
+            *receiving.entry(into).or_insert(expected.get(&run.keys[into]).map_or(f64::NAN, |e| e.area_m2)) += expected[&run.keys[i]].area_m2;
+        }
+        if receiving.iter().all(|(&into, &area)| (actual[&run.keys[into]] - area).abs() / area <= limit) { return assignment; }
+    }
+    Vec::new()
+}
+
+/// Key set and per-key areas of an uncut product against the source. A missing
+/// key passes only as a counted `faceKeysKernelMerged` outcome; nothing widens.
+pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[faces::CollinearRun], tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let limit = |kind: &str| tolerances["faceAreaRelative"][kind].as_f64().unwrap_or(f64::NAN);
+    let mut expected = expected.clone();
+    let mut merged = Vec::new();
+    // One key sums every instance of its solid, so it is only as narrow as its
+    // widest instance: a 5 mm side elsewhere cannot ride on a 3 mm one.
+    let mut widest: BTreeMap<&str, f64> = BTreeMap::new();
+    for run in runs {
+        for (key, &width) in run.keys.iter().zip(&run.widths_m) {
+            let entry = widest.entry(key.as_str()).or_insert(width);
+            *entry = entry.max(width);
+        }
+    }
+    for run in runs {
+        for (i, into) in merges(run, &widest, &expected, actual, limit("linear")) {
+            let (key, target) = (&run.keys[i], &run.keys[into]);
+            let area = expected.remove(key).expect("absorbable keys are expected").area_m2;
+            expected.get_mut(target).expect("receiving keys are expected").area_m2 += area;
+            merged.push(format!("{key} into {target} ({:.3} mm)", widest[run.keys[i].as_str()] * 1e3));
+        }
+    }
+    let mut results = Vec::new();
+    if !merged.is_empty() {
+        results.push(OracleResult { family: "faceKeysKernelMerged", value: merged.len() as f64, limit: f64::INFINITY, pass: true,
+            gated: false, reason: Some(merged.join("; ")), ..Default::default() });
+    }
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
     results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });
     for (family, curved) in [("faceAreaLinear", false), ("faceAreaCurved", true)] {

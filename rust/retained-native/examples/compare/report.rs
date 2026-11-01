@@ -37,6 +37,9 @@ pub struct Report {
     pub exact_only_type_products: Vec<Value>,
     /// M11-F report-only projection rows (`checks::faces::exact_projection`).
     pub face_projection: Vec<Value>,
+    /// #7955 F3: products whose source authors only open face sets, with the closed-solid
+    /// measurements (closure, exact volume/area) that were reported instead of gated.
+    pub authored_open: Vec<Value>,
     /// #7955 ruling 3: missing face keys allowed as kernel-merged collinear sides.
     pub face_merges: Vec<Value>,
 }
@@ -76,7 +79,9 @@ impl Report {
             a.volume != first.volume || a.bbox != first.bbox || a.curved != first.curved)) {
             self.violations.push(format!("{model}:{}: conflicting source authorities", shape.product_id));
         }
+        let open = results.iter().any(|r| r.family == super::checks::face_sets::AUTHORED_OPEN);
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
+            open,
             &format!("{model}:{}", shape.product_id),
             authority.map_or(curved || opening.is_some() || bounded.is_some(), |a| a.curved),
             type_product,
@@ -129,9 +134,16 @@ impl Report {
     }
     // Keep numerical gate decisions independent of publication ownership, so
     // hostile measurements can be exercised without fabricating a witness.
+    //
+    /// #7955 F3 (orchestrator ruling, 2026-11-01): a face set its source authors open is
+    /// not a closed solid, so closure and the exact volume/area it implies do not apply.
+    /// `open` comes only from the source's `Closed = FALSE` (`checks::face_sets`); each
+    /// skipped value is listed in `authoredOpenFaceSets`, and row, corner, bbox, source
+    /// and finite-measurement checks still gate.
     #[allow(clippy::too_many_arguments)]
-    fn check_measurements(
+    pub(crate) fn check_measurements(
         &mut self,
+        open: bool,
         label: &str,
         curved: bool,
         type_product: bool,
@@ -177,8 +189,8 @@ impl Report {
         for (name, value) in [
             ("source volume", source_rel),
             ("exact source volume", exact_source_rel),
-            ("exact volume", vol),
-            ("exact area", area),
+            ("exact volume", vol.filter(|_| !open)),
+            ("exact area", area.filter(|_| !open)),
             ("exact bbox", bbox),
             ("source bbox", source_bbox),
         ] {
@@ -187,7 +199,12 @@ impl Report {
                     .push(format!("{label}: nonfinite {name} deviation"));
             }
         }
-        for (i, value) in [source_rel, vol, area, bbox].into_iter().enumerate() {
+        if open {
+            self.authored_open.push(json!({"classification": "authored_open_face_set", "product": label,
+                "closureDefects": actual.defects, "exactVolumeRelative": vol.map(finite), "exactAreaRelative": area.map(finite)}));
+        }
+        let gated = |v: Option<f64>| v.filter(|_| !open);
+        for (i, value) in [source_rel, gated(vol), gated(area), bbox].into_iter().enumerate() {
             if let Some(value) = value {
                 self.maxima[i] = self.maxima[i].max(if value.is_finite() {
                     value
@@ -196,7 +213,7 @@ impl Report {
                 });
             }
         }
-        if actual.defects > 0 {
+        if actual.defects > 0 && !open {
             self.violations
                 .push(format!("{label}: {} closure defects", actual.defects));
         }
@@ -259,8 +276,8 @@ impl Report {
         }
         if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
-                (vol, "volumeRelative"),
-                (area, "areaRelative"),
+                (gated(vol), "volumeRelative"),
+                (gated(area), "areaRelative"),
                 (bbox, "bboxMetres"),
             ] {
                 if value.is_some_and(|v| v > tolerances["exactLinear"][key].as_f64().unwrap_or(0.))
@@ -280,7 +297,7 @@ impl Report {
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection),
+            "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"products":self.authored_open},
             "faceKeysKernelMerged":{"gated":false,"keys":self.face_merges.iter().filter_map(|r| r["keys"].as_f64()).sum::<f64>(),"products":self.face_merges.len(),"rows":self.face_merges}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

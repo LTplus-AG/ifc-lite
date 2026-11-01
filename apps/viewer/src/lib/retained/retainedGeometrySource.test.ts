@@ -14,7 +14,7 @@ import type { RetainedGeometrySummary } from '@/store/retainedGeometry';
 import { ScriptedHostWorker, complete, published, refused, start } from '@/test/retained-host-fixture';
 import { RetainedClient } from './retained-client';
 import { RetainedHostError } from './retained-protocol';
-import { retainedGeometryEvents, RetainedStallError, type RetainedPhase } from './retainedGeometrySource';
+import { retainedGeometryEvents, RetainedStallError, type RetainedPhase, type RetainedRunner } from './retainedGeometrySource';
 
 function run(worker: ScriptedHostWorker, options: Partial<Parameters<typeof retainedGeometryEvents>[2]> = {}) {
   const client = new RetainedClient(() => worker);
@@ -134,6 +134,45 @@ describe('#7955 M2-C retained geometry source', () => {
     assert.deepEqual(phases[0], { phase: 'starting' });
     assert.deepEqual(phases.at(-1), { phase: 'products', done: 2, candidates: 2, refused: 1 });
     client.unload();
+  });
+
+  // #7955 Holter: one store write per product kept the main thread committing React, at 11 products/s.
+  it('writes the store at most once per interval across many products, and every boundary at once', async () => {
+    const candidates = Array.from({ length: 500 }, (_, i) => i + 1);
+    const script = [start(candidates), ...candidates.map((id) => id % 2 ? published(id) : refused(id, 'incomplete')), complete];
+    const { client, events, phases, summaries, last } = run(new ScriptedHostWorker(script));
+    await collect(events);
+    const products = phases.filter((phase) => phase.phase === 'products');
+    assert.ok(products.length <= 4, `${products.length} phases for 500 products`);
+    assert.ok(summaries.length <= 6, `${summaries.length} summaries for 500 products`);
+    assert.deepEqual(products.at(-1), { phase: 'products', done: 500, candidates: 500, refused: 250 });
+    assert.equal(last().published, 250);
+    assert.equal(last().completeness, 'incomplete');
+    client.unload();
+  });
+
+  it('an idle heartbeat flushes a held report only once the interval has passed', async () => {
+    const candidates = Array.from({ length: 40 }, (_, i) => i + 1);
+    const summaries: RetainedGeometrySummary[] = [];
+    let flushedDuringIdle = false;
+    const runner = {
+      async *run() {
+        yield start(candidates);
+        for (const id of candidates) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          yield published(id);
+        }
+        // Held since the interval began. Quiet past it, and only a heartbeat can report these.
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        flushedDuringIdle = summaries.at(-1)?.published === 40;
+        yield complete;
+      },
+      cancel() {},
+    } as unknown as RetainedRunner;
+    for await (const _event of retainedGeometryEvents(runner, new Uint8Array([1]), { heartbeatMs: 1, onSummary: (summary) => summaries.push(summary) })) { /* drain */ }
+    assert.ok(summaries.length <= 5, `${summaries.length} summaries for 40 products across heartbeats`);
+    assert.ok(flushedDuringIdle, 'the held products were reported before the run ended');
+    assert.equal(summaries.at(-1)!.published, 40);
   });
 
   it('owns its stall budget: heartbeats while waiting, then a typed stall that ends the host', async () => {

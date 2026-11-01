@@ -212,6 +212,11 @@ export async function drapeGeoRasterBundle(bundle: GeoRasterBundle): Promise<voi
     const read = await readGeoRasterBundle(bundle);
     if (!read.ok) { toast.error(`Imagery not draped: ${read.reason}`); return; }
     const loaded = read.value;
+    if (terrainModels().length === 0) {
+      const { addOrthophotoBackground } = await import('./orthophotoBackground.js');
+      await addOrthophotoBackground(loaded);
+      return;
+    }
     reportDrapeOutcomes(await drapeRasterOnTerrains({
       name: loaded.name, source: 'file', placement: loaded.placement,
       image: { bytes: loaded.bytes, mime: loaded.mime },

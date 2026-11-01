@@ -226,8 +226,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // requestAnimationFrame(animate) below, and the viewer freezes for the
         // rest of the session with nothing on screen to say why. Latched to one
         // warning per session — a dead device fails every frame.
+        let submitted = false;
         try {
-          renderer.render(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
+          submitted = renderer.renderWithResult(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
         } catch (err) {
           if (!renderErrorLogged) {
             renderErrorLogged = true;
@@ -262,7 +263,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // wall time when this call produced no frame stats.
         const stats = renderer.getFrameStats();
         throttle.noteRenderCost(stats && stats.timestamp >= renderStart ? stats.cpuMs : performance.now() - renderStart);
-        framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+        // Only a frame that really reached the queue can owe the page a completion.
+        if (submitted) framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback

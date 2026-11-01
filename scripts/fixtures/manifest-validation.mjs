@@ -71,10 +71,10 @@ function requirePinnedGitHubBlobUrl(value, commit, where, errors) {
   }
 }
 
-function validateReviewedProvenance(entry, index, errors) {
+function validateReviewedProvenance(entry, index, errors, kind) {
   const where = `files[${index}]`;
   if (!isObject(entry.provenance)) {
-    invalid(errors, `${where}.provenance`, 'is required for a reviewed fixture');
+    invalid(errors, `${where}.provenance`, `is required for a reviewed ${kind} fixture`);
     return;
   }
   const { provenance } = entry;
@@ -121,7 +121,7 @@ function validateReviewedProvenance(entry, index, errors) {
 }
 
 function validateReviewedLandXmlEntry(entry, index, errors) {
-  validateReviewedProvenance(entry, index, errors);
+  validateReviewedProvenance(entry, index, errors, 'LandXML');
   const where = `files[${index}]`;
   if (!isObject(entry.producer)) {
     invalid(errors, `${where}.producer`, 'is required for a reviewed LandXML fixture');
@@ -156,7 +156,7 @@ function validateReviewedLandXmlEntry(entry, index, errors) {
 }
 
 function validateReviewedGaussianEntry(entry, index, errors) {
-  validateReviewedProvenance(entry, index, errors);
+  validateReviewedProvenance(entry, index, errors, 'Gaussian');
   const where = `files[${index}].gaussian`;
   const g = entry.gaussian;
   if (!isObject(g)) { invalid(errors, where, 'reviewed Gaussian metadata is required'); return; }

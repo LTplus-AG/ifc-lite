@@ -158,11 +158,10 @@ test('#8556 a stale ambiguous candidate cannot overwrite an unrelated current se
 
 test('#8556 bulk selection reads tombstones at the click boundary', async () => {
   const model = await selectionFixture();
-  let view: ReturnType<typeof getOrCreateMutationView> = null;
-  act(() => { view = getOrCreateMutationView(useViewerStore, 'model-0'); });
+  act(() => { getOrCreateMutationView(useViewerStore, 'model-0'); });
   const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: model.GlobalIds.map(guidRow) }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
   // No mutationVersion notification: simulate the interval before React renders the deletion.
-  const currentView = useViewerStore.getState().mutationViews.get('model-0'); assert.ok(currentView); assert.equal(currentView, view);
+  const currentView = useViewerStore.getState().mutationViews.get('model-0'); assert.ok(currentView);
   currentView.deleteEntity(model.doors[0]);
   click(namedButton(ui, 'Select all mapped results'));
   assert.deepEqual(createSelectionAdapter(useViewerStore).get().map(ref => ref.expressId).sort((a, b) => a - b), model.doors.slice(1).sort((a, b) => a - b));

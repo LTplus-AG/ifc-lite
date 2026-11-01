@@ -15,10 +15,10 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { lastFinalFitBounds, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
+import { lastFinalFitBounds, sceneSnapshotKey, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
-import { putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
+import { clearSceneSnapshot, putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
@@ -43,6 +43,11 @@ export interface AdoptedSceneSnapshot {
 function snapshotsEnabled(): boolean {
   const raw = readPerfFlag('sceneSnapshot');
   return raw === 1 || raw === true;
+}
+
+function snapshotKey(scene: SceneContents): string {
+  const { typeVisibility, typeViewMode } = useViewerStore.getState();
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility);
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */
@@ -94,8 +99,8 @@ export async function adoptCachedSceneSnapshot(
   if (!renderer || !device || !pipeline) return null;
   const scene = renderer.getScene();
   // Admission is asynchronous after viewport init, and a reload can get here first.
-  if (scene.sceneSnapshotPolicy() !== sceneSnapshotKey && isQuantizedEnabled()) await renderer.enableQuantizedBatches();
-  if (scene.sceneSnapshotPolicy() !== sceneSnapshotKey) return null;
+  if (snapshotKey(scene) !== sceneSnapshotKey && isQuantizedEnabled()) await renderer.enableQuantizedBatches();
+  if (snapshotKey(scene) !== sceneSnapshotKey) return null;
   const bytes = await trace.span('cache.snapshotRead', () => sceneSnapshot.arrayBuffer());
   const snapshot = decodeSceneSnapshot(bytes);
   const host = snapshot?.hostData as SnapshotHostData | undefined;
@@ -123,15 +128,28 @@ export async function publishAdoptedSceneMeshes(
   adopted: AdoptedSceneSnapshot,
   open: ReturnType<typeof openGeometryChunksV13>,
   modelId: string,
+  cacheResult: CacheResult,
+  cacheKey: string | undefined,
   isStale: (() => boolean) | undefined,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
   const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
-  setPendingSceneSnapshot(adopted.adoption, () => useViewerStore.getState().appendInstancedShards(modelId, adopted.shards));
+  setPendingSceneSnapshot(adopted.adoption, () => {
+    useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
+    forgetRefusedSnapshot(cacheResult, cacheKey);
+  });
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
+}
+
+/** It would be refused on every open: drop it so the next hit streams and captures a new one. */
+function forgetRefusedSnapshot({ createdAt, fullSourceHash }: CacheResult, cacheKey: string | undefined): void {
+  if (!cacheKey || createdAt === undefined) return;
+  void clearSceneSnapshot(cacheKey, { createdAt, fullSourceHash }).catch((err: unknown) => {
+    console.warn('[useIfcCache] Refused scene snapshot was not cleared:', err);
+  });
 }
 
 /** The load is over without serving its snapshot: the adopted batches must not outlive it. */
@@ -155,13 +173,14 @@ export function captureSceneSnapshotOfHit(
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();
     const fitBounds = lastFinalFitBounds();
+    const key = snapshotKey(renderer.getScene());
     if (isStale?.() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
     const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
     const hostData: SnapshotHostData = { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds(),
       shards: section ? { offset: section.offset, size: section.size } : null };
     // Off the finalize's completion, which the first frame of the finished scene waits on.
     setTimeout(() => {
-      void putSceneSnapshot(cacheKey, { createdAt, fullSourceHash }, encodeSceneSnapshot({ ...snapshot, hostData }), snapshot.policy).catch((err: unknown) => {
+      void putSceneSnapshot(cacheKey, { createdAt, fullSourceHash }, encodeSceneSnapshot({ ...snapshot, hostData }), key).catch((err: unknown) => {
         console.warn('[useIfcCache] Scene snapshot was not stored:', err);
       });
     }, 0);

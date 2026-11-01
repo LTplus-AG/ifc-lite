@@ -1,0 +1,13 @@
+diff --git b/apps/viewer/src/services/ifc-cache.ts a/apps/viewer/src/services/ifc-cache.ts
+index b8c4eb0f3c..ad2e98c392 100644
+--- b/apps/viewer/src/services/ifc-cache.ts
++++ a/apps/viewer/src/services/ifc-cache.ts
+@@ -512,7 +512,7 @@ async function updateEntryOfWrite(key: string, write: SceneSnapshotWrite, update
+     const read = store.get(key);
+     read.onsuccess = () => {
+       const entry = read.result as CacheEntry | undefined;
+-      if (!entry) return;
++      if (!entry || entry.createdAt !== write.createdAt || entry.fullSourceHash !== write.fullSourceHash) return;
+       const next = update(entry);
+       if (!next) return;
+       store.put(next);

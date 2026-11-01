@@ -1058,6 +1058,10 @@ jobs:
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
+          # #7955 licence elections: inverting the change deletes resolveElections, so
+          # the notice tests cannot load. Keep it; accept any notice text as MIT.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-licence-elections/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-licence-elections/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/7955-licence-elections/behaviour.oracle.patch --test scripts/retained-notices.test.mjs)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)

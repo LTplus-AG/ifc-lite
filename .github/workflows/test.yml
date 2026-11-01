@@ -1067,11 +1067,23 @@ jobs:
           # attributed. Keep the API; seed the sum with -0.0 again.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-frame-zero/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-frame-zero/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/7955-frame-zero/behaviour.oracle.patch --test rust/geometry/src/math/mat4_tests.rs)
+          # #7955 closing rulings 2 and 3: the comparison lives in the retained_compare
+          # example, whose #[path] modules no cargo target owns. Break one link per
+          # patch: exact measured after its world f32 rounding, no kernel-merge
+          # outcome, and a merge with no 2-4 mm side-width limit.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch | grep -Fxq 'tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/kernel-merge.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/merge-width.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
+          # #7955 licence elections: inverting the change deletes resolveElections, so
+          # the notice tests cannot load. Keep it; accept any notice text as MIT.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-licence-elections/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-licence-elections/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/7955-licence-elections/behaviour.oracle.patch --test scripts/retained-notices.test.mjs)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
@@ -1953,6 +1965,10 @@ jobs:
           # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
+          # Teardown-order gate: inverting the change deletes the new script, so its
+          # test cannot load. Keep it; record no violation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/test-teardown-order/behaviour.oracle.patch | grep -Fxq 'tests/evidence/test-teardown-order/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/test-teardown-order/behaviour.oracle.patch --test scripts/check-test-teardown-order.test.mjs)
           fi
           # CLI oci:// model input: a whole-file revert deletes model-input.ts /
           # oci-input.ts and the witnesses die at import. Keep the modules and
@@ -2351,6 +2367,11 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # node:test runs after hooks in registration order and a failing hook
+      # skips the rest: retained-engine.test.ts removed its root before its
+      # dev server closed and failed viewer shard 12 in eight merge-queue runs.
+      - name: Check test teardown order
+        run: node scripts/check-test-teardown-order.mjs
       - name: Check for source-text assertions in Rust tests
         run: node scripts/check-rust-source-text-assertions.mjs
       - name: Check Rust public API surface
@@ -2653,6 +2674,7 @@ jobs:
             scripts/check-step-escaper-copies.test.mjs \
             scripts/check-swallowed-push.test.mjs \
             scripts/check-test-glob-coverage.test.mjs \
+            scripts/check-test-teardown-order.test.mjs \
             scripts/check-test-wiring.test.mjs \
             scripts/check-tla-chunk-await.test.mjs \
             scripts/check-workflow-report-paths.test.mjs \
@@ -3735,6 +3757,17 @@ jobs:
         run: node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The ISSUE_129 mixed-opening oracle pins its own readings with the prism
+      # route off, and nothing ran that mode, so a strict count moved there
+      # unseen (#8533). Same binary, flag read at run time: seconds, no build.
+      # Grep the count so a renamed test cannot turn this into a no-op.
+      - name: Census, prism route off (ISSUE_129 oracle)
+        env:
+          IFC_LITE_PRISM_CUT: '0'
+        run: |
+          cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance \
+            -- --exact --nocapture issue_129_mixed_bool2d_residual_preserves_established_topology | tee "$RUNNER_TEMP/prism-off.log"
+          grep -q 'test result: ok. 1 passed' "$RUNNER_TEMP/prism-off.log"
       # The per-host rows this run measured, uploaded pass or fail. The census
       # gates against a checked-in golden, and its log prints its per-element
       # lists truncated, so without this a run that disagrees with the golden

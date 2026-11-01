@@ -84,17 +84,18 @@ fn face_set(reader: &mut Reader<'_>) -> Option<Vec<SourceFace>> {
     // Dropped rows keep slots but no bytes, so the request's size cannot bound this count.
     let mut sums = Vec::new();
     sums.try_reserve_exact(row_count).ok()?;
-    sums.resize(row_count, ([0.; 3], [0.; 3]));
+    sums.resize(row_count, ([0.; 3], [0.; 3], Vec::new()));
     for triangle in &corners {
         let row = reader.u32()? as usize;
         let [a, b, c] = [positions.get(triangle[0] as usize)?, positions.get(triangle[1] as usize)?, positions.get(triangle[2] as usize)?];
-        let (sum, origin) = sums.get_mut(row)?;
+        let (sum, origin, pieces) = sums.get_mut(row)?;
+        pieces.push([*a, *b, *c]);
         let n = cross3(std::array::from_fn(|i| b[i] - a[i]), std::array::from_fn(|i| c[i] - a[i]));
         if *sum == [0.; 3] { *origin = *a; }
         for i in 0..3 { sum[i] += n[i]; }
     }
-    sums.into_iter().enumerate().map(|(row, (sum, origin))| Some(SourceFace {
-        role: Role::FaceSetRow { row: row as u32 }, extent: Extent::Plane,
+    sums.into_iter().enumerate().map(|(row, (sum, origin, triangles))| Some(SourceFace {
+        role: Role::FaceSetRow { row: row as u32 }, extent: Extent::Row { triangles },
         support: Support::Plane { origin, normal: unit(sum).unwrap_or([0., 0., 1.]) },
     })).collect()
 }

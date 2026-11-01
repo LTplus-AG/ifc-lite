@@ -55,7 +55,8 @@ export function compare(rows) {
   })).values()];
   report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
   const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
-  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
+  // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
+  const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
   for (const id of new Set(rows.map(group))) {
     const members = rows.filter(r => group(r) === id), successful = members.filter(r => r.ok);
     const base = successful.filter(r => r.side === 'base'), branch = successful.filter(r => r.side === 'branch');

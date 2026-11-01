@@ -17,12 +17,14 @@
 // --expect FILE {"candidates":N,"published":M}); anything else FAILS.
 //
 //   node scripts/perf/retained-qual-native-memory.mjs --out DIR --label advanced_model [--side base|branch] \
-//     --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
+//     [--round N --pairing-id ID] --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
 //     [--checkout /abs/checkout [--engine /abs/staged-engine]] \
 //     -- /abs/retained_compare --worker W --out OUT --manifest M
 //
 // --checkout records the commit; --engine (with --checkout) additionally records the
 // staged engine manifest hash of the same build, so native and browser/CLI rows share one identity.
+// Each invocation is one process, so a paired cohort is many invocations: give every one the
+// same --pairing-id and its --round, and retained-qual-report pairs base and branch by them.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -86,11 +88,14 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
 }
 
 export async function main(argv) {
-  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
+  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'round', 'pairing-id', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
   if (!options.out || !options.summary || !rest.length) throw new Error('--out DIR, --summary FILE and a command after `--` are required');
   if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
   if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
+  const round = options.round === undefined ? undefined : Number(options.round);
+  if (round !== undefined && (!Number.isInteger(round) || round < 1)) throw new Error('--round must be a positive integer');
+  if ((round === undefined) !== (options['pairing-id'] === undefined)) throw new Error('--round and --pairing-id go together');
   const admission = exclusivity(options);
   const started = Date.now(), out = resolve(options.out);
   const expectation = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : undefined;
@@ -102,9 +107,9 @@ export async function main(argv) {
   for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
   resetPartial(out);
   const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
-  Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest });
+  Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest, ...(round === undefined ? {} : { round }) });
   const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),
-    finishedAt: new Date().toISOString(), host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
+    finishedAt: new Date().toISOString(), pairingId: options['pairing-id'] ?? null, host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
     engineNote: 'native executable: the SDK build is identified by the worker/executable SHA-256; the manifest hash is that of --engine when given', binaries: hashes,
     samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
   writeResult(out, result, [row]);

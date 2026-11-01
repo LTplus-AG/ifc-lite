@@ -29,6 +29,12 @@ test('8413: an existing summary is refused before launching another invocation',
 test('8413: invalid native side is rejected before touching output', async () => {
   await assert.rejects(nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', '--side', 'oops', '--', '/bin/true']), /--side/);
 });
+test('7955: native --round must be a positive integer and comes with --pairing-id', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const round of ['0', '1.5', 'x']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round/);
+  await assert.rejects(run(['--round', '1']), /--pairing-id/);
+  await assert.rejects(run(['--pairing-id', 'c']), /--pairing-id/);
+});
 test('8413: seeds must be finite even for a single arm', async () => {
   for (const seed of [NaN, Infinity, -Infinity]) await assert.rejects(roundSides([{ side: 'branch' }], 1, seed), /finite/);
 });

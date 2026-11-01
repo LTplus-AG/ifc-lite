@@ -23,13 +23,29 @@
 //                        none; the driver then records null with a reason, never a guess.
 // Detection is on requestAnimationFrame ticks (at most one frame late) but every
 // recorded time is the event's or the frame's own timestamp.
+//
+// Workers: the page's own `Worker` constructor is wrapped to count the dedicated workers
+// the page thread creates (and terminates), by script. That is the viewer's worker use as
+// observed; workers a worker starts (e.g. the SDK's private one) are not visible here.
 
 export const PAGE_KEY = '__retainedQual';
 
 function install(key) {
   const q = globalThis[key] = { loadChangeMs: null, firstProductMs: null, sceneHeldMs: null, firstRetainedFrameMs: null,
-    terminalMs: null, settledFrameMs: null, longTaskMs: 0, ticks: 0, drawCallsAtFirstFrame: null, errors: [] };
+    terminalMs: null, settledFrameMs: null, longTaskMs: 0, ticks: 0, drawCallsAtFirstFrame: null, errors: [],
+    workers: { created: 0, terminated: 0, peakLive: 0, byScript: {} } };
   const host = globalThis;
+  if (typeof host.Worker === 'function') {
+    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '').split('/').pop();
+    host.Worker = class extends host.Worker {
+      constructor(url, options) {
+        super(url, options);
+        w.created++; w.peakLive = Math.max(w.peakLive, w.created - w.terminated);
+        const name = script(url); w.byScript[name] = (w.byScript[name] ?? 0) + 1;
+      }
+      terminate() { w.terminated++; return super.terminate(); }
+    };
+  }
   document.addEventListener('change', event => {
     if (q.loadChangeMs === null && event.target?.type === 'file') q.loadChangeMs = performance.now();
   }, true);

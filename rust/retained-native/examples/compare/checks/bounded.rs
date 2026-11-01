@@ -3,16 +3,24 @@
 use ifc_lite_retained_native::oracle::bounded::Expectation;
 use super::OracleResult;
 pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>,bytes:&[u8])->Vec<OracleResult> {
+    check_parts(product.product_id,&product.parts,e,t,hand,bytes)
+}
+/// Checks the published product as ONE solid: the union of its parts. Layer bands
+/// are open, so only their union can be closed or carry the section volume; the
+/// per-band split is the M4 layer report's (`layers.rs`), never this oracle's.
+pub(crate) fn check_parts(product_id:u32,parts:&[ifc_lite_retained_native::ShapePart],e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>,bytes:&[u8])->Vec<OracleResult> {
     let Some(e)=e else {
         use ifc_lite_retained_native::oracle::bounded;
-        if !bounded::applies(bytes,product.product_id){return Vec::new();}
+        if !bounded::applies(bytes,product_id){return Vec::new();}
         let mut unavailable=row("bounded_chain_unmodelled",f64::INFINITY,0.);
-        unavailable.reason=Some(bounded::unmodelled_reason(bytes,product.product_id)
+        unavailable.reason=Some(bounded::unmodelled_reason(bytes,product_id)
             .unwrap_or_else(||"unsupported source node or unavailable host/clip expectation".into()));
         return vec![unavailable];
     };
-    let mut m=crate::metrics::Metrics::default();let mut outside=0f64;
-    for part in &product.parts {
+    // Layer bands are open; only their union is the closed skin (#7955, as for exact in #8324).
+    let layered=parts.iter().any(|p|p.layer.is_some());
+    let mut m=if layered {crate::metrics::Metrics::assembly()} else {crate::metrics::Metrics::default()};let mut outside=0f64;
+    for part in parts {
         let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
         for &p in &points {outside=outside.max(e.removed_clearance(p));}
         if m.add_mesh(&points,&part.indices).is_err(){return vec![row("bounded_measurement",f64::INFINITY,0.)];}

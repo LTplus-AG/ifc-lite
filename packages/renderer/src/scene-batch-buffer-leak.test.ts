@@ -22,6 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { flushMeshUniforms, meshUniformArena } from './mesh-uniform-arena.js';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -78,8 +79,17 @@ describe('Scene.createBatchedMesh: paired buffer leak on a mid-run createBuffer 
         () => scene['createBatchedMesh']([meshData(1)], [1, 1, 1, 1], device, fakePipeline, 'key'),
         new RegExp(`staged ${failure} failed`),
       );
-      assert.strictEqual(created.length, failure === 'writeBuffer' ? 1 : 3);
+      // The bindGroup run also allocated the shared uniform arena's first page
+      // (third buffer): the batch's block is a slot in it, which is released,
+      // while the page itself stays for the next batch.
+      const arenaPages = failure === 'bindGroup' ? created.splice(2) : [];
+      assert.strictEqual(created.length, failure === 'writeBuffer' ? 1 : 2);
       assert.ok(created.every(buffer => buffer.destroyed === 1));
+      assert.ok(arenaPages.every(page => page.destroyed === 0));
+      flushMeshUniforms(device);
+      if (failure === 'bindGroup') {
+        assert.strictEqual(meshUniformArena(device, 256).allocate().offset, 0, 'the released slot is reusable');
+      }
       assert.strictEqual(scene['nextBatchId'], 0, 'failed staging publishes no batch identity');
     });
   }

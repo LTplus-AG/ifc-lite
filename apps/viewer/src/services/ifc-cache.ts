@@ -503,6 +503,27 @@ export async function getCacheStats(): Promise<{
   }
 }
 
+/** Rewrite the record if it is still the one from `write`, in one transaction. Resolves whether it was. */
+async function updateEntryOfWrite(key: string, write: SceneSnapshotWrite, update: (entry: CacheEntry) => CacheEntry | null): Promise<boolean> {
+  const tx = await beginTransaction('readwrite');
+  return new Promise<boolean>((resolve, reject) => {
+    let stored = false;
+    const store = tx.objectStore(STORE_NAME);
+    const read = store.get(key);
+    read.onsuccess = () => {
+      const entry = read.result as CacheEntry | undefined;
+      if (!entry || entry.createdAt !== write.createdAt || entry.fullSourceHash !== write.fullSourceHash) return;
+      const next = update(entry);
+      if (!next) return;
+      store.put(next);
+      stored = true;
+    };
+    tx.oncomplete = () => resolve(stored);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 /**
  * Attach a finished scene to the write it was built from. Compare and set in
  * one transaction: a purged or replaced entry keeps no snapshot of another
@@ -513,23 +534,19 @@ export async function putSceneSnapshot(key: string, write: SceneSnapshotWrite, s
   try {
     // Optional, so it never evicts another model: the entry serves without it.
     if (await availableQuotaBytes() < snapshot.size + QUOTA_HEADROOM_BYTES) return false;
-    const tx = await beginTransaction('readwrite');
-    return await new Promise<boolean>((resolve, reject) => {
-      let stored = false;
-      const store = tx.objectStore(STORE_NAME);
-      const read = store.get(key);
-      read.onsuccess = () => {
-        const entry = read.result as CacheEntry | undefined;
-        if (!entry || entry.createdAt !== write.createdAt || entry.fullSourceHash !== write.fullSourceHash) return;
-        store.put({ ...entry, sceneSnapshot: snapshot, sceneSnapshotKey: snapshotKey } satisfies CacheEntry);
-        stored = true;
-      };
-      tx.oncomplete = () => resolve(stored);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+    return await updateEntryOfWrite(key, write, (entry) => ({ ...entry, sceneSnapshot: snapshot, sceneSnapshotKey: snapshotKey }));
   } catch (err) {
     console.warn('[IFC Cache] Scene snapshot write failed:', err);
+    return false;
+  }
+}
+
+/** Remove a snapshot that hydration refused, keeping the entry. Same write check as {@link putSceneSnapshot}. */
+export async function clearSceneSnapshot(key: string, write: SceneSnapshotWrite): Promise<boolean> {
+  try {
+    return await updateEntryOfWrite(key, write, ({ sceneSnapshot, sceneSnapshotKey, ...entry }) => (sceneSnapshot ? entry : null));
+  } catch (err) {
+    console.warn('[IFC Cache] Scene snapshot removal failed:', err);
     return false;
   }
 }

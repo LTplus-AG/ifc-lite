@@ -60,6 +60,9 @@ if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
 }
 const display = process.env.DISPLAY;
 if (!display || display === ':0' || display === ':1') throw new Error('set DISPLAY to a private Xvfb (e.g. :97)');
+// A hybrid laptop's Intel Vulkan driver can win the adapter and then lose the device on allocation: show Chrome the NVIDIA one only.
+const NVIDIA_ICD = '/usr/share/vulkan/icd.d/nvidia_icd.json';
+const GPU_ENV = existsSync(NVIDIA_ICD) ? { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD } : process.env;
 const CHROME = process.env.CHROME ?? join(process.env.HOME, '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
 const positive = (name) => {
   const n = Number(opt[name]);
@@ -132,6 +135,12 @@ const INIT = () => {
     proto.__benchWrapped = true;
   }
 };
+
+/** Chrome can exit with its last page, so open the next one first. */
+async function replacePage(context, page) {
+  await context.newPage();
+  await page.close();
+}
 
 async function openPage(context) {
   const page = context.pages()[0] ?? await context.newPage();
@@ -229,8 +238,10 @@ async function sampleMemory(page, profileDir) {
   return { ...memoryOf(pids), vramMiB: vramOf(pids), rendererGpu: stats?.gpu ?? null, rendererCpu: stats?.cpuBytes ?? null, adapter: stats?.adapter ?? null };
 }
 
-async function orbit(page, profileDir) {
+async function orbit(page, profileDir, openTicks) {
   const settle = await settleCpu(profileDir);
+  // A faster open moves post-load work into the settle window, so also count from the open.
+  const fromOpenCpuSeconds = openTicks === undefined ? null : (cpuTicks(chromePids(profileDir)) - openTicks) / TICK;
   const box = await page.locator('canvas').first().boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2, r = Math.min(box.width, box.height) * 0.2;
   await page.mouse.move(cx + r, cy);
@@ -269,9 +280,12 @@ async function orbit(page, profileDir) {
     gpuPassMsMean: Object.fromEntries(Object.entries(perPass).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length])),
     cpuCores: (ticks1 - ticks0) / TICK / (wallMs / 1000),
     settleCpuSeconds: settle.cpuSeconds,
+    fromOpenCpuSeconds,
     gpuClockMHz: clock.mhz(),
   };
   res.gpuMcyclesMean = res.gpuMsMean !== null && res.gpuClockMHz ? (res.gpuMsMean * res.gpuClockMHz) / 1000 : null;
+  // Post passes switch on and off between rounds; the main pass is what batches decide.
+  res.mainPassMcycles = res.gpuPassMsMean.main !== undefined && res.gpuClockMHz ? (res.gpuPassMsMean.main * res.gpuClockMHz) / 1000 : null;
   res.cpuMsPerFrame = res.fps > 0 ? (res.cpuCores * 1000) / res.fps : null;
   log(`  orbit: ${res.fps.toFixed(1)} fps, GPU mean ${fmt(res.gpuMsMean, 2)} ms (p95 ${fmt(res.gpuMsP95, 2)}) at ${fmt(res.gpuClockMHz)} MHz = ${fmt(res.gpuMcyclesMean, 2)} Mcycles, settle ${fmt(res.settleCpuSeconds, 1)} CPU-s, CPU ${res.cpuCores.toFixed(2)} cores (${fmt(res.cpuMsPerFrame, 1)} ms/frame)`);
   return res;
@@ -299,7 +313,7 @@ async function runSample(build, set, round) {
   currentFlags = build.flags;
   const profileDir = mkdtempSync(join(tmpdir(), 'scenoptic-bench-'));
   const launch = () => chromium.launchPersistentContext(profileDir, {
-    executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
+    env: GPU_ENV, executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
     args: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
       '--use-angle=vulkan', '--ignore-gpu-blocklist', '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
   });
@@ -310,27 +324,29 @@ async function runSample(build, set, round) {
     await context.addInitScript(INIT);
     let page = await openPage(context);
     const tag = `${set.name}-${build.id}-r${round}`;
+    let openTicks;
     sample.cold = await profiled(page, 'cold', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} cold`));
     sample.cold.memory = await sampleMemory(page, profileDir);
     sample.adapter = sample.cold.memory.adapter;
     log(`    memory: PSS ${fmt(sample.cold.memory.pssMiB)} MiB, RSS ${fmt(sample.cold.memory.rssMiB)} MiB, VRAM ${fmt(sample.cold.memory.vramMiB)} MiB`);
     if (!opt['no-warm']) {
       await waitCacheWrites(page);
-      await page.close();
+      await replacePage(context, page);
       // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
         if (open > 1) {
           // Only a primary single-file hit writes one (federated hits keep their path).
           if (/perf\.sceneSnapshot=1\b/.test(build.flags) && set.files.length === 1) await waitSceneSnapshots(page);
-          await page.close();
+          await replacePage(context, page);
         }
         page = await openPage(context);
+        openTicks = cpuTicks(chromePids(profileDir));
         sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm${open}`));
       }
       sample.warm.memory = await sampleMemory(page, profileDir);
       log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
     }
-    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir));
+    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir, openTicks));
   } catch (err) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));
@@ -360,7 +376,7 @@ const METRICS = [
   ['cold PSS MiB', (s) => s.cold?.memory?.pssMiB], ['cold VRAM MiB', (s) => s.cold?.memory?.vramMiB],
   ['warm first frame ms', (s) => s.warm?.firstFrameMs], ['warm complete frame ms', (s) => s.warm?.completeFrameMs], ['warm geometry ms', (s) => s.warm?.geometryMs], ['warm props ms', (s) => s.warm?.propsMs],
   ['warm PSS MiB', (s) => s.warm?.memory?.pssMiB], ['warm VRAM MiB', (s) => s.warm?.memory?.vramMiB],
-  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
+  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['orbit main pass Mcycles', (s) => s.orbit?.mainPassMcycles], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['open to quiet CPU-s', (s) => s.orbit?.fromOpenCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
   ['orbit CPU ms/frame', (s) => s.orbit?.cpuMsPerFrame],
 ];
 const summary = {};
@@ -371,7 +387,7 @@ for (const set of SETS) {
     const vals = BUILDS.map((b) => median(samples.filter((s) => s.build === b.id && s.set === set.name && !s.error).map(get)));
     if (vals.every((v) => v === null)) continue;
     (summary[set.name] ??= {})[name] = Object.fromEntries(BUILDS.map((b, i) => [b.id, vals[i]]));
-    const digits = name.includes('GPU') || name.includes('cores') || name.includes('CPU-s') ? 2 : 0;
+    const digits = name.includes('GPU') || name.includes('Mcycles') || name.includes('cores') || name.includes('CPU-s') ? 2 : 0;
     const cells = vals.map((v, i) => i ? `${fmt(v, digits)} | ${vals[0] && v !== null ? (v / vals[0]).toFixed(2) : 'n/a'}` : fmt(v, digits));
     lines.push(`| ${set.name} | ${name} | ${cells.join(' | ')} |`);
   }

@@ -2319,6 +2319,11 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # node:test runs after hooks in registration order and a failing hook
+      # skips the rest: retained-engine.test.ts removed its root before its
+      # dev server closed and failed viewer shard 12 in eight merge-queue runs.
+      - name: Check test teardown order
+        run: node scripts/check-test-teardown-order.mjs
       - name: Check for source-text assertions in Rust tests
         run: node scripts/check-rust-source-text-assertions.mjs
       - name: Check Rust public API surface
@@ -2618,6 +2623,7 @@ jobs:
             scripts/check-step-escaper-copies.test.mjs \
             scripts/check-swallowed-push.test.mjs \
             scripts/check-test-glob-coverage.test.mjs \
+            scripts/check-test-teardown-order.test.mjs \
             scripts/check-test-wiring.test.mjs \
             scripts/check-tla-chunk-await.test.mjs \
             scripts/check-workflow-report-paths.test.mjs \

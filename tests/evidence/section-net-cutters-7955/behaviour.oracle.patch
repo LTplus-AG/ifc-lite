@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/src/oracle/section_net.rs b/rust/retained-native/src/oracle/section_net.rs
+index 65206e5028..e278fea762 100644
+--- a/rust/retained-native/src/oracle/section_net.rs
++++ b/rust/retained-native/src/oracle/section_net.rs
+@@ -26,7 +26,7 @@ pub(super) fn net_volume(host: &ExtrudedHost, kept: &[Halfspace], solids: &[Vec<
+             planes.extend_from_slice(cut);
+             let overlap = section_volume(host, &planes)?;
+             planes.truncate(kept.len());
+-            if overlap > empty && false { active.push((solid, cut, overlap)); }
++            if overlap > empty { active.push((solid, cut, overlap)); }
+         }
+     }
+     for i in 0..active.len() {

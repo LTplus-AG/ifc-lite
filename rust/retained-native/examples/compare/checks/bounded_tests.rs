@@ -38,6 +38,8 @@ fn m6_7955_uncut_box_fails_internal_circle_volume_gate() {
     println!("sdk witness executed: m6_circle_volume_false_pass");
 }
 
+fn t_curved()->f64 {crate::tolerances::registered().unwrap()["boundedSectionVolumeRelative"]["curved"].as_f64().unwrap()}
+
 #[test]
 fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
     let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
@@ -46,7 +48,9 @@ fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
     let text=include_str!("../../../../../tests/fixtures/synthetic-retained/m6-equivalent-boundaries.ifc");
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let bounded=bounded::expected(text.as_bytes(),&sources,1062).unwrap();
-    assert!(bounded.section_volume.is_none(),"combined curved/opening family is explicitly unavailable");
+    let chordal=bounded.section_volume.expect("the opening and the polygonised circle both remove material");
+    assert!((chordal-(63.75-std::f64::consts::FRAC_PI_2)).abs()<1e-3,"{chordal}");
+    assert!(bounded.curved,"a polygonised circle is judged as curved");
     // Independently derive the opening-only expectation from the uncut source
     // host. It deliberately excludes the circle cut, as the review describes.
     let uncut=text.replace("#1060=IFCSHAPEREPRESENTATION(#4,'Body','Clipping',", "#1060=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',");
@@ -77,7 +81,11 @@ fn m6_7955_opened_bounded_result_never_uses_opening_only_volume() {
         Some(opening),&context,true,Some(&bounded));
     assert!(!report.violations.iter().any(|v|v.contains("opening prism volume deviation")||v.contains("opening volume outside nominal bounds")),
         "wrong opening-only authority: {:?}",report.violations);
-    assert!(report.violations.iter().any(|v|v.contains("bounded_curved_volume_unavailable")),"combined source must fail closed");
+    // The authority is the combined section, not the opening-only 63.75 a regression would fall back to.
+    let rows=check(&shape,Some(&bounded),&crate::tolerances::registered().unwrap(),None,&bundle);
+    let section=rows.iter().find(|r|r.family=="bounded_section_volume").expect("a gated section row");
+    assert!(section.pass,"the correct combined shape passes: {}",section.value);
+    assert!(crate::metrics::relative(63.75,chordal)>t_curved(),"an opening-only authority would differ");
 }
 
 #[test]
@@ -92,7 +100,7 @@ fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
     let text=text.replace("#321=IFCCARTESIANPOINT((3.5,3.5,0.0));", "#321=IFCCARTESIANPOINT((30.,30.,0.));");
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let e=bounded::expected(text.as_bytes(),&sources,1000).unwrap();
-    assert!(!e.curved);assert!(e.section_volume.is_none());
+    assert!(!e.curved);assert!((e.section_volume.expect("an extrusion operand is in the section family")-56.).abs()<1e-10,"64-8; the moved operand misses");
     let uncut=text.replace("'CSG',(#333)","'SweptSolid',(#12)");
     let mut products=Vec::new();
     run_model_native(SourceBundle::new(uncut.as_bytes().to_vec()),&worker,
@@ -100,13 +108,12 @@ fn m6_7955_linear_pbhs_solid_difference_requires_volume_authority() {
     let ProductOutcome::Published(shape)=products.pop().unwrap() else{panic!("uncut box must publish")};
     let t=serde_json::from_str(include_str!("../../../../../tests/fixtures/cli-retained/tolerances.d/m6.json")).unwrap();
     let rows=check(&shape,Some(&e),&t,None,&SourceBundle::new(text.as_bytes().to_vec()));
-    assert!(rows.iter().filter(|r|!r.family.ends_with("volume_unavailable")).all(|r|r.pass));
-    let unavailable=rows.iter().find(|r|r.gated&&!r.pass).expect("uncut box passed without volume authority");
-    assert_eq!(unavailable.reason.as_deref(),Some("solid Boolean operand outside section family"));
+    assert!(rows.iter().filter(|r|r.family!="bounded_section_volume").all(|r|r.pass),"the bounds alone accept the uncut box");
+    assert!(rows.iter().any(|r|r.family=="bounded_section_volume"&&r.gated&&!r.pass),"uncut box falsely passed the volume authority");
 }
 
 #[test]
-fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() {
+fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_and_stale() {
     let Some(worker)=std::env::var_os("IFCLITE_SMLIB_WORKER") else {
         assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SDK required");
         eprintln!("SKIP M6 hand-volume witness: SDK absent");return;
@@ -115,7 +122,7 @@ fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() 
     let text=include_str!("../../../../../tests/fixtures/synthetic-retained/f-f-halfspaces.ifc");
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let e=bounded::expected(text.as_bytes(),&sources,1004).unwrap();
-    assert!(e.section_volume.is_none());
+    assert!((e.section_volume.expect("the extrusion operand is in the section family")-41.).abs()<1e-10,"the section integral agrees with the hand volume");
     let mut products=Vec::new();
     run_model_native(SourceBundle::new(text.as_bytes().to_vec()),&worker,
         &ModelOptions{ids:Some([1004].into_iter().collect()),..Default::default()},|o|products.push(o)).unwrap();
@@ -132,7 +139,7 @@ fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() 
     for (label,table,failure) in [
         ("registered",registered.to_owned(),None),
         ("wrong",registered.replace("\"volume\": 41","\"volume\": 40"),Some("bounded_hand_volume")),
-        ("missing","{}".to_owned(),Some("bounded_linear_volume_unavailable")),
+        ("no hand row","{}".to_owned(),None),
     ] {
         let mut hand=crate::hand_volumes::HandVolumes::parse(&table).unwrap();
         let context=crate::checks::SourceContext{model:&model,product_id:1004,analytic:&sources,clips:&clips,hand_volume:hand.take(path,1004)};
@@ -143,7 +150,6 @@ fn m6_7955_hand_authority_accepts_mixed_chain_rejects_wrong_missing_and_stale() 
         if let Some(failure)=failure {
             assert_eq!(report.violations.len(),1,"{label}: {:?}",report.violations);
             assert!(report.violations[0].contains(failure),"{:?}",report.violations);
-            if label=="missing" {assert!(report.violations[0].contains("solid Boolean operand outside section family"));}
         } else {assert!(report.violations.is_empty(),"{:?}",report.violations);}
         println!("M6 hand authority {label}: volume={} violations={:?}",actual.volume,report.violations);
     }

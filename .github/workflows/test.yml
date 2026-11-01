@@ -1998,6 +1998,11 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scene-snapshot/withdraw-own.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
             oracle_args+=(--mutation tests/evidence/scene-snapshot/attach-own-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
           fi
+          # A blunt revert removes exports the new assertions import; break each behaviour instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/clear-any-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

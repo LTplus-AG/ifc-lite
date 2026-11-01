@@ -229,8 +229,10 @@ async function sampleMemory(page, profileDir) {
   return { ...memoryOf(pids), vramMiB: vramOf(pids), rendererGpu: stats?.gpu ?? null, rendererCpu: stats?.cpuBytes ?? null, adapter: stats?.adapter ?? null };
 }
 
-async function orbit(page, profileDir) {
+async function orbit(page, profileDir, openTicks) {
   const settle = await settleCpu(profileDir);
+  // A faster open moves post-load work into the settle window, so also count from the open.
+  const fromOpenCpuSeconds = openTicks === undefined ? null : (cpuTicks(chromePids(profileDir)) - openTicks) / TICK;
   const box = await page.locator('canvas').first().boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2, r = Math.min(box.width, box.height) * 0.2;
   await page.mouse.move(cx + r, cy);
@@ -269,9 +271,12 @@ async function orbit(page, profileDir) {
     gpuPassMsMean: Object.fromEntries(Object.entries(perPass).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length])),
     cpuCores: (ticks1 - ticks0) / TICK / (wallMs / 1000),
     settleCpuSeconds: settle.cpuSeconds,
+    fromOpenCpuSeconds,
     gpuClockMHz: clock.mhz(),
   };
   res.gpuMcyclesMean = res.gpuMsMean !== null && res.gpuClockMHz ? (res.gpuMsMean * res.gpuClockMHz) / 1000 : null;
+  // Post passes switch on and off between rounds; the main pass is what batches decide.
+  res.mainPassMcycles = res.gpuPassMsMean.main !== undefined && res.gpuClockMHz ? (res.gpuPassMsMean.main * res.gpuClockMHz) / 1000 : null;
   res.cpuMsPerFrame = res.fps > 0 ? (res.cpuCores * 1000) / res.fps : null;
   log(`  orbit: ${res.fps.toFixed(1)} fps, GPU mean ${fmt(res.gpuMsMean, 2)} ms (p95 ${fmt(res.gpuMsP95, 2)}) at ${fmt(res.gpuClockMHz)} MHz = ${fmt(res.gpuMcyclesMean, 2)} Mcycles, settle ${fmt(res.settleCpuSeconds, 1)} CPU-s, CPU ${res.cpuCores.toFixed(2)} cores (${fmt(res.cpuMsPerFrame, 1)} ms/frame)`);
   return res;
@@ -310,6 +315,7 @@ async function runSample(build, set, round) {
     await context.addInitScript(INIT);
     let page = await openPage(context);
     const tag = `${set.name}-${build.id}-r${round}`;
+    let openTicks;
     sample.cold = await profiled(page, 'cold', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} cold`));
     sample.cold.memory = await sampleMemory(page, profileDir);
     sample.adapter = sample.cold.memory.adapter;
@@ -325,12 +331,13 @@ async function runSample(build, set, round) {
           await page.close();
         }
         page = await openPage(context);
+        openTicks = cpuTicks(chromePids(profileDir));
         sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm${open}`));
       }
       sample.warm.memory = await sampleMemory(page, profileDir);
       log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
     }
-    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir));
+    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir, openTicks));
   } catch (err) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));
@@ -360,7 +367,7 @@ const METRICS = [
   ['cold PSS MiB', (s) => s.cold?.memory?.pssMiB], ['cold VRAM MiB', (s) => s.cold?.memory?.vramMiB],
   ['warm first frame ms', (s) => s.warm?.firstFrameMs], ['warm complete frame ms', (s) => s.warm?.completeFrameMs], ['warm geometry ms', (s) => s.warm?.geometryMs], ['warm props ms', (s) => s.warm?.propsMs],
   ['warm PSS MiB', (s) => s.warm?.memory?.pssMiB], ['warm VRAM MiB', (s) => s.warm?.memory?.vramMiB],
-  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
+  ['orbit fps', (s) => s.orbit?.fps], ['orbit GPU ms mean', (s) => s.orbit?.gpuMsMean], ['orbit GPU Mcycles', (s) => s.orbit?.gpuMcyclesMean], ['orbit main pass Mcycles', (s) => s.orbit?.mainPassMcycles], ['post-load CPU-s', (s) => s.orbit?.settleCpuSeconds], ['open to quiet CPU-s', (s) => s.orbit?.fromOpenCpuSeconds], ['orbit CPU cores', (s) => s.orbit?.cpuCores],
   ['orbit CPU ms/frame', (s) => s.orbit?.cpuMsPerFrame],
 ];
 const summary = {};

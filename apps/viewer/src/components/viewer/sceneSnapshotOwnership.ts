@@ -19,6 +19,15 @@ let pending: { adoption: object; requeueShards: () => void } | null = null;
 let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
+/**
+ * What a snapshot's bytes depend on: the renderer's policy, and the type filter
+ * that chose its pieces. A hit under another filter streams and replaces the
+ * snapshot, so a changed setting costs one ordinary open.
+ */
+export function sceneSnapshotKey(policy: string, typeViewMode: string, typeVisibility: object): string {
+  return `${policy}~${typeViewMode}~${JSON.stringify(typeVisibility)}`;
+}
+
 /** The box the camera last framed for a load. Not readable back: the camera keeps only the pose it produced. */
 export function noteFinalFitBounds(bounds: Bounds): void {
   finalFitBounds = bounds;

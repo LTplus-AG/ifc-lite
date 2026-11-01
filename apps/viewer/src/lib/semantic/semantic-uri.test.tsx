@@ -149,7 +149,7 @@ test('issues #6783/#6784: granted local SPARQL URI-only results select the publi
     const endpoint = label('Endpoint URL').querySelector('input'); assert.ok(endpoint); type(endpoint, origin + '/sparql');
     const host = label('Allow requests to hostname').querySelector('input'); assert.ok(host); type(host, '127.0.0.1');
     const queryField = label('Read query').querySelector('textarea'); assert.ok(queryField); type(queryField, query);
-    const idLabel = [...ui.querySelectorAll('label')].find(candidate => candidate.textContent === 'id');
+    const idLabel = [...ui.querySelectorAll('label')].find(candidate => candidate.textContent === 'Resource binding (without ?)' );
     const idMapping = idLabel?.querySelector('input'); assert.ok(idMapping); type(idMapping, 'resource');
     const grant = label('Allow local HTTP requests to').querySelector('input'); assert.ok(grant);
     assert.equal(grant.checked, false); assert.ok(grant.parentElement?.textContent?.includes(origin)); click(grant);

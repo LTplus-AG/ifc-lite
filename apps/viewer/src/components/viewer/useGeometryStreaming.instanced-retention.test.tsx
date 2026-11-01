@@ -87,6 +87,10 @@ class FakeScene {
     this.calls.push('clear');
     this.instancedModelIndices.clear();
   }
+  isSceneSnapshotHydrating(): boolean {
+    return false;
+  }
+
   clearFlatGeometry(): void {
     this.calls.push('clearFlatGeometry');
     // Flat-only: instanced templates are untouched by design (#2073).

@@ -31,6 +31,7 @@ import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
+import { noteFinalFitBounds, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
 import { computeBounds, type Bounds } from './streamingBounds.js';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
@@ -244,7 +245,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // and never mid-stream (the streaming first-fit + finalize refit handle
     // the active model). The combined bounds come from the merged
     // coordinateInfo (union of all visible models).
-    if (modelCount > prevModelCountRef.current && !isStreaming) {
+    if (modelCount > prevModelCountRef.current && !isStreaming && !takeSnapshotModelArrival()) {
       traceGeometrySync(`model added (${prevModelCountRef.current}→${modelCount}) — refitting camera to combined bounds`);
       cameraFittedRef.current = false;
       finalBoundsRefittedRef.current = false;
@@ -263,6 +264,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const isIncremental = !isReplacement && currentLength > lastLength && lastLength > 0;
     const isNewFile = currentLength > 0 && lastLength === 0;
     const isCleared = currentLength === 0;
+
+    // Adopted snapshot batches own the scene until their meshes arrive.
+    if (isCleared && scene.isSceneSnapshotHydrating()) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
@@ -503,6 +508,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         }
       }
       if (fitted) {
+        noteFinalFitBounds(geometryBoundsRef.current);
         cameraFittedRef.current = true;
         tracePhaseOnce(activeLoadTrace(), 'camera.fit').record('camera.fit', fitStart, performance.now(), { policy: lastFitPolicyKindRef.current ?? 'none', robust: robustEarly !== null });
         // Populate the camera's cached scene bounds. The viewer streams meshes

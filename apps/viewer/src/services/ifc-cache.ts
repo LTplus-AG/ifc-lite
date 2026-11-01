@@ -43,6 +43,10 @@ interface CacheEntry {
   fullSourceHash?: string;
   /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
   sourceContentKey?: string;
+  /** The finished scene, attached after finalize (`putSceneSnapshot`). A second Blob, so deleting the record purges both and old readers ignore it. */
+  sceneSnapshot?: Blob;
+  /** The renderer policy `sceneSnapshot` was built under. */
+  sceneSnapshotKey?: string;
 }
 
 /**
@@ -64,9 +68,9 @@ export const QUOTA_HEADROOM_BYTES = 128 * 1024 * 1024;
 const connection = new IdbConnectionLifecycle('[IFC Cache]');
 
 /** Bytes a cache record occupies on disk (cache buffer + optional source). */
-function entryBytes(buffer: Blob | ArrayBuffer, sourceBuffer?: ArrayBuffer): number {
+function entryBytes(buffer: Blob | ArrayBuffer, sourceBuffer?: ArrayBuffer, sceneSnapshot?: Blob): number {
   const bufferBytes = buffer instanceof Blob ? buffer.size : buffer.byteLength;
-  return bufferBytes + (sourceBuffer?.byteLength ?? 0);
+  return bufferBytes + (sourceBuffer?.byteLength ?? 0) + (sceneSnapshot?.size ?? 0);
 }
 
 /**
@@ -114,7 +118,7 @@ export function evictToFree(db: IDBDatabase, targetBytes: number, keepKey: strin
       if (cursor && cumulative < targetBytes) {
         const entry = cursor.value as CacheEntry;
         if (entry.key !== keepKey) {
-          cumulative += entryBytes(entry.buffer, entry.sourceBuffer);
+          cumulative += entryBytes(entry.buffer, entry.sourceBuffer, entry.sceneSnapshot);
           victims.push(cursor.primaryKey);
         }
         cursor.continue();
@@ -252,6 +256,10 @@ export interface CacheResult {
   fullSourceHash?: string;
   /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
   sourceContentKey?: string;
+  /** When this entry was written; a scene snapshot only attaches to the same write. */
+  createdAt?: number;
+  sceneSnapshot?: Blob;
+  sceneSnapshotKey?: string;
 }
 
 /** Extra validation metadata persisted alongside a cache entry (mesh-only tier). */
@@ -284,6 +292,9 @@ export async function getCached(key: string): Promise<CacheResult | null> {
             lastModified: entry.lastModified,
             fullSourceHash: entry.fullSourceHash,
             sourceContentKey: entry.sourceContentKey,
+            createdAt: entry.createdAt,
+            sceneSnapshot: entry.sceneSnapshot,
+            sceneSnapshotKey: entry.sceneSnapshotKey,
           });
         } else {
           resolve(null);
@@ -488,5 +499,34 @@ export async function getCacheStats(): Promise<{
   } catch (err) {
     console.warn('[IFC Cache] Cache stats read failed; reporting an empty cache:', err);
     return { entryCount: 0, totalSize: 0, entries: [] };
+  }
+}
+
+/**
+ * Attach a finished scene to the entry written at `createdAt`. Compare and set
+ * in one transaction: a purged or replaced entry keeps no snapshot of another
+ * write's geometry. Resolves whether it was stored.
+ */
+export async function putSceneSnapshot(key: string, createdAt: number, snapshot: Blob, snapshotKey: string): Promise<boolean> {
+  try {
+    if (!await ensureRoomForEntry(await liveConnection(), snapshot.size, key)) return false;
+    const tx = await beginTransaction('readwrite');
+    return await new Promise<boolean>((resolve, reject) => {
+      let stored = false;
+      const store = tx.objectStore(STORE_NAME);
+      const read = store.get(key);
+      read.onsuccess = () => {
+        const entry = read.result as CacheEntry | undefined;
+        if (entry?.createdAt !== createdAt) return;
+        store.put({ ...entry, sceneSnapshot: snapshot, sceneSnapshotKey: snapshotKey } satisfies CacheEntry);
+        stored = true;
+      };
+      tx.oncomplete = () => resolve(stored);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('[IFC Cache] Scene snapshot write failed:', err);
+    return false;
   }
 }

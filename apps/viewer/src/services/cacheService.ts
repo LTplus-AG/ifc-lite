@@ -40,6 +40,11 @@ export interface CacheResult {
   fullSourceHash?: string;
   /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
   sourceContentKey?: string;
+  /** When this entry was written; a scene snapshot only attaches to the same write. */
+  createdAt?: number;
+  /** The finished scene (`encodeSceneSnapshot`), with the renderer policy it was built under. */
+  sceneSnapshot?: Blob;
+  sceneSnapshotKey?: string;
 }
 
 /**
@@ -65,12 +70,19 @@ export type SetCachedFn = (
 export type DeleteCachedFn = (key: string) => Promise<void>;
 
 /**
+ * Attach a finished scene to the entry written at `createdAt`; a purged or
+ * replaced entry stays as it is. Resolves whether it was stored.
+ */
+export type PutSceneSnapshotFn = (key: string, createdAt: number, snapshot: Blob, snapshotKey: string) => Promise<boolean>;
+
+/**
  * Cache service interface
  */
 export interface ICacheService {
   getCached: GetCachedFn;
   setCached: SetCachedFn;
   deleteCached: DeleteCachedFn;
+  putSceneSnapshot: PutSceneSnapshotFn;
 }
 
 // ============================================================================
@@ -92,6 +104,7 @@ export async function getCacheService(): Promise<ICacheService> {
     getCached: mod.getCached,
     setCached: mod.setCached,
     deleteCached: mod.deleteCached,
+    putSceneSnapshot: mod.putSceneSnapshot,
   };
 
   return cacheService;
@@ -138,6 +151,12 @@ export async function setCached(
 export async function deleteCached(key: string): Promise<void> {
   const service = await getCacheService();
   return service.deleteCached(key);
+}
+
+/** See {@link PutSceneSnapshotFn}. */
+export async function putSceneSnapshot(key: string, createdAt: number, snapshot: Blob, snapshotKey: string): Promise<boolean> {
+  const service = await getCacheService();
+  return service.putSceneSnapshot(key, createdAt, snapshot, snapshotKey);
 }
 
 /**

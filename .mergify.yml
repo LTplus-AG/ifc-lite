@@ -61,3 +61,6 @@ pull_request_rules:
     actions:
       queue:
         name: ceilings
+
+merge_protections_settings:
+  auto_merge_conditions: true

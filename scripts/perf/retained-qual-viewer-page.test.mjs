@@ -170,6 +170,21 @@ test('7955: page-created workers are counted by script, peak live follows termin
   assert.equal(w.created, 3);
   assert.equal(w.terminated, 1);
   assert.equal(w.peakLive, 2);
-  assert.deepEqual({ ...w.byScript }, { 'retained.worker-abc.js': 2, 'blob:': 1 });
+  assert.deepEqual({ ...w.byScript }, { 'https://h/assets/retained.worker-abc.js': 2, 'blob:': 1 });
   assert.ok(vm.runInContext('new Worker("x") instanceof Worker', context), 'still a Worker');
+});
+
+// PR #8540: same basenames are distinct scripts; termination is per worker.
+test('8540: distinct worker paths and repeated termination preserve live counts', () => {
+  class FakeWorker { terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const a = vm.runInContext('new Worker("/parser/worker.js")', context);
+  a.terminate(); a.terminate();
+  vm.runInContext('new Worker("/parser/worker.js"); new Worker("/renderer/worker.js")', context);
+  const w = context[PAGE_KEY].workers;
+  assert.equal(w.terminated, 1);
+  assert.equal(w.peakLive, 2);
+  assert.deepEqual({ ...w.byScript }, { '/parser/worker.js': 2, '/renderer/worker.js': 1 });
 });

@@ -1,5 +1,5 @@
 diff --git a/scripts/perf/retained-qual-lib.mjs b/scripts/perf/retained-qual-lib.mjs
-index 7f48fe2fd5..fabd8de7d2 100644
+index 7f48fe2..fabd8de 100644
 --- a/scripts/perf/retained-qual-lib.mjs
 +++ b/scripts/perf/retained-qual-lib.mjs
 @@ -185,7 +185,7 @@ export function writeResult(out, result, rows) {
@@ -12,7 +12,7 @@ index 7f48fe2fd5..fabd8de7d2 100644
    return result;
  }
 diff --git a/scripts/perf/retained-qual-native-memory.mjs b/scripts/perf/retained-qual-native-memory.mjs
-index 0fdd5178a5..e4784b1217 100644
+index 0fdd517..e4784b1 100644
 --- a/scripts/perf/retained-qual-native-memory.mjs
 +++ b/scripts/perf/retained-qual-native-memory.mjs
 @@ -17,12 +17,14 @@
@@ -60,24 +60,32 @@ index 0fdd5178a5..e4784b1217 100644
      samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
    writeResult(out, result, [row]);
 diff --git a/scripts/perf/retained-qual-report.mjs b/scripts/perf/retained-qual-report.mjs
-index fb841eb3a3..cd27d5adfa 100644
+index fb841eb..79777c4 100644
 --- a/scripts/perf/retained-qual-report.mjs
 +++ b/scripts/perf/retained-qual-report.mjs
-@@ -55,7 +55,8 @@ export function compare(rows) {
+@@ -54,8 +54,15 @@ export function compare(rows) {
+     return [JSON.stringify([p.kind, p.host, p.commit, p.startedAt, p.cohort]), p.cohort];
    })).values()];
    report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
-   const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
+-  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
 -  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
++  // Keep sampled load in provenance, but exclude it from machine identity.
++  const hostKey = host => {
++    if (!host) return null;
++    const { loadAtStart, ...identity } = host;
++    return identity;
++  };
++  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r.provenance?.host)]);
 +  // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
 +  const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
    for (const id of new Set(rows.map(group))) {
      const members = rows.filter(r => group(r) === id), successful = members.filter(r => r.ok);
      const base = successful.filter(r => r.side === 'base'), branch = successful.filter(r => r.side === 'branch');
 diff --git a/scripts/perf/retained-qual-viewer-page.mjs b/scripts/perf/retained-qual-viewer-page.mjs
-index d897db412f..18cb3dd5e0 100644
+index d897db4..27638e9 100644
 --- a/scripts/perf/retained-qual-viewer-page.mjs
 +++ b/scripts/perf/retained-qual-viewer-page.mjs
-@@ -23,13 +23,29 @@
+@@ -23,13 +23,33 @@
  //                        none; the driver then records null with a reason, never a guess.
  // Detection is on requestAnimationFrame ticks (at most one frame late) but every
  // recorded time is the event's or the frame's own timestamp.
@@ -95,14 +103,18 @@ index d897db412f..18cb3dd5e0 100644
 +    workers: { created: 0, terminated: 0, peakLive: 0, byScript: {} } };
    const host = globalThis;
 +  if (typeof host.Worker === 'function') {
-+    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '').split('/').pop();
++    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '');
++    const terminated = new WeakSet();
 +    host.Worker = class extends host.Worker {
 +      constructor(url, options) {
 +        super(url, options);
 +        w.created++; w.peakLive = Math.max(w.peakLive, w.created - w.terminated);
 +        const name = script(url); w.byScript[name] = (w.byScript[name] ?? 0) + 1;
 +      }
-+      terminate() { w.terminated++; return super.terminate(); }
++      terminate() {
++        if (!terminated.has(this)) { terminated.add(this); w.terminated++; }
++        return super.terminate();
++      }
 +    };
 +  }
    document.addEventListener('change', event => {

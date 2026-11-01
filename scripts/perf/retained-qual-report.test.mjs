@@ -107,7 +107,8 @@ test('7955: native rows from separate invocations pair by pairing id and round',
     const inputs = [];
     for (const [side, round, wallMs] of [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]]) {
       const out = join(dir, `${side}-${round}`);
-      writeResult(out, { kind: 'native-retained-memory', startedAt: `${side}-${round}`, pairingId: 'cohort-a' },
+      writeResult(out, { kind: 'native-retained-memory', startedAt: `${side}-${round}`, pairingId: 'cohort-a',
+        host: { hostname: 'same-host', machineIdSha256: 'machine-a', loadAtStart: { load1: wallMs, load5: round } } },
         [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
       inputs.push(out);
     }

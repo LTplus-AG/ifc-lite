@@ -36,14 +36,18 @@ function install(key) {
     workers: { created: 0, terminated: 0, peakLive: 0, byScript: {} } };
   const host = globalThis;
   if (typeof host.Worker === 'function') {
-    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '').split('/').pop();
+    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '');
+    const terminated = new WeakSet();
     host.Worker = class extends host.Worker {
       constructor(url, options) {
         super(url, options);
         w.created++; w.peakLive = Math.max(w.peakLive, w.created - w.terminated);
         const name = script(url); w.byScript[name] = (w.byScript[name] ?? 0) + 1;
       }
-      terminate() { w.terminated++; return super.terminate(); }
+      terminate() {
+        if (!terminated.has(this)) { terminated.add(this); w.terminated++; }
+        return super.terminate();
+      }
     };
   }
   document.addEventListener('change', event => {

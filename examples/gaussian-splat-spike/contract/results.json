@@ -1,0 +1,47 @@
+{
+  "issue": 8564,
+  "upstreamBase": "700f1400fc6b0d32a82f1a22f57c1e747b255a01",
+  "backend": "Chromium WebGPU / SwiftShader",
+  "receipt": "789755f5-c913-4b1c-afdb-b7a7ee23e45b",
+  "productionReady": false,
+  "tests": {
+    "passed": 14,
+    "skipped": 1,
+    "skip": "existing configured-canvas reattachment case"
+  },
+  "composition": {
+    "reference": [
+      189,
+      33,
+      24,
+      255
+    ],
+    "upstreamMixed": [
+      94,
+      128,
+      24,
+      255
+    ],
+    "exactCompositionPasses": false,
+    "upstream": "SplatRenderer.drawMixed",
+    "gpu": {
+      "type": "webgpu",
+      "vendor": "google",
+      "renderer": "",
+      "version": "",
+      "gpu": "software",
+      "gpuType": "cpu",
+      "gpuBackend": "unknown",
+      "gpuArchitecture": "swiftshader",
+      "fallback": true,
+      "featureLevel": "core",
+      "subgroupMinSize": 4,
+      "subgroupMaxSize": 4,
+      "shadingLanguage": "wgsl",
+      "shadingLanguageVersion": 100
+    }
+  },
+  "ownership": {
+    "borrowedDeviceSurvivesWrapperDestroy": true
+  }
+}

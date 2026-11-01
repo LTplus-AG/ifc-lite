@@ -49,3 +49,15 @@ test('same-CRS aerial background requires no datum transformation (#8552)', asyn
   assert.ok(Math.abs(e - 90770) < 1e-6);
   assert.ok(Math.abs(n - 435320) < 1e-6);
 });
+
+
+test('same-CRS US-survey-foot imagery converts native units through the production projection (#8552)', async () => {
+  const projection = await orthophotoProjection('EPSG:2226', 'EPSG:2226');
+  const foot = 1200 / 3937;
+  const [e, n] = projection.forward([1000, 2000]);
+  assert.ok(Math.abs(e - 1000 * foot) < 1e-9);
+  assert.ok(Math.abs(n - 2000 * foot) < 1e-9);
+  const [x, y] = projection.inverse([e, n]);
+  assert.ok(Math.abs(x - 1000) < 1e-9);
+  assert.ok(Math.abs(y - 2000) < 1e-9);
+});

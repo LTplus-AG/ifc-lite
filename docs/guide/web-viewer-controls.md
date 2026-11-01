@@ -283,8 +283,8 @@ an error instead of a guessed placement.
 The **Appearance → Place as reference** workspace lists the background under
 **Registered drawings**. Use its eye, opacity and remove controls to compare
 imagery with the model; removal supports Undo. The pencil opens calibrated
-placement controls, including **Point A Z** for the background elevation. The background is a flat display
-plane just below the loaded geometry, not a terrain elevation measurement or
+placement controls, including **Point A · Z (m)** under **Alignment** for the
+background elevation. The background is a flat display plane just below the loaded geometry, not a terrain elevation measurement or
 an IFC object. Loaded LandXML terrain retains its existing imagery-draping
 behavior instead.
 

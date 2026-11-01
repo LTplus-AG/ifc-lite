@@ -1067,6 +1067,14 @@ jobs:
           # attributed. Keep the API; seed the sum with -0.0 again.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-frame-zero/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-frame-zero/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/7955-frame-zero/behaviour.oracle.patch --test rust/geometry/src/math/mat4_tests.rs)
+          # #7955 closing rulings 2 and 3: the comparison lives in the retained_compare
+          # example, whose #[path] modules no cargo target owns. Break one link per
+          # patch: exact measured after its world f32 rounding, no kernel-merge
+          # outcome, and a merge with no 2-4 mm side-width limit.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch | grep -Fxq 'tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/kernel-merge.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/merge-width.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.

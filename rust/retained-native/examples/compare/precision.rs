@@ -1,9 +1,30 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Compare in the exact pipeline's storage precision, without changing the
-//! full-f64 geometry used by the independent authored-source checks.
+//! Exact storage precision. The gated retained-vs-exact comparison uses exact
+//! BEFORE its world f32 rounding (#7955 ruling 2, [`exact_unrounded`]); rounding
+//! retained into exact's storage frame remains for report-only band rows.
 use super::metrics::{transform, Metrics};
-use ifc_lite_processing::MeshFrame;
+use ifc_lite_processing::{MeshFrame, ProcessingResult};
 use ifc_lite_retained_native::ShapeOnlyProduct;
+
+// #7955 ruling 2. The native default stores absolute world/RTC f32 positions (one
+// ulp is ~15 µm at 200 m). Rounding retained into that grid cannot cancel the
+// noise: the engines' pre-rounding vertices differ, so each lands on a different
+// grid point (ISSUE_068 #1327254: 1.7e-4 volume from rounding alone). Exact runs a
+// second time, in this harness only, in its per-element local frame: kernel output
+// placed in f64 and stored relative to the element's own centre, leaving one f32
+// ulp of the element's half-extent (~0.1 µm at 2 m). Production output is untouched.
+pub const COMPARISON_PRECISION: &str =
+    "retained f64 world vs exact before world f32 storage (exact per-element local frame: f64 origin + element-small f32); source checks f64";
+
+/// Exact's meshes for the gated retained comparison only. The frame policy is a
+/// process-global hook, restored before returning; the harness calls it between
+/// model runs and the retained engine runs in its own worker process.
+pub fn exact_unrounded(bytes: &[u8]) -> ProcessingResult {
+    ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
+    let result = ifc_lite_processing::process_geometry(bytes);
+    ifc_lite_geometry::local_frame_set_enabled_override(None);
+    result
+}
 
 pub fn round_world(frame: MeshFrame, origin: [f64; 3], world: [f64; 3]) -> [f64; 3] {
     let (x, y, z) = frame.rtc_offset();
@@ -12,6 +33,8 @@ pub fn round_world(frame: MeshFrame, origin: [f64; 3], world: [f64; 3]) -> [f64;
     frame.to_world(stored)
 }
 
+/// Report-only (`tests/m3_native.rs`); the gate compares before rounding.
+#[allow(dead_code)]
 pub fn measure(
     shape: &ShapeOnlyProduct,
     frame: MeshFrame,

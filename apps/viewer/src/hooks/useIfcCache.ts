@@ -175,7 +175,7 @@ export function useIfcCache() {
         let firstVisible: Promise<void> | undefined;
         if (adopted) {
           firstVisible = adopted.firstVisible;
-          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, isStale, appendGeometryBatch);
+          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, appendGeometryBatch);
         } else {
           captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale);
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);

@@ -19,6 +19,7 @@ import {
   availableQuotaBytes,
   PER_ENTRY_MAX_BYTES,
   putSceneSnapshot,
+  clearSceneSnapshot,
   deleteCached,
 } from './ifc-cache.js';
 
@@ -404,6 +405,20 @@ describe('ifc-cache survives a connection closed underneath the memo', () => {
 
 describe('putSceneSnapshot', () => {
   beforeEach(async () => { await clearCache(); });
+
+  it('removes only its own write\'s snapshot and keeps the entry', async () => {
+    await setCached('k', patterned(1 * KB, 5), 'k.ifc', 1 * KB, undefined, { fullSourceHash: 'h' });
+    const createdAt = (await getCached('k'))!.createdAt!;
+    await putSceneSnapshot('k', { createdAt, fullSourceHash: 'h' }, new Blob([new Uint8Array(32)]), 'policy');
+    assert.equal(await clearSceneSnapshot('k', { createdAt, fullSourceHash: 'other' }), false);
+    assert.equal((await getCached('k'))!.sceneSnapshot?.size, 32);
+    assert.equal(await clearSceneSnapshot('k', { createdAt, fullSourceHash: 'h' }), true);
+    const hit = (await getCached('k'))!;
+    assert.equal(hit.sceneSnapshot, undefined);
+    assert.equal(hit.sceneSnapshotKey, undefined);
+    assert.ok(await bytesEqual(hit.buffer, patterned(1 * KB, 5)));
+    assert.equal(await clearSceneSnapshot('k', { createdAt, fullSourceHash: 'h' }), false, 'nothing left to remove');
+  });
 
   it('tells apart two writes in the same millisecond by their hash', async () => {
     await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB, undefined, { fullSourceHash: 'new' });

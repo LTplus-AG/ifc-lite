@@ -6,7 +6,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
-import { adoptedSceneOutlivesEmptyGeometry, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
+import { adoptedSceneOutlivesEmptyGeometry, sceneSnapshotKey, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
 
 const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };
@@ -23,6 +23,18 @@ const refs = () => ({
   lastGeometryLengthRef: { current: 0 }, lastGeometryRef: { current: null as MeshData[] | null },
   cameraFittedRef: { current: false }, finalBoundsRefittedRef: { current: false },
   geometryBoundsRef: { current: { min: point, max: point } }, cameraSnapshotRef: { current: null as never },
+});
+
+describe('sceneSnapshotKey', () => {
+  const visibility = { spaces: false, openings: false };
+
+  it('changes with the policy, the view mode and any type filter, and is stable otherwise', () => {
+    const key = sceneSnapshotKey('p', 'model', visibility);
+    assert.equal(sceneSnapshotKey('p', 'model', { ...visibility }), key);
+    assert.notEqual(sceneSnapshotKey('other', 'model', visibility), key);
+    assert.notEqual(sceneSnapshotKey('p', 'types', visibility), key);
+    assert.notEqual(sceneSnapshotKey('p', 'model', { ...visibility, spaces: true }), key);
+  });
 });
 
 describe('takeSceneSnapshotGeometry', () => {

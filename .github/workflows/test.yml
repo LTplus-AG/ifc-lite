@@ -1991,6 +1991,13 @@ jobs:
             oracle_args+=(--mutation tests/evidence/cli-oci-push/ifc-validation.oracle.patch --test packages/cli/src/commands/oci-push-refusals.test.ts)
             oracle_args+=(--mutation tests/evidence/cli-oci-push/layer-descriptor.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
           fi
+          # The snapshot's new modules cannot load under a blunt revert, so break one
+          # behaviour at a time: refused pieces, handoff ownership, write identity.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot/hydrate-identity.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot/hydrate-identity.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/hydrate-identity.oracle.patch --test packages/renderer/src/scene-snapshot-lifecycle.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/withdraw-own.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/attach-own-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

@@ -10,6 +10,7 @@
  */
 
 import { IdbConnectionLifecycle } from './idb-connection.js';
+import type { SceneSnapshotWrite } from './cacheService.js';
 
 const DB_NAME = 'ifc-lite-cache';
 const DB_VERSION = 1;
@@ -503,11 +504,12 @@ export async function getCacheStats(): Promise<{
 }
 
 /**
- * Attach a finished scene to the entry written at `createdAt`. Compare and set
- * in one transaction: a purged or replaced entry keeps no snapshot of another
- * write's geometry. Resolves whether it was stored.
+ * Attach a finished scene to the write it was built from. Compare and set in
+ * one transaction: a purged or replaced entry keeps no snapshot of another
+ * write's geometry. The hash separates two writes in one millisecond. Resolves
+ * whether it was stored.
  */
-export async function putSceneSnapshot(key: string, createdAt: number, snapshot: Blob, snapshotKey: string): Promise<boolean> {
+export async function putSceneSnapshot(key: string, write: SceneSnapshotWrite, snapshot: Blob, snapshotKey: string): Promise<boolean> {
   try {
     if (!await ensureRoomForEntry(await liveConnection(), snapshot.size, key)) return false;
     const tx = await beginTransaction('readwrite');
@@ -517,7 +519,7 @@ export async function putSceneSnapshot(key: string, createdAt: number, snapshot:
       const read = store.get(key);
       read.onsuccess = () => {
         const entry = read.result as CacheEntry | undefined;
-        if (entry?.createdAt !== createdAt) return;
+        if (!entry || entry.createdAt !== write.createdAt || entry.fullSourceHash !== write.fullSourceHash) return;
         store.put({ ...entry, sceneSnapshot: snapshot, sceneSnapshotKey: snapshotKey } satisfies CacheEntry);
         stored = true;
       };

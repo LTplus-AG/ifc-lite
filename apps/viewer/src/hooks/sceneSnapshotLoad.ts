@@ -135,7 +135,7 @@ export function captureSceneSnapshotOfHit(
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
 ): void {
-  const { createdAt, buffer: entry } = cacheResult;
+  const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
   const renderer = getGlobalRenderer();
   if (!snapshotsEnabled() || !renderer || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return;
   renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
@@ -148,7 +148,7 @@ export function captureSceneSnapshotOfHit(
       shards: section ? { offset: section.offset, size: section.size } : null };
     // Off the finalize's completion, which the first frame of the finished scene waits on.
     setTimeout(() => {
-      void putSceneSnapshot(cacheKey, createdAt, encodeSceneSnapshot({ ...snapshot, hostData }), snapshot.policy).catch((err: unknown) => {
+      void putSceneSnapshot(cacheKey, { createdAt, fullSourceHash }, encodeSceneSnapshot({ ...snapshot, hostData }), snapshot.policy).catch((err: unknown) => {
         console.warn('[useIfcCache] Scene snapshot was not stored:', err);
       });
     }, 0);

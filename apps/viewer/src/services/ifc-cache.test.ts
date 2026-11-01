@@ -405,12 +405,20 @@ describe('ifc-cache survives a connection closed underneath the memo', () => {
 describe('putSceneSnapshot', () => {
   beforeEach(async () => { await clearCache(); });
 
+  it('tells apart two writes in the same millisecond by their hash', async () => {
+    await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB, undefined, { fullSourceHash: 'new' });
+    const createdAt = (await getCached('k'))!.createdAt!;
+    assert.equal(await putSceneSnapshot('k', { createdAt, fullSourceHash: 'old' }, new Blob([new Uint8Array(32)]), 'policy'), false);
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+    assert.equal(await putSceneSnapshot('k', { createdAt, fullSourceHash: 'new' }, new Blob([new Uint8Array(32)]), 'policy'), true);
+  });
+
   const snapshot = () => new Blob([new Uint8Array(32)]);
 
   it('attaches to the write it was built from and comes back on a hit', async () => {
     await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
     const entry = (await getCached('k'))!;
-    assert.equal(await putSceneSnapshot('k', entry.createdAt!, snapshot(), 'policy'), true);
+    assert.equal(await putSceneSnapshot('k', { createdAt: entry.createdAt! }, snapshot(), 'policy'), true);
     const hit = (await getCached('k'))!;
     assert.equal(hit.sceneSnapshot?.size, 32);
     assert.equal(hit.sceneSnapshotKey, 'policy');
@@ -420,16 +428,16 @@ describe('putSceneSnapshot', () => {
   it('leaves a replaced or purged entry alone, and a rewrite drops the old snapshot', async () => {
     await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
     const first = (await getCached('k'))!.createdAt!;
-    assert.equal(await putSceneSnapshot('k', first, snapshot(), 'policy'), true);
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), true);
     await delay(2);
     await setCached('k', patterned(1 * KB, 2), 'k.ifc', 1 * KB);
     assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
 
-    assert.equal(await putSceneSnapshot('k', first, snapshot(), 'policy'), false, 'built from the replaced write');
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), false, 'built from the replaced write');
     assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
 
     await deleteCached('k');
-    assert.equal(await putSceneSnapshot('k', first, snapshot(), 'policy'), false);
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), false);
     assert.equal(await getCached('k'), null);
   });
 });

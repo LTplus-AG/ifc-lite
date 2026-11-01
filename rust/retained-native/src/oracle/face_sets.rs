@@ -32,10 +32,24 @@ fn newell(ring: &[[f64; 3]]) -> [f64; 3] {
 }
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
 /// Polygon area minus its holes, `None` when any point leaves the outer ring's plane.
+/// A row no wider than the 1e-9 m plane tolerance across its longest chord has no area
+/// f64 can resolve, so it reads as zero area, never as a non-planar row.
 fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
     let normal = newell(outer);
     let twice = dot(normal, normal).sqrt();
-    if twice == 0. { return None; }
+    // The bounding-box diagonal brackets the longest chord (diagonal / sqrt 3 <= chord <=
+    // diagonal), so only rows in that narrow band need the pairwise search.
+    let (lo, hi) = outer.iter().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p|
+        (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))));
+    let diagonal = { let d: [f64; 3] = std::array::from_fn(|i| hi[i] - lo[i]); dot(d, d).sqrt() };
+    let degenerate = twice <= 1e-9 * diagonal && (twice <= 1e-9 * diagonal / 3f64.sqrt() || {
+        let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {
+            let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);
+            dot(d, d).sqrt()
+        })).fold(0., f64::max);
+        twice <= 1e-9 * chord
+    });
+    if degenerate { return Some(0.); }
     let unit = normal.map(|v| v / twice);
     let origin = outer[0];
     let off = |p: &[f64; 3]| dot(unit, std::array::from_fn(|i| p[i] - origin[i])).abs();

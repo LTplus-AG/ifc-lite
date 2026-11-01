@@ -30,7 +30,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
-          SELF: ${{ github.run_id }}
+          # Not only this run: a closed and an edited event overlap, and must not cancel each other.
+          WORKFLOW: ${{ github.workflow }}
         run: |
           set -euo pipefail
           # A second open PR can share this head branch, and its runs still matter.
@@ -40,7 +41,7 @@ jobs:
             exit 0
           fi
           ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
-            --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .id != $SELF) | .id")
+            --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
           failed=0
           for id in $ids; do
             gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; continue; }

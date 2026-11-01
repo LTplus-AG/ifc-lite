@@ -41,11 +41,19 @@ fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
     let local = |ring: &[[f64; 3]]| -> Vec<[f64; 3]> { ring.iter().map(|p| std::array::from_fn(|i| p[i] - ring[0][i])).collect() };
     let normal = newell(&local(outer));
     let twice = dot(normal, normal).sqrt();
-    let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {
-        let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);
-        dot(d, d).sqrt()
-    })).fold(0., f64::max);
-    if twice <= 1e-9 * chord { return Some(0.); }
+    // The bounding-box diagonal brackets the longest chord (diagonal / sqrt 3 <= chord <=
+    // diagonal), so only rows in that narrow band need the pairwise search.
+    let (lo, hi) = outer.iter().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p|
+        (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))));
+    let diagonal = { let d: [f64; 3] = std::array::from_fn(|i| hi[i] - lo[i]); dot(d, d).sqrt() };
+    let degenerate = twice <= 1e-9 * diagonal && (twice <= 1e-9 * diagonal / 3f64.sqrt() || {
+        let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {
+            let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);
+            dot(d, d).sqrt()
+        })).fold(0., f64::max);
+        twice <= 1e-9 * chord
+    });
+    if degenerate { return Some(0.); }
     let unit = normal.map(|v| v / twice);
     let off = |p: &[f64; 3]| dot(unit, std::array::from_fn(|i| p[i] - origin[i])).abs();
     if outer.iter().chain(inner.iter().flatten()).any(|p| off(p) > 1e-9) { return None; }

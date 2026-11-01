@@ -8,5 +8,5 @@ diff --git a/rust/retained-native/src/oracle/face_sets.rs b/rust/retained-native
 -    let normal = newell(outer);
 +    let normal = newell(&local(outer));
      let twice = dot(normal, normal).sqrt();
-     let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {
-         let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);
+     // The bounding-box diagonal brackets the longest chord (diagonal / sqrt 3 <= chord <=
+     // diagonal), so only rows in that narrow band need the pairwise search.

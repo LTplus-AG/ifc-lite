@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "typecheck": "for file in *.mjs test/*.mjs; do node --check \"$file\" || exit; done",
+    "typecheck": "for file in *.mjs contract/*.mjs test/*.mjs; do node --check \"$file\" || exit; done",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.4",
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "tsx": "^4.23.15"
   }
 }

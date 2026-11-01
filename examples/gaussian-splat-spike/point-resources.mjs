@@ -7,15 +7,17 @@ import * as pc from 'playcanvas';
 export function pointResources(device) {
   let mesh = null, material = null;
   function clear() {
-    mesh?.destroy(); material?.destroy();
+    const priorMesh = mesh, priorMaterial = material;
     mesh = null; material = null;
+    if (priorMesh) { priorMesh.decRefCount(); priorMesh.destroy(); }
+    priorMaterial?.destroy();
   }
   return {
     clear,
     replace(chunk) {
       clear();
       try {
-        mesh = new pc.Mesh(device); mesh.setPositions(chunk.positions);
+        mesh = new pc.Mesh(device); mesh.incRefCount(); mesh.setPositions(chunk.positions);
         if (chunk.colors) mesh.setColors(chunk.colors, 3);
         mesh.update(pc.PRIMITIVE_POINTS, false);
         material = new pc.StandardMaterial(); material.useLighting = false;

@@ -81,6 +81,9 @@ export interface SceneSnapshotWrite {
  */
 export type PutSceneSnapshotFn = (key: string, write: SceneSnapshotWrite, snapshot: Blob, snapshotKey: string) => Promise<boolean>;
 
+/** Remove a scene snapshot from the entry from this write. Resolves whether one was removed. */
+export type ClearSceneSnapshotFn = (key: string, write: SceneSnapshotWrite) => Promise<boolean>;
+
 /**
  * Cache service interface
  */
@@ -89,6 +92,7 @@ export interface ICacheService {
   setCached: SetCachedFn;
   deleteCached: DeleteCachedFn;
   putSceneSnapshot: PutSceneSnapshotFn;
+  clearSceneSnapshot: ClearSceneSnapshotFn;
 }
 
 // ============================================================================
@@ -111,6 +115,7 @@ export async function getCacheService(): Promise<ICacheService> {
     setCached: mod.setCached,
     deleteCached: mod.deleteCached,
     putSceneSnapshot: mod.putSceneSnapshot,
+    clearSceneSnapshot: mod.clearSceneSnapshot,
   };
 
   return cacheService;
@@ -163,6 +168,12 @@ export async function deleteCached(key: string): Promise<void> {
 export async function putSceneSnapshot(key: string, write: SceneSnapshotWrite, snapshot: Blob, snapshotKey: string): Promise<boolean> {
   const service = await getCacheService();
   return service.putSceneSnapshot(key, write, snapshot, snapshotKey);
+}
+
+/** See {@link ClearSceneSnapshotFn}. */
+export async function clearSceneSnapshot(key: string, write: SceneSnapshotWrite): Promise<boolean> {
+  const service = await getCacheService();
+  return service.clearSceneSnapshot(key, write);
 }
 
 /**

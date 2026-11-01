@@ -244,7 +244,9 @@ jobs:
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches Cargo/toolchain/workflow files never replays: those key caches
       # only a push to main writes. A push also replays when a green Mergify
-      # batch run recorded its tree or a later main commit's tree.
+      # batch run recorded its tree or a later main commit's tree, and then a
+      # Cargo/toolchain/workflow commit may replay too if the same files change
+      # again later.
       # THE FAST PR LANE SWITCH (scripts/ci-pr-lane.mjs). continue-on-error
       # because a crash here must not skip every lane via a failed `changes`:
       # with no output the lanes read `lane != 'fast'` and run in full.
@@ -2006,6 +2008,11 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scene-snapshot/hydrate-identity.oracle.patch --test packages/renderer/src/scene-snapshot-lifecycle.test.ts)
             oracle_args+=(--mutation tests/evidence/scene-snapshot/withdraw-own.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
             oracle_args+=(--mutation tests/evidence/scene-snapshot/attach-own-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
+          fi
+          # A blunt revert removes exports the new assertions import; break each behaviour instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/clear-any-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

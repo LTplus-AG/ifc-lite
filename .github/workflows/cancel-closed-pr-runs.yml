@@ -1,0 +1,53 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# A closed PR's unfinished runs report to nobody, and they keep queueing for the
+# runners open work needs. Mergify closes every batch PR after merging or
+# splitting it, and rewrites its body first, so each batch left about seven runs
+# behind (2026-11-01). Finished runs stay untouched: the push replay reads a
+# batch's green run (scripts/ci-push-replay.mjs). A fork PR gets a read-only
+# token, so it is skipped. Checks out no code.
+name: Cancel closed PR runs
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  cancel:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel unfinished runs of the closed branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          SELF: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # A second open PR can share this head branch, and its runs still matter.
+          open=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="${REPO%%/*}:$BRANCH" --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "$BRANCH still has an open PR; leaving its runs alone"
+            exit 0
+          fi
+          ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
+            --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .id != $SELF) | .id")
+          failed=0
+          for id in $ids; do
+            gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; continue; }
+            # A run can finish between the listing and here; only one still going is a failure.
+            status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
+            if [ "$status" != "completed" ]; then
+              echo "::warning::could not cancel run $id (status $status)"
+              failed=1
+            fi
+          done
+          exit "$failed"

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import * as pc from 'playcanvas';
 import { captureTexture } from './capture.mjs';
-import { pointResources } from './point-resources.mjs';
+import { playcanvasScanPoints } from './scan-point-layers.mjs';
 export async function playcanvasBackend(canvas, meshes, captures, placements) {
   const device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgpu'], antialias: false });
   if (!device.isWebGPU) { device.destroy(); throw new Error('The spike requires WebGPU; fallback is not a pass.'); }
@@ -14,7 +14,7 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
   const ifc = new pc.Entity('IFC fixture'), captureRoot = new pc.Entity('Captures'), pointRoot = new pc.Entity('Points');
   app.root.addChild(ifc); app.root.addChild(captureRoot); app.root.addChild(pointRoot);
   const ownedMeshes = [], materials = [], assets = [], errors = [];
-  const scanResources = pointResources(device);
+  const scanPoints = playcanvasScanPoints(device, pointRoot, () => { if (!disposed) app.renderNextFrame = true; });
   device.wgpu.addEventListener('uncapturederror', event => errors.push(event.error.message));
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const source of meshes) {
@@ -33,7 +33,7 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
   const camera = new pc.Entity('Camera'); camera.addComponent('camera', { clearColor: new pc.Color(0.09, 0.13, 0.15), farClip: 1000 }); app.root.addChild(camera);
   const captureColor = new pc.Texture(device, { width: canvas.width, height: canvas.height, format: pc.PIXELFORMAT_RGBA8, mipmaps: false });
   const captureTarget = new pc.RenderTarget({ colorBuffer: captureColor, depth: true, samples: 1 });
-  let alternate = false, disposed = false, pointCount = 0;
+  let alternate = false, disposed = false;
   function pose() { camera.setPosition(center[0] + radius * (alternate ? -1.2 : 1.2), center[1] + radius * 0.7, center[2] + radius * 1.2); camera.lookAt(...center); }
   pose(); app.autoRender = false; app.start();
   return {
@@ -45,14 +45,9 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
     draw() { if (!disposed) { app.update(0); app.render(); } },
     move() { alternate = !alternate; pose(); app.renderNextFrame = true; },
     toggle(kind) { const target = kind === 'ifc' ? ifc : kind === 'points' ? pointRoot : captureRoot; target.enabled = !target.enabled; app.renderNextFrame = true; },
-    addPoints(chunk) {
-      // destroy() removes children from the parent, so iterate a snapshot.
-      const children = pointRoot.children.slice();
-      for (const child of children) child.destroy();
-      const { mesh, material } = scanResources.replace(chunk);
-      const entity = new pc.Entity(); entity.addComponent('render', { meshInstances: [new pc.MeshInstance(mesh, material)] }); pointRoot.addChild(entity); pointCount = chunk.pointCount; app.renderNextFrame = true;
-    },
-    stats() { return { backend: 'PlayCanvas 2.23.3', meshCount: meshes.length, splatCount: captures.reduce((n, data) => n + data.numSplats, 0), pointCount, errors, disposed, sharedDevice: true, center, radius, finiteMeshPositions: meshes.every(mesh => mesh.positions.every(Number.isFinite)), cameraPosition: camera.getPosition().toString(), drawCalls: app.stats.drawCalls.total }; },
-    async destroy() { disposed = true; captureTarget.destroy(); captureColor.destroy(); app.destroy(); scanResources.clear(); assets.forEach(asset => asset.unload()); ownedMeshes.forEach(mesh => mesh.destroy()); materials.forEach(material => material.destroy()); },
+    clearPoints: scanPoints.clear,
+    addPoints: scanPoints.replace,
+    stats() { return { backend: 'PlayCanvas 2.23.3', meshCount: meshes.length, splatCount: captures.reduce((n, data) => n + data.numSplats, 0), pointCount: scanPoints.count, errors, disposed, sharedDevice: true, center, radius, finiteMeshPositions: meshes.every(mesh => mesh.positions.every(Number.isFinite)), cameraPosition: camera.getPosition().toString(), drawCalls: app.stats.drawCalls.total }; },
+    async destroy() { if (disposed) return; disposed = true; scanPoints.clear(); captureTarget.destroy(); captureColor.destroy(); app.destroy(); assets.forEach(asset => asset.unload()); ownedMeshes.forEach(mesh => mesh.destroy()); materials.forEach(material => material.destroy()); },
   };
 }

@@ -38,7 +38,7 @@ pub(super) fn align_source_corners(
                         repeat_s: request.repeat_s,
                         repeat_t: request.repeat_t,
                     }),
-                    tex_coords: item
+                    tex_coords_id: 0, tex_coords: item
                         .tex_coords
                         .iter()
                         .map(|p| p.map(|v| v as f32))

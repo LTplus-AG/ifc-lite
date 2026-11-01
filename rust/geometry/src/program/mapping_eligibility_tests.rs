@@ -256,7 +256,7 @@ fn issue_7873_exact_single_keeps_plan_count_colour_and_texture_gates() {
                 repeat_s: true,
                 repeat_t: true,
             }),
-            tex_coords: vec![[0., 0.], [1., 0.], [0., 1.]],
+            tex_coords_id: 0, tex_coords: vec![[0., 0.], [1., 0.], [0., 1.]],
             tex_coord_index: None,
         },
     )]

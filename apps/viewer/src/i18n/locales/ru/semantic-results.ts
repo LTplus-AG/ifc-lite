@@ -5,6 +5,12 @@
 import type { Catalogue } from '../../registry';
 
 export const semanticResultsRu = {
+  'semantic.resultsSelectAll': 'Выбрать все сопоставленные результаты',
+  'semantic.resultsClear': 'Снять выделение',
+  'semantic.resultsSelection': 'Выделение',
+  'semantic.resultsToggle': 'Переключить строку {row}',
+  'semantic.resultsSelectionHelp': 'Флажки добавляют или удаляют сущности. Выбор всех охватывает все страницы, кроме неоднозначных и несопоставленных строк. Ctrl/Cmd-клик добавляет или удаляет кандидата.',
+
   "semantic.resultsTitle": "Результаты SPARQL",
   "semantic.resultsPrevious": "Предыдущие строки",
   "semantic.resultsNext": "Следующие строки",

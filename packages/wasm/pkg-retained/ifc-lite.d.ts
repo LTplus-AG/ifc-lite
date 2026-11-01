@@ -231,6 +231,10 @@ export interface RetainedShapePart {
     geometryItemId?: number;
     materialId?: number;
     faces?: { table: string[]; triangles: Uint32Array };
+    /** Authored IfcIndexedColourMap: four floats per colour, one entry per triangle (0xFFFFFFFF: none). */
+    palette?: { mapId: number; colors: Float32Array; triangles: Uint32Array };
+    /** Authored texture: source (u, v), six per triangle, not V-flipped; `textured` is one flag per triangle. */
+    texture?: { textureId: number; uvs: Float64Array; textured: Uint8Array };
     instanceKey?: string;
     /** Open material band; closure is validated across the product. */
     layer?: { index: number; materialId: number };

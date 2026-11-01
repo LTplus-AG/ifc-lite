@@ -78,6 +78,7 @@ import {
   createGeometryProcessorDisposer,
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
+import { inspectGaussianAdmission } from './ingest/gaussianAdmission.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
@@ -481,15 +482,11 @@ export function useIfcLoader() {
         : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      // The load's one full-source hash (#7022): started once the bytes are in
-      // hand, awaited only by finalize, the cache write and warm revalidation.
+      // #7022: one full-source hash, awaited only for publication/cache.
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
-      // PRIMARY owns the active-model slots + top-level UI/memory flags and
-      // creates the model record. A federated add leaves all of that untouched
-      // (model #1 must not be disturbed) and registers atomically at finalize
-      // via addModel — so it creates NO placeholder entry here (which also
-      // keeps the `collapsed` default counting only the other models).
+      // Primary creates its placeholder; federation registers atomically at finalize
+      // so existing active-model/UI slots and collapsed defaults remain untouched.
       if (target.kind === 'primary') {
         setGeometryStreamingActive(false);
         setBoundedGeometryMode(false);
@@ -699,6 +696,16 @@ export function useIfcLoader() {
       // Point clouds stream from Blob; only their head is needed for detection.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
+      const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
+      if (isStale()) return;
+      if (gaussianAdmission.kind !== 'ordinary') {
+        const message = gaussianAdmission.kind === 'invalid' ? gaussianAdmission.reason
+          : 'Gaussian splat loading is disabled pending the native rendering contract.';
+        showLoadError(message, gaussianAdmission.kind === 'invalid' ? 'gaussian_invalid_input' : 'gaussian_disabled');
+        if (target.kind === 'primary') updateModel(modelId, { loadState: 'error', loadError: message });
+        setLoading(false);
+        return;
+      }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 
       if (landXmlCandidate && !pointCloudFormat) {
@@ -776,10 +783,7 @@ export function useIfcLoader() {
           setLoading(false);
           return;
         }
-        // WebGPU init is async (Viewport calls `renderer.init()` on mount).
-        // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
-        // before init resolves — used to throw "Renderer not initialized"
-        // from `beginPointCloudStream`. Wait for the device to be ready.
+        // A point cloud dropped before IFC still waits for async WebGPU initialization.
         //
         // The wait REJECTS for two reasons, and they read differently to a
         // user. `RendererDestroyedError`: the viewport unmounted underneath it

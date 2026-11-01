@@ -48,7 +48,7 @@ fn band(index: u16, y0: f64, y1: f64) -> ShapePart {
         let [q0, q1, q2, q3] = if outward { quad } else { [quad[0], quad[3], quad[2], quad[1]] };
         indices.extend([q0, q1, q2, q0, q2, q3]);
     }
-    ShapePart { layer: Some(ShapeLayer { index, material_id: 5000 + u32::from(index) }), capped_volume_m3: None, source_exact: false, positions, indices,
+    ShapePart { layer: Some(ShapeLayer { index, material_id: 5000 + u32::from(index) }), capped_volume_m3: None, source_exact: false, surface: None, positions, indices,
         world_from_object: [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.], curved: false, halfspace_clipped: false,
         revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None }
 }

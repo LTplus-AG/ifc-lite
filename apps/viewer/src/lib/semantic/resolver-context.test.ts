@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveWithStrategy, identityFromRow } from './resolver-context';
+import { resolveWithStrategy, identityFromRow, createIndexedIdentityResolver } from './resolver-context';
 import { parseResourceLinks } from '@/components/viewer/SemanticIdentityControls';
 const GlobalId = '0000000000000000000001';
 const context = { entities: [{ modelId: 'current', expressId: 42, GlobalId }], revisions: new Map([['https://example.org/revision', 'current']]) };
@@ -35,4 +35,17 @@ test('URI identity #6783 accepts URI RDF terms only and never changes explicit d
   for (const type of ['literal', 'bnode'] as const) assert.equal(identityFromRow({ id: { type, value: id } }, {}, settings), undefined);
   const direct = { strategy: 'ifc-global-id', links: [] };
   assert.equal(resolveWithStrategy({ id, GlobalId: 'wrong' }, context, direct).status, 'invalid');
+});
+
+
+test('#8556 indexed batch resolution bounds GlobalId reads and retains URI ambiguity', () => {
+  let reads = 0;
+  const guid = (id: number) => String(id).padStart(22, '0');
+  const entities = Array.from({ length: 100000 }, (_, id) => ({ modelId: 'm', expressId: id + 1, get GlobalId() { reads++; return guid(id); } }));
+  const resolve = createIndexedIdentityResolver({ entities, revisions: new Map() }, { strategy: 'resource-uri', links: [] });
+  for (let id = 0; id < 5000; id++) assert.deepEqual(resolve({ id: `https://lbd.org/${guid(id)}` }), { status: 'resolved', ref: { modelId: 'm', expressId: id + 1 } });
+  assert.ok(reads <= 105000, `one snapshot scan plus candidate reads, got ${reads}`);
+  const duplicate = [...entities.slice(0, 1), { modelId: 'other', expressId: 1, GlobalId: guid(0) }];
+  const ambiguous = createIndexedIdentityResolver({ entities: duplicate, revisions: new Map() }, { strategy: 'resource-uri', links: [] });
+  assert.equal(ambiguous({ id: `https://lbd.org/${guid(0)}` }).status, 'ambiguous');
 });

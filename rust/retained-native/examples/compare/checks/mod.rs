@@ -26,10 +26,11 @@ pub struct ModelSource<'a> {
     pub bundle: &'a Arc<SourceBundle>,
     index: OnceCell<Arc<EntityIndex>>,
     units: OnceCell<f64>,
+    surface_maps: OnceCell<Vec<(usize, usize, bool)>>,
 }
 impl<'a> ModelSource<'a> {
     pub fn new(bytes: &'a [u8], bundle: &'a Arc<SourceBundle>) -> Self {
-        Self { bytes, bundle, index: OnceCell::new(), units: OnceCell::new() }
+        Self { bytes, bundle, index: OnceCell::new(), units: OnceCell::new(), surface_maps: OnceCell::new() }
     }
     /// `EntityDecoder::new(bytes)` with the index its first lookup would build.
     pub fn decoder(&self) -> EntityDecoder<'a> {
@@ -42,6 +43,10 @@ impl<'a> ModelSource<'a> {
             let mut decoder = EntityDecoder::new(self.bytes);
             ifc_lite_geometry::GeometryRouter::with_units(self.bytes, &mut decoder).unit_scale()
         })
+    }
+    /// The colour and texture map spans every face-set surface check reads, scanned once.
+    pub fn surface_maps(&self) -> &[(usize, usize, bool)] {
+        self.surface_maps.get_or_init(|| ifc_lite_retained_native::oracle::face_sets::surface_maps(self.bytes))
     }
 }
 // Existing slices can continue accepting their old analytic-only argument.

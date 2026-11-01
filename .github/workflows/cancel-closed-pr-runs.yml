@@ -5,14 +5,15 @@
 # A closed PR's unfinished runs report to nobody, and they keep queueing for the
 # runners open work needs. Mergify closes every batch PR after merging or
 # splitting it, and rewrites its body first, so each batch left about seven runs
-# behind (2026-11-01). Finished runs stay untouched: the push replay reads a
+# behind (2026-11-01). It rewrites the body just after closing too, so an edit of
+# a closed PR runs this again and catches what that started. Finished runs stay untouched: the push replay reads a
 # batch's green run (scripts/ci-push-replay.mjs). A fork PR gets a read-only
 # token, so it is skipped. Checks out no code.
 name: Cancel closed PR runs
 
 on:
   pull_request:
-    types: [closed]
+    types: [closed, edited]
 
 permissions:
   actions: write
@@ -20,7 +21,7 @@ permissions:
 
 jobs:
   cancel:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.state == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

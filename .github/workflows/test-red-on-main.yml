@@ -1,0 +1,68 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Keeps one open issue while `Test` is red on main, naming the first bad commit,
+# and closes it when main is green again. PRs run a fast lane, so some failures
+# can first appear on main, and a red push run otherwise notifies nobody.
+# Runs from the default branch's copy of this file, and checks out no code.
+name: Test red on main
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  issues: write
+
+# One writer at a time, so two finishing runs cannot open two issues.
+concurrency:
+  group: test-red-on-main
+
+jobs:
+  report:
+    if: github.event.workflow_run.event == 'push' && contains(fromJSON('["success","failure","timed_out"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Runs can finish out of order: only the newest finished run speaks for
+          # main, so an older run cannot close or reopen a newer run's verdict.
+          newest=$(gh api "repos/$REPO/actions/workflows/test.yml/runs?branch=main&event=push&status=completed&per_page=30" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure" or .conclusion == "timed_out")][0].id')
+          if [ "$newest" != "$RUN_ID" ]; then
+            echo "run $RUN_ID is not the newest finished main run ($newest); leaving the issue alone"
+            exit 0
+          fi
+          title="ci: Test is red on main"
+          existing=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ "$CONCLUSION" = "success" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --repo "$REPO" --comment "Green again at ${SHA}: ${RUN_URL}"
+            fi
+            exit 0
+          fi
+          failed=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "- " + .name')
+          body="\`Test\` ended \`${CONCLUSION}\` on main at ${SHA}: ${RUN_URL}
+
+          Failed jobs:
+          ${failed:-(none reported)}"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "Still red. ${body}"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "First bad commit seen: ${body}"
+          fi

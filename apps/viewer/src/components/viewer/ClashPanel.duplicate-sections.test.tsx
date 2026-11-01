@@ -47,13 +47,16 @@ function element(key: string): ClashElement {
 }
 
 // happy-dom performs no layout, so every element measures 0×0 and the panel's
-// row virtualizer (which reads `offsetWidth`/`offsetHeight`, see
-// @tanstack/virtual-core `getRect`) computes an empty window — no section
-// header would render no matter what the panel does. Give every element a
-// fixed size so the virtual list actually materializes rows. Scoped to this
-// test file's process (node:test runs each file in its own child process).
+// row virtualizer (which reads the scroll element's `clientWidth`/`clientHeight`
+// from virtual-core 3.19, `offset*` before, see `getRect`, and each row's
+// `offsetHeight`) computes an empty window — no section header would render no
+// matter what the panel does. Give every element a fixed size so the virtual
+// list actually materializes rows. Scoped to this test file's process
+// (node:test runs each file in its own child process).
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { get: () => 800, configurable: true });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { get: () => 600, configurable: true });
 
 let root: Root | null = null;
 let container: HTMLElement | null = null;

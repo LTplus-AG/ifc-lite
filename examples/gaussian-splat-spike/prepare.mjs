@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { execFileSync } from 'node:child_process';
 export const defaultAssets = join(homedir(), '.cache/ifc-lite/gaussian-splat-spike');
 export const captures = [
@@ -60,4 +60,4 @@ async function prepare() {
   await writeFile(join(root, 'fixtures.json'), JSON.stringify({ revision, records }, null, 2) + '\n');
   console.log(JSON.stringify({ root, records }, null, 2));
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await prepare();
+if (isMainEntry(import.meta.url)) await prepare();

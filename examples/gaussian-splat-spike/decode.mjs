@@ -43,11 +43,11 @@ export async function decodeIfc() {
   const wasmUrl = new URL('/fixtures/wasm/ifc-lite.js', location.href).href;
   const wasm = await import(/* @vite-ignore */ wasmUrl);
   await wasm.default();
-  const api = new wasm.IfcAPI();
   const response = await fetch('/fixtures/model.ifc');
   if (!response.ok) throw new Error(`IFC HTTP ${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const meshes = [];
+  const api = new wasm.IfcAPI();
   try {
     const pre = api.buildPrePassOnce(bytes);
     meshes.rtcOffset = pre.needsShift ? Array.from(pre.rtcOffset) : [0, 0, 0];

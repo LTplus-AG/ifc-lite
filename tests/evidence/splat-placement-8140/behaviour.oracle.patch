@@ -1,0 +1,11 @@
+--- a/examples/gaussian-splat-spike/decode.mjs
++++ b/examples/gaussian-splat-spike/decode.mjs
+@@ -30,7 +30,7 @@
+   const iter = data.createIter(p, r, s, c);
+   for (let i = 0; i < n; i++) {
+     iter.read(i);
+-    positions.set([p.x * scale + offset[0], p.y * scale + offset[1], -p.z * scale + offset[2]], i * 3);
++    positions.set([p.x * scale + offset[0], -p.y * scale + offset[1], -p.z * scale + offset[2]], i * 3);
+     scales.set([s.x * scale, s.y * scale, s.z * scale], i * 3);
+     // Rotation X(pi) multiplied by source quaternion, packed WXYZ for luma.
+     rotations.set([-r.x, r.w, -r.z, r.y], i * 4);

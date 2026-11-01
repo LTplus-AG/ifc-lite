@@ -20,7 +20,12 @@ The [upstream patch](./upstream-depth-convention.patch) targets luma commit
 `e3979f06848a6d04547ac7a26f844212ba569806`, after its move to `engine/splats`.
 It includes TypeScript API declarations, regression tests and documentation.
 `git apply --check` passed against that pinned source and documentation. The
-upstream suite has **not** been run, and this patch has not been submitted upstream.
+original patch is preserved as historical evidence. The subsequently validated revision
+`71e2be2394ecd9bdfb6f1d36ce23e6af92978015` is submitted as
+[luma.gl #3619](https://github.com/visgl/luma.gl/pull/3619). Its 13 CI checks pass,
+including browser coverage and website builds. Local build/lint, 4,799 node tests
+and focused GPU readbacks pass; nine node tests and one existing attachment case
+were skipped. The full local headless endurance run was interrupted, not passed.
 
 Runtime qualification uses published `@luma.gl/splats@9.4.2`: the witness applies
 the same three implementation changes in memory through a Vite load hook,
@@ -59,8 +64,9 @@ Remaining blockers are unchanged: the CPU path approximates densely interleaved
 draw runs, the GPU paged renderer still hardcodes conventional depth comparison,
 and exact transparent IFC/splat composition is unqualified. Clipping, picking,
 MSAA, lifecycle failure handling and full production loader integration remain
-outside this continuation. The next upstream step is to run the supplied tests
-in its own harness and submit the proposal with this rendered counterexample.
+outside this continuation. Upstream maintainer review/merge and the native viewer
+contract tracked in #8564 remain outstanding; upstream CI does not qualify
+production integration.
 
 ## Reproduce
 

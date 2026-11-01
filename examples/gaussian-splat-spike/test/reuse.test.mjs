@@ -39,3 +39,18 @@ for (const capture of captures) test(`real ${capture.id} decodes through upstrea
   const corrupted = Buffer.from(bytes); corrupted[0] ^= 1;
   assert.throws(() => verifyBytes(corrupted, capture), /integrity/);
 });
+
+// #8140: verify placement through the real decoder without optional downloads.
+test('decoded .splat placement preserves scale and converts declared -Y up (#8140)', async () => {
+  const bytes = new Uint8Array(32);
+  const view = new DataView(bytes.buffer);
+  [1, 2, 3, 0.125, 0.25, 0.5].forEach((value, index) => view.setFloat32(index * 4, value, true));
+  bytes.set([128, 64, 32, 192, 255, 128, 128, 128], 24);
+  const data = await decodeCaptureBytes(bytes);
+  assert.equal(data.numSplats, 1);
+  const columns = captureColumns(data, [10, 20, 30], 2);
+  assert.deepEqual(Array.from(columns.positions), [12, 16, 24]);
+  const expectedScales = [0.25, 0.5, 1];
+  columns.scales.forEach((value, index) => assert.ok(Math.abs(value - expectedScales[index]) < 1e-6));
+  assert.ok(Math.abs(Math.hypot(...columns.rotations) - 1) < 1e-6);
+});

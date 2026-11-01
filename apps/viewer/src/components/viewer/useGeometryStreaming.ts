@@ -31,7 +31,7 @@ import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
-import { noteFinalFitBounds, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
+import { adoptedSceneOutlivesEmptyGeometry, noteFinalFitBounds, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
 import { computeBounds, type Bounds } from './streamingBounds.js';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
@@ -266,7 +266,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const isCleared = currentLength === 0;
 
     // Adopted snapshot batches own the scene until their meshes arrive.
-    if (isCleared && scene.isSceneSnapshotHydrating()) return;
+    if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
     if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
 
     if (isCleared) {

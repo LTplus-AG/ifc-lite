@@ -6,7 +6,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
-import { setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
+import { adoptedSceneOutlivesEmptyGeometry, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
 
 const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };
@@ -26,7 +26,7 @@ const refs = () => ({
 
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
-  beforeEach(() => { hydrates = true; hydrations = []; setPendingSceneSnapshot(null); });
+  beforeEach(() => { hydrates = true; hydrations = []; withdrawPendingSceneSnapshot(adoption); });
   const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
@@ -69,8 +69,41 @@ describe('takeSceneSnapshotGeometry', () => {
   it('leaves geometry alone with nothing pending, or once withdrawn', () => {
     assert.equal(take([mesh()]), false);
     setPendingSceneSnapshot(adoption);
-    setPendingSceneSnapshot(null);
+    withdrawPendingSceneSnapshot(adoption);
     assert.equal(take([mesh()]), false);
     assert.deepEqual(hydrations, []);
+  });
+
+  it('an older load\'s cleanup leaves a newer load\'s pending adoption', () => {
+    const newer = {};
+    setPendingSceneSnapshot(newer);
+    withdrawPendingSceneSnapshot(adoption);
+    assert.equal(take([mesh()]), true);
+    assert.equal(hydrations[0][0], newer);
+  });
+
+  describe('empty geometry', () => {
+    const scene = (hydrating: boolean) => {
+      const abandoned: object[] = [];
+      return { abandoned, isSceneSnapshotHydrating: () => hydrating, abandonSceneSnapshot: (a: object) => { abandoned.push(a); } };
+    };
+
+    it('keeps the adopted batches while their meshes decode', () => {
+      const hydrating = scene(true);
+      assert.equal(adoptedSceneOutlivesEmptyGeometry(hydrating), true);
+      assert.deepEqual(hydrating.abandoned, []);
+    });
+
+    it('ends the adoption once its meshes were published and all filtered out', () => {
+      setPendingSceneSnapshot(adoption);
+      const hydrating = scene(true);
+      assert.equal(adoptedSceneOutlivesEmptyGeometry(hydrating), false);
+      assert.deepEqual(hydrating.abandoned, [adoption]);
+      assert.equal(take([mesh()]), false, 'no longer pending');
+    });
+
+    it('does nothing without an adoption', () => {
+      assert.equal(adoptedSceneOutlivesEmptyGeometry(scene(false)), false);
+    });
   });
 });

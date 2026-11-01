@@ -14,7 +14,7 @@ import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from '@i
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
-import { lastFinalFitBounds, setPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
+import { lastFinalFitBounds, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
@@ -109,7 +109,7 @@ export async function publishAdoptedSceneMeshes(
 /** The load is over without serving its snapshot: the adopted batches must not outlive it. */
 export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null): void {
   if (!adopted) return;
-  setPendingSceneSnapshot(null);
+  withdrawPendingSceneSnapshot(adopted.adoption);
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }
 

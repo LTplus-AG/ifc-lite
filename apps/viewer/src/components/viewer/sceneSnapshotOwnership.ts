@@ -11,7 +11,7 @@
  */
 
 import type { MutableRefObject } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Bounds } from './streamingBounds.js';
 
@@ -28,9 +28,27 @@ export function lastFinalFitBounds(): Bounds | null {
   return finalFitBounds;
 }
 
-/** The next new geometry to sync belongs to this adoption; null withdraws it. */
-export function setPendingSceneSnapshot(adoption: object | null): void {
+/** The next new geometry to sync belongs to this adoption. */
+export function setPendingSceneSnapshot(adoption: object): void {
   pendingAdoption = adoption;
+}
+
+/** This adoption's load is over. A newer load's pending adoption stays. */
+export function withdrawPendingSceneSnapshot(adoption: object): void {
+  if (pendingAdoption === adoption) pendingAdoption = null;
+}
+
+/**
+ * Empty geometry during an adoption: true when the adopted batches keep the
+ * scene because their meshes are still decoding. Once they are published, empty
+ * means every type is now hidden, so the batches must go: nothing else ends them.
+ */
+export function adoptedSceneOutlivesEmptyGeometry(scene: Pick<SceneContents, 'isSceneSnapshotHydrating' | 'abandonSceneSnapshot'>): boolean {
+  if (!scene.isSceneSnapshotHydrating()) return false;
+  if (!pendingAdoption) return true;
+  scene.abandonSceneSnapshot(pendingAdoption);
+  pendingAdoption = null;
+  return false;
 }
 
 /**

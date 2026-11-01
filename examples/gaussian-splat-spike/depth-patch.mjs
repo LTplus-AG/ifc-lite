@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 export const publishedRendererHash = '1eb8d5b0edb5d9058445a1d6473d6f3f187cb7e5c778bb3841e326556cb572fc';
 export const upstreamCommit = 'e3979f06848a6d04547ac7a26f844212ba569806';
 
@@ -26,11 +27,12 @@ export function patchDepthConvention(source) {
 export function depthPatchPlugin(enabled) {
   return {
     name: 'experimental-upstream-depth-convention', enforce: 'pre',
-    transform(source, id) {
+    async load(id) {
       if (!id.replaceAll('\\', '/').endsWith('/splats/dist/splat-renderer.js')) return;
+      const source = await readFile(id, 'utf8');
       const actual = createHash('sha256').update(source).digest('hex');
       if (actual !== publishedRendererHash) throw new Error(`Unexpected upstream renderer: ${actual}`);
-      return enabled ? { code: patchDepthConvention(source), map: null } : undefined;
+      return { code: enabled ? patchDepthConvention(source) : source, map: null };
     },
   };
 }

@@ -26,6 +26,7 @@ async function run() {
       const depth = device.createTexture({ format: 'depth32float', width: 64, height: 64, usage: GPUTextureUsage.RENDER_ATTACHMENT });
       const framebuffer = device.createFramebuffer({ colorAttachments: [color], depthStencilAttachment: depth });
       const batches = [-2, -4].map((z, i) => makeGPUSplatData(device, {
+        sourceBatchIndex: i, rowIndexBase: i,
         positions: new Float32Array([0, 0, z]), scales: new Float32Array([0.3, 0.3, 0.3]),
         rotations: new Float32Array([1, 0, 0, 0]), colors: new Uint8Array(i ? [0, 0, 255, 255] : [255, 0, 0, 255]), opacities: new Float32Array([0.75]),
       }));

@@ -7,7 +7,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { nativeSample, main as nativeMain } from './retained-qual-native-memory.mjs';
-import { assertNativeSummary } from './retained-qual-assert.mjs';
+import { assertCliRetained, assertNativeSummary } from './retained-qual-assert.mjs';
+import { readReportEnvelope } from './retained-qual-cli.mjs';
 import { roundSides, resultEnvelope } from './retained-qual-lib.mjs';
 import { compare, format, readRows } from './retained-qual-report.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
@@ -333,4 +334,27 @@ test('8413: a compared metric appears once in the report', async () => {
   const names = fixture.columns.map(c => c.column);
   assert.equal(names.filter(n => n === 'productMs').length, 1);
   assert.equal(names.filter(n => n === 'longTaskMs').length, 1);
+});
+
+test('#7955 Holter: a failed CLI row keeps the fatal end of stderr', () => {
+  const stderr = `retained object release retired captured worker Error: worker incarnation retired\n${'    at frame\n'.repeat(60)}RangeError: Invalid string length\n`;
+  assert.throws(() => assertCliRetained({ exitCode: 1, stdout: '', stderr, report: null, objHead: '' }), /RangeError: Invalid string length/);
+});
+
+test('#7955 Holter: the CLI runner reads a report larger than one string by its two ends', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-envelope-'));
+  try {
+    const path = join(dir, 'report.json'), envelope = { engine: { sdk: 'x' }, format: 'ifc-lite.retained-report/1',
+      settings: { kernel: 'retained' }, summary: { candidates: 2, published: 1, byCode: { a: 1 } } };
+    const row = `    { "id": 1 }`;
+    const text = JSON.stringify({ engine: envelope.engine, format: envelope.format, products: [], settings: envelope.settings, summary: envelope.summary }, null, 2)
+      .replace('"products": []', `"products": [\n${row}\n  ]`);
+    writeFileSync(path, text);
+    assert.deepEqual(readReportEnvelope(path, 4096), JSON.parse(text));
+    // Past the small-file path: the rows between the two ends are never read or parsed.
+    writeFileSync(path, text.replace(row, `${row},\n    NOT JSON ${'x'.repeat(1 << 16)},\n${row}`));
+    assert.deepEqual(readReportEnvelope(path, 4096), envelope);
+    writeFileSync(path, `{${'x'.repeat(1 << 16)}}`);
+    assert.throws(() => readReportEnvelope(path, 4096), /envelope not found/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

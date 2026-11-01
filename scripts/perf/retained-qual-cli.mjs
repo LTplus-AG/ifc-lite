@@ -35,6 +35,22 @@ function head(path, bytes = 4096) {
   try { return buffer.subarray(0, readSync(fd, buffer, 0, bytes, 0)).toString('utf8'); } finally { closeSync(fd); }
 }
 
+/**
+ * The report without its product rows. A whole-model report can exceed the maximum string
+ * length (#7955 Holter), so only its two ends are read; keys are written in sorted order.
+ */
+export function readReportEnvelope(path, ends = 1 << 20) {
+  const size = statSync(path).size, fd = openSync(path, 'r');
+  try {
+    const slice = (position, length) => { const b = Buffer.alloc(length); return b.subarray(0, readSync(fd, b, 0, length, position)).toString('utf8'); };
+    if (size <= 2 * ends) return JSON.parse(slice(0, size));
+    const first = slice(0, ends), last = slice(size - ends, ends);
+    const open = first.indexOf('\n  "products": ['), close = last.lastIndexOf('\n  ],\n  "settings": ');
+    if (open < 0 || close < 0) throw new Error('retained report envelope not found');
+    return JSON.parse(`${first.slice(0, open)}${last.slice(close + '\n  ],'.length)}`);
+  } finally { closeSync(fd); }
+}
+
 /** Run one command to completion under /usr/bin/time -v with the process-tree sampler; times with hrtime. */
 function timedRun(argv, cwd, scratch, name) {
   return new Promise((resolveRun, rejectRun) => {
@@ -77,7 +93,7 @@ export async function cliSample({ arm, fixture, round, options, expectation }) {
     Object.assign(row, { totalMs: run.totalMs, startupControlMs: control.totalMs, maxRssKiB: run.maxRssKiB,
       processHwmKiB: run.memory.maxIndividualHwmKiB, concurrentRssKiB: run.memory.maxObservedConcurrentRssKiB, memorySamples: run.memory.samples,
       memoryCaveat: `Node CLI process tree (own WASM/worker transport), not native SMLib worker RSS; ${run.memory.caveat}` });
-    const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+    const report = existsSync(reportPath) ? readReportEnvelope(reportPath) : null;
     assertCliRetained({ exitCode: run.exitCode, stdout: run.stdout, stderr: run.stderr, report, expectedManifestSha256: arm.identity.engine.manifestSha256,
       objHead: existsSync(obj) ? head(obj) : '', expectation });
     Object.assign(row, { ok: true, candidates: report.summary.candidates, published: report.summary.published,

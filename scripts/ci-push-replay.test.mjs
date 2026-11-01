@@ -103,6 +103,65 @@ test('malformed hashes refuse rather than guess', () => {
 
 // #7944: exercise the real CLI, Git input, gh subprocess and Actions outputs.
 // A failed optimization must schedule tests, while verification still refuses.
+const REPO = 'fixture/replay';
+const batchRun = (over = {}) => ({
+  id: 9, event: 'pull_request', status: 'completed', conclusion: 'success',
+  path: '.github/workflows/test.yml', head_branch: 'mergify/merge-queue/abc123',
+  head_repository: { full_name: REPO }, created_at: '2026-11-01T03:45:00Z', ...over,
+});
+// A fast PR run: green, but it recorded no tree, so only the queue can prove the push.
+const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['build-output'] }, repo: REPO, queueEvidence, ...over });
+
+test('the last commit of a batch replays on the batch run that tested its tree', () => {
+  assert.deepEqual(decidePushReplay(queued([{ tree: TREE, runs: [batchRun()] }])), { replay: true, runId: 9, pr: 7, queue: true });
+});
+
+test('an earlier commit of a batch replays on the run that tested a later main tree', () => {
+  const d = decidePushReplay(queued([{ tree: TREE, runs: [] }, { tree: h('e'), runs: [] }, { tree: h('0'), runs: [batchRun()] }]));
+  assert.deepEqual(d, { replay: true, runId: 9, pr: 7, queue: true });
+});
+
+test('with no later tree proven the push runs in full', () => {
+  assert.equal(decidePushReplay(queued([{ tree: TREE, runs: [] }])).replay, false);
+  assert.equal(decidePushReplay(queued([])).replay, false);
+  assert.equal(decidePushReplay(base({ artifactNamesByRun: {} })).replay, false);
+});
+
+test('only a green batch run of this repository proves a push', () => {
+  for (const over of [
+    { conclusion: 'failure' },
+    { conclusion: 'cancelled' },
+    { conclusion: null, status: 'in_progress' },
+    { event: 'push' },
+    { path: '.github/workflows/benchmark.yml' },
+    { head_branch: 'feature/merge-queue' },
+    { head_repository: { full_name: 'attacker/ifc-lite' } },
+    { head_repository: undefined },
+  ]) {
+    const d = decidePushReplay(queued([{ tree: TREE, runs: [batchRun(over)] }]));
+    assert.equal(d.replay, false, JSON.stringify(over));
+  }
+  assert.equal(decidePushReplay(queued([{ tree: TREE, runs: [batchRun()] }], { repo: undefined })).replay, false);
+});
+
+test('the queue route keeps every guard the PR route has', () => {
+  const evidence = [{ tree: TREE, runs: [batchRun()] }];
+  assert.equal(decidePushReplay(queued(evidence, { before: h('9') })).replay, false, 'not a single commit on the tip');
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles: ['Cargo.lock'] })).replay, false, 'main-only cache key');
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles: ['.github/workflows/test.yml'] })).replay, false, 'workflow edit');
+  assert.equal(decidePushReplay(queued(evidence, { pulls: [] })).replay, false, 'no merged PR');
+});
+
+test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {
+  const d = decidePushReplay(base({ repo: REPO, queueEvidence: [{ tree: TREE, runs: [batchRun()] }] }));
+  assert.deepEqual(d, { replay: true, runId: 1, pr: 7 });
+});
+
+test('the newest green batch run of the nearest tree is replayed, so --verify re-reads the same one', () => {
+  const older = batchRun({ id: 8, created_at: '2026-11-01T01:00:00Z' });
+  assert.equal(decidePushReplay(queued([{ tree: TREE, runs: [older, batchRun()] }, { tree: h('e'), runs: [batchRun({ id: 7 })] }])).runId, 9);
+});
+
 test('unreadable replay evidence selects full validation only in probe mode', {
   skip: process.platform === 'win32' ? 'POSIX gh executable fixture requires a Unix shell environment' : false,
 }, (t) => {
@@ -152,6 +211,14 @@ test('unreadable replay evidence selects full validation only in probe mode', {
     ...[null, {}, { name: 42, expired: false }].map((artifact) => [
       'GH_BAD_SHAPE', apiResponse([merged], [{ id: 1 }], [artifact]),
     ]),
+    // The queue route's reads fail closed too: no compare shape, no tree.
+    ['GH_BAD_SHAPE', apiResponse([merged])],
+    ['GH_BAD_SHAPE', `
+      const path = process.argv[3];
+      process.stdout.write(JSON.stringify(path.includes('/compare/')
+        ? { status: 'ahead', commits: [{ commit: {} }] }
+        : path.includes('/commits/') ? ${JSON.stringify([merged])} : { workflow_runs: [] }));
+    `],
   ]) {
     writeFileSync(gh, `#!/usr/bin/env node\n${response}\n`);
     chmodSync(gh, 0o755);
@@ -159,7 +226,7 @@ test('unreadable replay evidence selects full validation only in probe mode', {
     const probe = spawnSync(process.execPath, [script, '--probe'], { cwd: root, env, encoding: 'utf8' });
     assert.equal(probe.status, 0, probe.stderr);
     assert.match(probe.stderr, new RegExp(failure));
-    assert.equal(readFileSync(output, 'utf8'), 'replay=false\nreplay_run=\n');
+    assert.equal(readFileSync(output, 'utf8'), 'replay=false\nreplay_run=\nreplay_queue=false\n');
     assert.match(probe.stdout, /full validation is required/);
 
     writeFileSync(output, '');

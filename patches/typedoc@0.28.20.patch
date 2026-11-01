@@ -1,0 +1,19 @@
+diff --git a/dist/node-utils.js b/dist/node-utils.js
+index 96a483d44c..591848cd72 100644
+--- a/dist/node-utils.js
++++ b/dist/node-utils.js
+@@ -325,12 +325,8 @@ function glob(pattern, root, options = {}) {
+       if (childPath[childPath.length - 1] === "node_modules" && !shouldIncludeNodeModules) {
+         return false;
+       }
+-      return mini.set.some((row) => mini.matchOne(
+-        childPath,
+-        row,
+-        /* partial */
+-        true
+-      ));
++      // minimatch 11 removed matchOne. match() applies negation, matchOne did not.
++      return mini.match(childPath.join("/"), /* partial */ true) !== mini.negate;
+     },
+     matchDirectories: options.includeDirectories,
+     followSymlinks: options.followSymlinks

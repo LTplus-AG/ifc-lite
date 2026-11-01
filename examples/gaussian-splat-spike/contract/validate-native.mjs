@@ -39,6 +39,7 @@ try {
       assert.deepEqual(errors, []);
       assert.deepEqual(witness.result.errors, []);
       assert.equal(witness.result.ownershipError, null);
+      assert.equal(witness.result.budgetRejection, exact ? 'Exact source-run budget exceeded (128)' : null);
       assert.equal(witness.result.results.length, 16);
       assert.ok(witness.result.intersection.glassFirstDifferentChannels > 0);
       assert.ok(witness.result.intersection.splatsFirstDifferentChannels > 0);

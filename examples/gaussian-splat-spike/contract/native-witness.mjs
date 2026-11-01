@@ -41,7 +41,7 @@ async function run() {
   raw.addEventListener('uncapturederror', e => errors.push(e.error.message));
   const device = new WebGPUDevice({ createCanvasContext: false, contractOwnsDevice: false, onError: e => errors.push(e.message) }, raw, adapter, adapter.info);
   const results = [];
-  let intersection;
+  let intersection, budgetRejection;
   try {
     // One renderer is resized in-place between 64 and 80, using native-owned
     // attachments/encoder/pass/submission. No canvas, loader, or splat shader.
@@ -93,7 +93,7 @@ async function run() {
                 for (let c = 0; c < 4; c++) maximumChannelError = Math.max(maximumChannelError, Math.abs(actual[p + c] - expected[p + c]));
               }
               const center = (Math.floor(size / 2) * size + Math.floor(size / 2)) * 4;
-              results.push({ projection, equalDepths, size, sampleCount, drawRuns: combined.getDrawRuns().length,
+              results.push({ projection, equalDepths, size, sampleCount, reportedGpuBytes: combined.stats.gpuByteLength, drawRuns: combined.getDrawRuns().length,
                 changedPixels, maximumChannelError, referenceHash: await hash(expected), actualHash: await hash(actual),
                 center: Array.from(actual.slice(center, center + 4)), referenceCenter: Array.from(expected.slice(center, center + 4)) });
             } finally {
@@ -104,6 +104,18 @@ async function run() {
         } finally { combined.destroy(); reference.destroy(); batches.forEach(b => b.destroy()); referenceData.destroy(); }
       }
     }
+    // Test fail-closed exhaustion on an existing renderer so teardown remains
+    // possible even when update rejects the adversarial 130-run frame.
+    const budgetRows = Array.from({ length: 130 }, (_, i) => ({ source: i % 2, z: -4 + i * 0.01 }));
+    const budgetData = [0, 1].map(source => asset(device, budgetRows.filter(r => r.source === source), source));
+    const budgetRenderer = new SplatRenderer(device, { viewportSize: [64, 64], depthConvention: 'reverse',
+      modelViewProjectionMatrix: MathUtils.orthographicReverseZ(-1, 1, -1, 1, 0.1, 100).m });
+    try {
+      budgetData.forEach(data => budgetRenderer.appendData(data));
+      budgetRenderer.getDrawRuns();
+      budgetRejection = null;
+    } catch (error) { budgetRejection = error.message; }
+    finally { budgetRenderer.destroy(); budgetData.forEach(data => data.destroy()); }
     intersection = await intersectionWitness(device, raw, readPixels);
   } finally { device.destroy(); }
   raw.pushErrorScope('validation');
@@ -112,6 +124,6 @@ async function run() {
   await raw.queue.onSubmittedWorkDone();
   const ownershipError = await raw.popErrorScope();
   survivor.destroy(); raw.destroy();
-  return { results, intersection, errors, ownershipError: ownershipError?.message ?? null, gpu: device.info };
+  return { results, intersection, budgetRejection, errors, ownershipError: ownershipError?.message ?? null, gpu: device.info };
 }
 window.nativeWitness = run().then(result => ({ result }), error => ({ error: error.stack }));

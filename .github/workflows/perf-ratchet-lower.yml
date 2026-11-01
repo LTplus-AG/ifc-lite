@@ -10,6 +10,12 @@
 # scripts/issue-queue.config.json exempts from the issue-queue gate. Each
 # ceiling's history is its `provenance` plus `git log -- tests/perf-ratchets`.
 #
+# A lowered ceiling holds for the main it measured, not for the main the PR
+# merges into, which may have grown since. The PR's own ratchet check runs on
+# its measured base and cannot see that; the merge queue can, so .mergify.yml
+# queues any ceiling PR in a batch of one: what lands is what was tested
+# (#8459 merged inside a five-PR batch whose tip passed, and main went red).
+#
 # It only ever LOWERS (scripts/perf-ratchet/lower.mjs refuses to raise).
 # Raising a ceiling is a human PR with a justification; see
 # docs/guide/performance.md, "Perf ratchet ceilings".
@@ -256,7 +262,7 @@ jobs:
             echo
             echo "Measured on \`main\` at \`${sha}\` by ${RUN_URL}."
             echo
-            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above, so the `Perf ratchet ceilings` check on it passes by construction. It is regenerated daily from the current `main`; merging it locks the win in.'
+            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above. Its own `Perf ratchet ceilings` check passes by construction, because it runs on that same `main`; whether `main` still fits the lowered ceilings when this merges is decided in the merge queue, which tests a ceiling PR alone (`.mergify.yml`, queue `ceilings`, #8459). It is regenerated daily from the current `main`; merging it locks the win in.'
           } > "$body"
 
           export GH_TOKEN="$PUSH_TOKEN"

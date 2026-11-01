@@ -57,11 +57,12 @@ Cost (callgrind inclusive, all 1,351 calls of `OpeningChild::run`):
 (about 134.8 k each); the 919 item probes together are 4,329,566 (about 4.7 k
 each).
 
-Meshing each opening once could save at most the 71 repeated body walks
-(about 9.6 M) plus every item probe (4.3 M): about 13.9 M Ir, 0.050 % of
-geometry, a tenth of the bar. Even deleting all opening capture work (child
-runs 62.6 M, numerical packets 18.8 M, source requests 15.8 M, poll/resume
-10.2 M, about 107 M together) would be 0.39 %.
+Meshing each opening once would save an estimated 13.9 M Ir (0.050 % of
+geometry): the 71 repeated body walks at the 134.8 k average (about 9.6 M;
+not measured per walk) plus every item probe (4.3 M, measured). The hard
+ceiling is deleting all opening capture work (child runs 62.6 M, numerical
+packets 18.8 M, source requests 15.8 M, poll/resume 10.2 M, about 107 M
+together, all measured): 0.39 %, still under the bar.
 
 ## ROUTER-20: through-host extension recomputed
 
@@ -80,12 +81,14 @@ since admission) and a bit-equal direction. Of the 67 repeat calls:
 The hits sit on small hosts (24 to 2,628 triangles, 18 of them at 84); the
 misses are the large hosts (317 to 7,104 triangles) after an earlier cluster
 cut them. Cost scales with host size at about 2.0 k Ir per host triangle (1,944
-at admission, 1,993 in the prism build), so the reusable calls cost about
-18.7 M + 2.3 M = 21 M Ir, 0.075 % of geometry.
+at admission, 1,993 in the prism build), so the reusable calls cost an estimated
+18.7 M + 2.3 M = 21 M Ir, 0.075 % of geometry (extrapolated from that rate,
+not measured per call).
 
 ## Verdict
 
-ROUTER-21 and ROUTER-20 together can remove at most about 35 M Ir, 0.13 % of
-ISSUE_129 geometry, against a 0.5 % bar. No code change was made. Do not
+ROUTER-21 and ROUTER-20 together would remove an estimated 35 M Ir, 0.13 % of
+ISSUE_129 geometry, against a 0.5 % bar. ROUTER-21 alone has a measured
+ceiling of 0.39 %. No code change was made. Do not
 re-spike either without a mechanism that removes the extension or body walk
 itself rather than its repeats.

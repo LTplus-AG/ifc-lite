@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/components/viewer/ExportDialog.tsx b/apps/viewer/src/components/viewer/ExportDialog.tsx
+--- a/apps/viewer/src/components/viewer/ExportDialog.tsx
++++ b/apps/viewer/src/components/viewer/ExportDialog.tsx
+@@ -290,7 +290,7 @@
+   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
+ 
+   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+-    if (false && !isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState(), exportScope === 'merged' ? models.keys() : [selectedModelId])) {
++    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState(), exportScope === 'merged' ? models.keys() : [selectedModelId])) {
+       return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+     }
+     if (!schema || (exportScope === 'single' && !selectedModel)) {

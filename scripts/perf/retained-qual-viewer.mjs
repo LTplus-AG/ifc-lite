@@ -62,12 +62,16 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     await page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 });
     sampler = startSampler(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
     await page.locator('#file-input-open').setInputFiles(fixture.path);
-    await page.waitForFunction(key => { const q = globalThis[key];
+    const loaded = page.waitForFunction(key => { const q = globalThis[key];
       if (q.errors.length || globalThis.__ifc_lite_viewer_store__.getState().error) return true;
       if (q.terminalMs === null) return false;
       return q.firstRetainedFrameMs === null ? performance.now() - q.terminalMs > 30000
         : q.settledFrameMs !== null || performance.now() - q.terminalMs > 4000; },
       PAGE_KEY, { timeout, polling: 100 });
+    loaded.catch(() => {}); // settles (rejects) when the browser closes after a Node-side timeout
+    // Playwright polls the predicate inside the page; a saturated renderer main thread (Holter, pre-flight
+    // 2026-11-01: still loading past 70 min) never lets its own timeout fire. Bound it from Node as well.
+    await raceWithTimeout(loaded, timeout, 'viewer load to terminal state');
     const memory = sampler.stop(); sampler = null;
     const m = await page.evaluate(key => ({ ...globalThis[key] }), PAGE_KEY);
     const state = await page.evaluate(readState);

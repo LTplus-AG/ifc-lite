@@ -112,6 +112,19 @@ test('8413: viewer store errors and missing terminal frames end the wait promptl
   assert.equal(checked, true);
 });
 
+test('7955: a viewer page that never answers still ends at --timeout-ms and cleans up', async () => {
+  const { viewerSample } = await import('./retained-qual-viewer.mjs');
+  let closed = false;
+  const page = { addInitScript: async () => {}, goto: async () => {}, locator: () => ({ waitFor: async () => {}, setInputFiles: async () => {} }),
+    waitForFunction: async (fn, key) => (key ? new Promise(() => {}) : undefined) };
+  const row = await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1,
+    options: { 'timeout-ms': 40 }, distTree: {},
+    launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => { closed = true; return null; } }) });
+  assert.equal(row.ok, false);
+  assert.match(row.error, /viewer load to terminal state timed out after 40 ms/);
+  assert.equal(closed, true);
+});
+
 test('8413: an unrelated writer cannot supply the measured child summary', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'qual-owner-'));
   try {

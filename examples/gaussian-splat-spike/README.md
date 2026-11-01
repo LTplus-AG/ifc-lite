@@ -207,6 +207,18 @@ fixture tests decode all 498,237 Gaussians through upstream code and check finit
 positions, positive scales, valid opacity and quaternion norms. Locally supplied
 IFC/scan results and their scene metrics or images are excluded.
 
+The recorded `baseCommit` is the original worker's **pre-edit HEAD**, not a
+checkout that contains the measured example. The original successful receipt
+`b922c7d9-578f-4fc8-8031-364e7400ded0` records a dirty working tree; its recovered
+output confirms the public counts and `[50, 0, 189, 255]` probe. All 12 recorded
+runtime files **and the lockfile** match the later committed snapshot
+`dd6a54799ec1853714076942b19db3b1bb82643e` byte-for-byte. Use that revision to
+recover those source bytes. This is a file-level provenance match, not a new
+run or a claim that the worker certified an unchanged full repository (it did
+not). Later research revisions and #8557 changed these files; `point-resources.mjs`
+is a later addition, outside this historical inventory. The original hashes
+remain unchanged. Private inputs and full-scene results remain excluded.
+
 Direct GPU texture readback is used by the browser witness: compositor
 screenshots of the presentation canvas can return blank pixels despite
 successful draws. Run the optional witness with your own inputs to inspect mixed

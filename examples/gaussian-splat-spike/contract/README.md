@@ -14,6 +14,30 @@ Destroying the attached luma wrapper, then submitting a buffer clear through the
 
 The run used Chromium WebGPU with SwiftShader, not hardware performance qualification. The combined run passed 14 tests and skipped one existing configured-canvas reattachment test. The two depth readback tests and this diagnostic did not skip. Compact results and the original worker receipt ID are in `results.json`.
 
+## Cleanup revision (PR #8570)
+
+The original 14-pass/1-skip measurement above is retained unchanged. The revised
+patch encloses attachment, rendering assertions and the borrowed-device probe
+in an outer `finally`, conditionally destroys the witness buffer, and destroys
+the raw device even if buffer cleanup throws. Wrapper teardown still precedes
+the borrowed-device survival probe.
+
+A fresh admitted Chromium/SwiftShader run on upstream depth-fix commit
+`71e2be2394ecd9bdfb6f1d36ce23e6af92978015` passed **18 tests**, with the same one
+configured-canvas skip. It reproduced both original pixel arrays and borrowed
+device survival. Four added fault cases cover a pre-attach assertion, rejected
+attachment, composition assertion, and ownership assertion after buffer creation.
+Spies on real WebGPU methods verify exactly one raw-device destruction in every
+case and exactly one witness-buffer destruction when allocated. These are failure
+cleanup checks, not hardware or production-lifecycle qualification.
+
+`results.json` separates the original measurement from this revised reproducer,
+including both patch hashes and the new build/browser receipts. The pinned
+Node 22.23.4 / Yarn 4.13.0 install and upstream build passed in an isolated source
+export; the shared upstream checkout was left untouched. One earlier browser
+submission never started because storage registration failed during build receipt
+publication; its original receipt is retained separately from the successful run.
+
 ## Reproduce
 
 Use upstream depth-fix commit `71e2be2394ecd9bdfb6f1d36ce23e6af92978015` from `louistrue/luma.gl` (base `700f1400fc6b0d32a82f1a22f57c1e747b255a01`). Apply `mixed-transparency.patch` there, install using its pinned Node/Yarn versions, build, then run its documented browser harness:

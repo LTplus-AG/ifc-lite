@@ -3615,6 +3615,17 @@ jobs:
         run: node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The ISSUE_129 mixed-opening oracle pins its own readings with the prism
+      # route off, and nothing ran that mode, so a strict count moved there
+      # unseen (#8533). Same binary, flag read at run time: seconds, no build.
+      # Grep the count so a renamed test cannot turn this into a no-op.
+      - name: Census, prism route off (ISSUE_129 oracle)
+        env:
+          IFC_LITE_PRISM_CUT: '0'
+        run: |
+          cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance \
+            -- --exact --nocapture issue_129_mixed_bool2d_residual_preserves_established_topology | tee "$RUNNER_TEMP/prism-off.log"
+          grep -q 'test result: ok. 1 passed' "$RUNNER_TEMP/prism-off.log"
       # The per-host rows this run measured, uploaded pass or fail. The census
       # gates against a checked-in golden, and its log prints its per-element
       # lists truncated, so without this a run that disagrees with the golden

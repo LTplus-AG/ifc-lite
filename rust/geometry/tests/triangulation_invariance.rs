@@ -1430,7 +1430,8 @@ fn watertightness_census_and_triangulator_invariance() {
 /// preserve the established topology under both triangulators; an unsafe prefix
 /// or correction retries the complete opening set on the original host. The same
 /// contract holds with the optional prism route disabled; that mode has its own
-/// expected tessellation and runs in a separate process during validation.
+/// expected tessellation and runs in a separate process (the census job in
+/// `test.yml` runs it with `IFC_LITE_PRISM_CUT=0`, #8533).
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
@@ -1465,20 +1466,32 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // snap alone left open. Closing it fuses the two prisms and removes the
     // strip between them: 7556 -> 7552, and 11118 -> 11110 with the prism
     // route off, open and strict unchanged at 0/0.
+    //
+    // #8533: with the prism route off, the ALTERNATE triangulator reads #12381
+    // at strict 2 since the T-junction pass (it read 0 before). That is the
+    // 1 mm weld, not a tear: two genuine boundary vertices 0.6 mm apart on the
+    // z = 14.9 face share one weld cell, and the alternate diagonals run a
+    // chain of kernel split points into that corner, so two welded edges are
+    // used twice each way. At exact positions the corner is closed. The count
+    // is chaotic in sub-micrometre input (dropping the fused outline's two
+    // sub-cell kink vertices returns it to 0 and moves 4,500 triangles), so it
+    // is pinned rather than chased. CI runs this mode (`test.yml`, census job).
+    // Columns: (host, open, strict, strict under the alternate, triangles).
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
-        [(12381, 0, 0, 11110), (32810, 0, 0, 3224)]
+        [(12381, 0, 0, 2, 11110), (32810, 0, 0, 0, 3224)]
     } else {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
         // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
-        [(12381, 0, 0, 7552), (32810, 3, 3, 3207)]
+        [(12381, 0, 0, 0, 7552), (32810, 3, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);
-        for (id, open, strict, tris) in expected {
+        for (id, open, strict, strict_alt, tris) in expected {
             let mesh =
                 process(&frame, id, &voids).unwrap_or_else(|| panic!("host #{id} must mesh"));
             let stats = edge_stats(&mesh);
+            let strict = if alt { strict_alt } else { strict };
             assert_eq!(stats.open, open, "host #{id}, alt={alt}: signed edge reading");
             assert_eq!(stats.strict, strict, "host #{id}, alt={alt}: strict edge reading");
             if !alt {

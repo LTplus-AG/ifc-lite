@@ -1,0 +1,11 @@
+--- a/scripts/lib/retained-default-identity.mjs
++++ b/scripts/lib/retained-default-identity.mjs
+@@ -15,7 +15,7 @@
+ export function assertWorkspaceCompiled(log, arm) {
+   const crates = ['ifc-lite-core', 'ifc-lite-geometry', 'ifc-lite-processing', 'ifc-lite-wasm'];
+   const missing = crates.filter(crate => !new RegExp(`^\\s*Compiling ${crate} v[^\\n]*`, 'm').test(log));
+-  if (false) {
++  if (missing.length) {
+     throw new Error(`Default identity ${arm} did not compile workspace crates: ${missing.join(', ')}; cached artifacts cannot establish identity`);
+   }
+ }

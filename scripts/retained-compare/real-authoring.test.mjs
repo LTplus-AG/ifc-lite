@@ -27,11 +27,11 @@ const AUTHORING_MODELS = [
   { tool: 'Revit', witness: 'revit-v5c', model: 'rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc', header: /Autodesk Revit 2022/ },
   { tool: 'ArchiCAD', model: 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc', header: /ARCHICAD-64/ },
   { tool: 'Bonsai', model: 'apps/viewer/public/samples/hello-wall.ifc', header: /Bonsai/ },
+  { tool: 'SketchUp', model: 'apps/viewer/public/samples/building-architecture.ifc', header: /IFC manager for sketchup/i },
 ];
 // Every product is refused: the retained CLI must fail honestly, never writing an OBJ.
 const ALL_REFUSED = [
   { tool: 'Tekla Structures', model: 'rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc', header: /Tekla Structures 2023/ },
-  { tool: 'SketchUp', model: 'apps/viewer/public/samples/building-architecture.ifc', header: /IFC manager for sketchup/i },
 ];
 
 function cli(args, options = {}) {

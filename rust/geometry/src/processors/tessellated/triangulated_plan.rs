@@ -82,13 +82,16 @@ impl TriangulatedFaceSetPlan {
         (mesh, uvs)
     }
 
-    /// The first listed point a triangle uses, as a 0-based position: entries no
-    /// triangle names say nothing about where the geometry is.
+    /// The first point of the first triangle the mesher emits, as a 0-based position:
+    /// a dropped triangle, like an entry no triangle names, says nothing about where
+    /// the geometry is.
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn first_used_point(&self) -> Option<usize> {
-        self.coord_index.iter()
-            .map(|&corner| super::indices::through_pn_index(corner, self.pn_index.as_deref()) as usize)
-            .find(|point| point.saturating_mul(3) < self.positions.len())
+        let vertices = self.positions.len() / 3;
+        self.coord_index.chunks_exact(3)
+            .map(|triangle| -> [usize; 3] { std::array::from_fn(|i| super::indices::through_pn_index(triangle[i], self.pn_index.as_deref()) as usize) })
+            .find(|&corners| emits_triangle(corners, vertices))
+            .map(|[first, ..]| first)
     }
 
     /// Re-read the point list relative to `frame`. The decoded triangles stay as they are.

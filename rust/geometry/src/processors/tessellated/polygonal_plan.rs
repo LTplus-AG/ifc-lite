@@ -242,13 +242,17 @@ impl PolygonalFaceSetPlan {
         mesh
     }
 
-    /// The first listed point a face uses, as a 0-based position: entries no face
-    /// names say nothing about where the geometry is.
+    /// The first point of the first face whose corners are all listed, as a 0-based
+    /// position: a face with an unlisted corner drops, so like an entry no face names
+    /// it says nothing about where the geometry is.
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn first_used_point(&self) -> Option<usize> {
         let Self::Faces { positions, parsed, .. } = self else { return None };
-        parsed.iter().flat_map(|(_, outer, ..)| outer)
-            .find_map(|&corner| (corner as usize).checked_sub(1).filter(|point| point.saturating_mul(3) < positions.len()))
+        let listed = |corner: &u32| (*corner as usize).checked_sub(1).is_some_and(|point| point.saturating_mul(3) < positions.len());
+        parsed.iter()
+            .find(|(_, outer, inner, _)| outer.iter().chain(inner.iter().flatten()).all(listed))
+            .and_then(|(_, outer, ..)| outer.first())
+            .map(|&corner| corner as usize - 1)
     }
 
     /// Re-read the point list relative to `frame`. The decoded faces stay as they are.

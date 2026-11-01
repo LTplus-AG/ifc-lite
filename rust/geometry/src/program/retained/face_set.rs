@@ -42,11 +42,16 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     let (triangles, rows) = without_zero_area(&positions, scale, indices, rows);
     crate::resource::charge(crate::resource::Cost {
         work: (positions.len() / 3 + rows.len()) as u64,
-        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4) as u64,
+        live_bytes: (positions.len() * 8 + triangles.len() * 4 + rows.len() * 4) as u64
+            + u64::from(row_count).saturating_sub(rows.len() as u64) * DROPPED_ROW_BYTES,
         ..Default::default()
     })?.retain();
     Ok(RetainedFaceSet { source_id: item.id, positions, triangles, rows, row_count, length_unit_scale: scale })
 }
+
+/// A row with no triangle keeps a slot in the face table downstream though it adds nothing
+/// to the request, so a file of dropped rows pays for those slots here, before they exist.
+const DROPPED_ROW_BYTES: u64 = 256;
 
 /// One f32 step here is a visible length: distinct levels can round together though every
 /// point stays distinct, leaving a real face collinear.

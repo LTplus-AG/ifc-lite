@@ -119,3 +119,23 @@ fn issue_8291_a_ring_whose_levels_round_together_keeps_its_area() {
     let records = "#1=IFCCARTESIANPOINTLIST3D(((0.,6000000.,0.),(3.,6000000.,0.),(2.,6000000.125,0.),(1.,6000000.125,0.)));\n#3=IFCINDEXEDPOLYGONALFACE((1,2,3,4));\n#6=IFCPOLYGONALFACESET(#1,.F.,(#3),$);";
     assert_eq!(capture_scaled(records, 6, 1.).unwrap().rows.len(), 2, "the authored trapezoid is two triangles");
 }
+
+#[test]
+fn issue_8291_a_dropped_face_cannot_choose_the_frame() {
+    // The first face names unlisted point 9, so it drops: its point 1, at the origin, must not be the frame.
+    let polygon = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(6000000.,0.,0.),(6000000.25,0.,0.),(6000000.25,0.125,0.),(6000000.125,0.125,0.),(6000000.125,0.25,0.),(6000000.,0.25,0.)));\n#2=IFCINDEXEDPOLYGONALFACE((1,9,2));\n#3=IFCINDEXEDPOLYGONALFACE((2,3,4,5,6,7));\n#6=IFCPOLYGONALFACESET(#1,.F.,(#2,#3),$);";
+    let captured = capture_source(polygon, 6).unwrap();
+    assert_eq!((captured.rows.len(), captured.row_count), (4, 2), "an L of six corners is four triangles, in the second row");
+    let shell = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,9,2),(2,3,4),(2,5,3),(3,5,4),(4,5,2)),$);";
+    assert_eq!(capture_source(shell, 2).unwrap().triangles[..3], [1, 3, 2], "the same flip as the same shell at the origin");
+}
+
+#[test]
+fn issue_8291_dropped_rows_are_paid_for_at_capture() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let set = |rows: &str| format!("#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1000.,0.,0.),(0.,1000.,0.)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.F.,((1,2,3){rows}),$);");
+    let account = || ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { live_bytes: Some(10_000), ..Default::default() }));
+    assert!(account().scope(|| capture_source(&set(""), 2)).is_ok());
+    // Each collapsed row leaves the arrays but keeps a slot downstream: 100 of them must not be free.
+    assert!(account().scope(|| capture_source(&set(&",(1,1,1)".repeat(100)), 2)).is_err());
+}

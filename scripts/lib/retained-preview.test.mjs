@@ -19,7 +19,7 @@ const assets = paths => paths.map(path => ({ path }));
 
 test('engine files map to the driver contract, as the dev middleware serves them', () => {
   const served = servedEngineFiles(assets(['smlib/worker.mjs', 'smlib/node/client.mjs', 'pkg-retained/ifc-lite.js',
-    'LICENSES/SMLib/LICENSE', 'THIRD_PARTY_NOTICES.txt', 'stray.txt']));
+    'LICENSES/SMLib/LICENSE', 'THIRD_PARTY_NOTICES.txt']));
   assert.deepEqual(served.map(f => f.url), ['/retained-engine/engine-manifest.json', '/smlib/worker.mjs', '/smlib/node/client.mjs',
     '/retained-engine/pkg-retained/ifc-lite.js', '/retained-engine/LICENSES/SMLib/LICENSE', '/retained-engine/THIRD_PARTY_NOTICES.txt']);
   for (const bad of ['../x', 'smlib/../../x', 'a//b', 'smlib\\x']) assert.throws(() => servedEngineFiles(assets([bad])), /Unsafe/);
@@ -153,4 +153,9 @@ test('deploy uses bodyless GET polling and never includes an API response in err
       return true;
     });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// PR #8550: a manifest entry must never disappear from builder/smoke coverage.
+test('8550: an unsupported manifest asset fails closed rather than being omitted', () => {
+  assert.throws(() => servedEngineFiles(assets(['smlib/worker.mjs', 'stray.txt'])), /Unsupported engine asset path.*stray\.txt/);
 });

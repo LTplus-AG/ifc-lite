@@ -42,7 +42,7 @@ const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 /**
  * Map engine-manifest asset paths to their served URL paths. Everything under
  * smlib/ is served at /smlib/; root files the dev middleware allows at
- * /retained-engine/. Anything else in the manifest is not served (as in dev).
+ * /retained-engine/. Reject unsupported paths so no manifest entry is omitted.
  */
 export function servedEngineFiles(manifestAssets) {
   const files = [{ source: 'engine-manifest.json', url: `${ENGINE_PREFIX}engine-manifest.json` }];
@@ -52,6 +52,7 @@ export function servedEngineFiles(manifestAssets) {
     }
     if (path.startsWith('smlib/')) files.push({ source: path, url: `/${path}` });
     else if (ENGINE_ROOT_FILE.test(path)) files.push({ source: path, url: `${ENGINE_PREFIX}${path}` });
+    else throw new Error(`Unsupported engine asset path ${JSON.stringify(path)}`);
   }
   return files;
 }

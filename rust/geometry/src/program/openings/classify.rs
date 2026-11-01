@@ -8,7 +8,7 @@ use crate::program::opening::{OpeningBounds, OpeningChild, OpeningProgram};
 use crate::router::voids::CutterKind;
 use crate::router::OpeningDiagnostic;
 use crate::{GeometryRouter, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::VecDeque;
 
 pub(crate) struct Classifier<'a> {
@@ -200,26 +200,33 @@ impl<'a> Classifier<'a> {
 
     fn accept(&mut self, reply: OpeningReply, router: &GeometryRouter) -> Result<()> {
         match reply {
-            // An undecodable id or a failed body skips only this occurrence.
-            OpeningReply::Decoded(reply) => {
-                self.current = source_option(reply)?.map(|entity| Occurrence {
-                    requested_id: self.requested,
-                    entity,
-                    parts: VecDeque::new(),
-                    bounds: Vec::new(),
-                    meshes: Vec::new(),
-                    triangles: 0,
-                    vertices: 0,
-                });
-                self.phase = if self.current.is_some() { Phase::Body } else { Phase::Decode };
-            }
+            // An undecodable id or a failed body skips only this occurrence,
+            // and is recorded as unmeshable (ROUTER-37).
+            OpeningReply::Decoded(reply) => match source_option(reply)? {
+                Some(entity) => {
+                    self.current = Some(Occurrence {
+                        requested_id: self.requested,
+                        entity,
+                        parts: VecDeque::new(),
+                        bounds: Vec::new(),
+                        meshes: Vec::new(),
+                        triangles: 0,
+                        vertices: 0,
+                    });
+                    self.phase = Phase::Body;
+                }
+                None => {
+                    self.current = None;
+                    self.unmeshable(router);
+                }
+            },
             OpeningReply::Parts(reply) => match source_option(reply)? {
                 Some(parts) => self.next = Some(OpeningPoll::Ready(OpeningReady::Metrics(parts))),
-                None => self.skip(),
+                None => self.unmeshable(router),
             },
             OpeningReply::Metrics(parts, triangles, vertices) => {
                 if parts.is_empty() {
-                    self.skip();
+                    self.unmeshable(router);
                     return Ok(());
                 }
                 let current = self.current()?;
@@ -277,6 +284,21 @@ impl<'a> Classifier<'a> {
     fn skip(&mut self) {
         self.current = None;
         self.phase = Phase::Decode;
+    }
+
+    /// Skip an occurrence that yields no cutter and, when recording, count it
+    /// once per router as a dropped item keyed by the opening's type. An id
+    /// that never decoded has no type of its own; it is keyed by the declared
+    /// type of `IfcRelVoidsElement.RelatedOpeningElement`.
+    fn unmeshable(&mut self, router: &GeometryRouter) {
+        if self.recording {
+            let ifc_type = match &self.current {
+                Some(current) => current.entity.ifc_type.clone(),
+                None => IfcType::IfcFeatureElementSubtraction,
+            };
+            router.record_unmeshable_opening(self.requested, ifc_type);
+        }
+        self.skip();
     }
 
     /// Bump the aggregate counter and push the per-host line together.

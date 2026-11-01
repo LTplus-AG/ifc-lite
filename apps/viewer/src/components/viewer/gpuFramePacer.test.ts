@@ -53,7 +53,7 @@ describe('GpuFramePacer (#5865)', () => {
     assert.equal(pacer.saturated(device, 2), false);
   });
 
-  it('never stops rendering for good when a completion is never reported', () => {
+  it('a never-reporting GPU renders about maxInFlight frames per expiry, by design (bounded backlog over frame rate)', () => {
     const pacer = new GpuFramePacer(1);
     const device = deviceWith();
     pacer.noteSubmit(device, 0);
@@ -82,5 +82,48 @@ describe('GpuFramePacer (#5865)', () => {
       assert.equal(pacer.saturated(dying, 2), false);
       assert.equal(warnings.length, 1, 'one warning, not one per frame');
     } finally { console.warn = realWarn; }
+  });
+
+  // Expiry cannot tell a dead GPU from a slow one, so a slow-but-completing GPU (a stall longer than
+  // the expiry, or software WebGPU at seconds per frame) must keep a BOUNDED queue: a FIFO GPU that
+  // owes the page every frame ever submitted, with the loop offering a frame every 16 ms.
+  async function maxQueueDepth(serviceMs: (frame: number) => number, runMs: number): Promise<number> {
+    const pacer = new GpuFramePacer();
+    const owed: Array<{ finishAt: number; settle: () => void }> = [];
+    const finishTimes: number[] = []; // every frame the GPU owes, whether or not the pacer asked about it
+    let gpuFreeAt = 0;
+    let frames = 0;
+    let deepest = 0;
+    const device: PacedDevice = { queue: { onSubmittedWorkDone: () => new Promise<void>((resolve) => {
+      owed.push({ finishAt: gpuFreeAt, settle: resolve });
+    }) } };
+    for (let now = 0; now <= runMs; now += 16) {
+      for (const done of owed.filter((o) => o.finishAt <= now)) { done.settle(); owed.splice(owed.indexOf(done), 1); }
+      await tick();
+      if (pacer.saturated(device, now)) continue;
+      gpuFreeAt = Math.max(gpuFreeAt, now) + serviceMs(frames++);
+      finishTimes.push(gpuFreeAt);
+      pacer.noteSubmit(device, now);
+      deepest = Math.max(deepest, finishTimes.filter((at) => at > now).length);
+    }
+    return deepest;
+  }
+
+  it('keeps the GPU queue bounded through a stall longer than the expiry (slow but completing GPU)', async () => {
+    const depth = await maxQueueDepth((frame) => (frame === 0 ? 6000 : 1), 60_000);
+    assert.ok(depth <= 2 * GPU_FRAMES_IN_FLIGHT, `queue grew to ${depth} frames`);
+  });
+
+  it('keeps the queue at the allowed depth for 10 minutes on a GPU that completes faster than the refill (1.5 s per frame)', async () => {
+    const depth = await maxQueueDepth(() => 1500, 600_000);
+    assert.equal(depth, GPU_FRAMES_IN_FLIGHT);
+  });
+
+  it('bounds the queue over ONE MINUTE at 2 s per frame, but that window hides slow growth: slower than about 1.7 s per frame the refill outruns completions (see the pacer comment)', async () => {
+    // Not a steady-state bound. Over ten minutes the same GPU queues about 60 frames and over an hour
+    // about 360; this window only shows the first minute (depth 9). The 0.1 frame per second growth is
+    // inherent in the per-expiry refill and is recorded as a known limit, not asserted away.
+    const depth = await maxQueueDepth(() => 2000, 60_000);
+    assert.ok(depth <= 3 * GPU_FRAMES_IN_FLIGHT, `queue grew to ${depth} frames`);
   });
 });

@@ -82,6 +82,36 @@ impl TriangulatedFaceSetPlan {
         (mesh, uvs)
     }
 
+    /// The first point of the first triangle the mesher emits, as a 0-based position:
+    /// a dropped triangle, like an entry no triangle names, says nothing about where
+    /// the geometry is.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn first_used_point(&self) -> Option<usize> {
+        let vertices = self.positions.len() / 3;
+        self.coord_index.chunks_exact(3)
+            .map(|triangle| -> [usize; 3] { std::array::from_fn(|i| super::indices::through_pn_index(triangle[i], self.pn_index.as_deref()) as usize) })
+            .find(|&corners| emits_triangle(corners, vertices))
+            .map(|[first, ..]| first)
+    }
+
+    /// Re-read the point list relative to `frame`. The decoded triangles stay as they are.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn in_frame(mut self, decoder: &mut EntityDecoder, coordinates: u32, frame: (f64, f64, f64)) -> Result<Self> {
+        self.positions = super::read_point_list(decoder, coordinates, Some(frame))?;
+        self.rtc_applied = true;
+        Ok(self)
+    }
+
+    /// Winding-final corners into the f32 point list, with each triangle's
+    /// `CoordIndex` row. Corners outside the list drop as the mesher drops them.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn source_triangles(self) -> super::SourceTriangles {
+        let (positions, indices, _, _) = self.oriented();
+        let row_count = indices.len() as u32 / 3;
+        let rows = (0..row_count).collect();
+        super::SourceTriangles { positions, indices, rows, row_count }.keep_emitted()
+    }
+
     fn oriented(self) -> OrientedTriangles {
         let mut indices = self.coord_index;
         let mut authored = None;

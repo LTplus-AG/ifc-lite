@@ -56,3 +56,20 @@ pub(in super::super) fn apply(part: &mut ShapePart, from_part: &[f64;16], origin
     }
     Ok(false)
 }
+
+/// A source-exact row the plane rule declined: each triangle keeps its own facet normal,
+/// and one too thin to have any takes the row's. Every corner ends unit length.
+pub(in super::super) fn apply_row_facets(part: &mut ShapePart, row_normal: [f64;3], triangles: &[usize],
+    resources: &OwnedResourceContext) -> Result<(),RetainedExecutionError> {
+    let row = unit(world_vector(&part.world_from_object,row_normal))?;
+    for &t in triangles {
+        work(resources,1)?;
+        let p: [[f64;3];3] = std::array::from_fn(|c| point(part,part.indices[t*3+c]));
+        let facet = cross(world_vector(&part.world_from_object,sub(p[1],p[0])),
+            world_vector(&part.world_from_object,sub(p[2],p[0])));
+        let normal = if oriented(&p) { unit(facet).unwrap_or(row) } else { row };
+        let normals = part.normals.as_mut().ok_or_else(super::invalid)?;
+        for c in 0..3 {normals[t*9+c*3..t*9+c*3+3].copy_from_slice(&normal);}
+    }
+    Ok(())
+}

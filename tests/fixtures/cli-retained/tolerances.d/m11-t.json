@@ -1,0 +1,7 @@
+{
+  "faceSetCornerMetres": 1e-9,
+  "faceSetRowAreaRelative": 1e-9,
+  "faceSetComparison": "gated per authored row, no fallback: an uncut face set's every corner equals one of its row's authored points in metres, every positive-area row keeps a key, and each planar row's published area equals its authored polygon's. Read from the source records only (#8291)",
+  "faceSetUvAffineAbsolute": 1e-9,
+  "faceSetPaletteRow": "equal: every published triangle's palette index is its source row's, after any cut (#8291)"
+}

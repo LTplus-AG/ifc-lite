@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/geometry/src/program/retained/face_set.rs",
+  "mutation": "tests/evidence/face-set-source/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/face_set_capture.rs",
+  "why": "Reporting every polygon triangle as row 0 must fail the authored-row witness through the real product walk, without an SDK or kernel."
+}

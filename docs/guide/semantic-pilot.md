@@ -278,6 +278,9 @@ Use row checkboxes to add or remove mapped IFC entities from the viewer
 selection. Duplicate rows for one entity share its selection state.
 **Select all mapped results** replaces the viewer selection with all resolved
 entities across every result page, skipping unmatched and ambiguous rows.
+If no row resolves, Select all leaves the current selection unchanged.
 **Clear selection** clears the viewer selection. Clicking a mapping normally
 selects just that entity; Ctrl/Cmd-click adds or removes it. For ambiguous rows,
-Ctrl/Cmd-click the mapping and choose a model candidate to add it explicitly.
+use the row checkbox (including from the keyboard), or Ctrl/Cmd-click the mapping,
+then toggle an explicit model candidate. Candidate buttons expose their selected
+state, and the row checkbox reflects whether any candidate is selected.

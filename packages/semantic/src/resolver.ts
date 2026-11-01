@@ -10,6 +10,8 @@ export type Resolution = { status: 'resolved'; ref: EntityAddress } | { status: 
   | { status: 'unmatched' | 'unscoped' | 'external' | 'invalid' };
 export interface IdentityRecord { GlobalId?: unknown; modelRevision?: unknown; [key: string]: unknown }
 export interface ResolverContext {
+  /** Optional index of the same immutable entity snapshot, rebuilt when entities change. */
+  entitiesByGlobalId?: ReadonlyMap<string, readonly LiveEntity[]>;
   entities: readonly LiveEntity[]; revisions: ReadonlyMap<string, string>; modelScope?: string;
 }
 export interface IdentityStrategy { id: string; resolve(record: IdentityRecord, context: ResolverContext): Resolution }
@@ -20,7 +22,7 @@ export function assertRevisionIdentifier(value: unknown): asserts value is strin
 }
 
 export const IFC_GLOBAL_ID_STRATEGY: IdentityStrategy = {
-  id: 'ifc-global-id', resolve(record, { entities, revisions, modelScope }) {
+  id: 'ifc-global-id', resolve(record, { entities, entitiesByGlobalId, revisions, modelScope }) {
     if (record.GlobalId === undefined) return { status: 'external' };
     if (typeof record.GlobalId !== 'string' || !new RegExp(GUID_PATTERN).test(record.GlobalId)
       || (record.modelRevision !== undefined && !isRevisionIdentifier(record.modelRevision))) return { status: 'invalid' };
@@ -29,7 +31,7 @@ export const IFC_GLOBAL_ID_STRATEGY: IdentityStrategy = {
     if (revisionModel && modelScope && revisionModel !== modelScope) return { status: 'unmatched' };
     const scope = revisionModel ?? modelScope;
     const unique = new Map<string, EntityAddress>();
-    for (const entity of entities) if (entity.GlobalId === record.GlobalId && (!scope || scope === entity.modelId)) {
+    for (const entity of (entitiesByGlobalId ? entitiesByGlobalId.get(record.GlobalId) ?? [] : entities)) if (entity.GlobalId === record.GlobalId && (!scope || scope === entity.modelId)) {
       unique.set(`${entity.modelId}:${entity.expressId}`, { modelId: entity.modelId, expressId: entity.expressId });
     }
     const candidates = [...unique.values()];
@@ -52,7 +54,7 @@ export class ResolverRegistry {
   ids(): string[] { return [...this.strategies.keys()]; }
 }
 export function resolveResource(record: IdentityRecord, entities: readonly LiveEntity[], revisions: ReadonlyMap<string, string>, modelScope?: string): Resolution {
-  return IFC_GLOBAL_ID_STRATEGY.resolve(record, { entities, revisions, modelScope });
+  return IFC_GLOBAL_ID_STRATEGY.resolve(record, { entities, entitiesByGlobalId, revisions, modelScope });
 }
 /** Portable association references semantic revision and IFC GlobalId, never express ids. */
 export interface ResourceIdentityLink { resourceId: string; modelRevision: string; GlobalId: string }

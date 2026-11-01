@@ -13,7 +13,7 @@ import { DEFAULT_MAPPING } from '@ifc-lite/semantic';
 import { SemanticResults } from '@/components/viewer/SemanticResults';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, activate, cleanup } from '@/test/render';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createSelectionAdapter } from '@/sdk/adapters/selection-adapter';
 import { useSemanticSession } from './session';
@@ -96,7 +96,7 @@ test('#8556 bulk selection never guesses a model and candidate choices can be ad
   const model = await selectionFixture(2);
   const results = { columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] };
   const ui = render(<SemanticResults results={results} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
-  assert.equal(checkbox(ui, 1).disabled, true);
+  assert.equal(checkbox(ui, 1).disabled, false);
   click(namedButton(ui, 'Select all mapped results')); assert.equal(createSelectionAdapter(useViewerStore).get().length, 0);
   const row = ui.querySelector('button[aria-label="Select mapped row"]'); assert.ok(row);
   click(row, { ctrlKey: true }); click(ui.querySelectorAll('fieldset button')[0]);
@@ -187,4 +187,48 @@ test('#8556 bulk selection skips unassociated revisions and ambiguity and follow
   assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [{ modelId: 'model-1', expressId: model.doors[1] }]);
   assert.equal(checkbox(ui, 1).disabled, true);
   assert.equal(checkbox(ui, 3).disabled, true);
+});
+
+
+test('#8556 select all with no resolved rows preserves a nonempty selection', async () => {
+  const model = await selectionFixture(2);
+  const external = { modelId: 'model-1', expressId: model.doors[2] };
+  act(() => createSelectionAdapter(useViewerStore).set([external]));
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0]), guidRow('bad-guid')] }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  click(namedButton(ui, 'Select all mapped results'));
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [external]);
+  click(namedButton(ui, 'Clear selection'));
+  assert.equal(createSelectionAdapter(useViewerStore).get().length, 0);
+});
+
+test('#8556 ambiguous row checkboxes expose keyboard candidate toggles and selected state', async () => {
+  const model = await selectionFixture(2);
+  const external = { modelId: 'model-1', expressId: model.doors[2] };
+  act(() => createSelectionAdapter(useViewerStore).set([external]));
+  const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+  const box = checkbox(ui, 1); assert.equal(box.disabled, false);
+  // A checkbox's Space default dispatches click; candidates use actual Enter activation.
+  click(box);
+  let candidate = ui.querySelector<HTMLButtonElement>('fieldset button'); assert.ok(candidate);
+  assert.equal(candidate.getAttribute('aria-pressed'), 'false'); activate(candidate, 'Enter');
+  assert.equal(checkbox(ui, 1).checked, true);
+  assert.equal(createSelectionAdapter(useViewerStore).get().length, 2);
+  click(checkbox(ui, 1)); candidate = ui.querySelector<HTMLButtonElement>('fieldset button'); assert.ok(candidate);
+  assert.equal(candidate.getAttribute('aria-pressed'), 'true'); activate(candidate, 'Enter');
+  assert.equal(checkbox(ui, 1).checked, false);
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [external]);
+});
+
+test('#8556 external selection changes do not rescan the model GlobalIds', async () => {
+  const model = await selectionFixture();
+  const data = useViewerStore.getState().models.get('model-0')?.ifcDataStore; assert.ok(data);
+  const originalGlobalId = data.entities.getGlobalId;
+  let reads = 0;
+  data.entities.getGlobalId = function(id: number) { reads++; return originalGlobalId.call(this, id); };
+  try {
+    const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows: [guidRow(model.GlobalIds[0])] }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
+    const before = reads; assert.ok(before > 0);
+    act(() => createSelectionAdapter(useViewerStore).set([{ modelId: 'model-0', expressId: model.doors[0] }]));
+    assert.equal(checkbox(ui, 1).checked, true); assert.equal(reads, before);
+  } finally { data.entities.getGlobalId = originalGlobalId; }
 });

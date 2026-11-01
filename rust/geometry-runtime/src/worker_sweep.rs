@@ -50,6 +50,45 @@ impl RetainedRealization {
     }
 }
 
+/// An uncut source-exact face set (#8291): authored triangles with no SDK object.
+#[cfg(feature = "retained-runtime")]
+#[derive(Debug)]
+pub struct RetainedSourceFaceSet {
+    no_solid: BrepHandle,
+    completion: RetainedCompletion,
+    owner: crate::RuntimeOwner,
+}
+#[cfg(feature = "retained-runtime")]
+impl RetainedSourceFaceSet {
+    /// Never a live solid: no Boolean or copy operation can resolve this handle.
+    pub fn solid(&self) -> BrepHandle { self.no_solid }
+    pub fn completion(&self) -> &RetainedCompletion { &self.completion }
+    pub fn validate_live(&self) -> Result<(), WorkerError> {
+        if self.owner.incarnation() == Some(self.no_solid.worker) { Ok(()) } else { Err(WorkerError::WrongWorker) }
+    }
+}
+
+#[cfg(feature = "retained-runtime")]
+impl SmlibWorker {
+    /// Seal one source-exact request under this incarnation without a kernel
+    /// call, at the same byte budget a kernel mesh of that size must meet.
+    pub fn seal_source_face_set(&self, request: &RetainedRequest, limits: MeshLimits) -> Result<RetainedSourceFaceSet, WorkerError> {
+        if !self.is_live() || request.worker_incarnation() != self.incarnation() {
+            return Err(WorkerError::WrongWorker);
+        }
+        if request.source_exact_mesh_bytes().is_none_or(|bytes| bytes > limits.max_bytes) {
+            return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
+        }
+        let completion = request.source_exact_completion()
+            .ok_or(WorkerError::InvalidArgument("request is not a decodable source-exact face set"))?;
+        Ok(RetainedSourceFaceSet {
+            no_solid: BrepHandle { worker: self.identity, wire: crate::protocol::WireHandle { session: 0, slot: 0, generation: 0 } },
+            completion,
+            owner: self.retained_owner(),
+        })
+    }
+}
+
 impl SmlibWorker {
     /// Independently captured liveness/retirement for this exact process.
     pub fn retained_owner(&self) -> crate::RuntimeOwner {

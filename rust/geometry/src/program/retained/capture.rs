@@ -42,6 +42,9 @@ pub(super) fn capture(
             })?,
             length_unit_scale: scale,
         })),
+        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet => {
+            super::face_set::capture(item, decoder, scale).map(RetainedRecipe::FaceSet)
+        }
         _ => Err(recipe_error(
             failure,
             item.id,

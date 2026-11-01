@@ -760,6 +760,7 @@
     "RetainedDependencyResult": "struct {  }",
     "RetainedLineage": "enum { AffineCopy { certificate: AffineCertificate; column_major: [f64; 16]; input: Arc<Self> }; Boolean { left: Arc<Self>; operation: BooleanOperation; right: Arc<Self> }; Definition { evaluation_from_source: [f64; 16]; request: Box<RetainedRequest>; source_from_evaluation: [f64; 16] }; Placed { value: Arc<Self>; world_from_evaluation: [f64; 16] }; Source { request: Box<RetainedRequest>; world_from_source: [f64; 16] } }",
     "RetainedRealization": "struct {  }",
+    "RetainedSourceFaceSet": "struct {  }",
     "RetainedTransformInput": "enum { Affine(&'a RetainedAffineCopy); Result(&'a RetainedDependencyResult); Source(&'a RetainedRealization) }",
     "RuntimeOwner": "struct {  }",
     "SmlibWorker": "struct {  }",

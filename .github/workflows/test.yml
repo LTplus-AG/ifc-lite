@@ -1035,9 +1035,11 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
-          # #8112: full inversion deletes the new helper and prevents test loading.
-          # Keep the API; weaken fingerprint identity to key equality instead.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
+          # #8550: retain the preview helper API; break engine-path 404 isolation.
+          # #8112: retain the scan helper API; weaken fingerprint identity.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-preview-7955/behaviour.oracle.patch | grep -Fxq 'tests/evidence/retained-preview-7955/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/retained-preview-7955/behaviour.oracle.patch --test scripts/lib/retained-preview.test.mjs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch --test scripts/retained-session-scan.test.mjs)
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-carry.oracle.patch --test packages/geometry/src/geometry-coordinate.test.ts)
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/export-gate.oracle.patch --test apps/viewer/src/components/viewer/GLBExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/ExportDialog.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx --test apps/viewer/src/utils/instancedExport.retained.test.ts --test apps/viewer/src/components/viewer/KmzExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/exactExport.retained.test.tsx)

@@ -3,9 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { plan, deploy } from '../deploy-retained-preview.mjs';
 import { test } from 'node:test';
 import {
-  PLACEHOLDER, REQUIRED_NOTICES, expectedType, fillSourceTag, headersFor, missingNotices, noticeSourceProblems,
+  assertManifestIdentity, PLACEHOLDER, REQUIRED_NOTICES, expectedType, fillSourceTag, headersFor, missingNotices, noticeSourceProblems,
   previewHostConfig, responseProblems, rewriteFor, servedEngineFiles,
 } from './retained-preview.mjs';
 
@@ -75,4 +80,77 @@ test('response problems name status, isolation and type', () => {
   const bad = responseProblems({ url: '/a.wasm', status: 404, headers: { 'content-type': 'text/html' }, expectType: expectedType('/a.wasm') });
   assert.equal(bad.length, 5);
   assert.match(expectedType('/x/LICENSE').source, /text/);
+});
+
+// PR #8550 review regressions: exact source identity, real tags, and deploy refusal.
+test('source notice rejects tag prefixes, suffixes and subpaths', () => {
+  for (const suffix of ['0', '-rc1', '/other', '?other', '#other']) {
+    assert.match(noticeSourceProblems(`https://github.com/LTplus-AG/ifc-lite/tree/v27.1.1${suffix}`, 'v27.1.1').join(), /no covered-source URL/);
+  }
+  assert.deepEqual(noticeSourceProblems('Source: https://github.com/LTplus-AG/ifc-lite/tree/v27.1.1.', 'v27.1.1'), []);
+});
+
+test('served manifest must match preview identity even without an explicit pin', () => {
+  const identity = { engineManifestSha256: 'engine-A' };
+  assert.doesNotThrow(() => assertManifestIdentity(identity, 'engine-A'));
+  assert.throws(() => assertManifestIdentity(identity, 'engine-B'), /preview identity/);
+  assert.throws(() => assertManifestIdentity(null, 'engine-B'), /preview identity/);
+  assert.throws(() => assertManifestIdentity(identity, 'engine-A', 'engine-B'), /expected/);
+});
+
+test('release build refuses a branch with the release tag name before building', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-tag-'));
+  try {
+    mkdirSync(join(dir, 'scripts'));
+    cpSync(new URL('../build-retained-preview.sh', import.meta.url), join(dir, 'scripts/build-retained-preview.sh'));
+    writeFileSync(join(dir, 'scripts/retained-notices.mjs'), 'process.exit(0);');
+    const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
+    git('init', '--initial-branch=v27.1.1');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'fixture');
+    const result = spawnSync('bash', ['scripts/build-retained-preview.sh', '--sdk', '/unused-sdk', '--emsdk', '/unused-emsdk',
+      '--work', join(dir, 'work'), '--source-tag', 'v27.1.1'], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: dir } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /HEAD is not v27.1.1/);
+    assert.doesNotMatch(result.stdout + result.stderr, /pnpm|cmake/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('deploy refuses a rehearsal before reading credentials or making requests', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-deploy-'));
+  try {
+    mkdirSync(join(dir, 'public'));
+    writeFileSync(join(dir, 'public/retained-preview.json'), JSON.stringify({ schema: 'ifc-lite.retained-preview/1', publishable: false }));
+    assert.throws(() => plan(dir, 'v27.1.1'), /rehearsal build/);
+    await assert.rejects(deploy({ dir, sourceTag: 'v27.1.1', dryRun: true }), /rehearsal build/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('deploy uses bodyless GET polling and never includes an API response in errors', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-api-'));
+  try {
+    mkdirSync(join(dir, 'public'));
+    writeFileSync(join(dir, 'public/retained-preview.json'), JSON.stringify({ schema: 'ifc-lite.retained-preview/1', publishable: true, sourceTag: 'v27.1.1' }));
+    writeFileSync(join(dir, 'vercel.json'), '{}');
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      requests.push({ url, options });
+      if (url.includes('/v13/deployments?')) return new Response(JSON.stringify({ id: 'fixture', url: 'fixture.invalid', readyState: 'QUEUED' }));
+      if (options.method === 'GET') return new Response(JSON.stringify({ readyState: 'READY' }));
+      return new Response('{}');
+    });
+    t.mock.method(globalThis, 'setTimeout', fn => { queueMicrotask(fn); return 0; });
+    const result = await deploy({ dir, sourceTag: 'v27.1.1', token: 'fixture-credential' });
+    assert.equal(result.target, 'preview');
+    const poll = requests.find(({ options }) => options.method === 'GET');
+    assert.ok(poll);
+    assert.equal(Object.hasOwn(poll.options, 'body'), false);
+    const creation = requests.find(({ url }) => url.includes('/v13/deployments?'));
+    assert.equal(Object.hasOwn(JSON.parse(creation.options.body), 'target'), false);
+    globalThis.fetch = async () => new Response('fixture-credential', { status: 401 });
+    await assert.rejects(deploy({ dir, sourceTag: 'v27.1.1', token: 'fixture-credential' }), error => {
+      assert.match(error.message, /HTTP 401/);
+      assert.doesNotMatch(error.message, /fixture-credential/);
+      return true;
+    });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

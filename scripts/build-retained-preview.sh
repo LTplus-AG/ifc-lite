@@ -41,7 +41,8 @@ notice=licenses/retained/THIRD_PARTY_NOTICES.txt
 # The template drift check runs on the committed placeholder, before any fill.
 node scripts/retained-notices.mjs --check
 if [ -n "$tag" ]; then
-  [ "$(git rev-parse HEAD)" = "$(git rev-parse "$tag^{commit}")" ] || { echo "HEAD is not $tag" >&2; exit 1; }
+  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release tag" >&2; exit 1; }
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$tag^{commit}")" ] || { echo "HEAD is not $tag" >&2; exit 1; }
   git diff --quiet HEAD -- || { echo "Checkout has uncommitted changes" >&2; exit 1; }
   trap 'git checkout -- "$notice"' EXIT
   node --input-type=module -e "

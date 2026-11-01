@@ -50,9 +50,11 @@ export function plan(dir, sourceTag) {
 }
 
 async function api(token, method, path, { body, headers = {} } = {}) {
-  const response = await fetch(`${API}${path}`, { method, body, headers: { Authorization: `Bearer ${token}`, ...headers } });
+  const options = { method, headers: { Authorization: `Bearer ${token}`, ...headers } };
+  if (body !== undefined) options.body = body;
+  const response = await fetch(`${API}${path}`, options);
   const text = await response.text();
-  if (!response.ok) throw new Error(`${method} ${path.split('?')[0]}: HTTP ${response.status} ${text.slice(0, 300)}`);
+  if (!response.ok) throw new Error(`${method} ${path.split('?')[0]}: HTTP ${response.status}`);
   return text ? JSON.parse(text) : {};
 }
 

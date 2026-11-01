@@ -70,7 +70,7 @@ export function noticeSourceProblems(text, sourceTag) {
   const problems = [];
   if (sourceTag !== undefined) {
     if (!RELEASE_TAG.test(sourceTag)) return [`source tag ${JSON.stringify(sourceTag)} is not a root v<major>.<minor>.<patch> tag`];
-    if (!text.includes(`${SOURCE_URL_BASE}${sourceTag}`)) problems.push(`no covered-source URL ${SOURCE_URL_BASE}${sourceTag}`);
+    if (!text.match(/https:\/\/github\.com\/LTplus-AG\/ifc-lite\/tree\/[^\s<>"'()]+/g)?.some(url => url.replace(/[.,;:]+$/, '') === `${SOURCE_URL_BASE}${sourceTag}`)) problems.push(`no covered-source URL ${SOURCE_URL_BASE}${sourceTag}`);
   }
   if (text.includes('<tag>')) problems.push('covered-source URL still has the <tag> placeholder');
   return problems;
@@ -164,4 +164,14 @@ export function expectedType(url) {
   if (/\.(m?js)$/.test(url)) return /^(text|application)\/javascript\b/;
   if (url.endsWith('.json')) return /^application\/json\b/;
   return /^text\/plain\b/;
+}
+
+/** Bind the served engine to both preview identity and any explicit caller pin. */
+export function assertManifestIdentity(identity, servedHash, expectedHash) {
+  if (!identity || identity.engineManifestSha256 !== servedHash) {
+    throw new Error(`served engine manifest ${servedHash} differs from preview identity`);
+  }
+  if (expectedHash && servedHash !== expectedHash) {
+    throw new Error(`served engine manifest ${servedHash} != expected ${expectedHash}`);
+  }
 }

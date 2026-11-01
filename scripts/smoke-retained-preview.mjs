@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertManifestIdentity } from './lib/retained-preview.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { REQUIRED_NOTICES, SOURCE_URL_NOTICES, expectedType, missingNotices, noticeSourceProblems, responseProblems, servedEngineFiles } from './lib/retained-preview.mjs';
 import { assertMilestones, assertViewerRetained } from './perf/retained-qual-assert.mjs';
@@ -113,12 +114,12 @@ export async function smoke(options) {
     catch (error) { steps.push({ step: name, status: 'fail', detail: error instanceof Error ? error.message : String(error) }); }
   };
   const fixture = resolve(options.fixture ?? DEFAULT_FIXTURE);
-  let manifest = null, servedManifestSha256 = null;
+  let manifest = null, servedManifestSha256 = null, identity = null;
 
   await step('identity', async () => {
     const response = await get(origin, '/retained-preview.json');
     if (response.status !== 200) throw new Error(`/retained-preview.json HTTP ${response.status}`);
-    const identity = JSON.parse(response.bytes.toString('utf8'));
+    identity = JSON.parse(response.bytes.toString('utf8'));
     if (identity.schema !== 'ifc-lite.retained-preview/1') throw new Error(`schema ${identity.schema}`);
     if (!options.rehearsal && identity.publishable !== true) throw new Error('preview is a rehearsal build (publishable=false)');
     if (options.sourceTag && identity.sourceTag !== options.sourceTag) throw new Error(`built for ${identity.sourceTag}, expected ${options.sourceTag}`);
@@ -131,9 +132,7 @@ export async function smoke(options) {
     if (problems.length) throw new Error(problems.join('; '));
     manifest = JSON.parse(raw.bytes.toString('utf8'));
     servedManifestSha256 = sha256(raw.bytes);
-    if (options.expectManifest && servedManifestSha256 !== options.expectManifest) {
-      throw new Error(`served engine manifest ${servedManifestSha256} != expected ${options.expectManifest}`);
-    }
+    assertManifestIdentity(identity, servedManifestSha256, options.expectManifest);
     const byPath = new Map(manifest.assets.map(a => [a.path, a]));
     let checked = 0;
     for (const { source, url } of servedEngineFiles(manifest.assets)) {

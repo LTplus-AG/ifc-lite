@@ -150,6 +150,9 @@ jobs:
       noop: ${{ steps.noop.outputs.noop || 'false' }}
       replay: ${{ steps.pushreplay.outputs.replay || 'false' }}
       replay_run: ${{ steps.pushreplay.outputs.replay_run || '' }}
+      # `true` when a green Mergify batch run proved this push. A batch ran the
+      # push-only lanes as well, so they skip too.
+      replay_queue: ${{ steps.pushreplay.outputs.replay_queue || 'false' }}
       # `fast` only on a `pull_request` with CI_PR_LANE=fast and no `ci:full`
       # label (scripts/ci-pr-lane.mjs). Every lane it skips tests `!= 'fast'`,
       # so a missing or garbled value runs the full lanes.
@@ -240,7 +243,8 @@ jobs:
       # CSG gates) and the always-on plato-check and rust-semver still run and
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches Cargo/toolchain/workflow files never replays: those key caches
-      # only a push to main writes.
+      # only a push to main writes. A push also replays when a green Mergify
+      # batch run recorded its tree or a later main commit's tree.
       # THE FAST PR LANE SWITCH (scripts/ci-pr-lane.mjs). continue-on-error
       # because a crash here must not skip every lane via a failed `changes`:
       # with no output the lanes read `lane != 'fast'` and run in full.
@@ -3375,7 +3379,7 @@ jobs:
   rust-full:
     name: Rust tests (feature builds)
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
@@ -3550,7 +3554,7 @@ jobs:
     # aggregate's `needs:`, so in the queue a moved baseline fails the required
     # check and dequeues the batch. The heavy-fixture variant is weekly
     # (geometry-census-heavy.yml).
-    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -3652,7 +3656,7 @@ jobs:
   csg-accept-gates:
     name: CSG accept gates (feature builds)
     needs: changes
-    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60

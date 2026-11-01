@@ -73,8 +73,9 @@ it('#6993 smaller replacement partitions retain deferred streamed colours and re
     for (const batch of batches) {
       // The uniform wire layout places RGBA after the two 4x4 matrices.
       // Observe actual queue.writeBuffer bytes, not the batch metadata alone.
-      assert.ok(batch.uniformBuffer, 'each submitted resident partition owns its actual uniform buffer');
-      const packed = new Float32Array(allocation.bufferBytes(batch.uniformBuffer));
+      const slot = batch.uniformSlot;
+      assert.ok(slot, 'each submitted resident partition owns its actual uniform block');
+      const packed = new Float32Array(allocation.bufferBytes(slot.buffer).slice(slot.offset, slot.offset + slot.size));
       assert.deepEqual([...packed.slice(32, 36)], colours.get([...batch.expressIds][0]),
         'submitted draw uniform packs the deferred RGBA for each actual partition');
       assert.deepEqual(batch.color, colours.get([...batch.expressIds][0]), 'actual finalized partition uses current authored colour');

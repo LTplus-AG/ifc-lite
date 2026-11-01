@@ -21,6 +21,7 @@ export function gateCommands(base) {
     { name: 'ci-aggregate-coverage', args: ['scripts/check-ci-aggregate-coverage.mjs'] },
     { name: 'workflow-report-paths', args: ['scripts/check-workflow-report-paths.mjs'], deps: ['yaml'] },
     { name: 'agents-md-size', args: ['scripts/check-agents-md-size.mjs'] },
+    { name: 'silent-revert', args: ['scripts/check-silent-revert.mjs', '--base', base] },
     { name: 'license-headers', args: ['scripts/add-license-headers.mjs', '--check'] },
     { name: 'pr-review-signal lanes', args: ['--test', '--test-name-pattern=the REAL test.yml derives', 'scripts/lib/pr-review-signal.test.mjs'] },
     { name: 'retained-free viewer', args: ['scripts/check-viewer-retained-free.mjs'], needs: 'apps/viewer/dist' },

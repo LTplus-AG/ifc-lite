@@ -24,14 +24,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "entity scan phase, callgrind Ir, single thread",
-      "ceiling": 55407885,
+      "ceiling": 55370831,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
-        "measuredAt": "2026-10-30T09:12:25.476Z"
+        "commit": "6e42aaf3fde16db640be8acb212d4ac6ace99e65",
+        "measuredAt": "2026-10-31T10:15:26.622Z"
       }
     },
     {

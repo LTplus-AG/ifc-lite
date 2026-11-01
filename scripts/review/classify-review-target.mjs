@@ -9,6 +9,15 @@ export const RELEASE_BRANCH = 'changeset-release/main';
 export const RELEASE_TITLE = 'chore: version packages';
 
 /**
+ * The generated release PR as `claude-review.yml`'s `if:` names it. Its `==` is
+ * case-insensitive, so this is too: a draft that differs only by case still ran the lane.
+ */
+export function isGeneratedReleasePr({ headRef, title }) {
+  const same = (a, b) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
+  return same(headRef, RELEASE_BRANCH) && same(title, RELEASE_TITLE);
+}
+
+/**
  * Decide whether a PR contains authored code for the probabilistic reviewer.
  * Near-matches fail closed onto the normal review path: a branch name alone is
  * not enough to turn an arbitrary PR into a generated release artifact.

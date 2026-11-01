@@ -10,7 +10,7 @@
  */
 
 import { BufferReader, readInstancedShards, SectionType, type openGeometryChunksV13 } from '@ifc-lite/cache';
-import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
+import { decodeSceneSnapshot, encodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
@@ -55,6 +55,17 @@ async function readSnapshotShards(entry: Blob, shards: SnapshotHostData['shards'
   return readInstancedShards(new BufferReader(await entry.slice(shards.offset, shards.offset + shards.size).arrayBuffer()));
 }
 
+/** A load mounts the viewport, so a first file can reach its hit while the renderer is still starting. */
+async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3000): Promise<Renderer | null> {
+  const deadline = performance.now() + timeoutMs;
+  for (;;) {
+    const renderer = getGlobalRenderer();
+    if (renderer?.getGPUDevice() && renderer.getPipeline()) return renderer;
+    if (isStale?.() || performance.now() > deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+}
+
 /** Direct, unlike a stream's store-queued shards: the first frame is complete, and an abandoned adoption can remove them. */
 function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
   if (shards.length > 0) noteInstancedShardModel(modelId);
@@ -76,10 +87,11 @@ export async function adoptCachedSceneSnapshot(
   trace: LoadTrace,
 ): Promise<AdoptedSceneSnapshot | null> {
   const { sceneSnapshot, sceneSnapshotKey, buffer: entry } = cacheResult;
-  const renderer = getGlobalRenderer();
+  if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return null;
+  const renderer = await rendererReady(isStale);
   const device = renderer?.getGPUDevice();
   const pipeline = renderer?.getPipeline();
-  if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !renderer || !device || !pipeline || !sceneMatchesCachedGeometry()) return null;
+  if (!renderer || !device || !pipeline) return null;
   const scene = renderer.getScene();
   // Admission is asynchronous after viewport init, and a reload can get here first.
   if (scene.sceneSnapshotPolicy() !== sceneSnapshotKey && isQuantizedEnabled()) await renderer.enableQuantizedBatches();

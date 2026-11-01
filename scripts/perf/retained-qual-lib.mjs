@@ -185,7 +185,7 @@ export function writeResult(out, result, rows) {
     result.cohort = { expected, observed, complete: observed === expected };
   }
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
+  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, pairingId: result.pairingId, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

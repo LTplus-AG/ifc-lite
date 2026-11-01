@@ -155,3 +155,21 @@ test('8413: scene accounting waits for terminal, and the terminal baseline still
   h.renderer.frame = { timestamp: 30, drawCalls: 2 }; h.tick(31);
   assert.equal(h.q().settledFrameMs, 30);
 });
+
+test('7955: page-created workers are counted by script, peak live follows terminate()', () => {
+  class FakeWorker { constructor(url) { this.url = url; } terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const make = url => vm.runInContext(`new Worker(${JSON.stringify(url)})`, context);
+  const a = make('https://h/assets/retained.worker-abc.js?worker_file&type=module');
+  make('https://h/assets/retained.worker-abc.js');
+  a.terminate();
+  make('blob:https://h/1234');
+  const w = context[PAGE_KEY].workers;
+  assert.equal(w.created, 3);
+  assert.equal(w.terminated, 1);
+  assert.equal(w.peakLive, 2);
+  assert.deepEqual({ ...w.byScript }, { 'retained.worker-abc.js': 2, 'blob:': 1 });
+  assert.ok(vm.runInContext('new Worker("x") instanceof Worker', context), 'still a Worker');
+});

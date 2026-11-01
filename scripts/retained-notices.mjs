@@ -157,6 +157,7 @@ function collector(root, defer = false) {
   }
   return { components, add, pending };
 }
+const rustcVersion = root => execFileSync('rustc', ['--version'], { cwd: root, encoding: 'utf8' }).trim();
 const cargoMetadata = root => JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--format-version', '1', '--all-features'],
   { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
 // Locked production closures of the shipped WASM roots, read from the Cargo archives.
@@ -190,7 +191,9 @@ function writeManifest(root, manifest) {
 // manifest, but only while that manifest is intact and every SDK/toolchain pin is unchanged;
 // otherwise it fails closed and the full refresh with the pinned checkouts is required.
 const PINNED_INPUTS = ['smlibRevision', 'emsdkRef', 'emscriptenVersion', 'rustChannel'];
-export function splitReusableComponents(previous, inputs) {
+// The pinned version as a whole token: 4.0.150 and 14.0.15 are not 4.0.15.
+const versionToken = (text, version) => new RegExp(`(^|[^0-9A-Za-z.])${version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^0-9A-Za-z.-])`).test(text);
+export function splitReusableComponents(previous, inputs, rustVersion = () => rustcVersion(ROOT)) {
   verifyManifestIntegrity(previous);
   const changed = PINNED_INPUTS.filter(key => previous.inputs?.[key] !== inputs[key]);
   if (changed.length) {
@@ -211,16 +214,24 @@ export function splitReusableComponents(previous, inputs) {
   }
   const head = previous.components.slice(0, first), tail = previous.components.slice(last + 1);
   // Reused entries must be the ones the (unchanged) pins name, not merely some earlier SDK.
-  const pinned = (list, version) => list.some(c => c.version === version);
-  if (!pinned(head, inputs.smlibRevision) || !pinned(head, inputs.emscriptenVersion)) {
-    throw new Error('--cargo-only refused: committed SDK/Emscripten components do not carry the pinned SMLib revision and Emscripten version; run the full --refresh');
+  // SMLib and Emscripten carry their pinned version on every entry. The Rust std entry
+  // records the compiler's own version string, which the channel pin does not spell, so it
+  // is bound to the installed pinned toolchain: the same `rustc --version` a full refresh stamps.
+  if (head[0].version !== inputs.smlibRevision) {
+    throw new Error('--cargo-only refused: committed SDK components do not carry the pinned SMLib revision; run the full --refresh');
+  }
+  if (head.length < 2 || head.slice(1).some(c => !versionToken(c.version, inputs.emscriptenVersion))) {
+    throw new Error('--cargo-only refused: committed Emscripten components do not all carry the pinned Emscripten version; run the full --refresh');
+  }
+  if (tail.length !== 1 || tail[0].version !== rustVersion()) {
+    throw new Error('--cargo-only refused: committed Rust standard library is not the installed pinned toolchain; run the full --refresh');
   }
   return { head, tail };
 }
-export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata) {
+export function refreshCargoOnly(root = ROOT, readMetadata = cargoMetadata, readRustVersion = () => rustcVersion(root)) {
   const previous = JSON.parse(readFileSync(join(root, DIR, 'manifest.json'), 'utf8'));
   const inputs = inventoryInputs(root);
-  const { head, tail } = splitReusableComponents(previous, inputs);
+  const { head, tail } = splitReusableComponents(previous, inputs, readRustVersion);
   // Reused components keep what earlier supplements gave them, and nothing here clears it: a
   // withdrawn or changed record for one needs the full --refresh. Adding a record is fine.
   const withdrawn = previous.inputs.supplemental.find(r => [...head, ...tail].some(c => c.name === r.name && c.version === r.version) &&
@@ -283,7 +294,7 @@ function refresh({ sdk, emscripten }, root = ROOT) {
   addCargoComponents(add, inputs, cargoMetadata(root));
   const sysroot = execFileSync('rustc', ['--print', 'sysroot'], { cwd: root, encoding: 'utf8' }).trim();
   const rustDocs = join(sysroot, 'share/doc/rust');
-  add('Rust standard library', execFileSync('rustc', ['--version'], { cwd: root, encoding: 'utf8' }).trim(),
+  add('Rust standard library', rustcVersion(root),
     'MIT OR Apache-2.0 plus bundled components', 'https://github.com/rust-lang/rust',
     'default pkg, pkg-retained and pkg-diff wasm; COPYRIGHT-library.html enumerates bundled library components', rustDocs,
     ['COPYRIGHT-library.html', ...files(join(rustDocs, 'licenses')).map(path => relative(rustDocs, path))]);

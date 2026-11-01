@@ -119,9 +119,15 @@ describe('oci push', () => {
         mediaType: 'application/x-step',
         digest: sha256(local),
         size: local.byteLength,
-        annotations: { 'org.opencontainers.image.title': 'building-architecture.ifc' },
+        annotations: {
+          'org.buildingsmart.ifc.profile': 'ifc-release/0',
+          'org.buildingsmart.ifc.schema': 'IFC4',
+          'org.opencontainers.image.title': 'building-architecture.ifc',
+        },
       }],
       annotations: {
+        'org.buildingsmart.ifc.profile': 'ifc-release/0',
+        'org.buildingsmart.ifc.schema': 'IFC4',
         'org.opencontainers.image.created': '2023-11-14T22:13:20Z',
         'org.opencontainers.image.title': 'building-architecture',
       },

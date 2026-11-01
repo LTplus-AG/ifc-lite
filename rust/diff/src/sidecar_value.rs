@@ -11,13 +11,47 @@ use std::{cmp::Ordering, fmt, hash::{Hash, Hasher}, ops::Index, sync::{Arc, Once
 pub struct JsString(Arc<StringData>);
 #[derive(Debug)]
 struct StringData {
+    /// Immutable digest of `units`, fixed at construction (#8351). Hashed maps
+    /// then hash one word instead of every code unit, and unequal strings are
+    /// usually rejected without reading their unit buffers.
+    hash: u64,
     units: Vec<u16>,
     scalar: OnceLock<Option<String>>,
+}
+impl StringData {
+    fn new(units: Vec<u16>, scalar: OnceLock<Option<String>>) -> Self {
+        Self { hash: digest(&units), units, scalar }
+    }
+}
+/// Keyed once per process, so crafted collisions are no easier than with std's
+/// per-map keys. Maps keyed by `JsString` then reuse the digest via [`JsHash`].
+fn digest(units: &[u16]) -> u64 {
+    static KEYS: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
+    use std::hash::BuildHasher;
+    KEYS.get_or_init(Default::default).hash_one(units)
+}
+/// Pass-through hashing for maps keyed by [`JsString`] (#8351): its digest is
+/// already keyed, so a second keyed round per probe buys nothing.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct JsHash;
+impl std::hash::BuildHasher for JsHash {
+    type Hasher = JsHasher;
+    fn build_hasher(&self) -> JsHasher { JsHasher(0) }
+}
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct JsHasher(u64);
+impl Hasher for JsHasher {
+    fn finish(&self) -> u64 { self.0 }
+    fn write_u64(&mut self, value: u64) { self.0 = self.0.rotate_left(26) ^ value; }
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes { self.0 = (self.0.rotate_left(5) ^ u64::from(byte)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95); }
+    }
 }
 // The lazy scalar view must never affect identity or ordering (#8042).
 impl PartialEq for JsString {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) || self.units() == other.units()
+        Arc::ptr_eq(&self.0, &other.0) || (self.0.hash == other.0.hash && self.units() == other.units())
     }
 }
 impl Eq for JsString {}
@@ -28,14 +62,14 @@ impl Ord for JsString {
     fn cmp(&self, other: &Self) -> Ordering { self.units().cmp(other.units()) }
 }
 impl Hash for JsString {
-    fn hash<H: Hasher>(&self, state: &mut H) { self.units().hash(state); }
+    fn hash<H: Hasher>(&self, state: &mut H) { state.write_u64(self.0.hash); }
 }
 impl Default for JsString {
     fn default() -> Self { Self::from("") }
 }
 impl JsString {
     pub fn from_units(units: Vec<u16>) -> Self {
-        Self(Arc::new(StringData { units, scalar: OnceLock::new() }))
+        Self(Arc::new(StringData::new(units, OnceLock::new())))
     }
     pub fn units(&self) -> &[u16] { &self.0.units }
     pub fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
@@ -102,7 +136,7 @@ impl From<&str> for JsString {
     fn from(value: &str) -> Self { Self::from(value.to_owned()) }
 }
 impl From<String> for JsString {
-    fn from(value: String) -> Self { Self(Arc::new(StringData { units: value.encode_utf16().collect(), scalar: OnceLock::from(Some(value)) })) }
+    fn from(value: String) -> Self { Self(Arc::new(StringData::new(value.encode_utf16().collect(), OnceLock::from(Some(value))))) }
 }
 impl fmt::Display for JsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -209,4 +243,33 @@ impl std::ops::IndexMut<&str> for DocumentValue {
 }
 impl PartialEq<bool> for DocumentValue {
     fn eq(&self, value: &bool) -> bool { matches!(self, Self::Bool(b) if b == value) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn issue_8351_cached_digest_agrees_with_code_unit_equality() {
+        // Separate allocations of equal code units, including a lone surrogate
+        // and a scalar-backed copy, must hash and compare equal.
+        let lone = JsString::from_units(vec![0x61, 0xd800]);
+        let lone_copy = JsString::from_units(vec![0x61, 0xd800]);
+        let scalar = JsString::from("attr:core");
+        let scalar_units = JsString::from_units("attr:core".encode_utf16().collect());
+        assert_eq!(lone, lone_copy);
+        assert_eq!(scalar, scalar_units);
+        assert_ne!(lone, JsString::from_units(vec![0x61, 0xdc00]));
+        let build = std::collections::hash_map::RandomState::new();
+        use std::hash::BuildHasher;
+        assert_eq!(build.hash_one(&lone), build.hash_one(&lone_copy));
+        assert_eq!(JsHash.hash_one(&scalar), JsHash.hash_one(&scalar_units));
+        let map: HashMap<_, _, JsHash> = [(lone.clone(), 1), (scalar.clone(), 2)].into_iter().collect();
+        assert_eq!(map.get(&lone_copy), Some(&1));
+        assert_eq!(map.get(&scalar_units), Some(&2));
+        assert_eq!(map.get(&JsString::from("attr:cor")), None);
+        let distinct: HashSet<_, JsHash> = (0..4096u16).map(|unit| JsString::from_units(vec![unit])).collect();
+        assert_eq!(distinct.len(), 4096);
+    }
 }

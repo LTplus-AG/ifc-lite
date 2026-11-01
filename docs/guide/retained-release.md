@@ -189,3 +189,68 @@ bytes; `buildAttestation: false` remains explicit. Binding hashes to source is
 recommended evidence, not a licence obligation. Then install the
 actual release archives into a clean consumer and run browser/CLI/Python smoke
 checks. Staged fixtures and dry-runs cannot substitute for that final step.
+
+## Released-artifact smoke
+
+`scripts/smoke-released-retained.mjs` is the post-publication check that stands in
+for the "install the actual release archives into a clean consumer" step above. It
+installs only from the public registries and changes no registry state.
+
+```sh
+node scripts/smoke-released-retained.mjs \
+  --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
+  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep]
+```
+
+`--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
+accept `latest`, recorded as resolved). The scratch project is created under the
+OS temp directory, never inside the repository, with empty npm configuration and a
+private `CARGO_HOME`. No workspace path, link or patch is used, and the lock files
+are checked to contain only registry sources. Cargo outside the repository does not
+see `rust-toolchain.toml`, so the toolchain is passed explicitly: `--toolchain`, else
+`RUSTUP_TOOLCHAIN`, else the channel pinned in the repo's `rust-toolchain.toml`. The
+chosen toolchain, where it came from and `cargo -V` are recorded in the JSON summary.
+Code taken from the registries (the WASM glue and `retained.js`) runs only in child
+processes with a cleaned environment (no `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`,
+`CARGO_REGISTRY_TOKEN` or other inherited variables) and a scratch `HOME`, so registry code cannot read `~/.npmrc` or `~/.cargo/credentials`.
+
+| Step | What it proves |
+|---|---|
+| `npm-install`, `npm-installed-versions` | the exact `@ifc-lite/wasm` and `@ifc-lite/cli` install from npm; the lock resolves only from the registry, and each locked `integrity` must equal the `npm pack` tarball inspected by the archive steps (one set of bytes) |
+| `wasm-default-engine` | the published default engine loads and processes the committed `tests/fixtures/cli-retained/layered-wall.ifc` (jobs, meshes, triangles) |
+| `cli-default-export` | the published CLI exports that IFC to OBJ with the default (exact) kernel |
+| `wasm-retained-subpath` | `@ifc-lite/wasm/retained` resolves; it ships types only, and `loadRetainedEngine()` fails with exactly `ERR_MODULE_NOT_FOUND` for `pkg-retained/ifc-lite.js` when no engine is deployed (any other failure, such as a `TypeError`, fails the step) |
+| `wasm-archive-boundaries`, `cli-archive-boundaries`, `crate-archive` | registry archives are extracted into fresh directories and hold no SDK sources, native binaries or unexpected wasm, judged by path **and** by content (ELF, Mach-O, PE and wasm magic, so a renamed binary is caught); the crate is source-only with no build script, a registry `ifc-lite-geometry` version and the `retained-runtime` forwarding; npm archives carry `THIRD_PARTY_NOTICES.txt` with no `OPEN:` line |
+| `npm-signatures` | `npm audit signatures --json --include-attestations` reports 0 invalid and 0 missing, and lists both exact `@ifc-lite/wasm` and `@ifc-lite/cli` versions as verified with a provenance attestation |
+| `provenance:*` | per package, the SLSA attestation bundle **that `npm audit signatures` verified** (taken from the audit report, never from a second fetch of the registry, whose signature nothing would check): the subject digest equals the sha512 of the tarball just downloaded, the statement's workflow repository is `https://github.com/LTplus-AG/ifc-lite` and path `.github/workflows/release.yml`, and the Fulcio signing certificate's identity is that workflow in that repository. A token publish, or an attestation from a fork's workflow, fails here; a forged copy of the attestations cannot reach the policy. The git ref/tag and the specific run are recorded by the registry but not constrained |
+| `crate-default-features`, `crate-retained-runtime` | a consumer built from crates.io (`cargo add ifc-lite-geometry-runtime@=<version>`) compiles and runs with default features and with `--features retained-runtime` |
+| `python-wheel` | the published `ifclite-geom` binary wheel (latest, its own release train; manylinux for this arch with a `cpXY`/`abi3` tag that fits the local CPython; sha256 checked against PyPI) imports and tessellates the fixture in an isolated interpreter |
+| `retained-export-e2e` | with a staged engine directory, the **published** CLI runs `export --kernel retained` end to end and the report publishes products. The evidence records the report's `engine.sdk` and `engine.manifestSha256` and the manifest's `qualified` and `buildAttestation`. A staged engine is a **locally staged engine, not a released artifact, with provenance unverified** (`qualified:false`, `buildAttestation:false`, no ifc-lite commit): the step is `pass` only when the manifest sha256 matches an explicit `--expect-engine-manifest-sha256` (the manifest's asset hashes cover the staged adapter files, so it identifies one engine build). `--expect-sdk-revision` is an extra check only: the SDK pin does not change across adapter fixes, so it cannot tell an old engine from a current one. Otherwise the step is the distinct `pass-local-engine`, which is not release sign-off |
+| `crate-checksum` | the sha256 of the `.crate` fetched from `static.crates.io` equals the `checksum` Cargo resolved into the consumer's `Cargo.lock` |
+
+`retained-export-e2e` runs only when an engine directory is supplied
+(`--retained-engine` or `IFCLITE_SMOKE_RETAINED_ENGINE`; build it with
+`scripts/stage-cli-retained-engine.mjs`). Otherwise it is reported `skip` with
+"not run", never `pass`. An engine that is supplied but not pinned to an expected
+manifest hash or SDK commit is `pass-local-engine`: the export worked, but nothing
+ties that engine to the release. The JSON summary lists every step as `pass`,
+`pass-local-engine`, `fail` or `skip` with its detail; the overall `status` is `fail`,
+`pass-with-skips`, `pass-local-engine` or `pass`, and the process exits 1 when any step
+failed.
+
+`--strict` is the release sign-off mode: a step that would be skipped (crate builds
+without a usable toolchain, `--wheel skip`, no engine directory) is recorded as a
+failure (`skipped under --strict`) and the exit code is 1. `--strict` also requires an
+explicit `--wheel X.Y.Z` (a moving `latest` is not release evidence; the resolved wheel
+version is recorded in `resolved`) and, when an engine is supplied, an explicit
+`--expect-engine-manifest-sha256`; an SDK revision alone fails under `--strict`. `--wheel` accepts only
+`latest`, `skip` or a version. Use it for the run whose evidence goes into the release
+handoff. The pure checks live in
+`scripts/lib/released-smoke-checks.mjs` and run offline in the `scripts/lib/*.test.mjs`
+`node --test` lane.
+
+What it does not cover: the Python **wheel build** from release source (the
+`python-wheels.yml` build/import checks on the release commit), the runtime
+crate's Trusted Publisher (only an OIDC `release.yml` run proves it), the licence
+signature, and any hosted browser or deploy smoke. The published `ifclite-geom`
+wheel is a separate release train from the npm and crate versions.

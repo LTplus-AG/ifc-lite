@@ -29,6 +29,7 @@ import { registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewpor
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { GpuFramePacer } from './gpuFramePacer';
+import { ContinuousRenderThrottle } from './continuousRenderThrottle';
 /** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -129,37 +130,14 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let residencyRestoreErrorLogged = false;
     let renderErrorLogged = false;
 
-    // Adaptive render throttle: cap the continuous-render cadence (interaction
-    // + inertia) from the MEASURED cost of recent renders, not a triangle-count
-    // guess. The old tiers (25ms above 1M triangles, 33ms above 5M) capped
-    // orbiting at 40/30 fps even when frames were cheap — culling means a 6M-
-    // triangle model can render in a few ms, and the cap itself was the
-    // choppiness on CATIA-class models. renderer.render() wall time covers
-    // encoder work AND swap-chain backpressure (getCurrentTexture blocks when
-    // the GPU falls behind), so genuinely heavy scenes still degrade to the
-    // same 40/30 fps floors within a few frames; a 200K-mesh model that takes
-    // 30ms a frame cannot overwhelm the main thread any more than before.
-    let continuousThrottleMs = 0; // 0 = no throttle
-    let emaRenderMs = 0;          // EMA of render() wall time, rendered frames only
-    // render() wall time is CPU-side only: queue.submit() returns at once, so a
+    // Adaptive render throttle (continuousRenderThrottle.ts): caps the
+    // continuous-render cadence (interaction + inertia) from the measured
+    // main-thread cost of recent renders, snapped to whole refresh intervals.
+    const throttle = new ContinuousRenderThrottle();
+    // render() cost is CPU-side only: queue.submit() returns at once, so a
     // GPU slower than the loop (software WebGPU) never shows up above and frames
     // queue without bound, delaying every pick readback behind them (#5865).
     const framePacer = new GpuFramePacer();
-
-    function updateThrottle(renderMs: number) {
-      emaRenderMs = emaRenderMs === 0 ? renderMs : renderMs * 0.2 + emaRenderMs * 0.8;
-      // Hysteresis ladder — engage above, release below, hold in between,
-      // so the cadence doesn't flap around a band edge mid-gesture.
-      if (emaRenderMs >= 26) {
-        continuousThrottleMs = 33; // ~30 fps
-      } else if (emaRenderMs >= 14) {
-        if (continuousThrottleMs !== 33 || emaRenderMs < 20) {
-          continuousThrottleMs = 25; // ~40 fps
-        }
-      } else if (emaRenderMs <= 10) {
-        continuousThrottleMs = 0;
-      }
-    }
 
     const animate = (currentTime: number) => {
       if (aborted) return;
@@ -171,6 +149,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         return;
       }
       fieldTelemetry?.noteNavigateFrame(deltaTime, isInteractingRef.current); // #6961 ifc_navigate (null until a load)
+      throttle.noteFrameInterval(deltaTime);
 
       // 1. Drain mesh queue (streaming GPU uploads)
       let queueFlushed = false;
@@ -224,9 +203,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // for large models. Without this, 200K+ mesh models at 60fps overwhelm
       // the main thread and freeze the tab. Inertia alone can run 60+ frames
       // after mouseup, each requiring a full GPU render pass.
-      const throttled = isContinuousRender &&
-        continuousThrottleMs > 0 &&
-        (currentTime - lastRenderTime) < continuousThrottleMs;
+      const throttled = isContinuousRender && !throttle.allows(currentTime - lastRenderTime);
       // Render continuously while the user is interacting (issue #1394), not
       // just when a pointermove happens to set the dirty flag. Pointer events
       // can arrive sparsely (coalesced / slow drag), which left the swap chain
@@ -250,7 +227,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // rest of the session with nothing on screen to say why. Latched to one
         // warning per session — a dead device fails every frame.
         try {
-          renderer.render(viewportRenderOptions(renderer, params, isContinuousRender, continuousThrottleMs, contributionCull, lod));
+          renderer.render(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
         } catch (err) {
           if (!renderErrorLogged) {
             renderErrorLogged = true;
@@ -281,7 +258,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             );
           }
         }
-        updateThrottle(performance.now() - renderStart);
+        // Encode cost only (FrameStats.cpuMs excludes the swap-chain wait);
+        // wall time when this call produced no frame stats.
+        const stats = renderer.getFrameStats();
+        throttle.noteRenderCost(stats && stats.timestamp >= renderStart ? stats.cpuMs : performance.now() - renderStart);
         framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section

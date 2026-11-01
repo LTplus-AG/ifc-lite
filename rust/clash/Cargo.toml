@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-license-file.workspace = true
 repository.workspace = true
 description = "High-performance geometry kernel for IFC clash detection"
 keywords = ["ifc", "bim", "clash", "geometry", "aec"]

@@ -216,13 +216,9 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
             continue;
         };
         if area <= 0. { continue; }
-        // Below the facet-orientation ratio the area is round-off, not a measurement:
-        // a sliver's authored corners are what the corner check above already pins.
-        let longest = row.points.iter().flat_map(|a| row.points.iter().map(move |b| {
-            let d: [f64; 3] = std::array::from_fn(|i| a[i] - b[i]);
-            dot(d, d)
-        })).fold(0., f64::max);
-        if area < 1e-6 * longest { continue; }
+        // Below arithmetic noise the area is round-off, not a measurement: a sliver's
+        // authored corners are what the corner check above already pins.
+        if area <= AREA_NOISE_METRES * extent(&row.points) { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
         // A real sliver's own area is smaller than arithmetic noise over its length, so only
         // what exceeds that noise is a disagreement.
@@ -278,6 +274,13 @@ mod tests {
         let row = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) };
         let halved = [0., 0., 0., 1., 0., 0., 0., 0.5, 0.];
         assert!(deviation(&AuthoredFaceSet { first: [0.; 3], rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
+    }
+    #[test]
+    fn issue_8291_a_lost_thin_row_is_observed() {
+        // 1 m long and 1e-7 m high is thin, but its area is a measurement, not noise.
+        let thin = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1e-7, 0.]], outer: 3, area_m2: Some(5e-8) };
+        let set = AuthoredFaceSet { first: [0.; 3], rows: vec![thin] };
+        assert_eq!(deviation(&set, &[], &[], &[]).missing_rows, 1);
     }
     #[test]
     fn issue_8291_a_lost_warped_row_is_observed() {

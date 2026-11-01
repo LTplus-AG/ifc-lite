@@ -48,7 +48,7 @@ try {
     } finally { source.close(); }
   };
   const scans = createScanLoader({
-    state: window.spike, read: readScan, commit: result => backend.addPoints(result.chunk),
+    state: window.spike, read: readScan, commit: result => backend.addPoints(result.chunk), clear: () => backend.clearPoints(),
     onStart: () => { status.textContent = 'Reading first bounded E57 chunk locally…'; },
     onSuccess: update, onError: error => { status.textContent = error.stack ?? String(error); },
   });

@@ -4,7 +4,7 @@
 
 // Research witness state, not a production viewer loader. read owns its source
 // lifetime; only the latest live attempt may commit GPU work or publish evidence.
-export function createScanLoader({ state, read, commit, onStart, onSuccess, onError }) {
+export function createScanLoader({ state, read, commit, clear = () => {}, onStart, onSuccess, onError }) {
   let generation = state.scanAttempt ?? 0;
   let disposed = false;
   return {
@@ -17,6 +17,7 @@ export function createScanLoader({ state, read, commit, onStart, onSuccess, onEr
       state.error = null;
       state.scanPending = true;
       try {
+        clear();
         onStart?.();
         const result = await read(file);
         if (attempt !== generation || disposed) return;
@@ -35,11 +36,13 @@ export function createScanLoader({ state, read, commit, onStart, onSuccess, onEr
       }
     },
     dispose() {
+      if (disposed) return;
       disposed = true;
       state.scanAttempt = ++generation;
       state.scanPending = false;
       state.scan = null;
       state.error = null;
+      clear();
     },
   };
 }

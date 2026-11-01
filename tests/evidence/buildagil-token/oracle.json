@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "server/sources/buildagil-token.ts",
+  "mutation": "tests/evidence/buildagil-token/behaviour.oracle.patch",
+  "test": "apps/viewer/src/services/buildagil-relay-route.test.ts",
+  "why": "A token grant relayed without the server-held client secret must fail the dev relay route witness."
+}

@@ -65,6 +65,24 @@ bimodal in every build including base, so one slow round says nothing. Wait for
 post-load CPU to settle before an orbit, or source compaction reads as a
 frame-CPU regression.
 
+## C2-perf: opening meshing and extension repeats (ROUTER-21, ROUTER-20, #8385)
+
+**Declined: mesh each opening once (ROUTER-21).** Each opening is meshed three
+to six times (body walk, bounds probe and item-mesh probe, repeated by the quiet
+planar residual pass), but all of it is a small share of geometry. Even
+deleting all opening capture work stays under the 0.5% bar, so no repeat-removal
+can pay for its risk.
+
+**Declined: memoise the through-host extension (ROUTER-20).** The extension is
+costly, but a byte-safe memo hits only an uncut host with a bit-equal direction,
+which is mostly small hosts. The expensive repeats follow an earlier cluster cut
+of a large host and must be recomputed.
+
+Measured on ISSUE_129 at base `ea0139026b` with callgrind, cross-checked with a
+throwaway counter patch. Counts, estimates, sources and receipts:
+[evidence](../../tests/evidence/router-21/README.md). Do not re-spike without a
+mechanism that removes the body walk or the extension itself, not its repeats.
+
 ## C4-14 independent levers (#8341)
 
 **Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item

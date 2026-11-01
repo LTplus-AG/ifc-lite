@@ -2,7 +2,7 @@
 //! Uncut face sets against their authored rows (#8291).
 use super::OracleResult;
 use ifc_lite_core::{slot, AttributeValue, EntityDecoder, IfcType};
-use ifc_lite_retained_native::{oracle::face_sets, ShapeOnlyProduct};
+use ifc_lite_retained_native::{oracle::{face_set_closure, face_sets}, ShapeOnlyProduct};
 
 fn row_key(role: &str) -> Option<u32> {
     role.strip_prefix("row(")?.strip_suffix(')')?.parse().ok()
@@ -45,15 +45,20 @@ fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
     Some(authored)
 }
 
-pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+/// Marks a product whose every part publishes rows of a face set its source authors open.
+pub const AUTHORED_OPEN: &str = "faceSetAuthoredOpen";
+
+pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let mut worst = face_sets::RowDeviation::default();
     let mut any = false;
     let mut failure = None;
+    // Unknown (`$`/.U.) or closed sets, and parts of any other kind, keep the closed-solid checks.
+    let mut open = !product.parts.is_empty();
     for part in &product.parts {
-        let Some(faces) = &part.faces else { continue };
+        let Some(faces) = &part.faces else { open = false; continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
         // a triangle keyed to anything else then fails the corner check.
-        let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { continue };
+        let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { open = false; continue };
         any = true;
         let mut decoder = EntityDecoder::new(bytes);
         let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
@@ -61,6 +66,7 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
         let set = item.as_ref().filter(|item| matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet))
             .and_then(|item| face_sets::authored(item, &mut decoder, units));
+        open &= item.as_ref().is_some_and(face_set_closure::authored_open) && faces.table.iter().all(|key| key.item == first.item);
         let Some(set) = set else { failure = Some(format!("#{} has no authored rows", first.item)); continue };
         let keys: Vec<_> = faces.triangles.iter()
             .map(|&k| faces.table.get(k as usize).and_then(|key| row_key(&key.role))).collect();
@@ -80,9 +86,12 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     if !any && failure.is_none() { return Vec::new(); }
     let result = |family, value: f64, limit: f64| OracleResult { family, value, limit,
         pass: value.is_finite() && value <= limit && failure.is_none(), gated: true, reason: failure.clone(), ..Default::default() };
-    vec![
+    let mut results = vec![
         result("faceSetCorner", worst.corner_m, tolerances["faceSetCornerMetres"].as_f64().unwrap_or(f64::NAN)),
         result("faceSetRowArea", worst.area_relative, tolerances["faceSetRowAreaRelative"].as_f64().unwrap_or(f64::NAN)),
         result("faceSetRowsMissing", worst.missing_rows as f64, 0.),
-    ]
+    ];
+    // Report-only marker: the rows above still gate; `Report` skips only closed-solid checks.
+    if open && any { results.push(OracleResult { family: AUTHORED_OPEN, value: 1., limit: 0., pass: true, gated: false, ..Default::default() }); }
+    results
 }

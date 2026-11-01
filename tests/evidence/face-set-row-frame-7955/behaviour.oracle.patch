@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/src/oracle/face_sets.rs b/rust/retained-native/src/oracle/face_sets.rs
+index 72bbd89d2d..712edefbd3 100644
+--- a/rust/retained-native/src/oracle/face_sets.rs
++++ b/rust/retained-native/src/oracle/face_sets.rs
+@@ -39,7 +39,7 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2
+ fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
+     let origin = outer[0];
+     let local = |ring: &[[f64; 3]]| -> Vec<[f64; 3]> { ring.iter().map(|p| std::array::from_fn(|i| p[i] - origin[i])).collect() };
+-    let normal = newell(&local(outer));
++    let normal = newell(outer);
+     let twice = dot(normal, normal).sqrt();
+     let chord = outer.iter().flat_map(|p| outer.iter().map(move |q| {
+         let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);

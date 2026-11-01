@@ -83,6 +83,8 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
             assembled
         });
     }
+    // Authored face-set rows have no analytic face to match; `face_sets` gates them per row.
+    let actual = actual.map(|areas| areas.into_iter().filter(|(k, _)| !k.rsplit_once(':').is_some_and(|(_, role)| role.starts_with("row("))).collect::<BTreeMap<_, _>>());
     // Cut hosts need their source cut set; the native M11-F witnesses gate those through face_bands.
     let (Some(expected), Some(actual)) = (if product.cuts == 0 { faces::uncut(sources, product.product_id) } else { None }, actual)
         else { return results };

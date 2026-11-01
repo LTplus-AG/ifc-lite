@@ -27,6 +27,9 @@ mod hand_volumes;
 #[cfg(test)]
 #[path="compare/checks/bounded_tests.rs"]
 mod bounded_tests;
+#[cfg(test)]
+#[path = "compare/checks/face_sets_tests.rs"]
+mod face_sets_tests;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;

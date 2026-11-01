@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/src/oracle/face_sets.rs b/rust/retained-native/src/oracle/face_sets.rs
+index 72bbd89d2d..7c9800659a 100644
+--- a/rust/retained-native/src/oracle/face_sets.rs
++++ b/rust/retained-native/src/oracle/face_sets.rs
+@@ -45,7 +45,7 @@ fn planar_area(outer: &[[f64; 3]], inner: &[Vec<[f64; 3]>]) -> Option<f64> {
+         let d: [f64; 3] = std::array::from_fn(|i| p[i] - q[i]);
+         dot(d, d).sqrt()
+     })).fold(0., f64::max);
+-    if twice <= 1e-9 * chord { return Some(0.); }
++    if twice == 0. { return None; }
+     let unit = normal.map(|v| v / twice);
+     let off = |p: &[f64; 3]| dot(unit, std::array::from_fn(|i| p[i] - origin[i])).abs();
+     if outer.iter().chain(inner.iter().flatten()).any(|p| off(p) > 1e-9) { return None; }

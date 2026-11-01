@@ -60,6 +60,9 @@ if ((!opt.dist && opt.build.length === 0) || opt.set.length === 0) {
 }
 const display = process.env.DISPLAY;
 if (!display || display === ':0' || display === ':1') throw new Error('set DISPLAY to a private Xvfb (e.g. :97)');
+// A hybrid laptop's Intel Vulkan driver can win the adapter and then lose the device on allocation: show Chrome the NVIDIA one only.
+const NVIDIA_ICD = '/usr/share/vulkan/icd.d/nvidia_icd.json';
+const GPU_ENV = existsSync(NVIDIA_ICD) ? { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD } : process.env;
 const CHROME = process.env.CHROME ?? join(process.env.HOME, '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
 const positive = (name) => {
   const n = Number(opt[name]);
@@ -304,7 +307,7 @@ async function runSample(build, set, round) {
   currentFlags = build.flags;
   const profileDir = mkdtempSync(join(tmpdir(), 'scenoptic-bench-'));
   const launch = () => chromium.launchPersistentContext(profileDir, {
-    executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
+    env: GPU_ENV, executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
     args: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
       '--use-angle=vulkan', '--ignore-gpu-blocklist', '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
   });

@@ -26,6 +26,8 @@ mod registry;
 mod checks;
 #[path = "compare/hand_volumes.rs"]
 mod hand_volumes;
+#[path = "compare/exact_area.rs"]
+mod exact_area;
 #[cfg(test)]
 #[path="compare/checks/bounded_tests.rs"]
 mod bounded_tests;
@@ -55,6 +57,7 @@ fn main() -> Result<(), Error> {
         .map_err(|error| format!("native engine startup/qualification failed: {error}"))?;
     let mut report = report::Report {
         startup_ms: startup.elapsed().as_secs_f64() * 1000.,
+        area_authorities: exact_area::ExactAreaAuthorities::parse(exact_area::REGISTERED)?,
         ..Default::default()
     };
     let mut driver = NativeModelDriver::with_worker(&options.worker, qualified);

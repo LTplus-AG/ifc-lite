@@ -74,7 +74,7 @@ test('real NLS orthophoto retains its half-metre pixel centre and road colour (#
 }, async () => {
   const bytes = readFileSync(path);
   const image = await (await fromArrayBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))).getImage();
-  const affine = geoTiffAffine({ ModelTiepoint: Array.from(image.fileDirectory.ModelTiepoint ?? []), ModelPixelScale: Array.from(image.fileDirectory.ModelPixelScale ?? []) });
+  const affine = geoTiffAffine({ ModelTiepoint: Array.from(await image.fileDirectory.loadValue('ModelTiepoint') as ArrayLike<number>), ModelPixelScale: Array.from(await image.fileDirectory.loadValue('ModelPixelScale') as ArrayLike<number>) });
   assert.ok(affine.ok);
   const real = { ...raster, width: image.getWidth(), height: image.getHeight(), affine: affine.value, crs: 'EPSG:3067' };
   const ref = spatialReferenceFromIfc({ mapConversion: { id: 1, sourceCRS: 1, targetCRS: 2, eastings: 207460, northings: 6791800, orthogonalHeight: 0, scale: 1 },

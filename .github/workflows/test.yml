@@ -2281,14 +2281,10 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "apps/viewer/mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: apps/viewer/mergify-junit.xml
@@ -2717,14 +2713,10 @@ jobs:
             scripts/ids-conformance/lib/*.test.mjs \
             scripts/ids-conformance/lib/adapters/*.test.mjs \
             | sort -u)
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -2940,14 +2932,10 @@ jobs:
           mapfile -t filters <<<"$filters_txt"
           echo "turbo filters: ${filters[*]}"
           pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('*/*/mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "*/*/mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('*/*/mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: '*/*/mergify-junit.xml'
@@ -2995,14 +2983,10 @@ jobs:
         env:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
         run: pnpm test:api
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -3337,7 +3321,7 @@ jobs:
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -3474,14 +3458,10 @@ jobs:
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
           node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -4135,14 +4115,10 @@ jobs:
       - name: Check AGENTS.md ratchet regressions
         id: gate_tests
         run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-agents-md-size.test.mjs
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -4186,14 +4162,10 @@ jobs:
       - name: Check the license-header classifier's own regressions
         id: gate_tests
         run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/lib/license-header.test.mjs
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml
@@ -4266,14 +4238,10 @@ jobs:
         env:
           SILENT_REVERT_REQUIRE_HISTORY: '1'
         run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-silent-revert.test.mjs
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml

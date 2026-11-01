@@ -50,7 +50,7 @@ jobs:
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('packages/ifcx/mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: packages/ifcx/mergify-junit.xml

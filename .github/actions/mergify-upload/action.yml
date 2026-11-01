@@ -1,0 +1,64 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Mergify test results upload
+description: Best-effort JUnit upload to Mergify Test Engine that cannot fail the calling job
+# Reporting must never turn a required job red (#8525). A remote `uses:` action
+# is downloaded while the job is set up, before any step runs, so a failed
+# download fails the job and `continue-on-error` cannot catch it. A local action
+# is only resolved when its step runs, and this one is a single `run:` step that
+# always exits 0, with every network call under `timeout`.
+#
+# It does what mergifyio/gha-mergify-ci@392d123 (v27) did for `junit-process`,
+# with the CLI version that action's pinned setup-cli installed. The CLI's own
+# exit code is not passed on: the test step already decides the job's outcome,
+# so quarantine can neither fail nor rescue a job from here.
+inputs:
+  token:
+    description: Mergify application key with the ci scope
+    required: true
+  report_path:
+    description: JUnit file or glob, relative to the workspace
+    required: true
+  test_step_outcome:
+    description: steps.<id>.outcome of the test step, so a crashed runner with a clean-looking report is not recorded as a pass
+    required: false
+    default: ''
+  job_name:
+    description: Job name to record; required for matrix jobs, whose shards otherwise share one name
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Upload JUnit to Mergify (best effort)
+      shell: bash
+      env:
+        MERGIFY_TOKEN: ${{ inputs.token }}
+        MERGIFY_TEST_JOB_NAME: ${{ inputs.job_name || env.MERGIFY_TEST_JOB_NAME }}
+        MERGIFY_TEST_EXIT_CODE: >-
+          ${{ inputs.test_step_outcome == 'success' && '0'
+          || (inputs.test_step_outcome == 'failure'
+          || inputs.test_step_outcome == 'cancelled') && '1'
+          || '' }}
+        FILES: ${{ inputs.report_path }}
+        MERGIFY_CLI_VERSION: 2026.7.21.1
+      run: |
+        set -uo pipefail
+        skip() { echo "::warning title=Mergify upload skipped::$1"; exit 0; }
+        [ -n "$MERGIFY_TOKEN" ] || skip 'MERGIFY_TOKEN is not set'
+        [ -n "$FILES" ] || skip 'report_path is empty'
+        # Node's JUnit reporter writes top-level tests directly under
+        # <testsuites>, which the CLI drops; a no-op for any other report.
+        python3 scripts/normalize-node-junit.py "$FILES" \
+          || echo '::warning title=Mergify upload::JUnit normalisation failed; uploading the report as written'
+        bindir="$RUNNER_TEMP/mergify-cli-bin"
+        if [ ! -x "$bindir/mergify" ]; then
+          installer="$(mktemp)"
+          timeout 60 curl -fsSL "https://raw.githubusercontent.com/Mergifyio/mergify-cli/${MERGIFY_CLI_VERSION}/install.sh" -o "$installer" \
+            || skip "could not download the mergify-cli ${MERGIFY_CLI_VERSION} installer"
+          MERGIFY_VERSION="$MERGIFY_CLI_VERSION" MERGIFY_INSTALL_DIR="$bindir" timeout 180 sh "$installer" \
+            || skip "could not install mergify-cli ${MERGIFY_CLI_VERSION}"
+        fi
+        timeout 300 "$bindir/mergify" ci junit-process -- "$FILES" \
+          || skip "mergify ci junit-process exited $?"

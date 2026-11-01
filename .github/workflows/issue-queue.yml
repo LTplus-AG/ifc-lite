@@ -146,14 +146,10 @@ jobs:
           node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
             scripts/lib/ref-issues-fetch.test.mjs \
             scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
-      - name: Prepare Node JUnit for Mergify
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
-        continue-on-error: true
-        run: python3 scripts/normalize-node-junit.py "mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
-        uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
+        uses: ./.github/actions/mergify-upload
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}
           report_path: mergify-junit.xml

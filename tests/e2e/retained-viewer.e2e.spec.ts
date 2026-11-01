@@ -984,9 +984,11 @@ test.describe('retained viewer acceptance', () => {
 const ARCHICAD = 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
 const SKETCHUP = 'apps/viewer/public/samples/building-architecture.ifc';
 const BONSAI = 'apps/viewer/public/samples/hello-wall.ifc';
+const TEKLA = 'rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc';
 const REAL_MODELS = [
   { tool: 'ArchiCAD', file: ARCHICAD, header: /ARCHICAD-64/ },
   { tool: 'Bonsai', file: BONSAI, header: /Bonsai/ },
+  { tool: 'SketchUp', file: SKETCHUP, header: /IFC manager for sketchup/i },
 ];
 const baseName = (path: string) => path.split('/').at(-1)!;
 const SDK_REQUEST = /\/smlib\/|pkg-retained|\/retained-engine\//;
@@ -1136,18 +1138,18 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     });
   }
 
-  test('a real SketchUp export refused product by product loads as an incomplete, mesh-free model with its identity intact', async ({ page }) => {
-    expect(readFileSync(SKETCHUP, 'latin1').slice(0, 60000)).toMatch(/IFC manager for sketchup/i);
+  test('a real Tekla export refused product by product loads as an incomplete, mesh-free model with its identity intact', async ({ page }) => {
+    expect(readFileSync(TEKLA, 'latin1').slice(0, 60000)).toMatch(/Tekla Structures 2023/);
     await setup(page, 'retained');
-    await page.locator('#file-input-open').setInputFiles(resolve(SKETCHUP));
+    await page.locator('#file-input-open').setInputFiles(resolve(TEKLA));
     await page.waitForFunction(() => {
       const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
       const model = [...state.models.values()][0];
       return !state.loading && model?.retainedGeometry && model.retainedGeometry.completeness !== 'running';
     });
-    const rows = expected(SKETCHUP);
+    const rows = expected(TEKLA);
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every(row => row.status === 'refused'), 'the manifest pins every SketchUp product as refused').toBe(true);
+    expect(rows.every(row => row.status === 'refused'), 'the manifest pins every Tekla product as refused').toBe(true);
     const [model, ...others] = await identities(page);
     expect(others).toEqual([]);
     expect((await snapshot(page)).error).toBeNull();
@@ -1162,7 +1164,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     await expect(page.locator('[data-retained-row]')).toHaveCount(rows.length);
     await page.getByRole('button', { name: `Select #${rows[0].id}`, exact: true }).click();
     expect(await selection(page)).toMatchObject({ ref: { modelId: model.id, expressId: rows[0].id } });
-    await record('real-sketchup', { model: stable(model), refused: rows.length });
+    await record('real-tekla-refused', { model: stable(model), refused: rows.length });
   });
 
   test('a refused retained federated add leaves the exact primary intact; Retry builds a correct federation with colliding ids', async ({ page }) => {

@@ -17,6 +17,11 @@ on:
       - 'apps/autodesk-exchange-worker/**'
       - '.github/workflows/autodesk-cloud.yml'
   workflow_dispatch:
+# A new commit makes this PR's earlier run worthless; pushes, tags and manual runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 jobs:

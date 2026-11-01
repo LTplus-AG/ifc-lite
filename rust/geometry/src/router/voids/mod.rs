@@ -6,7 +6,9 @@
 
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
-use crate::csg::{ClippingProcessor, GroupCut};
+use crate::csg::ClippingProcessor;
+#[cfg(test)]
+use crate::csg::GroupCut;
 use crate::mesh::SubMeshCollection;
 use crate::program::openings::execute::Execution;
 use crate::{Mesh, Point3, Result, Vector3};
@@ -632,17 +634,7 @@ impl Execution {
         // (`subtract_mesh_many` rejects a group whose N-ary arrangement left an
         // unrecovered constraint) — fall through to the per-opening sequential
         // loop below with its full #635 fallback / engulf / redundant-void machinery.
-        let mut batch_consumed: Vec<bool> = vec![false; all_openings.len()];
-        // Disjoint groups of opening indices (len ≥ 2 only); each is cut
-        // INLINE at its first member's position in the sequential loop below,
-        // so the relative order of batched vs sequential cutters matches the
-        // pure sequential pass — only the order WITHIN a group (mutually
-        // disjoint cutters, the provably order-free case) is collapsed.
-        let mut batch_groups: Vec<Vec<(usize, Mesh)>> = Vec::new();
-        let mut batch_group_of: FxHashMap<usize, usize> = FxHashMap::default();
-        // Set on every successful cut; while false, a group's admission-time
-        // extended cutters are still valid and reused verbatim.
-        let mut host_mutated = false;
+        let mut state = strategy::exact::ExactState::new(all_openings.len());
 
         // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
         // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
@@ -651,118 +643,12 @@ impl Execution {
         // them in one `subtract_mesh_many`. See `coaxial_union`. Marks consumed
         // openings so the batch + sequential loops skip them; a cluster that fails
         // any guard is left unconsumed for the exact path (never worse than exact).
-        self.coaxial_union_prepass(
-            &mut result,
-            &all_openings,
-            &mut batch_consumed,
-            &mut host_mutated,
-            &clipper,
-        );
+        state.coaxial_union(self, &mut result, &all_openings, &clipper);
 
-        if all_openings.len() >= 2 {
-            // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
-            // 1 mm is conservative and far below any real opening separation.
-            // Touching/overlapping cutters land in DIFFERENT groups, cut in
-            // sequence — overlap degrades gracefully to sequential behavior.
-            const BATCH_PAD: f64 = 1.0e-3;
-            struct Cand {
-                idx: usize,
-                /// The admission-time extended cutter (host PRE-cut). Reused at
-                /// cut time while the host is still unmutated — the common case
-                /// (groups are cut at their FIRST member, usually before any
-                /// sequential cut) — so extension isn't paid twice.
-                mesh: Mesh,
-                lo: [f64; 3],
-                hi: [f64; 3],
-            }
-            let mut cands: Vec<Cand> = Vec::new();
-            for (idx, opening) in all_openings.iter().enumerate() {
-                // Already cut by the coaxial/overlap-union prepass above.
-                if batch_consumed[idx] {
-                    continue;
-                }
-                let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
-                // Same admission guards as the sequential loop.
-                if admit_cutter(
-                    opening_mesh,
-                    result.bounds(),
-                    min_opening_volume(self.tessellation_quality),
-                )
-                .is_none()
-                {
-                    continue;
-                }
-                let Some(ext) = GeometryRouter::batch_cutter(opening_mesh, extrusion_dir, &result) else {
-                    continue;
-                };
-                let (lo, hi) = ext.bounds();
-                // Engulf-class exclusion: a cutter whose extended AABB covers
-                // the whole host on EVERY axis (3% slack, the sequential
-                // engulf test) stays on the sequential path, where the
-                // near-engulf and redundant-void guards live — batched it can
-                // shave the host's outer shell (the #559171-family residual).
-                let engulfs = aabb_engulfs(
-                    [lo.x as f64, lo.y as f64, lo.z as f64],
-                    [hi.x as f64, hi.y as f64, hi.z as f64],
-                    [wall_min.x, wall_min.y, wall_min.z],
-                    [wall_max.x, wall_max.y, wall_max.z],
-                    ENGULF_TOLERANCE,
-                );
-                if engulfs {
-                    continue;
-                }
-                cands.push(Cand {
-                    idx,
-                    mesh: ext,
-                    lo: [
-                        lo.x as f64 - BATCH_PAD,
-                        lo.y as f64 - BATCH_PAD,
-                        lo.z as f64 - BATCH_PAD,
-                    ],
-                    hi: [
-                        hi.x as f64 + BATCH_PAD,
-                        hi.y as f64 + BATCH_PAD,
-                        hi.z as f64 + BATCH_PAD,
-                    ],
-                });
-            }
-            // Greedy disjoint grouping, deterministic in opening order: a
-            // candidate joins the first group whose EVERY member's inflated
-            // AABB is disjoint from its own.
-            let mut groups: Vec<Vec<usize>> = Vec::new();
-            'cand: for ci in 0..cands.len() {
-                for g in groups.iter_mut() {
-                    let disjoint_from_all = g.iter().all(|&cj| {
-                        let (a, b) = (&cands[ci], &cands[cj]);
-                        a.hi[0] < b.lo[0]
-                            || a.lo[0] > b.hi[0]
-                            || a.hi[1] < b.lo[1]
-                            || a.lo[1] > b.hi[1]
-                            || a.hi[2] < b.lo[2]
-                            || a.lo[2] > b.hi[2]
-                    });
-                    if disjoint_from_all {
-                        g.push(ci);
-                        continue 'cand;
-                    }
-                }
-                groups.push(vec![ci]);
-            }
-            for g in &groups {
-                if g.len() < 2 {
-                    continue; // singleton: sequential loop handles it (full guards)
-                }
-                let gid = batch_groups.len();
-                for &ci in g {
-                    batch_group_of.insert(cands[ci].idx, gid);
-                }
-                batch_groups
-                    .push(g.iter().map(|&ci| (cands[ci].idx, cands[ci].mesh.clone())).collect());
-            }
-        }
+        state.plan_groups(self, &result, &all_openings, wall_min, wall_max);
 
         for (opening_idx, opening) in all_openings.iter().enumerate() {
-            if batch_consumed[opening_idx] {
+            if state.consumed[opening_idx] {
                 continue; // already handled by a batched disjoint group
             }
             // Batched group cut, attempted ONCE, inline at the group's first
@@ -770,56 +656,8 @@ impl Execution {
             // matches the pure sequential pass. On any failure (admission,
             // guards, or the kernel's conformity gate) the members fall back
             // to the per-opening sequential path below.
-            if let Some(&gid) = batch_group_of.get(&opening_idx) {
-                let members = std::mem::take(&mut batch_groups[gid]);
-                if members.len() >= 2 {
-                    // While the host is unmutated, the admission-time extended
-                    // cutters (built against this exact host) are reused as-is;
-                    // after any cut, members are re-extended against the
-                    // CURRENT host — matching the sequential loop's reference,
-                    // which extends each cutter against the (k−1)-cut host.
-                    let mut extended: Vec<(usize, Mesh)> = Vec::with_capacity(members.len());
-                    let mut admissible = true;
-                    if !host_mutated {
-                        extended = members;
-                    } else {
-                        for &(m_idx, _) in &members {
-                            let ext = all_openings[m_idx]
-                                .cutter()
-                                .mesh_cutter()
-                                .and_then(|(m, dir)| GeometryRouter::batch_cutter(m, dir, &result));
-                            let Some(ext) = ext else {
-                                admissible = false;
-                                break;
-                            };
-                            extended.push((m_idx, ext));
-                        }
-                    }
-                    if admissible {
-                        let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
-                        let tri_before = result.triangle_count();
-                        let outcome = if GeometryRouter::batch_cutters_match_sequential(&result, &all_openings, &extended) {
-                            clipper.subtract_mesh_many_retaining_miss(&result, &cutters)
-                        } else {
-                            clipper.subtract_mesh_many(&result, &cutters)
-                        };
-                        // #6516: retain the group's validated consolidation on
-                        // a conforming miss; keeping the original host instead
-                        // can discard useful seam repairs made by the singles.
-                        if let GroupCut::Cut(csg_result) | GroupCut::Retessellated(csg_result) = outcome {
-                            if cut_retains_triangles(tri_before, &csg_result) {
-                                result = csg_result;
-                                host_mutated = true;
-                                for &(m_idx, _) in &extended {
-                                    batch_consumed[m_idx] = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                if batch_consumed[opening_idx] {
-                    continue; // this opening was handled with its group
-                }
+            if state.cut_group(&mut result, &all_openings, &clipper, opening_idx) {
+                continue; // this opening was handled with its group
             }
             // Normalize both exact-subtract variants into the same (mesh, min,
             // max, dir) shape. `DiagonalRectangular` (a clean but tilted box —
@@ -872,7 +710,7 @@ impl Execution {
                         // The empty result marks the host consumed
                         // (`program::openings::execute`).
                         result = Mesh::default();
-                        host_mutated = true;
+                        state.host_mutated = true;
                         break;
                     }
 
@@ -901,7 +739,7 @@ impl Execution {
                     if let Some(csg_result) = kept {
                         if cut_retains_triangles(tri_before, &csg_result) {
                             result = csg_result;
-                            host_mutated = true;
+                            state.host_mutated = true;
                             csg_succeeded = true;
                         }
                     }
@@ -1029,7 +867,7 @@ impl Execution {
                                 #[cfg(feature = "opening-perf-trace")]
                                 crate::opening_perf_trace::record(|c| c.aabb_fallback_commits = c.aabb_fallback_commits.saturating_add(1));
                                 result = aabb_cut;
-                                host_mutated = true;
+                                state.host_mutated = true;
                             }
                         } else {
                             // The engulfing/redundant-void guard suppressed the
@@ -1081,7 +919,7 @@ impl Execution {
                 wall_min,
                 wall_max,
                 original_host: &original_host,
-                host_mutated,
+                host_mutated: state.host_mutated,
             },
         )
     }

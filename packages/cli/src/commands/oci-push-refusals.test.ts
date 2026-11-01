@@ -139,6 +139,8 @@ describe('oci push --annotation', () => {
       'com.example.empty': '',
       'com.example.note': 'a=b',
       'com.example.stage': 'issued',
+      'org.buildingsmart.ifc.profile': 'ifc-release/0',
+      'org.buildingsmart.ifc.schema': 'IFC4',
       'org.opencontainers.image.created': '2023-11-14T22:13:20Z',
       'org.opencontainers.image.revision': 'abc123',
       'org.opencontainers.image.title': 'building-architecture',
@@ -165,6 +167,8 @@ describe('oci push --annotation', () => {
     [['--annotation', '=value'], 'has an empty key'],
     [['--annotation', 'bad\nkey=value'], 'cannot contain a line break'],
     [['--annotation', 'org.opencontainers.image.title=Other'], 'cannot set org.opencontainers.image.title'],
+    [['--annotation', 'org.buildingsmart.ifc.profile=other'], 'cannot set org.buildingsmart.ifc.profile'],
+    [['--annotation', 'org.buildingsmart.ifc.schema=IFC2X3'], 'cannot set org.buildingsmart.ifc.schema'],
     [['--annotation'], '--annotation needs a key=value argument'],
     [['--tag', 'x'], 'unknown option --tag'],
   ])('refuses %j before any request', async (extra, message) => {

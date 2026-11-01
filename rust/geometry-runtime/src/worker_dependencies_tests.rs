@@ -29,7 +29,7 @@ fn common_frame_subtracts_survey_translation_before_rotation() {
     assert_eq!(&local[12..15], &[5., -3., 7.]);
     assert_eq!(&local[..3], &[0., -1., 0.]);
     assert_eq!(&local[4..7], &[1., 0., 0.]);
-    assert_eq!(multiply(a, local), b);
+    assert_eq!(compose_frame(&a, &local), b);
 }
 #[test]
 fn common_frame_refuses_scale_reflection_and_nonfinite_occurrences() {

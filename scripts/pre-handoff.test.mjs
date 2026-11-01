@@ -29,6 +29,7 @@ test('#7955 selected base reaches diff-sensitive gates and license invocation is
   const gates = gateCommands('custom/base');
   assert.ok(gates.find((gate) => gate.name === 'module-size').args.includes('custom/base'));
   assert.ok(gates.find((gate) => gate.name === 'source-text-assertions').args.includes('custom/base'));
+  assert.ok(gates.find((gate) => gate.name === 'silent-revert').args.includes('custom/base'));
   assert.ok(gates.find((gate) => gate.name === 'license-headers').args.includes('--check'));
 });
 

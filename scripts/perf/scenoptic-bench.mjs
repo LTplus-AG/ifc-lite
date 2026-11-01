@@ -136,6 +136,12 @@ const INIT = () => {
   }
 };
 
+/** Chrome can exit with its last page, so open the next one first. */
+async function replacePage(context, page) {
+  await context.newPage();
+  await page.close();
+}
+
 async function openPage(context) {
   const page = context.pages()[0] ?? await context.newPage();
   page.on('pageerror', (e) => log('pageerror', e.message.slice(0, 300)));
@@ -325,13 +331,13 @@ async function runSample(build, set, round) {
     log(`    memory: PSS ${fmt(sample.cold.memory.pssMiB)} MiB, RSS ${fmt(sample.cold.memory.rssMiB)} MiB, VRAM ${fmt(sample.cold.memory.vramMiB)} MiB`);
     if (!opt['no-warm']) {
       await waitCacheWrites(page);
-      await page.close();
+      await replacePage(context, page);
       // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
         if (open > 1) {
           // Only a primary single-file hit writes one (federated hits keep their path).
           if (/perf\.sceneSnapshot=1\b/.test(build.flags) && set.files.length === 1) await waitSceneSnapshots(page);
-          await page.close();
+          await replacePage(context, page);
         }
         page = await openPage(context);
         openTicks = cpuTicks(chromePids(profileDir));
@@ -381,7 +387,7 @@ for (const set of SETS) {
     const vals = BUILDS.map((b) => median(samples.filter((s) => s.build === b.id && s.set === set.name && !s.error).map(get)));
     if (vals.every((v) => v === null)) continue;
     (summary[set.name] ??= {})[name] = Object.fromEntries(BUILDS.map((b, i) => [b.id, vals[i]]));
-    const digits = name.includes('GPU') || name.includes('cores') || name.includes('CPU-s') ? 2 : 0;
+    const digits = name.includes('GPU') || name.includes('Mcycles') || name.includes('cores') || name.includes('CPU-s') ? 2 : 0;
     const cells = vals.map((v, i) => i ? `${fmt(v, digits)} | ${vals[0] && v !== null ? (v / vals[0]).toFixed(2) : 'n/a'}` : fmt(v, digits));
     lines.push(`| ${set.name} | ${name} | ${cells.join(' | ')} |`);
   }

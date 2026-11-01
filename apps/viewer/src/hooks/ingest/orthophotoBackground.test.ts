@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { backgroundReference } from './orthophotoBackground';
+import { backgroundReference, orthophotoProjection } from './orthophotoBackground';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { georeferencedPlacementFrameKey } from '@/lib/model-placement/persistence';
 import { planOrthophotoBackground } from '@/lib/terrain-imagery/background-plan';
@@ -40,4 +40,12 @@ test('background sampling converts native US-survey-foot raster coordinates to m
   }, 0);
   // 100 ft width plus a 1 ft margin on either side.
   assert.ok(Math.abs(plan.corners[1][0] - plan.corners[0][0] - 102 * foot) < 1e-6);
+});
+
+// RD New needs a grid only when changing datums; same-CRS imagery must work offline.
+test('same-CRS aerial background requires no datum transformation (#8552)', async () => {
+  const projection = await orthophotoProjection('EPSG:28992', 'EPSG:28992');
+  const [e, n] = projection.forward([90770, 435320]);
+  assert.ok(Math.abs(e - 90770) < 1e-6);
+  assert.ok(Math.abs(n - 435320) < 1e-6);
 });

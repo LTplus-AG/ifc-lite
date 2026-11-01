@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import proj4 from 'proj4';
+import { lookupEpsgByCode } from '@ifc-lite/data';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { placementFrameFields, placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
@@ -42,6 +43,20 @@ export function backgroundReference(frameKey: string): ModelSpatialReference {
   return reference;
 }
 
+/** A same-CRS image needs only native-unit conversion, never a datum grid.
+ * Cross-CRS placement retains federation's exact-operation requirement. */
+export async function orthophotoProjection(sourceCrs: string, targetCrs: string) {
+  if (sourceCrs.toUpperCase() === targetCrs.toUpperCase()) {
+    const entry = await lookupEpsgByCode(sourceCrs.split(':')[1]);
+    if (!entry?.proj4 || entry.kind !== 'Projected') throw new Error('The image/model CRS has no supported projected definition.');
+    return proj4(entry.proj4, projectedDefinitionInMetres(entry.proj4));
+  }
+  const [source, target] = await Promise.all([resolveProjectionOperation(sourceCrs), resolveProjectionOperation(targetCrs)]);
+  if (source.kind !== 'exact' || target.kind !== 'exact') throw new Error('An exact coordinate transformation is unavailable for this image/model pair. Load the required datum grid or reproject the image first.');
+  // Raster tags use native CRS units; the model spatial contract uses metres.
+  return proj4(source.definition, projectedDefinitionInMetres(target.definition));
+}
+
 /** An imagery load owns no IFC entities and never resets the model session. */
 export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<void> {
   const initial = useViewerStore.getState();
@@ -49,10 +64,7 @@ export async function addOrthophotoBackground(raster: LoadedGeoRaster): Promise<
   const reference = backgroundReference(frameKey);
   const crs = raster.placement.crs;
   if (!crs) throw new Error('The orthophoto has no EPSG coordinate system; supply its .prj or .aux.xml.');
-  const [source, target] = await Promise.all([resolveProjectionOperation(crs), resolveProjectionOperation(reference.horizontal!.id)]);
-  if (source.kind !== 'exact' || target.kind !== 'exact') throw new Error('An exact coordinate transformation is unavailable for this image/model pair. Load the required datum grid or reproject the image first.');
-  // Raster tags use native CRS units; the model spatial contract uses metres.
-  const converter = proj4(source.definition, projectedDefinitionInMetres(target.definition));
+  const converter = await orthophotoProjection(crs, reference.horizontal!.id);
   const offset = totalYupOffset(placementFrameCoordinateInfo(initial));
   const geometry = initial.geometryResult ?? [...initial.models.values()].find(model => model.geometryResult)?.geometryResult;
   const elevation = (geometry?.coordinateInfo.shiftedBounds.min.y ?? 0) + offset.y - 0.05;

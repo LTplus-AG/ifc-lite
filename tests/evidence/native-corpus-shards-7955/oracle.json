@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/retained-compare/corpus-shards.mjs",
+  "mutation": "tests/evidence/native-corpus-shards-7955/behaviour.oracle.patch",
+  "test": "scripts/retained-compare/corpus-shards.test.mjs",
+  "why": "Reverse-applying this patch puts every model in shard 0, so the shards are unbalanced and the other shards are empty."
+}

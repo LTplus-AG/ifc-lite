@@ -58,7 +58,6 @@ export const semanticRu = {
   "semantic.rawResults": "Привязки SPARQL",
   "semantic.graph": "RDF-граф для проверки",
   "semantic.validateGraph": "Проверить предоставленный RDF-граф",
-  "semantic.mapping": "Имена привязок результата",
   "semantic.selectRecord": "Выбрать {label}",
   "semantic.close": "Закрыть Связанные записи",
   "semantic.done": "Загружено записей {count}.",

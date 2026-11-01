@@ -56,7 +56,6 @@ export const semanticEn = {
   'semantic.rawResults': 'SPARQL bindings',
   'semantic.graph': 'RDF graph to validate',
   'semantic.validateGraph': 'Validate supplied RDF graph',
-  'semantic.mapping': 'Result binding names',
   'semantic.selectRecord': 'Select {label}',
   'semantic.close': 'Close linked records',
   'semantic.done': 'Loaded {count} records.',

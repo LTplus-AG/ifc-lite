@@ -81,10 +81,15 @@ test('#8556 checkbox selection updates renderer channels, deduplicates rows and 
 });
 test('#8556 select all spans pages and clears selection while skipping unmapped rows', async () => {
   const model = await selectionFixture();
+  act(() => createSelectionAdapter(useViewerStore).set([{ modelId: 'model-0', expressId: model.doors[2] }]));
   const rows = [...Array.from({ length: 50 }, () => guidRow(model.GlobalIds[0])), guidRow(model.GlobalIds[1]), guidRow('invalid')];
   const ui = render(<SemanticResults results={{ columns: ['GlobalId'], rows }} mapping={DEFAULT_MAPPING} revisions={new Map()} onError={error => { throw error; }} />);
   click(namedButton(ui, 'Select all mapped results'));
   assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  assert.deepEqual(createSelectionAdapter(useViewerStore).get(), [
+    { modelId: 'model-0', expressId: model.doors[0] },
+    { modelId: 'model-0', expressId: model.doors[1] },
+  ], 'bulk selection replaces a valid entity absent from the results');
   click(namedButton(ui, 'Next rows'));
   assert.equal(checkbox(ui, 51).checked, true); assert.equal(checkbox(ui, 52).disabled, true);
   click(namedButton(ui, 'Clear selection'));

@@ -36,7 +36,7 @@ pub fn expectations(
         }
         if !cuts.is_empty() {
             let expected = openings::expected(sources, host, &cuts).or_else(|| {
-                ifc_lite_retained_native::oracle::mapped::opened(bytes, host, &cuts)
+                ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts)
             });
             result.insert(host, expected);
         }

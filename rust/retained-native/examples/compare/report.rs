@@ -54,7 +54,6 @@ impl Report {
         sources: &super::checks::SourceContext<'_>,
         exact_report_only: bool,
         bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>,
-        bytes: &[u8],
     ) {
         self.published += 1;
         let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
@@ -66,7 +65,7 @@ impl Report {
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
         self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
-        let results = super::checks::check(shape, sources, bytes, tolerances, bounded);
+        let results = super::checks::check(shape, sources, tolerances, bounded);
         let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
         let authority = authorities.first();
         if authorities.iter().any(|a| authority.is_some_and(|first|

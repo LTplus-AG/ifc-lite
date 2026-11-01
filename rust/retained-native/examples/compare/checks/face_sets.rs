@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Uncut face sets against their authored rows (#8291).
 use super::OracleResult;
-use ifc_lite_core::{slot, AttributeValue, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, IfcType};
 use ifc_lite_retained_native::{oracle::face_sets, ShapeOnlyProduct};
 
 fn row_key(role: &str) -> Option<u32> {
@@ -11,8 +11,8 @@ fn row_key(role: &str) -> Option<u32> {
 /// The face sets the file itself puts in this product's or orphan type's Body, directly or
 /// through a map. The expectation comes from the source, so lost row keys cannot read as
 /// nothing to check.
-fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
-    let mut decoder = EntityDecoder::new(bytes);
+fn authored_face_sets(product_id: u32, model: &super::ModelSource<'_>) -> Option<Vec<u32>> {
+    let mut decoder = model.decoder();
     let product = decoder.decode_by_id(product_id).ok()?;
     let mut roots = Vec::new();
     // Index reads: a published id can be either kind, and each lacks the other's attribute.
@@ -45,7 +45,7 @@ fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<Vec<u32>> {
     Some(authored)
 }
 
-pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+pub(super) fn check(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let mut worst = face_sets::RowDeviation::default();
     let mut any = false;
     let mut failure = None;
@@ -55,8 +55,8 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
         // a triangle keyed to anything else then fails the corner check.
         let Some(first) = faces.table.iter().find(|key| row_key(&key.role).is_some()) else { continue };
         any = true;
-        let mut decoder = EntityDecoder::new(bytes);
-        let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+        let mut decoder = model.decoder();
+        let units = model.unit_scale();
         let item = decoder.decode_by_id(first.item).ok();
         let set = item.as_ref().filter(|item| matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet))
@@ -73,7 +73,7 @@ pub(super) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
     if product.cuts == 0 {
         let keyed = |item: u32| product.parts.iter().filter_map(|part| part.faces.as_ref())
             .any(|faces| faces.table.iter().any(|key| key.item == item && row_key(&key.role).is_some()));
-        if let Some(missing) = authored_face_sets(product.product_id, bytes).unwrap_or_default().into_iter().find(|&item| !keyed(item)) {
+        if let Some(missing) = authored_face_sets(product.product_id, model).unwrap_or_default().into_iter().find(|&item| !keyed(item)) {
             failure = Some(format!("#{} authors face set #{missing} but published no row key for it", product.product_id));
         }
     }

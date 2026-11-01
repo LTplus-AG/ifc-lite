@@ -7,10 +7,16 @@ mod source;
 #[derive(Debug)]
 pub struct LayerExpectation { pub volumes: Vec<f64>, pub opened_volume: f64, pub curved: bool }
 pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Option<LayerExpectation> {
-    let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec()); let mut decoder=bundle.decoder();
-    let usage=source::read(bytes,id,&mut decoder)?;
+    let bundle=ifc_lite_core::SourceBundle::new(bytes.to_vec());
+    expected_in(&bundle, &super::clips::ClipOracle::new(&bundle, sources), sources, id)
+}
+/// [`expected`] over the caller's model-wide source and clip oracle, built once per model.
+pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: &super::clips::ClipOracle<'_>,
+    sources: &AnalyticQuantitySources, id: u32) -> Option<LayerExpectation> {
+    let mut decoder=bundle.decoder();
+    let usage=source::read(bundle.bytes(),id,&mut decoder)?;
     let instances=sources.extrusion_definitions.instances.get(&id)?;
-    let clips = super::clips::ClipOracle::new(&bundle, sources).expected(id).ok()?;
+    let clips = clips.expected(id).ok()?;
     if instances.len()!=1 || usage.thickness.len()<2 {return None;}
     if instances[0].source_modified && clips.is_none() {return None;}
     let clip = match &clips {

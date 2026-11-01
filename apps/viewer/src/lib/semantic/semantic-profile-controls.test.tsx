@@ -70,3 +70,29 @@ test('#8554 bSDD search and profile import use the same-origin proxy', async () 
     assert.equal(profiles[0].types.IfcWindow.iri, uri);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+
+test('#8554 hostile search text stays a search value and proxy failures leave the profile untouched', async () => {
+  const originalFetch = globalThis.fetch;
+  const profiles: ProfileDefinition[] = []; const errors: string[] = [];
+  const query = 'IfcWindow&Uri=https://untrusted.example/path?x=1#fragment';
+  let requests = 0;
+  globalThis.fetch = async request => {
+    const url = new URL(String(request), 'https://viewer.example');
+    requests++;
+    assert.equal(url.origin, 'https://viewer.example');
+    assert.equal(url.pathname, '/api/bsdd/api/Class/Search/v1');
+    assert.deepEqual([...url.searchParams], [['SearchText', query]]);
+    assert.equal(url.hash, '');
+    return new Response('Unavailable', { status: 502, statusText: 'Bad Gateway' });
+  };
+  try {
+    const ui = render(<SemanticProfileControls profile={DEFAULT_PROFILE} onProfile={profile => profiles.push(profile)} onError={error => errors.push(error)} />);
+    input(ui.querySelector('input')!, query);
+    await act(async () => { click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Search bSDD and choose a class')!); });
+    assert.equal(requests, 1); assert.deepEqual(profiles, []);
+    assert.equal(errors.length, 1); assert.match(errors[0], /502/);
+    assert.equal(ui.querySelectorAll('li button').length, 0);
+    assert.equal([...ui.querySelectorAll('button')].find(button => button.textContent === 'Search bSDD and choose a class')?.disabled, false, 'failed request releases the busy state');
+  } finally { globalThis.fetch = originalFetch; }
+});

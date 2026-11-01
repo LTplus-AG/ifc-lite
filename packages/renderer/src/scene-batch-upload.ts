@@ -8,6 +8,7 @@ import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { quantizeInterleaved } from './quantize.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
+import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import {
@@ -30,6 +31,8 @@ export function createSceneBatch(
     /** See `BatchQuantization`; derived batches pass their source's decision (#4832). */
     quantized: BatchQuantization;
     lod: boolean;
+    /** Handed the exact arrays this batch uploads (scene-snapshot-batches.ts). */
+    onMerged?: (bytes: MergedBatchBytes) => void;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -120,6 +123,7 @@ export function createSceneBatch(
     // the cell size comes from the same-space bounds extent.
     let lod1IndexBuffer: GPUBuffer | undefined;
     let lod1IndexCount: number | undefined;
+    let lodIndices: Uint32Array | null | undefined;
     if (
       options.lod &&
       bucketKey !== undefined &&
@@ -130,7 +134,7 @@ export function createSceneBatch(
         merged.bounds.min,
         merged.bounds.max,
       );
-      const lodIndices = simplifyIndicesByClustering(
+      lodIndices = simplifyIndicesByClustering(
         merged.vertexData,
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
@@ -141,6 +145,7 @@ export function createSceneBatch(
         lod1IndexCount = lodIndices.length;
       }
     }
+    options.onMerged?.({ vertexData: quantizedData?.vertexData ?? merged.vertexData, indices: merged.indices, ...(lodIndices ? { lod1Indices: lodIndices } : {}) });
 
     return {
       id: options.id,

@@ -37,7 +37,7 @@ import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { TopologyMemo } from './scene-precision.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
-import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
+import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
@@ -150,6 +150,18 @@ export type { InstancedTemplateGPU } from './scene-instance-types.js';
 const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 
 export { computeFlushChunkEnd } from './scene-flush.js';
+
+/** Run `task` in a fresh macrotask with no timer clamp (see finalizeStreamingAsync). */
+function yieldTask(task: () => void): void {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    // An open port keeps a Node process alive.
+    channel.port1.close();
+    channel.port2.close();
+    task();
+  };
+  channel.port2.postMessage(null);
+}
 
 export class Scene {
   private meshes: Mesh[] = [];
@@ -372,6 +384,8 @@ export class Scene {
   // Buckets that received streamed meshes since the last finalize — the only
   // ones a finalize re-groups and rebuilds (#5358).
   private streamedBucketKeys: Set<string> = new Set();
+  /** Indices the transient streaming-fragment pass may still draw; see limitStreamingFragments. */
+  private streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
 
   // ─── Mesh command queue ────────────────────────────────────────────
   // Decouples React state updates from GPU work.  Callers push meshes
@@ -805,21 +819,27 @@ export class Scene {
     // everything anyway) — start enforcing once the scene is stable.
     if (this.streamingFragments.length > 0) return;
 
+    // Sizes only first: this runs after every frame, and under budget (the
+    // common case) the eviction bookkeeping below, whose ownership scan is
+    // O(meshes) per undrawn bucket, is never needed.
     let residentBytes = 0;
+    for (const bucket of this.buckets.values()) {
+      const b = bucket.batchedMesh;
+      if (b && b.gpuResident !== false) residentBytes += residentBatchBytes(b);
+    }
+    if (residentBytes <= budget) return;
+
     const shells: ResidencyShell[] = [];
     for (const bucket of this.buckets.values()) {
       const b = bucket.batchedMesh;
       if (!b || b.gpuResident === false) continue;
-      const bytes = b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0)
-        + (b.lod1IndexBuffer?.size ?? 0);
-      residentBytes += bytes;
+      const bytes = residentBatchBytes(b);
       const lastDrawn = this.lastDrawnFrame.get(b.id) ?? -1;
       if (lastDrawn === this.residencyFrame) continue;      // drawn this frame: not evictable
       if (bucket.meshData.length === 0) continue;           // no rebuild source: keep resident
       if (bucket.meshData.some(part => this.appearanceController?.owns(part.expressId))) continue;
       shells.push({ key: bucket.key, bytes, lastDrawnFrame: lastDrawn });
     }
-    if (residentBytes <= budget) return;
 
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
     let evictedBytes = 0;
@@ -829,8 +849,7 @@ export class Scene {
       if (!bucket || !batch || batch.gpuResident === false) continue;
       destroyGpuResources(batch);
       batch.gpuResident = false;
-      evictedBytes += batch.vertexBuffer.size + batch.indexBuffer.size + (batch.uniformBuffer?.size ?? 0)
-        + (batch.lod1IndexBuffer?.size ?? 0);
+      evictedBytes += residentBatchBytes(batch);
       this.lastDrawnFrame.delete(batch.id);
       this.dropPartialCacheForBatch(batch);
     }
@@ -1275,7 +1294,12 @@ export class Scene {
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
       // finalizeStreaming() destroys fragments and merges the streamed buckets.
       // `renderable` excludes textured meshes (drawn via the textured pipeline).
-      this.createStreamingFragments(renderable, device, pipeline);
+      // Past the fragment budget a retained mesh only joins its bucket and is
+      // first drawn by finalize; ephemeral mode keeps no bucket, so it always draws.
+      if (!retainStreamingGeometry || this.streamingFragmentIndexBudget > 0) {
+        this.createStreamingFragments(renderable, device, pipeline);
+        for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
+      }
       return;
     }
 
@@ -1875,6 +1899,20 @@ export class Scene {
   }
 
   /**
+   * Stop the current stream's transient fragment pass once `maxIndices` have
+   * been drawn. A first-paint target, not a hard limit: the append that crosses
+   * it still draws whole, so the overshoot is at most one append.
+   * Every streamed mesh is merged and uploaded twice: once as a throwaway
+   * fragment so it shows while streaming, then again by finalize. A load that
+   * holds its whole geometry up front (a cache hit) needs fragments only for
+   * first paint; the rest appears at the finalize swap, uploaded once.
+   * Finalize, ending an ephemeral stream and clear() restore the default (no limit).
+   */
+  limitStreamingFragments(maxIndices: number): void {
+    this.streamingFragmentIndexBudget = maxIndices;
+  }
+
+  /**
    * Drain the mesh queue with a per-frame time budget.
    * Processes queued meshes through appendToBatches in streaming mode
    * (creates lightweight fragment batches for immediate rendering).
@@ -1960,6 +1998,7 @@ export class Scene {
       this.finalizeStreamingInner(device, pipeline);
     } finally {
       this.finalizeInProgress = false;
+      this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     }
   }
 
@@ -2138,9 +2177,11 @@ export class Scene {
             bucket.frameOrigin = batchedMesh.origin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
 
-            // Check time budget — yield if exceeded
+            // Check time budget — yield if exceeded. A MessageChannel task, not
+            // setTimeout(0): nested timers clamp to >= 4 ms, idling a third of
+            // every 8 ms slice; rAF and input still run between slices.
             if (performance.now() - chunkStart >= budgetMs) {
-              setTimeout(processChunk, 0);
+              yieldTask(processChunk);
               return;
             }
           }
@@ -2163,6 +2204,7 @@ export class Scene {
           scene.retireFinalizedBatches(retired);
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
+          scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
@@ -2194,6 +2236,7 @@ export class Scene {
   }
 
   finishEphemeralStreaming(): void {
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
       return;
@@ -3320,6 +3363,17 @@ export class Scene {
   }
 
   /**
+   * True when the opaque instanced pass's fragment discards can fire: an
+   * occurrence carries the hidden bit (hide/isolate or an appearance
+   * suppression) or is translucent (the opacity routing). While false the
+   * renderer may draw that pass with the discard-free shader
+   * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   */
+  instancedMayDiscard(): boolean {
+    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+  }
+
+  /**
    * Per-instance X-RAY GHOSTING: fade every instanced occurrence outside
    * `ghostExceptIds` to `ghostAlpha`, leaving the excepted set and the current
    * selection solid.
@@ -3678,6 +3732,7 @@ export class Scene {
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
     this.streamedBucketKeys.clear();
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     this.meshQueue = [];
     this.meshQueueReadIndex = 0;
     this.geometryReleased = false;

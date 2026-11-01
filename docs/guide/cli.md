@@ -98,6 +98,27 @@ typed `application/x-step` or titled `*.ifc` / `*.ifczip`. The
 [CLI README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#opening-models-from-oci-registries)
 has the full rules and a GitHub Actions example.
 
+`ifc-lite oci push` publishes a model:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
+# Pushed oci://ghcr.io/acme/tower-model:rev-c → sha256:… (layer sha256:…, 225635 bytes)
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --overwrite --json \
+  --annotation org.opencontainers.image.revision=abc123
+```
+
+The artifact has type `application/vnd.ifc-lite.ifc.v1`, the OCI empty config,
+and one `application/x-step` layer titled with the file name; the manifest
+carries `org.opencontainers.image.created` (from `SOURCE_DATE_EPOCH` when set,
+so equal files give equal digests), `org.opencontainers.image.title` (the file
+name without extension), and the provisional `org.buildingsmart.ifc.profile` and
+`org.buildingsmart.ifc.schema` keys (a convention shared with subsoil, not a
+buildingSMART standard). The file must pass the loader's IFC check before
+any request is made, and `.ifczip` is not supported yet. The reference needs a
+tag; an existing tag is refused unless `--overwrite` is given (exit 1). Same
+credentials and http/https rule as above. `--json` prints
+`{ reference, digest, layer: { digest, size, mediaType }, artifactType }`.
+
 ## Installation diagnostics
 
 ```bash
@@ -1787,6 +1808,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
+| `oci` | Publish an IFC file to an OCI registry (any model argument may also be oci://...) |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
 | `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |

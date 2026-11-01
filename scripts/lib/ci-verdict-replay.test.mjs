@@ -18,7 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-import { AGGREGATE_CHECK_NAME, isNoopEdit, runIdOf, selectReplayVerdict } from './ci-verdict-replay.mjs';
+import { AGGREGATE_CHECK_NAME, JUDGE_STEP_NAME, REPLAY_STEP_NAME, isNoopEdit, onlyFailedLane, runIdOf, selectReplayVerdict } from './ci-verdict-replay.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../..');
@@ -118,6 +118,10 @@ function cli(args, files) {
       writeFileSync(join(dir, 'event.json'), JSON.stringify(files.event));
       argv.push('--event-file', join(dir, 'event.json'));
     }
+    if (files.jobs !== undefined) {
+      writeFileSync(join(dir, 'jobs.json'), JSON.stringify({ total_count: files.jobs.length, jobs: files.jobs }));
+      argv.push('--jobs-file', join(dir, 'jobs.json'));
+    }
     if (files.checkRuns !== undefined) {
       writeFileSync(join(dir, 'runs.json'), JSON.stringify({ total_count: files.checkRuns.length, check_runs: files.checkRuns }));
       argv.push('--check-runs-file', join(dir, 'runs.json'));
@@ -207,6 +211,86 @@ test('the CLI refuses an unknown flag and a missing mode instead of doing nothin
   assert.equal(cli([], {}).code, 1);
 });
 
+// ------------------------------------- a lane that reads the edit (silent-revert)
+
+const LANE = 'Silent revert guard';
+const job_ = (name, conclusion, steps) => ({ name, conclusion, ...(steps ? { steps } : {}) });
+const step_ = (name, conclusion) => ({ name, conclusion });
+/** A FULL run: lanes ran, the aggregate's gate step judged them. */
+const fullRun = (lanes) => [
+  ...Object.entries(lanes).map(([n, c]) => job_(n, c)),
+  job_(AGGREGATE_CHECK_NAME, Object.values(lanes).every((c) => c === 'success' || c === 'skipped') ? 'success' : 'failure', [
+    step_(REPLAY_STEP_NAME, 'skipped'), step_('Gate on dependencies', 'failure'), step_(JUDGE_STEP_NAME, 'skipped'),
+  ]),
+];
+/** A NO-OP run: every lane but the guard skipped; the aggregate replayed, then judged the guard fresh. */
+const noopRun = ({ replay, judge, guard }) => [
+  job_('Typecheck', 'skipped'),
+  job_(LANE, guard),
+  job_(AGGREGATE_CHECK_NAME, replay === 'success' && judge === 'success' ? 'success' : 'failure', [
+    step_(REPLAY_STEP_NAME, replay), step_(JUDGE_STEP_NAME, judge),
+  ]),
+];
+
+test('onlyFailedLane: a FULL run failed by the guard alone is excusable; any other failure is not', () => {
+  assert.equal(onlyFailedLane(fullRun({ Typecheck: 'success', [LANE]: 'failure', Lint: 'skipped' }), { lane: LANE }), true);
+  assert.equal(onlyFailedLane(fullRun({ Typecheck: 'failure', [LANE]: 'failure' }), { lane: LANE }), false, 'typecheck failed too');
+  assert.equal(onlyFailedLane(fullRun({ Typecheck: 'cancelled', [LANE]: 'failure' }), { lane: LANE }), false, 'cancelled is not success');
+  assert.equal(onlyFailedLane(fullRun({ Typecheck: 'failure', [LANE]: 'success' }), { lane: LANE }), false, 'the guard did not fail');
+  assert.equal(onlyFailedLane(fullRun({ Typecheck: 'success', [LANE]: 'cancelled' }), { lane: LANE }), false, 'only a failure is excused');
+});
+
+test('onlyFailedLane: a NO-OP run is excusable only if its replay passed and its fresh judgement failed', () => {
+  assert.equal(onlyFailedLane(noopRun({ replay: 'success', judge: 'failure', guard: 'failure' }), { lane: LANE }), true);
+  // The chain case: that run replayed a red typecheck. Its lanes are all skipped, so job
+  // conclusions look clean; reading them would launder the typecheck failure on the next edit.
+  assert.equal(onlyFailedLane(noopRun({ replay: 'failure', judge: 'skipped', guard: 'success' }), { lane: LANE }), false);
+  assert.equal(onlyFailedLane(noopRun({ replay: 'success', judge: 'skipped', guard: 'success' }), { lane: LANE }), false, 'no judge failure recorded');
+});
+
+test('onlyFailedLane: anything unreadable is not an excuse', () => {
+  assert.equal(onlyFailedLane(null, { lane: LANE }), false);
+  assert.equal(onlyFailedLane([], { lane: LANE }), false);
+  assert.equal(onlyFailedLane([job_(LANE, 'failure')], { lane: LANE }), false, 'no aggregate job');
+});
+
+const REPLAY = ['--replay', '--run-id', '300', '--excuse-lane', LANE];
+const edit = { event: prEvent('edited', { title: { from: 'x' } }) };
+
+test('STUCK RED: a head red only because of the guard replays as a pass once the edit is made (the guard is judged fresh)', () => {
+  const r = cli(REPLAY, { ...edit, checkRuns: RED, jobs: fullRun({ Typecheck: 'success', [LANE]: 'failure' }) });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /"Silent revert guard" alone/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout is what is asserted
+});
+
+test('a head red for ANOTHER lane stays red, with or without the guard also failing', () => {
+  for (const guard of ['success', 'failure']) {
+    const r = cli(REPLAY, { ...edit, checkRuns: RED, jobs: fullRun({ Typecheck: 'failure', [LANE]: guard }) });
+    assert.equal(r.code, 1, `${guard}: ${r.out}`);
+  }
+});
+
+test('without --excuse-lane the replay is exactly what it was: red stays red', () => {
+  const r = cli(['--replay', '--run-id', '300'], { ...edit, checkRuns: RED, jobs: fullRun({ Typecheck: 'success', [LANE]: 'failure' }) });
+  assert.equal(r.code, 1, r.out);
+});
+
+test('an unreadable or truncated jobs read is a failure, never an excuse', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'verdict-replay-jobs-'));
+  try {
+    const runs = join(dir, 'runs.json');
+    writeFileSync(runs, JSON.stringify({ check_runs: RED }));
+    const ev = join(dir, 'ev.json');
+    writeFileSync(ev, JSON.stringify(prEvent('edited', {})));
+    const jobs = join(dir, 'jobs.json');
+    writeFileSync(jobs, 'not json');
+    const r = spawnSync(process.execPath, [CLI, ...REPLAY, '--event-file', ev, '--check-runs-file', runs, '--jobs-file', jobs], { encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------- the wiring
 
 /** A job's text from test.yml (2-space job key to the next), comments dropped. */
@@ -237,6 +321,21 @@ test('WIRING: `changes` probes, the aggregate replays on noop and judges otherwi
   // closed (noop=false, full run) and the saving silently never happens.
   const text = readFileSync(TEST_YML, 'utf8');
   assert.match(text, /^permissions:\n(?:  [a-z-]+: read\n|  #[^\n]*\n)*  checks: read/m, 'the workflow must hold `checks: read`'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+});
+
+test('WIRING: the silent-revert lane is never skipped by the no-op probe, and the aggregate judges its fresh result', () => {
+  const lane = job('silent-revert');
+  assert.match(lane, /^\s{4}if: github\.event_name == 'pull_request'$/m, 'the lane must run on every pull_request event, `edited` included'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.ok(!/noop/.test(lane.split('steps:')[0]), 'the lane must not be gated on the probe'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.match(lane, /check-silent-revert\.mjs[^\n]*--pr "\$\{PR_NUMBER\}"/, 'the lane must read the PR live, not from the frozen event payload'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.ok(!/github\.event\.pull_request\.(title|body)/.test(lane), 'the lane must not read title or body from the event payload'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+
+  const agg = job('test');
+  const judge = new RegExp(`- name: ${JUDGE_STEP_NAME}\\n\\s+if: needs\\.changes\\.outputs\\.noop == 'true'[\\s\\S]*needs\\.silent-revert\\.result[\\s\\S]*test "\\$\\{SILENT_REVERT_RESULT\\}" = success`);
+  assert.match(agg, judge, 'on a no-op the aggregate must require the fresh guard result to be `success`'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.ok(agg.indexOf(`- name: ${REPLAY_STEP_NAME}`) !== -1 && agg.indexOf(`- name: ${REPLAY_STEP_NAME}`) < agg.indexOf(`- name: ${JUDGE_STEP_NAME}`), 'the replay step precedes the judge step'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.match(agg, /ci-verdict-replay\.mjs --replay --excuse-lane "Silent revert guard"/, 'the replay must excuse only the guard'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.match(lane, /name: Silent revert guard/, 'the excused lane name is the lane\'s job name'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 });
 
 test('WIRING: no job gates on `github.event.changes.base`; the decision lives in the probe', () => {

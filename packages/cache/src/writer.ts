@@ -47,14 +47,14 @@ export class BinaryCacheWriter {
    * Write a complete cache file
    * @param dataStore - The parsed IFC data store
    * @param geometry - Optional geometry data
-   * @param sourceBuffer - Original IFC buffer (for hash)
+   * @param sourceBuffer - Original IFC bytes (for hash; unread with `omitSourceHash`)
    * @param options - Write options
    * @returns ArrayBuffer containing the binary cache
    */
   async write(
     dataStore: CacheDataStore,
     geometry: GeometryData | undefined,
-    sourceBuffer: ArrayBuffer,
+    sourceBuffer: ArrayBuffer | Uint8Array,
     options: CacheWriteOptions = {}
   ): Promise<ArrayBuffer> {
     const {

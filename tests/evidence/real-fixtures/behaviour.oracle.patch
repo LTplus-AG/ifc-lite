@@ -1,0 +1,17 @@
+--- a/scripts/retained-compare/real-authoring-support.mjs
++++ b/scripts/retained-compare/real-authoring-support.mjs
+@@ -15,3 +15,3 @@
+       const name = line.slice(2).trim();
+-      current = { vertices: all, triangles: [] };
++      current = objects.get(name) ?? { vertices: all, triangles: [] };
+       objects.set(name, current);
+@@ -49,3 +49,3 @@
+   const product = objects.get(name);
+-  if (!product) return undefined;
++  if (!product) throw new Error(`Published ${name} is missing from exact OBJ; comparison cannot be skipped`);
+   return product;
+@@ -73,3 +73,3 @@
+   const allowedBbox = (Number.isFinite(measuredBbox) ? measuredBbox : 0) + bboxMetres + 1e-6;
+-  return { ok: true, nativeRelative, nativeAllowed, relative, allowed, bboxDeviation, allowedBbox };
++  return { ok: nativeRelative <= nativeAllowed && relative <= allowed && bboxDeviation <= allowedBbox, nativeRelative, nativeAllowed, relative, allowed, bboxDeviation, allowedBbox };
+ }

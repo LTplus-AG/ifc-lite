@@ -1,0 +1,141 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Pinned OCI registry tooling for the `oci://` model-reference integration
+# lane: the zot registry (a single static binary that serves the OCI
+# distribution spec on loopback, no container runtime needed) and the ORAS CLI
+# (pushes and inspects the fixture artifacts), plus `htpasswd` for zot's
+# bcrypt-only htpasswd auth.
+#
+# Same shape as the wasm-pack step in .github/actions/setup-wasm-build: pinned
+# versions, the expected SHA-256 written HERE rather than trusted from a
+# checksum file fetched at run time, `sha256sum --check --strict`, then the
+# binary is executed and its reported version asserted, so a truncated,
+# wrong-arch or mislabelled download fails in setup and not in the lane.
+#
+# The release's own checksum file is ALSO fetched and must list the same
+# digest: a pinned value that disagrees with upstream means the pin itself is
+# wrong (or the release was re-cut) and needs a human, not a silent pass.
+#
+# linux-amd64 only; any other host fails loudly. To bump: change the version
+# and BOTH the digest and the checksum-file name below, taking the digest from
+#   gh api repos/project-zot/zot/releases/tags/<v> --jq '.assets[] | select(.name=="zot-linux-amd64") | .digest'
+#   gh api repos/oras-project/oras/releases/tags/<v> --jq '.assets[] | select(.name=="oras_<v>_linux_amd64.tar.gz") | .digest'
+# and confirming each against the release's checksum file.
+name: 'Setup OCI registry tooling'
+description: 'zot registry + ORAS CLI (pinned, checksum-verified) and htpasswd for loopback OCI integration tests'
+
+outputs:
+  zot-path:
+    description: 'Absolute path of the verified zot binary'
+    value: ${{ steps.install.outputs.zot-path }}
+  oras-path:
+    description: 'Absolute path of the verified oras binary'
+    value: ${{ steps.install.outputs.oras-path }}
+  htpasswd-path:
+    description: 'Absolute path of htpasswd (apache2-utils)'
+    value: ${{ steps.htpasswd.outputs.htpasswd-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install zot and ORAS (pinned, checksum-verified)
+      id: install
+      shell: bash
+      env:
+        ZOT_VERSION: v2.1.22
+        # sha256 of zot-linux-amd64, from
+        # https://github.com/project-zot/zot/releases/download/v2.1.22/checksums.sha256.txt
+        ZOT_SHA256: 33b9b5bfe05d6788c076de951a01920477dbd6395c330146e23cc2340073e52e
+        ORAS_VERSION: 1.3.6
+        # sha256 of oras_1.3.6_linux_amd64.tar.gz, from
+        # https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_checksums.txt
+        ORAS_SHA256: 66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0
+      run: |
+        set -euo pipefail
+        if [ "$(uname -s)" != "Linux" ]; then
+          echo "::error::setup-oci-registries installs linux-amd64 binaries only; got $(uname -s)" >&2
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64 | amd64) ;;
+          *)
+            echo "::error::no pinned zot/ORAS binaries for host arch $(uname -m)" >&2
+            exit 1
+            ;;
+        esac
+        fetch() {
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "$1" "$2"
+        }
+        # The upstream checksum file must list exactly the pinned digest for
+        # the asset. Its format differs per project (`<sha> *<name>` for zot,
+        # `<sha>  <name>` for ORAS), so match on the digest and the bare name.
+        upstream_agrees() {
+          local sums="$1" sha="$2" name="$3"
+          if ! grep -Eq "^${sha}[[:space:]]+\*?${name}\$" "$sums"; then
+            echo "::error::pinned sha256 ${sha} for ${name} is not what the release checksum file lists:" >&2
+            grep -E "[[:space:]]\*?${name}\$" "$sums" >&2 || echo "(no entry for ${name})" >&2
+            exit 1
+          fi
+        }
+
+        dest="${RUNNER_TEMP}/oci-tools"
+        rm -rf "$dest"
+        mkdir -p "$dest/bin" "$dest/download"
+
+        # --- zot -----------------------------------------------------------
+        zot_base="https://github.com/project-zot/zot/releases/download/${ZOT_VERSION}"
+        echo "Downloading ${zot_base}/zot-linux-amd64"
+        fetch "$dest/download/zot-linux-amd64" "${zot_base}/zot-linux-amd64"
+        fetch "$dest/download/zot-checksums.sha256.txt" "${zot_base}/checksums.sha256.txt"
+        echo "${ZOT_SHA256}  $dest/download/zot-linux-amd64" | sha256sum --check --strict
+        upstream_agrees "$dest/download/zot-checksums.sha256.txt" "$ZOT_SHA256" zot-linux-amd64
+        install -m 0755 "$dest/download/zot-linux-amd64" "$dest/bin/zot"
+        # zot prints its version as one JSON log line; the commit field carries
+        # the release tag (`v2.1.22-0-g<sha>`).
+        zot_reported="$("$dest/bin/zot" --version 2>&1)"
+        echo "$zot_reported"
+        if ! grep -Fq "\"commit\":\"${ZOT_VERSION}-" <<<"$zot_reported"; then
+          echo "::error::expected zot ${ZOT_VERSION}, got: ${zot_reported}" >&2
+          exit 1
+        fi
+
+        # --- ORAS ----------------------------------------------------------
+        oras_base="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}"
+        oras_archive="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+        echo "Downloading ${oras_base}/${oras_archive}"
+        fetch "$dest/download/${oras_archive}" "${oras_base}/${oras_archive}"
+        fetch "$dest/download/oras-checksums.txt" "${oras_base}/oras_${ORAS_VERSION}_checksums.txt"
+        echo "${ORAS_SHA256}  $dest/download/${oras_archive}" | sha256sum --check --strict
+        upstream_agrees "$dest/download/oras-checksums.txt" "$ORAS_SHA256" "${oras_archive//./\\.}"
+        tar -xzf "$dest/download/${oras_archive}" -C "$dest/bin" oras
+        chmod 0755 "$dest/bin/oras"
+        oras_reported="$("$dest/bin/oras" version)"
+        echo "$oras_reported"
+        if ! grep -Eq "^Version:[[:space:]]+${ORAS_VERSION//./\\.}\$" <<<"$oras_reported"; then
+          echo "::error::expected ORAS ${ORAS_VERSION}, got: ${oras_reported}" >&2
+          exit 1
+        fi
+
+        rm -rf "$dest/download"
+        echo "$dest/bin" >> "$GITHUB_PATH"
+        {
+          echo "zot-path=$dest/bin/zot"
+          echo "oras-path=$dest/bin/oras"
+        } >> "$GITHUB_OUTPUT"
+
+    # zot's htpasswd backend accepts bcrypt entries only, and neither Node nor
+    # coreutils can produce one. ubuntu-latest ships apache2 (and so
+    # apache2-utils); install it only if an image change ever drops it.
+    - name: Ensure htpasswd (apache2-utils)
+      id: htpasswd
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v htpasswd >/dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apache2-utils
+        fi
+        echo "htpasswd-path=$(command -v htpasswd)" >> "$GITHUB_OUTPUT"

@@ -213,7 +213,8 @@ test('reporters cover every non-success dependency and reject inert conditions',
     timeout-minutes: 1
     permissions:
       issues: write
-    steps: []
+    steps:
+      - run: gh issue create --title red
 `;
   const root = fixture({ 'xmatch-fixture.yml': scheduled, 'server-binaries.yml': main });
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -265,4 +266,44 @@ test('runtime reporters consume actual dependency and workflow conclusions', (co
   const observer = join(root, '.github', 'workflows', 'ci-reporting-cancellation-observer.yml');
   writeFileSync(observer, readFileSync(observer, 'utf8').replace(`\${{ github.event.workflow_run.conclusion }}`, 'cancelled'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('actual completed workflow conclusion')));
+});
+
+test('a main reporter whose steps no longer create an issue fails the audit', (context) => {
+  const workflow = (steps) => `name: Server binaries
+on:
+  push:
+    branches: [main]
+jobs:
+  validate-server-binaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  validate-server-binaries-cross:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  report-red-on-main:
+    needs: [validate-server-binaries, validate-server-binaries-cross]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result != 'success' || needs.validate-server-binaries-cross.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      issues: write
+    steps:
+${steps}
+`;
+  const variants = {
+    good: '      - run: gh issue create --title red',
+    goodMultiline: '      - run: |\n          set -e\n          if true; then\n            gh issue create --title red\n          fi',
+    goodAlways: '      - if: always()\n        run: gh issue create --title red',
+    inert: '      - run: echo ok',
+    echoOnly: '      - run: echo "gh issue create"',
+    disabled: '      - if: false\n        run: gh issue create --title red',
+    tolerant: '      - continue-on-error: true\n        run: gh issue create --title red',
+  };
+  const roots = Object.fromEntries(Object.entries(variants).map(([k, steps]) => [k, fixture({ 'server-binaries.yml': workflow(steps) })]));
+  context.after(() => Object.values(roots).forEach((root) => rmSync(root, { recursive: true, force: true })));
+  const named = (root) => auditRoot(root).filter((f) => f.includes('partial main-only matrix'));
+  for (const ok of ['good', 'goodMultiline', 'goodAlways']) assert.deepEqual(named(roots[ok]), [], ok);
+  for (const bad of ['inert', 'echoOnly', 'disabled', 'tolerant']) assert.equal(named(roots[bad]).length, 1, bad);
 });

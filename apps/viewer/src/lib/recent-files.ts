@@ -13,18 +13,30 @@
  */
 
 import { markLocalModelFiles } from './reload-resume.js';
-import { countCopy } from '@ifc-lite/load-trace';
 
 const KEY = 'ifc-lite:recent-files';
 const DB_NAME = 'ifc-lite-file-cache';
 // v2 adds a `timestamp` index so eviction can order records newest-first via a
-// key cursor — without deserializing every blob ArrayBuffer (see cacheFileBlobs).
+// key cursor — without deserializing every stored blob (see cacheFileBlobs).
 const DB_VERSION = 2;
 const STORE_NAME = 'files';
 const TIMESTAMP_INDEX = 'timestamp';
 const MAX_CACHED_FILES = 5;
 /** Max file size to cache (150 MB) — avoids filling IndexedDB quota */
 const MAX_CACHE_SIZE = 150 * 1024 * 1024;
+
+/**
+ * One stored file. `blob` is the File itself for records written since the
+ * blob cache stopped copying files into ArrayBuffers; records written before
+ * that hold an ArrayBuffer. Both are valid `BlobPart`s, so reads accept either.
+ */
+interface CachedFileRecord {
+  name: string;
+  blob: Blob | ArrayBuffer;
+  size: number;
+  type: string;
+  timestamp: number;
+}
 
 export interface RecentFileEntry {
   name: string;
@@ -131,27 +143,26 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
   let db: IDBDatabase | undefined;
   try {
     // Only stage up to the cache capacity. The store keeps at most
-    // MAX_CACHED_FILES entries, so reading every blob of a large multi-file drop
-    // into memory just to evict most of them afterwards is wasteful — keep the
-    // last-selected ones (the eviction below keeps newest by timestamp anyway).
+    // MAX_CACHED_FILES entries, so writing every file of a large multi-file drop
+    // just to evict most of them afterwards is wasteful — keep the last-selected
+    // ones (the eviction below keeps newest by timestamp anyway).
     const eligible = files.filter((f) => f.size <= MAX_CACHE_SIZE).slice(-MAX_CACHED_FILES);
 
-    // Read every blob FIRST. An IndexedDB transaction auto-commits as soon as
-    // control returns to the event loop with no pending request, so awaiting
-    // file.arrayBuffer() *inside* the transaction would inactivate it and make
-    // the next store.put() throw TransactionInactiveError (silently caught →
-    // nothing cached). Do all the async reads up front, then write in one
-    // synchronous burst.
-    const records: { name: string; blob: ArrayBuffer; size: number; type: string; timestamp: number }[] = [];
-    for (const file of eligible) {
-      records.push({
-        name: file.name,
-        blob: countCopy('source.recentFiles', await file.arrayBuffer()), // #6957: a second full read
-        size: file.size,
-        type: file.type,
-        timestamp: Date.now(),
-      });
-    }
+    // Store the File itself, not its bytes. IndexedDB persists a Blob by
+    // reference into its own disk-backed blob store, so the write never
+    // materialises the file on the main-thread heap. The previous
+    // `await file.arrayBuffer()` read every eligible file (up to 5 x 150 MB)
+    // into memory a second time, on top of the copy the loader already holds,
+    // and kept it alive until the transaction committed. The records are built
+    // synchronously, so nothing is awaited inside the transaction and its
+    // auto-commit (TransactionInactiveError on the next put) cannot fire early.
+    const records: CachedFileRecord[] = eligible.map((file) => ({
+      name: file.name,
+      blob: file,
+      size: file.size,
+      type: file.type,
+      timestamp: Date.now(),
+    }));
     if (records.length === 0) return;
 
     db = await openDB();
@@ -164,8 +175,8 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
 
     // Evict old entries beyond MAX_CACHED_FILES. Walk the `timestamp` index
     // newest-first with a KEY cursor — it yields only the index key + primary
-    // key, never the record value, so the ~1.5 GB of cached blob ArrayBuffers
-    // are never deserialized just to sort by timestamp (the old getAll() did).
+    // key, never the record value, so legacy records holding ArrayBuffers (up
+    // to ~750 MB) are never deserialized just to sort by timestamp.
     const cursorReq = store.index(TIMESTAMP_INDEX).openKeyCursor(null, 'prev');
     let kept = 0;
     cursorReq.onsuccess = () => {
@@ -228,7 +239,7 @@ export async function getCachedFile(target: string | RecentFileEntry): Promise<F
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const req = store.get(name);
-    const result = await new Promise<{ name: string; blob: ArrayBuffer; size: number; type: string } | undefined>((resolve, reject) => {
+    const result = await new Promise<CachedFileRecord | undefined>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });

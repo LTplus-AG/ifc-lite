@@ -20,6 +20,7 @@ pub mod clips;
 pub mod bounded;
 pub mod type_maps;
 pub mod faces;
+pub mod face_sets;
 pub mod face_bands;
 pub mod normals;
 mod bounded_source;

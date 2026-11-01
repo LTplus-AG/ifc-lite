@@ -92,3 +92,10 @@ fn issue_8291_survey_scale_polygon_corners_survive_triangulation() {
     }).sum();
     assert_eq!(area, 0.25 * 0.25 - 0.125 * 0.125, "the authored L, exactly");
 }
+
+#[test]
+fn issue_8291_a_small_inward_shell_at_survey_scale_still_turns_outward() {
+    // At this magnitude f32 merges every corner, so the f32 point list has no shell left to orient.
+    let records = "#1=IFCCARTESIANPOINTLIST3D(((6000000.,0.,0.),(6000000.125,0.,0.),(6000000.,0.125,0.),(6000000.,0.,0.125)));\n#2=IFCTRIANGULATEDFACESET(#1,$,.T.,((1,2,3),(1,4,2),(2,4,3),(3,4,1)),$);";
+    assert_eq!(capture_source(records, 2).unwrap().triangles[..3], [0, 2, 1], "the same flip as the same shell at the origin");
+}

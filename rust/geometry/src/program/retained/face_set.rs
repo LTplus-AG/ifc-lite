@@ -14,16 +14,16 @@ pub(super) fn capture(item: &DecodedEntity, decoder: &mut EntityDecoder, scale: 
     let coordinates = coordinates.and_then(AttributeValue::as_entity_ref)
         .ok_or_else(|| Error::geometry("face set missing Coordinates".to_string()))?;
     let positions = read_point_list_f64(decoder, coordinates)?;
+    // Exact's plans are the authority for triangulation and winding, so they keep exact's frame,
+    // except where narrowing to f32 merges distinct authored corners: the ring they would clip and
+    // the shell they would orient are then not the authored ones.
+    let frame = narrowing_merges(&positions).then(|| (positions[0], positions[1], positions[2]));
     let triangles = if polygonal {
         let faces = item.attr(slot::IfcPolygonalFaceSet::FACES)
             .and_then(AttributeValue::as_list).map_or(0, <[AttributeValue]>::len) as u32;
-        // Exact's plan is the authority for triangulation, so it keeps exact's frame, except where
-        // narrowing to f32 merges distinct authored corners: the ring it would clip is then not
-        // the authored ring. Triangle topology needs no such exception: it is authored.
-        polygonal_plan::lower(item, decoder, narrowing_merges(&positions).then(|| (positions[0], positions[1], positions[2])))?
-            .source_triangles(faces)
+        polygonal_plan::lower(item, decoder, frame)?.source_triangles(faces)
     } else {
-        triangulated_plan::lower(item, decoder, None)?.source_triangles()
+        triangulated_plan::lower(item, decoder, frame)?.source_triangles()
     };
     if positions.len() != triangles.positions.len() {
         return Err(Error::geometry("face set point list reads differently in f64".to_string()));

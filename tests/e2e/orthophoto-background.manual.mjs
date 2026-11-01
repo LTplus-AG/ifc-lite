@@ -78,6 +78,7 @@ try {
   await page.screenshot({ path: `${out}/rotterdam-opacity.png` });
   const beforeEdit = await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.values()][0].cornersIfcWorld);
   await page.getByRole('button', { name: /^Edit .*pdok-schiehaven/ }).click();
+  await page.locator('summary').filter({ hasText: /^Alignment$/ }).click();
   const elevation = page.getByRole('spinbutton', { name: 'Point A · Z (m)', exact: true });
   await elevation.fill(String(beforeEdit[0][2] + 1));
   await elevation.press('Tab');

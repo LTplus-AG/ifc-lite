@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { webgpuAdapter } from '@luma.gl/webgpu';
+import { WebGPUDevice } from '@luma.gl/webgpu';
 import { makeGPUSplatData, SplatRenderer } from '@luma.gl/splats';
 import { intersectionWitness } from './intersection-witness.mjs';
 import { MathUtils } from '../../../packages/renderer/src/math.ts';
@@ -39,7 +39,7 @@ async function run() {
   const raw = await adapter.requestDevice();
   const errors = [];
   raw.addEventListener('uncapturederror', e => errors.push(e.error.message));
-  const device = await webgpuAdapter.attach(raw, { createCanvasContext: false, onError: e => errors.push(e.message) });
+  const device = new WebGPUDevice({ createCanvasContext: false, contractOwnsDevice: false, onError: e => errors.push(e.message) }, raw, adapter, adapter.info);
   const results = [];
   let intersection;
   try {
@@ -65,8 +65,8 @@ async function run() {
             const output = raw.createTexture({ size: [size, size], format: 'rgba8unorm', usage: usage | GPUTextureUsage.COPY_SRC });
             const color = sampleCount === 1 ? output : raw.createTexture({ size: [size, size], format: 'rgba8unorm', sampleCount, usage });
             const depth = raw.createTexture({ size: [size, size], format: 'depth24plus-stencil8', sampleCount, usage });
-            const colorView = device.createTexture({ handle: color, width: size, height: size, format: 'rgba8unorm', sampleCount, usage });
-            const depthView = device.createTexture({ handle: depth, width: size, height: size, format: 'depth24plus-stencil8', sampleCount, usage });
+            const colorView = device.createTexture({ handle: color, width: size, height: size, format: 'rgba8unorm', samples: sampleCount, usage });
+            const depthView = device.createTexture({ handle: depth, width: size, height: size, format: 'depth24plus-stencil8', samples: sampleCount, usage });
             const framebuffer = device.createFramebuffer({ width: size, height: size, colorAttachments: [colorView], depthStencilAttachment: depthView });
             const capture = async renderer => {
               renderer.setProps({ viewportSize: [size, size] });

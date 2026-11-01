@@ -43,6 +43,17 @@ pub fn mul(a: &M4, b: &M4) -> M4 {
     out
 }
 
+/// Column-major frame composition `a * b`, with every zero entry `+0.0`.
+///
+/// Retained receipts compare frames bit for bit, so the controller and both
+/// retained runtimes build an operand's world frame here (#7955). An entry
+/// whose four products are all signed zeros (`0 * -x`, `-x * 0`) has no
+/// meaningful sign: an accumulation seeded with `-0.0` (`Iterator::sum`) kept
+/// it as `-0.0` where this one gives `+0.0` (dental_clinic #831).
+pub fn compose_frame(a: &M4, b: &M4) -> M4 {
+    mul(b, a).map(|value| if value == 0.0 { 0.0 } else { value })
+}
+
 /// `m` applied to the point `p` (translation included; the affine last row is
 /// not read).
 #[inline]

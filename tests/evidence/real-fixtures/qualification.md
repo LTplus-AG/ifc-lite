@@ -156,3 +156,16 @@ is native-derived. This cannot detect a defect shared by native and CLI retained
 geometry, and is not independent proof of geometric correctness. Earlier
 validation.json results are historical runs on the named source (including the
 old wall-W selection); final labelled native-adapter CI must qualify V5C.
+
+## Addendum: uncut face sets publish (#8408)
+
+#8408 publishes uncut `IfcTriangulatedFaceSet`/`IfcPolygonalFaceSet` bodies
+source-exact. It merged after this manifest without running native-adapter, so
+main's `m11_n_7955_committed_corpus_source_normals` reported two coverage
+violations (job 124799163686, 0 normal-gate violations). The measured outcomes
+are now pinned: SketchUp publishes 12 of 14 (#89 and #203 still refuse
+`operation_unsupported`), and Bonsai #1494 (`IfcSpace`) publishes, 4 of 6.
+SketchUp therefore moves from the all-refused CLI and viewer scenarios to the
+published-model comparisons (`cli-real-sketchup`, `real-sketchup`). The
+mesh-free viewer scenario keeps its coverage on the all-refused Tekla
+flyaway fixture (`real-tekla-refused`).

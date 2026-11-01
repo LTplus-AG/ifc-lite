@@ -157,6 +157,9 @@ jobs:
           tests/models/ifc5/Hello_Wall_hello-wall.ifc
 
       - name: Re-export the fixtures and validate against IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (export)
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts
 
       # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
@@ -171,9 +174,15 @@ jobs:
         run: pnpm exec turbo run build --filter='@ifc-lite/create^...'
 
       - name: Grade LandXML→IFC4X3 output (schema + alignment geometry) with IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (landxml)
         run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
 
       - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (ifc4x3)
         run: pnpm --filter @ifc-lite/create exec vitest run src/ifcopenshell-ifc4x3-conformance.test.ts
 
   terrain-imagery:
@@ -186,6 +195,8 @@ jobs:
     name: LandXML terrain imagery .ifcZIP vs IfcOpenShell
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -218,14 +229,24 @@ jobs:
         run: pnpm exec turbo run build --filter='@ifc-lite/viewer^...'
 
       - name: Export a draped terrain and grade the .ifcZIP with IfcOpenShell
+        id: terrain_tests
         working-directory: apps/viewer
         env:
           IFCOPENSHELL_PYTHON: python
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           # Here a missing wasm or ifcopenshell is a broken lane, not a skip.
           REQUIRE_TERRAIN_IMAGERY_CHECK: "1"
         run: >-
           pnpm exec tsx --import ./src/test/vite-module-hooks.mjs --test
           src/lib/export/landXmlIfcImagery.test.ts
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.terrain_tests.outcome }}
 
   report-scheduled-failure:
     needs: [validate, terrain-imagery]

@@ -234,3 +234,7 @@ present. An attempted filtered root typecheck expanded to the full workspace
 because its shell script does not forward filters to Turbo; it was stopped
 and its unrelated tail failed. It is not recorded as a full typecheck pass.
 The experiment itself is JavaScript, and its syntax and Vite build are checked.
+
+The behavioral oracle manifest uses `issue: 7955` because
+`scripts/revert-oracle-discover.mjs` requires that framework identifier. Its
+directory, witness name and rationale identify the actual regression as #8140.

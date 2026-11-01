@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import * as pc from 'playcanvas';
 import { captureTexture } from './capture.mjs';
+import { pointResources } from './point-resources.mjs';
 export async function playcanvasBackend(canvas, meshes, captures, placements) {
   const device = await pc.createGraphicsDevice(canvas, { deviceTypes: ['webgpu'], antialias: false });
   if (!device.isWebGPU) { device.destroy(); throw new Error('The spike requires WebGPU; fallback is not a pass.'); }
@@ -13,6 +14,7 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
   const ifc = new pc.Entity('IFC fixture'), captureRoot = new pc.Entity('Captures'), pointRoot = new pc.Entity('Points');
   app.root.addChild(ifc); app.root.addChild(captureRoot); app.root.addChild(pointRoot);
   const ownedMeshes = [], materials = [], assets = [], errors = [];
+  const scanResources = pointResources(device);
   device.wgpu.addEventListener('uncapturederror', event => errors.push(event.error.message));
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const source of meshes) {
@@ -47,13 +49,10 @@ export async function playcanvasBackend(canvas, meshes, captures, placements) {
       // destroy() removes children from the parent, so iterate a snapshot.
       const children = pointRoot.children.slice();
       for (const child of children) child.destroy();
-      const mesh = new pc.Mesh(device); mesh.setPositions(chunk.positions);
-      if (chunk.colors) mesh.setColors(chunk.colors, 3);
-      mesh.update(pc.PRIMITIVE_POINTS, false); ownedMeshes.push(mesh);
-      const material = new pc.StandardMaterial(); material.useLighting = false; material.emissive.set(1, 1, 1); material.emissiveVertexColor = Boolean(chunk.colors); material.update(); materials.push(material);
+      const { mesh, material } = scanResources.replace(chunk);
       const entity = new pc.Entity(); entity.addComponent('render', { meshInstances: [new pc.MeshInstance(mesh, material)] }); pointRoot.addChild(entity); pointCount = chunk.pointCount; app.renderNextFrame = true;
     },
     stats() { return { backend: 'PlayCanvas 2.23.3', meshCount: meshes.length, splatCount: captures.reduce((n, data) => n + data.numSplats, 0), pointCount, errors, disposed, sharedDevice: true, center, radius, finiteMeshPositions: meshes.every(mesh => mesh.positions.every(Number.isFinite)), cameraPosition: camera.getPosition().toString(), drawCalls: app.stats.drawCalls.total }; },
-    async destroy() { disposed = true; captureTarget.destroy(); captureColor.destroy(); app.destroy(); assets.forEach(asset => asset.unload()); ownedMeshes.forEach(mesh => mesh.destroy()); materials.forEach(material => material.destroy()); },
+    async destroy() { disposed = true; captureTarget.destroy(); captureColor.destroy(); app.destroy(); scanResources.clear(); assets.forEach(asset => asset.unload()); ownedMeshes.forEach(mesh => mesh.destroy()); materials.forEach(material => material.destroy()); },
   };
 }

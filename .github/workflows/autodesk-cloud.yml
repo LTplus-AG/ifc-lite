@@ -49,6 +49,7 @@ jobs:
           TEST_FORMA_CONVERTER: ${{ github.workspace }}/target/debug/ifc-lite-cloud-import
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('packages/ifcx/mergify-junit.xml') != ''
+        continue-on-error: true
         uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}

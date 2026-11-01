@@ -239,8 +239,13 @@ jobs:
         run: >-
           pnpm exec tsx --import ./src/test/vite-module-hooks.mjs --test
           src/lib/export/landXmlIfcImagery.test.ts
+      - name: Prepare Node JUnit for Mergify
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
+        run: python3 scripts/normalize-node-junit.py "apps/viewer/mergify-junit.xml"
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
         uses: mergifyio/gha-mergify-ci@392d123d84a27960993927aec1f2cbb059fb95c1 # v27
         with:
           token: ${{ secrets.MERGIFY_TOKEN }}

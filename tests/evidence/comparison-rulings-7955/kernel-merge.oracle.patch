@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/examples/compare/checks/faces.rs b/rust/retained-native/examples/compare/checks/faces.rs
+index a42234d15e..faa0b8e83a 100644
+--- a/rust/retained-native/examples/compare/checks/faces.rs
++++ b/rust/retained-native/examples/compare/checks/faces.rs
+@@ -144,7 +144,7 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
+         }
+     }
+     for run in runs {
+-        for (i, into) in merges(run, &widest, &expected, actual, limit("linear")).into_iter().take(0) {
++        for (i, into) in merges(run, &widest, &expected, actual, limit("linear")) {
+             let (key, target) = (&run.keys[i], &run.keys[into]);
+             let area = expected.remove(key).expect("absorbable keys are expected").area_m2;
+             expected.get_mut(target).expect("receiving keys are expected").area_m2 += area;

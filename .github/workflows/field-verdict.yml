@@ -111,13 +111,6 @@ jobs:
           node scripts/perf/field-verdict.mjs "$RUNNER_TEMP/field-verdict.json" --build "$BUILD" --out "$RUNNER_TEMP/field-verdict.md"
           tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/field-verdict.md"
 
-      - name: Rolling verdict
-        if: steps.gate.outputs.enabled == 'true'
-        run: |
-          set -euo pipefail
-          node scripts/perf/field-verdict-fetch.mjs --rolling --out "$RUNNER_TEMP/field-verdict-rolling.json"
-          node scripts/perf/field-verdict.mjs "$RUNNER_TEMP/field-verdict-rolling.json" --rolling | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Post on the build's PR
         if: steps.gate.outputs.enabled == 'true' && (github.event_name == 'schedule' || inputs.post)
         env:
@@ -142,6 +135,14 @@ jobs:
           fi
           { echo "$MARKER"; cat "$RUNNER_TEMP/field-verdict.md"; } > "$RUNNER_TEMP/field-verdict-comment.md"
           gh pr comment "$PR" --repo "$REPO" --body-file "$RUNNER_TEMP/field-verdict-comment.md"
+
+      # Last: a failure here must not stop the build's verdict being posted above.
+      - name: Rolling verdict
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          node scripts/perf/field-verdict-fetch.mjs --rolling --out "$RUNNER_TEMP/field-verdict-rolling.json"
+          node scripts/perf/field-verdict.mjs "$RUNNER_TEMP/field-verdict-rolling.json" --rolling | tee -a "$GITHUB_STEP_SUMMARY"
 
   report-scheduled-failure:
     needs: [verdict]

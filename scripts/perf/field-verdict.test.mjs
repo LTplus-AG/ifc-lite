@@ -132,6 +132,12 @@ test('#6961 the headline never reads as a pass without one', async () => {
   const edge = [0.5, 0.6, 0.7, 0.9, 1 / 0.9498, 1.3, 1.5, 1.8, 2.2].flatMap((ratio, i) => paired(`p${i}`, ratio));
   assert.equal(fieldVerdict(edge).groups[0].speed, 0.95);
   assert.match(renderMarkdown(fieldVerdict(edge)), /\*\*Undecided:\*\*/);
+  // A rolling run judges no build, so it must not say it did.
+  for (const rows of [people(8, 1, 'file_read_ms'), people(2, 1)]) {
+    const md = renderMarkdown(fieldVerdict(rows), { rolling: true });
+    assert.match(md, /there is no verdict \(not a pass\)/);
+    assert.doesNotMatch(md, /this build/);
+  }
   // A clean result still says so.
   assert.match(renderMarkdown(fieldVerdict(people(5, 1.02))), /No group regressed/);
   // Nor does a clean group hide one too thin to judge.

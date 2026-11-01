@@ -208,7 +208,7 @@ export function renderMarkdown(verdict, { build, rolling = false } = {}) {
   const headline = verdict.cells === 0
     ? 'No (person, model) cell has loads in both windows yet, so there is no paired ratio to report.'
     : judged.length === 0
-      ? '**No judged metric has paired data:** only context metrics paired, so there is no verdict for this build (not a pass).'
+      ? '**No judged metric has paired data:** only context metrics paired, so there is no verdict (not a pass).'
     : judged.every((g) => g.status === 'insufficient')
       ? `**Insufficient paired data:** no group reached ${verdict.minPersons} paired people, so there is no verdict (not a pass).`
       : verdict.regressed.length > 0

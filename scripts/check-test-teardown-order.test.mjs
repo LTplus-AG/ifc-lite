@@ -123,6 +123,31 @@ afterEach(() => server.close());`;
   assert.deepEqual(rules(src), []);
 });
 
+test('R3 judges each disposer array by its own binding, not its spelling', () => {
+  // An inner suite with its own `cleanup`, drained in reverse, is safe even when
+  // an outer `cleanup` of the same name is drained first-in-first-out.
+  const src = `import { afterEach, describe, it } from 'vitest';
+const cleanup = [];
+afterEach(async () => { for (const d of cleanup.splice(0)) await d(); });
+describe('inner', () => {
+  const cleanup = [];
+  afterEach(async () => { for (const d of cleanup.reverse()) await d(); });
+  it('x', () => { cleanup.push(() => rm(dir), () => server.close()); });
+});`;
+  assert.deepEqual(rules(src), []);
+  // The outer array is still judged: a removal pushed first on it is flagged once.
+  const outer = `import { afterEach, describe, it } from 'vitest';
+const cleanup = [];
+afterEach(async () => { for (const d of cleanup.splice(0)) await d(); });
+it('o', () => { cleanup.push(() => rm(dir), () => server.close()); });
+describe('inner', () => {
+  const cleanup = [];
+  afterEach(async () => { for (const d of cleanup.reverse()) await d(); });
+  it('x', () => { cleanup.push(() => rm(dir), () => server.close()); });
+});`;
+  assert.deepEqual(rules(outer), ['R3:4']);
+});
+
 test('R3: a removal pushed before another disposer and drained front to back', () => {
   // packages/mcp/src/tools/bcf-publication-native.test.ts before this gate.
   const helper = `import { afterEach, it } from 'vitest';

@@ -131,7 +131,28 @@ function drainedArray(loop) {
     if (e.expression.name.text !== 'splice') return null;
     e = e.expression.expression;
   }
-  return ts.isIdentifier(e) || ts.isPropertyAccessExpression(e) ? e.getText() : null;
+  return ts.isIdentifier(e) || ts.isPropertyAccessExpression(e) ? e : null;
+}
+
+/** The declaration an identifier resolves to by lexical scope, so two same-named arrays stay distinct. */
+function declarationOf(id) {
+  const declares = (d) => ts.isIdentifier(d.name) && d.name.text === id.text;
+  for (let n = id.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n) && n.parameters.some(declares)) return n.parameters.find(declares);
+    if (!ts.isBlock(n) && !ts.isSourceFile(n) && !ts.isModuleBlock(n) && !ts.isCaseClause(n)) continue;
+    for (const st of n.statements) {
+      if (ts.isVariableStatement(st)) {
+        const d = st.declarationList.declarations.find(declares);
+        if (d) return d;
+      }
+    }
+  }
+  return null;
+}
+
+/** Identity of a disposer array: its declaration, or its spelling when it is a property or undeclared. */
+function bindingOf(e) {
+  return ts.isIdentifier(e) ? declarationOf(e) ?? `global:${e.text}` : `text:${e.getText()}`;
 }
 
 /** Every violation in one file: `{ path, line, rule, message }`; `removals` counts what was seen. */
@@ -150,7 +171,7 @@ export function scanSource(path, src) {
       if (hook && n.arguments.length) hooks.push({ ...hook, node: n, fn: enclosingFunction(n), removes: removes(n.arguments[0]) });
     }
     const drained = drainedArray(n);
-    if (drained) drains.push({ node: n, array: drained });
+    if (drained) drains.push({ node: n, array: drained.getText(sf), binding: bindingOf(drained) });
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -187,7 +208,7 @@ export function scanSource(path, src) {
 
   for (const d of drains) {
     const pushes = calls.filter((c) => ts.isPropertyAccessExpression(c.expression)
-      && c.expression.name.text === 'push' && c.expression.expression.getText(sf) === d.array);
+      && c.expression.name.text === 'push' && bindingOf(c.expression.expression) === d.binding);
     for (const p of pushes) {
       const at = p.arguments.findIndex((a) => removes(a));
       if (at < 0) continue;

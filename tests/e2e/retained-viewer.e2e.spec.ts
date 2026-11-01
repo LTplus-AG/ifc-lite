@@ -202,7 +202,9 @@ function finishPixelWithTexture(): string {
     '#1017=IFCTRIANGULATEDFACESET(#1016,$,.T.,((1,3,2),(1,2,4),(1,4,3),(2,3,4)),$);',
     "#1018=IFCIMAGETEXTURE(.T.,.F.,$,$,$,'checker.png');",
     '#1019=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(0.,1.),(1.,1.)));',
-    '#1020=IFCINDEXEDTRIANGLETEXTUREMAP((#1018),#1017,#1019,((2,1,4),(2,4,3),(2,3,1),(4,1,3)));',
+    // Row 1 names texture vertex 9 of 4: retained publishes a readable map (#8291), so this one
+    // is what keeps the product refused, and the model incomplete.
+    '#1020=IFCINDEXEDTRIANGLETEXTUREMAP((#1018),#1017,#1019,((9,1,4),(2,4,3),(2,3,1),(4,1,3)));',
     '#1021=IFCCOLOURRGB($,1.,1.,1.);', '#1022=IFCSURFACESTYLESHADING(#1021,0.);', '#1023=IFCSURFACESTYLEWITHTEXTURES((#1018));',
     "#1024=IFCSURFACESTYLE('SYNTHETIC',.BOTH.,(#1022,#1023));", '#1025=IFCSTYLEDITEM(#1017,(#1024),$);',
     "#1026=IFCSHAPEREPRESENTATION(#4,'Body','Tessellation',(#1017));", '#1027=IFCPRODUCTDEFINITIONSHAPE($,$,(#1026));',

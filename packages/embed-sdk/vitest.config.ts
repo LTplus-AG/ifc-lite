@@ -15,6 +15,11 @@ export default defineConfig({
     },
   },
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     environment: 'happy-dom',
     // The SDK points the iframe at a real https origin; without this happy-dom
     // would try to fetch it over the network and the suite would be flaky/offline-broken.

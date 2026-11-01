@@ -24,6 +24,7 @@
     "jszip": "^3.10.2"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "happy-dom": "^21.0.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",

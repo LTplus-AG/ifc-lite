@@ -886,6 +886,6 @@ test('the workflow re-evaluates on edit and on (un)labelling', () => {
 
 test('the workflow runs THIS harness, so the gate is not the only thing checked', () => {
   const text = readFileSync(WORKFLOW, 'utf8');
-  assert.match(text, /node --test scripts\/check-issue-queue\.test\.mjs/);
+  assert.match(text, /node --test (?:--test-reporter[\w-]*=\S+ )*scripts\/check-issue-queue\.test\.mjs/);
   assert.match(text, /node scripts\/check-issue-queue\.mjs/);
 });

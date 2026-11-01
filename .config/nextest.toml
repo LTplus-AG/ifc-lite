@@ -13,3 +13,7 @@ fail-fast = false
 slow-timeout = { period = "60s" }
 # Print the full list of slow and failed tests again at the end.
 final-status-level = "slow"
+
+# Written under target/nextest/ci/ for the Mergify Test Engine upload.
+[profile.ci.junit]
+path = "junit.xml"

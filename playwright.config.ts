@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test';
+import { withMergify } from '@mergifyio/playwright';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-driver';
@@ -35,7 +36,9 @@ function onlyCollabProject(): boolean {
     (p === 'viewer-retained' && !retainedAvailable));
 }
 
-export default defineConfig({
+export default withMergify(defineConfig({
+  // withMergify appends to `reporter`, so keep Playwright's own default explicit.
+  reporter: process.env.CI ? 'dot' : 'list',
   // Covers tests/benchmark (perf) and tests/e2e (functional smoke);
   // each project scopes its own files via testMatch.
   testDir: './tests',
@@ -284,4 +287,4 @@ export default defineConfig({
       },
     },
   ],
-});
+}));

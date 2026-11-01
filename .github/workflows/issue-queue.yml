@@ -109,7 +109,8 @@ env:
 jobs:
   issue-queue:
     name: Issue queue
-    if: github.event_name == 'pull_request'
+    # A Mergify batch PR is a temporary test branch; its PRs passed this individually.
+    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
     # Free runner: one GraphQL round trip and a pure evaluation, not
     # compute-bound. No poll, so no budget to measure -- unlike
     # pr-review-signal.yml this gate asks a question that is already answered

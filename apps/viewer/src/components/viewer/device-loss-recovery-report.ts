@@ -4,6 +4,7 @@
 
 import { notifyDeviceHealth } from './device-loss-notification.js';
 import type { DeviceRecoveryResult } from '@ifc-lite/renderer';
+import type { DeviceLossContext } from './device-loss-context.js';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -30,7 +31,11 @@ export function modelsWithoutOmittedPointCloudHandles(
   return changed ? next : null;
 }
 
-export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: () => void): void {
+export function reportDeviceRecovery(
+  result: DeviceRecoveryResult,
+  onRecovered: () => void,
+  failureProperties?: DeviceLossContext,
+): void {
   const state = useViewerStore.getState();
   const models = modelsWithoutOmittedPointCloudHandles(result, state.models);
   const pointCloudsOmitted = result.ok && result.omissions.includes('point-clouds');
@@ -53,7 +58,7 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
   try {
     posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
       ? { omissions: [...result.omissions] }
-      : { reason: result.reason });
+      : { ...failureProperties, reason: result.reason });
   } catch (error) {
     console.warn('[Viewport] device-loss recovery telemetry failed:', error);
   }

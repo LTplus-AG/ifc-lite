@@ -16,8 +16,9 @@ import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/co
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
+import { createStreamWatchdogState, geometryFailureCaptureProps, pullWithStallWatchdog } from './ingest/geometryStreamWatchdog.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
@@ -410,6 +411,7 @@ export function useIfcLoader() {
       err: unknown,
       kind: LoadErrorKind,
       context: string,
+      failureProps: Record<string, unknown> = {},
     ): Promise<boolean> => {
       const retryTier = resolveResourceRetryTier({
         kind,
@@ -426,6 +428,7 @@ export function useIfcLoader() {
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
         resource_retry: retryTier,
+        ...failureProps, // the first attempt carries what the terminal capture does
       });
       notifyResourceRetry(file.name);
       setGeometryStreamingActive(false);
@@ -1591,6 +1594,7 @@ export function useIfcLoader() {
       // reader, read in the catch block below if the stream watchdog fires —
       // a measured phase instead of a guess.
       const stallPhaseHandle: StallPhaseHandle = {};
+      const streamWatchdog = createStreamWatchdogState();
       // The background finalize (cache for primary; align +
       // addModel for federated). Primary leaves it running in the background
       // for a fast first frame; federated MUST await it so the model is
@@ -1631,31 +1635,7 @@ export function useIfcLoader() {
             batchCount,
             fileSizeMB,
           );
-          let watchdogId: ReturnType<typeof globalThis.setTimeout> | null = null;
-          let nextResult: Awaited<ReturnType<typeof geometryIterator.next>>;
-          try {
-            nextResult = await Promise.race([
-              geometryIterator.next(),
-              new Promise<never>((_, reject) => {
-                watchdogId = globalThis.setTimeout(() => {
-                  // Do NOT embed `file.name` here — this Error is captured by
-                  // error tracking (and auto-filed as a public GitHub issue), so
-                  // a confidential model name would leak. The file name is added
-                  // back for the user only, via formatLoadError(err, file.name).
-                  reject(new Error(
-                    `Geometry stream stalled after ${watchdogMs}ms. ` +
-                    `Last rendered meshes: ${lastTotalMeshes}.`
-                  ));
-                }, watchdogMs);
-              }),
-            ]);
-          } finally {
-            // Disarm on a rejected pull too: a stream that fails outright
-            // otherwise leaves the stall timer armed for the full window.
-            if (watchdogId !== null) {
-              globalThis.clearTimeout(watchdogId);
-            }
-          }
+          const nextResult = await pullWithStallWatchdog(geometryIterator.next(), watchdogMs, lastTotalMeshes, streamWatchdog);
 
           if (nextResult.done) {
             await closeGeometryIterator();
@@ -2065,7 +2045,8 @@ export function useIfcLoader() {
         const kind = classifyLoadError(err, 'geometry_processing');
         // The stall / worker-crash / OOM failures land HERE, not in the outer
         // catch — retry once at lower detail before surfacing a dead end.
-        if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
+        const failureProps = geometryFailureCaptureProps({ fileSizeMB, stallPhaseHandle, watchdog: streamWatchdog, wasHidden: wasHidden() });
+        if (await tryResourceRetry(err, kind, 'geometry_processing', failureProps)) return;
         // A stale deployment gets the reload notice, not a generic error (#5609).
         const geometryError = formatLoadError(err, file.name, 'geometry_processing');
         // Terminal, like the outer catch: a model left 'streaming-geometry' reads as still loading (and resumable).
@@ -2080,11 +2061,7 @@ export function useIfcLoader() {
           ...errorCaptureProps(err, 'geometry_processing'),
           load_stage: loadStage,
           is_retry: options?.isResourceRetry === true,
-          file_size_mb: Math.round(fileSizeMB * 100) / 100,
-          // #4902: which pre-worker gate the pool was still waiting on, so a
-          // "Last rendered meshes: 0" stall is attributed to a measured phase
-          // instead of only ever guessed from `load_stage`.
-          stall_phase: geometryProcessingStallPhase(stallPhaseHandle),
+          ...failureProps,
         }));
         setLoading(false);
         setGeometryStreamingActive(false);

@@ -50,7 +50,7 @@ until it passes or each failure is explained. Report SKIPPED coverage too.
 
 **Push when ready.** Every push runs CI: verify locally or on the fleet first,
 not per intermediate commit. Merge: label `mergify-trial` (base `main`);
-it queues itself. No admin merge; open threads block.
+it self-queues. No admin merge; open threads block.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.

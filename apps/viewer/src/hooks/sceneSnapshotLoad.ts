@@ -10,10 +10,11 @@
  */
 
 import { BufferReader, readInstancedShards, SectionType, type openGeometryChunksV13 } from '@ifc-lite/cache';
-import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from '@ifc-lite/renderer';
-import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
+import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
+import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
+import { noteInstancedShardModel } from '../store/instancedShardModels.js';
 import { lastFinalFitBounds, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
@@ -53,6 +54,19 @@ async function readSnapshotShards(entry: Blob, shards: SnapshotHostData['shards'
   return readInstancedShards(new BufferReader(await entry.slice(shards.offset, shards.offset + shards.size).arrayBuffer()));
 }
 
+/** Direct, unlike a stream's store-queued shards: the first frame is complete, and an abandoned adoption can remove them. */
+function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
+  if (shards.length > 0) noteInstancedShardModel(modelId);
+  for (const bytes of shards) {
+    try {
+      const shard = decodeInstancedShard(new Uint8Array(bytes));
+      if (shard) scene.addInstancedShard(device, shard, 0);
+    } catch (err) {
+      console.warn('[useIfcCache] snapshot shard upload failed (device lost?), skipping:', err);
+    }
+  }
+}
+
 /** Draw the entry's finished scene, or return null so the hit streams. */
 export async function adoptCachedSceneSnapshot(
   cacheResult: CacheResult,
@@ -77,7 +91,8 @@ export async function adoptCachedSceneSnapshot(
   if (isStale?.()) return null;
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return null;
-  if (shards.length > 0) useViewerStore.getState().appendInstancedShards(modelId, shards);
+  trace.milestone('scene.snapshotAdopted');
+  uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
   const canvas = renderer.getCanvas();

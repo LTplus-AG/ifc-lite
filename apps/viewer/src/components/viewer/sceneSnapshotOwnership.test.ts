@@ -26,7 +26,7 @@ const refs = () => ({
 
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
-  beforeEach(() => { hydrates = true; hydrations = []; withdrawPendingSceneSnapshot(adoption); });
+  beforeEach(() => { hydrates = true; hydrations = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
   const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
@@ -84,21 +84,21 @@ describe('takeSceneSnapshotGeometry', () => {
 
   describe('empty geometry', () => {
     const scene = (hydrating: boolean) => {
-      const abandoned: object[] = [];
-      return { abandoned, isSceneSnapshotHydrating: () => hydrating, abandonSceneSnapshot: (a: object) => { abandoned.push(a); } };
+      const refused: object[] = [];
+      return { refused, isSceneSnapshotHydrating: () => hydrating, hydrateSceneSnapshot: (a: object) => { refused.push(a); return false; } };
     };
 
     it('keeps the adopted batches while their meshes decode', () => {
       const hydrating = scene(true);
       assert.equal(adoptedSceneOutlivesEmptyGeometry(hydrating), true);
-      assert.deepEqual(hydrating.abandoned, []);
+      assert.deepEqual(hydrating.refused, []);
     });
 
     it('ends the adoption once its meshes were published and all filtered out', () => {
       setPendingSceneSnapshot(adoption);
       const hydrating = scene(true);
       assert.equal(adoptedSceneOutlivesEmptyGeometry(hydrating), false);
-      assert.deepEqual(hydrating.abandoned, [adoption]);
+      assert.deepEqual(hydrating.refused, [adoption]);
       assert.equal(take([mesh()]), false, 'no longer pending');
     });
 

@@ -177,8 +177,8 @@ async function openFiles(page, files, label) {
     return {
       firstFrameMs: firstVisible.length ? Math.min(...firstVisible) - t : null,
       // Everything on screen: a snapshot's first paint, else the finalize swap (geometryMs).
-      completeFrameMs: Math.max(...loads.map((l, i) => (l.spans.some((sp) => sp.name === 'scene.snapshotAdopt') ? end(l, 'geometry.firstVisible') : null) ?? geomDone[i])) - t,
-      snapshotAdopted: loads.map((l) => l.spans.some((sp) => sp.name === 'scene.snapshotAdopt')),
+      completeFrameMs: Math.max(...loads.map((l, i) => (end(l, 'scene.snapshotAdopted') !== null ? end(l, 'geometry.firstVisible') : null) ?? geomDone[i])) - t,
+      snapshotAdopted: loads.map((l) => end(l, 'scene.snapshotAdopted') !== null),
       geometryMs: Math.max(...geomDone) - t,
       propsMs: Math.max(...meta) - t,
       settledMs: performance.now() - t,
@@ -191,6 +191,19 @@ async function openFiles(page, files, label) {
   const value = await result.jsonValue();
   log(`  ${label}: first frame ${fmt(value.firstFrameMs)} ms, geometry ${fmt(value.geometryMs)} ms, props ${fmt(value.propsMs)} ms (t0 ${t0.toFixed(0)})`);
   return value;
+}
+
+/** Closing the page could interrupt the write, and the next open would then measure the ordinary path. */
+async function waitSceneSnapshots(page, timeoutMs = 60 * 1000) {
+  await page.waitForFunction(() => new Promise((done) => {
+    const open = indexedDB.open('ifc-lite-cache');
+    open.onerror = () => done(false);
+    open.onsuccess = () => {
+      const all = open.result.transaction('models').objectStore('models').getAll();
+      all.onerror = () => done(false);
+      all.onsuccess = () => { open.result.close(); done(all.result.length > 0 && all.result.every((entry) => entry.sceneSnapshot)); };
+    };
+  }), null, { timeout: timeoutMs, polling: 500 });
 }
 
 async function waitCacheWrites(page, timeoutMs = 10 * 60 * 1000) {
@@ -307,7 +320,7 @@ async function runSample(build, set, round) {
       // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
         if (open > 1) {
-          await page.waitForTimeout(4000);
+          if (build.flags.includes('perf.sceneSnapshot')) await waitSceneSnapshots(page);
           await page.close();
         }
         page = await openPage(context);

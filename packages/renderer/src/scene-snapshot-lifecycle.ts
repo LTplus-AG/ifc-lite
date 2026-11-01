@@ -44,6 +44,7 @@ export interface SceneSnapshotHost {
   meshDataBucket: Map<MeshData, SnapshotBucket>;
   getMaxBufferSize(device: GPUDevice): number;
   clearFlatGeometry(): void;
+  removeInstancedTemplatesForModel(modelIndex: number): void;
   addMeshData(meshData: MeshData): void;
   splitMeshForStreaming(meshData: MeshData): MeshData[];
 }
@@ -96,8 +97,14 @@ export class SceneSnapshotLifecycle {
     else console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
   }
 
-  /** A reshape before the first queued piece is the load's own clear, so a capture survives it. */
+  /**
+   * A reshape before the first queued piece is the load's own clear, so a
+   * capture survives it. A clear during hydration means the adopting load lost
+   * the scene, and its shards go with its batches. Hydration ends first on a
+   * mismatch, whose fallback uploads the flat meshes and keeps the shards.
+   */
   onFlatCleared(): void {
+    if (this.hydration) this.scene.removeInstancedTemplatesForModel(0);
     this.hydration = null;
     if (this.capture?.hasPieces) this.capture = null;
   }

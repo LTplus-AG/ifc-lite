@@ -167,6 +167,33 @@ describe('finished-scene snapshot', () => {
     assert.strictEqual(lost.hydrateSceneSnapshot(adoption, model()), false);
   });
 
+  it('a lost or abandoned adoption takes its shards with it; a mismatch keeps them', async () => {
+    const device = stubDevice();
+    const snapshot = await captureScene(model(), device);
+    const removals = (scene: Scene) => {
+      const removed: number[] = [];
+      scene.removeInstancedTemplatesForModel = (index: number) => { removed.push(index); };
+      return removed;
+    };
+
+    const abandoned = freshScene();
+    const abandonedShards = removals(abandoned);
+    abandoned.abandonSceneSnapshot(abandoned.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline)!);
+    assert.deepStrictEqual(abandonedShards, [0]);
+
+    const takenOver = freshScene();
+    const takenOverShards = removals(takenOver);
+    takenOver.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline);
+    takenOver.clearFlatGeometry(); // a newer load's reshape
+    assert.deepStrictEqual(takenOverShards, [0]);
+
+    const mismatched = freshScene();
+    const mismatchedShards = removals(mismatched);
+    const adoption = mismatched.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline)!;
+    assert.strictEqual(mismatched.hydrateSceneSnapshot(adoption, [triangle(9, 0)]), false);
+    assert.deepStrictEqual(mismatchedShards, []);
+  });
+
   it('leaves the scene untouched when the policy differs or a buffer cannot be created', async () => {
     const device = stubDevice();
     const snapshot = await captureScene(model(), device);

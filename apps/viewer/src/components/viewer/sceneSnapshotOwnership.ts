@@ -43,10 +43,10 @@ export function withdrawPendingSceneSnapshot(adoption: object): void {
  * scene because their meshes are still decoding. Once they are published, empty
  * means every type is now hidden, so the batches must go: nothing else ends them.
  */
-export function adoptedSceneOutlivesEmptyGeometry(scene: Pick<SceneContents, 'isSceneSnapshotHydrating' | 'abandonSceneSnapshot'>): boolean {
+export function adoptedSceneOutlivesEmptyGeometry(scene: Pick<SceneContents, 'isSceneSnapshotHydrating' | 'hydrateSceneSnapshot'>): boolean {
   if (!scene.isSceneSnapshotHydrating()) return false;
   if (!pendingAdoption) return true;
-  scene.abandonSceneSnapshot(pendingAdoption);
+  scene.hydrateSceneSnapshot(pendingAdoption, []); // refused: the batches go, the shards stay for when the type is shown again
   pendingAdoption = null;
   return false;
 }

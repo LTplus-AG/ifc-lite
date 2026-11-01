@@ -614,7 +614,7 @@ jobs:
       - name: Report models that were not checked
         if: always()
         run: node scripts/retained-compare/corpus-shards.mjs excluded --manifest tests/models/manifest.json
-      - name: Every shard finished, with no parity violations
+      - name: Every shard completed (parity violations are report-only)
         env:
           SHARDS_RESULT: ${{ needs.native-corpus.result }}
         run: |

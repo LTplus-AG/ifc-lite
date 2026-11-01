@@ -24,6 +24,13 @@ function limits(size: number, count: number, columns: number): string | undefine
   }
 }
 
+// Use the same boundary as parsePlyHeader: first marker, then the following LF.
+// In particular, trim whitespace (including form feed) must not hide the marker.
+function headerEnd(text: string): number {
+  const marker = text.indexOf('end_header');
+  return marker < 0 ? 0 : text.indexOf('\n', marker) + 1;
+}
+
 /** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
   const prefix = new TextDecoder().decode(new Uint8Array(head, 0, Math.min(head.byteLength, 3)));
@@ -37,31 +44,38 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0 };
   }
   let text = new TextDecoder().decode(head);
-  let end = /^[\t ]*end_header[\t ]*\r?\n/m.exec(text);
+  let end = headerEnd(text);
   if (!end && file.size > head.byteLength) {
     text = new TextDecoder().decode(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer());
-    end = /^[\t ]*end_header[\t ]*\r?\n/m.exec(text);
+    end = headerEnd(text);
   }
-  if (!end || end.index + end[0].length > MAX_HEADER_BYTES) {
+  if (!end || end > MAX_HEADER_BYTES) {
     return { kind: 'invalid', reason: 'PLY header is truncated or exceeds the 64 KiB admission limit.' };
   }
-  const lines = text.slice(0, end.index).split(/\r?\n/);
+  const lines = text.slice(0, end).split('\n').map(line => line.trim());
   let vertex = false, count = 0, vertexElements = 0, stride = 0, malformed = false;
   let encoding = '';
   const properties = new Set<string>();
   for (const line of lines) {
-    const fields = line.trim().split(/\s+/);
-    if (fields[0] === 'format') encoding = fields[1];
-    if (fields[0] === 'element') {
+    // parsePlyHeader ignores tab-only keyword separators, but splits tokens
+    // with /\s+/ once the directive's literal-space prefix matches.
+    const fields = line.split(/\s+/);
+    if (line.startsWith('format ')) encoding = fields[1];
+    if (line.startsWith('element ')) {
       vertex = fields[1] === 'vertex';
-      if (vertex) { count = Number(fields[2]); vertexElements++; }
+      if (vertex) {
+        count = Number(fields[2]); vertexElements++;
+        if (!/^\d+$/.test(fields[2] ?? '') || fields.length !== 3) malformed = true;
+      }
     }
-    if (fields[0] !== 'property' || !vertex) continue;
-    const name = fields.at(-1)!;
+    if (!line.startsWith('property ') || !vertex) continue;
+    const list = fields[1] === 'list';
+    const name = fields[list ? 4 : 2];
+    if (!name) { malformed = true; continue; }
     if (properties.has(name)) malformed = true;
     properties.add(name);
     const width = SCALAR_BYTES[fields[1]];
-    if (typeof width !== 'number' || fields.length !== 3) malformed = true;
+    if (list || typeof width !== 'number' || fields.length !== 3) malformed = true;
     else stride += width;
   }
   // Only vertex properties count; comments and similarly named face properties do not.
@@ -82,7 +96,7 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     return { kind: 'invalid', reason: 'Unsupported Gaussian PLY encoding.' };
   }
   // ASCII body size is variable: only a decoder can validate its records.
-  const bodyBytes = file.size - new TextEncoder().encode(text.slice(0, end.index + end[0].length)).byteLength;
+  const bodyBytes = file.size - new TextEncoder().encode(text.slice(0, end)).byteLength;
   if (bodyBytes <= 0 || (encoding !== 'ascii' && bodyBytes < count * stride)) {
     return { kind: 'invalid', reason: 'Truncated Gaussian PLY vertex payload.' };
   }

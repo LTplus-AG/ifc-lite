@@ -133,3 +133,16 @@ for (const [label, magic, terminator] of [
   await act(async () => loader!.loadFile(new File([ordinary], 'ordinary.ply')));
   assert.match(useViewerStore.getState().error ?? '', /Renderer not initialised/);
 });
+
+it('Gaussian scalar trailing tokens cannot bypass canonical refusal (#8582 round 2)', async () => {
+  const header = gaussianHeader.replace(/property float (?![xyz]\n)(\w+)\n/g, 'property float $1 ignored\n');
+  await act(async () => loader!.loadFile(new File([header, new Uint8Array(56)], 'trailing.ply')));
+  assert.match(useViewerStore.getState().error ?? '', /Malformed Gaussian PLY vertex schema/);
+  assert.equal(useViewerStore.getState().pointCloudAssetCount, 0);
+});
+
+it('form-feed PLY terminators preserve the canonical ordinary point-cloud path (#8582 round 2)', async () => {
+  const header = 'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\n\fend_header\n';
+  await act(async () => loader!.loadFile(new File([header, new Uint8Array(12)], 'form-feed.ply')));
+  assert.match(useViewerStore.getState().error ?? '', /Renderer not initialised/);
+});

@@ -155,8 +155,9 @@ pub fn authored_surface(bytes: &[u8], item: &DecodedEntity, decoder: &mut Entity
         if !colour && !name.eq_ignore_ascii_case("IFCINDEXEDTRIANGLETEXTUREMAP") { continue; }
         let Ok(map) = decoder.decode_at(start, end) else { continue };
         if colour && map.ref_at(slot::IfcIndexedColourMap::MAPPED_TO) == Some(item.id) && surface.palette.is_none() {
-            surface.palette = map.attr(slot::IfcIndexedColourMap::COLOUR_INDEX).and_then(AttributeValue::as_list).map(|rows| rows.iter()
-                .map(|v| v.as_int().unwrap_or(0) as u32 - 1).collect());
+            // An entry that is no 1-based index leaves the map unreadable, not a wrong row.
+            surface.palette = map.attr(slot::IfcIndexedColourMap::COLOUR_INDEX).and_then(AttributeValue::as_list).and_then(|rows| rows.iter()
+                .map(|v| u32::try_from(v.as_int()?).ok()?.checked_sub(1)).collect());
         } else if !colour && map.ref_at(slot::IfcIndexedTriangleTextureMap::MAPPED_TO) == Some(item.id) && surface.uvs.is_none() {
             surface.uvs = texture_rows(&map, item, decoder);
         }

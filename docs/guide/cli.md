@@ -1889,8 +1889,7 @@ itself refuses is `kernel_failure` for that product and keeps the worker. Band p
 material ID, colour and material name through exact’s resolver.
 Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
 verified against every face vertex. Other faces use an angle-weighted mean with a 10°
-guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored mapped finals are baked (reflection into positions and winding) before normals are generated, so their normals follow the outward winding; a part still carrying an unbaked negative frame refuses `incomplete`. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Textures and indexed palettes are proven absent from retained-eligible
-products; unsupported tessellated bodies continue to refuse explicitly.
+guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored mapped finals are baked (reflection into positions and winding) before normals are generated, so their normals follow the outward winding; a part still carrying an unbaked negative frame refuses `incomplete`. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Unsupported tessellated bodies continue to refuse explicitly.
 
 Retained material layers on supported straight and circular wall axes publish open
 bands whose combined outer skin is closed. OBJ identifies each band with

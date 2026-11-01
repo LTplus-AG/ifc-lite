@@ -282,5 +282,6 @@ fn issue_8291_a_coloured_cutter_never_colours_the_host_or_its_reveals() {
     assert!(faces.table.iter().any(|key| key.via == 66), "the cut really has reveals");
     let colour = part.appearance.as_ref().unwrap().rgba;
     assert_ne!(colour[..3], [1., 0., 0.], "not the cutter's dominant entry");
+    assert_ne!(colour[..3], [0., 1., 0.], "nor its other entry");
     println!("sdk witness executed: face_set_coloured_cutter");
 }

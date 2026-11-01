@@ -71,9 +71,10 @@ pub fn retraced_opening(
 /// hand-specified table. An unlisted host stays unverified and fails closed (#8291).
 pub fn face_set_openings(model: &std::path::Path) -> Result<Vec<(u32, ifc_lite_retained_native::oracle::openings::OpeningExpectation)>, String> {
     use ifc_lite_retained_native::oracle::openings::OpeningExpectation;
-    let (file, oracle) = match model.to_str() {
-        Some("tests/fixtures/synthetic-retained/f-b-mapped.ifc") => ("f-b-mapped.ifc", "oracles.json"),
-        Some("tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc") => ("f-t-face-set-presentation.ifc", "f-t-face-set-presentation.oracle.json"),
+    // By name: a manifest can spell the same fixture's path absolutely or with `./`.
+    let (file, oracle) = match model.file_name().and_then(std::ffi::OsStr::to_str) {
+        Some("f-b-mapped.ifc") => ("f-b-mapped.ifc", "oracles.json"),
+        Some("f-t-face-set-presentation.ifc") => ("f-t-face-set-presentation.ifc", "f-t-face-set-presentation.oracle.json"),
         _ => return Ok(Vec::new()),
     };
     let table = std::fs::read_to_string(format!("tests/fixtures/synthetic-retained/{oracle}")).map_err(|e| e.to_string())?;

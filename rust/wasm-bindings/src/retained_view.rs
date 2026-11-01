@@ -67,10 +67,10 @@ fn view_triangles(part: &ShapePart, rtc: [f64; 3], only: Option<&[usize]>) -> Me
     let m = &part.world_from_object;
     let translation = [m[12], m[13], m[14]];
     let origin = std::array::from_fn(|axis| translation[axis] - rtc[axis]);
-    let mut mesh = Mesh::with_capacity(part.indices.len(), part.indices.len());
+    let count = only.map_or(part.indices.len() / 3, <[usize]>::len);
+    let mut mesh = Mesh::with_capacity(count * 3, count * 3);
     mesh.origin = origin;
     mesh.rtc_applied = true;
-    let count = only.map_or(part.indices.len() / 3, <[usize]>::len);
     for position in 0..count {
         let triangle_index = only.map_or(position, |list| list[position]);
         let triangle = &part.indices[triangle_index * 3..triangle_index * 3 + 3];

@@ -10,9 +10,10 @@ pub(super) fn row_of(role: &str) -> Option<u32> {
 pub(super) fn barycentric(p: [f64; 3], t: &[[f64; 3]; 3]) -> Option<[f64; 3]> {
     let (a, b, c) = (nalgebra::Vector3::from(t[0]), nalgebra::Vector3::from(t[1]), nalgebra::Vector3::from(t[2]));
     let (e, f, q) = (b - a, c - a, nalgebra::Vector3::from(p) - a);
-    let (ee, ef, ff, qe, qf) = (e.dot(&e), e.dot(&f), f.dot(&f), q.dot(&e), q.dot(&f));
-    let det = ee * ff - ef * ef;
+    // Cross products: Gram products cancel away a thin triangle's small positive area.
+    let normal = e.cross(&f);
+    let det = normal.dot(&normal);
     if !det.is_finite() || det == 0. { return None; }
-    let (v, w) = ((ff * qe - ef * qf) / det, (ee * qf - ef * qe) / det);
+    let (v, w) = (q.cross(&f).dot(&normal) / det, e.cross(&q).dot(&normal) / det);
     Some([1. - v - w, v, w])
 }

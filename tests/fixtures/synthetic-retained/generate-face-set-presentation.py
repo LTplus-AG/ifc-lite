@@ -70,7 +70,7 @@ def generate():
             add(f"IFCRELVOIDSELEMENT('1xOjMtIuvMZR$N4P_nl${index:02d}',$,$,$,{product},{opening})")
             # 6 m3 box; the 0.5 x 2 x 2 cutter overlaps it over y in [0, 1]: 0.5 x 1 x 2 = 1 m3 removed.
             cases.append({"id": int(product[1:]), "role": name, "volume": 5, "opening_volume": 2,
-                "opening_id": int(opening[1:]), "local_centroid": [1.1, 0.5, 1.6]})
+                "opening_id": int(opening[1:]), "local_centroid": [1.0, 0.5, 1.6]})
     return HEADER + "\n".join(lines) + "\nENDSEC;\nEND-ISO-10303-21;\n", cases
 
 here = pathlib.Path(__file__).parent

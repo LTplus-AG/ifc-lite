@@ -35,17 +35,20 @@ function rejoinParts(parts, meshes) {
   for (const part of parts) {
     const first = meshes[next];
     if (!first) return null;
-    let merged = first, count = first.indices?.length ?? 0;
+    let count = first.indices?.length ?? 0, positions = null, indices = null;
     next++;
     while (count < part.indices.length && meshes[next]) {
       const more = meshes[next++];
       if (!same(more.origin, first.origin) || !same(more.rtcOffset, first.rtcOffset) || more.expressId !== first.expressId) return null;
-      const offset = merged.positions.length / 3;
-      merged = { ...merged, positions: [...merged.positions, ...more.positions],
-        indices: [...merged.indices, ...Array.from(more.indices, index => index + offset)] };
+      // Appended in place: a part can split into one mesh per palette entry.
+      positions ??= Array.from(first.positions);
+      indices ??= Array.from(first.indices);
+      const offset = positions.length / 3;
+      for (const value of more.positions) positions.push(value);
+      for (const index of more.indices) indices.push(index + offset);
       count += more.indices.length;
     }
-    joined.push(merged);
+    joined.push(positions ? { ...first, positions, indices } : first);
   }
   return next === meshes.length ? joined : null;
 }

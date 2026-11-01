@@ -28,11 +28,16 @@ export function exactRunsPlugin(exact) {
       "this.model.setParameters({...this.model.parameters, sampleCount: renderPass.framebuffer.colorAttachments[0].texture.props.samples});\n        return this.device.type === 'webgpu'\n            ? this.drawWebGPUStorageRuns(renderPass)");
     if (exact) {
       code = code.replace('const MAX_EXACT_SPLAT_DRAW_RUNS = 64;', 'const MAX_EXACT_SPLAT_DRAW_RUNS = 128;');
-      const marker = 'if (exactRunCount > MAX_EXACT_SPLAT_DRAW_RUNS) {';
-      const second = code.indexOf(marker, code.indexOf(marker) + marker.length);
-      if (second < 0) throw new Error('Missing upstream approximation branch');
-      code = code.slice(0, second) + code.slice(second).replace(marker,
-        marker + "\n throw new Error('Exact source-run budget exceeded (128)');");
+      // Reject before rebuildDrawRuns detaches the old buffers. An exhausted
+      // update must leave them reachable by destroy(), including on scene edits.
+      code = code.replace('rebuildDrawRuns() {', `rebuildDrawRuns() {
+        let contractRuns = 0, contractPreviousBatch = -1;
+        for (const reference of this.sortedReferences) {
+          if (reference.batchIndex !== contractPreviousBatch) {
+            contractPreviousBatch = reference.batchIndex;
+            if (++contractRuns > 128) throw new Error('Exact source-run budget exceeded (128)');
+          }
+        }`);
     }
     return { code, map: null };
   } };

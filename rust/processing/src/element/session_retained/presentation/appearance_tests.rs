@@ -66,7 +66,7 @@ fn product_plan(source: &Arc<SourceBundle>, id: u32) -> RetainedProductPlan {
 }
 fn hand_part() -> ShapePart {
     ShapePart { layer: None, capped_volume_m3: None, positions: Vec::new(), indices: Vec::new(), world_from_object: [0.; 16], curved: false, halfspace_clipped: false,
-        revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None }
+        revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None, source_exact: false }
 }
 const WALL: &str = "#14=IFCWALL('w',$,'Wall',$,$,#7,#13,$,$);";
 /// Two unstyled items, materials [glass(alpha .35), frame(opaque)].

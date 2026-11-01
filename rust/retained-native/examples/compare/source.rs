@@ -66,3 +66,18 @@ pub fn retraced_opening(
         volume_bounds: [volume, host.volume()], host_bbox: Some(bbox), curved: false,
     }))
 }
+
+/// A face-set host has no analytic prism, so its cut comes from the fixture's
+/// hand-specified table. An unlisted host stays unverified and fails closed (#8291).
+pub fn face_set_openings(model: &std::path::Path) -> Result<Vec<(u32, ifc_lite_retained_native::oracle::openings::OpeningExpectation)>, String> {
+    use ifc_lite_retained_native::oracle::openings::OpeningExpectation;
+    if model != std::path::Path::new("tests/fixtures/synthetic-retained/f-b-mapped.ifc") { return Ok(Vec::new()); }
+    let table = std::fs::read_to_string("tests/fixtures/synthetic-retained/oracles.json").map_err(|e| e.to_string())?;
+    let table: serde_json::Value = serde_json::from_str(&table).map_err(|e| e.to_string())?;
+    let products = table["cases"]["f-b-mapped.ifc"]["products"].as_array().ok_or("F-B oracle products absent")?;
+    Ok(products.iter().filter(|p| p["opening_id"].is_u64()).map(|p| {
+        let (volume, opening) = (p["volume"].as_f64().unwrap_or(f64::NAN), p["opening_volume"].as_f64().unwrap_or(f64::NAN));
+        (p["id"].as_u64().unwrap_or(0) as u32, OpeningExpectation { nominal_host_volume: volume + opening,
+            volume_bounds: [volume, volume + opening], result_volume: Some(volume), host_bbox: None, curved: false })
+    }).collect())
+}

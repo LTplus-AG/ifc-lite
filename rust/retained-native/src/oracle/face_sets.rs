@@ -5,10 +5,10 @@ use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType}
 
 /// One authored row: its points, and its polygon area when it is planar.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Row { pub points: Vec<[f64; 3]>, pub area_m2: Option<f64> }
+pub struct Row { pub points: Vec<[f64; 3]>, pub outer: usize, pub area_m2: Option<f64> }
 /// Rows in metres, relative to the first authored point; malformed rows are empty.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AuthoredFaceSet { pub rows: Vec<Row> }
+pub struct AuthoredFaceSet { pub first: [f64; 3], pub rows: Vec<Row> }
 
 fn corners(list: &[AttributeValue], pn: Option<&[AttributeValue]>, points: &[[f64; 3]]) -> Option<Vec<[f64; 3]>> {
     list.iter().map(|value| {
@@ -59,11 +59,12 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
     let row = |outer: Option<Vec<[f64; 3]>>, inner: Vec<Vec<[f64; 3]>>| match outer {
         Some(outer) if outer.len() >= 3 => {
             let area_m2 = planar_area(&outer, &inner);
+            let outer_count = outer.len();
             let mut all = outer;
             all.extend(inner.into_iter().flatten());
-            Row { points: all, area_m2 }
+            Row { points: all, outer: outer_count, area_m2 }
         }
-        _ => Row { points: Vec::new(), area_m2: None },
+        _ => Row { points: Vec::new(), outer: 0, area_m2: None },
     };
     let rows = if polygonal {
         let pn = item.attr(slot::IfcPolygonalFaceSet::PN_INDEX).and_then(AttributeValue::as_list);
@@ -80,7 +81,32 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
         item.attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)?.as_list()?.iter()
             .map(|t| Some(row(corners(t.as_list()?, pn, &points), Vec::new()))).collect::<Option<Vec<_>>>()?
     };
-    Some(AuthoredFaceSet { rows })
+    Some(AuthoredFaceSet { first, rows })
+}
+
+/// Each row's plane, mapped through `world` from raw file units: a point and the
+/// unit Newell normal of its outer ring, in authored winding. Rows without area have none.
+pub fn world_planes(set: &AuthoredFaceSet, world: impl Fn([f64; 3]) -> [f64; 3]) -> Vec<([f64; 3], [f64; 3])> {
+    set.rows.iter().filter_map(|row| {
+        let ring: Vec<[f64; 3]> = row.points[..row.outer].iter()
+            .map(|p| world(std::array::from_fn(|i| p[i] + set.first[i]))).collect();
+        let origin = *ring.first()?;
+        let normal = newell(&ring);
+        let length = dot(normal, normal).sqrt();
+        (length > 0.).then(|| (origin, normal.map(|v| v / length)))
+    }).collect()
+}
+
+/// f64 noise in a published position, far below `faceSetCornerMetres`.
+const AREA_NOISE_METRES: f64 = 1e-12;
+
+/// The diagonal of a row's bounds, in metres.
+fn extent(points: &[[f64; 3]]) -> f64 {
+    let d: [f64; 3] = std::array::from_fn(|axis| {
+        let values = points.iter().map(|p| p[axis]);
+        values.clone().fold(f64::NEG_INFINITY, f64::max) - values.fold(f64::INFINITY, f64::min)
+    });
+    dot(d, d).sqrt()
 }
 
 /// Worst per-row disagreement of one uncut part, or `None` when no key is a row.
@@ -108,11 +134,23 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
         if let Some(key) = key { areas[*key as usize] += dot(n, n).sqrt() / 2.; }
     }
     for (row, published) in set.rows.iter().zip(areas) {
-        // A warped row has no single area to compare, but it must still publish something.
-        let Some(area) = row.area_m2 else { result.missing_rows += usize::from(published == 0.); continue };
+        let Some(area) = row.area_m2 else {
+            // A warped row has no single area, but no surface over its ring can be smaller
+            // than the ring's projection: a dropped triangle falls below that. A hole removes
+            // surface the outer ring still projects over, so only a hole-free row can say.
+            if row.outer >= 3 && row.outer == row.points.len() {
+                let n = newell(&row.points[..row.outer]);
+                let projected = dot(n, n).sqrt() / 2.;
+                if published < projected * (1. - 1e-9) { result.missing_rows += 1; }
+            }
+            continue;
+        };
         if area <= 0. { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
-        result.area_relative = result.area_relative.max((published - area).abs() / area);
+        // A real sliver's own area is smaller than arithmetic noise over its length, so only
+        // what exceeds that noise is a disagreement.
+        let excess = ((published - area).abs() - AREA_NOISE_METRES * extent(&row.points)).max(0.);
+        result.area_relative = result.area_relative.max(excess / area);
     }
     result
 }
@@ -121,16 +159,39 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
 mod tests {
     use super::*;
     fn sheet() -> AuthoredFaceSet {
-        AuthoredFaceSet { rows: vec![
-            Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], area_m2: Some(0.5) },
-            Row { points: vec![[1., 0., 0.], [1., 1., 0.], [0., 1., 0.]], area_m2: Some(0.5) },
+        AuthoredFaceSet { first: [0.; 3], rows: vec![
+            Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
+            Row { points: vec![[1., 0., 0.], [1., 1., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
         ] }
     }
     const POSITIONS: [f64; 12] = [0., 0., 0., 1., 0., 0., 0., 1., 0., 1., 1., 0.];
     #[test]
+    fn issue_8291_a_dropped_triangle_of_a_warped_row_is_observed() {
+        let warped = AuthoredFaceSet { first: [0.; 3], rows: vec![Row {
+            points: vec![[0., 0., 0.], [1., 0., 0.], [1., 1., 0.5], [0., 1., 0.]], outer: 4, area_m2: None }] };
+        let positions = [0., 0., 0., 1., 0., 0., 1., 1., 0.5, 0., 1., 0.];
+        assert_eq!(deviation(&warped, &positions, &[0, 1, 2, 0, 2, 3], &[Some(0), Some(0)]).missing_rows, 0);
+        assert_eq!(deviation(&warped, &positions, &[0, 1, 2], &[Some(0)]).missing_rows, 1, "one of two triangles dropped");
+        assert_eq!(deviation(&warped, &positions, &[], &[]).missing_rows, 1, "the whole row dropped");
+    }
+
+    #[test]
     fn issue_8291_faithful_part_has_no_deviation() {
         let d = deviation(&sheet(), &POSITIONS, &[0, 1, 2, 1, 3, 2], &[Some(0), Some(1)]);
         assert_eq!(d, RowDeviation::default());
+    }
+    #[test]
+    fn issue_8291_arithmetic_noise_on_a_sliver_is_not_an_area_disagreement() {
+        // A 1 m long sliver of 1e-15 m2, as real slabs author: its published area can differ
+        // by 1e-18 m2, which is 0.1% of it and still only noise.
+        let (width, nudge) = (2e-15, 2e-18);
+        let set = AuthoredFaceSet { first: [0.; 3], rows: vec![Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., width, 0.]], outer: 3, area_m2: Some(width / 2.) }] };
+        let positions = [0., 0., 0., 1., 0., 0., 0., width + nudge, 0.];
+        assert_eq!(deviation(&set, &positions, &[0, 1, 2], &[Some(0)]).area_relative, 0.);
+        // A real area loss still counts.
+        let row = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) };
+        let halved = [0., 0., 0., 1., 0., 0., 0., 0.5, 0.];
+        assert!(deviation(&AuthoredFaceSet { first: [0.; 3], rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
     }
     #[test]
     fn issue_8291_a_lost_warped_row_is_observed() {

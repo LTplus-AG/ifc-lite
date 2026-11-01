@@ -8,6 +8,60 @@ Research example for [Discussion #8141](https://github.com/LTplus-AG/ifc-lite/di
 It does not enable splats in the production viewer or CLI. It compares published
 upstream engines without implementing a Gaussian decoder, rasterizer or sorter.
 
+## Continuation: explicit depth convention (2026-11-01)
+
+The original experiment below is preserved. The continuation proposes a narrow
+upstream `SplatRenderer.depthConvention` option (`standard` by default, or
+`reverse`), independent of the opaque depth comparison. Reverse projected depth
+is negated before the existing upstream sorter runs. Changing the option
+invalidates cached ordering. No decoder or sorter is forked into the viewer.
+
+The [upstream patch](./upstream-depth-convention.patch) targets luma commit
+`e3979f06848a6d04547ac7a26f844212ba569806`, after its move to `engine/splats`.
+It includes TypeScript API declarations, regression tests and documentation.
+`git apply --check` passed against that pinned source and documentation. The
+upstream suite has **not** been run, and this patch has not been submitted upstream.
+
+Runtime qualification uses published `@luma.gl/splats@9.4.2`: the witness applies
+the same three implementation changes in memory through a Vite load hook,
+after checking the original renderer's SHA-256. Installed package files remain
+unchanged. This is an experimental backport, not a claim that current master or
+its GPU paged renderer has been qualified. The existing mixed-scene example
+still uses unchanged upstream rendering and retains its original failure.
+
+After root `pnpm install`, run the bounded witness through fleet admission in
+the prepared checkout (the command needs Chrome at Playwright's `chrome` channel):
+
+```sh
+~/build-workers/ifc-fleet run --route local --cwd "$PWD" \
+  --storage-task gaussian-depth-witness --cpu 2 --memory 4 -- \
+  ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/validate-depth.mjs
+```
+
+This repository workflow explicitly uses Playwright and SwiftShader for direct
+texture readback. The GPU wrapper serializes it against other GPU work; the
+witness intentionally uses its own software browser, not the wrapper's hardware
+CDP endpoint. It requires no model downloads. Output is `depth-result.json` under
+`SPLAT_SPIKE_EVIDENCE` (default `/tmp/ifc-splat-8140-depth`); use distinct output
+directories when preserving multiple manual runs. Close the owning storage task
+after its receipts are finalized and compact evidence is published.
+
+[Recorded evidence](./depth-results.json): all 28 asserted cases passed, with
+no browser/WebGPU errors. Original perspective reverse-Z produced
+`[50, 0, 189, 255]`; the patch produced `[191, 0, 48, 255]`. Orthographic reverse-Z
+also changed from blue-dominant to red-dominant. Tests exercise constructor
+configuration, convention-only changes without changing the camera, standard
+and reverse projections, opaque shared-depth occlusion, and source-order mode.
+Negative controls intentionally remain blue-dominant. This is SwiftShader
+correctness evidence, not real-hardware performance evidence.
+
+Remaining blockers are unchanged: the CPU path approximates densely interleaved
+draw runs, the GPU paged renderer still hardcodes conventional depth comparison,
+and exact transparent IFC/splat composition is unqualified. Clipping, picking,
+MSAA, lifecycle failure handling and full production loader integration remain
+outside this continuation. The next upstream step is to run the supplied tests
+in its own harness and submit the proposal with this rendered counterexample.
+
 ## Reproduce
 
 Use the root pinned pnpm toolchain. Install dependencies normally, then prepare

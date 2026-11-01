@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "typecheck": "node --check client.mjs && node --check prepare.mjs && node --check vite.config.mjs",
+    "typecheck": "for file in *.mjs test/*.mjs; do node --check \"$file\" || exit; done",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

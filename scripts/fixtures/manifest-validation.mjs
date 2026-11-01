@@ -152,7 +152,6 @@ function validateReviewedLandXmlEntry(entry, index, errors) {
       }
     });
   }
-
 }
 
 function validateReviewedGaussianEntry(entry, index, errors) {

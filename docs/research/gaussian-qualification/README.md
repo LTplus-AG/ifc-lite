@@ -81,6 +81,21 @@ assets, documented transform provenance, independent held-out control with
 predeclared tolerances, camera/training provenance and redistribution rights.
 An aesthetically aligned screenshot cannot substitute for these.
 
+## Bounded source investigation
+
+NVIDIA's [pinned dataset catalogue](https://github.com/nvpro-samples/vk_gaussian_splatting/blob/d2f603251b1b007c94ee07dd9c5579b7492af6fe/docs/datasets.md)
+identifies Christian Rochner's `fountain_place.zip` and Jean-Eudes Marvie's
+`flowers_1.zip` as CC-BY-SA-4.0. HTTPS HEAD on 2026-11-01 reported respectively
+679,744,906 and 125,568,178 archive bytes on `developer.download.nvidia.com`.
+Only headers were fetched. They are concrete candidates, **not admitted corpus**:
+no binary hash, uncompressed size/count, SH inventory, camera provenance or
+metric IFC counterpart has been verified. The current upstream ZIP fetch path
+supports pinned GitHub IFC members only; admitting these requires reviewed
+external archive provenance and bounded member extraction (or approved
+content-addressed redistribution), not pointing the fetcher at a moving ZIP.
+The multi-GB pretrained bundles were not downloaded. This investigation does
+not claim that no suitable metric triple exists anywhere.
+
 ## Proposed device/scene budgets — not measured or agreed
 
 These are explicit candidates for maintainer agreement **before** measurement,

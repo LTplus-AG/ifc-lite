@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Build tests/models/manifest.json by walking the working tree under
-// tests/models/. Recognised fixture types: IFC-family and LandXML XML files.
+// tests/models/. Recognised fixture types: IFC-family, LandXML, Gaussian PLY/.splat files.
 //
 // - For files that look like Git LFS pointers (small text containing
 //   "version https://git-lfs.github.com/spec/v1"), read sha256 + size from

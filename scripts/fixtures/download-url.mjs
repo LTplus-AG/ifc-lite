@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Where a fixture's bytes come from. Reviewed, unmodified LandXML source bytes
+// Where a fixture's bytes come from. Reviewed, unmodified LandXML/Gaussian source bytes
 // and upstream archives are fetched from their immutable upstream blob; other
 // fixtures use our content-addressed release. The fetcher, the uploader and
 // the manifest builder all read that decision from `upstreamBlobUrl`, so the

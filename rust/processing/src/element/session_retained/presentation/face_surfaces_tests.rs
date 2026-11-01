@@ -48,7 +48,7 @@ fn issue_8291_rows_whose_triangles_all_dropped_keep_their_slots() {
     let mut document = ifc_lite_geometry::document::GeometryDocument::new();
     let handle = document.add_retained_face_set(ifc_lite_geometry::document::RetainedFaceSet {
         source_id: 7, positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.], triangles: vec![0, 1, 2],
-        rows: vec![104], row_count: 105, length_unit_scale: 1.,
+        rows: vec![104], row_count: 105, source_corners: Vec::new(), source_slots: Vec::new(), length_unit_scale: 1.,
     }).unwrap();
     let payload = document.retained_payload(handle).unwrap();
     assert!(payload.bytes.len() < 105);

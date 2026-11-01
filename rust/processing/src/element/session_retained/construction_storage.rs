@@ -119,6 +119,8 @@ pub(super) fn reserve(resources: &OwnedResourceContext, recipe: &RetainedRecipe)
                     estimate.vector(&recipe.positions)?;
                     estimate.vector(&recipe.triangles)?;
                     estimate.vector(&recipe.rows)?;
+                    estimate.vector(&recipe.source_corners)?;
+                    estimate.vector(&recipe.source_slots)?;
                 }
                 _ => return Err(resource::refused(resource::Dimension::Coverage, 0, 0,
                     resource::RefusalReason::UnsupportedCoverage)),

@@ -123,6 +123,77 @@ fn extent(points: &[[f64; 3]]) -> f64 {
     dot(d, d).sqrt()
 }
 
+/// The solid an authored shell bounds, by the divergence theorem over its rows, in the
+/// set's own units cubed. `None` where a row is warped and has no single plane.
+pub fn authored_volume(set: &AuthoredFaceSet) -> Option<f64> {
+    let mut sum = 0.;
+    for row in set.rows.iter().filter(|row| !row.points.is_empty()) {
+        let normal = newell(&row.points[..row.outer]);
+        let length = dot(normal, normal).sqrt();
+        // A row with no area bounds nothing; one with area but no single plane has no answer here.
+        if length == 0. { continue; }
+        let area = row.area_m2?;
+        sum += dot(row.points[0], normal.map(|v| v / length)) * area;
+    }
+    Some(sum.abs() / 3.)
+}
+
+/// An authored `IfcIndexedColourMap` / `IfcIndexedTriangleTextureMap`, read by scanning
+/// the source for the map whose `MappedTo` is this face set.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AuthoredSurface {
+    /// 0-based palette entry per authored row.
+    pub palette: Option<Vec<u32>>,
+    /// Per authored row, its three corners' source UVs in authored order.
+    pub uvs: Option<Vec<[[f64; 2]; 3]>>,
+}
+pub fn authored_surface(bytes: &[u8], item: &DecodedEntity, decoder: &mut EntityDecoder) -> AuthoredSurface {
+    let mut surface = AuthoredSurface::default();
+    let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
+    while let Some((_, name, start, end)) = scanner.next_entity() {
+        let colour = name.eq_ignore_ascii_case("IFCINDEXEDCOLOURMAP");
+        if !colour && !name.eq_ignore_ascii_case("IFCINDEXEDTRIANGLETEXTUREMAP") { continue; }
+        let Ok(map) = decoder.decode_at(start, end) else { continue };
+        if colour && map.ref_at(slot::IfcIndexedColourMap::MAPPED_TO) == Some(item.id) && surface.palette.is_none() {
+            // An entry that is no 1-based index leaves the map unreadable, not a wrong row.
+            surface.palette = map.attr(slot::IfcIndexedColourMap::COLOUR_INDEX).and_then(AttributeValue::as_list).and_then(|rows| rows.iter()
+                .map(|v| u32::try_from(v.as_int()?).ok()?.checked_sub(1)).collect());
+        } else if !colour && map.ref_at(slot::IfcIndexedTriangleTextureMap::MAPPED_TO) == Some(item.id) && surface.uvs.is_none() {
+            surface.uvs = texture_rows(&map, item, decoder);
+        }
+    }
+    surface
+}
+fn texture_rows(map: &DecodedEntity, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Vec<[[f64; 2]; 3]>> {
+    let list = decoder.decode_by_id(map.ref_at(slot::IfcIndexedTriangleTextureMap::TEX_COORDS)?).ok()?;
+    let coordinates: Vec<[f64; 2]> = list.attr(slot::IfcTextureVertexList::TEX_COORDS_LIST)?.as_list()?.iter()
+        .map(|row| { let [u, v] = row.as_list()? else { return None }; Some([u.as_float()?, v.as_float()?]) }).collect::<Option<_>>()?;
+    // `TexCoordIndex`, else texture vertices pair 1:1 with `CoordIndex`.
+    let rows = match map.attr(slot::IfcIndexedTriangleTextureMap::TEX_COORD_INDEX).and_then(AttributeValue::as_list) {
+        Some(rows) => rows,
+        None => item.attr(slot::IfcTriangulatedFaceSet::COORD_INDEX)?.as_list()?,
+    };
+    rows.iter().map(|row| {
+        let [a, b, c] = row.as_list()? else { return None };
+        let uv = |v: &AttributeValue| coordinates.get(usize::try_from(v.as_int()?).ok()?.checked_sub(1)?).copied();
+        Some([uv(a)?, uv(b)?, uv(c)?])
+    }).collect()
+}
+
+/// A published corner's UV deviation from the authored row's affine map (rows are metres
+/// relative to the first authored point). `None` where the point has no plane in that row.
+pub fn uv_deviation(row: &Row, uvs: &[[f64; 2]; 3], p: [f64; 3], uv: [f64; 2]) -> Option<f64> {
+    let [a, b, c] = row.points.as_slice() else { return None };
+    let (e, f, q): ([f64; 3], [f64; 3], [f64; 3]) = (std::array::from_fn(|i| b[i] - a[i]),
+        std::array::from_fn(|i| c[i] - a[i]), std::array::from_fn(|i| p[i] - a[i]));
+    let (ee, ef, ff, qe, qf) = (dot(e, e), dot(e, f), dot(f, f), dot(q, e), dot(q, f));
+    let det = ee * ff - ef * ef;
+    if det == 0. { return None; }
+    let (v, w) = ((ff * qe - ef * qf) / det, (ee * qf - ef * qe) / det);
+    let expected: [f64; 2] = std::array::from_fn(|i| (1. - v - w) * uvs[0][i] + v * uvs[1][i] + w * uvs[2][i]);
+    Some((expected[0] - uv[0]).hypot(expected[1] - uv[1]))
+}
+
 /// Worst per-row disagreement of one uncut part, or `None` when no key is a row.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RowDeviation { pub corner_m: f64, pub area_relative: f64, pub missing_rows: usize }
@@ -160,6 +231,9 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
             continue;
         };
         if area <= 0. { continue; }
+        // Below arithmetic noise the area is round-off, not a measurement: a sliver's
+        // authored corners are what the corner check above already pins.
+        if area <= AREA_NOISE_METRES * extent(&row.points) { continue; }
         if published == 0. { result.missing_rows += 1; continue; }
         // A real sliver's own area is smaller than arithmetic noise over its length, so only
         // what exceeds that noise is a disagreement.
@@ -190,6 +264,15 @@ mod tests {
     }
 
     #[test]
+    fn issue_8291_uv_oracle_observes_a_wrong_corner_and_a_mirrored_map() {
+        let row = Row { points: vec![[0., 0., 0.], [2., 0., 0.], [0., 4., 0.]], outer: 3, area_m2: Some(4.) };
+        let uvs = [[0.25, 0.5], [1.25, 0.5], [0.25, 0.]];
+        let cut = [0.5, 2., 0.];
+        assert!(uv_deviation(&row, &uvs, cut, [0.5, 0.25]).unwrap() < 1e-15);
+        assert!(uv_deviation(&row, &uvs, cut, [0.5, 0.25 + 1e-6]).unwrap() > 9e-7, "moved UV");
+        assert!(uv_deviation(&row, &[uvs[0], uvs[2], uvs[1]], cut, [0.5, 0.25]).unwrap() > 0.1, "swapped corners");
+    }
+    #[test]
     fn issue_8291_faithful_part_has_no_deviation() {
         let d = deviation(&sheet(), &POSITIONS, &[0, 1, 2, 1, 3, 2], &[Some(0), Some(1)]);
         assert_eq!(d, RowDeviation::default());
@@ -206,6 +289,13 @@ mod tests {
         let row = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) };
         let halved = [0., 0., 0., 1., 0., 0., 0., 0.5, 0.];
         assert!(deviation(&AuthoredFaceSet { first: [0.; 3], rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
+    }
+    #[test]
+    fn issue_8291_a_lost_thin_row_is_observed() {
+        // 1 m long and 1e-7 m high is thin, but its area is a measurement, not noise.
+        let thin = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1e-7, 0.]], outer: 3, area_m2: Some(5e-8) };
+        let set = AuthoredFaceSet { first: [0.; 3], rows: vec![thin] };
+        assert_eq!(deviation(&set, &[], &[], &[]).missing_rows, 1);
     }
     #[test]
     fn issue_8291_a_lost_warped_row_is_observed() {

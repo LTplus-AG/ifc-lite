@@ -1,11 +1,11 @@
 --- a/rust/geometry/src/processors/tessellated/polygonal_plan.rs
 +++ b/rust/geometry/src/processors/tessellated/polygonal_plan.rs
-@@ -250,7 +250,7 @@ impl PolygonalFaceSetPlan {
-         };
+@@ -294,7 +294,7 @@
          let mut rows = Vec::new();
-         let mut indices = triangulate_faces(&positions, &parsed, index_capacity, |face, corners| {
-+            rows.extend(std::iter::repeat_n(face, corners / 3));
--            rows.extend(std::iter::repeat_n(0 * face, corners / 3));
+         let mut faces = face_positions.into_iter();
+         triangulate_faces!(indices, positions, parsed, index_capacity, appended => {
++            rows.extend(faces.next().into_iter().flat_map(|face| std::iter::repeat_n(face, appended / 3)));
+-            rows.extend(faces.next().into_iter().flat_map(|face| std::iter::repeat_n(0 * face, appended / 3)));
          });
          if orient_outward {
              PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);

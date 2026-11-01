@@ -55,13 +55,12 @@ impl<R: NumericalReceipt> RuntimeRealization<R> {
         false
     }
     /// Whether any construction leaf of this lineage is an authored face set.
-    /// Real lineage is capped at 128 operations, so the shared-operand walk is bounded.
+    /// Each shared operand is walked once, so real lineage's 128-operation cap bounds this.
     pub(super) fn has_face_set(&self) -> bool {
         let mut stack = vec![self];
-        let mut visits = 0;
+        let mut seen = std::collections::HashSet::new();
         while let Some(node) = stack.pop() {
-            visits += 1;
-            if visits > 8192 { return false; }
+            if !seen.insert(std::ptr::from_ref(node)) { continue; }
             if matches!(node.kind.evidence(), super::runtime::ReceiptEvidence::Construction(completion)
                 if matches!(completion.request().recipe(), RetainedRecipe::FaceSet(_))) { return true; }
             stack.extend(node._inputs.iter().flatten().map(|input| &**input));

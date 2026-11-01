@@ -30,6 +30,23 @@ pub(super) fn part_fields(result: &Object, part: &ShapePart) -> Result<(), JsVal
         if let Some(id) = appearance.material_id { set(result, "materialId", &id.into())?; }
     }
     if let Some(value) = &part.faces { set(result, "faces", &faces(value)?)?; }
+    if let Some(surface) = &part.surface {
+        if let Some(palette) = &surface.palette {
+            let value = Object::new();
+            set(&value, "mapId", &palette.map_id.into())?;
+            set(&value, "colors", &js_sys::Float32Array::from(palette.colours.as_flattened()))?;
+            set(&value, "triangles", &Uint32Array::from(palette.triangles.as_slice()))?;
+            set(result, "palette", &value)?;
+        }
+        if let Some(texture) = &surface.texture {
+            let value = Object::new();
+            set(&value, "textureId", &texture.attachment.texture_id.into())?;
+            set(&value, "uvs", &Float64Array::from(texture.uvs.as_slice()))?;
+            let flags: Vec<u8> = texture.textured.iter().map(|&flag| u8::from(flag)).collect();
+            set(&value, "textured", &js_sys::Uint8Array::from(flags.as_slice()))?;
+            set(result, "texture", &value)?;
+        }
+    }
     if let Some(value) = &part.instance_key { set(result, "instanceKey", &key(value).into())?; }
     Ok(())
 }

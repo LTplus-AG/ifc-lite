@@ -101,7 +101,7 @@ fn issue_7887_depth_keeps_terminal_leaves_and_type_maps_start_a_fresh_path() {
                 repeat_s: true,
                 repeat_t: true,
             }),
-            tex_coords: vec![[0., 0.], [1., 0.], [0., 1.]],
+            tex_coords_id: 0, tex_coords: vec![[0., 0.], [1., 0.], [0., 1.]],
             tex_coord_index: None,
         },
     )]

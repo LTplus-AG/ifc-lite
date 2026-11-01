@@ -56,6 +56,10 @@ pub(crate) struct SourceTriangles {
     pub(crate) rows: Vec<u32>,
     /// Authored row count, including rows no triangle came from.
     pub(crate) row_count: u32,
+    /// Per published corner: its `CoordIndex` value before `PnIndex`. Empty for polygons.
+    pub(crate) authored: Vec<u32>,
+    /// Per published corner: its position (0..3) in the authored row. Empty for polygons.
+    pub(crate) slots: Vec<u8>,
 }
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 impl SourceTriangles {
@@ -68,6 +72,10 @@ impl SourceTriangles {
         self.rows.retain(|_| flags.next().copied().unwrap_or(false));
         let mut at = 0;
         self.indices.retain(|_| { at += 1; keep[(at - 1) / 3] });
+        let mut at = 0;
+        self.authored.retain(|_| { at += 1; keep[(at - 1) / 3] });
+        let mut at = 0;
+        self.slots.retain(|_| { at += 1; keep[(at - 1) / 3] });
         self
     }
 }

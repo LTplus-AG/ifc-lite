@@ -37,7 +37,7 @@ pub(crate) enum Segment {
 #[derive(Debug, Clone)]
 pub(crate) enum Extent { Plane, Side { segment: Segment }, Cap, Disk { center: [f64; 3], radius: f64 }, Wall,
     /// The authored triangles of one face-set row.
-    Row { triangles: Vec<[[f64; 3]; 3]> } }
+    Row { triangles: Vec<[[f64; 3]; 3]>, indices: Vec<u32> } }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Role { Cap { end: bool }, Side { boundary: u32, segment: u32 }, DiskWall, DiskCap { end: bool }, HalfSpace,
     /// One authored row of an `IfcTessellatedFaceSet` (`CoordIndex` row or `Faces` position).
@@ -76,6 +76,11 @@ pub(crate) struct Operand {
     /// An uncut source-exact face set: each kernel-free face index IS its row, so
     /// no incidence search applies (coplanar rows would be indistinguishable).
     pub rows_identify_faces: bool,
+    /// The sealed request of a face-set leaf, for its authored presentation.
+    pub request: Option<ifc_lite_geometry::document::RetainedRequest>,
+    /// Removed material: a Boolean's subtracted operand or under one. Its faces bound
+    /// the result as reveals, but its presentation is not the host's.
+    pub subtracted: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Unproven { Unattributed { entity: Option<u32> }, Ambiguous { entity: Option<u32> } }
@@ -166,7 +171,7 @@ impl Operand {
             (Extent::Wall | Extent::Plane, _) => true,
             // Rows are exact planar pieces: the chord has no meaning here, and a
             // chord-wide band would hand a point to the coplanar row beside it.
-            (Extent::Row { triangles }, _) => triangles.iter().any(|t| in_triangle(p, t, self.stretch * INCIDENCE_PLANAR_M)),
+            (Extent::Row { triangles, .. }, _) => triangles.iter().any(|t| in_triangle(p, t, self.stretch * INCIDENCE_PLANAR_M)),
             (Extent::Disk { center, radius }, _) => dot(sub(p, *center), sub(p, *center)).sqrt() <= radius + tol,
             (Extent::Cap, Some(region)) => region.contains(region.project(p).0, tol),
             (Extent::Side { segment }, Some(region)) => {
@@ -201,7 +206,7 @@ impl Operand {
     }
 }
 /// Whether `p`, already on the triangle's plane, lies within `tol` of its interior.
-fn in_triangle(p: V, t: &[V; 3], tol: f64) -> bool {
+pub(super) fn in_triangle(p: V, t: &[V; 3], tol: f64) -> bool {
     let Some(n) = unit(cross(sub(t[1], t[0]), sub(t[2], t[0]))) else { return false };
     (0..3).all(|i| {
         let (a, b) = (t[i], t[(i + 1) % 3]);

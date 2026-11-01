@@ -58,6 +58,7 @@ try {
     s.cameraCallbacks.setPresetDirection({ x: 1, y: 1.2, z: 1 });
     for (let i = 0; i < 3; i++) s.cameraCallbacks.zoomOut();
   });
+  for (const notice of await page.getByRole('button', { name: 'Dismiss notification', exact: true }).all()) await notice.click();
   await page.waitForTimeout(1800); // Allow the untimed camera animation and GPU upload to settle.
   await page.screenshot({ path: `${out}/rotterdam-background.png` });
   const hide = page.getByRole('button', { name: /^Hide .*pdok-schiehaven/ });
@@ -75,10 +76,22 @@ try {
   assert.equal(await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.values()][0].opacity), 0.45);
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${out}/rotterdam-opacity.png` });
+  const beforeEdit = await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.values()][0].cornersIfcWorld);
+  await page.getByRole('button', { name: /^Edit .*pdok-schiehaven/ }).click();
+  const elevation = page.getByRole('spinbutton', { name: 'Point A · Z (m)', exact: true });
+  await elevation.fill(String(beforeEdit[0][2] + 1));
+  await elevation.press('Tab');
+  await page.getByRole('button', { name: 'Save registration', exact: true }).click({ timeout: 30000 });
+  const afterEdit = await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.values()][0].cornersIfcWorld);
+  for (let i = 0; i < 4; i++) {
+    assert.ok(Math.abs(afterEdit[i][0] - beforeEdit[i][0]) < 1e-7);
+    assert.ok(Math.abs(afterEdit[i][1] - beforeEdit[i][1]) < 1e-7);
+    assert.ok(Math.abs(afterEdit[i][2] - beforeEdit[i][2] - 1) < 1e-7);
+  }
   await page.getByRole('button', { name: /^Remove .*pdok-schiehaven/ }).click();
   assert.equal(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.size), 0);
   assert.deepEqual(errors, []);
-  await writeFile(`${out}/result.json`, JSON.stringify({ model, image, before, after, errors, visibilityOpacityAndRemoval: 'pass' }, null, 2));
+  await writeFile(`${out}/result.json`, JSON.stringify({ model, image, before, after, errors, visibilityOpacityElevationAndRemoval: 'pass' }, null, 2));
   console.log(`Orthophoto file-picker, model preservation, visibility and removal passed. Evidence: ${out}`);
 } catch (error) {
   await page.screenshot({ path: `${out}/failure.png` });

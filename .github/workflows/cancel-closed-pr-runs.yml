@@ -40,7 +40,14 @@ jobs:
           fi
           ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
             --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .id != $SELF) | .id")
+          failed=0
           for id in $ids; do
-            # A run can finish between the listing and here; that is not a failure.
-            gh run cancel "$id" --repo "$REPO" && echo "cancelled $id" || echo "could not cancel $id"
+            gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; continue; }
+            # A run can finish between the listing and here; only one still going is a failure.
+            status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
+            if [ "$status" != "completed" ]; then
+              echo "::warning::could not cancel run $id (status $status)"
+              failed=1
+            fi
           done
+          exit "$failed"

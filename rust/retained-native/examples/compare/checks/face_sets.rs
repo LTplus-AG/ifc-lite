@@ -86,12 +86,12 @@ pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde
         if let Some(missing) = authored.iter().copied().find(|&item| !keyed(item)) {
             failure = Some(format!("#{} authors face set #{missing} but published no row key for it", product.product_id));
         }
-        // One key can stand for several occurrences, and open waives the exact area that would
-        // see a lost or extra copy or a lost non-set item: the Body must author only face sets,
-        // and publish exactly one part per authored occurrence.
+        // Open waives the exact area that would see a lost, extra or misplaced copy or a lost
+        // non-set item: the Body must author only face sets, each once (published keys do not
+        // name the mapped occurrence), and publish exactly one part per set.
         authored.sort_unstable();
         published.sort_unstable();
-        open &= source.is_some() && !other && authored == published;
+        open &= source.is_some() && !other && authored.windows(2).all(|w| w[0] != w[1]) && authored == published;
     }
     if !any && failure.is_none() { return Vec::new(); }
     let result = |family, value: f64, limit: f64| OracleResult { family, value, limit,

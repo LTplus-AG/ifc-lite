@@ -132,7 +132,11 @@ ENDSEC;END");
     let Some(mut shape) = publish(&text) else { return };
     let tolerances = crate::tolerances::registered().unwrap();
     assert_eq!(shape.parts.len(), 2, "one part per mapped copy");
-    assert!(check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "both copies published");
+    // Published keys do not name the occurrence (`via` is 0 for both copies), so a copy
+    // published twice in place of another cannot be told apart: a set authored more than
+    // once never takes the open waiver, whole or not.
+    assert!(shape.parts.iter().all(|p| p.faces.as_ref().unwrap().table.iter().all(|k| k.item == 33 && k.via == 0)));
+    assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "repeated occurrences are not waived");
     shape.parts.pop();
     assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost copy is not waived");
     println!("sdk witness executed: face_set_open_mapped_twice");

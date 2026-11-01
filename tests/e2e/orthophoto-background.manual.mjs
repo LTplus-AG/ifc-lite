@@ -68,10 +68,16 @@ try {
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.setPresetView('top'));
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${out}/rotterdam-plan.png` });
+  const opacity = page.getByRole('spinbutton', { name: /Opacity/ });
+  await opacity.fill('45');
+  await opacity.press('Enter');
+  assert.equal(await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.values()][0].opacity), 0.45);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${out}/rotterdam-opacity.png` });
   await page.getByRole('button', { name: /^Remove .*pdok-schiehaven/ }).click();
   assert.equal(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().appearanceReferences.size), 0);
   assert.deepEqual(errors, []);
-  await writeFile(`${out}/result.json`, JSON.stringify({ model, image, before, after, errors, visibilityAndRemoval: 'pass' }, null, 2));
+  await writeFile(`${out}/result.json`, JSON.stringify({ model, image, before, after, errors, visibilityOpacityAndRemoval: 'pass' }, null, 2));
   console.log(`Orthophoto file-picker, model preservation, visibility and removal passed. Evidence: ${out}`);
 } catch (error) {
   await page.screenshot({ path: `${out}/failure.png` });

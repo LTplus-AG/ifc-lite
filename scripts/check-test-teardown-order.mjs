@@ -155,12 +155,27 @@ function bindingOf(e) {
   return ts.isIdentifier(e) ? declarationOf(e) ?? `global:${e.text}` : `text:${e.getText()}`;
 }
 
+/** Whether the file loads `node:test` through `require()` or a dynamic `import()` (CommonJS tests). */
+function loadsNodeTest(root) {
+  let found = false;
+  const visit = (n) => {
+    if (found) return;
+    if (ts.isCallExpression(n) && n.arguments.length === 1 && ts.isStringLiteral(n.arguments[0])
+        && n.arguments[0].text === 'node:test'
+        && ((ts.isIdentifier(n.expression) && n.expression.text === 'require')
+          || n.expression.kind === ts.SyntaxKind.ImportKeyword)) { found = true; return; }
+    ts.forEachChild(n, visit);
+  };
+  visit(root);
+  return found;
+}
+
 /** Every violation in one file: `{ path, line, rule, message }`; `removals` counts what was seen. */
 export function scanSource(path, src) {
   const kind = path.endsWith('.tsx') ? ts.ScriptKind.TSX : /\.[mc]?ts$/.test(path) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
   const sf = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, true, kind);
   const nodeTest = sf.statements.some((s) => ts.isImportDeclaration(s)
-    && ts.isStringLiteral(s.moduleSpecifier) && s.moduleSpecifier.text === 'node:test');
+    && ts.isStringLiteral(s.moduleSpecifier) && s.moduleSpecifier.text === 'node:test') || loadsNodeTest(sf);
   const hooks = [];
   const calls = [];
   const drains = [];

@@ -58,6 +58,16 @@ test('flags the retained-engine fixture that failed shard 12 (R2), and passes it
   assert.deepEqual(rules(RETAINED_ENGINE_AFTER), []);
 });
 
+test('R1 applies to CommonJS tests that require node:test', () => {
+  const cjs = `const { test } = require('node:test');
+test('x', async (t) => {
+  t.after(() => rmSync(root, { recursive: true }));
+  t.after(() => server.close());
+});`;
+  assert.deepEqual(rules(cjs, 'x.test.cjs'), ['R1:3']);
+  assert.deepEqual(rules(cjs.replace("require('node:test')", "require('vitest')"), 'x.test.cjs'), []);
+});
+
 test('R1: a removing t.after followed by another t.after in the same function', () => {
   const src = `import test from 'node:test';
 import { rm } from 'node:fs/promises';

@@ -28,6 +28,9 @@ import {
   type ViewportHealthSource,
 } from './device-loss-report.js';
 
+// The limit these tests pin: three automatic recoveries per rolling minute.
+const RECOVERY_BUDGET_MAX = 3;
+
 /** Verbatim Safari 26.5 wording from the #2229 PostHog frames. */
 const SAFARI_LOST = 'The object is in an invalid state.';
 
@@ -411,6 +414,76 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
 
     assert.equal(recoveries, 2);
     assert.equal(captures.length, 2, 'each recovered device starts a new reportable loss episode');
+  });
+
+  it('stops recovering a device that keeps failing, and says a reload is needed', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    const events: Array<[string, unknown]> = [];
+    const realEvent = posthog.capture;
+    posthog.capture = ((event: string, props?: unknown) => { events.push([event, props]); }) as typeof posthog.capture;
+    const errorToast = mock.method(toast, 'error', () => 0);
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      for (let i = 0; i < RECOVERY_BUDGET_MAX + 2; i++) {
+        h.listeners.deviceLost[0]({ message: 'Device was destroyed.', reason: 'destroyed' });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      assert.equal(recoveries, RECOVERY_BUDGET_MAX, 'recovery stops at the budget');
+      const refused = events.filter(([event]) => event === 'device_loss_recovery_failed');
+      assert.deepEqual(refused[0][1], { reason: 'recovery-budget-exhausted' });
+      assert.equal(refused.length, 1, 'further signals for the refused loss capture nothing more');
+      for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      const messages = errorToast.mock.calls.map((call) => JSON.stringify(call.arguments));
+      assert.ok(messages.some((text) => /keeps failing[^"]*reload/i.test(text)), 'the refusal tells the user to reload');
+    } finally {
+      errorToast.mock.restore();
+      posthog.capture = realEvent;
+      unsubscribe();
+    }
+  });
+
+  it('captures a refusal for a remounted viewport after an earlier refusal', async () => {
+    const h = makeSource();
+    h.source.recoverDevice = async () => ({ ok: true, omissions: [] });
+    const refusals: unknown[] = [];
+    const realEvent = posthog.capture;
+    posthog.capture = ((event: string, props?: unknown) => {
+      if (event === 'device_loss_recovery_failed') refusals.push(props);
+    }) as typeof posthog.capture;
+    try {
+      for (let mount = 0; mount < 2; mount++) {
+        const unsubscribe = subscribeViewportHealth(h.source);
+        for (let i = 0; i < RECOVERY_BUDGET_MAX + 1; i++) {
+          h.listeners.deviceLost.at(-1)!({ message: 'Device was destroyed.', reason: 'destroyed' });
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+        unsubscribe();
+      }
+      assert.equal(refusals.length, 2, 'one refusal for each mounted viewport');
+    } finally {
+      posthog.capture = realEvent;
+    }
+  });
+
+  it('keeps the recovery budget across a viewport remount', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    for (let i = 0; i < RECOVERY_BUDGET_MAX + 1; i++) {
+      const unsubscribe = subscribeViewportHealth(h.source);
+      h.listeners.deviceLost.at(-1)!({ message: 'Device was destroyed.', reason: 'destroyed' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      unsubscribe();
+    }
+    assert.equal(recoveries, RECOVERY_BUDGET_MAX, 'a remount does not refill the budget');
   });
 
   it('notifies overlay owners only after successful GPU recovery (#5778)', async () => {

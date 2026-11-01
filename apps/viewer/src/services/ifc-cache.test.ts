@@ -18,6 +18,8 @@ import {
   evictToFree,
   availableQuotaBytes,
   PER_ENTRY_MAX_BYTES,
+  putSceneSnapshot,
+  deleteCached,
 } from './ifc-cache.js';
 
 const KB = 1024;
@@ -397,5 +399,59 @@ describe('ifc-cache survives a connection closed underneath the memo', () => {
     // And the cache recovers once the database can be opened again.
     await setCached('recovered', patterned(1 * KB, 28), 'recovered.ifc', 1 * KB);
     assert.ok(await getCached('recovered'), 'cache works again after the outage');
+  });
+});
+
+describe('putSceneSnapshot', () => {
+  beforeEach(async () => { await clearCache(); });
+
+  it('tells apart two writes in the same millisecond by their hash', async () => {
+    await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB, undefined, { fullSourceHash: 'new' });
+    const createdAt = (await getCached('k'))!.createdAt!;
+    assert.equal(await putSceneSnapshot('k', { createdAt, fullSourceHash: 'old' }, new Blob([new Uint8Array(32)]), 'policy'), false);
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+    assert.equal(await putSceneSnapshot('k', { createdAt, fullSourceHash: 'new' }, new Blob([new Uint8Array(32)]), 'policy'), true);
+  });
+
+  const snapshot = () => new Blob([new Uint8Array(32)]);
+
+  it('skips the snapshot rather than evict another model when quota is tight', async () => {
+    await setCached('other', patterned(1 * KB, 3), 'other.ifc', 1 * KB);
+    await setCached('k', patterned(1 * KB, 4), 'k.ifc', 1 * KB);
+    const createdAt = (await getCached('k'))!.createdAt!;
+    stubEstimate(1 * MB, 1 * MB);
+    try {
+      assert.equal(await putSceneSnapshot('k', { createdAt }, snapshot(), 'policy'), false);
+    } finally {
+      restoreNavigator();
+    }
+    assert.ok(await getCached('other'), 'the other model stays');
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+  });
+
+  it('attaches to the write it was built from and comes back on a hit', async () => {
+    await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
+    const entry = (await getCached('k'))!;
+    assert.equal(await putSceneSnapshot('k', { createdAt: entry.createdAt! }, snapshot(), 'policy'), true);
+    const hit = (await getCached('k'))!;
+    assert.equal(hit.sceneSnapshot?.size, 32);
+    assert.equal(hit.sceneSnapshotKey, 'policy');
+    assert.ok(await bytesEqual(hit.buffer, patterned(1 * KB, 1)), 'the entry itself is unchanged');
+  });
+
+  it('leaves a replaced or purged entry alone, and a rewrite drops the old snapshot', async () => {
+    await setCached('k', patterned(1 * KB, 1), 'k.ifc', 1 * KB);
+    const first = (await getCached('k'))!.createdAt!;
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), true);
+    await delay(2);
+    await setCached('k', patterned(1 * KB, 2), 'k.ifc', 1 * KB);
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), false, 'built from the replaced write');
+    assert.equal((await getCached('k'))!.sceneSnapshot, undefined);
+
+    await deleteCached('k');
+    assert.equal(await putSceneSnapshot('k', { createdAt: first }, snapshot(), 'policy'), false);
+    assert.equal(await getCached('k'), null);
   });
 });

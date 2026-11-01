@@ -11,6 +11,8 @@ import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type Insta
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
+import type { SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
@@ -336,6 +338,7 @@ export class Scene {
   // alone under-reports "still settling" — settle-sensitive consumers
   // (post-load telemetry) must also check this.
   private finalizeInProgress = false;
+  private readonly snapshots = new SceneSnapshotLifecycle(this as unknown as SceneSnapshotHost);
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Per-model shared origins keep all colours and highlights bit-coincident
@@ -397,7 +400,7 @@ export class Scene {
   private geometryReleased: boolean = false;
   private ephemeralStreamingMode: boolean = false;
 
-  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
+  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
   discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
 
@@ -1864,6 +1867,7 @@ export class Scene {
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
+        this.snapshots.notePiece(fragments[j]);
         this.meshQueue.push(fragments[j]);
       }
     }
@@ -2205,6 +2209,7 @@ export class Scene {
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+          scene.snapshots.completeCapture();
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
@@ -2236,6 +2241,7 @@ export class Scene {
   }
 
   finishEphemeralStreaming(): void {
+    this.snapshots.dropCapture();
     this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
@@ -2495,6 +2501,7 @@ export class Scene {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
+      onMerged: this.snapshots.mergedSink(bucketKey, this.nextBatchId),
     }, bucketKey);
     this.nextBatchId++;
     if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
@@ -2634,6 +2641,7 @@ export class Scene {
     // wise land on each other's cache entry — the second slot's invalidation
     // then destroys the clone the first one just built and is drawing from.
     const cacheKey = `${sourceBatchKey}:${idsHash}`;
+    if (this.snapshots.hydrating) return this.buckets.get(colorKey)?.batchedMesh ?? undefined; // no pieces yet: draw whole
 
     // Check if we already have this exact partial batch cached
     const currentCacheKey = this.partialBatchCacheKeys.get(sourceBatchKey);
@@ -2691,6 +2699,14 @@ export class Scene {
 
     return partialBatch;
   }
+
+  // Finished-scene snapshot (scene-snapshot-lifecycle.ts).
+  sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
+  isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
+  hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
+  abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }
 
   // ─── Colour overrides (#6076) ────────────────────────────────────────
   // Overrides live in a per-entity colour table the base pass reads
@@ -3667,6 +3683,7 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
+    this.snapshots.onFlatCleared();
     this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
@@ -3676,6 +3693,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
+    this.snapshots.onFlatCleared();
     this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];

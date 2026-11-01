@@ -32,7 +32,8 @@ import {
 } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
-import type { CacheResult } from '../services/cacheService.js';
+import { deleteCached, type CacheResult } from '../services/cacheService.js';
+import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
 
@@ -315,5 +316,51 @@ export async function decodeCachedModel(
       coordinateInfo: open.coordinateInfo,
     },
     instancedShards: readCachedInstancedShards(decoded),
+  };
+}
+
+export interface CacheLoadResult {
+  success: boolean;
+  meshCount: number;
+  totalVertices: number;
+  totalTriangles: number;
+}
+
+/**
+ * Federated cache hit: decode the whole entry off the active slot, then let
+ * the caller register it (`finalizeModel`: alignment, id offset, addModel),
+ * exactly like a fresh federated parse. A corrupt entry is deleted and
+ * reported as a miss so the caller reparses; a registration failure is the
+ * caller's and propagates.
+ */
+export async function loadFederatedCacheHit(
+  cacheResult: CacheResult,
+  cacheKey: string,
+  fallbackSourceBuffer: ArrayBufferLike,
+  isStale: () => boolean,
+  trace: LoadTrace,
+  register: (hit: DecodedCachedModel) => Promise<void>,
+): Promise<CacheLoadResult> {
+  const miss = { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+  let hit: DecodedCachedModel | null;
+  try {
+    hit = await decodeCachedModel(cacheResult, fallbackSourceBuffer, trace, isStale);
+  } catch (err) {
+    console.error('[useIfcCache] Failed to decode federated cache entry:', err);
+    await deleteCached(cacheKey).catch((deleteErr) => console.warn('[useIfcCache] cache entry cleanup failed:', deleteErr));
+    return miss;
+  }
+  if (!hit || isStale()) return miss;
+  await register(hit); // the whole model enters the scene at once: first append = stream complete
+  if (isStale()) return miss;
+  const appendedAt = trace.milestone('geometry.firstAppend');
+  trace.milestone('geometry.streamComplete');
+  await recordFirstVisible(trace, appendedAt);
+  trace.milestone('cache.storeReady');
+  return {
+    success: true,
+    meshCount: hit.geometry.meshes.length,
+    totalVertices: hit.geometry.totalVertices,
+    totalTriangles: hit.geometry.totalTriangles,
   };
 }

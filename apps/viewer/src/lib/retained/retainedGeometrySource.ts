@@ -50,7 +50,7 @@ export interface RetainedSourceOptions {
 
 export const RETAINED_STARTUP_BUDGET_MS = 60_000;
 export const RETAINED_PRODUCT_BUDGET_MS = 30_000 + 5_000;
-const SUMMARY_INTERVAL_MS = 250;
+const SUMMARY_INTERVAL_MS = 1_000;
 
 /** The host went silent past its budget. Never a resource-limit kind: no tier retry, no exact fallback. */
 export class RetainedStallError extends Error {
@@ -145,21 +145,25 @@ export async function* retainedGeometryEvents(
     summary: { kernel: 'retained', candidates: 0, published: 0, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'running' },
     candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0, faces: new Map(),
   };
-  // Every product would otherwise copy the whole row list into the store: at
-  // most one mid-run summary per interval, and every boundary at once.
-  let lastReport = -Infinity;
-  let unreported = false;
-  const report = (throttled = false) => {
-    const now = performance.now();
-    if (throttled && now - lastReport < SUMMARY_INTERVAL_MS) { unreported = true; return; }
-    lastReport = now;
-    unreported = false;
-    options.onSummary(snapshot(acc));
-  };
   const phase = () => options.onPhase?.({
     phase: 'products', done: acc.received.size, candidates: acc.summary.candidates,
     refused: acc.summary.refused.length - acc.summary.cancelled,
   });
+  // Each store write commits React on the main thread, and every product would otherwise
+  // copy the whole row list too: Holter's 61,201 products would spend the main thread on
+  // progress (#7955). At most one mid-run summary and phase per interval; every boundary at once.
+  let lastReport = -Infinity;
+  let unreported = false;
+  const report = () => {
+    lastReport = performance.now();
+    unreported = false;
+    options.onSummary(snapshot(acc));
+  };
+  const productReport = () => {
+    if (performance.now() - lastReport < SUMMARY_INTERVAL_MS) { unreported = true; return; }
+    report();
+    phase();
+  };
   const heartbeatMs = options.heartbeatMs ?? 1_000;
   const iterator = runner.run(bytes, { signal: options.signal });
   const pending: { next?: Promise<IteratorResult<RetainedHostEvent>>; since: number } = { since: performance.now() };
@@ -182,7 +186,7 @@ export async function* retainedGeometryEvents(
         throw error;
       }
       if ('idle' in pulled) {
-        if (unreported) report();
+        if (unreported) { report(); phase(); }
         yield { type: 'progress', phase: 'workers' };
         continue;
       }
@@ -205,9 +209,8 @@ export async function* retainedGeometryEvents(
         }
         case 'published': {
           recordRetainedPublication(acc, event);
-          report(true);
+          productReport();
           yield { type: 'batch', meshes: event.meshes, instancedShards: event.instancedShards, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
-          phase();
           break;
         }
         case 'refused':
@@ -216,8 +219,7 @@ export async function* retainedGeometryEvents(
             ...(event.origin ? { origin: event.origin } : {}),
             ...(event.kernelStatus !== undefined ? { kernelStatus: event.kernelStatus } : {}),
           });
-          report(true);
-          phase();
+          productReport();
           break;
         case 'cancelled':
           unpublished(acc, { expressId: event.expressId, ifcType: '', code: 'cancelled' });
@@ -226,6 +228,7 @@ export async function* retainedGeometryEvents(
           options.onWorkerMemory?.(event.wasmHeapBytes);
           break;
         case 'complete':
+          phase();
           closeRun(acc);
           finished = true;
           report();

@@ -136,6 +136,21 @@ describe('#7955 M2-C retained geometry source', () => {
     client.unload();
   });
 
+  // #7955 Holter: one store write per product kept the main thread committing React, at 11 products/s.
+  it('writes the store at most once per interval across many products, and every boundary at once', async () => {
+    const candidates = Array.from({ length: 500 }, (_, i) => i + 1);
+    const script = [start(candidates), ...candidates.map((id) => id % 2 ? published(id) : refused(id, 'incomplete')), complete];
+    const { client, events, phases, summaries, last } = run(new ScriptedHostWorker(script));
+    await collect(events);
+    const products = phases.filter((phase) => phase.phase === 'products');
+    assert.ok(products.length <= 4, `${products.length} phases for 500 products`);
+    assert.ok(summaries.length <= 6, `${summaries.length} summaries for 500 products`);
+    assert.deepEqual(products.at(-1), { phase: 'products', done: 500, candidates: 500, refused: 250 });
+    assert.equal(last().published, 250);
+    assert.equal(last().completeness, 'incomplete');
+    client.unload();
+  });
+
   it('owns its stall budget: heartbeats while waiting, then a typed stall that ends the host', async () => {
     const worker = new ScriptedHostWorker([start([1, 2]), published(1)]);
     const { client, events, last } = run(worker, { productBudgetMs: 60, heartbeatMs: 10 });

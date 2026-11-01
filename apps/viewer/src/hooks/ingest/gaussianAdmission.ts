@@ -33,20 +33,25 @@ function headerEnd(text: string): number {
 
 /** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
-  const prefix = new TextDecoder().decode(new Uint8Array(head, 0, Math.min(head.byteLength, 3)));
+  // Decode the bounded probe before checking magic, just like parsePlyHeader.
+  // TextDecoder consumes an initial UTF-8 BOM; a three-byte probe can contain
+  // only that BOM and miss the following magic. Do not trim arbitrary prefixes.
+  const prefix = new TextDecoder().decode(head);
   // Match the existing PLY detector/parser's magic prefix, including padded first lines.
   // Content wins over the suffix: an ordinary PLY named .splat remains a point cloud.
-  if (prefix !== 'ply') {
+  if (!prefix.startsWith('ply')) {
     if (!/\.splat$/i.test(file.name)) return { kind: 'ordinary' };
     if (!file.size || file.size % 32 !== 0) return { kind: 'invalid', reason: 'Truncated or empty .splat input (32-byte records required).' };
     const count = file.size / 32;
     const reason = limits(file.size, count, 14);
     return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0 };
   }
-  let text = new TextDecoder().decode(head);
+  // Retain BOM bytes in the header used for the payload lower-bound check.
+  const headerDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
+  let text = headerDecoder.decode(head);
   let end = headerEnd(text);
   if (!end && file.size > head.byteLength) {
-    text = new TextDecoder().decode(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer());
+    text = headerDecoder.decode(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer());
     end = headerEnd(text);
   }
   if (!end || end > MAX_HEADER_BYTES) {

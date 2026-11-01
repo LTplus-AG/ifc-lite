@@ -160,3 +160,52 @@ it('Unicode trim whitespace preserves downstream property declarations and admis
     }
   }
 });
+
+// #8582 r3: exercise the real decoder's prefix boundary, not a BOM byte special case.
+const leadingCases = [
+  { label: 'none', bytes: [], accepted: true },
+  { label: 'UTF-8 BOM', bytes: [0xef, 0xbb, 0xbf], accepted: true },
+  { label: 'two UTF-8 BOMs', bytes: [0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf], accepted: false },
+  { label: 'space', bytes: [0x20], accepted: false },
+  { label: 'tab', bytes: [0x09], accepted: false },
+  { label: 'line feed', bytes: [0x0a], accepted: false },
+  { label: 'form feed', bytes: [0x0c], accepted: false },
+  { label: 'BOM then space', bytes: [0xef, 0xbb, 0xbf, 0x20], accepted: false },
+  { label: 'space then BOM', bytes: [0x20, 0xef, 0xbb, 0xbf], accepted: false },
+  { label: 'UTF-16 BOM', bytes: [0xff, 0xfe], accepted: false },
+  { label: 'incomplete UTF-8 BOM', bytes: [0xef, 0xbb], accepted: false },
+  { label: 'invalid UTF-8', bytes: [0xff], accepted: false },
+  { label: 'NUL', bytes: [0], accepted: false },
+];
+for (const entry of leadingCases) for (const gaussian of [false, true]) {
+  it(`decoded magic boundary ${entry.label}, ${gaussian ? 'Gaussian' : 'ordinary'} (#8582 r3)`, async () => {
+    const file = new File([new Uint8Array(entry.bytes), ply(gaussian ? fields : ['x', 'y', 'z'])], 'capture.ply');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const source = new PlyStreamingSource(file);
+    try {
+      if (entry.accepted) {
+        assert.deepEqual(parsePlyHeader(bytes).elements[0].properties.map(p => p.name), gaussian ? fields : ['x', 'y', 'z']);
+        assert.equal((await source.open()).totalPointCount, 1);
+        // Existing BOM reader offsets are not corrected here; prove it emits a
+        // record, without claiming its coordinates are decoded correctly.
+        assert.equal((await source.next(1))!.positions.length, 3);
+      } else {
+        assert.throws(() => parsePlyHeader(bytes), /missing magic/);
+        await assert.rejects(source.open(), /missing magic/);
+      }
+      assert.equal((await inspect(file)).kind, entry.accepted && gaussian ? 'disabled' : 'ordinary');
+    } finally { source.close(); }
+  });
+}
+it('BOM bytes cannot disguise a truncated Gaussian payload or exceed the header read bound (#8582 r3)', async () => {
+  for (const length of [0, 53, 55]) {
+    const file = new File([new Uint8Array([0xef, 0xbb, 0xbf]), ply(fields, 1, new Uint8Array(length))], 'capture.ply');
+    assert.equal((await inspect(file)).kind, 'invalid');
+  }
+  const file = new File([new Uint8Array([0xef, 0xbb, 0xbf]), ply(fields, 1, undefined, `comment ${'a'.repeat(70_000)}\n`)], 'capture.ply');
+  const reads: number[] = [];
+  const slice = file.slice.bind(file);
+  file.slice = (start, end) => { reads.push(end ?? file.size); return slice(start, end); };
+  assert.equal((await inspect(file)).kind, 'invalid');
+  assert.deepEqual(reads, [4096, 65536]);
+});

@@ -146,3 +146,11 @@ it('form-feed PLY terminators preserve the canonical ordinary point-cloud path (
   await act(async () => loader!.loadFile(new File([header, new Uint8Array(12)], 'form-feed.ply')));
   assert.match(useViewerStore.getState().error ?? '', /Renderer not initialised/);
 });
+
+for (const gaussian of [false, true]) it(`BOM ${gaussian ? 'Gaussian refusal' : 'ordinary compatibility'} through canonical loadFile (#8582 r3)`, async () => {
+  const header = gaussian ? gaussianHeader : 'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n';
+  const file = new File([new Uint8Array([0xef, 0xbb, 0xbf]), header, new Uint8Array(gaussian ? 56 : 12)], 'capture.ply');
+  await act(async () => loader!.loadFile(file));
+  assert.match(useViewerStore.getState().error ?? '', gaussian ? /Gaussian splat loading is disabled/ : /Renderer not initialised/);
+  assert.equal(useViewerStore.getState().pointCloudAssetCount, 0);
+});

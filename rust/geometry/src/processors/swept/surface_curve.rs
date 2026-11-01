@@ -41,11 +41,11 @@ use plan::SectionRoll;
 /// rolled them 90° (width and height swapped). Reference surfaces evaluated:
 /// `IfcSurfaceOfLinearExtrusion` (normal from its own SweptCurve direction,
 /// so a directrix running against it keeps the normal) and `IfcPlane`. Any
-/// other surface, an absent slot 5, or a reference parallel to the tangent at
-/// any sample keeps the RMF of `IfcSweptDiskSolid` for the whole sweep, which
-/// is exact for circular profiles (the duct elbows). Both entity types share
-/// the attribute layout for slots 0..=4 and only differ in slot 5, so one
-/// processor handles both.
+/// other surface, an absent slot 5, one that fails to read (logged), or a
+/// reference parallel to the tangent at any sample keeps the RMF of
+/// `IfcSweptDiskSolid` for the whole sweep, which is exact for circular
+/// profiles (the duct elbows). Both entity types share the attribute layout
+/// for slots 0..=4 and only differ in slot 5, so one processor handles both.
 pub struct SurfaceCurveSweptAreaSolidProcessor {
     profile_processor: ProfileProcessor,
 }
@@ -149,10 +149,29 @@ impl SurfaceCurveSweptAreaSolidProcessor {
         // --- Slot 5: the section roll, in the same (placed) frame as `points` ------
         // A round section centred on the directrix is the same at any roll: it
         // keeps the RMF, so round sweeps (the #1485 duct elbows) stay unchanged.
-        let roll = if section_is_round(&profile_entity, decoder)? {
-            None
-        } else {
-            self.section_roll(entity, decoder, &position, &points, quality)?
+        // Slot 5 only orients the section: one that fails to read keeps the
+        // RMF, the mesh this solid had before slot 5 was read, instead of
+        // dropping the solid. A refusal the decoder counted on the way stays
+        // counted.
+        let roll = section_is_round(&profile_entity, decoder).and_then(|round| {
+            if round { Ok(None) } else { self.section_roll(entity, decoder, &position, &points, quality) }
+        });
+        let roll = match roll {
+            Ok(roll) => roll,
+            Err(error) => {
+                crate::diag::diag_warn!(
+                    { entity_id = entity.id, error = %error,
+                      "surface_curve: section reference not read, keeping the rotation-minimising frame" }
+                    else {
+                        eprintln!(
+                            "[ifc-lite][surface_curve] #{}: section reference not read ({error}); \
+                             keeping the rotation-minimising frame",
+                            entity.id,
+                        );
+                    }
+                );
+                None
+            }
         };
 
         Ok(Some(SurfaceCurveSweepPlan { regions, points, entity_id: entity.id, roll }))
@@ -201,7 +220,8 @@ impl SurfaceCurveSweptAreaSolidProcessor {
     /// `IfcFixedReferenceSweptAreaSolid`. The reference is defined in the
     /// solid's own frame, like the directrix, so it takes the same `position`.
     /// `None` when the slot is empty or the surface type is not evaluated yet;
-    /// the sweep then keeps the RMF roll.
+    /// the sweep then keeps the RMF roll. An `Err` (a reference that fails to
+    /// read) does the same in `lower()`.
     fn section_roll(
         &self, entity: &DecodedEntity, decoder: &mut EntityDecoder, position: &Matrix4<f64>,
         points: &[Point3<f64>], quality: TessellationQuality,

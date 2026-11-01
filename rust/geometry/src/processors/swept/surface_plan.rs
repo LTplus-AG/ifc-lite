@@ -30,8 +30,9 @@ pub(crate) struct SurfaceCurveSweepPlan {
     pub(super) regions: Vec<Profile2D>,
     pub(super) points: Vec<Point3<f64>>,
     pub(super) entity_id: u32,
-    /// `None`: no reference we can evaluate (absent, or a surface type not
-    /// handled yet); the rotation-minimising frame is used, as before.
+    /// `None`: no reference we can evaluate (absent, a surface type not
+    /// handled yet, or one that fails to read); the rotation-minimising frame
+    /// is used, as before.
     pub(super) roll: Option<SectionRoll>,
 }
 

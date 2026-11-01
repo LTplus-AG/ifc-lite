@@ -46,6 +46,10 @@
  * ends on, and a probe that runs before its successor lands finds no evidence
  * and runs in full. A batch ran the push-only lanes too, so `replay_queue=true`
  * lets test.yml skip those as well.
+ *
+ * A commit touching a NO_REPLAY path also replays this way when a later commit
+ * on main touches one too: that later full run re-keys the caches for the tree
+ * main ends on, so only the newest of them needs to run in full.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -107,19 +111,22 @@ const isGreenBatchRun = (r, repo) =>
  *   artifactNamesByRun: Record<string, string[]>,
  *   repo?: string,
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
+ *   laterChangedFiles?: string[],
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [] } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [] } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
   if (!SHA.test(before ?? '') || parentSha !== before) {
     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
   }
-  const blocker = changedFiles.find((f) => NO_REPLAY.some((re) => re.test(f)));
-  if (blocker) return { replay: false, reason: `${blocker} changed; caches that only main writes must be re-keyed by a full run` };
+  const keysCaches = (f) => NO_REPLAY.some((re) => re.test(f));
+  const blocker = changedFiles.find(keysCaches);
+  const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
+  if (blocker && !laterChangedFiles.some(keysCaches)) return { replay: false, reason: blockerReason };
 
   const merged = pulls.filter((p) => p && p.merged_at && p.merge_commit_sha === pushSha && p.base?.ref === 'main');
   if (merged.length !== 1) return { replay: false, reason: `${merged.length} merged PRs into main produced ${pushSha.slice(0, 9)}; need exactly one` };
@@ -140,13 +147,14 @@ export function decidePushReplay(input) {
     )
     .sort(newestFirst);
   const hit = green.find((r) => (artifactNamesByRun[String(r.id)] ?? []).includes(wanted));
-  if (hit) return { replay: true, runId: hit.id, pr: pr.number };
+  if (hit && !blocker) return { replay: true, runId: hit.id, pr: pr.number };
 
   for (const { runs: treeRuns } of queueEvidence) {
     const proven = treeRuns.filter((r) => isGreenBatchRun(r, repo)).sort(newestFirst)[0];
     if (proven) return { replay: true, runId: proven.id, pr: pr.number, queue: true };
   }
 
+  if (blocker) return { replay: false, reason: blockerReason };
   if (green.length === 0) return { replay: false, reason: `PR #${pr.number}'s final head ${head.slice(0, 9)} has no green Test run` };
   return { replay: false, reason: `no green Test run of PR #${pr.number} tested tree ${pushTree.slice(0, 9)} (main moved, or the run predates tree recording)` };
 }
@@ -184,14 +192,14 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
       artifactNamesByRun[String(r.id)] = artifactNames(repo, r.id);
     }
   }
-  const queueEvidence = readQueueEvidence(repo, pushSha, pushTree);
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence };
+  const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles };
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */
 function readQueueEvidence(repo, pushSha, pushTree) {
   const compare = gh(
-    ['api', `repos/${repo}/compare/${pushSha}...main?per_page=${MAX_LATER_COMMITS}`, '--method', 'GET'],
+    ['api', `repos/${repo}/compare/${pushSha}...main?per_page=100`, '--method', 'GET'],
     `the commits on main after ${pushSha.slice(0, 9)}`,
   );
   if (!compare || typeof compare.status !== 'string' || !Array.isArray(compare.commits)) {
@@ -203,7 +211,11 @@ function readQueueEvidence(repo, pushSha, pushTree) {
   if (trees.some((tree) => typeof tree !== 'string' || !SHA.test(tree))) {
     throw new GhError('GH_BAD_SHAPE', 'compare commit carried no valid tree');
   }
-  return [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) }));
+  // A truncated or missing file list only means a full run.
+  const laterChangedFiles = compare.status === 'ahead' && Array.isArray(compare.files)
+    ? compare.files.map((f) => f?.filename).filter((f) => typeof f === 'string')
+    : [];
+  return { queueEvidence: [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) })), laterChangedFiles };
 }
 
 function runsThatRecorded(repo, tree) {

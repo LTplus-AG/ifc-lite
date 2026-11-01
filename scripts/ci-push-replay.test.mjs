@@ -152,6 +152,24 @@ test('the queue route keeps every guard the PR route has', () => {
   assert.equal(decidePushReplay(queued(evidence, { pulls: [] })).replay, false, 'no merged PR');
 });
 
+test('a cache-keying commit replays only when a later main commit re-keys the caches', () => {
+  const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
+  const workflow = { changedFiles: ['.github/workflows/test.yml'] };
+  assert.deepEqual(
+    decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['Cargo.lock', 'x.ts'] })),
+    { replay: true, runId: 9, pr: 7, queue: true },
+  );
+  assert.match(decidePushReplay(queued(evidence, { ...workflow, laterChangedFiles: ['x.ts'] })).reason, /re-keyed/, 'nothing later re-keys');
+  assert.match(decidePushReplay(queued(evidence, workflow)).reason, /re-keyed/, 'it is the newest');
+  assert.match(
+    decidePushReplay(queued([{ tree: TREE, runs: [] }], { ...workflow, laterChangedFiles: ['Cargo.lock'] })).reason,
+    /re-keyed/,
+    'a later re-key without a proven tree is still a full run',
+  );
+  // A PR run never ran the push-only lanes, so it cannot stand in for a queue run here.
+  assert.equal(decidePushReplay(base({ ...workflow, laterChangedFiles: ['Cargo.lock'] })).replay, false);
+});
+
 test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {
   const d = decidePushReplay(base({ repo: REPO, queueEvidence: [{ tree: TREE, runs: [batchRun()] }] }));
   assert.deepEqual(d, { replay: true, runId: 1, pr: 7 });

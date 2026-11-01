@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/check-retained-witnesses.mjs",
+  "mutation": "tests/evidence/real-fixture-witnesses/behaviour.oracle.patch",
+  "test": "scripts/check-retained-witnesses.test.mjs",
+  "why": "A green test runner filtered by grep/shard must not satisfy the lane when any registered CLI or viewer witness is missing."
+}

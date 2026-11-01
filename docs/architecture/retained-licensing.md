@@ -246,20 +246,19 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
    failures remain visible; this record does not waive publication prerequisites.
 
-7. **Open: two OR-licensed components still need explicit elections.** The
-   maintainer approved one checked default (2026-11-01): every OR-licensed
-   component offering MIT elects MIT only when its MIT text is preserved and
-   verified. The policy is recorded once in `supplemental.json`; explicit
-   elections, including wasm_sync's Apache-2.0 choice, take precedence.
+7. **Resolved by the maintainer (2026-11-01): OR-licence elections and
+   Emscripten attribution.** Every OR-licensed component offering MIT elects MIT
+   only when its MIT text is preserved and verified. This checked default is
+   recorded once in `supplemental.json`; explicit elections take precedence.
    Mandatory conjunctive and bundled-component terms remain applicable.
-   chrono 0.4.44 and Emscripten runtime offer MIT and have preserved MIT texts.
-   The pinned Emscripten `AUTHORS` file is collected alongside its complete
-   `LICENSE`. The check still fails for:
-   * ryu-js 1.0.3: `Apache-2.0 OR BSL-1.0`.
-   * ryu 1.0.23: `Apache-2.0 OR BSL-1.0`.
-
-   Neither offers MIT or has a recorded explicit election. No choice is inferred
-   for either component. Item 7 remains open until the check passes.
+   chrono 0.4.44 and Emscripten runtime resolve to MIT under this policy.
+   The pinned Emscripten `AUTHORS` file is preserved alongside its complete
+   `LICENSE`. The maintainer explicitly elected Apache-2.0 for ryu 1.0.23 and
+   ryu-js 1.0.3 from `Apache-2.0 OR BSL-1.0`; each record preserves the canonical
+   Apache-2.0 text and uses the same attribution format as wasm_sync.
+   Existing wasm_sync, r-efi and wide elections remain unchanged.
+   The guard passes on the real manifest: every OR-licensed component resolves
+   through an explicit election or the checked MIT default.
    dlmalloc's public-domain/CC0 dedication is not an alternative-licence declaration.
 
 Revit fixture rights: maintainer confirmed 2026-11-01 for test and evidence use.

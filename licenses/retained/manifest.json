@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "a2c03a6756e2b150ed6904e4fe56a2b78f18bcfecc41f30d090517e06afc07c9",
+  "manifestSha256": "28c8d6f3df4f4d90731f406ae2894147f4cce39bc6df2fbd9f96e51d56986a62",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1395,6 +1395,32 @@
         "policy": "MIT-when-offered",
         "election": "MIT",
         "attribution": "Maintainer approved 2026-11-01: elect MIT for every OR-licensed component offering MIT only when its MIT text is preserved and verified; explicit elections take precedence; mandatory conjunctive and bundled-component terms remain applicable."
+      },
+      {
+        "name": "ryu",
+        "version": "1.0.23",
+        "election": "Apache-2.0",
+        "attribution": "ryu 1.0.23 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0",
+        "notices": [
+          {
+            "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+            "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+            "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+          }
+        ]
+      },
+      {
+        "name": "ryu-js",
+        "version": "1.0.3",
+        "election": "Apache-2.0",
+        "attribution": "ryu-js 1.0.3 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0",
+        "notices": [
+          {
+            "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+            "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+            "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+          }
+        ]
       }
     ]
   },
@@ -3919,8 +3945,15 @@
           "origin": "LICENSE-BOOST",
           "file": "texts/c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566.txt",
           "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        },
+        {
+          "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+          "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
         }
-      ]
+      ],
+      "election": "Apache-2.0",
+      "attribution": "ryu-js 1.0.3 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0"
     },
     {
       "name": "ryu",
@@ -3938,8 +3971,15 @@
           "origin": "LICENSE-BOOST",
           "file": "texts/c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566.txt",
           "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        },
+        {
+          "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+          "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
         }
-      ]
+      ],
+      "election": "Apache-2.0",
+      "attribution": "ryu 1.0.23 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0"
     },
     {
       "name": "safe_arch",

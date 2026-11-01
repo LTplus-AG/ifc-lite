@@ -78,13 +78,13 @@ export function isTestSupportPath(path) {
 
 /**
  * Playwright specs (#4404, #4340, #6267): a `*.spec.ts` that imports
- * `@playwright/test` runs only under `playwright test`, against a built
+ * `@playwright/test`, or its Mergify wrapper `@mergifyio/playwright`, runs only under `playwright test`, against a built
  * viewer, in a real browser. No package `scripts.test` can run it, so the
  * dispatcher partitions these out of the node/cargo/pytest planning and hands
  * them to the browser observer (`revert-oracle-browser-run.mjs`), which runs
  * them only when no cheaper changed test already observed the revert.
  */
-const PLAYWRIGHT_IMPORT_RE = /(^|\n)\s*import\s[^;]*?\sfrom\s+['"]@playwright\/test['"]/;
+const PLAYWRIGHT_IMPORT_RE = /(^|\n)\s*import\s[^;]*?\sfrom\s+['"](?:@playwright\/test|@mergifyio\/playwright)['"]/;
 
 /** @param {string} source file text */
 export function isBrowserSpecSource(source) {

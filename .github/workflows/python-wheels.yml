@@ -103,9 +103,12 @@ jobs:
       # rather than adding a job that recompiles the workspace.
       - name: Test wheel
         if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64'
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest
+          # The latest pytest-mergify needs Python 3.10; 2026.10.5 is the last for this 3.9 job.
+          python -m pip install pytest 'pytest-mergify>=2026.10.5'
           python -m pip install --force-reinstall rust/python/dist/*.whl
           python -m pytest rust/python/tests -q
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4

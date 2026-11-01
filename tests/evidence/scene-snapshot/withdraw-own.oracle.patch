@@ -1,13 +1,13 @@
 diff --git b/apps/viewer/src/components/viewer/sceneSnapshotOwnership.ts a/apps/viewer/src/components/viewer/sceneSnapshotOwnership.ts
-index c074a19af3..d30560325d 100644
+index e069873ebc..b4a7dc5026 100644
 --- b/apps/viewer/src/components/viewer/sceneSnapshotOwnership.ts
 +++ a/apps/viewer/src/components/viewer/sceneSnapshotOwnership.ts
-@@ -35,7 +35,7 @@ export function setPendingSceneSnapshot(adoption: object): void {
+@@ -35,7 +35,7 @@ export function setPendingSceneSnapshot(adoption: object, requeueShards: () => v
  
  /** This adoption's load is over. A newer load's pending adoption stays. */
  export function withdrawPendingSceneSnapshot(adoption: object): void {
--  pendingAdoption = null;
-+  if (pendingAdoption === adoption) pendingAdoption = null;
+-  pending = null;
++  if (pending?.adoption === adoption) pending = null;
  }
  
- /**
+ type SnapshotScene = Pick<SceneContents, 'isSceneSnapshotHydrating' | 'hydrateSceneSnapshot' | 'removeInstancedTemplatesForModel'>;

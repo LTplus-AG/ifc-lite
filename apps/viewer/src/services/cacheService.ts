@@ -20,6 +20,8 @@
 export interface CacheEntryMeta {
   lastModified?: number;
   fullSourceHash?: string;
+  /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
+  sourceContentKey?: string;
 }
 
 /**
@@ -36,6 +38,8 @@ export interface CacheResult {
   lastModified?: number;
   /** True full-file content hash (SHA-256 hex) stored at write; mesh-only revalidation. */
   fullSourceHash?: string;
+  /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
+  sourceContentKey?: string;
 }
 
 /**

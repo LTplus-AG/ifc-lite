@@ -41,6 +41,8 @@ interface CacheEntry {
    * fingerprint. Absent when Web Crypto was unavailable at write.
    */
   fullSourceHash?: string;
+  /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
+  sourceContentKey?: string;
 }
 
 /**
@@ -248,12 +250,16 @@ export interface CacheResult {
   lastModified?: number;
   /** True full-file content hash (SHA-256 hex) stored at write; see {@link CacheEntry}. */
   fullSourceHash?: string;
+  /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
+  sourceContentKey?: string;
 }
 
 /** Extra validation metadata persisted alongside a cache entry (mesh-only tier). */
 export interface CacheEntryMeta {
   lastModified?: number;
   fullSourceHash?: string;
+  /** The source's `IfcSourceBytes.contentKey` at write, so a hit need not re-hash the source on the main thread. */
+  sourceContentKey?: string;
 }
 
 /**
@@ -277,6 +283,7 @@ export async function getCached(key: string): Promise<CacheResult | null> {
             sourceBuffer: entry.sourceBuffer,
             lastModified: entry.lastModified,
             fullSourceHash: entry.fullSourceHash,
+            sourceContentKey: entry.sourceContentKey,
           });
         } else {
           resolve(null);
@@ -354,6 +361,7 @@ export async function setCached(
         createdAt: Date.now(),
         lastModified: meta?.lastModified,
         fullSourceHash: meta?.fullSourceHash,
+        sourceContentKey: meta?.sourceContentKey,
       };
 
       tx.oncomplete = () => done();

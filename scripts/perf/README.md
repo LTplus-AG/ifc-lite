@@ -60,6 +60,30 @@ bimodal in every build including base, so one slow round says nothing. Wait for
 post-load CPU to settle before an orbit, or source compaction reads as a
 frame-CPU regression.
 
+## C2-perf: opening meshing and extension repeats (ROUTER-21, ROUTER-20, #8385)
+
+**Declined: mesh each opening once (ROUTER-21).** On ISSUE_129 the 361
+openings are meshed 1,351 times: 235 three times, 55 four times, 71 six times
+(a body walk, a bounds probe and an item-mesh probe each, plus rectangle-capture
+meshes and the quiet planar residual pass). All 1,351 runs cost only 62.6 M Ir,
+0.225% of the 27.75 G geometry Ir, and 58.2 M of that is the 432 body walks;
+the 919 item probes are about 4.7 k Ir each. Meshing once saves at most the 71
+repeated bodies and every item probe: about 13.9 M Ir, 0.05%, a tenth of the
+0.5% bar. Deleting all opening capture work would still be only 0.39%.
+
+**Declined: memoise the through-host extension (ROUTER-20).**
+`extend_opening_mesh_through_host` costs 237 M Ir (0.85%) over 170 calls, but a
+byte-safe memo hits only calls on an uncut host with a bit-equal direction:
+45 of the 67 repeats, nearly all on small hosts. Those cost about 21 M Ir,
+0.075%. The expensive repeats follow an earlier cluster cut of a large host and
+must be recomputed.
+
+Together at most about 0.13% of ISSUE_129 geometry. Base `ea0139026b`; call
+counts and costs from callgrind, cross-checked with a throwaway counter patch.
+Counts, sources and receipts: [evidence](../../tests/evidence/router-21/README.md).
+Do not re-spike without a mechanism that removes the body walk or the extension
+itself, not its repeats.
+
 ## C4-14 independent levers (#8341)
 
 **Shipped: one symbolic style-index scan (PROCESSING-SYM-18).** The styled-item

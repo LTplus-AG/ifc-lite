@@ -58,7 +58,7 @@ try {
     s.cameraCallbacks.setPresetDirection({ x: 1, y: 1.2, z: 1 });
     for (let i = 0; i < 3; i++) s.cameraCallbacks.zoomOut();
   });
-  for (const notice of await page.getByRole('button', { name: 'Dismiss notification', exact: true }).all()) await notice.click();
+  await page.getByRole('button', { name: 'Dismiss notification', exact: true }).evaluateAll(buttons => buttons.forEach(button => button.click()));
   await page.waitForTimeout(1800); // Allow the untimed camera animation and GPU upload to settle.
   await page.screenshot({ path: `${out}/rotterdam-background.png` });
   const hide = page.getByRole('button', { name: /^Hide .*pdok-schiehaven/ });

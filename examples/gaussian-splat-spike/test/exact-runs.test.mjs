@@ -99,7 +99,7 @@ test('#8564 overflow preserves populated buffers, bytes and ownership until dest
     const allocations = f.device.buffers.length;
     f.renderer.sortedReferences = references(129);
     assert.throws(() => f.renderer.rebuildDrawRuns(), /Exact source-run budget exceeded/);
-    assert.strictEqual(f.renderer.drawRuns, runs, 'rejection must not detach the owned run list');
+    assert.ok(f.renderer.drawRuns === runs, 'rejection must not detach the owned run list');
     assert.equal(f.device.buffers.length, allocations, 'rejection must not allocate');
     buffers.forEach((buffer, i) => {
       assert.equal(buffer.writes, 0, 'rejection must not overwrite the previous frame');

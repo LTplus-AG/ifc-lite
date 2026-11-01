@@ -1,7 +1,7 @@
 diff --git a/rust/retained-native/examples/compare/checks/mod.rs b/rust/retained-native/examples/compare/checks/mod.rs
 --- a/rust/retained-native/examples/compare/checks/mod.rs
 +++ b/rust/retained-native/examples/compare/checks/mod.rs
-@@ -38,7 +38,10 @@ impl<'a> ModelSource<'a> {
+@@ -39,7 +39,10 @@ impl<'a> ModelSource<'a> {
      }
      /// The project length scale exactly as a fresh plain decoder resolves it.
      pub fn unit_scale(&self) -> f64 {
@@ -11,5 +11,5 @@ diff --git a/rust/retained-native/examples/compare/checks/mod.rs b/rust/retained
 +            ifc_lite_geometry::GeometryRouter::with_units(self.bytes, &mut decoder).unit_scale()
 +        })
      }
- }
- // Existing slices can continue accepting their old analytic-only argument.
+     /// The colour and texture map spans every face-set surface check reads, scanned once.
+     pub fn surface_maps(&self) -> &[(usize, usize, bool)] {

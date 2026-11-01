@@ -100,3 +100,25 @@ fn issue_7955_shared_mapped_and_type_map_oracles_equal_their_per_call_versions()
     let per_call = type_maps::expected(TYPE_MAPS.as_bytes(), &sources, &maps[&105]).unwrap().unwrap();
     assert_eq!(format!("{shared:?}"), format!("{per_call:?}"));
 }
+
+#[test]
+fn issue_7955_shared_surface_maps_find_every_palette_and_texture() {
+    // #8291 presentation fixture: palette and texture face sets.
+    const PRESENTED: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc");
+    use ifc_lite_retained_native::oracle::face_sets;
+    let bundle = SourceBundle::new(PRESENTED.as_bytes().to_vec());
+    let model = ModelSource::new(PRESENTED.as_bytes(), &bundle);
+    let (mut palettes, mut textures, mut scanner) = (0, 0, EntityScanner::new(PRESENTED.as_bytes()));
+    while let Some((id, name, ..)) = scanner.next_entity() {
+        if !name.eq_ignore_ascii_case("IFCTRIANGULATEDFACESET") && !name.eq_ignore_ascii_case("IFCPOLYGONALFACESET") { continue; }
+        let mut decoder = model.decoder();
+        let item = decoder.decode_by_id(id).unwrap();
+        let shared = face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder);
+        let per_call = face_sets::authored_surface(PRESENTED.as_bytes(), &item, &mut EntityDecoder::new(PRESENTED.as_bytes()));
+        assert_eq!((&shared.palette, &shared.uvs), (&per_call.palette, &per_call.uvs), "#{id}");
+        palettes += usize::from(shared.palette.is_some());
+        textures += usize::from(shared.uvs.is_some());
+    }
+    // The per-call version now reads the same span list, so pin that both kinds are found.
+    assert!(palettes > 0 && textures > 0, "palettes {palettes}, textures {textures}");
+}

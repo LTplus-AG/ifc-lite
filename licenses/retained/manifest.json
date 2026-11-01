@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "c63e5aa37efc9e3280cd9f386dfd996129ff831b3a65402168088cf1b6d75241",
+  "manifestSha256": "a2c03a6756e2b150ed6904e4fe56a2b78f18bcfecc41f30d090517e06afc07c9",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1390,6 +1390,11 @@
             "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
           }
         ]
+      },
+      {
+        "policy": "MIT-when-offered",
+        "election": "MIT",
+        "attribution": "Maintainer approved 2026-11-01: elect MIT for every OR-licensed component offering MIT only when its MIT text is preserved and verified; explicit elections take precedence; mandatory conjunctive and bundled-component terms remain applicable."
       }
     ]
   },
@@ -1424,6 +1429,11 @@
           "origin": "LICENSE",
           "file": "texts/620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86.txt",
           "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+        },
+        {
+          "origin": "AUTHORS",
+          "file": "texts/56f7df65203d4858dac19cafe3a84a8c49abaff56b67d32d2d463d5fef6e440b.txt",
+          "sha256": "56f7df65203d4858dac19cafe3a84a8c49abaff56b67d32d2d463d5fef6e440b"
         }
       ]
     },

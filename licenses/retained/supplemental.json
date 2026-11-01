@@ -86,5 +86,10 @@
         "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
       }
     ]
+  },
+  {
+    "policy": "MIT-when-offered",
+    "election": "MIT",
+    "attribution": "Maintainer approved 2026-11-01: elect MIT for every OR-licensed component offering MIT only when its MIT text is preserved and verified; explicit elections take precedence; mandatory conjunctive and bundled-component terms remain applicable."
   }
 ]

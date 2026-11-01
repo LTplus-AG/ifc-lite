@@ -80,8 +80,9 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
     }
     if (turn !== 0) {
       const rotation = resolveRotationState(input.dataStore, input.view, input.editor, root.expressId);
-      if (!rotation || rotation.refDirectionId === null) throw new Error(`#${root.expressId} has no explicit writable reference direction`);
-      writtenIds.push(rotation.refDirectionId);
+      if (!rotation) throw new Error(`#${root.expressId} has no writable axis placement`);
+      // An implicit RefDirection is materialised onto the axis placement itself (#8446).
+      writtenIds.push(rotation.refDirectionId ?? rotation.axisPlacementId);
     }
   }
   if (new Set(writtenIds).size !== writtenIds.length) throw new Error('The selection shares writable placement leaves; shared occurrences cannot be transformed in place');

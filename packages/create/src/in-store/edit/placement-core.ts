@@ -22,6 +22,7 @@
 
 import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { firstProjAxis } from '@ifc-lite/data';
 
 /** Synchronous source decoding for headless edits. The viewer may override
  * this reader at boot; overlay reads never require a source buffer. */
@@ -290,9 +291,10 @@ export function setProductPosition(
 
 /**
  * Snapshot of the placement's IfcAxis2Placement3D rotation.
- * A null direction id means the slot is implicit (STEP `$`) and the
- * STEP default is reported: `[1, 0, 0]` for RefDirection, `[0, 0, 1]`
- * for Axis. Rotation materialises an implicit slot first (#8446).
+ * A null direction id means the slot is implicit (STEP `$`). An implicit
+ * RefDirection is reported as the renderer's fill, `firstProjAxis(Axis)`
+ * (#5992): `[1, 0, 0]` when Axis is implicit too or `+Z`, the projection
+ * of +X otherwise. Rotation materialises the implicit slots first (#8446).
  */
 export interface RotationState {
   axisPlacementId: number;
@@ -319,13 +321,12 @@ export function resolveRotationState(
   const axisDirectionId = asExpressIdRef(axisAttrs[1]);
   const refDirectionId = asExpressIdRef(axisAttrs[2]);
   if (refDirectionId === null) {
-    return {
-      axisPlacementId: chain.axisPlacementId,
-      axisDirectionId,
-      refDirectionId: null,
-      refDirection: [1, 0, 0],
-      yawZ: 0,
-    };
+    // The frame the renderer draws, not +X: a tilted Axis moves the fill.
+    const axisAttrs = axisDirectionId === null ? null : readPlacementAttributes(dataStore, view, editor, axisDirectionId);
+    const axis = axisAttrs ? asDirectionRatios(axisAttrs[0]) : null;
+    if (axisDirectionId !== null && !axis) return null;
+    const fill = axis ? firstProjAxis(axis) : [1, 0, 0] as [number, number, number];
+    return { axisPlacementId: chain.axisPlacementId, axisDirectionId, refDirectionId: null, refDirection: fill, yawZ: Math.atan2(fill[1], fill[0]) };
   }
   const dirAttrs = readPlacementAttributes(dataStore, view, editor, refDirectionId);
   if (!dirAttrs) return null;
@@ -351,8 +352,8 @@ export type RotateResult =
  * When the placement leaves RefDirection implicit (the `[1, 0, 0]`
  * STEP default) — routine in parsed files, whose exporters omit
  * default axes — the implicit slots are first written explicitly
- * with their defaults: Axis as `[0, 0, 1]` when it too is implicit,
- * RefDirection as `[1, 0, 0]` (#8446). The writes go through the
+ * with the frame they stand for: Axis as `[0, 0, 1]` when it too is
+ * implicit, RefDirection as the `firstProjAxis(Axis)` fill (#8446). The writes go through the
  * caller's editor, so an atomic or compound caller groups them with
  * the rotation into one undo step and nothing is orphaned on undo.
  */
@@ -372,11 +373,9 @@ export function rotateProductYaw(
     };
   }
   const newYaw = state.yawZ + deltaYaw;
-  const newRatios: [number, number, number] = [
-    Math.cos(newYaw),
-    Math.sin(newYaw),
-    state.refDirection[2],
-  ];
+  // Keep the in-plane length so a tilted direction turns about Z unchanged in slope.
+  const inPlane = Math.hypot(state.refDirection[0], state.refDirection[1]);
+  const newRatios: [number, number, number] = [inPlane * Math.cos(newYaw), inPlane * Math.sin(newYaw), state.refDirection[2]];
   if (!Number.isFinite(newYaw) || !newRatios.every(Number.isFinite)) return { ok: false, reason: 'Placement rotation overflow: derived direction must be finite' };
   let refDirectionId = state.refDirectionId;
   if (refDirectionId === null) {

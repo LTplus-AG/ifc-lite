@@ -51,6 +51,7 @@ import { copyElements, copySources, withHostedFillings } from '@/lib/commands/mo
 import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
+import { presentEntityRotation, rotateImplicitRefEntity } from './mutation-rotate-entity.js';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -1404,17 +1405,11 @@ export const createMutationSlice: StateCreator<
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
       const editor = getOrCreateStoreEditor(get, set, modelId);
-      // resolveRotationState gives the current angle + whether RefDirection is
-      // explicit. When implicit we refuse (materialising a fresh IfcDirection
-      // needs multi-mutation atomic undo). Every in-store builder emits an
-      // explicit RefDirection, so that only trips on hand-rolled entities.
+      // An implicit RefDirection (`$`) is materialised from the frame the
+      // renderer draws, then turned, as one undo step (#8446).
       const state = editor ? resolveRotationState(dataStore, view, editor, expressId) : null;
       if (state && state.refDirectionId === null) {
-        return {
-          ok: false,
-          reason:
-            'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
-        };
+        return rotateImplicitRefEntity(api, get, modelId, expressId, deltaYaw);
       }
       if (state && state.refDirectionId !== null) {
         const newYaw = state.yawZ + deltaYaw;
@@ -1424,20 +1419,7 @@ export const createMutationSlice: StateCreator<
           state.refDirection[2],
         ];
         const mutation = get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
-        if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
-          // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
-          // = renderer yaw about +Y, same angle).
-          const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-          const meshes = meshesForOwningModel(get(), modelId);
-          const c = getEntityCenter(meshes, globalId);
-          if (c) {
-            get().setPendingMeshRotations(
-              new Map([[globalId, { angle: deltaYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
-            );
-          }
-        }
-        // Mirror to peers as the entity's placement (`usd::xformop` refDirection).
-        get().mirrorPlacementEdit(modelId, expressId, [0, 0, 0], deltaYaw);
+        presentEntityRotation(get, modelId, expressId, deltaYaw, mutation);
         return { ok: true, newYawZ: newYaw };
       }
     }

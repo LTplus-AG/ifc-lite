@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MPL-2.0
-import { File } from 'node:buffer';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectGaussianAdmission } from './gaussianAdmission.js';

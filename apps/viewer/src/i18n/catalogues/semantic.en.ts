@@ -3,6 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export const semanticEn = {
+  'semantic.resourceBinding': 'Resource binding (without ?)',
+  'semantic.resourceBindingHelp': 'Use id for ?id. For URI-encoded GlobalIds, choose Resource URI contains IFC GlobalId under IFC identity strategy.',
+  'semantic.advancedBindings': 'Advanced result bindings',
+  'semantic.optionalBindings': 'Optional: type, label, GlobalId and modelRevision are only used when present in the results.',
+  'semantic.advancedRevision': 'Advanced: associate revision with model',
+
   'semantic.validationEngines': 'JSON Schema / SHACL',
   'semantic.title': 'Linked records',
   'semantic.description': 'Connect building logbooks, product passports and evidence to loaded models.',
@@ -50,7 +56,6 @@ export const semanticEn = {
   'semantic.rawResults': 'SPARQL bindings',
   'semantic.graph': 'RDF graph to validate',
   'semantic.validateGraph': 'Validate supplied RDF graph',
-  'semantic.mapping': 'Result binding names',
   'semantic.selectRecord': 'Select {label}',
   'semantic.close': 'Close linked records',
   'semantic.done': 'Loaded {count} records.',

@@ -2,7 +2,7 @@
 //! Retained authored-source requests, kept apart from display meshes.
 //!
 //! A retained definition owns one captured authored source ([`RetainedRecipe`]:
-//! an extrusion or a swept disk) plus its encoded numerical request
+//! an extrusion, a swept disk or a face set) plus its encoded numerical request
 //! ([`SweepPayload`]). It is never a mesh and never enters
 //! [`GeometryDocument::mesh`]. The only way from a retained definition to a
 //! mesh is [`GeometryDocument::publish_retained_display`], which admits a
@@ -41,6 +41,9 @@ pub enum RetainedRecipe {
     SweptDisk(RetainedSweptDisk),
     #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     Prism(super::RetainedPrism),
+    /// Authored triangles: source-exact, no numerical approximation (#8291).
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    FaceSet(super::RetainedFaceSet),
 }
 
 impl RetainedRecipe {
@@ -50,6 +53,7 @@ impl RetainedRecipe {
             Self::Extrusion(recipe) => retained_sweep::lower(recipe),
             Self::SweptDisk(recipe) => retained_disk::lower(recipe),
             Self::Prism(recipe) => recipe.lower(),
+            Self::FaceSet(recipe) => recipe.lower(),
         }
     }
 
@@ -60,6 +64,8 @@ impl RetainedRecipe {
             Self::SweptDisk(recipe) => recipe.solid_id,
             #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
             Self::Prism(recipe) => recipe.source_id,
+            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            Self::FaceSet(recipe) => recipe.source_id,
         }
     }
 }
@@ -242,6 +248,13 @@ impl GeometryDocument {
     pub fn add_retained_prism(&mut self, recipe: super::RetainedPrism) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
         let payload = recipe.lower()?;
         self.retain(RetainedRecipe::Prism(recipe), payload)
+    }
+
+    /// Retain one captured authored face set (#8291).
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub fn add_retained_face_set(&mut self, recipe: super::RetainedFaceSet) -> Result<RetainedDefinitionHandle, RetainedRefusal> {
+        let payload = recipe.lower()?;
+        self.retain(RetainedRecipe::FaceSet(recipe), payload)
     }
 
     fn retain(

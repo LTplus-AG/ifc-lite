@@ -117,3 +117,19 @@ for (const format of ['ply', 'splat'] as const) it(`nonfinite ${format} payload 
   assert.equal(state.models.get('nonfinite')?.geometryResult, null);
   assert.equal(state.pointCloudAssetCount, 0);
 });
+
+// #8582 independent review reproduced these through the real point-cloud parser.
+for (const [label, magic, terminator] of [
+  ['magic space', 'ply ', 'end_header'],
+  ['terminator trailing space', 'ply', 'end_header '],
+  ['terminator leading spaces', 'ply', '  end_header'],
+  ['tabs with CRLF', 'ply\t\r', '\tend_header \t\r'],
+]) it(`canonical admission preserves PLY delimiter compatibility: ${label} (#8582)`, async () => {
+  const header = gaussianHeader.replace(/^ply/, magic).replace('end_header', terminator);
+  await act(async () => loader!.loadFile(new File([header, new Uint8Array(56)], 'gaussian.ply')));
+  assert.match(useViewerStore.getState().error ?? '', /Gaussian splat loading is disabled/);
+  assert.equal(useViewerStore.getState().pointCloudAssetCount, 0);
+  const ordinary = `${magic}\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\n${terminator}\n1 2 3\n`;
+  await act(async () => loader!.loadFile(new File([ordinary], 'ordinary.ply')));
+  assert.match(useViewerStore.getState().error ?? '', /Renderer not initialised/);
+});

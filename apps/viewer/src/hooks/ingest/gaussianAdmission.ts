@@ -26,9 +26,10 @@ function limits(size: number, count: number, columns: number): string | undefine
 
 /** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
-  const prefix = new TextDecoder().decode(new Uint8Array(head, 0, Math.min(head.byteLength, 5)));
+  const prefix = new TextDecoder().decode(new Uint8Array(head, 0, Math.min(head.byteLength, 3)));
+  // Match the existing PLY detector/parser's magic prefix, including padded first lines.
   // Content wins over the suffix: an ordinary PLY named .splat remains a point cloud.
-  if (!/^ply\r?\n/.test(prefix)) {
+  if (prefix !== 'ply') {
     if (!/\.splat$/i.test(file.name)) return { kind: 'ordinary' };
     if (!file.size || file.size % 32 !== 0) return { kind: 'invalid', reason: 'Truncated or empty .splat input (32-byte records required).' };
     const count = file.size / 32;
@@ -36,10 +37,10 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0 };
   }
   let text = new TextDecoder().decode(head);
-  let end = /^end_header\r?\n/m.exec(text);
+  let end = /^[\t ]*end_header[\t ]*\r?\n/m.exec(text);
   if (!end && file.size > head.byteLength) {
     text = new TextDecoder().decode(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer());
-    end = /^end_header\r?\n/m.exec(text);
+    end = /^[\t ]*end_header[\t ]*\r?\n/m.exec(text);
   }
   if (!end || end.index + end[0].length > MAX_HEADER_BYTES) {
     return { kind: 'invalid', reason: 'PLY header is truncated or exceeds the 64 KiB admission limit.' };

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
+import { parsePlyHeader, PlyStreamingSource } from '@ifc-lite/pointcloud';
 import { inspectGaussianAdmission } from './gaussianAdmission.js';
 
 const fields = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity',
@@ -59,3 +60,34 @@ it('recognizes complete SH degree one and bounds decoded columns independently (
   const wide = [...fields, ...Array.from({ length: 100 }, (_, i) => `custom_${i}`)];
   assert.deepEqual(await inspect(ply(wide, 2_000_000)), { kind: 'invalid', reason: 'Gaussian input exceeds the admission allocation limit.' });
 });
+
+// #8582 review: admission must agree with the existing PLY parser and streaming
+// reader about delimiters, or Gaussian attributes can reach the point-cloud path.
+for (const [label, magic, terminator, eol] of [
+  ['trailing magic space', 'ply ', 'end_header', '\n'],
+  ['trailing magic tab', 'ply\t', 'end_header', '\n'],
+  ['trailing terminator space', 'ply', 'end_header ', '\n'],
+  ['leading terminator spaces', 'ply', '  end_header', '\n'],
+  ['tabs and CRLF', 'ply \t', '\t end_header \t', '\r\n'],
+  ['extended first line', `ply${' '.repeat(5000)}`, ' end_header\t', '\n'],
+]) {
+  for (const gaussian of [false, true]) it(`${gaussian ? 'Gaussian' : 'ordinary'} PLY ${label} agrees with the real reader (#8582)`, async () => {
+    const names = gaussian ? fields : ['x', 'y', 'z'];
+    const headerText = [magic, 'format binary_little_endian 1.0', 'element vertex 1',
+      ...names.map(name => `property float ${name}`), terminator, ''].join(eol);
+    const body = new Uint8Array(names.length * 4);
+    const view = new DataView(body.buffer);
+    [1, 2, 3].forEach((value, index) => view.setFloat32(index * 4, value, true));
+    const file = new File([headerText, body], 'whitespace.ply');
+    const parsed = parsePlyHeader(new Uint8Array(await file.arrayBuffer()));
+    assert.equal(parsed.bodyOffset, new TextEncoder().encode(headerText).byteLength);
+    assert.equal(parsed.elements[0].properties.length, names.length);
+    assert.equal((await inspect(file)).kind, gaussian ? 'disabled' : 'ordinary');
+    const source = new PlyStreamingSource(file);
+    try {
+      assert.equal((await source.open()).totalPointCount, 1);
+      assert.deepEqual(Array.from((await source.next(1))!.positions), [1, 2, 3]);
+      assert.equal(await source.next(1), null);
+    } finally { source.close(); }
+  });
+}

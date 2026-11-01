@@ -245,3 +245,13 @@ TEST_SHARD=4237 TEST_SHARDS=10007 pnpm test --filter=@ifc-lite/viewer --env-mode
 The narrow shard selects the pilot test file; ordinary viewer test runs include
 it automatically. Browser geometry needs the built WASM runtime; use
 `pnpm build:wasm:fetch` when local Rust compilation is unavailable.
+
+
+### bSDD in the browser
+
+Profile and Dictionary searches class names such as `IfcWindow`; the search box
+is not a dictionary-URI selector. Search and class-definition requests use the
+viewer's same-origin `/api/bsdd` route. The Vite development server and the
+Vercel deployment already proxy this route to `https://api.bsdd.buildingsmart.org`.
+Other self-hosted deployments must configure the same route; serving only static
+files without a proxy does not provide bSDD access.

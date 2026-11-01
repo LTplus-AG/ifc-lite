@@ -34,12 +34,25 @@
  * WHAT A REPLAY SKIPS is decided in test.yml, not here: only the lanes a PR
  * run executes. The push-only lanes (feature builds, census, CSG gates,
  * Plato) and the crates.io-dependent semver check still run and are judged.
+ *
+ * THE QUEUE ROUTE. With CI_PR_LANE=fast a PR run records no tree, and the full
+ * gate is a Mergify batch PR. Mergify then merges each PR of the batch as its
+ * own commit, seconds apart, and only the last commit has the batch's tree.
+ * Measured on one 5-PR batch: 5 pushes x 387 job-minutes re-testing a ~425
+ * job-minute run. So a push also replays when a green batch run of this
+ * repository recorded the tree of this commit OR of a later commit on main:
+ * that tree contains this commit, and it passed every lane. An earlier commit
+ * of a batch is therefore never tested alone. Its own tree is not what `main`
+ * ends on, and a probe that runs before its successor lands finds no evidence
+ * and runs in full. A batch ran the push-only lanes too, so `replay_queue=true`
+ * lets test.yml skip those as well.
  */
 
 import { appendFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 import { gh, GhError } from './lib/gh.mjs';
+import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
@@ -61,6 +74,27 @@ const NO_REPLAY = [
 
 const SHA = /^[0-9a-f]{40}$/;
 
+/** More than one batch's worth of later commits; older evidence is not worth the reads. */
+const MAX_LATER_COMMITS = 10;
+
+const isTestWorkflow = (r) => r.path === undefined || r.path.endsWith(`/${TEST_WORKFLOW_FILE}`);
+const newestFirst = (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
+
+/**
+ * A green batch run of THIS repository. The repository check is what makes the
+ * artifact evidence: a fork's `pull_request` run executes the fork's workflow,
+ * so it could name a branch and an artifact after any tree it likes.
+ */
+const isGreenBatchRun = (r, repo) =>
+  r &&
+  r.event === 'pull_request' &&
+  r.status === 'completed' &&
+  r.conclusion === 'success' &&
+  isTestWorkflow(r) &&
+  isBatchBranch(r.head_branch) &&
+  typeof repo === 'string' &&
+  r.head_repository?.full_name === repo;
+
 /**
  * Pure decision. Every input is something the probe read; nothing here calls
  * out, so the test drives each refusal directly.
@@ -71,11 +105,13 @@ const SHA = /^[0-9a-f]{40}$/;
  *   pulls: Array<{number: number, merged_at: string|null, merge_commit_sha: string|null, base: {ref: string}, head: {sha: string}}>,
  *   runs: Array<{id: number, head_sha: string, event: string, status: string, conclusion: string|null, path?: string, created_at: string}>,
  *   artifactNamesByRun: Record<string, string[]>,
- * }} input
- * @returns {{replay: true, runId: number, pr: number} | {replay: false, reason: string}}
+ *   repo?: string,
+ *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
+ * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
+ * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [] } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
@@ -100,15 +136,19 @@ export function decidePushReplay(input) {
         r.head_sha === head &&
         r.status === 'completed' &&
         r.conclusion === 'success' &&
-        (r.path === undefined || r.path.endsWith(`/${TEST_WORKFLOW_FILE}`)),
+        isTestWorkflow(r),
     )
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
-  if (green.length === 0) return { replay: false, reason: `PR #${pr.number}'s final head ${head.slice(0, 9)} has no green Test run` };
+    .sort(newestFirst);
   const hit = green.find((r) => (artifactNamesByRun[String(r.id)] ?? []).includes(wanted));
-  if (!hit) {
-    return { replay: false, reason: `no green Test run of PR #${pr.number} tested tree ${pushTree.slice(0, 9)} (main moved, or the run predates tree recording)` };
+  if (hit) return { replay: true, runId: hit.id, pr: pr.number };
+
+  for (const { runs: treeRuns } of queueEvidence) {
+    const proven = treeRuns.filter((r) => isGreenBatchRun(r, repo)).sort(newestFirst)[0];
+    if (proven) return { replay: true, runId: proven.id, pr: pr.number, queue: true };
   }
-  return { replay: true, runId: hit.id, pr: pr.number };
+
+  if (green.length === 0) return { replay: false, reason: `PR #${pr.number}'s final head ${head.slice(0, 9)} has no green Test run` };
+  return { replay: false, reason: `no green Test run of PR #${pr.number} tested tree ${pushTree.slice(0, 9)} (main moved, or the run predates tree recording)` };
 }
 
 function git(...args) {
@@ -144,7 +184,51 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
       artifactNamesByRun[String(r.id)] = artifactNames(repo, r.id);
     }
   }
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun };
+  const queueEvidence = readQueueEvidence(repo, pushSha, pushTree);
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence };
+}
+
+/** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */
+function readQueueEvidence(repo, pushSha, pushTree) {
+  const compare = gh(
+    ['api', `repos/${repo}/compare/${pushSha}...main?per_page=${MAX_LATER_COMMITS}`, '--method', 'GET'],
+    `the commits on main after ${pushSha.slice(0, 9)}`,
+  );
+  if (!compare || typeof compare.status !== 'string' || !Array.isArray(compare.commits)) {
+    throw new GhError('GH_BAD_SHAPE', 'compare response carried no status or commits');
+  }
+  // A commit that is no longer an ancestor of main proves nothing about what main holds.
+  const later = compare.status === 'ahead' ? compare.commits.slice(0, MAX_LATER_COMMITS) : [];
+  const trees = later.map((c) => c?.commit?.tree?.sha);
+  if (trees.some((tree) => typeof tree !== 'string' || !SHA.test(tree))) {
+    throw new GhError('GH_BAD_SHAPE', 'compare commit carried no valid tree');
+  }
+  return [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) }));
+}
+
+function runsThatRecorded(repo, tree) {
+  const name = `${TREE_ARTIFACT_PREFIX}${tree}`;
+  const page = gh(
+    ['api', `repos/${repo}/actions/artifacts?name=${name}&per_page=100`, '--method', 'GET'],
+    `the runs that tested tree ${tree.slice(0, 9)}`,
+  );
+  if (!page || !Array.isArray(page.artifacts)) throw new GhError('GH_BAD_SHAPE', 'artifacts response carried no artifact list');
+  const ids = new Set();
+  for (const a of page.artifacts) {
+    if (!a || typeof a.name !== 'string' || typeof a.expired !== 'boolean') {
+      throw new GhError('GH_BAD_SHAPE', 'artifacts item carried no valid name or expiration flag');
+    }
+    if (a.name !== name || a.expired) continue;
+    if (!Number.isSafeInteger(a.workflow_run?.id) || a.workflow_run.id <= 0) {
+      throw new GhError('GH_BAD_SHAPE', 'artifact carried no valid workflow run');
+    }
+    ids.add(a.workflow_run.id);
+  }
+  return [...ids].map((id) => {
+    const run = gh(['api', `repos/${repo}/actions/runs/${id}`, '--method', 'GET'], `Test run ${id}`);
+    if (!run || run.id !== id) throw new GhError('GH_BAD_SHAPE', `run ${id} did not come back`);
+    return run;
+  });
 }
 
 function artifactNames(repo, runId) {
@@ -182,12 +266,15 @@ export function run(argv, env = process.env) {
 
   if (mode === 'probe') {
     if (decision.replay) {
-      console.log(`[push-replay] ${pushSha.slice(0, 9)} is tree ${pushTree.slice(0, 9)}, which green run ${decision.runId} of PR #${decision.pr} already tested. PR lanes skip; push-only lanes run.`);
+      console.log(decision.queue
+        ? `[push-replay] ${pushSha.slice(0, 9)} is contained in a tree that green merge-queue run ${decision.runId} tested. PR and push-only lanes skip.`
+        : `[push-replay] ${pushSha.slice(0, 9)} is tree ${pushTree.slice(0, 9)}, which green run ${decision.runId} of PR #${decision.pr} already tested. PR lanes skip; push-only lanes run.`);
     } else {
       console.log(`[push-replay] full run: ${decision.reason}.`);
     }
     emit(env.GITHUB_OUTPUT, 'replay', decision.replay ? 'true' : 'false');
     emit(env.GITHUB_OUTPUT, 'replay_run', decision.replay ? String(decision.runId) : '');
+    emit(env.GITHUB_OUTPUT, 'replay_queue', decision.queue ? 'true' : 'false');
     return 0;
   }
 

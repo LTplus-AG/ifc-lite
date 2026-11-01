@@ -9,7 +9,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TREE_ARTIFACT_PREFIX, decidePushReplay, laterFilesFrom } from './ci-push-replay.mjs';
+import { TREE_ARTIFACT_PREFIX, decidePushReplay } from './ci-push-replay.mjs';
 
 const h = (c) => c.repeat(40);
 const PUSH = h('a');
@@ -175,13 +175,12 @@ test('a cache-keying commit replays only when a later main commit re-keys the ca
   assert.equal(decidePushReplay(base({ ...workflow, laterChangedFiles: workflow.changedFiles })).replay, false);
 });
 
-test('only a complete file list from an ahead comparison counts as later changes', () => {
-  const files = (n) => Array.from({ length: n }, (_, i) => ({ filename: `f${i}` }));
-  assert.deepEqual(laterFilesFrom({ status: 'ahead', files: files(2) }), ['f0', 'f1']);
-  assert.deepEqual(laterFilesFrom({ status: 'ahead', files: files(100) }), [], 'a full page may be truncated');
-  assert.deepEqual(laterFilesFrom({ status: 'identical', files: files(2) }), []);
-  assert.deepEqual(laterFilesFrom({ status: 'diverged', files: files(2) }), []);
-  assert.deepEqual(laterFilesFrom({ status: 'ahead' }), []);
+test('a full page of later files may be truncated, so it does not count as a re-key', () => {
+  const evidence = [{ tree: TREE, runs: [batchRun()] }];
+  const changedFiles = ['Cargo.lock'];
+  const page = (n) => ['Cargo.lock', ...Array.from({ length: n - 1 }, (_, i) => `f${i}`)];
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, laterChangedFiles: page(99) })).replay, true);
+  assert.equal(decidePushReplay(queued(evidence, { changedFiles, laterChangedFiles: page(100) })).replay, false);
 });
 
 test('a PR run that tested the tree wins, so it skips only the lanes it ran', () => {

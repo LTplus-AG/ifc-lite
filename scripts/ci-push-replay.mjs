@@ -83,12 +83,6 @@ const SHA = /^[0-9a-f]{40}$/;
 const MAX_LATER_COMMITS = 10;
 const COMPARE_PAGE = 100;
 
-/** The files main changed after a commit. A list that may be truncated counts as none: that only means a full run. */
-export function laterFilesFrom(compare) {
-  if (compare?.status !== 'ahead' || !Array.isArray(compare.files) || compare.files.length >= COMPARE_PAGE) return [];
-  return compare.files.map((f) => f?.filename).filter((f) => typeof f === 'string');
-}
-
 const isTestWorkflow = (r) => r.path === undefined || r.path.endsWith(`/${TEST_WORKFLOW_FILE}`);
 const newestFirst = (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
 
@@ -134,7 +128,8 @@ export function decidePushReplay(input) {
   const keysCaches = (f) => NO_REPLAY.some((re) => re.test(f));
   const blocker = changedFiles.find(keysCaches);
   const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
-  const rekeyedLater = changedFiles.filter(keysCaches).every((f) => laterChangedFiles.includes(f));
+  // A full page may be truncated, so it proves nothing: that only means a full run.
+  const rekeyedLater = laterChangedFiles.length < COMPARE_PAGE && changedFiles.filter(keysCaches).every((f) => laterChangedFiles.includes(f));
   if (blocker && !rekeyedLater) return { replay: false, reason: blockerReason };
 
   const merged = pulls.filter((p) => p && p.merged_at && p.merge_commit_sha === pushSha && p.base?.ref === 'main');
@@ -220,7 +215,10 @@ function readQueueEvidence(repo, pushSha, pushTree) {
   if (trees.some((tree) => typeof tree !== 'string' || !SHA.test(tree))) {
     throw new GhError('GH_BAD_SHAPE', 'compare commit carried no valid tree');
   }
-  return { queueEvidence: [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) })), laterChangedFiles: laterFilesFrom(compare) };
+  const laterChangedFiles = compare.status === 'ahead' && Array.isArray(compare.files)
+    ? compare.files.map((f) => f?.filename).filter((f) => typeof f === 'string')
+    : [];
+  return { queueEvidence: [pushTree, ...trees].map((tree) => ({ tree, runs: runsThatRecorded(repo, tree) })), laterChangedFiles };
 }
 
 function runsThatRecorded(repo, tree) {

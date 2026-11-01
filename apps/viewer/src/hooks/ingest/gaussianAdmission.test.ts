@@ -18,7 +18,7 @@ it('recognizes Gaussian PLY content beyond the first read, independent of suffix
   assert.deepEqual(await inspect(renamed), { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 0 });
 });
 it('preserves ordinary PLY and ignores Gaussian words in comments and face properties (#8565)', async () => {
-  assert.deepEqual(await inspect(ply(['x', 'y', 'z', 'red', 'green', 'blue'])), { kind: 'ordinary' });
+  assert.deepEqual(await inspect(ply(['x', 'y', 'z', 'red', 'green', 'blue', 'scale_0', 'rot_0'])), { kind: 'ordinary' });
   const file = new File(['ply\nformat ascii 1.0\ncomment f_dc_0 scale_0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nelement face 0\nproperty float rot_0\nend_header\n0 0 0\n'], 'ordinary.splat');
   assert.deepEqual(await inspect(file), { kind: 'ordinary' });
 });
@@ -50,4 +50,11 @@ it('bounds declared allocation and header reads without allocating the claimed p
   file.slice = (start, end) => { reads.push(end ?? file.size); return slice(start, end); };
   assert.equal((await inspect(file)).kind, 'invalid');
   assert.deepEqual(reads, [4096, 65536]);
+});
+
+it('recognizes complete SH degree one and bounds decoded columns independently (#8565)', async () => {
+  const sh = [...fields, ...Array.from({ length: 9 }, (_, i) => `f_rest_${i}`)];
+  assert.deepEqual(await inspect(ply(sh)), { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 1 });
+  const wide = [...fields, ...Array.from({ length: 100 }, (_, i) => `custom_${i}`)];
+  assert.deepEqual(await inspect(ply(wide, 2_000_000)), { kind: 'invalid', reason: 'Gaussian input exceeds the admission allocation limit.' });
 });

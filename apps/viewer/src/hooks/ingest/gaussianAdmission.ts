@@ -64,7 +64,8 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     else stride += width;
   }
   // Only vertex properties count; comments and similarly named face properties do not.
-  const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_|scale_|rot_)\d+$/.test(name));
+  const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
+    || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));
   if (!gaussian) return { kind: 'ordinary' };
   if (malformed || vertexElements !== 1 || REQUIRED.some(name => !properties.has(name))) {
     return { kind: 'invalid', reason: 'Malformed Gaussian PLY vertex schema.' };

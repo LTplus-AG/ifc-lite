@@ -341,20 +341,24 @@ test('#7955 Holter: a failed CLI row keeps the fatal end of stderr', () => {
   assert.throws(() => assertCliRetained({ exitCode: 1, stdout: '', stderr, report: null, objHead: '' }), /RangeError: Invalid string length/);
 });
 
-test('#7955 Holter: the CLI runner reads a report larger than one string by its two ends', () => {
+test('#7955 Holter: the CLI runner reads a report a row at a time and refuses a bad row or count', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'retained-envelope-'));
   try {
-    const path = join(dir, 'report.json'), envelope = { engine: { sdk: 'x' }, format: 'ifc-lite.retained-report/1',
-      settings: { kernel: 'retained' }, summary: { candidates: 2, published: 1, byCode: { a: 1 } } };
-    const row = `    { "id": 1 }`;
-    const text = JSON.stringify({ engine: envelope.engine, format: envelope.format, products: [], settings: envelope.settings, summary: envelope.summary }, null, 2)
-      .replace('"products": []', `"products": [\n${row}\n  ]`);
-    writeFileSync(path, text);
-    assert.deepEqual(readReportEnvelope(path, 4096), JSON.parse(text));
-    // Past the small-file path: the rows between the two ends are never read or parsed.
-    writeFileSync(path, text.replace(row, `${row},\n    NOT JSON ${'x'.repeat(1 << 16)},\n${row}`));
-    assert.deepEqual(readReportEnvelope(path, 4096), envelope);
-    writeFileSync(path, `{${'x'.repeat(1 << 16)}}`);
-    assert.throws(() => readReportEnvelope(path, 4096), /envelope not found/);
+    const path = join(dir, 'report.json');
+    const envelope = (published = 1) => ({ engine: { sdk: 'x' }, format: 'ifc-lite.retained-report/1',
+      settings: { kernel: 'retained' }, summary: { candidates: 2, published, byCode: { a: 1 } } });
+    const text = (rows, summary = envelope()) => JSON.stringify({ engine: summary.engine, format: summary.format, products: rows,
+      settings: summary.settings, summary: summary.summary }, null, 2);
+    const rows = [{ id: 1, status: 'published', parts: [{ normals: [0, 1] }] }, { id: 2, status: 'refused' }];
+    writeFileSync(path, text(rows));
+    assert.deepEqual(await readReportEnvelope(path), envelope());
+    writeFileSync(path, text(rows).replace('"status": "refused"', 'NOT JSON'));
+    await assert.rejects(readReportEnvelope(path), SyntaxError);
+    writeFileSync(path, text(rows, envelope(2)));
+    await assert.rejects(readReportEnvelope(path), /rows 1\/2 != summary 2\/2/);
+    writeFileSync(path, text(rows.slice(1)));
+    await assert.rejects(readReportEnvelope(path), /rows 0\/1 != summary 1\/2/);
+    writeFileSync(path, text(rows).split('\n').slice(0, 12).join('\n'));
+    await assert.rejects(readReportEnvelope(path), /truncated/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

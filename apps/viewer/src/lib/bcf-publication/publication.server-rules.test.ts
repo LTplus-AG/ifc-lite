@@ -159,6 +159,26 @@ test('an unsent update that no longer differs from the published topic is droppe
   assert.deepEqual(reverted.record.entries.filter(entry => entry.operation === 'updateTopic'), [], 'the reverted edit leaves no update behind');
 });
 
+test('a server capping $top below ten with more same-second topics than the cap is not proven complete (#8656 review)', async t => {
+  // Five topics in one second, served three at a time: the inclusive next page repeats the same ties.
+  const peer = await connectPeer(t, { ignoreSkip: true, maxTop: 3 });
+  for (let index = 0; index < 5; index++) {
+    const guid = `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+    peer.state.topics.set(guid, { topic: { guid, title: `Existing ${index}`, creation_author: 'architect@example.test',
+      creation_date: '2026-01-01T00:00:00Z', modified_date: '2026-01-01T00:00:00Z' }, comments: [], viewpoints: [] });
+  }
+  const batch = await reviewedBatch();
+  peer.state.loseNextWriteResponse = true;
+  const first = await publish(batch, peer);
+  const lost = entriesOf(first.record, 'createTopic')[0];
+  // Hide the lost create from the list, as if it sorted behind the capped ties.
+  const created = [...peer.state.topics.values()].find(item => item.topic.creation_author !== 'architect@example.test');
+  if (created) created.topic.modified_date = '2026-01-01T00:00:00Z';
+  const checked = await checkEntry(first.record.id, lost.id, { ...peer.connection, rules: buildagil });
+  assert.ok(checked.ok);
+  assert.notEqual(checked.check.result, 'absent', 'a repeated tie page never proves a create absent');
+});
+
 const BUILDAGIL_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];
 /** A peer with buildagil's measured topic vocabulary and status rule. */
 const buildagilLike = { topicTypes: BUILDAGIL_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'],

@@ -45,8 +45,6 @@ function withinWindow(date: string | null | undefined, entry: OutboxEntry, check
 }
 
 const PAGE = 200;
-/** Below this a tie-only page cannot be a server's cap (no BCF server serves fewer per page). */
-const PAGE_FLOOR = 10;
 const MAX_PAGES = 250;
 
 /**
@@ -88,7 +86,9 @@ async function allTopics(connection: PublicationConnection, projectId: string): 
     if (fresh.length === 0) {
       // Only ties at the last date came back: nothing is newer, unless that page was full and all one timestamp.
       const tiesOnly = batch.every(topic => topic.modified_date === cursor);
-      return { topics, complete: !(tiesOnly && batch.length >= served && page > 0 && batch.length >= PAGE_FLOOR) };
+      // A tie-only page as full as the most the server has served may be cut off by a cap of any size; not complete then
+      // (the check answers 'unavailable' and the coordinator decides, never a duplicate resend).
+      return { topics, complete: !(tiesOnly && batch.length >= served) };
     }
     const last = batch[batch.length - 1]?.modified_date;
     if (!last || !Number.isFinite(Date.parse(last))) return { topics, complete: false };

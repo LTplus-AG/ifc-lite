@@ -71,7 +71,7 @@ export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 <
     lifetime: () => ({ ready: renderer.isReady(), lost: internals.deviceLost, disposed: internals.destroyed, generation: internals.initGeneration }),
     device: () => device, adapter: () => null,
     modelTranslation: (index) => internals.scene.getModelTranslation(index), requestRender: () => {},
-    boundsChanged: () => {}, // camera bounds are the renderer's concern, not the loader's
+    boundsGrew: () => {}, // camera bounds are the renderer's concern, not the loader's
   }, backend.factory);
   return { renderer, backend, loseDevice: () => { internals.deviceLost = true; } };
 }

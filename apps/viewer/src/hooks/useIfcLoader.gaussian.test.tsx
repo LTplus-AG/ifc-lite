@@ -248,3 +248,18 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     } finally { useViewerStore.subscribe = subscribe; }
   });
 });
+
+it('a renderer clear during an outstanding upload aborts it and the loader retains nothing (#8640 round 3)', async () => {
+  const release = gpu.backend.hold();
+  await act(async () => {
+    const pending = hookApi!.loadFile(gaussianPly('cleared.ply', CENTRES), { kind: 'federated', modelId: 'cleared' }, QUALIFIED);
+    for (let i = 0; i < 100 && gpu.backend.sources.length === 0 && worker.stats.terminated === 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    splats().clear();
+    release();
+    await pending;
+  });
+  assert.equal(model('cleared'), undefined, 'nothing is published');
+  assert.match(String(useViewerStore.getState().error), /could not be loaded/);
+  assert.equal(splats().getStats().assets, 0, 'no unpublished or cleared rows survive');
+  assertNoHeldSlot();
+});

@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/examples/compare/report.rs b/rust/retained-native/examples/compare/report.rs
+index a7a8e2de9b..1aa35f8fd6 100644
+--- a/rust/retained-native/examples/compare/report.rs
++++ b/rust/retained-native/examples/compare/report.rs
+@@ -314,7 +314,7 @@ impl Report {
+         // frozen face limit and exact does not within its own, so exact is the wrong side.
+         let source_area = self.source_area.take();
+         // Only a gated area can be named: a waived or authored-open product's never was.
+-        let exact_area_defect = false && !curved && !exact_defect && !exact_report_only && !open && !type_product && source_area.zip(exact).is_some_and(|(s, e)| {
++        let exact_area_defect = !curved && !exact_defect && !exact_report_only && !open && !type_product && source_area.zip(exact).is_some_and(|(s, e)| {
+             // A missing or renamed preregistered key panics, never reads as 0.
+             relative(actual.area, s) <= super::openings::tolerance(tolerances, "faceAreaRelative", "linear")
+                 && relative(e.area, s) > super::openings::tolerance(tolerances, "exactLinear", "areaRelative")

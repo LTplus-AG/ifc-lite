@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/examples/compare/exact_area.rs",
+  "mutation": "tests/evidence/exact-area-defect-7955/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/exact_area_7955.rs",
+  "why": "Without the named outcome an exact mesh the source disproves reads as a retained area violation."
+}

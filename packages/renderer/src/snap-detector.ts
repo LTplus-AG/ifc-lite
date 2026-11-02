@@ -10,10 +10,9 @@ import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cach
 import type { SnapEdge } from './snap-edge-runs.js';
 import { bestEdgeCandidate, detectCorner, type EdgeCandidate } from './snap-corner.js';
 import type { PickClipState } from './pick-types.js';
-import { clipHalfSpaces, type ClipHalfSpace } from './clip-half-spaces.js';
 import { entityClip } from './section-exclusions.js';
-import { buildClippedGeometryCache, cutCapIntersection, type ClippedGeometryCache } from './snap-clip.js';
-import { clipIsActive, pointClipped } from './scene-raycaster.js';
+import { ClippedGeometryViews, cutCapIntersection, planesFor, planesKey } from './snap-clip.js';
+import { pointClipped } from './scene-raycaster.js';
 import { releasedEdgeLock } from './raycast-point-cloud-query.js';
 
 export enum SnapType {
@@ -113,18 +112,6 @@ const MAGNETIC_CONFIG = {
   MAX_LOCK_STRENGTH: 1.5,
 };
 
-/** Section views kept per detector; a dragged plane would otherwise accumulate one per position. */
-const MAX_CLIPPED_CACHES = 256;
-
-function planesFor(id: number, clip?: PickClipState | null): ClipHalfSpace[] {
-  const entity = entityClip(clip, id);
-  return entity && clipIsActive(entity) ? clipHalfSpaces(entity) : [];
-}
-
-function planesKey(planes: readonly ClipHalfSpace[]): string {
-  return planes.map((p) => `${p.n[0]},${p.n[1]},${p.n[2]},${p.limit},${p.capped}`).join(';');
-}
-
 export class SnapDetector {
   private raycaster = new Raycaster();
   private defaultOptions: SnapOptions = {
@@ -153,8 +140,7 @@ export class SnapDetector {
   // expressId alone served the first piece's edges/vertices for every later one,
   // so snap lit up on a single piece of a multi-piece element.
   private geometryCache = new Map<string, MeshGeometryCache>();
-  // Section views of that cache, by clip + mesh key; a moved plane leaves old keys behind.
-  private clippedCaches = new Map<string, ClippedGeometryCache>();
+  private clippedViews = new ClippedGeometryViews();
   // The clip a held edge lock was acquired under. A lock is a trimmed edge or a
   // contour of THAT clip, so it cannot outlive a section change.
   private lockClipKey = '';
@@ -563,18 +549,8 @@ export class SnapDetector {
   private visibleGeometry(mesh: MeshData, clip?: PickClipState | null): { cache: MeshGeometryCache; key: string } {
     const planes = planesFor(mesh.expressId, clip);
     if (planes.length === 0) return { cache: this.getGeometryCache(mesh), key: '' };
-    return { cache: this.clippedGeometry(mesh, planes), key: planesKey(planes) };
-  }
-
-  private clippedGeometry(mesh: MeshData, planes: readonly ClipHalfSpace[]): ClippedGeometryCache {
-    const key = `${planesKey(planes)}|${this.cacheKeyFor(mesh)}`;
-    let view = this.clippedCaches.get(key);
-    if (!view) {
-      if (this.clippedCaches.size >= MAX_CLIPPED_CACHES) this.clippedCaches.clear();
-      view = buildClippedGeometryCache(mesh, this.getGeometryCache(mesh), planes);
-      this.clippedCaches.set(key, view);
-    }
-    return view;
+    const view = this.clippedViews.get(mesh, this.cacheKeyFor(mesh), this.getGeometryCache(mesh), planes);
+    return { cache: view, key: planesKey(planes) };
   }
 
   /** The drawn cut face `hit`'s ray reaches first, or null when it reaches none (#8659). */
@@ -582,7 +558,8 @@ export class SnapDetector {
     if (!mesh) return null;
     const planes = planesFor(mesh.expressId, clip);
     if (!planes.some((plane) => plane.capped)) return null;
-    return cutCapIntersection(ray, this.clippedGeometry(mesh, planes), planes, hit);
+    const view = this.clippedViews.get(mesh, this.cacheKeyFor(mesh), this.getGeometryCache(mesh), planes);
+    return cutCapIntersection(ray, view, planes, hit);
   }
 
   /**
@@ -677,7 +654,7 @@ export class SnapDetector {
    */
   clearCache(): void {
     this.geometryCache.clear();
-    this.clippedCaches.clear();
+    this.clippedViews.clear();
   }
 
   /**

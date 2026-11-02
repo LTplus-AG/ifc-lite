@@ -10,7 +10,10 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Intersection, Ray, Vec3 } from './raycaster.js';
-import { clipSegmentInterval, type ClipHalfSpace } from './clip-half-spaces.js';
+import { clipHalfSpaces, clipSegmentInterval, type ClipHalfSpace } from './clip-half-spaces.js';
+import type { PickClipState } from './pick-types.js';
+import { clipIsActive } from './scene-raycaster.js';
+import { entityClip } from './section-exclusions.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
 import { MIN_CORNER_VALENCE, mergeCollinearRuns, type SnapEdge, type WeldedSegment } from './snap-edge-runs.js';
 import { snapToleranceFor, weldVertices } from './snap-weld.js';
@@ -27,6 +30,39 @@ interface MeshCut {
 export interface ClippedGeometryCache extends MeshGeometryCache {
   cuts: MeshCut[];
   tolerance: number;
+}
+
+/** The half-spaces clipping entity `id`, empty when it is exempt or nothing clips. */
+export function planesFor(id: number, clip?: PickClipState | null): ClipHalfSpace[] {
+  const entity = entityClip(clip, id);
+  return entity && clipIsActive(entity) ? clipHalfSpaces(entity) : [];
+}
+
+export function planesKey(planes: readonly ClipHalfSpace[]): string {
+  return planes.map((p) => `${p.n[0]},${p.n[1]},${p.n[2]},${p.limit},${p.capped}`).join(';');
+}
+
+/** Views kept at once; a moved plane leaves its old keys behind. */
+const MAX_VIEWS = 256;
+
+/** Section views of the snap cache, by clip + mesh key. */
+export class ClippedGeometryViews {
+  private views = new Map<string, ClippedGeometryCache>();
+
+  get(mesh: MeshData, meshKey: string, base: MeshGeometryCache, planes: readonly ClipHalfSpace[]): ClippedGeometryCache {
+    const key = `${planesKey(planes)}|${meshKey}`;
+    let view = this.views.get(key);
+    if (!view) {
+      if (this.views.size >= MAX_VIEWS) this.views.clear();
+      view = buildClippedGeometryCache(mesh, base, planes);
+      this.views.set(key, view);
+    }
+    return view;
+  }
+
+  clear(): void {
+    this.views.clear();
+  }
 }
 
 const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => ({

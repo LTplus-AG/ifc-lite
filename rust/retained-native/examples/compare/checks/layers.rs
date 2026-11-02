@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! M4 gates each capped band and its sum against independent IFC integrals.
-pub(super) fn check(product: &super::ShapeOnlyProduct, sources: &super::AnalyticQuantitySources,
-    bytes: &[u8], tolerances: &serde_json::Value) -> Vec<super::OracleResult> {
+pub(super) fn check(product: &super::ShapeOnlyProduct, sources: &super::SourceContext<'_>,
+    tolerances: &serde_json::Value) -> Vec<super::OracleResult> {
     if !product.parts.iter().any(|p|p.layer.is_some()) {return Vec::new();}
-    let Some(expected)=ifc_lite_retained_native::oracle::layers::expected(bytes,sources,product.product_id) else {
+    let Some(expected)=ifc_lite_retained_native::oracle::layers::expected_in(sources.model.bundle,sources.clips,sources.analytic,product.product_id) else {
         return vec![super::OracleResult{family:"layerSourceAvailable",value:1.,limit:0.,pass:false,gated:true,..Default::default()}];
     };
     let key=if expected.curved {"curved"} else {"linear"};

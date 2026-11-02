@@ -1298,9 +1298,11 @@ renderer.gaussianSplats.remove(handle);
   spherical-harmonic bands 1–3 are rotated with the placement. Identity is the
   default and nothing is inferred: no axis flip, units, metric scale or alignment.
 - **Bounds.** `getBounds()` returns Gaussian centres in world space, for framing
-  only. It ignores Gaussian extent; never use it for geometry or measurement. The
-  renderer's own framing bounds grow to include visible Gaussians and do not
-  shrink when they are hidden, moved away or removed.
+  only. It ignores Gaussian extent; never use it for geometry or measurement, and
+  frame an explicit Fit All with it. Gaussian centres never enter
+  `Renderer.getModelBounds()`, so hidden or removed captures cannot widen fits that
+  read it; the current visible centres only widen the camera's orthographic depth
+  range and, while a section or clip plane is active, its slider range.
 - **Lifecycle.** Handles are validated by identity and ids are never reused.
   `getState()` reports `resident` only after upload on the current device;
   during a device loss and recovery assets are `pending`, and a failed re-upload

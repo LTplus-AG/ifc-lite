@@ -12,7 +12,7 @@ import { GaussianSplatLayer, type GaussianLayerHost } from './gaussian/gaussian-
 import { GaussianSplatError } from './gaussian/gaussian-errors.js';
 import type { GaussianBackend, GaussianBackendScene, GaussianPackedSource, GaussianRowFilter, GaussianRowUpdate } from './gaussian/gaussian-backend.js';
 import type { NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
-import type { GaussianSplatHandle } from './gaussian/gaussian-types.js';
+import type { GaussianSplatBounds, GaussianSplatHandle } from './gaussian/gaussian-types.js';
 
 class FakeScene implements GaussianBackendScene {
   sources: GaussianPackedSource[] = [];
@@ -41,10 +41,10 @@ function harness(options: { limits?: number; reverseZ?: boolean; failFirstBacken
   const scenes: FakeScene[] = [];
   const failures: { nextScene: Error | null } = { nextScene: null };
   const translations = new Map<number, [number, number, number]>();
-  const counters = { bounds: 0, backendCalls: 0 };
+  const counters = { bounds: 0, backendCalls: 0, extent: null as GaussianSplatBounds | null };
   const host: GaussianLayerHost = {
     lifetime: () => ({ ...life }), device: () => (life.lost ? null : device), adapter: () => null,
-    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsGrew: () => { counters.bounds++; },
+    modelTranslation: (index) => translations.get(index), requestRender: () => {}, extentChanged: (extent) => { counters.bounds++; counters.extent = extent; },
   };
   const backend = async (): Promise<GaussianBackend> => (options.backendGate && counters.backendCalls >= 1 ? await options.backendGate : undefined, {
     upstreamReverseZ: (++counters.backendCalls === 1 && options.failFirstBackend) ? (() => { throw new Error('chunk fetch failed'); })() : options.reverseZ ?? true,
@@ -384,20 +384,20 @@ test('#8564 a failed upstream load is retried by the next add and never reports 
   assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
 });
 
-test('#8564 framing bounds only grow, and only when the visible centre union grows', async () => {
+test('#8564 the depth-only extent follows the current visible centre union', async () => {
   const h = harness();
   const handle = await add(h.layer, 2);
-  assert.equal(h.counters.bounds, 1, 'the first asset grows the bounds');
+  assert.equal(h.counters.bounds, 1);
+  assert.deepEqual(h.counters.extent, h.layer.getBounds());
   assert.ok(h.layer.setVisible(handle, true));
   assert.equal(h.counters.bounds, 1, 'an unchanged union notifies nothing');
   h.layer.setVisible(handle, false);
-  assert.equal(h.counters.bounds, 1, 'hiding never shrinks framing bounds');
+  assert.equal(h.counters.extent, null, 'a hidden capture leaves no extent behind');
   h.layer.setVisible(handle, true);
-  assert.equal(h.counters.bounds, 2, 'showing grows them again');
   assert.equal(await h.layer.setPlacement(handle, { matrix: translate(1) }), true);
-  assert.equal(h.counters.bounds, 2, 'a move to a disjoint box is not a growth');
+  assert.deepEqual(h.counters.extent, h.layer.getBounds(), 'a move reports the moved centres');
   h.layer.remove(handle);
-  assert.equal(h.counters.bounds, 2, 'removal never shrinks framing bounds');
+  assert.equal(h.counters.extent, null, 'a removed capture leaves no extent behind');
 });
 
 

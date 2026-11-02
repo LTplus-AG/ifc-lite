@@ -32,8 +32,8 @@ export interface GaussianLayerHost {
   adapter(): GPUAdapter | null;
   modelTranslation(modelIndex: number): readonly [number, number, number] | undefined;
   requestRender(): void;
-  /** The visible centre union grew. Framing only grows: a shrink would run the tracker's recompute, which drops annotation bounds. */
-  boundsGrew(): void;
+  /** The current visible centre union changed; it may only widen the camera's depth range, never model or fit bounds. */
+  extentChanged(visible: GaussianSplatBounds | null): void;
 }
 
 export interface GaussianFrameInput extends Omit<GaussianEncodeTarget, 'depthFormat'> {
@@ -373,7 +373,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     const change = boundsChange(this.notifiedBounds, this.getBounds());
     if (!change) return;
     this.notifiedBounds = change.next;
-    if (change.grew) this.host.boundsGrew();
+    this.host.extentChanged(change.next);
   }
 
   /** The current scene holds rows that were never published: withdraw residency, and release it if nothing is packed. */

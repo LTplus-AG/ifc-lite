@@ -413,7 +413,7 @@ export class Renderer {
     private readonly deviationComputer = new DeviationComputer();
     private readonly gaussianLayer = new GaussianSplatLayer({ lifetime: () => ({ ready: this.isReady(), lost: this.deviceLost, disposed: this.destroyed, generation: this.initGeneration }), // #8564
         device: () => this.getGPUDevice(), adapter: () => this.device.getAdapter(), modelTranslation: (i) => this.scene.getModelTranslation(i), requestRender: () => this.requestRender(),
-        boundsGrew: () => { this.modelBoundsTracker.expandForPointClouds(); this.camera.setSceneBounds(this.modelBounds); } }); // grow-only, paired like the point-cloud add path
+        extentChanged: (b) => this.camera.setDepthOnlyBounds(b && { min: { x: b.min[0], y: b.min[1], z: b.min[2] }, max: { x: b.max[0], y: b.max[1], z: b.max[2] } }) }); // depth range only; never model/fit bounds
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
     // Model bounds for fitToView, section planes, camera. The value itself
@@ -423,7 +423,7 @@ export class Renderer {
     // the call sites: they do not all push under the same policy.
     private readonly modelBoundsTracker = new ModelBoundsTracker({
         meshBounds: () => this.computeMeshBounds(),
-        pointCloudBounds: () => unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564 centre framing
+        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
     });
 
     /** Read-only view of the tracked scene AABB (live reference, not a copy). */

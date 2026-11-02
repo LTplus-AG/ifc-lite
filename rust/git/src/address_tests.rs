@@ -174,3 +174,52 @@ fn parse_rejects_uppercase_hex_so_one_address_has_one_spelling() {
     assert_eq!(parsed.tagged(), lower, "round trip is byte-identical");
     assert_eq!(Address::parse(&upper), Err(AddressError::NotHex));
 }
+
+// Review on #8265: `f64_bits` wrote raw bits, so `0.0` and `-0.0` — which IFC
+// writers emit routinely — hashed differently despite comparing equal.
+
+#[test]
+fn negative_zero_hashes_like_positive_zero() {
+    let mut positive = CanonicalWriter::new(b"IGN1", 1, 0);
+    positive.f64_bits(0.0);
+    let mut negative = CanonicalWriter::new(b"IGN1", 1, 0);
+    negative.f64_bits(-0.0);
+    assert_eq!(
+        positive.finish().0,
+        negative.finish().0,
+        "-0.0 and 0.0 compare equal and must hash alike"
+    );
+}
+
+#[test]
+fn every_nan_payload_hashes_to_one_pattern() {
+    // A signalling NaN and a quiet NaN with a different mantissa both compare
+    // unequal to everything, bit patterns included, so without
+    // canonicalisation two authoring tools' NaNs would not agree.
+    let quiet = f64::NAN;
+    let other_payload = f64::from_bits(quiet.to_bits() ^ 0b1);
+    assert!(other_payload.is_nan(), "payload must still be a NaN");
+    assert_ne!(
+        quiet.to_bits(),
+        other_payload.to_bits(),
+        "the two raw bit patterns must actually differ, or this test is vacuous"
+    );
+
+    let mut a = CanonicalWriter::new(b"IGN1", 1, 0);
+    a.f64_bits(quiet);
+    let mut b = CanonicalWriter::new(b"IGN1", 1, 0);
+    b.f64_bits(other_payload);
+    assert_eq!(
+        a.finish().0,
+        b.finish().0,
+        "every NaN payload must hash to the same address"
+    );
+}
+
+#[test]
+fn u8_writes_exactly_one_byte() {
+    let mut a = CanonicalWriter::new(b"IGN1", 1, 0);
+    a.u8(7);
+    let (_, bytes) = a.finish();
+    assert_eq!(&bytes[6..], &[7], "u8 must not pad to four bytes like u32");
+}

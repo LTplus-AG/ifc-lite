@@ -133,7 +133,7 @@ pub enum Node {
     /// node or must be separated — and by what, if not a `GlobalId` — is the
     /// spec set's **open** equivalence policy (`02-graph-object-model.md`
     /// §2.8); node-address endpoints are the current proposal, not a decision.
-    /// `rust/git/tests/dedup_boundary.rs` measures the boundary.
+    /// A forthcoming dedup-boundary integration suite on #8262 measures this.
     Relationship { ifc_type: String, roles: Vec<Role> },
     /// Geometry for one tier, addressed by the digest the geometry pass already
     /// produces rather than re-hashed here.
@@ -159,6 +159,15 @@ pub enum SetKind {
 pub struct Role {
     pub name: String,
     pub targets: Vec<Address>,
+    /// Whether `targets`' order is content. Most IFC roles are sets — e.g.
+    /// `IfcRelAggregates.RelatedObjects` — where reference order is an
+    /// authoring artifact and must not reach the address (review on #8265:
+    /// §2.5 preserves order for a role whose attribute is declared `LIST`,
+    /// e.g. `IfcRelNests.RelatedObjects` for alignment segments, where
+    /// `[seg1, seg2]` and `[seg2, seg1]` are different content). `false`
+    /// sorts `targets` before encoding, exactly as every role did before this
+    /// field existed; `true` encodes them as given.
+    pub ordered: bool,
 }
 
 impl Node {
@@ -208,12 +217,14 @@ impl Node {
                 // enforces no uniqueness, and duplicate same-named property
                 // sets are a real IFC shape (#8136). Sorting on the key alone
                 // with a stable sort let the caller's order decide the bytes.
-                sorted.sort_by(|a, b| {
-                    sort_key(&a.key)
-                        .cmp(&sort_key(&b.key))
-                        .then_with(|| a.node.cmp(&b.node))
-                });
-                w.u32(sorted.len() as u32);
+                //
+                // `sort_by_cached_key` rather than `sort_by`: `sort_key` NFC-
+                // normalizes and allocates, and calling it from inside a
+                // `sort_by` comparator re-derives both sides on every
+                // comparison. The cached-key form calls the key function once
+                // per component (review on #8265).
+                sorted.sort_by_cached_key(|component| (sort_key(&component.key), component.node));
+                w.u32(count(sorted.len()));
                 for component in sorted {
                     w.string(&component.key);
                     w.address(&component.node);
@@ -227,16 +238,13 @@ impl Node {
                 w.string(name);
                 let mut sorted: Vec<&Field> = members.iter().collect();
                 // Name first, then value, so two members sharing a name are
-                // still totally ordered and input order cannot leak in.
-                sorted.sort_by(|a, b| {
-                    sort_key(&a.name)
-                        .cmp(&sort_key(&b.name))
-                        .then_with(|| value_key(&a.value).cmp(&value_key(&b.value)))
-                });
-                w.u32(sorted.len() as u32);
+                // still totally ordered and input order cannot leak in. Cached
+                // key for the same reason as the element branch above.
+                sorted.sort_by_cached_key(|field| (sort_key(&field.name), value_key(&field.value)));
+                w.u32(count(sorted.len()));
                 for field in sorted {
                     w.string(&field.name);
-                    w.u32(u32::from(field.value.tag()));
+                    w.u8(field.value.tag());
                     match &field.value {
                         FieldValue::Absent => {}
                         FieldValue::Text(text) => {
@@ -246,38 +254,41 @@ impl Node {
                             w.f64_bits(*number);
                         }
                         FieldValue::Bool(flag) => {
-                            w.u32(u32::from(*flag));
+                            w.u8(u8::from(*flag));
                         }
                     }
                 }
             }
             Node::Relationship { ifc_type, roles } => {
                 w.string(ifc_type);
-                // A role's members are a set: sorted by digest, so the order
-                // the caller walked its references in is invisible. Sorted
-                // once here, because the role ordering below needs the same
-                // bytes — comparing unsorted targets, or re-sorting inside the
-                // comparator, would either leak input order or clone on every
-                // comparison.
-                let mut sorted: Vec<(&str, Vec<Address>)> = roles
+                // A role whose attribute is a set has no content order, so its
+                // targets are sorted before anything else runs — comparing
+                // unsorted targets, or re-sorting inside the role comparator,
+                // would either leak input order or re-sort on every
+                // comparison. A role whose attribute is an ordered `LIST`
+                // (`ordered: true`, e.g. `IfcRelNests.RelatedObjects`) keeps
+                // its targets exactly as given instead: that order is content
+                // (review on #8265).
+                let mut sorted: Vec<(String, bool, Vec<Address>)> = roles
                     .iter()
                     .map(|role| {
                         let mut targets = role.targets.clone();
-                        targets.sort();
-                        (role.name.as_str(), targets)
+                        if !role.ordered {
+                            targets.sort();
+                        }
+                        (role.name.clone(), role.ordered, targets)
                     })
                     .collect();
-                // Name, then those sorted targets, so two roles sharing a
-                // name are still totally ordered.
-                sorted.sort_by(|(a_name, a_targets), (b_name, b_targets)| {
-                    sort_key(a_name)
-                        .cmp(&sort_key(b_name))
-                        .then_with(|| a_targets.cmp(b_targets))
-                });
-                w.u32(sorted.len() as u32);
-                for (name, targets) in &sorted {
+                // Name, then those targets, so two roles sharing a name are
+                // still totally ordered. Cached key for the same reason as
+                // above; the extra `targets.clone()` this needs is one Vec of
+                // `Address` per role, once, not a re-sort per comparison.
+                sorted.sort_by_cached_key(|(name, _, targets)| (sort_key(name), targets.clone()));
+                w.u32(count(sorted.len()));
+                for (name, ordered, targets) in &sorted {
                     w.string(name);
-                    w.u32(targets.len() as u32);
+                    w.u8(u8::from(*ordered));
+                    w.u32(count(targets.len()));
                     for target in targets {
                         w.address(target);
                     }
@@ -289,10 +300,11 @@ impl Node {
             }
             Node::NameBag { kind, names } => {
                 w.string(kind);
-                // Duplicates are kept: cardinality is content.
+                // Duplicates are kept: cardinality is content. Cached key for
+                // the same reason as the branches above.
                 let mut sorted: Vec<&String> = names.iter().collect();
-                sorted.sort_by_key(|n| sort_key(n));
-                w.u32(sorted.len() as u32);
+                sorted.sort_by_cached_key(|name| sort_key(name));
+                w.u32(count(sorted.len()));
                 for name in sorted {
                     w.string(name);
                 }
@@ -305,6 +317,14 @@ impl Node {
     pub fn address(&self) -> Address {
         self.encode().0
     }
+}
+
+/// A member count, checked rather than truncated. `as u32` on `usize::MAX`
+/// members would wrap to a wrong but valid-looking count instead of failing;
+/// no real IFC file reaches this, so the cost of checking is only ever paid
+/// once, right before the fixed-width field is written (review on #8265).
+fn count(len: usize) -> u32 {
+    u32::try_from(len).expect("more than u32::MAX members in one node's list")
 }
 
 /// Sort key for a field value, keeping the variants apart and total.

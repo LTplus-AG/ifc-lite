@@ -43,6 +43,10 @@ fn kind_tags_are_stable() {
     assert_eq!(NodeKind::Relationship as u8, 4);
     assert_eq!(NodeKind::Geometry as u8, 5);
     assert_eq!(NodeKind::NameBag as u8, 6);
+    // Review on #8265: the first pass of this test stopped at 6, leaving the
+    // two newest tags unpinned.
+    assert_eq!(NodeKind::Attributes as u8, 7);
+    assert_eq!(NodeKind::TypeAssignment as u8, 8);
 }
 
 #[test]
@@ -79,6 +83,47 @@ fn a_changed_member_value_moves_the_address() {
     let before = pset("P", &[("FireRating", Some("EI60"))]);
     let after = pset("P", &[("FireRating", Some("EI90"))]);
     assert_ne!(before.address(), after.address());
+}
+
+// Review on #8265: confirmed by the reviewer's own test against `c1efd0eee` —
+// `Number(0.0)` and `Number(-0.0)` gave different addresses, and so did two
+// distinct NaN payloads. `address.rs`'s `canonical_f64` now collapses both.
+
+#[test]
+fn negative_zero_member_hashes_like_positive_zero() {
+    let positive = Node::Set {
+        kind: SetKind::Property,
+        name: "P".to_owned(),
+        members: vec![Field {
+            name: "A".to_owned(),
+            value: FieldValue::Number(0.0),
+        }],
+    };
+    let negative = Node::Set {
+        kind: SetKind::Property,
+        name: "P".to_owned(),
+        members: vec![Field {
+            name: "A".to_owned(),
+            value: FieldValue::Number(-0.0),
+        }],
+    };
+    assert_eq!(positive.address(), negative.address());
+}
+
+#[test]
+fn every_nan_member_payload_hashes_alike() {
+    let quiet = f64::NAN;
+    let other_payload = f64::from_bits(quiet.to_bits() ^ 0b1);
+    assert!(other_payload.is_nan());
+    let make = |value: f64| Node::Set {
+        kind: SetKind::Property,
+        name: "P".to_owned(),
+        members: vec![Field {
+            name: "A".to_owned(),
+            value: FieldValue::Number(value),
+        }],
+    };
+    assert_eq!(make(quiet).address(), make(other_payload).address());
 }
 
 #[test]
@@ -211,6 +256,7 @@ fn relationship_role_target_order_does_not_reach_the_address() {
         roles: vec![Role {
             name: "RelatedObjects".to_owned(),
             targets: vec![a, b],
+            ordered: false,
         }],
     };
     let reverse = Node::Relationship {
@@ -218,9 +264,68 @@ fn relationship_role_target_order_does_not_reach_the_address() {
         roles: vec![Role {
             name: "RelatedObjects".to_owned(),
             targets: vec![b, a],
+            ordered: false,
         }],
     };
     assert_eq!(forward.address(), reverse.address());
+}
+
+// Review on #8265: `encode` sorted every role's targets unconditionally, so an
+// ordered `LIST` attribute like `IfcRelNests.RelatedObjects` could be
+// reordered — e.g. swapping two alignment segments — with no change of
+// address. `ordered: true` is the opt-out.
+
+#[test]
+fn ordered_role_target_order_does_reach_the_address() {
+    let a = Address::of(b"a");
+    let b = Address::of(b"b");
+    let forward = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![Role {
+            name: "RelatedObjects".to_owned(),
+            targets: vec![a, b],
+            ordered: true,
+        }],
+    };
+    let reverse = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![Role {
+            name: "RelatedObjects".to_owned(),
+            targets: vec![b, a],
+            ordered: true,
+        }],
+    };
+    assert_ne!(
+        forward.address(),
+        reverse.address(),
+        "an ordered role's sequence is content"
+    );
+}
+
+#[test]
+fn ordered_and_unordered_roles_with_the_same_targets_differ() {
+    // Otherwise an ordered role whose targets happen to already be sorted
+    // would collide with the unordered encoding of the same set.
+    let a = Address::of(b"a");
+    let b = Address::of(b"b");
+    let (low, high) = if a < b { (a, b) } else { (b, a) };
+    let unordered = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![Role {
+            name: "RelatedObjects".to_owned(),
+            targets: vec![low, high],
+            ordered: false,
+        }],
+    };
+    let ordered = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![Role {
+            name: "RelatedObjects".to_owned(),
+            targets: vec![low, high],
+            ordered: true,
+        }],
+    };
+    assert_ne!(unordered.address(), ordered.address());
 }
 
 #[test]
@@ -231,6 +336,7 @@ fn relationship_role_name_matters() {
         roles: vec![Role {
             name: "RelatingObject".to_owned(),
             targets: vec![target],
+            ordered: false,
         }],
     };
     let related = Node::Relationship {
@@ -238,6 +344,7 @@ fn relationship_role_name_matters() {
         roles: vec![Role {
             name: "RelatedObjects".to_owned(),
             targets: vec![target],
+            ordered: false,
         }],
     };
     assert_ne!(relating.address(), related.address());
@@ -358,6 +465,7 @@ fn two_roles_sharing_a_name_do_not_let_input_order_reach_the_address() {
     let role = |targets: Vec<Address>| Role {
         name: "RelatedObjects".to_owned(),
         targets,
+        ordered: false,
     };
     let forward = Node::Relationship {
         ifc_type: "IfcRelAggregates".to_owned(),

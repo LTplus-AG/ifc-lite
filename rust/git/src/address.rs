@@ -138,7 +138,15 @@ impl std::error::Error for AddressError {}
 ///   any byte — a separator included — cannot be read as two fields. A
 ///   delimiter-based encoding has exactly this collision, and it is the defect
 ///   class tracked for the TypeScript side in #8088.
-#[derive(Debug, Default)]
+///
+/// No [`Default`]: [`new`](Self::new) is the only constructor, so a
+/// header-less buffer — one with no magic, kind or version — cannot be built.
+/// (Review on #8265 also asked about `pub(crate)`: left `pub`, because
+/// `optional_string` and `i64` have no caller yet outside tests — the adapter
+/// and commit object that will call them are later PRs on #8262 — and
+/// `pub(crate)` turns that into a `dead_code` warning this crate would then
+/// have to silence rather than earn.)
+#[derive(Debug)]
 pub struct CanonicalWriter {
     buffer: Vec<u8>,
 }
@@ -159,7 +167,7 @@ impl CanonicalWriter {
     /// through, so no caller can encode a raw spelling by forgetting to.
     pub fn string(&mut self, value: &str) -> &mut Self {
         let bytes = canonical_bytes(value);
-        self.u32(bytes.len() as u32);
+        self.u32(u32::try_from(bytes.len()).expect("string longer than u32::MAX bytes"));
         self.buffer.extend_from_slice(&bytes);
         self
     }
@@ -185,15 +193,32 @@ impl CanonicalWriter {
         self
     }
 
+    /// A single byte: a kind or boolean tag. Narrower than [`u32`](Self::u32)
+    /// because a tag is a closed, small set — v0's rules (§2.5, as `node.rs`
+    /// keeps them) use one byte for exactly this, and a count is the only
+    /// field wide enough to need four.
+    pub fn u8(&mut self, value: u8) -> &mut Self {
+        self.buffer.push(value);
+        self
+    }
+
     /// An `f64` as its raw IEEE-754 bit pattern, little-endian.
     ///
     /// v0's rule, and it avoids a decision rather than making one: encoding a
     /// float as text means choosing a rendering, and two renderings of one
-    /// value hash differently. Bits have no such choice. `NaN` payloads are
-    /// the one residual — a signalling and a quiet `NaN` differ in bits while
-    /// comparing equal — so callers normalise a non-finite value before it
-    /// reaches here, as the fingerprint layer does.
+    /// value hash differently. Bits have no such choice.
+    ///
+    /// Two values that compare equal must not hash differently, so this
+    /// canonicalises before taking bits: `-0.0` becomes `0.0` (IFC writers
+    /// emit `-0.` routinely, and it compares equal to `0.0` while differing in
+    /// its sign bit), and every `NaN` payload — signalling or quiet, any
+    /// mantissa — becomes one quiet pattern (they all compare *unequal* to
+    /// everything, including each other, so bits are the only identity they
+    /// have, and two authoring tools are not guaranteed to agree on one).
+    /// Canonicalising here, the one place every float passes through, means
+    /// no caller can forget to.
     pub fn f64_bits(&mut self, value: f64) -> &mut Self {
+        let value = canonical_f64(value);
         self.buffer
             .extend_from_slice(&value.to_bits().to_le_bytes());
         self
@@ -215,6 +240,22 @@ impl CanonicalWriter {
     /// Finish, returning the object's address and its canonical bytes.
     pub fn finish(self) -> (Address, Vec<u8>) {
         (Address::of(&self.buffer), self.buffer)
+    }
+}
+
+/// Collapse the float identities that IEEE-754 equality already treats as one
+/// value but raw bits do not: `-0.0 == 0.0`, and every `NaN` compares unequal
+/// to everything including itself. See [`CanonicalWriter::f64_bits`].
+fn canonical_f64(value: f64) -> f64 {
+    if value.is_nan() {
+        f64::NAN
+    } else if value == 0.0 {
+        // Covers `-0.0`: IEEE-754 equality makes it equal to `0.0`, and this
+        // branch is reached only by the two zeros, so the literal replaces
+        // both with the same positive bit pattern.
+        0.0
+    } else {
+        value
     }
 }
 

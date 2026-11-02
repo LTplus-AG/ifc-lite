@@ -31,14 +31,23 @@ const errors = [];
 const gpuConsole = [];
 const workers = { started: [], closed: [] };
 page.on('pageerror', error => errors.push(error.message));
+// Everything is recorded with its URL; only page exceptions and GPU-pattern
+// console errors fail the witness, the rest is disclosed in result.json.
+const consoleErrors = [];
+const requestFailures = [];
 page.on('console', message => {
-  if (message.type() === 'error' && /gpu|webgpu|gaussian|validation|device lost/i.test(message.text())) gpuConsole.push(message.text());
+  if (message.type() !== 'error') return;
+  consoleErrors.push({ text: message.text(), url: message.location()?.url ?? null });
+  if (/gpu|webgpu|gaussian|validation|device lost/i.test(message.text())) gpuConsole.push(message.text());
 });
+page.on('requestfailed', request => requestFailures.push({ url: request.url(), failure: request.failure()?.errorText ?? null }));
+page.on('response', response => { if (response.status() >= 400) requestFailures.push({ url: response.url(), status: response.status() }); });
 page.on('worker', worker => {
   workers.started.push(worker.url());
   worker.on('close', () => workers.closed.push(worker.url()));
 });
-const result = { base, capture, placement, errors, gpuConsole, workers, checks: {}, frames: {} };
+const result = { base, capture, placement, errors, gpuConsole, consoleErrors, requestFailures, workers, checks: {}, frames: {},
+  errorCollection: 'all console errors, page exceptions and failed/4xx/5xx requests recorded; fails only on page exceptions and GPU-pattern console errors' };
 
 const visibility = (id, visible) => page.evaluate(({ id, visible }) =>
   globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, visible), { id, visible });

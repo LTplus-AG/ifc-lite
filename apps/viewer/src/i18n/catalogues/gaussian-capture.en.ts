@@ -27,7 +27,7 @@ export const gaussianCaptureEn = {
   'gaussianCapture.state.resident': 'Resident',
   'gaussianCapture.state.pending': 'Waiting for the graphics device',
   'gaussianCapture.state.failedReload': 'Upload failed. Reload the capture.',
-  'gaussianCapture.state.failedAnchor': 'Its placement is more than 8,192 m from the shared Gaussian anchor, so it is no longer drawn. Fix the model placement, then reload the capture.',
+  'gaussianCapture.state.failedAnchor': 'Its placement exceeds the renderer-coordinate limit of 8,192 from the shared Gaussian anchor, so it is no longer drawn. Fix the model placement, then reload the capture.',
   'gaussianCapture.state.failedOther': 'Failed ({reason}). Reload the capture.',
   'gaussianCapture.state.replaced': 'The viewer renderer restarted. Reload the capture.',
   'gaussianCapture.state.invalid': 'Not on this renderer. Reload the capture.',

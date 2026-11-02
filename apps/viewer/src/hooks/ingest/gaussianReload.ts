@@ -4,6 +4,7 @@
 
 import { useCallback } from 'react';
 import { useViewerStore } from '@/store';
+import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 import type { FederationAddModelOptions } from '../modelLoadOptions.js';
 import { useIfcLoader } from '../useIfcLoader.js';
 import { useIfcFederation } from '../useIfcFederation.js';
@@ -30,12 +31,18 @@ export async function reloadGaussianCapture(modelId: string, deps: GaussianReloa
   if (!model || !capture) return { ok: false, reason: 'not-a-capture' };
   if (!model.sourceFile) return { ok: false, reason: 'source-unavailable' };
   const { sourceFile, sourceHandle, name, visible, collapsed } = model;
-  deps.removeModel(modelId);
   const next = await deps.addModel(sourceFile, {
-    name, visible, collapsed, sourceHandle,
+    name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
     ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
   });
-  return next ? { ok: true, modelId: next } : { ok: false, reason: 'not-loaded' };
+  if (!next) return { ok: false, reason: 'not-loaded' };
+  // Keep the retry row (and its owned asset) until admission and loading
+  // succeed. Read tags at commit time so edits during the load survive too.
+  const state = useViewerStore.getState();
+  const tags = captureModelTags(state, [modelId]);
+  restoreModelTags(state, tags, modelId, next);
+  deps.removeModel(modelId);
+  return { ok: true, modelId: next };
 }
 
 /** The reload action bound to this component's canonical loader. */

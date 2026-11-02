@@ -320,7 +320,7 @@ function ScaleReadout() {
   // #8566: placement is not calibration. A visible capture never establishes
   // metres, even when its source coordinates happen to resemble IFC units.
   const hasCapture = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !!m.gaussianSplat));
-  const hasIfc = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !m.gaussianSplat));
+  const hasIfc = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !m.gaussianSplat && m.pointCloudHandleId === undefined && !!m.ifcDataStore?.schemaVersion?.startsWith('IFC')));
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
   useEffect(() => {

@@ -21,7 +21,7 @@ export const gaussianCaptureRu = {
   "gaussianCapture.state.resident": "Загружен на GPU",
   "gaussianCapture.state.pending": "Ожидание графического устройства",
   "gaussianCapture.state.failedReload": "Загрузка не удалась. Перезагрузите захват.",
-  "gaussianCapture.state.failedAnchor": "Его размещение находится дальше 8 192 м от общей опорной точки гауссианов, поэтому он больше не отображается. Исправьте размещение модели, затем перезагрузите захват.",
+  "gaussianCapture.state.failedAnchor": "Его размещение превышает предел 8 192 в координатах рендерера относительно общей опорной точки гауссианов, поэтому он больше не отображается. Исправьте размещение модели, затем перезагрузите захват.",
   "gaussianCapture.state.failedOther": "Ошибка ({reason}). Перезагрузите захват.",
   "gaussianCapture.state.replaced": "Рендерер просмотрщика перезапущен. Перезагрузите захват.",
   "gaussianCapture.state.invalid": "Отсутствует в этом рендерере. Перезагрузите захват.",

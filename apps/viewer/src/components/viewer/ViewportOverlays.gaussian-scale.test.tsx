@@ -36,6 +36,19 @@ describe('Gaussian capture scale disclosure (#8566)', () => {
     assert.equal(metric(ui), null);
   });
 
+  it('does not treat a raw point cloud alongside a capture as metric IFC (#8566)', () => {
+    const scan = { ...fixtureModel('scan'), pointCloudHandleId: 42 };
+    useViewerStore.setState(fixtureModels(scan, capture()));
+    const ui = mount();
+    assert.equal(metric(ui), null);
+    assert.match(note(ui)?.textContent ?? '', /no metric scale/);
+    act(() => useViewerStore.getState().onScaleChange?.(6.5));
+    assert.equal(metric(ui), null);
+    act(() => useViewerStore.setState(fixtureModels(scan, capture(), fixtureModel('ifc'))));
+    assert.ok(metric(ui), 'a real IFC model enables its metric scale');
+    assert.match(note(ui)?.textContent ?? '', /Scale applies to IFC geometry/);
+  });
+
   it('preserves the IFC scale and updates it through the real camera callback', () => {
     useViewerStore.setState(fixtureModels(fixtureModel('ifc')));
     const ui = mount();

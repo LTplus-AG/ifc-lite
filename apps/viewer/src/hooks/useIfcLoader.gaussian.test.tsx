@@ -18,13 +18,22 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel } from '@/test/scan-federation';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker } from '@/test/gaussian-loader-harness';
 import { useIfcLoader } from './useIfcLoader.js';
+import { useIfcFederation } from './useIfcFederation.js';
 import { setGlobalRendererRef } from './useBCF.js';
 
 const QUALIFIED = { gaussianQualification: 'internal-unqualified' } as const;
 const CENTRES: Array<[number, number, number]> = [[1, 2, 3], [4, 5, 6], [-2, 0, 1]];
 
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
-function Probe(): null { hookApi = useIfcLoader(); return null; }
+let federation: ReturnType<typeof useIfcFederation>;
+let qualifiedReload = true;
+function Probe(): null {
+  const loader = useIfcLoader();
+  hookApi = loader;
+  federation = useIfcFederation((file, target, options) =>
+    loader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) }));
+  return null;
+}
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -45,6 +54,7 @@ function assertNoHeldSlot(): void {
 
 beforeEach(async () => {
   hookApi = null;
+  qualifiedReload = true;
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
   modelIndices(new Map());
@@ -222,6 +232,50 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     assert.equal(model('kept'), undefined);
     useViewerStore.getState().clearAllModels();
     assertNoHeldSlot();
+  });
+
+  it('failed admission and upload preserve the retry row; successful retry carries metadata (#8566)', async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    const placement = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];
+    const source = gaussianPly('retry.ply', CENTRES);
+    await load(source, { kind: 'federated', modelId: 'retry', name: 'Survey', visible: false, collapsed: false },
+      { ...QUALIFIED, gaussianPlacement: placement, gaussianAttribution: 'Survey team' });
+    const original = model('retry')!;
+    const tag = useViewerStore.getState().createModelTag('Survey phase')!;
+    useViewerStore.getState().assignModelTags(['retry'], [tag]);
+
+    qualifiedReload = false;
+    const refused = await act(async () => reloadGaussianCapture('retry', federation));
+    assert.deepEqual(refused, { ok: false, reason: 'not-loaded' });
+    assert.equal(model('retry'), original, 'refused admission keeps source, placement and display metadata');
+    assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get('retry')!], [tag]);
+    assert.equal(splats().getState(original.gaussianSplat!.handle).state, 'resident');
+
+    qualifiedReload = true;
+    const previous = gpu;
+    previous.loseDevice();
+    gpu = gaussianTestRenderer({ maxStorageBufferBindingSize: 16, maxBufferSize: 16 });
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    const failed = await act(async () => reloadGaussianCapture('retry', federation));
+    assert.deepEqual(failed, { ok: false, reason: 'not-loaded' });
+    assert.equal(model('retry'), original, 'upload failure leaves the lost-device capture recoverable');
+    assert.equal(splats().getStats().assets, 0);
+
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    const success = await act(async () => reloadGaussianCapture('retry', federation));
+    assert.ok(success.ok);
+    const replacement = model(success.modelId)!;
+    assert.equal(model('retry'), undefined);
+    assert.equal(replacement.sourceFile, source);
+    assert.deepEqual([replacement.name, replacement.visible, replacement.collapsed], ['Survey', false, false]);
+    assert.deepEqual(replacement.gaussianSplat!.placement, placement);
+    assert.equal(replacement.gaussianSplat!.attribution, 'Survey team');
+    assert.equal(splats().getState(replacement.gaussianSplat!.handle).state, 'resident');
+    assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get(success.modelId)!], [tag]);
+    assert.equal(useViewerStore.getState().modelTagAssignments.has('retry'), false);
+    await load(source, { kind: 'federated', modelId: 'unrelated' }, QUALIFIED);
+    assert.equal(useViewerStore.getState().modelTagAssignments.has('unrelated'), false, 'same filename alone never inherits tags');
   });
 
   it('a reload without a retained source refuses explicitly', async () => {

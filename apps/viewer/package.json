@@ -123,7 +123,9 @@
     "zustand": "^5.0.16",
     "@ifc-lite/semantic": "workspace:*",
     "@ifc-lite/source-autodesk": "workspace:^",
-    "@ifc-lite/ids-agent": "workspace:^"
+    "@ifc-lite/ids-agent": "workspace:^",
+    "@playcanvas/splat-transform": "3.10.3",
+    "playcanvas": "2.23.3"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",

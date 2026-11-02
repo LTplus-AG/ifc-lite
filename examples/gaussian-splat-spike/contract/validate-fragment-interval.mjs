@@ -18,7 +18,7 @@ await mkdir(output, { recursive: true });
 const evidence = { issue: 8564, mode: 'SwiftShader correctness only', productionReady: false, sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), runs: [] };
 let browser;
 try {
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: [
+  browser = await chromium.launch({ headless: true, args: [
     '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
     '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu',
   ] });

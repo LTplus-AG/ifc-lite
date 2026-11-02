@@ -96,6 +96,10 @@ const BASELINE = {
   deviceRecovery(b, { check }) {
     check('recovery: box drawn', Math.max(...b.boxCentre.slice(0, 3)) > 40, b.boxCentre);
   },
+  sortRefresh(b, { check }) {
+    check('sort: empty frame has no lit pixel', b.emptyLitPixels === 0, b.emptyLitPixels);
+    check('sort: analytic colours discriminate red-front (A) from blue-front (B)', b.expected.A[0] - b.expected.A[2] > 60 && b.expected.B[2] - b.expected.B[0] > 60, b.expected);
+  },
   picking(b, { check }) {
     check('picking: pick over the box returns the box', b.picksWithoutSplats.overBox?.expressId === 1, b.picksWithoutSplats);
     check('picking: pick over empty background returns null', b.picksWithoutSplats.overEmpty === null, b.picksWithoutSplats);
@@ -181,6 +185,31 @@ const SPLAT = {
     check('recovery: lost device destroyed by the witness, then only by renderer recovery', calls[0]?.phase === 'deviceRecovery:induce-loss'
       && calls.slice(1).every(c => c.stack.some(frame => frame.includes('WebGPUDevice.destroy')))
       && calls.every(c => !c.stack.some(frame => frame.includes('/gaussian/'))), calls);
+  },
+  sortRefresh(s, scene, { check, exact, near }) {
+    check('sort: adapter draws through the same upstream SplatRenderer module', s.upstream?.found >= 1 && s.upstream.lookalikes === 0, s.upstream);
+    check('sort: no camera change, no re-sort', s.counts.still.sorts === 0 && s.counts.stillAfterOrbit.sorts === 0, { still: s.counts.still, after: s.counts.stillAfterOrbit });
+    check('sort: camera orbit re-sorts', s.counts.orbitApi.recomputed >= 1, s.counts.orbitApi);
+    check('sort: perspective dolly zoom re-sorts', s.counts.zoomPerspective.recomputed >= 1, s.counts.zoomPerspective);
+    check('sort: orthographic zoom re-sorts', s.counts.zoomOrthographic.recomputed >= 1, s.counts.zoomOrthographic);
+    for (const step of s.path) {
+      if (step.degrees !== 0) check(`sort: orbit to ${step.degrees} deg re-sorts`, step.recomputed >= 1, step);
+      exact(`sort: orbit ${step.degrees} deg equals a from-scratch sort`, step.equalsFresh);
+    }
+    const [a, b] = [s.path[0], s.path.at(-1)];
+    const { A, B } = scene.baseline.expected;
+    check('sort: red over blue at A matches analytic front-over-back', near(a.centre, A, 6) && a.centre[0] > a.centre[2], { actual: a.centre, expected: A });
+    check('sort: blue over red at B matches analytic front-over-back', near(b.centre, B, 6) && b.centre[2] > b.centre[0], { actual: b.centre, expected: B });
+    const flips = s.path.filter((step, i) => i > 0 && Math.sign(step.centre[0] - step.centre[2]) !== Math.sign(s.path[i - 1].centre[0] - s.path[i - 1].centre[2]));
+    check('sort: the front colour flips mid-path (between 80 and 100 deg)', flips.length === 1 && flips[0].degrees === 100, s.path.map(step => [step.degrees, step.centre]));
+    for (const step of s.zoom) {
+      check(`sort: ${step.name} re-sorts`, step.recomputed >= 1, step);
+      exact(`sort: ${step.name} equals a from-scratch sort`, step.equalsFresh);
+    }
+    check('sort: frozen sort leaves the stale order at B (orbit is order-sensitive)', s.frozen.orbit.recomputed === 0
+      && s.frozen.orbit.equalsFresh.comparable && s.frozen.orbit.equalsFresh.changed > 0 && s.frozen.orbit.centre[0] > s.frozen.orbit.centre[2], s.frozen.orbit);
+    exact('sort: frozen sort still matches after a zoom (zoom is order-preserving)', s.frozen.zoom.equalsFresh);
+    check('sort: upstream method restored', s.spyRestored === true, s.spyRestored);
   },
   picking(s, scene, { check, colour }) {
     colour('picking: Gaussian drawn at the over-box pick pixel', s.drawnOverBox);

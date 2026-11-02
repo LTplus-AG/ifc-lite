@@ -27,6 +27,23 @@ function lifetime(name) {
   };
 }
 
+/** Scene (j): one re-sort per camera change, none without; every refreshed order equals a fresh sort. */
+function sortRefreshSplat() {
+  const sorted = (name, centre) => ({ name, sorts: 1, recomputed: 1, lastEncodeMs: 0.2, centre, equalsFresh: exact(77361) });
+  const centres = { 0: [153, 0, 61, 255], 30: [146, 0, 62, 255], 60: [134, 0, 63, 255], 80: [129, 0, 64, 255],
+    100: [64, 0, 128, 255], 120: [64, 0, 134, 255], 150: [62, 0, 146, 255], 180: [61, 0, 153, 255] };
+  return {
+    upstream: { found: 1, lookalikes: 0 },
+    counts: { still: { name: 'still', sorts: 0, recomputed: 0 }, orbitApi: sorted('orbit-api'), stillAfterOrbit: { name: 'still-after-orbit', sorts: 0, recomputed: 0 },
+      zoomPerspective: sorted('zoom-perspective'), zoomOrthographic: sorted('zoom-orthographic') },
+    path: Object.entries(centres).map(([degrees, centre]) => ({ degrees: Number(degrees), ...sorted(`orbit-${degrees}`, centre) })),
+    zoom: ['perspective-0', 'perspective-1', 'orthographic-0'].map(name => sorted(`zoom-${name}`, [62, 0, 146, 255])),
+    frozen: { orbit: { name: 'frozen-orbit-180', sorts: 1, recomputed: 0, centre: [153, 0, 61, 255], equalsFresh: { comparable: true, compared: 77361, changed: 869, maxDelta: 92 } },
+      zoom: { name: 'frozen-zoom', sorts: 1, recomputed: 0, centre: [62, 0, 146, 255], equalsFresh: exact(77361) } },
+    spyRestored: true,
+  };
+}
+
 /** The measurement shape native-adapter-witness.mjs returns for a run that should pass. */
 function passing() {
   const scenes = {
@@ -74,6 +91,10 @@ function passing() {
         sameHandleUsable: { setVisible: true }, recoveredEqualsReference: exact(77361),
         destroyCallsOnLostDevice: [{ phase: 'deviceRecovery:induce-loss', stack: ['at deviceRecovery (native-adapter-witness-scenes.mjs)'] },
           { phase: 'deviceRecovery', stack: ['at WebGPUDevice.destroy (device.ts)', 'at Renderer.teardown (index.ts)'] }] },
+    },
+    sortRefresh: {
+      baseline: { emptyLitPixels: 0, expected: { A: [153, 0, 61.2], B: [61.2, 0, 153] } },
+      splat: sortRefreshSplat(),
     },
   };
   for (const [name, scene] of Object.entries(scenes)) Object.assign(scene, { captures: [{ name: 'frame', stable: true }], lifetime: lifetime(name) });
@@ -154,4 +175,16 @@ test('a missing adapter fails unless a baseline-only run is requested', () => {
   result.scenes.deviceRecovery.lifetime.deviceLossesBeforeTeardown = []; // no splats: scene (h) induces no loss
   assert.ok(failedNames(result).includes('adapter API present'));
   assert.deepEqual(failedNames(result, { allowPendingAdapter: true }), []);
+});
+
+test('scene (j) rejects stale or frame-driven sorting and an insensitive frozen control', () => {
+  rejects(s => { s.sortRefresh.splat.counts.still.sorts = 1; }, 'sort: no camera change, no re-sort');
+  rejects(s => { s.sortRefresh.splat.counts.orbitApi.recomputed = 0; }, 'sort: camera orbit re-sorts');
+  rejects(s => { s.sortRefresh.splat.path[5].equalsFresh.changed = 869; }, 'sort: orbit 120 deg equals a from-scratch sort');
+  rejects(s => { s.sortRefresh.splat.path.at(-1).centre = [153, 0, 61, 255]; }, 'sort: blue over red at B matches analytic front-over-back');
+  rejects(s => { s.sortRefresh.splat.path[4].centre = [129, 0, 64, 255]; }, 'sort: the front colour flips mid-path (between 80 and 100 deg)');
+  rejects(s => { s.sortRefresh.splat.zoom[2].equalsFresh.changed = 4; }, 'sort: zoom-orthographic-0 equals a from-scratch sort');
+  rejects(s => { s.sortRefresh.splat.frozen.orbit.equalsFresh = exact(77361); }, 'sort: frozen sort leaves the stale order at B (orbit is order-sensitive)');
+  rejects(s => { s.sortRefresh.splat.frozen.zoom.equalsFresh.changed = 12; }, 'sort: frozen sort still matches after a zoom (zoom is order-preserving)');
+  rejects(s => { s.sortRefresh.splat.upstream = { found: 0, lookalikes: 1 }; }, 'sort: adapter draws through the same upstream SplatRenderer module');
 });

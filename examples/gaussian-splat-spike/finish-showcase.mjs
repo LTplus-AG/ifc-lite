@@ -39,7 +39,7 @@ const count = Number(args.splats ?? entry.gaussian.count).toLocaleString('en-US'
 const lines = {
   badge: 'RESEARCH PREVIEW · not a production showcase',
   title: credits.title,
-  subtitle: `Real capture: ${credits.capture} · ${count} Gaussian splats · real-time WebGPU render`,
+  subtitle: `${credits.capture} · ${count} Gaussian splats · real-time WebGPU render`,
   label: 'Upstream PlayCanvas engine in the ifc-lite research spike, not the ifc-lite viewer',
   credit: credits.credit,
   change: credits.change,
@@ -76,7 +76,10 @@ for (const output of outputs) {
   Object.assign(output, { sha256: await sha256File(output.file), probe: probe(output.file) });
   delete output.codec;
 }
-const evidence = { issue: 8567, label: lines.badge, master, overlay: lines, fonts: [bold, regular],
+const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' }).trim();
+const source = { head: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain', '--', 'examples/gaussian-splat-spike') !== '' };
+const evidence = { issue: 8567, label: lines.badge, source, ffmpeg: execFileSync('ffmpeg', ['-version'], { encoding: 'utf8' }).split('\n')[0],
+  master, overlay: lines, fonts: [bold, regular],
   method: 'ffmpeg drawtext over the untouched master; -fps_mode passthrough keeps capture timestamps', outputs };
 await writeFile(join(args.out, 'finish-evidence.json'), JSON.stringify(evidence, null, 2) + '\n');
 console.log(JSON.stringify({ master: master.probe, outputs: outputs.map(o => ({ file: o.file, sha256: o.sha256, frames: o.probe.nb_read_frames, duration: o.probe.duration })) }, null, 2));

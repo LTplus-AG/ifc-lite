@@ -118,6 +118,13 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     if (list || typeof width !== 'number' || fields.length !== 3) malformed = true;
     else stride += width;
   }
+  // Pinned readPly selects its separate compressed reader on this vertex
+  // property alone, even alongside all ordinary Gaussian channels. Its chunk
+  // bounds allocate from a different element count, outside our stride budget.
+  // Launch scope is uncompressed PLY: refuse before opening any upstream reader.
+  if (decode && properties.has('packed_position')) {
+    return { kind: 'invalid', reason: 'Unsupported compressed Gaussian PLY (packed_position).' };
+  }
   // Only vertex properties count; comments and similarly named face properties do not.
   const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
     || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));

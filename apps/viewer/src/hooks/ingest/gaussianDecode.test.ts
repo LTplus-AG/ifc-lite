@@ -198,3 +198,72 @@ it('decoder refuses unsupported grammar while dispatch keeps its PLY compatibili
   const late = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n', '\ncomment end_header\ncomment ' + 'x'.repeat(65536) + '\nend_header\n'));
   await assert.rejects(decodeGaussianFile(late), /64 KiB/);
 });
+
+async function packedPly(chunkCount: string, packed = ['packed_position', 'packed_rotation', 'packed_scale', 'packed_color']) {
+  const file = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n', '\n'
+    + packed.map(name => `property uint ${name}\n`).join('')
+    + `element chunk ${chunkCount}\nproperty float min_x\nend_header\n`));
+  // Only the single vertex is present; the claimed chunk payload is absent.
+  return new File([file, new Uint8Array(packed.length * 4)], 'hybrid.ply');
+}
+
+async function boundedFloat32<T>(run: () => Promise<T>) {
+  const original = globalThis.Float32Array;
+  const requested: number[] = [];
+  globalThis.Float32Array = new Proxy(original, {
+    construct(target, args: unknown[]) {
+      if (typeof args[0] === 'number') {
+        const bytes = args[0] * 4;
+        requested.push(bytes);
+        if (bytes > 16 * 1024 * 1024) throw new Error(`Float32 allocation refused: ${bytes}`);
+      }
+      return Reflect.construct(target, args);
+    },
+  });
+  try { return { result: await run(), requested }; }
+  finally { globalThis.Float32Array = original; }
+}
+
+it('refuses compressed-reader selection before body reads or chunk bounds allocation (#8565 review r3)', async () => {
+  for (const count of ['100000000', '-1', 'NaN', '9007199254740992']) {
+    for (const packed of [['packed_position'], ['packed_position', 'packed_rotation', 'packed_scale', 'packed_color']]) {
+      const file = await packedPly(count, packed);
+      let wholeFileReads = 0;
+      const read = file.arrayBuffer.bind(file);
+      file.arrayBuffer = () => { wholeFileReads++; return read(); };
+      const { requested } = await boundedFloat32(async () => {
+        await assert.rejects(decodeGaussianFile(file), /Unsupported compressed Gaussian PLY/);
+      });
+      assert.equal(wholeFileReads, 0, 'refuse in bounded admission before opening the upstream reader');
+      assert.deepEqual(requested, [], 'no decoded or compressed bounds Float32 storage is allocated');
+    }
+  }
+});
+
+it('negative control intercepts real compressed chunk allocation before constructing it (#8565 review r3)', async () => {
+  const file = await packedPly('100000000');
+  assert.ok(file.size < 1024, 'tiny malformed input, no huge fixture allocation');
+  await assert.rejects(boundedFloat32(() => rawUpstream(file, 1)), /Float32 allocation refused: 400000000/);
+});
+
+it('reader discriminator is vertex-scoped and ordinary PLY dispatch remains compatible (#8565 review r3)', async () => {
+  const file = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n',
+    '\ncomment packed_position\nelement chunk 0\nproperty float packed_position\nend_header\n'));
+  assert.deepEqual((await decodeGaussianFile(file)).centerBounds.min, [1, 2, 3]);
+  const ordinary = new File(['ply\nformat binary_little_endian 1.0\nelement vertex 1\n'
+    + ['x', 'y', 'z', 'packed_position'].map(name => `property float ${name}\n`).join('')
+    + 'end_header\n', new Uint8Array(16)], 'ordinary.ply');
+  assert.deepEqual(await inspectGaussianAdmission(ordinary, await ordinary.arrayBuffer()), { kind: 'ordinary' });
+});
+
+it('other upstream PLY model discriminators cannot reach materialization (#8565 review r3)', async () => {
+  for (const comment of ['SplatRenderMode: mip', 'SplatRenderMode: 2dgs', 'antialiased 1']) {
+    const file = await changeHeader(layoutPly(1), header => header.replace('element vertex', `comment ${comment}\nelement vertex`));
+    const { requested } = await boundedFloat32(async () => {
+      await assert.rejects(decodeGaussianFile(file), /Unsupported or inconsistent/);
+    });
+    assert.deepEqual(requested, []);
+  }
+  const twoDimensional = await changeHeader(layoutPly(1), header => header.replace('property float scale_2\n', ''));
+  await assert.rejects(decodeGaussianFile(twoDimensional), /Malformed/);
+});

@@ -1,5 +1,31 @@
 # @ifc-lite/renderer
 
+## 7.0.0
+
+### Major Changes
+
+- [#8545](https://github.com/LTplus-AG/ifc-lite/pull/8545) [`3776d1f`](https://github.com/LTplus-AG/ifc-lite/commit/3776d1fd80317a00fe27b6e7019be4a961756238) Thanks [@louistrue](https://github.com/louistrue)! - A scene can now be saved and reopened whole. `encodeSceneSnapshot` and `decodeSceneSnapshot` serialize the batches finalize produced, and `SceneContents` gains the required methods `captureNextFinalize`, `adoptSceneSnapshot`, `hydrateSceneSnapshot`, `abandonSceneSnapshot`, `isSceneSnapshotHydrating` and `sceneSnapshotPolicy`, so a class implementing that interface must add them. The viewer uses them behind the default-off `perf.sceneSnapshot` flag, so a reopen of a single cached model can draw the complete model before its metadata decodes.
+
+- [#8439](https://github.com/LTplus-AG/ifc-lite/pull/8439) [`cb42869`](https://github.com/LTplus-AG/ifc-lite/commit/cb428696fa597c49569d7f7c036352bd6db2040f) Thanks [@louistrue](https://github.com/louistrue)! - Cut per-frame CPU during camera navigation. Colour-batch uniform blocks now live in a shared per-device arena (`BatchedMesh.uniformSlot` replaces `BatchedMesh.uniformBuffer`), so a moving camera uploads every drawn batch with one `queue.writeBuffer` per 256 KiB page instead of one per batch, and an unchanged block is not uploaded at all. Redundant `setPipeline` calls between consecutive batches are skipped, the drawing-buffer size reads the canvas layout only after a `ResizeObserver` report instead of forcing layout every frame, and the GPU residency budget check sums sizes before doing any eviction bookkeeping. `FrameStats.cpuMs` reports the frame's main-thread encode cost, excluding the `getCurrentTexture()` wait.
+
+### Minor Changes
+
+- [#8438](https://github.com/LTplus-AG/ifc-lite/pull/8438) [`4076d40`](https://github.com/LTplus-AG/ifc-lite/commit/4076d40c35b6154c71f0bcfc8daaaad3d5152477) Thanks [@louistrue](https://github.com/louistrue)! - `SceneContents.limitStreamingFragments(maxIndices)` stops the current stream's transient fragment pass near a first-paint target: past it a streamed mesh joins its bucket and is merged and uploaded once, by finalize, instead of twice. The time-sliced finalize also yields through a MessageChannel task instead of `setTimeout(0)`, avoiding the nested-timer clamp.
+
+- [#8356](https://github.com/LTplus-AG/ifc-lite/pull/8356) [`12f0836`](https://github.com/LTplus-AG/ifc-lite/commit/12f0836590ecdd82ece835f216589352b64f3fd2) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.isTweening()`: true from the moment a timed pose tween (preset view, frame, home) starts until `update()` has applied its final pose, independent of whether a frame has run since. The viewer exposes it as `cameraCallbacks.isCameraTweening` so hosts and tests can wait on the tween instead of guessing from pose reads.
+
+- [#8440](https://github.com/LTplus-AG/ifc-lite/pull/8440) [`d530caf`](https://github.com/LTplus-AG/ifc-lite/commit/d530caf1f06122727051b7b2ff12754a70b3f4fd) Thanks [@louistrue](https://github.com/louistrue)! - Opaque draws that nothing can clip or hide now use a fragment shader without `discard`, so the GPU can reject hidden fragments before shading them. Opaque batches draw nearest first, and the object-id target is not written on frames where edges are off. The GPU picker allocates its targets on the first GPU pick instead of at startup, and selection-outline targets are freed after a run of frames with nothing selected or hovered. New `Renderer.getRenderTargetBytes()` reports the render-target memory the renderer holds.
+
+- [#8616](https://github.com/LTplus-AG/ifc-lite/pull/8616) [`be14753`](https://github.com/LTplus-AG/ifc-lite/commit/be14753429065a1f4908ab1c83e6a2fba30fd3ef) Thanks [@louistrue](https://github.com/louistrue)! - Add explicit Gaussian raw-to-render normalization and renderer-lifetime readiness reporting. Gaussian native rendering remains blocked pending exact composition and viewer qualification.
+
+### Patch Changes
+
+- [#8432](https://github.com/LTplus-AG/ifc-lite/pull/8432) [`d364e0d`](https://github.com/LTplus-AG/ifc-lite/commit/d364e0d1c7b9ab453e3b7fa31141dab6e1e14fa3) Thanks [@louistrue](https://github.com/louistrue)! - A failed GPU device recovery now says what failed. When a replacement device is lost before recovery finishes, the renderer's `device-init-failed` error carries that device's own loss reason and text (`Replacement GPU device was lost during initialization (unknown): …`) instead of a fixed sentence. The viewer's `device_loss_recovery_failed` event adds the error class and text of the final attempt and of the first attempt when it was retried, the attempt count, elapsed time, a per-page episode number, and the same GPU and page context as the loss event.
+
+- [#8439](https://github.com/LTplus-AG/ifc-lite/pull/8439) [`cb42869`](https://github.com/LTplus-AG/ifc-lite/commit/cb428696fa597c49569d7f7c036352bd6db2040f) Thanks [@louistrue](https://github.com/louistrue)! - Repacking GPU-instanced camera-relative deltas on a camera move no longer allocates per occurrence or re-validates the camera per occurrence; the uploaded high/low lanes are bit-identical.
+- Updated dependencies [[`58442c2`](https://github.com/LTplus-AG/ifc-lite/commit/58442c2da84df10227f79d7b2d2c08a7327bebd2), [`de4c89b`](https://github.com/LTplus-AG/ifc-lite/commit/de4c89b83d8c1b5aa0b6e1c589368e80a3de7c31), [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0)]:
+  - @ifc-lite/geometry@8.1.0
+
 ## 6.5.2
 
 ### Patch Changes

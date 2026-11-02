@@ -12,14 +12,16 @@ export const SHOWCASE_SUBJECTS = Object.freeze({
     title: 'Seem Kirke, Danmark',
     creator: 'Peter Rødsgaard Rasmussen (roedsgaard)',
     attributionMarker: 'Peter Rødsgaard Rasmussen',
-    capture: 'Drone photographs, RealityScan alignment, LichtFeld Studio training',
+    capture: 'Real drone capture',
+    pipeline: 'Drone photographs, RealityScan alignment, LichtFeld Studio training',
     change: 'Published quantized SOG converted to PLY; viewpoint changed',
   }),
   'gaussian/delft-aula-library-v1.ply': Object.freeze({
     title: 'Aula & Library, TU Delft',
     creator: 'Yingwen Yu (2025), doi:10.17605/OSF.IO/P3CW7',
     attributionMarker: 'Yu, Y. (2025)',
-    capture: 'UAV and ground photography, Postshot reconstruction',
+    capture: 'Real UAV and ground capture',
+    pipeline: 'UAV and ground photography, Postshot reconstruction',
     change: 'Unmodified publisher PLY; viewpoint changed',
   }),
 });
@@ -44,6 +46,7 @@ export function showcaseCredits(entry) {
   return {
     title: subject.title,
     capture: subject.capture,
+    pipeline: subject.pipeline,
     credit: `${subject.title} — ${subject.creator} · ${licenseName} · ${bareUrl(source)}`,
     change: `${subject.change} · ${bareUrl(license.url)}`,
     licenseName,

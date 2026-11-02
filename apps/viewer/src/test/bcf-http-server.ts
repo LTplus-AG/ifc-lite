@@ -83,6 +83,8 @@ export interface LocalBcfQuirks {
   topicStatuses?: string[];
   /** Only these types keep a status; any other type's status is accepted and stored as null, silently. */
   statusOnlyForTypes?: string[];
+  /** How a dropped status is stored and served: as null (default) or left out of the topic altogether. */
+  droppedStatus?: 'null' | 'omit';
   /** The topic list ignores `$skip` but honours `$orderby=modified_date asc` and `$filter=modified_date ge <date>`. */
   ignoreSkip?: boolean;
   /** Serve at most this many topics per list request, whatever `$top` asks for (a silent server-side cap). */
@@ -113,7 +115,9 @@ export async function startLocalBcfServer(options: LocalBcfQuirks & { port?: num
   }
   const vocabulary = { types: options.topicTypes ?? TYPES, statuses: options.topicStatuses ?? STATUSES };
   const kept = (fields: Record<string, unknown>): Record<string, unknown> =>
-    options.statusOnlyForTypes && !options.statusOnlyForTypes.includes(String(fields.topic_type)) ? { ...fields, topic_status: null } : fields;
+    options.statusOnlyForTypes && !options.statusOnlyForTypes.includes(String(fields.topic_type))
+      ? options.droppedStatus === 'omit' ? (({ topic_status: _dropped, ...kept }) => kept)(fields) : { ...fields, topic_status: null }
+      : fields;
   let guidOrdinal = 0;
   const newGuid = () => options.guidPrefix === undefined ? randomUUID()
     : `${options.guidPrefix}0000-0000-4000-8000-${(++guidOrdinal).toString(16).padStart(12, '0')}`;

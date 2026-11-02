@@ -124,6 +124,27 @@ test('a standard server capping $top below the request does not make a short pag
   assert.equal(checked.check.result, 'committed', 'found past the capped first page, never proven absent');
 });
 
+test('a recovered create whose server leaves the dropped status out keeps no status in its baseline (#8656 review)', async t => {
+  // The found topic is the server's whole copy: a field it omits is not stored, so no sent value fills in.
+  const peer = await connectPeer(t, { statusOnlyForTypes: ['Issue'], droppedStatus: 'omit' });
+  const connection = { ...peer.connection, rules: {} };
+  const batch = await reviewedBatch();
+  peer.state.loseNextWriteResponse = true;
+  const first = await publishDraftBatch(batch, peer.target, connection);
+  const lost = (await readPublication(first?.plan.record.id ?? ''))?.record.entries.find(entry => entry.operation === 'createTopic' && entry.state === 'uncertain');
+  assert.ok(lost);
+  assert.equal(lost.payload.topic_status, 'Open');
+  const checked = await checkEntry(first?.plan.record.id ?? '', lost.id, connection);
+  assert.ok(checked.ok);
+  const recovered = checked.record.entries.find(entry => entry.id === lost.id);
+  assert.equal(recovered?.receipt?.fields?.topic_status, undefined, 'omitted by the server, so not in the baseline');
+  await publishDraftBatch(batch, peer.target, connection);
+  const edited = editDraftTopic(batch, lost.topicGuid, { title: 'Recovered topic, renamed' });
+  assert.ok(edited.ok);
+  const second = await publishDraftBatch(edited.batch, peer.target, connection);
+  assert.deepEqual(second?.report.blocked, [], 'no false remote conflict');
+});
+
 const BUILDAGIL_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];
 /** A peer with buildagil's measured topic vocabulary and status rule. */
 const buildagilLike = { topicTypes: BUILDAGIL_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'],

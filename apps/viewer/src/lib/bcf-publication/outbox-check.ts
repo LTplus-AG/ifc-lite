@@ -22,7 +22,7 @@
 
 import type { BcfCommentDto, BcfTopicDto } from '@ifc-lite/bcf-api';
 import { parseDraftFooter } from '../bcf-drafts/draft-footer.js';
-import { commentMarker, confirmedOwnedFields, ownedFields, sameOwnedFields, statedOwnedFields } from './outbox-plan.js';
+import { commentMarker, ownedFields, sameOwnedFields, statedOwnedFields } from './outbox-plan.js';
 import { markDone, replaceEntry, requeue } from './outbox-state.js';
 import { mutatePublication, readPublication } from './outbox-store.js';
 import { sameTarget, type PublicationConnection } from './outbox-dispatch.js';
@@ -165,13 +165,15 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
 }
 
 /**
- * A recovered topic write's receipt keeps what the server stored, as a write
- * response's does (#8656): the update baseline must not fall back to the sent
- * payload, or a field the server dropped reads as a remote conflict later.
+ * A recovered topic write's receipt keeps what the server stored (#8656): the
+ * update baseline must not fall back to the sent payload, or a field the
+ * server dropped reads as a remote conflict later. A found topic is the
+ * server's whole copy, so a field it leaves out is not stored, unlike a
+ * write response, which may echo less than it keeps; no sent value fills in.
  */
 function recoveredFields(entry: OutboxEntry, candidate: OutboxCandidate | undefined): { fields?: Record<string, unknown> } {
   if (!candidate?.fields || (entry.operation !== 'createTopic' && entry.operation !== 'updateTopic')) return {};
-  return { fields: confirmedOwnedFields(candidate.fields, entry.payload) };
+  return { fields: ownedFields(candidate.fields) };
 }
 
 export type CheckOutcome = { ok: true; check: OutboxCheck; record: BcfPublication } | { ok: false; reason: 'unknown' | 'target' | 'state' | 'storage' };

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Uncut, uncopied face sets against their authored rows (#8291).
 use super::OracleResult;
-use ifc_lite_core::{slot, AttributeValue, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, AttributeValue, IfcType};
 use ifc_lite_retained_native::{oracle::{face_set_closure, face_sets}, ShapeOnlyProduct};
 
 fn row_key(role: &str) -> Option<u32> {
@@ -11,8 +11,8 @@ fn row_key(role: &str) -> Option<u32> {
 /// The face sets the file itself puts in this product's or orphan type's Body, directly or
 /// through a map, one entry per occurrence, and whether the Body authors anything else.
 /// The expectation comes from the source, so lost row keys cannot read as nothing to check.
-fn authored_face_sets(product_id: u32, bytes: &[u8]) -> Option<(Vec<u32>, bool)> {
-    let mut decoder = EntityDecoder::new(bytes);
+fn authored_face_sets(product_id: u32, model: &super::ModelSource<'_>) -> Option<(Vec<u32>, bool)> {
+    let mut decoder = model.decoder();
     let product = decoder.decode_by_id(product_id).ok()?;
     let mut roots = Vec::new();
     // Index reads: a published id can be either kind, and each lacks the other's attribute.
@@ -50,14 +50,17 @@ pub const AUTHORED_OPEN: &str = "faceSetAuthoredOpen";
 
 /// Every published UV and palette entry against the row its face key names. Affine
 /// copies move a part out of the source's frame and keep only the exact comparison.
-fn surface(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+fn surface(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let (mut uv, mut palette, mut coverage, mut any) = (0f64, 0f64, 0f64, false);
     for part in &product.parts {
         let (Some(surface), Some(faces)) = (&part.surface, &part.faces) else { continue };
         if !part.source_exact && product.cuts == 0 { continue; }
         any = true;
-        let mut decoder = EntityDecoder::new(bytes);
-        let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+        let mut decoder = model.decoder();
+        let units = model.unit_scale();
+        // The authored rows and surface depend only on the item: read each once per part, not
+        // once per triangle (each read decodes every colour and texture map in the model).
+        let mut authored_items = std::collections::HashMap::new();
         for (t, &key) in faces.triangles.iter().enumerate() {
             let key = &faces.table[key as usize];
             let Some(row) = row_key(&key.role) else {
@@ -65,9 +68,12 @@ fn surface(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Va
                 coverage += f64::from(surface.palette.as_ref().is_some_and(|x| x.triangles[t] != ifc_lite_processing::element::retained_runtime::NO_PALETTE_ENTRY));
                 continue;
             };
-            let Ok(item) = decoder.decode_by_id(key.item) else { coverage += 1.; continue };
-            let Some(set) = face_sets::authored(&item, &mut decoder, units) else { coverage += 1.; continue };
-            let authored = face_sets::authored_surface(bytes, &item, &mut decoder);
+            let read = authored_items.entry(key.item).or_insert_with(|| {
+                let item = decoder.decode_by_id(key.item).ok()?;
+                let set = face_sets::authored(&item, &mut decoder, units)?;
+                Some((set, face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder)))
+            });
+            let Some((set, authored)) = read.as_ref() else { coverage += 1.; continue };
             if let (Some(published), Some(source)) = (&surface.palette, &authored.palette) {
                 palette += f64::from(source.get(row as usize) != Some(&published.triangles[t]));
             }
@@ -89,13 +95,13 @@ fn surface(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Va
         result("faceSetPaletteRow", palette, 0.), result("faceSetSurfaceCoverage", coverage, 0.)]
 }
 
-pub(crate) fn check(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
-    let mut results = surface(product, bytes, tolerances);
-    results.extend(rows(product, bytes, tolerances));
+pub(crate) fn check(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
+    let mut results = surface(product, model, tolerances);
+    results.extend(rows(product, model, tolerances));
     results
 }
 
-fn rows(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value) -> Vec<OracleResult> {
+fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: &serde_json::Value) -> Vec<OracleResult> {
     let mut worst = face_sets::RowDeviation::default();
     let mut any = false;
     let mut failure = None;
@@ -114,8 +120,8 @@ fn rows(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value
         };
         any = true;
         published.push(first.item);
-        let mut decoder = EntityDecoder::new(bytes);
-        let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+        let mut decoder = model.decoder();
+        let units = model.unit_scale();
         let item = decoder.decode_by_id(first.item).ok();
         let set = item.as_ref().filter(|item| matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork | IfcType::IfcPolygonalFaceSet))
@@ -133,7 +139,7 @@ fn rows(product: &ShapeOnlyProduct, bytes: &[u8], tolerances: &serde_json::Value
     if product.cuts == 0 {
         let keyed = |item: u32| product.parts.iter().filter_map(|part| part.faces.as_ref())
             .any(|faces| faces.table.iter().any(|key| key.item == item && row_key(&key.role).is_some()));
-        let source = authored_face_sets(product.product_id, bytes);
+        let source = authored_face_sets(product.product_id, model);
         let (mut authored, other) = source.clone().unwrap_or_default();
         if let Some(missing) = authored.iter().copied().find(|&item| !keyed(item)) {
             failure = Some(format!("#{} authors face set #{missing} but published no row key for it", product.product_id));

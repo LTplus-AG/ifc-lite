@@ -3,6 +3,7 @@
 //! No retained plan/cutter or output mesh supplies an expected volume.
 use super::{bounded_partition::{pieces, extrusion_pieces, inside_distance, Plane}, bounded_source::{Clip,chain}, math::*, sections::{ExtrudedHost,section_volume}};
 use ifc_lite_core::{SourceBundle,slot};
+use std::sync::Arc;
 use ifc_lite_processing::AnalyticQuantitySources;
 
 pub struct Expectation {
@@ -29,7 +30,11 @@ impl Expectation {
     }
 }
 pub fn expected(bytes:&[u8],sources:&AnalyticQuantitySources,product:u32)->Option<Expectation> {
-    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    expected_in(&SourceBundle::new(bytes.to_vec()),sources,product)
+}
+/// [`expected`] over the caller's model-wide source, so a model is indexed once, not per product.
+pub fn expected_in(bundle:&Arc<SourceBundle>,sources:&AnalyticQuantitySources,product:u32)->Option<Expectation> {
+    let bytes=bundle.bytes();let mut decoder=bundle.decoder();
     let chain=chain(product,&mut decoder)?;if chain.clips.is_empty(){return None;}
     let instances=sources.extrusion_definitions.instances.get(&product)?;
     let instance=instances.iter().find(|i|i.source.solid_id==chain.host)?;
@@ -165,7 +170,10 @@ fn result_volume(host:&ExtrudedHost,clips:&[Clip],extra:Vec<Vec<Vec<Plane>>>)->R
 /// harness uses this separately from `expected`, so a missing oracle cannot
 /// quietly turn into an unverified published product.
 pub fn applies(bytes:&[u8],product:u32)->bool {
-    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    applies_in(&SourceBundle::new(bytes.to_vec()),product)
+}
+pub fn applies_in(bundle:&Arc<SourceBundle>,product:u32)->bool {
+    let mut decoder=bundle.decoder();
     super::bounded_source::contains_bounded(product,&mut decoder).unwrap_or(true)
 }
 
@@ -199,7 +207,10 @@ fn disjoint_pairs(host:&ExtrudedHost,partitions:&[Vec<Vec<Plane>>],work:&mut usi
 
 /// Explain why a required source oracle cannot model the authored body.
 pub fn unmodelled_reason(bytes:&[u8],product:u32)->Option<String> {
-    let bundle=SourceBundle::new(bytes.to_vec());let mut decoder=bundle.decoder();
+    unmodelled_reason_in(&SourceBundle::new(bytes.to_vec()),product)
+}
+pub fn unmodelled_reason_in(bundle:&Arc<SourceBundle>,product:u32)->Option<String> {
+    let mut decoder=bundle.decoder();
     if let Err(reason)=super::bounded_source::contains_bounded(product,&mut decoder){return Some(reason);}
     super::bounded_source::unmodelled_reason(product,&mut decoder)
 }

@@ -148,11 +148,23 @@ pub struct AuthoredSurface {
     pub uvs: Option<Vec<[[f64; 2]; 3]>>,
 }
 pub fn authored_surface(bytes: &[u8], item: &DecodedEntity, decoder: &mut EntityDecoder) -> AuthoredSurface {
-    let mut surface = AuthoredSurface::default();
+    authored_surface_in(&surface_maps(bytes), item, decoder)
+}
+/// Every colour and triangle texture map's span, in file order, flagged `true` for colour.
+/// One scan per model: `authored_surface` used to rescan the file for every triangle.
+pub fn surface_maps(bytes: &[u8]) -> Vec<(usize, usize, bool)> {
+    let mut maps = Vec::new();
     let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
     while let Some((_, name, start, end)) = scanner.next_entity() {
         let colour = name.eq_ignore_ascii_case("IFCINDEXEDCOLOURMAP");
-        if !colour && !name.eq_ignore_ascii_case("IFCINDEXEDTRIANGLETEXTUREMAP") { continue; }
+        if colour || name.eq_ignore_ascii_case("IFCINDEXEDTRIANGLETEXTUREMAP") { maps.push((start, end, colour)); }
+    }
+    maps
+}
+/// [`authored_surface`] over the model's [`surface_maps`].
+pub fn authored_surface_in(maps: &[(usize, usize, bool)], item: &DecodedEntity, decoder: &mut EntityDecoder) -> AuthoredSurface {
+    let mut surface = AuthoredSurface::default();
+    for &(start, end, colour) in maps {
         let Ok(map) = decoder.decode_at(start, end) else { continue };
         if colour && map.ref_at(slot::IfcIndexedColourMap::MAPPED_TO) == Some(item.id) && surface.palette.is_none() {
             // An entry that is no 1-based index leaves the map unreadable, not a wrong row.

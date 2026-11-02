@@ -35,6 +35,12 @@ fn publish(text: &str) -> Option<ShapeOnlyProduct> {
 }
 
 /// The whole comparison row for one product: `Report::published` with the product's own metrics.
+/// The face-set check over a fresh model source for `text`.
+fn checked(shape: &ShapeOnlyProduct, text: &str, tolerances: &serde_json::Value) -> Vec<crate::checks::OracleResult> {
+    let bundle = SourceBundle::new(text.as_bytes().to_vec());
+    check(shape, &crate::checks::ModelSource::new(text.as_bytes(), &bundle), tolerances)
+}
+
 fn report(text: &str, shape: &ShapeOnlyProduct) -> crate::report::Report {
     let mut actual = crate::metrics::Metrics::default();
     for part in &shape.parts {
@@ -48,10 +54,11 @@ fn report(text: &str, shape: &ShapeOnlyProduct) -> crate::report::Report {
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
     let bundle = SourceBundle::new(text.as_bytes().to_vec());
     let clips = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&bundle, &sources);
-    let context = crate::checks::SourceContext { product_id: 20, analytic: &sources, clips: &clips, hand_volume: None };
+    let model = crate::checks::ModelSource::new(text.as_bytes(), &bundle);
+    let context = crate::checks::SourceContext { model: &model, product_id: 20, analytic: &sources, clips: &clips, hand_volume: None };
     let mut report = crate::report::Report::default();
     report.published("shell", shape, &actual, Some(&actual), Some(&exact), None, &crate::tolerances::registered().unwrap(), 0.,
-        None, &context, false, None, text.as_bytes());
+        None, &context, false, None);
     report
 }
 
@@ -60,7 +67,7 @@ fn issue_7955_authored_open_shell_is_reported_not_failed_for_closure_and_volume(
     let text = shell(".F.");
     let Some(shape) = publish(&text) else { return };
     let tolerances = crate::tolerances::registered().unwrap();
-    let rows = check(&shape, text.as_bytes(), &tolerances);
+    let rows = checked(&shape, &text, &tolerances);
     assert!(rows.iter().any(|r| r.family == AUTHORED_OPEN && !r.gated), "{:?}", rows.iter().map(|r| r.family).collect::<Vec<_>>());
     assert!(rows.iter().filter(|r| r.gated).all(|r| r.pass), "faithful rows pass");
     let report = report(&text, &shape);
@@ -78,7 +85,7 @@ fn issue_7955_a_source_closed_or_unknown_set_with_a_hole_still_fails_closure() {
     for closed in [".T.", "$", ".U."] {
         let text = shell(closed);
         let Some(shape) = publish(&text) else { return };
-        let rows = check(&shape, text.as_bytes(), &crate::tolerances::registered().unwrap());
+        let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
         assert!(!rows.iter().any(|r| r.family == AUTHORED_OPEN), "{closed}");
         let report = report(&text, &shape);
         assert!(report.violations.iter().any(|v| v.contains("closure defects")), "{closed}: {:?}", report.violations);
@@ -117,7 +124,7 @@ ENDSEC;END");
     let rows = crate::checks::faces::check(&shape, &sources, &crate::tolerances::registered().unwrap());
     let keys = rows.iter().find(|r| r.family == "faceKeys").expect("the extrusion has analytic faces");
     assert!(keys.pass && keys.value == 0., "row keys counted as mismatched: {}", keys.value);
-    assert!(check(&shape, text.as_bytes(), &crate::tolerances::registered().unwrap()).iter().filter(|r| r.gated).all(|r| r.pass));
+    assert!(checked(&shape, &text, &crate::tolerances::registered().unwrap()).iter().filter(|r| r.gated).all(|r| r.pass));
     println!("sdk witness executed: face_set_beside_extrusion");
 }
 
@@ -136,9 +143,9 @@ ENDSEC;END");
     // published twice in place of another cannot be told apart: a set authored more than
     // once never takes the open waiver, whole or not.
     assert!(shape.parts.iter().all(|p| p.faces.as_ref().unwrap().table.iter().all(|k| k.item == 33 && k.via == 0)));
-    assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "repeated occurrences are not waived");
+    assert!(!checked(&shape, &text, &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "repeated occurrences are not waived");
     shape.parts.pop();
-    assert!(!check(&shape, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost copy is not waived");
+    assert!(!checked(&shape, &text, &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost copy is not waived");
     println!("sdk witness executed: face_set_open_mapped_twice");
 }
 
@@ -149,7 +156,7 @@ fn issue_7955_an_extra_copy_or_a_lost_non_set_item_keeps_the_closed_solid_checks
     let text = shell(".F.");
     let Some(mut doubled) = publish(&text) else { return };
     doubled.parts.extend(publish(&text).unwrap().parts);
-    assert!(!check(&doubled, text.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "an extra copy is not waived");
+    assert!(!checked(&doubled, &text, &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "an extra copy is not waived");
     // An open set beside an extrusion: mixed sources keep every check, even with the extrusion lost.
     let mixed = shell(".F.").replace("(#33));", "(#33,#44));").replace("ENDSEC;END", "\
 #40=IFCCARTESIANPOINT((0.,0.));#41=IFCAXIS2PLACEMENT2D(#40,$);#42=IFCDIRECTION((0.,0.,1.));
@@ -158,6 +165,6 @@ ENDSEC;END");
     let mut shape = publish(&mixed).unwrap();
     shape.parts.retain(|part| part.faces.as_ref().is_some_and(|f| f.table.iter().any(|k| k.role.starts_with("row("))));
     assert_eq!(shape.parts.len(), 1, "only the face set remains");
-    assert!(!check(&shape, mixed.as_bytes(), &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost extrusion is not waived");
+    assert!(!checked(&shape, &mixed, &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost extrusion is not waived");
     println!("sdk witness executed: face_set_open_extra_or_mixed");
 }

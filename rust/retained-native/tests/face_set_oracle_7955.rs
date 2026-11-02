@@ -30,6 +30,9 @@ mod precision;
 #[path = "../examples/compare/source.rs"]
 mod source;
 #[allow(dead_code)]
+#[path = "../examples/compare/exact_area.rs"]
+mod exact_area;
+#[allow(dead_code)]
 #[path = "../examples/compare/report.rs"]
 mod report;
 

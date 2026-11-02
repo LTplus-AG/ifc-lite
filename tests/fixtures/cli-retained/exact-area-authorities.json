@@ -1,0 +1,12 @@
+{
+  "tests/models/ara3d/dental_clinic.ifc": {
+    "1673": {
+      "area": 62.32657831425264,
+      "derivation": "Metres. Host rectangle 15.2095 m long, 0.267 m thick, 2.544328 m high, extruded +Z. Clip: IfcHalfSpaceSolid .F. on a plane normal to the XZ section. Opening: triangular extrusion through the whole thickness, its long edge on the clip line. Both cuts are prismatic in the thickness, so the solid is the L polygon (0,0) (15.2095,0) (15.2095,2.544328) (13.733,2.544328) (13.733,1.6505) (0,1.6505), area 26.423017036857, perimeter 35.507656331607. Surface = 2*area + perimeter*0.267. Volume = area*0.267 = 7.054945548841, which the source oracle confirms for retained. Exact's extra area is a zero-volume back-to-back fin on the clip plane. Derived from the raw STEP records without ifc-lite code; see the PR for the script."
+    },
+    "1757": {
+      "area": 62.32657831425266,
+      "derivation": "Metres. Host rectangle 15.2095 m long, 0.267 m thick, 2.544328 m high, extruded +Z. Clip: IfcHalfSpaceSolid .F. on a plane normal to the XZ section. Opening: triangular extrusion through the whole thickness, its long edge on the clip line. Both cuts are prismatic in the thickness, so the solid is the L polygon (0,0) (15.2095,0) (15.2095,2.544328) (13.733,2.544328) (13.733,1.6505) (0,1.6505), area 26.423017036857, perimeter 35.507656331607. Surface = 2*area + perimeter*0.267. Volume = area*0.267 = 7.054945548841, which the source oracle confirms for retained. Exact's extra area is a zero-volume back-to-back fin on the clip plane. Derived from the raw STEP records without ifc-lite code; see the PR for the script."
+    }
+  }
+}

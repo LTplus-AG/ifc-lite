@@ -49,6 +49,9 @@ pub struct Report {
     pub opening_gaps: BTreeMap<u32, String>,
     /// #7955: closed-solid checks that failed on face sets whose source rows are themselves open.
     pub closure_on_open_source: Vec<Value>,
+    pub area_authorities: super::exact_area::ExactAreaAuthorities,
+    /// The source's area for the product being measured, when an authority has one.
+    pub source_area: Option<f64>,
 }
 #[path = "unverified.rs"]
 mod unverified;
@@ -89,6 +92,10 @@ impl Report {
             self.violations.push(format!("{model}:{}: conflicting source authorities", shape.product_id));
         }
         let open = results.iter().any(|r| r.family == super::checks::face_sets::AUTHORED_OPEN);
+        // Analytic faces of an uncut, unbanded product, or a preregistered hand area.
+        self.source_area = self.area_authorities.get(model, shape.product_id).or_else(|| (shape.cuts == 0 && bands == 0)
+            .then(|| ifc_lite_retained_native::oracle::faces::uncut(sources.analytic, shape.product_id)).flatten()
+            .map(|faces| faces.values().map(|face| face.area_m2).sum()));
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             open,
             &format!("{model}:{}", shape.product_id),
@@ -303,10 +310,26 @@ impl Report {
                 "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
             }));
         }
+        // The same precedence for area (#7955): retained equals the source's area within the
+        // frozen face limit and exact does not within its own, so exact is the wrong side.
+        let source_area = self.source_area.take();
+        // Only a gated area can be named: a waived or authored-open product's never was.
+        let exact_area_defect = !curved && !exact_defect && !exact_report_only && !open && !type_product && source_area.zip(exact).is_some_and(|(s, e)| {
+            // A missing or renamed preregistered key panics, never reads as 0.
+            relative(actual.area, s) <= super::openings::tolerance(tolerances, "faceAreaRelative", "linear")
+                && relative(e.area, s) > super::openings::tolerance(tolerances, "exactLinear", "areaRelative")
+        });
+        if exact_area_defect {
+            self.exact_defects.push(json!({
+                "classification": "exact_defect", "kind": "area", "product": label,
+                "sourceAreaM2": source_area, "retainedAreaM2": actual.area, "exactAreaM2": exact.map(|e| e.area),
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+            }));
+        }
         if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
                 (gated(vol), "volumeRelative"),
-                (gated(area), "areaRelative"),
+                (gated(area).filter(|_| !exact_area_defect), "areaRelative"),
                 (bbox, "bboxMetres"),
             ] {
                 if value.is_some_and(|v| v > tolerances["exactLinear"][key].as_f64().unwrap_or(0.))

@@ -95,12 +95,13 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     results
 }
 
-/// #7955 rulings 3 and 16: the only missing key the comparison allows is a 0.8-4 mm
+/// #7955 rulings 3, 16 and 21: the only missing line key the comparison allows is a 0.2-4 mm
 /// side the kernel folded into a collinear neighbour of the same authored run
 /// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074; ISSUE_129
-/// #170114 `#170106:side(0,6)`, 0.831 mm). The 1 nm slack only absorbs the rounding of
-/// the width's own arithmetic, so an authored 0.8 or 4.0 mm side is not lost a few ulps short.
-pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.0008 - 1e-9..=0.004 + 1e-9;
+/// #170114 `#170106:side(0,6)`, 0.831 mm; ISSUE_098 #807104, 0.236 mm). The 1 nm slack only
+/// absorbs the width's own rounding, so an authored 0.2 or 4.0 mm side is not lost a few ulps short.
+/// Ruling 19: an arc side of a run on one circle has no width window; the matching total decides.
+pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.0002 - 1e-9..=0.004 + 1e-9;
 
 /// Receiver assignments searched per run. Single-receiver sides cost nothing; only
 /// sides with a present neighbour on both ends double it (16 such sides).
@@ -111,7 +112,8 @@ pub const MAX_MERGE_CHOICES: usize = 1 << 16;
 /// area plus the areas it absorbed, within the frozen linear face-area limit.
 fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &FaceAreas, actual: &BTreeMap<String, f64>, limit: f64) -> Vec<(usize, usize)> {
     let present = |i: usize| actual.contains_key(&run.keys[i]);
-    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i]) && MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]);
+    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i])
+        && (run.arcs || MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]));
     let missing: Vec<usize> = (0..run.keys.len()).filter(|&i| absorbable(i)).collect();
     // Nearest present key on each side, skipping only other absorbable sides.
     let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {
@@ -155,11 +157,13 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
         }
     }
     for run in runs {
-        for (i, into) in merges(run, &widest, &expected, actual, limit("linear")) {
+        // A curved side's area is chordal: it matches its source within the curved face limit.
+        for (i, into) in merges(run, &widest, &expected, actual, limit(if run.arcs { "curved" } else { "linear" })) {
             let (key, target) = (&run.keys[i], &run.keys[into]);
             let area = expected.remove(key).expect("absorbable keys are expected").area_m2;
             expected.get_mut(target).expect("receiving keys are expected").area_m2 += area;
-            merged.push(format!("{key} into {target} ({:.3} mm)", widest[run.keys[i].as_str()] * 1e3));
+            merged.push(if run.arcs { format!("{key} into {target} (arc on one circle)") }
+                else { format!("{key} into {target} ({:.3} mm)", widest[run.keys[i].as_str()] * 1e3) });
         }
     }
     let mut results = Vec::new();

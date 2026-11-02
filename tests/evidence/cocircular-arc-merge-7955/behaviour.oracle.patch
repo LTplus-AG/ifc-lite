@@ -1,0 +1,12 @@
+diff --git a/rust/retained-native/src/oracle/faces.rs b/rust/retained-native/src/oracle/faces.rs
+index fd03818e5c..a4fb1d2d36 100644
+--- a/rust/retained-native/src/oracle/faces.rs
++++ b/rust/retained-native/src/oracle/faces.rs
+@@ -143,6 +143,7 @@ fn cocircular(a: &Edge, b: &Edge) -> bool {
+     ra > 0. && (ra - rb).abs() <= tolerance && (ca[0] - cb[0]).hypot(ca[1] - cb[1]) <= tolerance
+ }
+ fn collinear(a: &Edge, b: &Edge) -> bool {
++    if cocircular(a, b) { return true; }
+     let (Edge::Line(a0, a1), Edge::Line(b0, b1)) = (a, b) else { return false };
+     let length = |p: &[f64; 2], q: &[f64; 2]| ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt();
+     let (reference, other) = if length(a0, a1) >= length(b0, b1) { ((a0, a1), [b0, b1]) } else { ((b0, b1), [a0, a1]) };

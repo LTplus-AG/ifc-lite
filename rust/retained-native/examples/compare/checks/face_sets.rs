@@ -2,7 +2,7 @@
 //! Uncut, uncopied face sets against their authored rows (#8291).
 use super::OracleResult;
 use ifc_lite_core::{slot, AttributeValue, IfcType};
-use ifc_lite_retained_native::{oracle::{face_set_closure, face_set_zero_rows, face_sets}, ShapeOnlyProduct};
+use ifc_lite_retained_native::{oracle::{face_set_closure, face_set_dropped_triangles, face_set_zero_rows, face_sets}, ShapeOnlyProduct};
 
 fn row_key(role: &str) -> Option<u32> {
     role.strip_prefix("row(")?.strip_suffix(')')?.parse().ok()
@@ -57,6 +57,8 @@ pub const AUTHORED_OPEN: &str = "faceSetAuthoredOpen";
 pub const SOURCE_OPEN_EDGES: &str = "faceSetSourceOpenEdges";
 /// Ruling 13: every published open edge is one the authored zero-area rows leave.
 pub const ZERO_AREA_ROW_EDGES: &str = "faceSetZeroAreaRowEdges";
+/// Ruling 20: every published open edge is one of a triangle the row's triangulation dropped.
+pub const DROPPED_TRIANGLE_EDGES: &str = "faceSetDroppedTriangleEdges";
 
 /// Every published UV and palette entry against the row its face key names. Affine
 /// copies move a part out of the source's frame and keep only the exact comparison.
@@ -121,6 +123,7 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
     let mut source_open_edges = 0;
     let mut declared = std::collections::BTreeSet::new();
     let (mut zero_row_edges, mut zero_rows_explain, mut any_open_set, mut unset_open) = (0, true, false, false);
+    let (mut dropped_edges, mut dropped_explain) = (0, true);
     for part in &product.parts {
         let Some(faces) = part.faces.as_ref().filter(|_| part.source_exact) else { open = false; continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
@@ -157,6 +160,15 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
             None => zero_rows_explain = false,
         }
         let part_worst = face_sets::deviation(&set, &part.positions, &part.indices, &keys);
+        // Ruling 20 holds only while the row area still passes: a dropped triangle with area stays red.
+        let row_area_holds = part_worst.area_relative <= tolerances["faceSetRowAreaRelative"].as_f64().unwrap_or(f64::NAN) && part_worst.missing_rows == 0;
+        match face_set_zero_rows::mesh_open_edges(&part.positions, &part.indices).filter(|open| !open.is_empty()) {
+            None => {}
+            Some(_) => match face_set_dropped_triangles::dropped_triangle_edges(&set, &part.positions, &part.indices).filter(|_| row_area_holds) {
+                Some(edges) => dropped_edges += edges,
+                None => dropped_explain = false,
+            },
+        }
         worst.corner_m = worst.corner_m.max(part_worst.corner_m);
         worst.area_relative = worst.area_relative.max(part_worst.area_relative);
         worst.missing_rows += part_worst.missing_rows;
@@ -187,6 +199,9 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
     ];
     // Report-only: edges the source itself leaves open, beside any closure defect the mesh shows.
     results.push(OracleResult { family: SOURCE_OPEN_EDGES, value: source_open_edges as f64, limit: 0., pass: true, gated: false, reason: Some(declared.iter().copied().collect::<Vec<_>>().join("+")), ..Default::default() });
+    if dropped_explain && dropped_edges > 0 && product.cuts == 0 && !(zero_rows_explain && zero_row_edges > 0) {
+        results.push(OracleResult { family: DROPPED_TRIANGLE_EDGES, value: dropped_edges as f64, limit: 0., pass: true, gated: false, ..Default::default() });
+    }
     if zero_rows_explain && zero_row_edges > 0 && product.cuts == 0 {
         results.push(OracleResult { family: ZERO_AREA_ROW_EDGES, value: zero_row_edges as f64, limit: 0., pass: true, gated: false, ..Default::default() });
     }

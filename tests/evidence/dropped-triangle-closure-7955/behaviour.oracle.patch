@@ -1,0 +1,11 @@
+diff --git a/rust/retained-native/src/oracle/face_set_dropped_triangles.rs b/rust/retained-native/src/oracle/face_set_dropped_triangles.rs
+index efdc07f595..dd09d495d3 100644
+--- a/rust/retained-native/src/oracle/face_set_dropped_triangles.rs
++++ b/rust/retained-native/src/oracle/face_set_dropped_triangles.rs
+@@ -36,5 +36,5 @@ pub fn dropped_triangle_edges(set: &AuthoredFaceSet, positions: &[f64], indices:
+         }
+         if !rows.iter().any(|row| corners.is_subset(row)) { return None; }
+     }
+-    Some(open.len()).filter(|_| false)
++    Some(open.len())
+ }

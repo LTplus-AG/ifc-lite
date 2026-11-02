@@ -1,6 +1,13 @@
-# Showcase recording: integrated viewer, internal demo (#8567)
+# Showcase recording: integrated viewer, historical internal demo (#8567)
 
-**Internal demo, not production qualified.** This is the real ifc-lite viewer:
+**Historical internal showcase, not production qualified.** The take shows
+viewer `16897873e6`, an ancestor of #8644, with renderer checkpoint
+`e1da5ef060` merged at `47b6a38991`. It was recorded before the later #8640
+renderer fixes (`19cb2d8a0a` bounds, `218005be4d` camera bounds). It is
+**not** the current #8644/#8640 runtime: canonical GPU witness run 8 covers
+that runtime, at `36802fba87`. It is not production acceptance either.
+
+This is the real ifc-lite viewer:
 a production bundle built with `VITE_GAUSSIAN_SPLATS=internal-unqualified`,
 rendering through the native WebGPU Gaussian adapter. The capture enters the
 viewer's own file picker and takes the canonical `useIfcLoader.loadFile` path.
@@ -28,19 +35,24 @@ viewpoint is changed.
 
 ## Source and digest binding
 
-- **Production source:** `16897873e6`.
-  - The final head `cfabfaa4e7` adds tests/e2e only.
-  - The later `d8fe061309` changes one `import type` line, one type annotation
-    and a doc comment in `CaptureModelPanel.tsx`, all erased from emitted JS,
-    plus a manual witness. The recorded bundle is runtime-equivalent to it.
-  - The loader's GPU witnesses (runs 6 and 7) passed on this source.
-- **Bundle:** dist digest `449e4aab…8a07` over 1,017 files.
-  - It equals the loader's witnessed bundle once content hashes are
-    normalised, except for the embedded build timestamp.
-  - WASM `ae7ee826…` comes from rust tree `332f265ad1`, byte-identical across
-    two independent builds.
-- **Recorder:** `record-integrated.mjs` and `integrated-journey.mjs` at
-  `d9bab8bcfd`, finisher at `ff219fbd0c`, all with a clean tree.
+- **Viewer source:** `16897873e6`, then local and unpushed. It is now
+  reachable as an ancestor of #8644, and through the preservation ref
+  `archive/8567-showcase-integrated-viewer-16897873`.
+  - Renderer runtime: checkpoint `e1da5ef060`, merged at `47b6a38991`. That is
+    older than #8640's `19cb2d8a0a` and `218005be4d`.
+  - Later heads at take time: `cfabfaa4e7` adds tests/e2e only; `d8fe061309`
+    changes one `import type` line, one type annotation and a doc comment in
+    `CaptureModelPanel.tsx`, all erased from emitted JS, plus a manual witness.
+- **Loader witnesses:** runs 6 and 7 used a bundle built from `51324723e5`,
+  which differs from `16897873e6` only in two test files.
+- **Bundle:** dist digest `449e4aab…8a07` over 1,017 files. After normalising
+  content hashes, its file set matches the run-6 witnessed copy, and the only
+  differences are the embedded build timestamp. WASM `ae7ee826…` comes from
+  rust tree `332f265ad1` and is byte-identical across two independent builds.
+- **Recorder binding:** that recorder version recorded no commit or dirty
+  state. By chronology the take started at 09:44:05, after commit `d9bab8bcfd`
+  (09:43:50), with the recorder files unchanged since. This is inferred, not
+  recorded. The finisher did record its own binding: `ff219fbd0c`, clean.
 - **Environment:** Windows Chrome 156.0.8078.74 (headless) on the PC's NVIDIA
   Blackwell adapter (`isFallbackAdapter: false`), via `ifc-gpu-check`.
 
@@ -61,15 +73,28 @@ UI and WebGPU canvas together. The journey:
 7. Hide, show and fit from the capture's model-list row.
 8. "Remove capture", which returns the viewer to its empty state.
 
-The take made no skips and logged no page errors. 1,597 screencast frames span
-55.5 s at p50 33.3 ms. The 17 gaps over 50 ms sit in the load, the wheel zoom
-(with its settling into the orbit's first 0.6 s) and the removal.
+The take made no skips and logged no uncaught page exceptions. It did log one
+console error, "Failed to load resource: the server responded with a status of
+404 (Not Found)". That recorder version did not capture the failing URL, so
+for this take the URL is unknown. A later take of `36802fba87` used the
+corrected recorder and attributed the same message to
+`/_vercel/insights/script.js`, a Vercel analytics script that a local
+`vite preview` does not serve. That attribution belongs to the later take
+only.
+
+1,597 screencast frames span 55.5 s at p50 33.3 ms. The 17 gaps over 50 ms sit
+in the load, the wheel zoom (with its settling into the orbit's first 0.6 s)
+and the removal. The outputs are limited range with the BT.709 matrix; that
+finisher version left the primaries and transfer untagged (ffprobe: unknown).
 
 Two diagnostics from the same session, not performance claims:
 
 - With the right sidebar expanded, the same orbit ran at p90 66.7 ms; with it
   collapsed, at 33.4 ms. The take therefore opens the sidebar only to inspect.
 - Wheel zoom steps run at roughly 100–133 ms.
+- The viewer's scale bar shows metre values ("9.2m", "6.5m"). The capture is
+  uncalibrated, so those values mean nothing; the strip discloses
+  "uncalibrated: no units or measurement".
 
 Not qualified here:
 

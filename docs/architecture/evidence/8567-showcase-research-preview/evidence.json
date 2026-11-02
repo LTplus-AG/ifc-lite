@@ -19,7 +19,8 @@
         "rebasedAs": "ac30ec93d6"
       },
       "identity": "git blob equality for showcase.html, showcase.mjs, showcase-framing.mjs, showcase-credits.mjs, demo-camera.mjs, capture.mjs, record-showcase.mjs, vite.config.mjs, prepare.mjs, package.json, finish-showcase.mjs, pnpm-lock.yaml and tests/models/manifest.json; main only added unrelated #8616 fragment-interval files"
-    }
+    },
+    "preservationRef": "archive/8567-showcase-research-take-9cd6fc5e (contains de7040723b and 9cd6fc5e75)"
   },
   "asset": {
     "path": "gaussian/seem-kirke-v1.ply",
@@ -183,7 +184,7 @@
     "method": "ffmpeg drawtext over the untouched master; -fps_mode passthrough with the demuxer time base keeps capture timestamps",
     "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
     "timestampCheck": "master, MP4 and WebM frame timestamp lists identical (904 frames)",
-    "colour": "full-range BT.709 capture mapped to limited range for compatibility; luma mean 46.0 vs 46.5 against direct renderer readback at t=0 (PSNR 34.2 dB through two lossy generations)"
+    "colour": "limited range, BT.709 matrix and primaries; transfer tagged sRGB (iec61966-2-1) by that finisher version"
   },
   "rejectedTake": {
     "reason": "captureStream(30) rate limiting dropped 107 of 909 engine frames (66 ms judder through motion)",

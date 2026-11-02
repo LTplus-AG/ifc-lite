@@ -52,7 +52,7 @@ Git. Its hashes are in [`evidence.json`](evidence.json).
   describe this take only and are not performance evidence.
 - **Finishing:** ffmpeg 8.0.1 drawtext adds the title, the persistent research
   label and the licence credit. The master, MP4 and WebM have identical frame
-  timestamp lists. The full-range capture is mapped to limited-range BT.709.
+  timestamp lists. The full-range capture is mapped to limited range with the BT.709 matrix and primaries; that finisher version tagged the transfer as sRGB (iec61966-2-1).
   The video's first frame matches the direct readback at t = 0 within PSNR
   34.2 dB, with mean luma 46.0 against 46.5.
 

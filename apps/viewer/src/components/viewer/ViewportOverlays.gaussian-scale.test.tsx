@@ -11,6 +11,11 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { ViewportOverlays } from './ViewportOverlays.js';
 
+function ifc(): FederatedModel {
+  const model = fixtureModel('ifc');
+  model.ifcDataStore!.schemaVersion = 'IFC4';
+  return model;
+}
 function capture(): FederatedModel {
   return { ...fixtureModel('capture', { entities: [] }), gaussianSplat: {
     handle: { id: 1, modelIndex: 0 }, format: 'gaussian-ply', count: 1, shDegree: 0,
@@ -44,13 +49,13 @@ describe('Gaussian capture scale disclosure (#8566)', () => {
     assert.match(note(ui)?.textContent ?? '', /no metric scale/);
     act(() => useViewerStore.getState().onScaleChange?.(6.5));
     assert.equal(metric(ui), null);
-    act(() => useViewerStore.setState(fixtureModels(scan, capture(), fixtureModel('ifc'))));
+    act(() => useViewerStore.setState(fixtureModels(scan, capture(), ifc())));
     assert.ok(metric(ui), 'a real IFC model enables its metric scale');
     assert.match(note(ui)?.textContent ?? '', /Scale applies to IFC geometry/);
   });
 
   it('preserves the IFC scale and updates it through the real camera callback', () => {
-    useViewerStore.setState(fixtureModels(fixtureModel('ifc')));
+    useViewerStore.setState(fixtureModels(ifc()));
     const ui = mount();
     act(() => useViewerStore.getState().onScaleChange?.(6.5));
     assert.equal(metric(ui)?.textContent, '6.5m');
@@ -58,7 +63,7 @@ describe('Gaussian capture scale disclosure (#8566)', () => {
   });
 
   it('labels mixed scenes and responds to hiding either model without remounting', () => {
-    useViewerStore.setState(fixtureModels(fixtureModel('ifc'), capture()));
+    useViewerStore.setState(fixtureModels(ifc(), capture()));
     const ui = mount();
     assert.ok(metric(ui));
     assert.match(note(ui)?.textContent ?? '', /Scale applies to IFC geometry/);

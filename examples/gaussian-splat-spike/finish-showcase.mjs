@@ -64,6 +64,9 @@ const vf = [
   text('label', regular, px(0.024), '0xFFC857', cardLeft, cardTop + px(0.135), fade),
   text('credit', regular, px(0.0195), 'white@0.92', left, H - px(0.092)),
   text('change', regular, px(0.0195), 'white@0.92', left, H - px(0.056)),
+  // Chrome records full-range BT.709. Deliver standard limited range so players
+  // that ignore the range flag still show the captured colours.
+  'scale=in_range=pc:out_range=tv,format=yuv420p',
 ].join(',');
 const stem = basename(args.master).replace(/-master\.(webm|mp4)$/, '');
 const outputs = [
@@ -72,7 +75,8 @@ const outputs = [
 ];
 for (const output of outputs) {
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-threads', args.threads, '-i', master.file, '-vf', vf,
-    '-fps_mode', 'passthrough', '-enc_time_base:v', 'demux', '-an', ...output.codec, '-threads', args.threads, output.file], { stdio: 'inherit' });
+    '-fps_mode', 'passthrough', '-enc_time_base:v', 'demux', '-an', ...output.codec, '-color_range', 'tv', '-colorspace', 'bt709',
+    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-threads', args.threads, output.file], { stdio: 'inherit' });
   Object.assign(output, { sha256: await sha256File(output.file), probe: probe(output.file) });
   delete output.codec;
 }

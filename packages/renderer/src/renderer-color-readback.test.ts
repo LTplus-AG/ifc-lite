@@ -224,3 +224,78 @@ it('#8566 a diagnostic request coalesced behind an ordinary capture cannot inven
   assert.equal((await joined)!.duplicate, undefined);
   assert.equal(h.counts().copies, 1);
 });
+
+// #8566 / failed hardware original 40ad: JS private fields impose the same
+// receiver-brand invariant as WebIDL native accessors. A Proxy receiver throws.
+class BrandedGpuObject {
+  #label = '';
+  #marker = 0;
+  get label(): string { return this.#label; }
+  set label(value: string) { this.#label = value; }
+  get marker(): number { return this.#marker; }
+  set marker(value: number) { this.#marker = value; }
+}
+class BrandedPass extends BrandedGpuObject {
+  #draws = 0;
+  #ends = 0;
+  #viewport: number[] = [];
+  draw(): void { this.#draws++; }
+  end(): void { this.#ends++; }
+  setViewport(...values: number[]): void { this.#viewport = values; }
+  snapshot() { return { draws: this.#draws, ends: this.#ends, viewport: [...this.#viewport] }; }
+}
+class BrandedEncoder extends BrandedGpuObject {
+  #begins = 0;
+  #finishes = 0;
+  readonly pass = new BrandedPass();
+  beginRenderPass(): BrandedPass { this.#begins++; return this.pass; }
+  finish(): void { this.#finishes++; }
+  snapshot() { return { begins: this.#begins, finishes: this.#finishes }; }
+}
+
+for (const diagnostic of [false, true]) {
+  it(`#8566 branded GPU getters/setters/methods preserve mutations exactly once with tracing ${diagnostic}`, async () => {
+    const h = captureHarness(diagnostic);
+    const native = new BrandedEncoder();
+    const encoder = traceRendererColorFrameEncoder(h.capture, native as unknown as GPUCommandEncoder);
+    if (!diagnostic) assert.strictEqual(encoder, native);
+    try {
+      // Both label and a second accessor guard against a label-only workaround.
+      encoder.label = 'frame';
+      Reflect.set(encoder, 'marker', 12);
+      assert.equal(encoder.label, 'frame'); assert.equal(native.label, 'frame');
+      assert.equal(Reflect.get(encoder, 'marker'), 12); assert.equal(native.marker, 12);
+      const pass = encoder.beginRenderPass({ colorAttachments: [] });
+      if (!diagnostic) assert.strictEqual(pass, native.pass);
+      pass.label = 'luma-borrowed-pass'; Reflect.set(pass, 'marker', 34);
+      assert.equal(pass.label, 'luma-borrowed-pass'); assert.equal(native.pass.label, 'luma-borrowed-pass');
+      assert.equal(Reflect.get(pass, 'marker'), 34); assert.equal(native.pass.marker, 34);
+      pass.setViewport(1, 2, 300, 200, 0, 1); pass.draw(3); pass.end(); encoder.finish();
+      assert.deepStrictEqual(native.snapshot(), { begins: 1, finishes: 1 });
+      assert.deepStrictEqual(native.pass.snapshot(), { draws: 1, ends: 1, viewport: [1, 2, 300, 200, 0, 1] });
+      if (diagnostic) {
+        const passes = h.capture.metadata!.passes as Array<{ rasterCalls: unknown[] }>;
+        assert.equal(passes.length, 1);
+        assert.deepStrictEqual(passes[0].rasterCalls, [{ method: 'setViewport', args: [1, 2, 300, 200, 0, 1] }]);
+      } else assert.equal(h.capture.metadata, undefined);
+    } finally { cancelRendererColorFrame(h.host); assert.equal(await h.pending, null); }
+  });
+}
+
+it('#8566 diagnostic forwarding preserves native setter rejection instead of swallowing it', async () => {
+  const h = captureHarness(); const native = new BrandedEncoder();
+  const rejection = new Error('native setter refused');
+  Object.defineProperty(BrandedGpuObject.prototype, 'refused', { configurable: true,
+    set() { throw rejection; } });
+  try {
+    const encoder = traceRendererColorFrameEncoder(h.capture, native as unknown as GPUCommandEncoder);
+    const pass = encoder.beginRenderPass({ colorAttachments: [] });
+    assert.throws(() => Reflect.set(encoder, 'refused', 1), error => error === rejection);
+    assert.throws(() => Reflect.set(pass, 'refused', 1), error => error === rejection);
+    assert.deepStrictEqual(native.snapshot(), { begins: 1, finishes: 0 });
+    assert.deepStrictEqual(native.pass.snapshot(), { draws: 0, ends: 0, viewport: [] });
+  } finally {
+    Reflect.deleteProperty(BrandedGpuObject.prototype, 'refused');
+    cancelRendererColorFrame(h.host); assert.equal(await h.pending, null);
+  }
+});

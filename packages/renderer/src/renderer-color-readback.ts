@@ -236,7 +236,7 @@ export function traceRendererColorFrameEncoder(capture: RendererColorFrameCaptur
   if (!capture?.pending.diagnostic) return encoder;
   const passes: Record<string, unknown>[] = [];
   capture.metadata = { diagnosticFrameId: ++diagnosticSequence, recordingAt: performance.now(), passes };
-  return new Proxy(encoder, { get(target, property) {
+  return new Proxy(encoder, { set: forwardNativeAssignment, get(target, property) {
     if (property === 'beginRenderPass') return (descriptor: GPURenderPassDescriptor) => {
       const pass = target.beginRenderPass(descriptor);
       const trace: Record<string, unknown> = { label: descriptor.label,
@@ -245,15 +245,14 @@ export function traceRendererColorFrameEncoder(capture: RendererColorFrameCaptur
         rasterCalls: [], defaultRaster: 'full attachment viewport/scissor until overridden' };
       if (passes.length < 64) passes.push(trace);
       else capture.metadata!.passesTruncated = true;
-      return new Proxy(pass, { get(native, key) {
+      return new Proxy(pass, { set: forwardNativeAssignment, get(native, key) {
         const value = Reflect.get(native, key, native);
         if (typeof value !== 'function') return value;
+        if (key !== 'setViewport' && key !== 'setScissorRect' && key !== 'setBlendConstant' && key !== 'setStencilReference') return value.bind(native);
         return (...args: unknown[]) => {
-          if (key === 'setViewport' || key === 'setScissorRect' || key === 'setBlendConstant' || key === 'setStencilReference') {
-            const calls = trace.rasterCalls as unknown[];
-            if (calls.length < 256) calls.push({ method: key, args: structuredClone(args) });
-            else trace.rasterCallsTruncated = true;
-          }
+          const calls = trace.rasterCalls as unknown[];
+          if (calls.length < 256) calls.push({ method: key, args: structuredClone(args) });
+          else trace.rasterCallsTruncated = true;
           return Reflect.apply(value, native, args);
         };
       } });
@@ -261,6 +260,12 @@ export function traceRendererColorFrameEncoder(capture: RendererColorFrameCaptur
     const value = Reflect.get(target, property, target);
     return typeof value === 'function' ? value.bind(target) : value;
   } });
+}
+// WebIDL accessors brand-check `this` too. Reflect.set's default receiver would
+// be the Proxy, even though getters and methods already use the native object.
+// Forward every assignment, not just GPUObjectBase.label (#8566 / failed 40ad).
+function forwardNativeAssignment(native: object, key: string | symbol, value: unknown): boolean {
+  return Reflect.set(native, key, value, native);
 }
 const evidenceObjects = new WeakMap<object, number>();
 let evidenceObjectSequence = 0;

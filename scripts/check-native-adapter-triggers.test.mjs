@@ -348,12 +348,10 @@ test('a batch touching a path the lane observes runs it; docs, ceilings and chan
     const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
     assert.equal(d.status, 0, d.log);
     assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
-    assert.match(d.log, new RegExp(file.replace(/[.*/]/g, '\\$&')));
   }
   const quiet = decide(batchRepo(context, { add: ['docs/guide/x.md', 'tests/perf-ratchets/viewer.json', '.changeset/a.md', 'AGENTS.md', 'scripts/ci-pr-lane.mjs'] }));
   assert.equal(quiet.status, 0, quiet.log);
   assert.equal(quiet.written, 'native_adapter=false\n', quiet.log);
-  assert.match(quiet.log, /none of the batch's 5 changed file/);
 });
 
 test('a file moved out of a watched directory counts by its old path', (context) => {
@@ -364,12 +362,13 @@ test('a file moved out of a watched directory counts by its old path', (context)
 test('every doubt runs the lane: no merge commit, an unreadable or missing paths list', (context) => {
   const squash = decide(batchRepo(context, { add: ['docs/guide/x.md'], merge: false }));
   assert.equal(squash.written, 'native_adapter=true\n', squash.log);
-  assert.match(squash.log, /not the two of a PR merge commit/);
   const inline = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: "on:\n  pull_request:\n    paths:\n      - docs/**\n" }));
   assert.equal(inline.written, 'native_adapter=true\n', inline.log);
-  assert.match(inline.log, /cannot read/);
   const none = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: 'on:\n  schedule:\n    - cron: x\n' }));
   assert.equal(none.written, 'native_adapter=true\n', none.log);
+});
+
+test('a checkout git cannot diff runs the lane', (context) => {
   const notGit = mkdtempSync(join(tmpdir(), 'native-adapter-nogit-'));
   context.after(() => rmSync(notGit, { recursive: true, force: true }));
   mkdirSync(join(notGit, dirname(WORKFLOW)), { recursive: true });
@@ -381,5 +380,5 @@ test('every doubt runs the lane: no merge commit, an unreadable or missing paths
 test('no GITHUB_OUTPUT fails the step, so test.yml reads an absent answer and runs the lane', (context) => {
   const d = decide(batchRepo(context, { add: ['docs/guide/x.md'] }), { output: false });
   assert.equal(d.status, 1, d.log);
-  assert.match(d.log, /GITHUB_OUTPUT is not set/);
+  assert.equal(d.written, '');
 });

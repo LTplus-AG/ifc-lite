@@ -160,6 +160,9 @@ jobs:
       # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
       # `pull_request`, so the queue-only lanes below test this output as well.
       batch: ${{ steps.lane.outputs.batch || 'false' }}
+      # On a batch, `false` only when its diff touches none of the native
+      # adapter's trigger paths; anything else (empty included) runs it.
+      native_adapter: ${{ steps.nativeadapter.outputs.native_adapter }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -289,6 +292,16 @@ jobs:
       - if: github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true'
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+      # THE NATIVE ADAPTER ON A BATCH. The SMLib lane (geometry-platform.yml)
+      # takes about 49 minutes, so a batch runs it only when its diff touches
+      # that workflow's own `on.pull_request.paths`, read from the file rather
+      # than copied here. continue-on-error, and the `native-adapter` job below
+      # skips only on an explicit `false`, so a crash here runs the lane.
+      - name: Decide whether this batch runs the native adapter
+        id: nativeadapter
+        if: steps.lane.outputs.batch == 'true' && steps.noop.outputs.noop != 'true'
+        continue-on-error: true
+        run: node scripts/check-native-adapter-triggers.mjs --batch-decide
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true'
         id: filter
@@ -4414,9 +4427,31 @@ jobs:
             gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
           fi
 
+  # The SMLib native adapter on a merge-queue batch whose diff it can observe
+  # (#8408 and #8415 merged untested failures while it ran only nightly or on
+  # labelled PRs). The job lives in geometry-platform.yml and is called, not
+  # copied; its corpus jobs and nightly reporter skip on this event. The
+  # aggregate below judges it: failure or cancellation blocks, skipped passes.
+  # PR pushes, `main` pushes (`batch` is false) and no-op edits never run it,
+  # so the push replay still skips only lanes the batch run executed.
+  native-adapter:
+    name: Native adapter (merge-queue batch)
+    needs: changes
+    if: needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'
+    # The called workflow's nightly reporter job declares `issues: write`, and
+    # GitHub checks nested permissions when the run starts, skipped jobs
+    # included. The native-adapter job itself gets geometry-platform.yml's
+    # workflow-level `contents: read`.
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/geometry-platform.yml
+    with:
+      batch: true
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, native-adapter]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4520,6 +4555,7 @@ jobs:
             [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
+            [native-adapter]="${{ needs.native-adapter.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

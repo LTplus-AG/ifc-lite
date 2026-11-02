@@ -30,16 +30,28 @@
  * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
  * silently shrinking the closure.
  *
+ * MERGE-QUEUE BATCHES. Nothing above ran the lane on a batch, so #8408 and
+ * #8415 merged untested retained failures. A batch now runs it when its diff
+ * touches `on.pull_request.paths` above, the one list both routes read:
+ * test.yml's `changes` job runs `--batch-decide`, which writes
+ * `native_adapter=true|false` to $GITHUB_OUTPUT, and test.yml's
+ * `native-adapter` job calls this workflow with `batch: true` unless the
+ * answer is exactly `false`. It FAILS CLOSED: an unreadable paths list, a
+ * checkout that is not the two-parent merge commit, an empty or unreadable
+ * diff all answer `true`. The audit also holds that wiring in test.yml.
+ *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
+const TEST_WORKFLOW = '.github/workflows/test.yml';
 /** Crates the lane builds or drives: the native consumer and the browser worker's wasm crate. */
 export const ROOT_CRATES = ['rust/retained-native', 'rust/wasm-bindings'];
 /** Non-crate inputs every Rust build of the lane reads. */
@@ -217,17 +229,18 @@ export function audit(root) {
 
   // The opt-in label gate must not silently vanish (it would put the lane back on every PR).
   const mainJob = jobBlock(text, 'native-adapter') ?? '';
-  if (!/^ {4}if: >-\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\s*$/m.test(mainJob)) {
-    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it)`);
+  if (!/^ {4}if: >-\s*\n\s+inputs\.batch == true \|\|\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: a merge-queue batch call and non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it)`);
   }
   if (!/^ {4}types: \[[^\]]*\blabeled\b[^\]]*\]\s*$/m.test(text.slice(text.indexOf('  pull_request:'), text.indexOf('  schedule:')))) {
     failures.push(`${WORKFLOW}: on.pull_request.types must include labeled so applying the label starts the job`);
   }
   // Job level (#8460): a workflow-level group lets a skipped run cancel the running qualification.
   if (/^concurrency:/m.test(text)) failures.push(`${WORKFLOW}: concurrency must be set on the native-adapter job, not the workflow (a skipped run would cancel a running one)`);
-  if (!/^ {4}concurrency:\s*\n {6}group: geometry-platform-\$\{\{ github\.event\.pull_request\.number \|\| github\.run_id \}\}\s*\n {6}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\s*$/m.test(mainJob)) {
-    failures.push(`${WORKFLOW}: the native-adapter job's concurrency must be per-PR with cancel-in-progress only for pull_request runs; nightly and manual runs are never cancelled`);
+  if (!/^ {4}concurrency:\s*\n {6}group: geometry-platform-\$\{\{ !inputs\.batch && github\.event\.pull_request\.number \|\| github\.run_id \}\}\s*\n {6}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' && !inputs\.batch \}\}\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job's concurrency must be per-PR with cancel-in-progress only for labelled pull_request runs; nightly, manual and merge-queue batch runs are never cancelled`);
   }
+  failures.push(...batchWiringProblems(text, root));
 
   let closure;
   try {
@@ -275,13 +288,102 @@ export function audit(root) {
   return failures;
 }
 
+// The test.yml lines that carry a batch's verdict into the required aggregate.
+const BATCH_CALL_IF = "needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'";
+const BATCH_DECIDE_RUN = 'node scripts/check-native-adapter-triggers.mjs --batch-decide';
+
+/**
+ * The merge-queue route: geometry-platform.yml is callable with a `batch`
+ * input and no `corpus` one, and test.yml decides, calls and judges it.
+ */
+function batchWiringProblems(text, root) {
+  const out = [];
+  const onBlock = text.slice(0, text.indexOf('\njobs:'));
+  const call = onBlock.match(/^ {2}workflow_call:\n((?: {4,}.*\n|\s*#.*\n)*)/m);
+  if (!call || !/^ {6}batch:\n {8}type: boolean\n {8}default: false\n/m.test(call[1])) {
+    out.push(`${WORKFLOW}: on.workflow_call must declare a boolean \`batch\` input (default false) for test.yml's merge-queue batch call`);
+  } else if (/^ {6}corpus:/m.test(call[1])) {
+    out.push(`${WORKFLOW}: on.workflow_call must not accept \`corpus\`; the corpus stays nightly and dispatch only`);
+  }
+  const testPath = join(root, TEST_WORKFLOW);
+  if (!existsSync(testPath)) return [...out, `${TEST_WORKFLOW} is missing; merge-queue batches cannot run the native adapter`];
+  const testText = readFileSync(testPath, 'utf8');
+  const caller = jobBlock(testText, 'native-adapter');
+  if (caller === null) return [...out, `${TEST_WORKFLOW}: no native-adapter job; merge-queue batches would merge without the native adapter (#8408, #8415)`];
+  if (!/^ {4}uses: \.\/\.github\/workflows\/geometry-platform\.yml\s*$/m.test(caller) || !/^ {4}with:\n {6}batch: true\s*$/m.test(caller)) {
+    out.push(`${TEST_WORKFLOW}: the native-adapter job must call ./${WORKFLOW} with batch: true`);
+  }
+  if (!caller.split('\n').some((l) => l === `    if: ${BATCH_CALL_IF}`)) {
+    out.push(`${TEST_WORKFLOW}: the native-adapter job must be gated on exactly: if: ${BATCH_CALL_IF} (batches only, and only an explicit \`false\` skips)`);
+  }
+  if (!/^ {6}native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\s*$/m.test(jobBlock(testText, 'changes') ?? '')) {
+    out.push(`${TEST_WORKFLOW}: the changes job must publish native_adapter from its nativeadapter step`);
+  }
+  const decide = testText.match(/^ {6}- name: [^\n]*\n {8}id: nativeadapter\n((?: {8}.*\n)+)/m);
+  if (!decide || !decide[1].includes(`run: ${BATCH_DECIDE_RUN}`) || !/^ {8}continue-on-error: true\s*$/m.test(decide[1])) {
+    out.push(`${TEST_WORKFLOW}: the changes job needs a continue-on-error step with id nativeadapter running ${BATCH_DECIDE_RUN}`);
+  }
+  const aggregate = jobBlock(testText, 'test') ?? '';
+  const needs = aggregate.match(/^ {4}needs: \[([^\]]*)\]/m);
+  if (!needs || !needs[1].split(',').map((s) => s.trim()).includes('native-adapter')) {
+    out.push(`${TEST_WORKFLOW}: the Build + WASM + Rust + Node aggregate must need native-adapter, or a failing batch run merges`);
+  }
+  return out;
+}
+
+const gitLines = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).split('\n').filter(Boolean);
+
+/**
+ * Whether a merge-queue batch must run the lane. The `pull_request` checkout is
+ * the merge of the batch into `main`, so its first parent is `main` and the
+ * diff against it is the batch. Every doubt answers `run: true`.
+ */
+function batchDecision(root) {
+  let globs;
+  try {
+    globs = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
+  } catch (err) {
+    return { run: true, reason: `cannot read ${WORKFLOW} on.pull_request.paths (${err.message}); running` };
+  }
+  if (!globs || globs.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
+  let changed;
+  try {
+    const parents = gitLines(root, ['rev-list', '--parents', '-n', '1', 'HEAD'])[0]?.split(' ') ?? [];
+    if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
+    // --no-renames: a file moved out of a watched directory must count by its old path too.
+    changed = gitLines(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
+  } catch (err) {
+    return { run: true, reason: `cannot diff the batch against main (${err.message.split('\n')[0]}); running` };
+  }
+  if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
+  let hits;
+  try {
+    hits = changed.filter((f) => matchesAny(f, globs));
+  } catch (err) {
+    return { run: true, reason: `cannot match the batch against the paths list (${err.message}); running` };
+  }
+  if (hits.length === 0) return { run: false, reason: `none of the batch's ${changed.length} changed file(s) is a path the lane observes` };
+  const shown = hits.slice(0, 10).join(', ');
+  return { run: true, reason: `${hits.length} of ${changed.length} changed file(s) are paths the lane observes: ${shown}${hits.length > 10 ? ', ...' : ''}` };
+}
+
 if (isMainEntry(import.meta.url)) {
   const flag = process.argv.indexOf('--root');
   const root = flag !== -1 && process.argv[flag + 1] ? process.argv[flag + 1] : join(dirname(fileURLToPath(import.meta.url)), '..');
+  if (process.argv.includes('--batch-decide')) {
+    const d = batchDecision(root);
+    console.log(`[native-adapter] merge-queue batch: native_adapter=${d.run}: ${d.reason}`);
+    if (!process.env.GITHUB_OUTPUT) {
+      console.error('❌ GITHUB_OUTPUT is not set; refusing to decide into nowhere');
+      process.exit(1);
+    }
+    appendFileSync(process.env.GITHUB_OUTPUT, `native_adapter=${d.run}\n`);
+    process.exit(0);
+  }
   const failures = audit(root);
   if (failures.length > 0) {
     console.error(`❌ check-native-adapter-triggers: ${failures.length} problem(s)\n  - ${failures.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`✅ check-native-adapter-triggers: ${crateClosure(root).length} crates covered; opt-in PR lane and nightly guard intact`);
+  console.log(`✅ check-native-adapter-triggers: ${crateClosure(root).length} crates covered; opt-in PR lane, merge-queue batch route and nightly guard intact`);
 }

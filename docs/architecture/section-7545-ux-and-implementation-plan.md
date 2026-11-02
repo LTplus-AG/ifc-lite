@@ -101,7 +101,7 @@ This is the part the current tool lacks entirely, and the part most likely to ma
 
 ### 3.4 Interaction rules
 
-- **Empty state**: opening the tool with no planes shows `Add a plane: Z  Y  X  Face` as four buttons in row 1 and the hint "Add a plane to start cutting". No auto-armed pick (A3).
+- **Empty state**: opening the tool with no planes shows `New cut: Z  Y  X │ Face  Box` as five buttons in row 1, each with a title saying what it makes, and the hint "Pick a plane or a box to start cutting" (Box joined in #8672 so it is discoverable before any plane exists). No auto-armed pick (A3).
 - **Adding** never replaces; it creates the next name, activates it, and flashes its tag for ~600 ms. At 8 planes `(+)` is disabled with the reason as visible text, not only a tooltip.
 - **Face add**: hint becomes "Click a face to cut through it · Esc cancels"; the existing hover preview stays; the committed plane's offset reads `0.000 from face`.
 - **Offset field**: click to type, Enter commits, Esc reverts, arrow keys step (Shift ×10, Alt ÷10), drag scrubs, **wheel steps** by exactly one step per notch, `−`/`+` buttons step. A tooltip names the wheel behaviour once ("Scroll to step by 10 cm"). While scrubbing a point-cloud model the existing preview stride still applies.
@@ -110,7 +110,7 @@ This is the part the current tool lacks entirely, and the part most likely to ma
 - **Remove** shows an Undo toast for 6 s; **Clear all** shows the same. No confirmation dialog.
 - **Esc** disarms a pending pick, then, if nothing is armed, closes the tool (today's order). Closing the tool does not discard the planes (#5893 lasting scene state); the HUD chip reads `Section · 3 cuts` and keeps its hide/resume/clear actions.
 - **Keyboard**: `[` / `]` previous/next plane, `Delete` remove (when a chip or the handle has focus), `F2` rename, `Alt+Wheel` over the canvas steps the active plane (off until the shortcut is learned from the dialog; documented in `KeyboardShortcutsDialog`).
-- **Hints** (bottom-center, one line): empty → "Add a plane to start cutting"; pick → "Click a face…"; cutting → "Drag the arrow or scroll to move plane D"; cut off → "Cut is off · turn on Cut to clip the model".
+- **Hints** (bottom-center, one line): empty → "Pick a plane or a box to start cutting"; pick → "Click a face…"; cutting → "Drag the arrow or scroll to move plane D"; cut off → "Cut is off · turn on Cut to clip the model".
 
 ### 3.5 Copy, i18n, accessibility
 

@@ -25,6 +25,7 @@ import { chooseAlignmentMode, leaveAlignmentMode } from '@/lib/section/alignment
 import { MAX_SECTION_PLANES } from '@/lib/section/section-plane-set';
 import { useSectionDistance } from './useSectionDistance';
 import { useLiveTestId } from './SectionBarMeasure';
+import { HudDivider } from '../../viewport-ui/hud/HudToggle';
 import type { SectionPlaneAxis } from '@/store/types';
 
 export type AddKind = SectionPlaneAxis | 'face' | 'box' | 'alignment';
@@ -54,14 +55,21 @@ export function useAddSectionPlane(): (kind: AddKind) => boolean {
   }, [distance.bounds]);
 }
 
-const ENTRIES: ReadonlyArray<{ kind: AddKind; labelKey: 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'sectionPlanes.addSide' | 'sectionPlanes.addFace' | 'sectionPlanes.addBox' | 'sectionPlanes.addAlignment' }> = [
-  { kind: 'down', labelKey: 'sectionPlanes.addDown' },
-  { kind: 'front', labelKey: 'sectionPlanes.addFront' },
-  { kind: 'side', labelKey: 'sectionPlanes.addSide' },
-  { kind: 'face', labelKey: 'sectionPlanes.addFace' },
-  { kind: 'box', labelKey: 'sectionPlanes.addBox' },
-  { kind: 'alignment', labelKey: 'sectionPlanes.addAlignment' },
+type AddLabelKey = 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'sectionPlanes.addSide' | 'sectionPlanes.addFace' | 'sectionPlanes.addBox' | 'sectionPlanes.addAlignment';
+type AddTitleKey = 'sectionPlanes.addDownTitle' | 'sectionPlanes.addFrontTitle' | 'sectionPlanes.addSideTitle' | 'sectionPlanes.addFaceTitle' | 'sectionPlanes.addBoxTitle' | 'sectionPlanes.addAlignmentTitle';
+
+/** Every way to add, with a title that says what it makes, so each choice explains itself on hover (#8672). */
+const ENTRIES: ReadonlyArray<{ kind: AddKind; labelKey: AddLabelKey; titleKey: AddTitleKey }> = [
+  { kind: 'down', labelKey: 'sectionPlanes.addDown', titleKey: 'sectionPlanes.addDownTitle' },
+  { kind: 'front', labelKey: 'sectionPlanes.addFront', titleKey: 'sectionPlanes.addFrontTitle' },
+  { kind: 'side', labelKey: 'sectionPlanes.addSide', titleKey: 'sectionPlanes.addSideTitle' },
+  { kind: 'face', labelKey: 'sectionPlanes.addFace', titleKey: 'sectionPlanes.addFaceTitle' },
+  { kind: 'box', labelKey: 'sectionPlanes.addBox', titleKey: 'sectionPlanes.addBoxTitle' },
+  { kind: 'alignment', labelKey: 'sectionPlanes.addAlignment', titleKey: 'sectionPlanes.addAlignmentTitle' },
 ];
+/** The axis planes come first; the ways that need a pick or a shape follow a separator. */
+const AXIS_ENTRIES = ENTRIES.slice(0, 3);
+const OTHER_ENTRIES = ENTRIES.slice(3);
 
 export function SectionAddMenu({ atLimit }: { atLimit: boolean }) {
   const { t } = useTranslation();
@@ -78,19 +86,24 @@ export function SectionAddMenu({ atLimit }: { atLimit: boolean }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" data-testid={menuTestId}>
-        {ENTRIES.slice(0, 3).map((e) => (
-          <DropdownMenuItem key={e.kind} onSelect={() => add(e.kind)}>{t(e.labelKey)}</DropdownMenuItem>
+        {AXIS_ENTRIES.map((e) => (
+          <DropdownMenuItem key={e.kind} title={t(e.titleKey)} onSelect={() => add(e.kind)}>{t(e.labelKey)}</DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        {ENTRIES.slice(3).map((e) => (
-          <DropdownMenuItem key={e.kind} onSelect={() => add(e.kind)}>{t(e.labelKey)}</DropdownMenuItem>
+        {OTHER_ENTRIES.map((e) => (
+          <DropdownMenuItem key={e.kind} title={t(e.titleKey)} onSelect={() => add(e.kind)}>{t(e.labelKey)}</DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** The empty state: no plane yet, so the four ways to add one sit right on the bar. */
+/**
+ * The empty state: nothing cuts yet, so every way to start a cut sits right on
+ * the bar, grouped like the Add menu: the three axis planes, then Face and Box
+ * (#8672: Box must be discoverable without first adding a plane). Alignment
+ * stays in the Add menu; it only applies to infrastructure models.
+ */
 export function SectionEmptyAdd() {
   const { t } = useTranslation();
   const testId = useLiveTestId('section-empty-add');
@@ -98,8 +111,12 @@ export function SectionEmptyAdd() {
   return (
     <span className="flex items-center gap-1" data-testid={testId}>
       <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">{t('sectionPlanes.empty')}</span>
-      {ENTRIES.filter((e) => e.kind !== 'alignment' && e.kind !== 'box').map((e) => (
-        <button key={e.kind} type="button" className={ACTION} onClick={() => add(e.kind)}>{t(e.labelKey)}</button>
+      {AXIS_ENTRIES.map((e) => (
+        <button key={e.kind} type="button" className={ACTION} title={t(e.titleKey)} onClick={() => add(e.kind)}>{t(e.labelKey)}</button>
+      ))}
+      <HudDivider />
+      {OTHER_ENTRIES.filter((e) => e.kind !== 'alignment').map((e) => (
+        <button key={e.kind} type="button" className={ACTION} title={t(e.titleKey)} onClick={() => add(e.kind)}>{t(e.labelKey)}</button>
       ))}
     </span>
   );

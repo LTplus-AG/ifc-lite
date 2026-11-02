@@ -47,6 +47,7 @@ fn authored_face_sets(product_id: u32, model: &super::ModelSource<'_>) -> Option
 
 /// Marks a product whose every part publishes rows of a face set its source authors open.
 pub const AUTHORED_OPEN: &str = "faceSetAuthoredOpen";
+pub const SOURCE_OPEN_EDGES: &str = "faceSetSourceOpenEdges";
 
 /// Every published UV and palette entry against the row its face key names. Affine
 /// copies move a part out of the source's frame and keep only the exact comparison.
@@ -108,6 +109,8 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
     // Unknown (`$`/.U.) or closed sets, and parts of any other kind, keep the closed-solid checks.
     let mut open = !product.parts.is_empty() && product.cuts == 0;
     let mut published = Vec::new();
+    let mut source_open_edges = 0;
+    let mut declared = std::collections::BTreeSet::new();
     for part in &product.parts {
         let Some(faces) = part.faces.as_ref().filter(|_| part.source_exact) else { open = false; continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
@@ -128,6 +131,8 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
             .and_then(|item| face_sets::authored(item, &mut decoder, units));
         open &= item.as_ref().is_some_and(face_set_closure::authored_open) && faces.table.iter().all(|key| key.item == first.item);
         let Some(set) = set else { failure = Some(format!("#{} has no authored rows", first.item)); continue };
+        source_open_edges += set.open_edges;
+        if let Some(item) = &item { declared.insert(face_set_closure::declared(item)); }
         let keys: Vec<_> = faces.triangles.iter()
             .map(|&k| faces.table.get(k as usize).and_then(|key| row_key(&key.role))).collect();
         let part_worst = face_sets::deviation(&set, &part.positions, &part.indices, &keys);
@@ -159,6 +164,8 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
         result("faceSetRowArea", worst.area_relative, tolerances["faceSetRowAreaRelative"].as_f64().unwrap_or(f64::NAN)),
         result("faceSetRowsMissing", worst.missing_rows as f64, 0.),
     ];
+    // Report-only: edges the source itself leaves open, beside any closure defect the mesh shows.
+    results.push(OracleResult { family: SOURCE_OPEN_EDGES, value: source_open_edges as f64, limit: 0., pass: true, gated: false, reason: Some(declared.into_iter().collect::<Vec<_>>().join("+")), ..Default::default() });
     // Report-only marker: the rows above still gate; `Report` skips only closed-solid checks.
     if open && any { results.push(OracleResult { family: AUTHORED_OPEN, value: 1., limit: 0., pass: true, gated: false, ..Default::default() }); }
     results

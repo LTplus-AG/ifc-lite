@@ -121,6 +121,16 @@ describe('with no plane yet (#7545)', () => {
     assert.equal(s().sectionPickMode, false, 'nothing is armed behind the user');
   });
 
+  it('puts the ways to start a cut on row 2, under the heading, Views and close (#8672)', () => {
+    renderTool();
+    const [row1, row2] = [...bar().children] as HTMLElement[];
+    assert.match(row1.textContent ?? '', /Section/i, 'the heading says which tool is open');
+    assert.match(row1.textContent ?? '', /Views/, 'Views keeps its label');
+    assert.equal(row1.querySelector('[data-testid="section-empty-add"]'), null);
+    assert.equal(row2.dataset.testid, 'section-start-row');
+    assert.ok(row2.querySelector('[data-testid="section-empty-add"]'));
+  });
+
   it('a button adds plane A, cutting; the chip, the row of controls and the hint follow', () => {
     renderTool();
     click(buttonByText(bar(), 'Front (Y)'));

@@ -86,6 +86,25 @@ test('checking an uncertain create on a server that ignores $skip pages by modif
   assert.equal(peer.state.receivedWrites, writes, 'the check only reads');
 });
 
+test('a server capping $top below the request does not make a short page look complete (#8656 review)', async t => {
+  // 250 older topics; the server serves at most 100 per request although 200 are asked for.
+  const peer = await connectPeer(t, { ignoreSkip: true, maxTop: 100 });
+  for (let index = 0; index < 250; index++) {
+    const guid = `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+    const date = new Date(Date.UTC(2026, 0, 1) + index * 1000).toISOString().replace('.000Z', 'Z');
+    peer.state.topics.set(guid, { topic: { guid, title: `Existing ${index}`, creation_author: 'architect@example.test',
+      creation_date: date, modified_date: date }, comments: [], viewpoints: [] });
+  }
+  const batch = await reviewedBatch();
+  peer.state.loseNextWriteResponse = true;
+  const first = await publish(batch, peer);
+  const lost = entriesOf(first.record, 'createTopic')[0];
+  assert.equal(lost.state, 'uncertain');
+  const checked = await checkEntry(first.record.id, lost.id, { ...peer.connection, rules: buildagil });
+  assert.ok(checked.ok);
+  assert.equal(checked.check.result, 'committed', 'found past the capped first page, never proven absent');
+});
+
 const BUILDAGIL_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];
 /** A peer with buildagil's measured topic vocabulary and status rule. */
 const buildagilLike = { topicTypes: BUILDAGIL_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'],

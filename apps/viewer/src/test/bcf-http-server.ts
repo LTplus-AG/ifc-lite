@@ -85,6 +85,8 @@ export interface LocalBcfQuirks {
   statusOnlyForTypes?: string[];
   /** The topic list ignores `$skip` but honours `$orderby=modified_date asc` and `$filter=modified_date ge <date>`. */
   ignoreSkip?: boolean;
+  /** Serve at most this many topics per list request, whatever `$top` asks for (a silent server-side cap). */
+  maxTop?: number;
 }
 
 /** `$orderby` / `$filter` on `modified_date`, the only list query an `ignoreSkip` server pages by. */
@@ -187,7 +189,7 @@ export async function startLocalBcfServer(options: LocalBcfQuirks & { port?: num
         const listed = [...state.topics.values()].map(item => item.topic);
         const all = options.ignoreSkip ? modifiedDateQuery(listed, url) : listed;
         const skip = options.ignoreSkip ? 0 : Number(url.searchParams.get('$skip') ?? 0);
-        const top = Number(url.searchParams.get('$top') ?? all.length);
+        const top = Math.min(Number(url.searchParams.get('$top') ?? all.length), options.maxTop ?? Infinity);
         json(response, all.slice(skip, skip + top)); return;
       }
       if (method === 'POST') {

@@ -45,6 +45,8 @@ function withinWindow(date: string | null | undefined, entry: OutboxEntry, check
 }
 
 const PAGE = 200;
+/** Below this a tie-only page cannot be a server's cap (no BCF server serves fewer per page). */
+const PAGE_FLOOR = 10;
 const MAX_PAGES = 250;
 
 /**
@@ -53,26 +55,39 @@ const MAX_PAGES = 250;
  * A server that ignores `$skip` (profile `topicPaging: 'modified-date'`) is
  * paged by `modified_date` instead, the way `@ifc-lite/bcf-api` pulls it:
  * ascending, from the last page's latest date (inclusive; ties deduped).
+ * There a short page proves nothing (the server may cap `$top` below what was
+ * asked, #8656 review): the list is complete only when a page from the last
+ * date brings nothing new, and not if that page was as full as the server
+ * serves and all one timestamp, where more ties may hide behind the cap.
  */
 async function allTopics(connection: PublicationConnection, projectId: string): Promise<{ topics: BcfTopicDto[]; complete: boolean }> {
   const byDate = publicationRules(connection).topicPaging === 'modified-date';
   const topics: BcfTopicDto[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined;
+  let served = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
     const batch = await connection.client.getTopics(projectId, byDate
       ? { top: PAGE, orderby: 'modified_date asc', ...(cursor ? { filter: `modified_date ge ${cursor}` } : {}) }
       : { top: PAGE, skip: page * PAGE });
     const fresh = batch.filter(topic => !seen.has(topic.guid));
     for (const topic of fresh) { seen.add(topic.guid); topics.push(topic); }
-    if (batch.length < PAGE) return { topics, complete: true };
-    // A full page with nothing new (a server ignoring $skip, or more same-second ties than a page) cannot go on.
-    if (fresh.length === 0) return { topics, complete: false };
-    if (byDate) {
-      const last = batch[batch.length - 1]?.modified_date;
-      if (!last || !Number.isFinite(Date.parse(last))) return { topics, complete: false };
-      cursor = last;
+    if (!byDate) {
+      if (batch.length < PAGE) return { topics, complete: true };
+      // A full page with nothing new (a server ignoring $skip) cannot go on.
+      if (fresh.length === 0) return { topics, complete: false };
+      continue;
     }
+    served = Math.max(served, batch.length);
+    if (batch.length === 0) return { topics, complete: true };
+    if (fresh.length === 0) {
+      // Only ties at the last date came back: nothing is newer, unless that page was full and all one timestamp.
+      const tiesOnly = batch.every(topic => topic.modified_date === cursor);
+      return { topics, complete: !(tiesOnly && batch.length >= served && page > 0 && batch.length >= PAGE_FLOOR) };
+    }
+    const last = batch[batch.length - 1]?.modified_date;
+    if (!last || !Number.isFinite(Date.parse(last))) return { topics, complete: false };
+    cursor = last;
   }
   return { topics, complete: false };
 }

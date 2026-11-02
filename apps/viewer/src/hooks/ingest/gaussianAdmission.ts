@@ -36,7 +36,7 @@ type GaussianDecodeAdmission = Exclude<GaussianAdmission, { kind: 'disabled' }>
 
 /** Keep the public admission result stable; decode uses the same validated layout. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
-  const result = await inspectGaussianDecodeAdmission(file, head);
+  const result = await inspectGaussianLayout(file, head, false);
   if (result.kind !== 'disabled') return result;
   const { kind, format, count, shDegree } = result;
   return { kind, format, count, shDegree };
@@ -44,6 +44,16 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
 
 /** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
 export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuffer): Promise<GaussianDecodeAdmission> {
+  return inspectGaussianLayout(file, head, true);
+}
+
+function decodeHeaderEnd(text: string): number {
+  // Pinned readPly searches these exact bytes, not a substring in a comment/name.
+  const marker = text.indexOf('\nend_header\n');
+  return marker < 0 ? 0 : marker + '\nend_header\n'.length;
+}
+
+async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: boolean): Promise<GaussianDecodeAdmission> {
   // Decode the bounded probe before checking magic, just like parsePlyHeader.
   // TextDecoder consumes an initial UTF-8 BOM; a three-byte probe can contain
   // only that BOM and miss the following magic. Do not trim arbitrary prefixes.
@@ -60,15 +70,23 @@ export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuff
   // Retain BOM bytes in the header used for the payload lower-bound check.
   const headerDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
   let text = headerDecoder.decode(head);
-  let end = headerEnd(text);
+  const findEnd = decode ? decodeHeaderEnd : headerEnd;
+  let end = findEnd(text);
   if (!end && file.size > head.byteLength) {
     text = headerDecoder.decode(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer());
-    end = headerEnd(text);
+    end = findEnd(text);
   }
   if (!end || end > MAX_HEADER_BYTES) {
     return { kind: 'invalid', reason: 'PLY header is truncated or exceeds the 64 KiB admission limit.' };
   }
-  const lines = text.slice(0, end).split('\n').map(line => line.trim());
+  const header = text.slice(0, end);
+  // Decode only the ASCII/space/LF subset whose tokenization agrees with
+  // upstream's TextDecoder('ascii') + split(' '). Ordinary dispatch retains
+  // parsePlyHeader's BOM, Unicode trim and whitespace compatibility above.
+  if (decode && (!header.startsWith('ply\n') || /[^\x20-\x7e\n]/.test(header))) {
+    return { kind: 'invalid', reason: 'Unsupported Gaussian decoder header whitespace or magic.' };
+  }
+  const lines = header.split('\n').map(line => line.trim());
   let vertex = false, count = 0, vertexElements = 0, stride = 0, malformed = false;
   let encoding = '';
   let precedingElement = false;
@@ -77,6 +95,9 @@ export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuff
     // parsePlyHeader ignores tab-only keyword separators, but splits tokens
     // with /\s+/ once the directive's literal-space prefix matches.
     const fields = line.split(/\s+/);
+    if (decode && line && !['ply', 'format', 'element', 'property', 'comment', 'end_header'].includes(fields[0])) {
+      return { kind: 'invalid', reason: 'Unsupported Gaussian decoder header directive.' };
+    }
     if (line.startsWith('format ')) encoding = fields[1];
     if (line.startsWith('element ')) {
       vertex = fields[1] === 'vertex';
@@ -93,6 +114,7 @@ export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuff
     if (properties.has(name)) malformed = true;
     properties.add(name);
     const width = SCALAR_BYTES[fields[1]];
+    if (decode && !['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float', 'double'].includes(fields[1])) malformed = true;
     if (list || typeof width !== 'number' || fields.length !== 3) malformed = true;
     else stride += width;
   }
@@ -114,7 +136,7 @@ export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuff
   }
   const reason = limits(file.size, count, properties.size);
   if (reason) return { kind: 'invalid', reason };
-  if (!['ascii', 'binary_little_endian', 'binary_big_endian'].includes(encoding)) {
+  if (!(decode ? ['binary_little_endian', 'binary_big_endian'] : ['ascii', 'binary_little_endian', 'binary_big_endian']).includes(encoding)) {
     return { kind: 'invalid', reason: 'Unsupported Gaussian PLY encoding.' };
   }
   // ASCII body size is variable: only a decoder can validate its records.

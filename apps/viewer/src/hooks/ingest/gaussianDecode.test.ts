@@ -140,3 +140,61 @@ async function rawUpstream(file: File, chunkSize: number) {
   try { return await materializeToDataTable(source, pool, new Set(['position', 'geometric', 'color'])); }
   finally { try { await source.close(); } finally { pool.destroy(); } }
 }
+
+async function changeHeader(file: File, edit: (header: string) => string) {
+  const probe = await file.slice(0, 65536).text();
+  const end = probe.indexOf('\nend_header\n') + '\nend_header\n'.length;
+  assert.ok(end >= '\nend_header\n'.length);
+  return new File([edit(probe.slice(0, end)), file.slice(end)], 'header-tokens.ply');
+}
+
+it('comment terminator tokens cannot hide wide upstream records (#8565 review r2)', async () => {
+  const file = await changeHeader(layoutPly(1800, 1200), header => header.replace(
+    'property double e0\n', 'comment end_header\nproperty double e0\n'));
+  const { result, requested } = await boundedScratch(() => decodeGaussianFile(file));
+  assert.equal(result.count, 1800);
+  assert.deepEqual(result.centerBounds, { min: [1, 2, 3], max: [1, 2, 3] });
+  assert.ok(requested.includes(Math.floor(16 * 1024 * 1024 / 9656) * 9656));
+  // The old admission stopped at the comment, seeing only 14 floats (56 bytes).
+  // Replay that old chunk calculation against the REAL reader, refusing its
+  // oversized numeric allocation before construction rather than allocating it.
+  const oldChunk = Math.min(65_536, 1800, Math.floor(16 * 1024 * 1024 / 56));
+  await assert.rejects(boundedScratch(() => rawUpstream(file, oldChunk)), /Scratch allocation refused: 17380800/);
+});
+
+for (const name of ['end_header', 'element', 'property', 'format']) {
+  it(`header keyword property name ${name} retains the full record layout (#8565 review r2)`, async () => {
+    const file = await changeHeader(layoutPly(1, 1200), header => header.replace('double e0', `double ${name}`));
+    const { result, requested } = await boundedScratch(() => decodeGaussianFile(file));
+    assert.deepEqual(result.centerBounds.min, [1, 2, 3]);
+    assert.ok(requested.includes(9656));
+  });
+}
+
+it('complete header governs count and element order despite keyword names/comments (#8565 review r2)', async () => {
+  const trailing = await changeHeader(layoutPly(1, 0, 'after'), header => header.replace('element metadata', 'element end_header'));
+  assert.deepEqual((await decodeGaussianFile(trailing)).centerBounds.min, [1, 2, 3]);
+  const preceding = await changeHeader(layoutPly(1, 0, 'before'), header => header.replace('element metadata', 'element end_header'));
+  await assert.rejects(decodeGaussianFile(preceding), /element before vertex/);
+  const duplicate = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n', '\ncomment end_header\nelement vertex 1\nend_header\n'));
+  await assert.rejects(decodeGaussianFile(duplicate), /Malformed/);
+  const commented = await changeHeader(layoutPly(1), header => header.replace('element vertex 1', 'comment end_header element vertex 999 property double x\nelement vertex 1'));
+  assert.equal((await decodeGaussianFile(commented)).count, 1);
+});
+
+it('decoder refuses unsupported grammar while dispatch keeps its PLY compatibility (#8565 review r2)', async () => {
+  for (const edit of [
+    (header: string) => '\ufeff' + header,
+    (header: string) => header.replace('ply\n', 'ply \n'),
+    (header: string) => header.replace('property float x', 'property \tfloat x'),
+    (header: string) => header.replace('end_header\n', '\fend_header\n'),
+    (header: string) => header.replace('binary_little_endian', 'ascii'),
+    (header: string) => header.replace('property float x', 'property float32 x'),
+  ]) {
+    const file = await changeHeader(layoutPly(1), edit);
+    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'disabled');
+    await assert.rejects(decodeGaussianFile(file), /Unsupported|Malformed|header/);
+  }
+  const late = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n', '\ncomment end_header\ncomment ' + 'x'.repeat(65536) + '\nend_header\n'));
+  await assert.rejects(decodeGaussianFile(late), /64 KiB/);
+});

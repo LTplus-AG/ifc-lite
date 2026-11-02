@@ -157,4 +157,7 @@ fn a_voided_host_has_a_result_volume_for_convex_face_set_cutters() {
     assert!(openings::expected_with_face_set_cutters(&bundle, &sources, 22, &[8104, 8207]).unwrap().curved, "a polygonised arc stays curved");
     let dented = points.replacen("(1.5,0.7,2.)", "(1.,0.3,1.5)", 1);
     assert!(cut(with(&opening(8100, &dented, rows, ".T."))).is_none(), "a non-convex set stays a gap");
+    // A row whose corner is unreadable is stored empty and adds no edge: still a gap, never a panic.
+    let unreadable = format!("{rows},(1,2,99)");
+    assert!(cut(with(&opening(8100, points, &unreadable, ".T."))).is_none(), "an unreadable row stays a gap");
 }

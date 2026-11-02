@@ -129,6 +129,7 @@ export const section2dRu = {
   "section2d.pdf.invalid": "Некорректный масштаб \"{input}\". Введите положительное число, напр. 100 для масштаба 1:100.",
   "section2d.pdf.dialogTitle": "Экспорт в PDF",
   "section2d.pdf.dialogDescription": "Выберите масштаб, в котором рисуется PDF.",
+  "section2d.pdf.dialogDescriptionSheet": "В PDF используются масштаб и бумага активного листа.",
   "section2d.pdf.scaleLabel": "Масштаб",
   "section2d.pdf.asDisplayed": "Как показано (1:{scale})",
   "section2d.pdf.customScale": "Пользовательский…",

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The finished scene on a primary cache hit (`perf.sceneSnapshot`). A hit whose
+ * The finished scene on a primary cache hit (kill switch `perf.sceneSnapshot=0`). A hit whose
  * entry holds a snapshot draws the complete model before its metadata decodes,
  * then attaches the decoded meshes with no upload. Any other hit streams as
  * before, and leaves a snapshot behind for the next one.
@@ -35,10 +35,10 @@ export interface AdoptedSceneSnapshot {
   firstVisible: Promise<void>;
 }
 
-/** Same spellings as every other boolean perf flag: the URL reads as a number, a console global as either. */
+/** On by default; `perf.sceneSnapshot=0` (or `__IFC_LITE_SCENE_SNAPSHOT = 0`) turns it off. */
 function snapshotsEnabled(): boolean {
   const raw = readPerfFlag('sceneSnapshot');
-  return raw === 1 || raw === true;
+  return raw === undefined || raw === null || raw === 1 || raw === true;
 }
 
 function snapshotKey(scene: SceneContents): string {
@@ -58,6 +58,7 @@ async function readSnapshotShards(entry: Blob, shards: SnapshotHostData['shards'
 
 /** A load mounts the viewport, so a first file can reach its hit while the renderer is still starting. */
 async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3000): Promise<Renderer | null> {
+  if (!(globalThis.navigator as { gpu?: unknown } | undefined)?.gpu) return null; // no WebGPU: no renderer is coming
   const deadline = performance.now() + timeoutMs;
   for (;;) {
     const renderer = getGlobalRenderer();

@@ -72,6 +72,45 @@ The [native transparency contract research](../../docs/research/gaussian-splat-c
 contains the external upstream diagnostic patch and its measured results. These
 are research evidence, not runtime inputs or tests invoked by this package.
 
+## Showcase recording: research preview (#8567)
+
+`showcase.html` renders one catalogued licensed capture with the complete
+upstream PlayCanvas engine and flies the 30-second `demo-camera.mjs` journey.
+It is a **research preview, not a production showcase**. It does not use the
+ifc-lite viewer, `useIfcLoader.loadFile`, IFC geometry or IFC-Lite's renderer,
+and it claims no metric scale, alignment, budget or performance.
+
+The page refuses bytes whose length or SHA-256 differ from
+`tests/models/manifest.json`, and a row count that differs from the catalogued
+Gaussian count. The only placement is a display rotation (`x180`, for a Y-down
+training frame) with no scale. Framing comes from robust opaque-splat bounds
+(`showcase-framing.mjs`); the take records any explicit override next to the
+automatic value. On-screen credits come from `showcase-credits.mjs`, which a
+test keeps consistent with the manifest licence record.
+
+Record on real hardware only. `record-showcase.mjs` needs the hardware Chrome
+that `ifc-gpu-check` starts, and refuses a fallback or SwiftShader adapter, or
+an engine loop under 25 fps. The camera follows wall-clock time inside
+PlayCanvas's own update loop, and `canvas.captureStream` + `MediaRecorder`
+records it. Frame-interval fields describe that one take, nothing more:
+
+```sh
+~/build-workers/ifc-fleet run --route local --pool gaussian-production-8562 \
+  --storage-task TASK --cpu 4 --memory 8 --cwd "$PWD" -- \
+  ~/build-workers/ifc-gpu-check --limit 20 -- \
+  node examples/gaussian-splat-spike/record-showcase.mjs --asset seem-kirke-v1.ply \
+  --assets ~/ifc-fixtures/gaussian --out /abs/take --mode record --azimuth 330
+node examples/gaussian-splat-spike/finish-showcase.mjs --asset seem-kirke-v1.ply \
+  --master /abs/take/seem-kirke-v1-research-preview-master.webm --out /abs/final
+```
+
+`--mode turntable` and `--mode stills` render settled frames through direct
+texture readback, for checking orientation and framing before a take.
+`finish-showcase.mjs` adds the title card, the persistent research label and
+the licence credit with ffmpeg. It passes capture timestamps through, so no
+frames are interpolated or duplicated. The untouched master stays alongside.
+Keep recordings and stills outside Git.
+
 ## Reproduce
 
 Use the root pinned pnpm toolchain. Install dependencies normally, then prepare

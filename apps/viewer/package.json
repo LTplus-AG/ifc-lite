@@ -68,6 +68,7 @@
     "@ifc-lite/server-client": "workspace:^",
     "@ifc-lite/solar": "workspace:^",
     "@ifc-lite/source-bimcollab": "workspace:^",
+    "@ifc-lite/source-buildagil": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/source-dropbox": "workspace:^",
     "@ifc-lite/source-msgraph": "workspace:^",

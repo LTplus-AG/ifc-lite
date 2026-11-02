@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/source-buildagil/src/scan.ts",
+  "mutation": "tests/evidence/buildagil-scan/behaviour.oracle.patch",
+  "test": "packages/source-buildagil/test/provider.test.ts",
+  "why": "Without the creation-time cursor the scan cannot page past 100 documents, which the 250-document scan witness must catch."
+}

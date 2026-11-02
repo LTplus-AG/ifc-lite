@@ -109,7 +109,8 @@ export function SectionEmptyAdd() {
   const testId = useLiveTestId('section-empty-add');
   const add = useAddSectionPlane();
   return (
-    <span className="flex items-center gap-1" data-testid={testId}>
+    // Wraps in a lane narrower than the row (#8672 review), so every choice stays visible and clickable.
+    <span className="flex flex-wrap items-center justify-center gap-1" data-testid={testId}>
       <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">{t('sectionPlanes.empty')}</span>
       {AXIS_ENTRIES.map((e) => (
         <button key={e.kind} type="button" className={ACTION} title={t(e.titleKey)} onClick={() => add(e.kind)}>{t(e.labelKey)}</button>

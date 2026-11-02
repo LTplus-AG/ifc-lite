@@ -108,17 +108,63 @@ test('a draft type the server lacks is refused before sending, then published as
   assert.equal(topics.length, 2);
   assert.ok(topics.every(topic => topic.topic_type === 'Model Issue' && topic.topic_status === 'Open'));
 
-  // A later plan without the choice (a reopened panel) queues an update back to Clash, which preflight refuses;
-  // choosing the type again leaves the published topics as they are instead of a stuck update.
-  const reopened = await publishDraftBatch(batch, peer.target, connection);
-  assert.equal(reopened?.report.stopped, 'preflight');
+  // A later plan without a choice (a reopened panel) keeps the type already published: nothing is retyped,
+  // nothing is refused, nothing is left queued (#8656 review).
   const writes = peer.state.receivedWrites;
-  const chosenAgain = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Model Issue' } });
-  assert.equal(chosenAgain?.report.preflight?.ok, true);
-  assert.equal(chosenAgain?.report.sent, 0);
+  const reopened = await publishDraftBatch(batch, peer.target, connection);
+  assert.equal(reopened?.report.preflight?.ok, true, 'no picker again for published drafts');
+  assert.equal(reopened?.report.sent, 0);
   assert.equal(peer.state.receivedWrites, writes);
-  const stored = (await readPublication(chosenAgain?.plan.record.id ?? ''))?.record;
+  const stored = (await readPublication(reopened?.plan.record.id ?? ''))?.record;
   assert.deepEqual(stored?.entries.filter(entry => entry.state !== 'done'), [], 'no unsent update left behind');
+
+  // A fresh choice still wins, and retypes the published topics explicitly.
+  const retyped = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Task' } });
+  assert.deepEqual(retyped?.report.receipts.map(receipt => receipt.operation), ['updateTopic', 'updateTopic']);
+  assert.ok([...peer.state.topics.values()].every(item => item.topic.topic_type === 'Task'));
+});
+
+test('a chosen type is remembered for new drafts of the same type and survives a reopened panel (#8656 review)', async t => {
+  const peer = await connectPeer(t, buildagilLike);
+  const connection = { ...peer.connection, rules: buildagil };
+  const batch = await reviewedBatch();
+  const published = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
+  assert.equal(published?.report.preflight?.ok, true);
+  const stored = (await readPublication(published?.plan.record.id ?? ''))?.record;
+  assert.ok(stored && entriesOf(stored, 'createTopic').every(entry => entry.topicTypeFrom === 'Clash'), 'the mapping is recorded');
+  // Reopened, no choice: the published Information topics are not retyped to the closest type.
+  const writes = peer.state.receivedWrites;
+  const reopened = await publishDraftBatch(batch, peer.target, connection);
+  assert.equal(reopened?.report.preflight?.ok, true);
+  assert.equal(peer.state.receivedWrites, writes, 'no silent retype');
+  assert.ok([...peer.state.topics.values()].every(item => item.topic.topic_type === 'Information'));
+});
+
+test('a create recovered by the server check keeps what the server stored as the baseline (#8656 review)', async t => {
+  const peer = await connectPeer(t, buildagilLike);
+  const connection = { ...peer.connection, rules: buildagil };
+  const batch = await reviewedBatch();
+  peer.state.loseNextWriteResponse = true;
+  const first = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
+  const lost = first ? entriesOf(first.plan.record, 'createTopic')[0] : undefined;
+  const lostNow = (await readPublication(first?.plan.record.id ?? ''))?.record.entries.find(entry => entry.id === lost?.id);
+  assert.equal(lostNow?.state, 'uncertain');
+  const checked = await checkEntry(first?.plan.record.id ?? '', lostNow?.id ?? '', connection);
+  assert.ok(checked.ok);
+  assert.equal(checked.check.result, 'committed');
+  const recovered = checked.record.entries.find(entry => entry.id === lostNow?.id);
+  assert.equal(recovered?.receipt?.evidence, 'lookup');
+  assert.equal(recovered?.receipt?.fields?.topic_type, 'Information');
+  assert.equal(recovered?.receipt?.fields?.topic_status, undefined, 'the stored copy, not the sent status');
+
+  // Finish the rest of the batch, then edit the recovered topic: no false conflict.
+  await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
+  const index = batch.topics.findIndex(topic => topic.guid === lostNow?.topicGuid);
+  const edited = editDraftTopic(batch, batch.topics[index].guid, { title: 'Recovered topic, renamed' });
+  assert.ok(edited.ok);
+  const second = await publishDraftBatch(edited.batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
+  assert.deepEqual(second?.report.blocked, [], 'no false remote conflict');
+  assert.ok(second?.report.receipts.some(receipt => receipt.operation === 'updateTopic'));
 });
 
 test('buildagil: a status the chosen type cannot keep is not sent, and preflight says so', async t => {

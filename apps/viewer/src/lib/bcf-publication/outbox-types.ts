@@ -53,6 +53,8 @@ export interface OutboxCandidate {
   title?: string;
   author?: string;
   date?: string;
+  /** A topic candidate's owned fields as the server states them, nulls included: a recovered receipt's stored copy. */
+  fields?: Record<string, unknown>;
 }
 
 /** Result of an explicit "check server" for an uncertain or imported entry. */
@@ -92,6 +94,8 @@ export interface OutboxEntry {
   baseline?: Record<string, unknown>;
   /** Draft fields left out of the payload because the server cannot keep them (a status for a type without one). */
   withheld?: Record<string, unknown>;
+  /** The draft topic type this write's `topic_type` was chosen for (a server without that type). */
+  topicTypeFrom?: string;
 }
 
 export interface PublicationTarget {

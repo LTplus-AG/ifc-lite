@@ -22,7 +22,7 @@
 
 import type { BcfCommentDto, BcfTopicDto } from '@ifc-lite/bcf-api';
 import { parseDraftFooter } from '../bcf-drafts/draft-footer.js';
-import { commentMarker, ownedFields, sameOwnedFields } from './outbox-plan.js';
+import { commentMarker, confirmedOwnedFields, ownedFields, sameOwnedFields, statedOwnedFields } from './outbox-plan.js';
 import { markDone, replaceEntry, requeue } from './outbox-state.js';
 import { mutatePublication, readPublication } from './outbox-store.js';
 import { sameTarget, type PublicationConnection } from './outbox-dispatch.js';
@@ -78,6 +78,7 @@ async function allTopics(connection: PublicationConnection, projectId: string): 
 }
 
 const candidateOf = (item: BcfTopicDto | BcfCommentDto): OutboxCandidate => ({ guid: item.guid,
+  ...('topic_type' in item || 'title' in item ? { fields: statedOwnedFields(item as unknown as Record<string, unknown>) } : {}),
   ...('title' in item && item.title ? { title: item.title } : {}),
   ...('creation_author' in item && item.creation_author ? { author: item.creation_author } : {}),
   ...('author' in item && item.author ? { author: item.author } : {}),
@@ -143,6 +144,16 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
     'Flow comments carry no correlation marker; equal text is not proof.');
 }
 
+/**
+ * A recovered topic write's receipt keeps what the server stored, as a write
+ * response's does (#8656): the update baseline must not fall back to the sent
+ * payload, or a field the server dropped reads as a remote conflict later.
+ */
+function recoveredFields(entry: OutboxEntry, candidate: OutboxCandidate | undefined): { fields?: Record<string, unknown> } {
+  if (!candidate?.fields || (entry.operation !== 'createTopic' && entry.operation !== 'updateTopic')) return {};
+  return { fields: confirmedOwnedFields(candidate.fields, entry.payload) };
+}
+
 export type CheckOutcome = { ok: true; check: OutboxCheck; record: BcfPublication } | { ok: false; reason: 'unknown' | 'target' | 'state' | 'storage' };
 const CHECKABLE = new Set<OutboxEntry['state']>(['uncertain', 'blocked']);
 
@@ -159,7 +170,7 @@ export async function checkEntry(id: string, entryId: string, connection: Public
     if (!current || !latest || !CHECKABLE.has(latest.state)) return null;
     const checked = { ...latest, check };
     const settled = check.result === 'committed'
-      ? markDone(checked, { remoteGuid: check.candidates[0].guid, at: check.at, evidence: 'lookup' }) : checked;
+      ? markDone(checked, { remoteGuid: check.candidates[0].guid, at: check.at, evidence: 'lookup', ...recoveredFields(latest, check.candidates[0]) }) : checked;
     return replaceEntry(current, settled, check.at);
   });
   return record ? { ok: true, check, record } : { ok: false, reason: 'storage' };
@@ -172,7 +183,8 @@ export async function resolveWithCandidate(id: string, entryId: string, remoteGu
     const latest = current?.entries.find(item => item.id === entryId);
     applied = !!current && !!latest && CHECKABLE.has(latest.state) && !!latest.check?.candidates.some(item => item.guid === remoteGuid);
     return applied && current && latest
-      ? replaceEntry(current, markDone(latest, { remoteGuid, at: now.toISOString(), evidence: 'user-choice' }), now.toISOString()) : null;
+      ? replaceEntry(current, markDone(latest, { remoteGuid, at: now.toISOString(), evidence: 'user-choice',
+        ...recoveredFields(latest, latest.check?.candidates.find(item => item.guid === remoteGuid)) }), now.toISOString()) : null;
   });
   return applied ? record : null;
 }

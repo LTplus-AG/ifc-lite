@@ -29,7 +29,7 @@ const PAYLOAD_KEYS = new Set([...TOPIC_KEYS, ...COMMENT_KEYS]);
 const JOURNAL_KEYS = new Set([...SCHEMA_KEYS, 'id', 'origin', 'target', 'createdAt', 'updatedAt', 'entries',
   'batchId', 'batchName', 'imported', 'serverUrl', 'projectName', 'userId', 'remoteTopicGuid', 'dependsOn',
   'subject', 'digest', 'state', 'attempts', 'queuedAt', 'sentAt', 'receipt', 'failure', 'blocked', 'check',
-  'force', 'baseline', 'fields', 'withheld', 'remoteGuid', 'at', 'evidence', 'topicActions', 'code', 'message', 'status',
+  'force', 'baseline', 'fields', 'withheld', 'topicTypeFrom', 'remoteGuid', 'at', 'evidence', 'topicActions', 'code', 'message', 'status',
   'result', 'candidates', 'note', 'guid', 'author', 'date']);
 
 /** These candidates are built from the closed outbox schema, never arbitrary server DTOs. */

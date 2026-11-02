@@ -29,16 +29,34 @@ export function publicationRules(connection: { serverUrl: string; rules?: Public
  * `withheld`, so preflight can say it was not sent).
  */
 export function adaptTopicWrite(write: Record<string, unknown>, rules: PublicationServerRules, topicTypes: TopicTypeChoice):
-  { write: Record<string, unknown>; withheld?: Record<string, unknown> } {
+  { write: Record<string, unknown>; withheld?: Record<string, unknown>; mappedFrom?: string } {
   const draftType = write.topic_type;
   const chosen = typeof draftType === 'string' && Object.hasOwn(topicTypes, draftType) ? topicTypes[draftType] : undefined;
   const typed = chosen ? { ...write, topic_type: chosen } : write;
+  // The draft type a chosen server type stands for, so a later plan keeps the choice.
+  const mapped = chosen && typeof draftType === 'string' ? { mappedFrom: draftType } : {};
   const status = typed.topic_status;
   if (!rules.topicStatusTypes || status === undefined || status === null || rules.topicStatusTypes.includes(String(typed.topic_type))) {
-    return { write: typed };
+    return { write: typed, ...mapped };
   }
   const { topic_status: _status, ...kept } = typed;
-  return { write: kept, withheld: { topic_status: status } };
+  return { write: kept, withheld: { topic_status: status }, ...mapped };
+}
+
+/**
+ * The server types this publication already published draft types as: the
+ * latest confirmed topic write per draft type. A plan without a fresh choice
+ * keeps them, so reopening the panel neither retypes published topics nor
+ * offers a different type for the same drafts.
+ */
+export function publishedTopicTypes(entries: readonly { state: string; operation: string; topicTypeFrom?: string; payload: Record<string, unknown> }[]): TopicTypeChoice {
+  const choice: Record<string, string> = {};
+  for (const entry of entries) {
+    const type = entry.payload.topic_type;
+    if (entry.state === 'done' && (entry.operation === 'createTopic' || entry.operation === 'updateTopic')
+      && entry.topicTypeFrom && typeof type === 'string') choice[entry.topicTypeFrom] = type;
+  }
+  return choice;
 }
 
 /**

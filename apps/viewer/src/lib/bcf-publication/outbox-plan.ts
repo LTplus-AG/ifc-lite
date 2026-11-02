@@ -14,7 +14,7 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { loadApi } from '../../services/bcf-server-session.js';
 import { digestStrings, describeWithFooter } from '../bcf-drafts/draft-footer.js';
 import type { DraftBatch, DraftTopic } from '../bcf-drafts/draft-types.js';
-import { adaptTopicWrite, type PublicationServerRules, type TopicTypeChoice } from './outbox-server-rules.js';
+import { adaptTopicWrite, publishedTopicTypes, type PublicationServerRules, type TopicTypeChoice } from './outbox-server-rules.js';
 import { requeue } from './outbox-state.js';
 import type { BcfPublication, OutboxEntry, OutboxOperation, PublicationTarget } from './outbox-types.js';
 
@@ -40,6 +40,13 @@ export function confirmedOwnedFields(response: Readonly<Record<string, unknown>>
   const stored: Record<string, unknown> = {};
   for (const field of OWNED_FIELDS) stored[field] = Object.hasOwn(response, field) ? response[field] : sent[field];
   return ownedFields(stored);
+}
+
+/** The owned fields a server DTO states, nulls included, for `confirmedOwnedFields` later. */
+export function statedOwnedFields(dto: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const stated: Record<string, unknown> = {};
+  for (const field of OWNED_FIELDS) if (Object.hasOwn(dto, field)) stated[field] = dto[field];
+  return stated;
 }
 
 export function sameOwnedFields(left: Readonly<Record<string, unknown>> | undefined, right: Readonly<Record<string, unknown>> | undefined): boolean {
@@ -111,15 +118,17 @@ export async function planDraftPublication(batch: DraftBatch, existing: BcfPubli
     return { id: crypto.randomUUID(), operation, topicGuid, payload, digest: entryDigest(target, operation, topicGuid, payload),
       state: 'queued', attempts: 0, queuedAt: at, ...extra };
   };
-  const withPayload = (item: OutboxEntry, payload: Record<string, unknown>, withheld?: Record<string, unknown>): OutboxEntry => {
-    const { withheld: _withheld, ...rest } = item;
-    return { ...rest, payload, digest: entryDigest(target, item.operation, item.topicGuid, payload), ...(withheld ? { withheld } : {}) };
+  const withPayload = (item: OutboxEntry, payload: Record<string, unknown>, extra: Pick<OutboxEntry, 'withheld' | 'topicTypeFrom'>): OutboxEntry => {
+    const { withheld: _withheld, topicTypeFrom: _from, ...rest } = item;
+    return { ...rest, payload, digest: entryDigest(target, item.operation, item.topicGuid, payload), ...extra };
   };
+  // A fresh choice wins; otherwise the types this publication already published draft types as.
+  const topicTypes: TopicTypeChoice = { ...publishedTopicTypes(entries), ...options.topicTypes };
 
   for (const topic of batch.topics) {
-    const { write, withheld } = adaptTopicWrite({ ...api.topicToApiWrite(topicForServer(batch, topic)) } as Record<string, unknown>,
-      options.rules ?? {}, options.topicTypes ?? {});
-    const kept = withheld ? { withheld } : {};
+    const { write, withheld, mappedFrom } = adaptTopicWrite({ ...api.topicToApiWrite(topicForServer(batch, topic)) } as Record<string, unknown>,
+      options.rules ?? {}, topicTypes);
+    const kept = { ...(withheld ? { withheld } : {}), ...(mappedFrom ? { topicTypeFrom: mappedFrom } : {}) };
     let create = entries.find(item => item.operation === 'createTopic' && item.topicGuid === topic.guid);
     if (!create) {
       create = entry('createTopic', topic.guid, write, kept);
@@ -127,14 +136,14 @@ export async function planDraftPublication(batch: DraftBatch, existing: BcfPubli
     } else if (create.state === 'queued') {
       // Never sent: carry the latest reviewed fields instead of stale ones.
       const index = entries.indexOf(create);
-      create = entries[index] = withPayload(create, write, withheld);
+      create = entries[index] = withPayload(create, write, kept);
     } else if (create.state === 'done') {
       const published = [...entries].reverse().find(item => item.topicGuid === topic.guid && item.state === 'done'
         && (item.operation === 'updateTopic' || item.operation === 'createTopic'));
       const pending = entries.findIndex(item => item.operation === 'updateTopic' && item.topicGuid === topic.guid
         && item.state !== 'done' && item.state !== 'failed');
       if (!sameOwnedFields(published?.payload, write)) {
-        if (pending >= 0 && entries[pending].state === 'queued') entries[pending] = withPayload(entries[pending], write, withheld);
+        if (pending >= 0 && entries[pending].state === 'queued') entries[pending] = withPayload(entries[pending], write, kept);
         else if (pending < 0) entries.push(entry('updateTopic', topic.guid, write, { dependsOn: create.id,
           baseline: published?.receipt?.fields ?? ownedFields(published?.payload), ...kept }));
       } else if (pending >= 0 && entries[pending].state === 'queued') {

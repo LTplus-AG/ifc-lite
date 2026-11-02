@@ -143,12 +143,9 @@ try {
     if (evidence.status !== 'pass') process.exitCode = 1;
   } else if (flag('--demo')) {
     const { runDemo } = await import('./native-adapter-demo-check.mjs');
-    const server = await startServer(resolve(root, 'vite.config.mjs'));
-    try {
-      Object.assign(evidence, await runDemo({ browser, openPage, url: `${server.resolvedUrls.local[0]}contract/native-adapter-demo.html`, output, backend, stamp,
-        allowPendingAdapter: flag('--allow-pending-adapter') }));
-      if (evidence.status !== 'pass' && !evidence.status.startsWith('baseline-only')) process.exitCode = 1;
-    } finally { await server.close(); }
+    Object.assign(evidence, await runDemo({ browser, openPage, output, backend, stamp, capture: option('capture'),
+      allowPendingAdapter: flag('--allow-pending-adapter') }));
+    if (evidence.status !== 'pass' && !evidence.status.startsWith('baseline-only')) process.exitCode = 1;
   } else {
     await runWitness(browser);
   }

@@ -57,7 +57,10 @@ function recordingBackend(): RecordingBackend & { factory: () => Promise<Gaussia
 export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 << 28, maxBufferSize: 1 << 28 }) {
   const canvas = { width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) };
   const renderer = new Renderer(canvas as unknown as HTMLCanvasElement);
-  const internals = renderer as unknown as { deviceLost: boolean; destroyed: boolean; initGeneration: number; gaussianLayer: GaussianSplatLayer };
+  const internals = renderer as unknown as {
+    deviceLost: boolean; destroyed: boolean; initGeneration: number; gaussianLayer: GaussianSplatLayer;
+    scene: { getModelTranslation(index: number): readonly [number, number, number] | undefined };
+  };
   const device = { limits } as unknown as GPUDevice;
   const backend = recordingBackend();
   // `Renderer.init` (the WebGPU adapter) never runs here, so readiness would never publish.
@@ -67,7 +70,7 @@ export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 <
   internals.gaussianLayer = new GaussianSplatLayer({
     lifetime: () => ({ ready: renderer.isReady(), lost: internals.deviceLost, disposed: internals.destroyed, generation: internals.initGeneration }),
     device: () => device, adapter: () => null,
-    modelTranslation: (index) => renderer.getScene().getModelTranslation(index), requestRender: () => {},
+    modelTranslation: (index) => internals.scene.getModelTranslation(index), requestRender: () => {},
   }, backend.factory);
   return { renderer, backend, loseDevice: () => { internals.deviceLost = true; } };
 }

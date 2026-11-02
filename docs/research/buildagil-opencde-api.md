@@ -55,7 +55,8 @@ buildagil publishes an "openCDE API" based on buildingSMART's BCF and Documents 
 - **Token:** an Entra access token for SharePoint (`aud` SharePoint, `scp` `AllSites.Write`) with `oid`, `name`, `upn` and `email`; the BCF connection names the account from those claims.
 - **Topic list:** `$skip` is ignored (`$skip=1` returns the same topics); `$filter` on `modified_date` / `creation_date` works with quoted and unquoted ISO literals (a future date returns none); `$orderby` and `$top` work; `$expand=comments` works. Timestamps are second-precision (`2026-11-02T06:43:37Z`), so date paging must de-duplicate ties.
 - **Topic update:** `PUT` works (200) as well as the documented `PATCH`.
-- **Status rule:** a topic type without a status (e.g. `Information`) created with `topic_status: Open` is accepted (201) and stored with `topic_status: null`, silently.
+- **Topic types:** `topic_type` must be one of the project's extension values (`Task`, `Model Issue`, `Documentation Log`, `Incident Log`, `Deficiency Log`, `Topic`, `Information`, `Decision`); there is no `Clash` or `Issue`.
+- **Status rule:** only `Task`, `Model Issue`, `Documentation Log`, `Incident Log` and `Deficiency Log` keep a `topic_status` (`Draft`/`Open`/`Closed`). Any other type (e.g. `Information`) created with `topic_status: Open` is accepted (201) and stored with `topic_status: null`, silently. Each listed topic carries the statuses it allows in `authorization.topic_status`, but nothing states the rule per type up front, so the profile carries it as data (`topicStatusTypes`).
 - **Comments:** a new comment is only its text; a `viewpoint_guid` sent with it is accepted (201) and discarded. Comments list newest first; your own comments can be deleted.
 - **Viewpoints:** camera, `components` (selection, colouring, visibility) and a base64 PNG snapshot round-trip; the parts come back from `…/selection`, `…/coloring`, `…/visibility`, and `…/snapshot` as `image/png`. `aspect_ratio` 1.6 came back as 1, and selection keeps only `ifc_guid`.
 - **Topics cannot be deleted** through the API (no `DELETE`).
@@ -64,7 +65,7 @@ The viewer connects to it as a BCF server through a profile (`apps/viewer/src/se
 
 ## Follow-ups
 
-- **Publishing topics** from the viewer (next PR): the pre-check drops a status the topic type does not take, comments are published unlinked from their viewpoint, the project's `createTopic` permission is checked, and snapshots stay small (Vercel caps request bodies at about 4 MB).
+- **Publishing topics** from the viewer: done. A draft type the project lacks (`Clash`) is mapped to a type the coordinator picks in the publish panel (`Model Issue` preselected); a status the chosen type cannot keep is withheld and shown as a pre-check warning; the update baseline is the server's echo, so a nulled status is no false conflict; an uncertain create is checked with `modified_date` paging. Comments go out as text only, so the discarded `viewpoint_guid` costs nothing. Still open: snapshots stay small (Vercel caps request bodies at about 4 MB).
 - **One buildagil session** for the documents source and the BCF connection, instead of two sign-ins.
 - **Save back:** `PUT …/documents/{guid}` (new version) and `POST …/documents` behind the project's `createDocument` / document `updateContent` permissions.
 - **Change detection:** the `documents.content_updated` webhook needs a server endpoint; polling `modified_date` is the browser-only alternative.

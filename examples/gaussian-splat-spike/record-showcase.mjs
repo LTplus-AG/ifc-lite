@@ -10,12 +10,13 @@ import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
-import { basename, isAbsolute, join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { showcaseCredits } from './showcase-credits.mjs';
 import { sha256File, verifiedFixture } from './showcase-fixture.mjs';
+import { absoluteOutput, assetsDirectory, requireOptions } from './showcase-args.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const repo = resolve(root, '../..');
@@ -27,8 +28,9 @@ const { values: args } = parseArgs({ options: {
   width: { type: 'string', default: '1920' }, height: { type: 'string', default: '1080' },
   'mime-type': { type: 'string' }, bitrate: { type: 'string', default: '40000000' },
 } });
-const assets = resolve(args.assets ?? process.env.SPLAT_SPIKE_ASSETS ?? '');
-if (!args.asset || !args.out || !isAbsolute(args.out) || !assets) throw new Error('usage: --asset NAME.ply --assets ABS_DIR --out ABS_DIR [--mode turntable|stills|record]');
+requireOptions(args, ['asset', 'out'], '--asset NAME.ply --assets DIR --out ABS_DIR [--mode turntable|stills|record]');
+const assets = assetsDirectory(args.assets);
+absoluteOutput(args.out);
 if (!['turntable', 'stills', 'record'].includes(args.mode)) throw new Error(`unknown mode ${args.mode}`);
 const cdp = process.env.IFC_GPU_CDP_URL;
 if (!cdp) throw new Error('IFC_GPU_CDP_URL is not set: run under ~/build-workers/ifc-gpu-check for a hardware Chrome');

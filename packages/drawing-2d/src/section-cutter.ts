@@ -30,6 +30,7 @@ import {
   projectTo2DBasis,
 } from './math.js';
 import { PolygonBuilder } from './polygon-builder.js';
+import { OpenSurfaceIndex } from './open-surface.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION CUTTER CLASS
@@ -90,15 +91,15 @@ export class SectionCutter {
     // Flatten all segments at once (more efficient than repeated push(...spread))
     const allSegments = segmentArrays.flat();
 
-    // Reconstruct closed polygons from segments
-    const polygonBuilder = new PolygonBuilder();
-    const polygons = polygonBuilder.buildPolygons(allSegments);
+    const openSurfaceSegments = new Set<CutSegment>();
+    const polygons = new PolygonBuilder().buildPolygons(allSegments, new OpenSurfaceIndex(meshes), openSurfaceSegments);
 
     const processingTimeMs = performance.now() - startTime;
 
     return {
       segments: allSegments,
       polygons,
+      openSurfaceSegments,
       stats: {
         totalTriangles,
         intersectedTriangles,
@@ -386,18 +387,17 @@ export async function cutMeshesStreaming(
     }
   }
 
-  // Flatten all segments at once (more efficient than repeated push(...spread))
   const allSegments = allSegmentArrays.flat();
 
-  // Build polygons from all segments
-  const polygonBuilder = new PolygonBuilder();
-  const polygons = polygonBuilder.buildPolygons(allSegments);
+  const openSurfaceSegments = new Set<CutSegment>();
+  const polygons = new PolygonBuilder().buildPolygons(allSegments, new OpenSurfaceIndex(meshes), openSurfaceSegments);
 
   const processingTimeMs = performance.now() - startTime;
 
   return {
     segments: allSegments,
     polygons,
+    openSurfaceSegments,
     stats: {
       totalTriangles,
       intersectedTriangles,

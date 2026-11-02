@@ -5660,6 +5660,7 @@
     "isGPUComputeAvailable: function",
     "isIfcTypeVisible: function",
     "isOpeningElement: function",
+    "isPolygonCutLine: function",
     "lineDirection: function",
     "lineLength: function",
     "lineMidpoint: function",

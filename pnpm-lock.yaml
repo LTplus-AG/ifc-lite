@@ -212,6 +212,12 @@ importers:
 
   apps/viewer:
     dependencies:
+      '@playcanvas/splat-transform':
+        specifier: 3.10.3
+        version: 3.10.3(playcanvas@2.23.3)
+      playcanvas:
+        specifier: 2.23.3
+        version: 2.23.3
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
         version: 0.132.1(zod@4.6.6)

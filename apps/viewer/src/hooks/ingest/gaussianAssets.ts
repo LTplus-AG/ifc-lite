@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { GaussianSplatBounds, GaussianSplatHandle, GaussianSplatApi } from './gaussianSplatPort.js';
+import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle } from '@ifc-lite/renderer';
 
 interface OwnedAsset { handle: GaussianSplatHandle; splats: GaussianSplatApi; visible?: boolean }
 

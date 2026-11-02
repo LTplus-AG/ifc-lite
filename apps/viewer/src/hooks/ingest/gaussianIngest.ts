@@ -4,11 +4,12 @@
 
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import { normalizeGaussianAttributes, type NormalizedGaussianAttributes } from '@ifc-lite/renderer';
+import {
+  normalizeGaussianAttributes, type GaussianSplatApi, type GaussianSplatHandle, type NormalizedGaussianAttributes,
+} from '@ifc-lite/renderer';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import { modelIndices } from '../../lib/model-placement/model-indices.js';
 import type { GaussianDecoded } from './gaussianDecoded.js';
-import type { GaussianSplatHandle, GaussianSplatApi } from './gaussianSplatPort.js';
 
 /** Raw source coordinates: no axis flip, unit, survey or measurement claim. */
 export const UNCALIBRATED_PLACEMENT: readonly number[] = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);

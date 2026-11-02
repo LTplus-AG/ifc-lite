@@ -15,7 +15,6 @@ import type { ModelLoadOptions } from '../modelLoadOptions.js';
 import { resolveGaussianQualification, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
 import { adoptGaussianAsset } from './gaussianAssets.js';
 import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
-import { gaussianSplatsOf } from './gaussianSplatPort.js';
 import { decodeGaussianInWorker } from './gaussianWorker.js';
 
 export interface GaussianLoadContext {
@@ -53,13 +52,11 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   if (ctx.admission.kind === 'invalid') return fail(ctx.admission.reason, 'gaussian_invalid_input');
   if (!resolveGaussianQualification(ctx.options?.gaussianQualification)) return fail(DISABLED, 'gaussian_disabled');
   const renderer = getGlobalRenderer();
-  const splats = renderer ? gaussianSplatsOf(renderer) : undefined;
-  if (!renderer || !splats) {
-    return fail('This viewer build has no Gaussian renderer adapter; the capture was not decoded.', 'gaussian_renderer_unavailable');
-  }
+  if (!renderer) return fail('Renderer not initialised; the capture was not decoded.', 'renderer_not_ready');
+  const splats = renderer.gaussianSplats; // internal, unqualified adapter (#8564)
   const readiness = await settledReadiness(renderer);
   if (!ctx.isCurrent()) return;
-  if (readiness.state !== 'blocked' || (readiness.reasons as readonly string[]).includes('upstream-capability-missing')) {
+  if (readiness.state !== 'blocked' || readiness.reasons.includes('upstream-capability-missing')) {
     return fail(readiness.state === 'lost'
       ? 'The graphics device was lost; reload the page and open the capture again.'
       : 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.', `gaussian_renderer_${readiness.state}`);

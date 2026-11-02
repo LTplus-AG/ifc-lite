@@ -81,18 +81,47 @@ fn issue_7955_authored_open_shell_is_reported_not_failed_for_closure_and_volume(
 }
 
 #[test]
-fn issue_7955_a_source_closed_or_unknown_set_with_a_hole_still_fails_closure() {
-    for closed in [".T.", "$", ".U."] {
+fn issue_7955_a_set_claiming_closed_over_open_rows_still_fails_closure() {
+    let text = shell(".T.");
+    let Some(shape) = publish(&text) else { return };
+    let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
+    assert!(!rows.iter().any(|r| r.family == AUTHORED_OPEN));
+    let report = report(&text, &shape);
+    assert!(report.violations.iter().any(|v| v.contains("closure defects")), "{:?}", report.violations);
+    assert!(report.violations.iter().any(|v| v.contains("nonfinite exact volume deviation")), "{:?}", report.violations);
+    assert_eq!(report.summary()["authoredOpenFaceSets"]["count"], 0);
+    assert_eq!(report.summary()["closureDefectsOnFaceSets"]["byDeclaredClosed"]["TRUE sourceRowsOpen"], 1);
+    println!("sdk witness executed: face_set_closed_with_hole");
+}
+
+/// Ruling 12: `Closed` unset and the rows proven open is an open set, by name.
+#[test]
+fn issue_7955_an_unset_set_with_open_rows_counts_as_open_by_name() {
+    for closed in ["$", ".U."] {
         let text = shell(closed);
         let Some(shape) = publish(&text) else { return };
         let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
-        assert!(!rows.iter().any(|r| r.family == AUTHORED_OPEN), "{closed}");
+        assert!(rows.iter().any(|r| r.family == AUTHORED_OPEN), "{closed}");
+        assert!(rows.iter().filter(|r| r.gated).all(|r| r.pass), "{closed}: faithful rows pass");
         let report = report(&text, &shape);
-        assert!(report.violations.iter().any(|v| v.contains("closure defects")), "{closed}: {:?}", report.violations);
-        assert!(report.violations.iter().any(|v| v.contains("nonfinite exact volume deviation")), "{closed}: {:?}", report.violations);
-        assert_eq!(report.summary()["authoredOpenFaceSets"]["count"], 0, "{closed}");
+        assert!(report.violations.is_empty(), "{closed}: {:?}", report.violations);
+        let summary = report.summary();
+        assert_eq!(summary["authoredOpenFaceSets"]["unsetRowsOpen"], 1, "{closed}");
+        assert_eq!(summary["authoredOpenFaceSets"]["products"][0]["classification"], "unset_rows_open_face_set", "{closed}");
     }
-    println!("sdk witness executed: face_set_closed_with_hole");
+}
+
+/// 819 #5950: an open `.F.` set beside an unset set whose rows and mesh close is an authored open
+/// set. Only an unset set that is itself open names the unset classification.
+#[test]
+fn issue_7955_a_closed_unset_set_beside_an_open_one_is_not_unset_open() {
+    let text = shell(".F.").replace("'Tessellation',(#33)", "'Tessellation',(#33,#34)").replace("ENDSEC;END", "#31=IFCCARTESIANPOINTLIST3D(((2000.,0.,0.),(3000.,0.,0.),(2000.,1000.,0.),(2000.,0.,1000.)));
+#34=IFCTRIANGULATEDFACESET(#31,$,$,((1,3,2),(1,2,4),(2,3,4),(1,4,3)),$);
+ENDSEC;END");
+    let Some(shape) = publish(&text) else { return };
+    let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
+    let open = rows.iter().find(|r| r.family == AUTHORED_OPEN).expect("the product is reported open");
+    assert_eq!(open.reason.as_deref(), Some("authored_open_face_set"), "the unset set is closed");
 }
 
 #[test]
@@ -167,4 +196,19 @@ ENDSEC;END");
     assert_eq!(shape.parts.len(), 1, "only the face set remains");
     assert!(!checked(&shape, &mixed, &tolerances).iter().any(|r| r.family == AUTHORED_OPEN), "a lost extrusion is not waived");
     println!("sdk witness executed: face_set_open_extra_or_mixed");
+}
+
+/// 819 #5950, 859 #3020: a closed set beside open ones. Its closed mesh names no defect, so
+/// the product counts as open; a set claiming `.T.` over open rows keeps the product red.
+#[test]
+fn issue_7955_a_closed_set_beside_open_ones_counts_as_open_only_if_they_are_named() {
+    let closed = "#31=IFCCARTESIANPOINTLIST3D(((5000.,0.,0.),(6000.,0.,0.),(5000.,1000.,0.),(5000.,0.,1000.)));\n\
+#34=IFCTRIANGULATEDFACESET(#31,$,$,((1,3,2),(1,2,4),(2,3,4),(3,1,4)),$);\nENDSEC;";
+    for (flag, open) in [("$", true), (".T.", false)] {
+        let text = shell(flag).replace("'Tessellation',(#33)", "'Tessellation',(#33,#34)").replace("ENDSEC;END-ISO", &format!("{closed}END-ISO"));
+        let Some(shape) = publish(&text) else { return };
+        assert_eq!(shape.parts.len(), 2, "{flag}");
+        let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
+        assert_eq!(rows.iter().any(|r| r.family == AUTHORED_OPEN), open, "{flag}");
+    }
 }

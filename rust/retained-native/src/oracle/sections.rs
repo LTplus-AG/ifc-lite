@@ -28,6 +28,11 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
     }
     let breaks = events::breakpoints(host, &planes)?;
     let mut work = WORK;
+    let unclipped: f64 = host.loops.iter().map(|(outer, edges)| {
+        let area = edges.iter().map(Edge::integral).sum::<f64>().abs();
+        if *outer { area } else { -area }
+    }).sum();
+    let profile = unclipped.abs();
     let area = |t: f64, work: &mut usize| -> Option<f64> {
         *work = work.checked_sub(1)?;
         let mut cuts = Vec::with_capacity(planes.len());
@@ -40,14 +45,12 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
             let a = clipped_area(edges, &cuts, work)?;
             sum += if *outer { a } else { -a };
         }
-        (sum.is_finite() && sum >= -1e-13).then_some(sum.max(0.))
+        // A cut inside a void leaves outer minus hole, rounding about the whole profile's area
+        // (Snowdon #81962): zero material, whichever side of zero it lands on.
+        (sum.is_finite() && sum >= -1e-13 * profile.max(1.)).then_some(sum.max(0.))
     };
     let linear = host.loops.iter().all(|(_,edges)|edges.iter().all(|edge|matches!(edge,Edge::Line(..))));
-    let unclipped: f64 = host.loops.iter().map(|(outer, edges)| {
-        let area = edges.iter().map(Edge::integral).sum::<f64>().abs();
-        if *outer { area } else { -area }
-    }).sum();
-    let tolerance = RELATIVE * unclipped.abs() * host.depth;
+    let tolerance = RELATIVE * profile * host.depth;
     let mut volume = 0.;
     for span in breaks.windows(2) {
         // Between topology events, line intersections move affinely with t,

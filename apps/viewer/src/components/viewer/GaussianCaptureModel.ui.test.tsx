@@ -16,7 +16,6 @@ import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
-import { UNCALIBRATED_PLACEMENT } from '@/hooks/ingest/gaussianIngest';
 import { HierarchyPanel } from './HierarchyPanel.js';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel.js';
 
@@ -26,13 +25,15 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 400 });
 
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
 function captureModel(id: string, name: string, count = 914_000): FederatedModel {
   return {
     ...fixtureModel(id, { entities: [] }),
     name, fileSize: 226_795_353, loadedAt: Date.UTC(2026, 10, 2), schemaVersion: 'IFC4',
     gaussianSplat: {
       handle: Object.freeze({ id: 7, modelIndex: 0 }), format: 'gaussian-ply', count, shDegree: 3,
-      sourceCenterBounds: { min: [-1, -1, -1], max: [1, 1, 1] }, placement: UNCALIBRATED_PLACEMENT,
+      sourceCenterBounds: { min: [-1, -1, -1], max: [1, 1, 1] }, placement: IDENTITY,
       placementOrigin: 'source', calibration: 'uncalibrated', attribution: 'Seem Kirke by roedsgaard, CC BY 4.0',
     },
   } as FederatedModel;

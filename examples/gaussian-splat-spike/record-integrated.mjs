@@ -10,12 +10,13 @@
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { basename, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
-import { verifiedFixture } from './showcase-fixture.mjs';
+import { repoRoot, sha256File, verifiedFixture } from './showcase-fixture.mjs';
 import { intervalStats, screencastConcat } from './screencast-timing.mjs';
+import { absoluteOutput, assetsDirectory, requireOptions } from './showcase-args.mjs';
 
 const { values: args } = parseArgs({ options: {
   'viewer-url': { type: 'string' }, query: { type: 'string', default: '' }, asset: { type: 'string' }, assets: { type: 'string' },
@@ -24,18 +25,28 @@ const { values: args } = parseArgs({ options: {
   'viewer-commit': { type: 'string', default: 'unknown' }, 'viewer-build': { type: 'string', default: '' },
   quality: { type: 'string', default: '90' },
 } });
-for (const key of ['viewer-url', 'asset', 'assets', 'out']) if (!args[key]) throw new Error(`--${key} required`);
-if (!isAbsolute(args.out)) throw new Error('--out must be absolute');
+requireOptions(args, ['viewer-url', 'asset', 'out'], '--viewer-url URL --asset NAME.ply --assets DIR --out ABS_DIR');
+absoluteOutput(args.out);
 const cdpUrl = process.env.IFC_GPU_CDP_URL;
 if (!cdpUrl) throw new Error('IFC_GPU_CDP_URL is not set: run under ~/build-workers/ifc-gpu-check for a hardware Chrome');
 
-const { entry, localPath } = await verifiedFixture(args.asset, resolve(args.assets));
+const { entry, localPath } = await verifiedFixture(args.asset, assetsDirectory(args.assets));
+// The take's own source binding, captured before and after so a mid-take edit shows.
+const journeyPath = resolve(args.journey);
+const tooling = async () => {
+  const git = (...a) => execFileSync('git', ['-C', repoRoot, ...a], { encoding: 'utf8' }).trim();
+  const files = [fileURLToPath(import.meta.url), journeyPath, ...['screencast-timing.mjs', 'showcase-fixture.mjs', 'showcase-args.mjs']
+    .map(name => fileURLToPath(new URL(`./${name}`, import.meta.url)))];
+  return { head: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain', '--', 'examples/gaussian-splat-spike') !== '',
+    sha256: Object.fromEntries(await Promise.all(files.map(async file => [basename(file), await sha256File(file)]))) };
+};
 // Windows Chrome reads the exact local bytes through the WSL share.
 const windowsPath = execFileSync('wslpath', ['-w', localPath], { encoding: 'utf8' }).trim();
 const framesDir = join(args.out, 'frames');
 await mkdir(framesDir, { recursive: true });
 const initStorage = JSON.parse(args['init-storage']);
-const evidence = { issue: 8567, date: new Date().toISOString(), host: hostname(), timeline: [], skipped: [], initStorage,
+const evidence = { issue: 8567, date: new Date().toISOString(), host: hostname(), timeline: [], skipped: [], observations: {}, initStorage,
+  tooling: { before: await tooling() },
   viewer: { url: args['viewer-url'], query: args.query, commit: args['viewer-commit'], build: args['viewer-build'] },
   asset: { path: entry.path, bytes: entry.size, sha256: entry.sha256, localSha256Verified: true, windowsPath } };
 const frames = [];
@@ -45,9 +56,15 @@ try {
   evidence.browser = browser.version();
   page = await (browser.contexts()[0] ?? await browser.newContext()).newPage();
   await page.setViewportSize({ width: 1920, height: 1080 });
-  const errors = [];
-  page.on('pageerror', e => errors.length < 30 && errors.push(e.message));
-  page.on('console', m => m.type() === 'error' && errors.length < 30 && errors.push(m.text()));
+  // Uncaught page exceptions, console errors (with their source URL) and failed
+  // HTTP traffic are kept apart, so an error is attributable rather than a bare string.
+  const diagnostics = { pageErrors: [], consoleErrors: [], failedResponses: [], failedRequests: [] };
+  const keep = (list, item) => { if (list.length < 30) list.push(item); };
+  page.on('pageerror', e => keep(diagnostics.pageErrors, e.message));
+  page.on('console', m => m.type() === 'error' && keep(diagnostics.consoleErrors, { text: m.text(), url: m.location()?.url || null }));
+  page.on('response', r => r.status() >= 400 && keep(diagnostics.failedResponses, { url: r.url(), status: r.status() }));
+  page.on('requestfailed', r => keep(diagnostics.failedRequests, { url: r.url(), error: r.failure()?.errorText ?? null }));
+  evidence.diagnostics = diagnostics;
   // User preferences only (e.g. theme), set before the app boots; never app state.
   await page.addInitScript(pairs => { for (const [k, v] of Object.entries(pairs)) if (localStorage.getItem(k) === null) localStorage.setItem(k, v); }, initStorage);
   await page.goto(`${args['viewer-url']}${args.query ? `?${args.query}` : ''}`, { waitUntil: 'domcontentloaded', timeout: 120_000 });
@@ -77,6 +94,7 @@ try {
     page, asset: args.asset, options: JSON.parse(args['journey-options']),
     hold: ms => page.waitForTimeout(ms),
     skip: (step, reason) => evidence.skipped.push({ step, reason }),
+    observe: (key, value) => { evidence.observations[key] = value; },
     async step(name, caption, fn) {
       const start = clock();
       try { return await fn(); } finally { evidence.timeline.push({ name, caption, start: +start.toFixed(3), end: +clock().toFixed(3) }); }
@@ -114,13 +132,13 @@ try {
   await journey.journey(ctx);
   await cdp.send('Page.stopScreencast');
   await writing;
-  evidence.errors = errors;
 } catch (error) {
   evidence.failure = error.stack ?? String(error); process.exitCode = 1;
   await page?.screenshot({ path: join(args.out, 'failure.png') }).catch(() => {});
 } finally {
   await cdp?.send('Page.stopScreencast').catch(() => {});
   evidence.frames = frames.length;
+  evidence.tooling.after = await tooling().catch(error => ({ error: error.message }));
   try {
     if (frames.length > 1) {
       await writeFile(join(args.out, 'frames.ffconcat'), screencastConcat(frames));
@@ -132,5 +150,6 @@ try {
   await writeFile(join(args.out, 'evidence-integrated.json'), JSON.stringify(evidence, null, 2) + '\n');
   await page?.close().catch(error => console.error('page close:', error.message));
   await browser?.close().catch(error => console.error('browser close:', error.message));
-  console.log(JSON.stringify({ failure: evidence.failure, adapter: evidence.adapter, screencast: evidence.screencast, skipped: evidence.skipped, timeline: evidence.timeline }, null, 1));
+  console.log(JSON.stringify({ failure: evidence.failure, adapter: evidence.adapter, screencast: evidence.screencast, skipped: evidence.skipped,
+    diagnostics: evidence.diagnostics, tooling: evidence.tooling, timeline: evidence.timeline }, null, 1));
 }

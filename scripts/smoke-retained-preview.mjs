@@ -44,6 +44,11 @@ async function get(origin, path) {
   return { status: response.status, headers: Object.fromEntries([...response.headers].map(([k, v]) => [k.toLowerCase(), v])), bytes };
 }
 
+export function engineAssetResponseProblems(url, source, response) {
+  const typed = /\.(wasm|m?js|json|md|txt)$/.test(url) || source.startsWith('LICENSES/') || REQUIRED_NOTICES.includes(source);
+  return responseProblems({ url, ...response, expectType: typed ? expectedType(url) : undefined });
+}
+
 const readModel = () => {
   const state = globalThis.__ifc_lite_viewer_store__.getState();
   const model = [...state.models.values()][0], rg = model?.retainedGeometry;
@@ -138,8 +143,7 @@ export async function smoke(options) {
     for (const { source, url } of servedEngineFiles(manifest.assets)) {
       if (source === 'engine-manifest.json') continue;
       const response = await get(origin, url);
-      const typed = /\.(wasm|m?js|json|md|txt)$/.test(url) || REQUIRED_NOTICES.includes(source);
-      problems.push(...responseProblems({ url, ...response, expectType: typed ? expectedType(url) : undefined }));
+      problems.push(...engineAssetResponseProblems(url, source, response));
       if (response.status === 200 && sha256(response.bytes) !== byPath.get(source).sha256) problems.push(`${url}: sha256 differs from the manifest`);
       checked++;
     }

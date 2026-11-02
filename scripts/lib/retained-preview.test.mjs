@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
+import { engineAssetResponseProblems } from '../smoke-retained-preview.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -158,4 +159,14 @@ test('deploy uses bodyless GET polling and never includes an API response in err
 // PR #8550: a manifest entry must never disappear from builder/smoke coverage.
 test('8550: an unsupported manifest asset fails closed rather than being omitted', () => {
   assert.throws(() => servedEngineFiles(assets(['smlib/worker.mjs', 'stray.txt'])), /Unsupported engine asset path.*stray\.txt/);
+});
+
+// PR #8550: optional toolchain licences must be checked even without an extension.
+test('8550: engine smoke rejects binary MIME for extensionless toolchain notices', () => {
+  const source = 'LICENSES/emscripten/COPYING';
+  const url = '/retained-engine/' + source;
+  const headers = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless',
+    'x-content-type-options': 'nosniff', 'content-type': 'application/octet-stream' };
+  assert.ok(engineAssetResponseProblems(url, source, { status: 200, headers }).some(p => /content-type/i.test(p)));
+  assert.deepEqual(engineAssetResponseProblems(url, source, { status: 200, headers: { ...headers, 'content-type': 'text/plain; charset=utf-8' } }), []);
 });

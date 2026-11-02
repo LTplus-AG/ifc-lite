@@ -3527,6 +3527,8 @@ export class Renderer {
         return this.pipeline;
     }
 
+    /** Report Gaussian qualification and the current renderer lifetime; this does not enable rendering. */
+    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
     /**
      * Check if renderer is fully initialized and ready to use.
      *
@@ -3547,7 +3549,6 @@ export class Renderer {
      * synchronously, so a latch left standing until the queued body clears it
      * cannot make this method spuriously false in the meantime.
      */
-    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
     isReady(): boolean {
         return this.ready && !this.deviceLost && this.device.isInitialized() && this.pipeline !== null;
     }

@@ -96,10 +96,40 @@ function validateReviewedProvenance(entry, index, errors, kind) {
     invalid(errors, `${where}.provenance.source`, 'is required');
   } else {
     const source = provenance.source;
-    if (!isText(source.commit) || !COMMIT_RE.test(source.commit)) {
-      invalid(errors, `${where}.provenance.source.commit`, 'must be a 40-character lowercase Git commit');
+    if (kind === 'Gaussian' && source.kind === 'publisher-artifacts') {
+      requireUrl(source.page_url, `${where}.provenance.source.page_url`, errors);
+      requireText(source.version, `${where}.provenance.source.version`, errors);
+      if (source.commit !== undefined || source.blob_url !== undefined) {
+        invalid(errors, `${where}.provenance.source`, 'publisher artifacts must not impersonate a Git blob');
+      }
+      if (!Array.isArray(source.artifacts) || source.artifacts.length === 0) {
+        invalid(errors, `${where}.provenance.source.artifacts`, 'must list hash-pinned original files');
+      } else {
+        const paths = new Set();
+        for (const artifact of source.artifacts) {
+          if (!isObject(artifact)) { invalid(errors, where, 'source artifact must be an object'); continue; }
+          if (!isCanonicalFixturePath(artifact.path) || paths.has(artifact.path)) {
+            invalid(errors, where, 'source artifact paths must be canonical and unique');
+          }
+          paths.add(artifact.path);
+          requireUrl(artifact.url, `${where}.provenance.source.artifacts.url`, errors);
+          if (!SHA256_RE.test(artifact.sha256 ?? '')) invalid(errors, where, 'source artifact requires SHA-256');
+          if (!Number.isSafeInteger(artifact.size) || artifact.size <= 0) invalid(errors, where, 'source artifact size must be positive');
+        }
+        if (!source.artifacts.some(artifact => artifact?.sha256 === source.sha256)) {
+          invalid(errors, where, 'source.sha256 must identify one original artifact');
+        }
+      }
+      requireUrl(provenance.license?.evidence_url, `${where}.provenance.license.evidence_url`, errors);
+      if (!SHA256_RE.test(provenance.license?.evidence_sha256 ?? '')) {
+        invalid(errors, where, 'publisher license evidence requires SHA-256');
+      }
+    } else {
+      if (!isText(source.commit) || !COMMIT_RE.test(source.commit)) {
+        invalid(errors, `${where}.provenance.source.commit`, 'must be a 40-character lowercase Git commit');
+      }
+      requirePinnedGitHubBlobUrl(source.blob_url, source.commit, `${where}.provenance.source.blob_url`, errors);
     }
-    requirePinnedGitHubBlobUrl(source.blob_url, source.commit, `${where}.provenance.source.blob_url`, errors);
     if (!isText(source.sha256) || !SHA256_RE.test(source.sha256)) {
       invalid(errors, `${where}.provenance.source.sha256`, 'must be a lowercase SHA-256');
     }
@@ -175,6 +205,9 @@ function validateReviewedGaussianEntry(entry, index, errors) {
   if (!isObject(g)) { invalid(errors, where, 'reviewed Gaussian metadata is required'); return; }
   for (const field of ['units', 'up_axis', 'source_method']) requireText(g[field], `${where}.${field}`, errors);
   if (!Number.isSafeInteger(g.count) || g.count <= 0) invalid(errors, where, 'count must be positive');
+  if (g.nonzero_sh !== undefined && (typeof g.nonzero_sh !== 'boolean' || g.sh_degree === 0)) {
+    invalid(errors, where, 'nonzero_sh must be boolean and requires higher-order channels');
+  }
   if (![0, 1, 2, 3].includes(g.sh_degree)) invalid(errors, where, 'sh_degree must be 0..3');
   if (/\.splat$/i.test(entry.path) && (g.sh_degree !== 0 || entry.size !== g.count * 32)) {
     invalid(errors, where, '.splat requires SH0 and exactly 32 bytes per Gaussian');

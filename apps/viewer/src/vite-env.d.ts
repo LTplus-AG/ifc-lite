@@ -8,6 +8,8 @@
 interface ImportMetaEnv {
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
+  /** 'internal-unqualified' only in test/showcase builds; public builds leave Gaussian admission unset (#8568). */
+  readonly VITE_GAUSSIAN_SPLATS?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
   readonly VITE_CLOUD_HOSTED?: string;
   /** 'false' removes the BIMcollab Documents source (it needs the /api/bimcollab relay). */

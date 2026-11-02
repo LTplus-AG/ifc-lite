@@ -9,7 +9,7 @@
  */
 
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
-import type { GaussianPackedSource } from './gaussian-backend.js';
+import type { GaussianPackedSource, GaussianRowUpdate } from './gaussian-backend.js';
 import { GaussianSplatError } from './gaussian-errors.js';
 import { shRotationFor, transformGaussianRows, type SimilarityPlacement } from './gaussian-placement.js';
 import type { GaussianSplatBounds } from './gaussian-types.js';
@@ -190,4 +190,12 @@ export async function transformSlice(
   const source = degree < attributes.sphericalHarmonicsDegree ? truncateSh(attributes, degree) : attributes;
   const bounds = await transformInto(source, placement, anchor, target, 0, checkpoint);
   return { positions: target.positions, scales: target.scales, rotations: target.rotations, sphericalHarmonics: target.sphericalHarmonics, bounds };
+}
+
+/** CPU-only commit of re-placed rows, used while no device holds the packed source. */
+export function writeSliceRows(source: GaussianPackedSource, slice: PackedSlice, rows: GaussianRowUpdate): void {
+  if (rows.positions) source.positions.set(rows.positions, slice.offset * 3);
+  if (rows.scales) source.scales.set(rows.scales, slice.offset * 3);
+  if (rows.rotations) source.rotations.set(rows.rotations, slice.offset * 4);
+  if (rows.sphericalHarmonics) source.sphericalHarmonics?.set(rows.sphericalHarmonics, (rows.sphericalHarmonics.length / slice.rows) * slice.offset);
 }

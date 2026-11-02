@@ -5,7 +5,7 @@
 /** Pure per-frame helpers of the Gaussian layer (#8564). */
 
 import type { GaussianEncodeCamera, GaussianEncodeTarget, GaussianPackedSource, GaussianRowFilter } from './gaussian-backend.js';
-import type { GaussianSplatBounds, GaussianSplatStats } from './gaussian-types.js';
+import type { GaussianSplatBounds, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import { clipIsActive, pointClipped } from '../scene-raycaster.js';
 import type { PickClipState } from '../pick-types.js';
@@ -82,4 +82,21 @@ export function layerStats(
     cpuBytes: packedCpuBytes(source) + live.reduce((sum, r) => sum + (r.attributes ? attributeBytes(r.attributes) : 0), 0),
     gpuBytes, drawnFrames, lastEncodeMs, composition: 'over-transparent-approximate', clipping: 'centre',
   };
+}
+
+export const STATES = Object.freeze({
+  invalid: Object.freeze({ state: 'invalid' }) as GaussianSplatState,
+  pending: Object.freeze({ state: 'pending' }) as GaussianSplatState,
+  resident: Object.freeze({ state: 'resident' }) as GaussianSplatState,
+});
+
+export const sameTranslation = (a?: readonly number[], b?: readonly number[]): boolean =>
+  (a ?? [0, 0, 0]).every((value, axis) => value === (b ?? [0, 0, 0])[axis]);
+
+/** Null when the visible centre union is unchanged; `grew` when the new union covers the old one. */
+export function boundsChange(previous: GaussianSplatBounds | null, next: GaussianSplatBounds | null): { next: GaussianSplatBounds | null; grew: boolean } | null {
+  const same = (a: GaussianSplatBounds, b: GaussianSplatBounds) => [0, 1, 2].every((i) => a.min[i] === b.min[i] && a.max[i] === b.max[i]);
+  if (previous === next || (previous && next && same(previous, next))) return null;
+  const covers = !!next && (!previous || [0, 1, 2].every((i) => next.min[i] <= previous.min[i] && next.max[i] >= previous.max[i]));
+  return { next, grew: covers };
 }

@@ -29,7 +29,7 @@ export class GaussianDeviceSlot {
       // luma's listener sees every uncaptured error of the shared device, not only Gaussian ones.
       const promise = this.createBackend(device, this.adapter(), (error) => console.error('[WebGPU] uncaptured device error (via the Gaussian adapter):', error))
         .catch((error: unknown) => {
-          throw error instanceof GaussianSplatError ? error : new GaussianSplatError('upstream-capability-missing', `Upstream Gaussian renderer failed to load: ${String(error)}`);
+          throw error instanceof GaussianSplatError ? error : new GaussianSplatError('upstream-unavailable', `Upstream Gaussian renderer failed to load: ${String(error)}`);
         });
       promise.then((backend) => { if (this.backend?.promise === promise) this.upstream = backend.upstreamReverseZ ? 'available' : 'missing'; },
         () => { if (this.backend?.promise === promise) { this.backend = null; this.upstream = 'unknown'; } });

@@ -12,6 +12,8 @@ export type GaussianSplatErrorCode =
   | 'anchor-extent'
   | 'resource-limit'
   | 'upstream-capability-missing'
+  /** The upstream renderer could not be loaded this time (e.g. a chunk fetch failed); retryable. */
+  | 'upstream-unavailable'
   | 'stale-handle'
   | 'aborted'
   | 'lost'

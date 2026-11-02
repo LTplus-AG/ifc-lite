@@ -6,7 +6,7 @@
 // injected backend so no GPU or luma module is needed. GPU behaviour is covered
 // by the browser witness under examples/gaussian-splat-spike/contract.
 
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { GaussianSplatLayer, type GaussianLayerHost } from './gaussian/gaussian-splat-layer.js';
 import { GaussianSplatError } from './gaussian/gaussian-errors.js';
@@ -41,10 +41,10 @@ function harness(options: { limits?: number; reverseZ?: boolean; failFirstBacken
   const scenes: FakeScene[] = [];
   const failures: { nextScene: Error | null } = { nextScene: null };
   const translations = new Map<number, [number, number, number]>();
-  const counters = { bounds: 0, backendCalls: 0 };
+  const counters = { bounds: 0, backendCalls: 0, grew: [] as boolean[] };
   const host: GaussianLayerHost = {
     lifetime: () => ({ ...life }), device: () => (life.lost ? null : device), adapter: () => null,
-    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsChanged: () => { counters.bounds++; },
+    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsChanged: (grew) => { counters.bounds++; counters.grew.push(grew); },
   };
   const backend = async (): Promise<GaussianBackend> => ({
     upstreamReverseZ: (++counters.backendCalls === 1 && options.failFirstBackend) ? (() => { throw new Error('chunk fetch failed'); })() : options.reverseZ ?? true,
@@ -376,7 +376,7 @@ test('#8564 clear() during an upload rejects as aborted, not as a device loss', 
 
 test('#8564 a failed upstream load is retried by the next add and never reports missing capability', async () => {
   const h = harness({ failFirstBackend: true });
-  await assert.rejects(add(h.layer, 2), code('upstream-capability-missing'));
+  await assert.rejects(add(h.layer, 2), code('upstream-unavailable'));
   await settle();
   const readiness = h.layer.readiness();
   assert.ok(readiness.state === 'blocked' && !readiness.reasons.includes('upstream-capability-missing'));
@@ -384,17 +384,98 @@ test('#8564 a failed upstream load is retried by the next add and never reports 
   assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
 });
 
-test('#8564 framing bounds are refreshed whenever Gaussian centres change', async () => {
+test('#8564 framing bounds are refreshed only when the visible centre union changes', async () => {
   const h = harness();
   const handle = await add(h.layer, 2);
-  const afterAdd = h.counters.bounds;
-  assert.ok(afterAdd > 0);
+  assert.deepEqual(h.counters.grew, [true], 'the first asset grows the bounds');
+  assert.ok(h.layer.setVisible(handle, true));
+  assert.equal(h.counters.bounds, 1, 'an unchanged union notifies nothing');
   h.layer.setVisible(handle, false);
-  assert.ok(h.counters.bounds > afterAdd);
-  const afterHide = h.counters.bounds;
+  assert.deepEqual(h.counters.grew, [true, false], 'hiding shrinks the bounds');
+  h.layer.setVisible(handle, true);
   assert.equal(await h.layer.setPlacement(handle, { matrix: translate(1) }), true);
-  assert.ok(h.counters.bounds > afterHide);
-  const afterMove = h.counters.bounds;
+  assert.deepEqual(h.counters.grew.slice(2), [true, false], 'show grows; a move to a disjoint box is not a pure growth');
   h.layer.remove(handle);
-  assert.ok(h.counters.bounds > afterMove);
+  assert.equal(h.counters.grew.at(-1), false);
+});
+
+
+// Follow-up review of the fix commit (#8564).
+test('#8564 a model follow never adopts a pending invalid edit', async () => {
+  const h = harness();
+  const a = await h.layer.add({ attributes: attributes(2), placement: { matrix: IDENTITY }, modelIndex: 3 }, OPT_IN);
+  const busy = h.layer.add({ attributes: attributes(200_000), placement: { matrix: translate(1) }, modelIndex: 4 }, OPT_IN);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  h.translations.set(3, [0, 0, 7]);
+  h.layer.setModelTranslation(3);
+  const edit = h.layer.setPlacement(a, { matrix: translate(9_000) });
+  await busy;
+  await assert.rejects(edit, code('anchor-extent'));
+  await settle();
+  assert.deepEqual(h.layer.getState(a), { state: 'resident' });
+  assert.ok(Math.abs(h.layer.getBounds(a)!.min[2] - 5) < 1e-6, 'the model move still applied');
+});
+
+test('#8564 a superseded valid edit resolves false even when the newer edit is invalid', async () => {
+  const h = harness();
+  const a = await add(h.layer, 2);
+  const busy = add(h.layer, 200_000, translate(1));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const first = h.layer.setPlacement(a, { matrix: translate(2) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const second = h.layer.setPlacement(a, { matrix: translate(9_000) });
+  await busy;
+  assert.equal(await first, false);
+  await assert.rejects(second, code('anchor-extent'));
+  assert.ok(Math.abs(h.layer.getBounds(a)!.min[0]) < 1e-6, 'neither edit changed the committed rows');
+});
+
+test('#8564 an edit made stale by a recovery teardown is not applied by a later model move', async () => {
+  const h = harness();
+  const a = await h.layer.add({ attributes: attributes(2), placement: { matrix: IDENTITY }, modelIndex: 3 }, OPT_IN);
+  let open!: () => void;
+  h.scene().gate = new Promise((resolve) => { open = resolve; });
+  const busy = h.layer.add({ attributes: attributes(2), placement: { matrix: translate(1) }, modelIndex: 4 }, OPT_IN).catch(() => null);
+  await settle();
+  const edit = h.layer.setPlacement(a, { matrix: translate(2) });
+  await new Promise((resolve) => setTimeout(resolve, 0)); // the edit's job is queued behind the parked upload
+  h.layer.release(false, false); // recovery teardown while the queue is parked
+  h.replaceDevice(); h.life.generation = 2;
+  open();
+  await busy;
+  assert.equal(await edit, false);
+  h.translations.set(3, [0, 0, 7]);
+  h.layer.setModelTranslation(3);
+  h.layer.frameReady();
+  await settle();
+  const bounds = h.layer.getBounds(a)!;
+  assert.ok(Math.abs(bounds.min[0]) < 1e-6 && Math.abs(bounds.min[2] - 5) < 1e-6, 'x unchanged, z follows the model');
+});
+
+test('#8564 clear() during a compaction or a queued re-upload reports no failure', async () => {
+  const errors = mock.method(console, 'error', () => {});
+  try {
+    const h = harness();
+    await add(h.layer, 3);
+    const extra = await add(h.layer, 2, translate(1));
+    let open!: () => void;
+    h.scene().gate = new Promise((resolve) => { open = resolve; });
+    assert.ok(h.layer.remove(extra)); // compaction parks in its upload
+    await settle();
+    h.layer.clear();
+    open();
+    await settle();
+    const other = harness();
+    const kept = await add(other.layer, 2);
+    other.layer.release(false, false);
+    other.replaceDevice();
+    other.failures.nextScene = new GaussianSplatError('lost', 'released during upload');
+    other.layer.frameReady(); // queued re-upload on the new device
+    other.layer.clear();
+    await settle();
+    assert.deepEqual(other.layer.getState(kept), { state: 'invalid' });
+    assert.equal(errors.mock.callCount(), 0, String(errors.mock.calls.map((call) => call.arguments.join(' '))));
+  } finally {
+    errors.mock.restore();
+  }
 });

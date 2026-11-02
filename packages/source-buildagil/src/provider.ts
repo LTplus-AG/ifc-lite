@@ -104,7 +104,9 @@ export class BuildagilProvider implements FileSourceProvider {
     // Filtered pages may come back empty while the cursor still advances.
     return {
       items: result.documents.filter((doc) => accepts(doc.filename, filter)).map(toFile),
-      cursor: offset + limit < result.total ? String(offset + limit) : undefined,
+      // Without a total, a full raw page may not be the last one (#8364 review).
+      cursor: (result.total === undefined ? result.pageSize >= limit : offset + limit < result.total)
+        ? String(offset + limit) : undefined,
     };
   }
 

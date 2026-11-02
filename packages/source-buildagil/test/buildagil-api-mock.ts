@@ -69,7 +69,7 @@ function memoryStorage(): KeyValueStore {
  * A context factory over one world. Contexts share storage and fetch, as the
  * host's do (both derive from the manifest), and the session is signed in.
  */
-export function createMockApi(world: MockWorld, clientId = 'client-1', options: { tokenGate?: () => Promise<void> } = {}) {
+export function createMockApi(world: MockWorld, clientId = 'client-1', options: { tokenGate?: () => Promise<void>; searchWithoutTotal?: boolean } = {}) {
   const calls: MockCall[] = [];
   const storage = memoryStorage();
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -92,7 +92,7 @@ export function createMockApi(world: MockWorld, clientId = 'client-1', options: 
         .filter((doc) => doc.filename.toLowerCase().includes(request.search_text.toLowerCase()));
       return json({
         search_result: hits.slice(request.offset, request.offset + request.limit).map((doc) => ({ ...documentRow(doc), type: 'Document' })),
-        total_count: hits.length,
+        ...(options.searchWithoutTotal ? {} : { total_count: hits.length }),
       });
     }
     const [, , projectId, collection, guid, sub, index] = parts;

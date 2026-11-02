@@ -78,12 +78,16 @@ export function decodeVersion(r: Row): BuildagilVersion | undefined {
   };
 }
 
-/** `POST /1.0/search`: the document hits and the total match count. */
-export function decodeSearch(value: unknown): { documents: BuildagilDocument[]; total: number } {
+/**
+ * `POST /1.0/search`: the document hits, the raw hit count of this page
+ * (before non-documents and invalid rows are dropped), and the total match
+ * count when the response carries one.
+ */
+export function decodeSearch(value: unknown): { documents: BuildagilDocument[]; pageSize: number; total?: number } {
   const body = row(value);
   if (!body || !Array.isArray(body.search_result)) throw new Error('buildagil returned an unexpected search response.');
   const documents = rows(body.search_result, (r) => (r.type === 'Document' ? decodeDocument(r) : undefined));
-  return { documents, total: count(body.total_count) ?? documents.length };
+  return { documents, pageSize: body.search_result.length, total: count(body.total_count) };
 }
 
 /** Creation time for scan ordering, or undefined when unparseable. */

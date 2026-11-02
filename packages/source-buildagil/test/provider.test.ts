@@ -142,6 +142,25 @@ describe('BuildagilProvider', () => {
     expect(names).toContain('site.ifc');
   });
 
+  it('keeps paging search when the response carries no total_count (#8364 review)', async () => {
+    const api = createMockApi(WORLD, 'client-1', { searchWithoutTotal: true });
+    const provider = new BuildagilProvider({ clientId: 'client-1' });
+    const ctx = api.createContext();
+    await api.signIn();
+    const names: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = await provider.searchFiles(ctx, 'p1', 'i', undefined, { cursor, limit: 2 });
+      names.push(...page.items.map((f) => f.name));
+      cursor = page.cursor;
+      pages++;
+    } while (cursor && pages < 10);
+    // All five documents match 'i' (pages of 2, 2, 1); every model among them is reached.
+    expect(names.sort()).toEqual(['ARC.ifc', 'MEP.IFC', 'STR.ifczip', 'site.ifc']);
+    expect(pages).toBe(3);
+  });
+
   it('reports a rejected session as needing a new sign-in', async () => {
     const { provider, ctx, api } = setup();
     await expect(provider.listProjects(ctx)).rejects.toThrow(/Not signed in|sign in/i);

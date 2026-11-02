@@ -37,7 +37,7 @@ mod exact_area;
 mod report;
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_retained_native::oracle::{face_set_closure::authored_open, face_sets};
+use ifc_lite_retained_native::oracle::{face_set_closure::{authored_open, counts_as_open}, face_set_zero_rows::explained_open_edges, face_sets};
 
 const SET: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4X3'));ENDSEC;DATA;
 #30=IFCCARTESIANPOINTLIST3D((POINTS));
@@ -138,3 +138,66 @@ fn issue_7955_f3_open_skips_closure_and_volume_but_closed_still_fails() {
     report.check_measurements(true, "set:2", false, false, &moved, Some(&moved), Some(&actual), None, &tolerances, false);
     assert!(report.violations.iter().any(|v| v.contains("exact bboxMetres deviation")), "{:?}", report.violations);
 }
+
+/// Ruling 12: `Closed` unset AND rows proven open counts as open. TRUE stays closed-solid.
+#[test]
+fn issue_7955_only_unset_with_proven_open_rows_extends_open() {
+    let points = [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.]];
+    let open_rows = [[1, 3, 2], [1, 2, 4], [2, 3, 4]];
+    let closed_rows = [[1, 3, 2], [1, 2, 4], [2, 3, 4], [3, 1, 4]];
+    for (rows, closed, open) in [(&open_rows[..], "$", true), (&open_rows[..], ".U.", true), (&open_rows[..], ".T.", false),
+        (&open_rows[..], ".F.", true), (&closed_rows[..], "$", false), (&closed_rows[..], ".U.", false), (&closed_rows[..], ".T.", false)] {
+        let text = set(&points, rows, closed);
+        let mut decoder = EntityDecoder::new(text.as_bytes());
+        let item = decoder.decode_by_id(33).unwrap();
+        let authored = face_sets::authored(&item, &mut decoder, 1.).unwrap();
+        assert_eq!(counts_as_open(&item, authored.open_edges), open, "{closed} over {rows:?}");
+    }
+}
+
+/// A tetrahedron whose base edge a-c passes through point b, with the zero-area row a-b-c.
+fn collinear_row_tetrahedron() -> face_sets::AuthoredFaceSet {
+    let points = [[0., 0., 0.], [1., 0., 0.], [2., 0., 0.], [0., 2., 0.], [0., 0., 2.]];
+    let rows = [[1, 2, 5], [2, 3, 5], [1, 5, 4], [3, 4, 5], [1, 4, 3], [1, 3, 2]];
+    let text = set(&points, &rows, "$");
+    let mut decoder = EntityDecoder::new(text.as_bytes());
+    let item = decoder.decode_by_id(33).unwrap();
+    face_sets::authored(&item, &mut decoder, 1.).unwrap()
+}
+fn published_without(set: &face_sets::AuthoredFaceSet, dropped: &[usize]) -> (Vec<f64>, Vec<u32>, Vec<Option<u32>>) {
+    let (mut positions, mut indices, mut keys) = (Vec::new(), Vec::new(), Vec::new());
+    for (k, row) in set.rows.iter().enumerate().filter(|(k, _)| !dropped.contains(k)) {
+        for p in &row.points { indices.push((positions.len() / 3) as u32); positions.extend_from_slice(p); }
+        keys.push(Some(k as u32));
+    }
+    (positions, indices, keys)
+}
+
+/// Ruling 13: only the exact edges the authored zero-area rows leave are explained.
+#[test]
+fn issue_7955_zero_area_rows_explain_only_their_own_open_edges() {
+    let set = collinear_row_tetrahedron();
+    assert_eq!(set.open_edges, 0, "the authored rows close");
+    assert_eq!(set.rows.iter().filter(|r| r.area_m2 == Some(0.)).count(), 1);
+    let (positions, indices, keys) = published_without(&set, &[5]);
+    assert_eq!(explained_open_edges(&set, &positions, &indices, &keys), Some(3), "a-b, b-c and a-c lose a partner");
+    // A lost real row leaves other edges too: not the authored rows' doing.
+    let (positions, indices, keys) = published_without(&set, &[5, 0]);
+    assert_eq!(explained_open_edges(&set, &positions, &indices, &keys), None);
+    // Nothing dropped: no open edge at all.
+    let (positions, indices, keys) = published_without(&set, &[]);
+    assert_eq!(explained_open_edges(&set, &positions, &indices, &keys), Some(0));
+    // A moved corner is a different edge.
+    let (mut positions, indices, keys) = published_without(&set, &[5]);
+    positions[0] += 1e-6;
+    assert_eq!(explained_open_edges(&set, &positions, &indices, &keys), None);
+    // A set that is open at source has no zero-area explanation.
+    let points = [[0., 0., 0.], [1., 0., 0.], [2., 0., 0.], [0., 2., 0.], [0., 0., 2.]];
+    let text = set_text_open(&points);
+    let mut decoder = EntityDecoder::new(text.as_bytes());
+    let item = decoder.decode_by_id(33).unwrap();
+    let open = face_sets::authored(&item, &mut decoder, 1.).unwrap();
+    let (positions, indices, keys) = published_without(&open, &[4]);
+    assert_eq!(explained_open_edges(&open, &positions, &indices, &keys), None);
+}
+fn set_text_open(points: &[[f64; 3]]) -> String { set(points, &[[1, 2, 5], [2, 3, 5], [1, 5, 4], [3, 4, 5], [1, 3, 2]], "$") }

@@ -295,3 +295,36 @@ fn m8_convex_opening_expectation_rejects_wrong_volume_and_escaped_bbox() {
         assert_eq!(violations.is_empty(), defect == 0, "defect={defect}: {violations:?}");
     }
 }
+
+/// #7955: an oracle with no expectation is counted, by family and reason, and stays gated.
+#[test]
+fn unverified_rows_are_counted_and_never_leave_the_violations() {
+    let mut report = Report::default();
+    report.unverified.push(json!({"product": "m:1", "family": "layerSourceAvailable", "gated": true, "reason": "l_opening_cuts"}));
+    report.unverified.push(json!({"product": "m:2", "family": "layerSourceAvailable", "gated": true, "reason": "l_opening_cuts"}));
+    report.unverified.push(json!({"product": "m:3", "family": "clipSectionMixedSubtree", "gated": false, "reason": null}));
+    let summary = report.summary();
+    assert_eq!(summary["unverified"]["count"], 3);
+    assert_eq!(summary["unverified"]["gated"], 2);
+    assert_eq!(summary["unverified"]["byFamily"]["layerSourceAvailable"]["l_opening_cuts"], 2);
+    assert_eq!(summary["unverified"]["byFamily"]["clipSectionMixedSubtree"]["unnamed"], 1);
+    use super::super::checks::OracleResult;
+    let gap = |family| OracleResult { family, ..Default::default() };
+    assert!(says_unverified("layerSourceAvailable", &[]));
+    assert!(says_unverified("bounded_curved_volume_unavailable", &[]));
+    assert!(says_unverified("clipSectionMixedSubtree", &[gap("clipPart")]));
+    assert!(!says_unverified("clipSectionMixedSubtree", &[gap("bounded_section_volume")]), "M6 has the section M5 lacks");
+    assert!(says_unverified("clipSectionMixedSubtree", &[gap("clipSectionVolumeRelative")]), "another part's section is not this part's");
+    assert!(!says_unverified("faceKeys", &[]));
+}
+
+/// A face-set closure row whose source was never read claims neither rows open nor closed.
+#[test]
+fn an_unread_face_set_source_is_its_own_bucket() {
+    let mut report = Report::default();
+    report.closure_on_open_source.push(json!({"product": "m:1", "meshDefects": 3, "sourceOpenEdges": 0., "closed": ""}));
+    report.closure_on_open_source.push(json!({"product": "m:2", "meshDefects": 3, "sourceOpenEdges": 0., "closed": "TRUE"}));
+    let counts = &report.summary()["closureDefectsOnFaceSets"]["byDeclaredClosed"];
+    assert_eq!(counts[" sourceRowsUnread"], 1, "{counts}");
+    assert_eq!(counts["TRUE sourceRowsClosed"], 1, "{counts}");
+}

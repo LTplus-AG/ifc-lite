@@ -43,6 +43,8 @@ export function corpusFindings(summary, { reportViolations = false } = {}) {
       (reportViolations && key === 'violations' ? warnings : problems).push(line);
     }
   }
+  // #7955: an oracle with no expectation is never a pass, whichever list it also sits in.
+  if (summary.unverified?.count > 0) warnings.push(`UNVERIFIED: ${summary.unverified.count} published product oracle rows have no independent expectation (${summary.unverified.gated} also in violations): ${JSON.stringify(summary.unverified.byFamily)}`);
   return { problems, warnings };
 }
 

@@ -14,3 +14,14 @@ pub fn authored_open(item: &DecodedEntity) -> bool {
         _ => false,
     }
 }
+
+/// The authored `Closed` value, for reports: `TRUE`, `FALSE`, or `UNSET` for `$` and `.U.`.
+pub fn declared(item: &DecodedEntity) -> &'static str {
+    let closed = match item.ifc_type {
+        IfcType::IfcTriangulatedIrregularNetwork => return "TIN",
+        IfcType::IfcTriangulatedFaceSet => item.logical_at(slot::IfcTriangulatedFaceSet::CLOSED),
+        IfcType::IfcPolygonalFaceSet => item.logical_at(slot::IfcPolygonalFaceSet::CLOSED),
+        _ => return "NOT_A_SET",
+    };
+    match closed { Some(true) => "TRUE", Some(false) => "FALSE", None => "UNSET" }
+}

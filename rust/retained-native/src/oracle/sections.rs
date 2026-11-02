@@ -43,6 +43,11 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
         (sum.is_finite() && sum >= -1e-13).then_some(sum.max(0.))
     };
     let linear = host.loops.iter().all(|(_,edges)|edges.iter().all(|edge|matches!(edge,Edge::Line(..))));
+    let unclipped: f64 = host.loops.iter().map(|(outer, edges)| {
+        let area = edges.iter().map(Edge::integral).sum::<f64>().abs();
+        if *outer { area } else { -area }
+    }).sum();
+    let tolerance = RELATIVE * unclipped.abs() * host.depth;
     let mut volume = 0.;
     for span in breaks.windows(2) {
         // Between topology events, line intersections move affinely with t,
@@ -50,7 +55,7 @@ pub fn section_volume(host: &ExtrudedHost, halfspaces: &[([f64; 3], f64)]) -> Op
         // convergence loop adds no evidence and can exhaust on an adjacent-ULP
         // event interval (the real FZK #60012/#67828 bounded cuts, #7955).
         volume += if linear {gauss(&area,span[0],span[1],&mut work)?}
-            else {integrate(&area, span[0], span[1], &mut work)?};
+            else {integrate(&area, span[0], span[1], tolerance, &mut work)?};
     }
     let volume = volume * host.jacobian;
     (volume.is_finite() && volume >= 0.).then_some(volume)
@@ -63,34 +68,20 @@ fn gauss(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, work: &
     for i in 0..4 { sum += W[i] * (area(mid - half * X[i], work)? + area(mid + half * X[i], work)?); }
     Some(sum * half)
 }
-fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, work: &mut usize) -> Option<f64> {
-    let mut coarse = gauss(area, a, b, work)?;
-    let mut pieces = 1usize;
-    loop {
-        pieces = pieces.checked_mul(2)?;
-        let width = (b - a) / pieces as f64;
-        if width <= 0. { return None; }
-        // Compare whole levels, not each leaf's relative error. At a circular
-        // tangency, area grows like t^(3/2): a leaf touching zero has the same
-        // relative quadrature error however small it gets, while its absolute
-        // contribution to this span converges. Compensate the level's sum.
-        let (mut fine, mut correction) = (0., 0.);
-        for i in 0..pieces {
-            let low = a + (b - a) * (i as f64 / pieces as f64);
-            let high = a + (b - a) * ((i + 1) as f64 / pieces as f64);
-            let term = gauss(area, low, high, work)? - correction;
-            let next = fine + term;
-            correction = (next - fine) - term;
-            fine = next;
-        }
-        if !fine.is_finite() || !coarse.is_finite() { return None; }
-        if (fine - coarse).abs() <= RELATIVE * fine.abs().max(coarse.abs()) {
-            return Some(fine);
-        }
-        // Near-coincident events can leave an adjacent-f64 band. Its final
-        // representable refinement may already converge; only refuse precision
-        // exhaustion after applying the same error test as every other band.
-        if a + width == a { return None; }
-        coarse = fine;
-    }
+/// Adaptive GL8: only intervals holding a singularity split. At a circular tangency area
+/// grows like t^(3/2), so uniform refinement ran out of work (#7955: Snowdon #28109), and a
+/// sliver span's own relative error is rounding noise however small it gets. `tolerance`
+/// is absolute, from the host's whole integral, so neither can stall a converged sum.
+fn integrate(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, tolerance: f64, work: &mut usize) -> Option<f64> {
+    let whole = gauss(area, a, b, work)?;
+    refine(area, a, b, whole, tolerance, work)
+}
+fn refine(area: &impl Fn(f64, &mut usize) -> Option<f64>, a: f64, b: f64, whole: f64, tolerance: f64, work: &mut usize) -> Option<f64> {
+    let mid = a + (b - a) / 2.;
+    // No representable midpoint: this span has no width left to integrate.
+    if mid <= a || mid >= b { return Some(whole); }
+    let (left, right) = (gauss(area, a, mid, work)?, gauss(area, mid, b, work)?);
+    if !left.is_finite() || !right.is_finite() { return None; }
+    if (left + right - whole).abs() <= tolerance { return Some(left + right); }
+    Some(refine(area, a, mid, left, tolerance, work)? + refine(area, mid, b, right, tolerance, work)?)
 }

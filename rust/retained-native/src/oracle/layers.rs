@@ -13,25 +13,31 @@ pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, id: u32) -> Opt
 /// [`expected`] over the caller's model-wide source and clip oracle, built once per model.
 pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: &super::clips::ClipOracle<'_>,
     sources: &AnalyticQuantitySources, id: u32) -> Option<LayerExpectation> {
+    explain_in(bundle,clips,sources,id).ok()
+}
+/// [`expected_in`], naming why the source has no independent expectation (#7955).
+pub fn explain_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: &super::clips::ClipOracle<'_>,
+    sources: &AnalyticQuantitySources, id: u32) -> Result<LayerExpectation,&'static str> {
     let mut decoder=bundle.decoder();
-    let usage=source::read(bundle.bytes(),id,&mut decoder)?;
-    let instances=sources.extrusion_definitions.instances.get(&id)?;
-    let clips = clips.expected(id).ok()?;
-    if instances.len()!=1 || usage.thickness.len()<2 {return None;}
-    if instances[0].source_modified && clips.is_none() {return None;}
+    let usage=source::read(bundle.bytes(),id,&mut decoder).ok_or("usage_unreadable")?;
+    let instances=sources.extrusion_definitions.instances.get(&id).ok_or("no_extrusion_instance")?;
+    let clips = clips.expected(id).map_err(|_|"clip_oracle_err")?;
+    if instances.len()!=1 {return Err("not_one_extrusion_instance");}
+    if usage.thickness.len()<2 {return Err("single_layer");}
+    if instances[0].source_modified && clips.is_none() {return Err("source_modified_no_clip");}
     let clip = match &clips {
         Some(c) if c.parts.len() == 1 => Some(&c.parts[0]),
-        Some(_) => return None,
+        Some(_) => return Err("multi_part_clip"),
         None => None,
     };
     let mut sum=0.; let boundaries:Vec<_>=usage.thickness.iter().take(usage.thickness.len()-1).map(|t|{sum+=t;sum}).collect();
     let (volumes,curved)=if let Some((center,radius,sigma))=usage.circle {
-        let basis=Basis::new(&prism::profile_frame(sources,&instances[0])?)?;
+        let basis=prism::profile_frame(sources,&instances[0]).as_ref().and_then(Basis::new).ok_or("curved_no_basis")?;
         let center=basis.point(transform(&usage.frame,center));
-        let mut hosts=prism::prisms(sources,id,&basis)?; if hosts.len()!=1 {return None;}
-        let host=hosts.pop()?;
-        let (inner,outer)=sector(&host,center)?;
-        let cuts=opening_cuts(sources,&usage.openings,&basis)?;
+        let mut hosts=prism::prisms(sources,id,&basis).ok_or("curved_no_host_prism")?; if hosts.len()!=1 {return Err("curved_not_one_host");}
+        let host=hosts.pop().ok_or("curved_not_one_host")?;
+        let (inner,outer)=sector(&host,center).ok_or("curved_not_a_sector")?;
+        let cuts=opening_cuts(sources,&usage.openings,&basis).ok_or("l_opening_cuts")?;
         let mut result=Vec::new();
         for k in 0..usage.thickness.len() {
             let previous=if k==0 {None} else {Some(radius-sigma*(usage.offset+usage.sense*boundaries[k-1]))};
@@ -39,12 +45,12 @@ pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: 
             let (a,b)=if sigma*usage.sense>0. {(next.unwrap_or(inner).max(inner),previous.unwrap_or(outer).min(outer))}
                 else {(previous.unwrap_or(inner).max(inner),next.unwrap_or(outer).min(outer))};
             if a>=b {result.push(0.);continue;}
-            let band=radial_band(&host,a,b)?;
-            result.push(super::openings::cut_prisms_volume(vec![band],cuts.clone())?);
+            let band=radial_band(&host,a,b).ok_or("curved_band")?;
+            result.push(super::openings::cut_prisms_volume(vec![band],cuts.clone()).ok_or("curved_band_integral")?);
         }
         (result,true)
     } else {
-        let host=ExtrudedHost::from_sources(sources,&instances[0])?;
+        let host=ExtrudedHost::from_sources(sources,&instances[0]).ok_or("host_not_extruded_source")?;
         let curved=host.loops.iter().flat_map(|(_,edges)|edges)
             .any(|edge|matches!(edge,Edge::Arc{..}));
         let a=std::array::from_fn(|i|if i==usage.axis {1.} else {0.});
@@ -52,9 +58,9 @@ pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: 
         let base=dot(n,transform(&usage.frame,a.map(|v|v*usage.offset)));
         // Preserve M5's clip-only path and its refusal of clip+opening layers.
         let cuts=if usage.openings.is_empty() {Vec::new()} else {
-            if clip.is_some() {return None;}
-            let basis=Basis::new(&prism::profile_frame(sources,&instances[0])?)?;
-            opening_cuts(sources,&usage.openings,&basis)?.into_iter().map(|(p,ps)| {
+            if clip.is_some() {return Err("l_clip_and_openings");}
+            let basis=prism::profile_frame(sources,&instances[0]).as_ref().and_then(Basis::new).ok_or("host_no_basis")?;
+            opening_cuts(sources,&usage.openings,&basis).ok_or("l_opening_cuts")?.into_iter().map(|(p,ps)| {
                 let mut planes:Vec<_>=ps.into_iter().map(|h|basis.world_plane([-h.n[0],-h.n[1],0.],h.d)).collect();
                 planes.extend([basis.world_plane([0.,0.,-1.],-p.low),basis.world_plane([0.,0.,1.],p.high)]);
                 planes
@@ -65,16 +71,16 @@ pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips: 
             let mut planes=Vec::new();
             if k>0 {planes.push((n.map(|v|-v),-base-boundaries[k-1]));}
             if let Some(c)=boundaries.get(k) {planes.push((n,base+c));}
-            result.push(if let Some(clip) = clip { clip.volume_with_planes(&planes)? }
-                else { opened_section_volume(&host,&planes,&cuts)? });
+            result.push(if let Some(clip) = clip { clip.volume_with_planes(&planes).ok_or("clip_band_integral")? }
+                else { opened_section_volume(&host,&planes,&cuts).ok_or("band_integral")? });
         }
         (result,curved)
     };
     let opened_volume = if let Some(clips) = clips {
-        if !usage.openings.is_empty() || usage.circle.is_some() { return None; }
-        clips.section_volume()?
-    } else { super::openings::prism_result_volume(sources,id,&usage.openings)? };
-    Some(LayerExpectation{volumes,opened_volume,curved})
+        if !usage.openings.is_empty() || usage.circle.is_some() { return Err("l_clip_and_openings"); }
+        clips.section_volume().ok_or("clip_section_volume")?
+    } else { super::openings::prism_result_volume(sources,id,&usage.openings).ok_or("o_prism_result_volume")? };
+    Ok(LayerExpectation{volumes,opened_volume,curved})
 }
 type OpeningCut = (Prism,Vec<HalfPlane>);
 fn opening_cuts(sources:&AnalyticQuantitySources, ids:&[u32], basis:&Basis) -> Option<Vec<OpeningCut>> {

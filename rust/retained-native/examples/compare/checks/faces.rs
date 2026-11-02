@@ -168,7 +168,16 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
             gated: false, reason: Some(merged.join("; ")), ..Default::default() });
     }
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
-    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });
+    // Name the keys: an authored width, and whether the published total still holds the area.
+    let reason = (mismatched > 0).then(|| {
+        let width = |key: &str| widest.get(key).map_or(String::from("no run"), |w| format!("{:.3} mm", w * 1e3));
+        let lost: Vec<_> = expected.iter().filter(|(k, _)| !actual.contains_key(*k)).take(8)
+            .map(|(k, e)| format!("{k} ({}, {:.6} m2)", width(k), e.area_m2)).collect();
+        let extra: Vec<_> = actual.keys().filter(|k| !expected.contains_key(*k)).take(8).cloned().collect();
+        format!("missing [{}]; extra [{}]; total source {:.9} published {:.9} m2", lost.join(", "), extra.join(", "),
+            expected.values().map(|e| e.area_m2).sum::<f64>(), actual.values().sum::<f64>())
+    });
+    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, reason, ..Default::default() });
     for (family, curved) in [("faceAreaLinear", false), ("faceAreaCurved", true)] {
         let worst = expected.iter().filter(|(_, e)| e.curved == curved)
             .map(|(k, e)| actual.get(k).map_or(f64::INFINITY, |a| (a - e.area_m2).abs() / e.area_m2)).fold(0., f64::max);

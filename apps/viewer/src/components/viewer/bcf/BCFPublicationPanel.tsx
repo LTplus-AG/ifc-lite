@@ -113,6 +113,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     if (published.report.preflight) adopt(published.report.preflight);
   });
   const unknownTypes = unknownTopicTypes(preflight);
+  // Preflight problems other than a topic type the picker resolves.
+  const listedIssues = (preflight?.issues ?? []).filter(issue => !(issue.field === 'topic_type' && unknownTypes.some(item => item.type === issue.value)));
 
   if (!config) return <p className="text-xs text-muted-foreground">{t('bcfDrafts.publish.notConnected')}</p>;
   const titleOf = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? t('bcfDrafts.publish.removedTopic');
@@ -134,10 +136,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       {preflight && (
         <output className={`block ${preflight.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
           {preflight.ok ? t('bcfDrafts.preflight.ok', { warnings: preflight.warnings.filter(warning => warning.kind === 'unverified').length })
-            : t('bcfDrafts.preflight.refused', { count: preflight.issues.length })}
+            // The count covers only the problems listed: a type the picker below resolves is not one.
+            : listedIssues.length > 0 ? t('bcfDrafts.preflight.refused', { count: listedIssues.length }) : null}
           <ul className="list-disc pl-4">
-            {[...preflight.issues.filter(issue => !(issue.field === 'topic_type' && unknownTypes.some(item => item.type === issue.value))),
-              ...preflight.warnings.filter(warning => warning.kind === 'withheld')].map((issue, index) =>
+            {[...listedIssues, ...preflight.warnings.filter(warning => warning.kind === 'withheld')].map((issue, index) =>
               <li key={index}>{t(`bcfDrafts.preflight.${issue.kind}`, { field: issue.field ?? '', value: issue.value ?? '', type: issue.topicType ?? '',
                 topic: issue.topicGuid ? titleOf(issue.topicGuid) : '', allowed: issue.allowed?.join(', ') || t('bcfDrafts.preflight.none') })}</li>)}
           </ul>

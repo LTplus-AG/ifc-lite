@@ -141,28 +141,29 @@ test('a chosen type is remembered for new drafts of the same type and survives a
 });
 
 test('a create recovered by the server check keeps what the server stored as the baseline (#8656 review)', async t => {
-  const peer = await connectPeer(t, buildagilLike);
-  const connection = { ...peer.connection, rules: buildagil };
+  // The peer nulls a status the plan does send (no profile rule withholds it), so the
+  // stored copy differs from the sent payload and only the server's copy avoids a false conflict.
+  const peer = await connectPeer(t, { statusOnlyForTypes: ['Issue'] });
+  const connection = { ...peer.connection, rules: {} };
   const batch = await reviewedBatch();
   peer.state.loseNextWriteResponse = true;
-  const first = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
-  const lost = first ? entriesOf(first.plan.record, 'createTopic')[0] : undefined;
-  const lostNow = (await readPublication(first?.plan.record.id ?? ''))?.record.entries.find(entry => entry.id === lost?.id);
-  assert.equal(lostNow?.state, 'uncertain');
-  const checked = await checkEntry(first?.plan.record.id ?? '', lostNow?.id ?? '', connection);
+  const first = await publishDraftBatch(batch, peer.target, connection);
+  const lost = (await readPublication(first?.plan.record.id ?? ''))?.record.entries.find(entry => entry.operation === 'createTopic' && entry.state === 'uncertain');
+  assert.ok(lost, 'one create is uncertain');
+  assert.equal(lost.payload.topic_status, 'Open', 'the status was sent');
+  const checked = await checkEntry(first?.plan.record.id ?? '', lost.id, connection);
   assert.ok(checked.ok);
   assert.equal(checked.check.result, 'committed');
-  const recovered = checked.record.entries.find(entry => entry.id === lostNow?.id);
+  const recovered = checked.record.entries.find(entry => entry.id === lost.id);
   assert.equal(recovered?.receipt?.evidence, 'lookup');
-  assert.equal(recovered?.receipt?.fields?.topic_type, 'Information');
-  assert.equal(recovered?.receipt?.fields?.topic_status, undefined, 'the stored copy, not the sent status');
+  assert.equal(recovered?.receipt?.fields?.topic_type, 'Clash');
+  assert.equal(recovered?.receipt?.fields?.topic_status, undefined, 'the server\'s copy, not the sent status');
 
   // Finish the rest of the batch, then edit the recovered topic: no false conflict.
-  await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
-  const index = batch.topics.findIndex(topic => topic.guid === lostNow?.topicGuid);
-  const edited = editDraftTopic(batch, batch.topics[index].guid, { title: 'Recovered topic, renamed' });
+  await publishDraftBatch(batch, peer.target, connection);
+  const edited = editDraftTopic(batch, lost.topicGuid, { title: 'Recovered topic, renamed' });
   assert.ok(edited.ok);
-  const second = await publishDraftBatch(edited.batch, peer.target, connection, { topicTypes: { Clash: 'Information' } });
+  const second = await publishDraftBatch(edited.batch, peer.target, connection);
   assert.deepEqual(second?.report.blocked, [], 'no false remote conflict');
   assert.ok(second?.report.receipts.some(receipt => receipt.operation === 'updateTopic'));
 });

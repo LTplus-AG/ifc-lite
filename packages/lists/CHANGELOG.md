@@ -1,5 +1,16 @@
 # @ifc-lite/lists
 
+## 3.2.0
+
+### Minor Changes
+
+- [#8457](https://github.com/LTplus-AG/ifc-lite/pull/8457) [`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87) Thanks [@louistrue](https://github.com/louistrue)! - Lists can show each element's custom grouping ([#8425](https://github.com/LTplus-AG/ifc-lite/issues/8425)). The list builder offers a "Grouping: <Lens>" column for every rule-based Lens, and each row shows the group the element belongs to (the same first match the `customGrouping` filter rule applies, live edits included). `@ifc-lite/lists` adds the `customGrouping` column source and the optional `ListDataProvider.getCustomGroup` hook. `@ifc-lite/rules` adds `customGroupOfElement`.
+
+### Patch Changes
+
+- Updated dependencies [[`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87), [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80)]:
+  - @ifc-lite/rules@0.8.0
+
 ## 3.1.11
 
 ### Patch Changes

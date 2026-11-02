@@ -247,7 +247,8 @@ export class SnapDetector {
 
     const { cache, key: clipKey } = this.visibleGeometry(intersectedMesh, clip);
     const entity = entityClip(clip, intersectedMesh.expressId);
-    const visible = (t: SnapTarget) => !pointClipped(entity, t.position.x, t.position.y, t.position.z);
+    // Vertices and edges come from the clipped view and FACE is the accepted hit; only a triangle's centroid can be cut away.
+    const visible = (t: SnapTarget) => t.type !== SnapType.FACE_CENTER || !pointClipped(entity, t.position.x, t.position.y, t.position.z);
 
     // If edge snapping is disabled, skip edge logic entirely
     if (!opts.snapToEdges) {

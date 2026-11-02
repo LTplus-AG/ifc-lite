@@ -3,7 +3,16 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createChunkDataPool, MemoryReadFileSystem, readPly, materializeToDataTable } from '@playcanvas/splat-transform';
 import { inspectGaussianAdmission } from './gaussianAdmission.js';
-import { decodeGaussianFile } from './gaussianDecode.js';
+// A production-only revert removes this new module. Load inside each test so
+// that missing decode capability fails an assertion, rather than file loading.
+async function decodeGaussianFile(file: File) {
+  const decoder = await import('./gaussianDecode.js').catch((error: unknown) => {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    return null;
+  });
+  assert.ok(decoder, 'Gaussian captures must have a worker decoder before their channel contracts can be verified');
+  return decoder.decodeGaussianFile(file);
+}
 
 const base = ['x', 'y', 'z', 'rot_0', 'rot_1', 'rot_2', 'rot_3',
   'scale_0', 'scale_1', 'scale_2', 'opacity', 'f_dc_0', 'f_dc_1', 'f_dc_2'];
@@ -81,7 +90,7 @@ async function boundedScratch<T>(run: () => Promise<T>) {
   const original = globalThis.Uint8Array;
   const requested: number[] = [];
   globalThis.Uint8Array = new Proxy(original, {
-    construct(target, args: ConstructorParameters<Uint8ArrayConstructor>) {
+    construct(target, args: unknown[]) {
       if (typeof args[0] === 'number') {
         requested.push(args[0]);
         if (args[0] > 16 * 1024 * 1024) throw new Error(`Scratch allocation refused: ${args[0]}`);

@@ -9,6 +9,7 @@
 // the hidden frame is the reference for the splat contribution. Internal,
 // unqualified evidence only: not a timing, hardware-budget or release witness.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
@@ -17,6 +18,8 @@ const capture = process.env.GAUSSIAN_CAPTURE ?? '/_fixtures/seem-kirke-v1.ply';
 const placement = process.env.GAUSSIAN_PLACEMENT ?? 'rx180';
 // An IFC model added beside the capture keeps frames rendering after its removal.
 const ifc = process.env.GAUSSIAN_IFC ?? 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
+const captureProbe = process.env.GAUSSIAN_CAPTURE_PROBE === '1';
+const probeFrames = [];
 const out = process.env.GAUSSIAN_EVIDENCE ?? '/tmp/gaussian-8565-browser';
 await mkdir(out, { recursive: true });
 const browser = process.env.IFC_GPU_CDP_URL
@@ -74,7 +77,68 @@ const stats = () => page.evaluate(() => {
   return s ? { adapter: s.adapter, gaussian: s.gaussianSplats } : null;
 });
 /** Store one renderer-owned frame in the page under `label`. */
-const frame = async (label) => { const info = await frameIn(label); result.frames[label] = info; return info; };
+const frame = async (label) => {
+  if (captureProbe) return diagnosticFrame(label);
+  const info = await frameIn(label); result.frames[label] = info; return info; };
+// #8566 / original d394: opt in with GAUSSIAN_CAPTURE_PROBE=1 in a rebuilt
+// internal bundle. Fixed five-frame probe, stops before device destruction.
+// No settling loop, extra frame request, tolerance or sorting change. Original
+// zero criterion retained, including PNG conversion and same-submit copies.
+// Observer effects: duplicate 1 MiB copy, pass-call proxies, O(N) index hash,
+// PNG/base64 transport and disk writes delay subsequent requests; not timing evidence.
+// At 512x512: 15 MiB raw copies + 15 MiB lossless delta maps + five PNGs
+// (roughly <=6 MiB) and bounded metadata. No full source arrays are retained.
+// Attachment IDs are process-local identities, not cross-run equality proofs.
+// Sort FNV32 is a diagnostic checksum, not collision-proof content identity;
+// source arrays are not exposed; preserve fixture/source/bundle SHA256 bindings.
+// Fixed five-frame probe. Persist each boundary before any comparison can fail.
+async function diagnosticFrame(label) {
+  const captured = await page.evaluate(async () => {
+    const frame = await globalThis.__ifc_lite_capture_color_diagnostic__?.();
+    if (!frame?.png) throw new Error('Diagnostic frame unavailable');
+    const bitmap = await createImageBitmap(await (await fetch(frame.png)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+    const decoded = ctx.getImageData(0, 0, frame.width, frame.height).data;
+    let binary = '';
+    for (let i = 0; i < decoded.length; i += 0x8000) binary += String.fromCharCode(...decoded.subarray(i, i + 0x8000));
+    return { ...frame, decoded: btoa(binary), decodedAt: performance.now() };
+  });
+  const buffers = Object.fromEntries(['raw', 'duplicate', 'decoded'].map(k => [k, Buffer.from(captured[k], 'base64')]));
+  for (const [kind, bytes] of Object.entries(buffers)) await writeFile(`${out}/${label}-${kind}.rgba`, bytes);
+  await writeFile(`${out}/${label}.png`, Buffer.from(captured.png.split(',')[1], 'base64'));
+  const metadata = { label, width: captured.width, height: captured.height, ...captured.metadata, decodedAt: captured.decodedAt,
+    sha256: Object.fromEntries(Object.entries(buffers).map(([k, b]) => [k, createHash('sha256').update(b).digest('hex')])) };
+  await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2));
+  probeFrames.push({ label, ...buffers }); result.frames[label] = metadata;
+  return metadata;
+}
+async function finishProbe() {
+  const comparisons = [];
+  const compareBytes = async (name, a, b) => {
+    assert.equal(a.length, b.length);
+    const mask = Buffer.alloc(a.length); const channels = [0, 0, 0, 0]; let pixels = 0, max = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      let changed = false;
+      for (let c = 0; c < 4; c++) { const d = Math.abs(a[i+c] - b[i+c]); mask[i+c] = d;
+        if (d) { channels[c]++; changed = true; max = Math.max(max, d); } }
+      if (changed) pixels++;
+    }
+    await writeFile(`${out}/${name}-absolute-delta.rgba`, mask);
+    comparisons.push({ name, exactDiffering: pixels, channels, maxChannelDelta: max, exactZero: pixels === 0 });
+  };
+  for (const [i, f] of probeFrames.entries()) {
+    await compareBytes(`${f.label}-duplicate`, f.raw, f.duplicate);
+    await compareBytes(`${f.label}-decode`, f.raw, f.decoded);
+    if (i) await compareBytes(`${probeFrames[i-1].label}-${f.label}`, probeFrames[i-1].raw, f.raw);
+  }
+  await compareBytes('visible-shown', probeFrames[0].raw, probeFrames[2].raw);
+  result.checks.captureProbe = { comparisons, criterion: 'zero byte differences; visibility transitions are expected nonzero controls',
+    sequence: probeFrames.map(f => f.label), stoppedBeforeLoss: true };
+  await writeFile(`${out}/capture-comparisons.json`, JSON.stringify(result.checks.captureProbe, null, 2));
+  const required = comparisons.filter(c => /-duplicate$|-decode$|beforeLoss-beforeLossStable|shown-beforeLoss|visible-shown/.test(c.name));
+  assert.ok(required.every(c => c.exactZero), 'fixed capture probe exact-zero controls failed; all deltas retained');
+}
 const frameIn = (label) => page.evaluate(async (label) => {
   const url = await globalThis.__ifc_lite_capture_color_frame__?.();
   if (!url) return null;
@@ -181,6 +245,13 @@ try {
   await visibility(outcome.id, true);
   const shown = await drawn('shown', hidden?.gaussian?.drawnFrames ?? 0);
   await frame('shown');
+  if (captureProbe) {
+    await frame('beforeLoss'); await frame('beforeLossStable');
+    await finishProbe();
+    assert.deepEqual(errors, [], 'uncaught page errors');
+    assert.deepEqual(gpuConsole, [], 'GPU errors');
+    result.verdict = 'diagnostic-pass';
+  } else {
   const contribution = await compare('visible', 'hidden');
   const restored = await compare('visible', 'shown');
   result.checks.hideShow = { hidden: hidden?.gaussian, shown: shown.gaussian, contribution, restored };
@@ -389,6 +460,7 @@ try {
   assert.deepEqual(errors, [], `uncaught page errors: ${errors.join('; ')}`);
   assert.deepEqual(gpuConsole, [], `GPU errors: ${gpuConsole.join('; ')}`);
   result.verdict = 'pass';
+  }
 } catch (error) {
   result.verdict = 'fail';
   result.failure = String(error?.stack ?? error);

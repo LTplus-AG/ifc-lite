@@ -5,6 +5,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  beginRendererColorFrameCapture,
+  encodeRendererColorFrameCapture,
+  settleRendererColorFrameCapture,
   cancelRendererColorFrame,
   encodeRendererColorFrameReadback,
   requestRendererColorFrame,
@@ -126,4 +129,26 @@ describe('renderer color-frame readback (#5051 strict GPU evidence)', () => {
     cancelRendererColorFrame(host);
     assert.strictEqual(await next, null);
   });
+});
+
+// #8566 d394: duplicate evidence must be two copies in the same submission,
+// with frame metadata retained independently of later camera/store mutations.
+it('diagnostic readback preserves two independent copies and submitted metadata', async () => {
+  const host = {}; const buffers: FakeBuffer[] = []; let renders = 0, copies = 0;
+  const device = { createBuffer: ({ size }: { size: number }) => {
+    const buffer = fakeBuffer(size); buffers.push(buffer); return buffer;
+  } } as unknown as GPUDevice;
+  const encoder = { copyTextureToBuffer() { copies++; } } as unknown as GPUCommandEncoder;
+  const pending = requestRendererColorFrame(host, true, () => { renders++; }, true);
+  const capture = beginRendererColorFrameCapture(host, {} as GPUTexture, 2, 2, 'rgba8unorm')!;
+  capture.metadata = { frameId: 7, eye: [1, 2, 3] };
+  const copy = encodeRendererColorFrameCapture(device, encoder, capture);
+  new Uint8Array(buffers[0].bytes).set([10, 20, 30, 255]);
+  new Uint8Array(buffers[1].bytes).set([11, 20, 30, 255]);
+  settleRendererColorFrameCapture(host, capture, copy);
+  const frame = await pending;
+  assert.equal(renders, 1); assert.equal(copies, 2);
+  assert.equal(frame!.rgba[0], 10); assert.equal(frame!.duplicate![0], 11);
+  assert.equal(frame!.metadata!.frameId, 7);
+  assert.ok(buffers.every(buffer => buffer.destroys === 1 && buffer.unmaps === 1));
 });

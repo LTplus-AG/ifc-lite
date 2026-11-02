@@ -133,6 +133,18 @@ class LumaGaussianScene implements GaussianBackendScene {
     }
   }
 
+  captureDiagnostics(): Record<string, unknown> {
+    const renderer = this.renderer;
+    let hash = 2166136261;
+    for (const row of renderer?.sortedReferences ?? []) {
+      hash = Math.imul(hash ^ row.rowIndex, 16777619) >>> 0;
+    }
+    return { sortIndexFnv32: hash, sortCount: renderer?.sortedReferences.length ?? 0,
+      modelViewProjection: Array.from(renderer?.props.modelViewProjectionMatrix ?? []),
+      cameraPosition: Array.from(renderer?.props.cameraPosition ?? []),
+      viewportSize: renderer?.props.viewportSize, sourceHash: 'not exposed; fixture SHA and source binding retained separately' };
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;

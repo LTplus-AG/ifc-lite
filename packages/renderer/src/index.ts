@@ -208,7 +208,7 @@ import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
-import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
+import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
@@ -1993,7 +1993,7 @@ export class Renderer {
             }
 
             // Now record draw commands
-            const encoder = device.createCommandEncoder();
+            const encoder = traceRendererColorFrameEncoder(colorCapture, device.createCommandEncoder());
             beginRendererGpuTiming(this, device, encoder);
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
@@ -3049,6 +3049,16 @@ export class Renderer {
                 selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(),
             });
 
+            // Internal opt-in witness metadata: snapshot synchronously alongside the submitted copy.
+            if (colorCapture?.pending.diagnostic) colorCapture.metadata = { ...colorCapture.metadata,
+                rteEye: [...relativeToEyeFrame.getCameraWorld()], rteViewProjection: Array.from(relativeToEyeFrame.getViewProjection().m),
+                worldViewProjection: Array.from(viewProj), sampleCount: this.pipeline.getSampleCount(), useMSAA,
+                depthFormat: this.pipeline.getDepthFormat(), gaussianPass: splatFrame,
+                viewport: [0, 0, this.canvas.width, this.canvas.height], scissor: 'see atomic pass command trace',
+                attachments: { color: currentTexture.label, depth: 'pipeline depth', resolve: useMSAA, objectId: Boolean(objectIdView) },
+                postpass: structuredClone({ visualEnhancement, effectsLive, edl: this.edlOptions }),
+                gaussian: this.gaussianLayer.getStats(), drawInputs: this.gaussianLayer.captureDiagnostics(),
+            };
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
@@ -3549,7 +3559,7 @@ export class Renderer {
 
     captureScreenshot(): Promise<string | null> { return captureRendererScreenshot(this.device, this.canvas); }
     /** Capture the next submitted frame's bounded color pixels, not compositor state. */
-    captureColorFrame(): Promise<RendererColorFrame | null> { return requestRendererColorFrame(this, !this.destroyed && !this.deviceLost && this.device.isInitialized(), () => this.requestRender()); }
+    captureColorFrame(diagnostic = false): Promise<RendererColorFrame | null> { return requestRendererColorFrame(this, !this.destroyed && !this.deviceLost && this.device.isInitialized(), () => this.requestRender(), diagnostic); }
 
     /**
      * Destroy the renderer and release all GPU resources.

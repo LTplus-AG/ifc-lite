@@ -9,6 +9,8 @@ export interface RendererColorFrame {
   width: number;
   height: number;
   rgba: Uint8ClampedArray;
+  duplicate?: Uint8ClampedArray;
+  metadata?: Record<string, unknown>;
 }
 
 interface ColorFrameCopy {
@@ -17,9 +19,12 @@ interface ColorFrameCopy {
   height: number;
   bytesPerRow: number;
   bgra: boolean;
+  duplicate?: ColorFrameCopy;
+  metadata?: Record<string, unknown>;
 }
 
 interface PendingRendererColorFrame {
+  diagnostic: boolean;
   encoded: boolean;
   skippedFrames: number;
   promise: Promise<RendererColorFrame | null>;
@@ -32,6 +37,7 @@ export interface RendererColorFrameCapture {
   width: number;
   height: number;
   format: GPUTextureFormat;
+  metadata?: Record<string, unknown>;
 }
 
 /** Keep debug/readback work bounded even for a full-screen 8K production viewport. */
@@ -39,6 +45,7 @@ const MAX_COLOR_FRAME_DIMENSION = 512;
 const PIXEL_BYTES = 4;
 const COPY_ROW_ALIGNMENT = 256;
 const MAX_COLOR_FRAME_CAPTURE_SKIPS = 3;
+let diagnosticSequence = 0;
 const pendingCaptures = new WeakMap<object, PendingRendererColorFrame>();
 
 function captureDimensions(width: number, height: number): { x: number; y: number; width: number; height: number } {
@@ -85,6 +92,15 @@ export function encodeRendererColorFrameReadback(
 
 /** Maps and normalizes an encoded color copy. Call only after its command buffer submitted. */
 export async function resolveRendererColorFrameReadback(copy: ColorFrameCopy): Promise<RendererColorFrame | null> {
+  const [frame, duplicate] = await Promise.all([
+    resolveSingleColorFrame(copy),
+    copy.duplicate ? resolveSingleColorFrame(copy.duplicate) : Promise.resolve(null),
+  ]);
+  if (!frame || (copy.duplicate && !duplicate)) return null;
+  return { ...frame, ...(duplicate ? { duplicate: duplicate.rgba } : {}), ...(copy.metadata ? { metadata: copy.metadata } : {}) };
+}
+
+async function resolveSingleColorFrame(copy: ColorFrameCopy): Promise<RendererColorFrame | null> {
   let mapped = false;
   try {
     // GPUMapMode.READ = 1. The package's browser typings intentionally do not
@@ -116,13 +132,14 @@ export function requestRendererColorFrame(
   host: object,
   available: boolean,
   requestRender: () => void,
+  diagnostic = false,
 ): Promise<RendererColorFrame | null> {
   if (!available) return Promise.resolve(null);
   const existing = pendingCaptures.get(host);
   if (existing) return existing.promise;
   let resolve!: (frame: RendererColorFrame | null) => void;
   const promise = new Promise<RendererColorFrame | null>((finish) => { resolve = finish; });
-  pendingCaptures.set(host, { encoded: false, skippedFrames: 0, promise, resolve });
+  pendingCaptures.set(host, { diagnostic, encoded: false, skippedFrames: 0, promise, resolve });
   try {
     requestRender();
   } catch (error) {
@@ -183,6 +200,13 @@ export function encodeRendererColorFrameCapture(
   const copy = encodeRendererColorFrameReadback(
     device, encoder, capture.sourceTexture, capture.width, capture.height, capture.format,
   );
+  if (capture.pending.diagnostic) {
+    try {
+      copy.duplicate = encodeRendererColorFrameReadback(device, encoder, capture.sourceTexture, capture.width, capture.height, capture.format);
+      copy.metadata = { ...capture.metadata, crop: captureDimensions(capture.width, capture.height), format: capture.format,
+        textureSize: [capture.width, capture.height], encodedAt: performance.now() };
+    } catch (error) { copy.buffer.destroy(); throw error; }
+  }
   capture.pending.encoded = true;
   return copy;
 }
@@ -202,5 +226,46 @@ export function settleRendererColorFrameCapture(
 
 /** Frees a copy whose command buffer could not be submitted. */
 export function discardRendererColorFrameReadback(copy: ColorFrameCopy | null): void {
+  copy?.duplicate?.buffer.destroy();
   copy?.buffer.destroy();
+}
+
+// Observe only diagnostic command recording. Native receivers remain bound and
+// every call is forwarded once; no pass, submit, clear or render is introduced.
+export function traceRendererColorFrameEncoder(capture: RendererColorFrameCapture | null, encoder: GPUCommandEncoder): GPUCommandEncoder {
+  if (!capture?.pending.diagnostic) return encoder;
+  const passes: Record<string, unknown>[] = [];
+  capture.metadata = { diagnosticFrameId: ++diagnosticSequence, recordingAt: performance.now(), passes };
+  return new Proxy(encoder, { get(target, property) {
+    if (property === 'beginRenderPass') return (descriptor: GPURenderPassDescriptor) => {
+      const pass = target.beginRenderPass(descriptor);
+      const trace: Record<string, unknown> = { label: descriptor.label,
+        color: Array.from(descriptor.colorAttachments, a => a ? { view: evidenceObjectId(a.view), resolve: a.resolveTarget ? evidenceObjectId(a.resolveTarget) : null, loadOp: a.loadOp, storeOp: a.storeOp, clearValue: a.clearValue } : null),
+        depth: descriptor.depthStencilAttachment ? { ...descriptor.depthStencilAttachment, view: evidenceObjectId(descriptor.depthStencilAttachment.view) } : null,
+        rasterCalls: [], defaultRaster: 'full attachment viewport/scissor until overridden' };
+      if (passes.length < 64) passes.push(trace);
+      else capture.metadata!.passesTruncated = true;
+      return new Proxy(pass, { get(native, key) {
+        const value = Reflect.get(native, key, native);
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => {
+          if (key === 'setViewport' || key === 'setScissorRect' || key === 'setBlendConstant' || key === 'setStencilReference') {
+            const calls = trace.rasterCalls as unknown[];
+            if (calls.length < 256) calls.push({ method: key, args: structuredClone(args) });
+            else trace.rasterCallsTruncated = true;
+          }
+          return Reflect.apply(value, native, args);
+        };
+      } });
+    };
+    const value = Reflect.get(target, property, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+}
+const evidenceObjects = new WeakMap<object, number>();
+let evidenceObjectSequence = 0;
+function evidenceObjectId(object: object): number {
+  let id = evidenceObjects.get(object);
+  if (id === undefined) { id = ++evidenceObjectSequence; evidenceObjects.set(object, id); }
+  return id;
 }

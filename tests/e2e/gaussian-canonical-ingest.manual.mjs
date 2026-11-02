@@ -26,6 +26,24 @@ const browser = process.env.IFC_GPU_CDP_URL
     '--use-angle=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu',
   ] });
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
+// #8566: observe real browser objects before application startup. Only the test
+// destroys the currently configured device; production owns loss and recovery.
+await context.addInitScript(() => {
+  const observed = globalThis.__witnessDevices = { devices: [], contexts: new Map(), losses: [] };
+  const request = GPUAdapter.prototype.requestDevice;
+  GPUAdapter.prototype.requestDevice = async function (...args) {
+    const device = await request.apply(this, args);
+    const id = observed.devices.push(device) - 1;
+    void device.lost.then(info => observed.losses.push({ id, reason: info.reason, message: info.message }));
+    return device;
+  };
+  const configure = GPUCanvasContext.prototype.configure;
+  GPUCanvasContext.prototype.configure = function (configuration) {
+    const result = configure.call(this, configuration);
+    observed.contexts.set(this, configuration.device);
+    return result;
+  };
+});
 const page = await context.newPage();
 const errors = [];
 const gpuConsole = [];
@@ -82,10 +100,11 @@ const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
   }
   const delta = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
   const width = Math.round(Math.sqrt(x.length / 4)); // diagnostic only; frames are square-ish
-  let differing = 0, escaped = 0;
+  let differing = 0, exactDiffering = 0, escaped = 0;
   const samples = [];
   for (let i = 0; i < x.length; i += 4) {
     const d = delta(x, y, i);
+    if (d !== 0 || x[i + 3] !== y[i + 3]) exactDiffering++;
     if (d > 6) {
       differing++;
       // `outside`: [frame, reference] whose equal pixels are outside the contribution.
@@ -98,7 +117,7 @@ const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
       }
     }
   }
-  return { differing, escaped, total: x.length / 4, samples, sameCamera: true };
+  return { differing, exactDiffering, escaped, total: x.length / 4, samples, sameCamera: true };
 }, { a, b, outside });
 const drawn = async (label, previous) => {
   for (let i = 0; i < 50; i++) {
@@ -168,6 +187,105 @@ try {
   assert.equal(hidden?.gaussian?.visibleAssetSplats, 0);
   assert.ok(contribution.differing > contribution.total * 0.02, 'the splat pass contributes pixels beyond the background');
   assert.equal(restored.differing, 0, 'show restores the exact reference frame');
+
+  // A real device loss must pass through the mounted viewport's recovery
+  // subscription. No reload, direct recoverDevice call or fabricated state.
+  await frame('beforeLoss'); await frame('beforeLossStable');
+  assert.equal((await compare('beforeLoss', 'beforeLossStable')).exactDiffering, 0, 'pre-loss reference is stable');
+  const lossTarget = await page.evaluate(() => {
+    const o = globalThis.__witnessDevices;
+    const active = [...o.contexts].filter(([ctx]) => ctx.canvas instanceof HTMLCanvasElement && ctx.canvas.isConnected);
+    const devices = [...new Set(active.map(([, device]) => device))];
+    if (devices.length !== 1) throw new Error(`Expected one live canvas device, got ${devices.length}`);
+    const device = devices[0], id = o.devices.indexOf(device);
+    if (id < 0) throw new Error('Configured device was not observed at requestDevice');
+    const model = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()].find(m => m.gaussianSplat);
+    globalThis.__witnessBeforeLoss = { model, sourceFile: model.sourceFile, contexts: active.map(([ctx]) => ctx), metadata: JSON.stringify(model.gaussianSplat),
+      frames: globalThis.__ifc_lite_render_stats__().gaussianSplats.drawnFrames, device, id };
+    device.destroy();
+    return { id, devicesRequested: o.devices.length };
+  });
+  result.checks.deviceRecovery = { lossTarget, status: 'awaiting-production-recovery' };
+  await page.waitForFunction(() => {
+    const o = globalThis.__witnessDevices, before = globalThis.__witnessBeforeLoss;
+    return o.losses.some(loss => loss.id === before.id)
+      && [...o.contexts].some(([ctx, device]) => ctx.canvas instanceof HTMLCanvasElement && ctx.canvas.isConnected && before.contexts.includes(ctx) && device !== before.device)
+      && globalThis.__ifc_lite_gaussian_handle_state__?.(globalThis.__witnessHandle)?.state === 'resident'
+      && globalThis.__ifc_lite_render_stats__?.().gaussianSplats.drawnFrames > before.frames;
+  }, null, { timeout: 120_000 });
+  const recovery = await page.evaluate(() => {
+    const o = globalThis.__witnessDevices, before = globalThis.__witnessBeforeLoss;
+    const model = globalThis.__ifc_lite_viewer_store__.getState().models.get(before.model.id);
+    return { losses: o.losses, devicesRequested: o.devices.length,
+      sameHandle: model?.gaussianSplat?.handle === globalThis.__witnessHandle,
+      sameSource: model?.sourceFile === before.sourceFile,
+      sameDisplay: model?.name === before.model.name && model?.visible === before.model.visible,
+      sameProvenance: model?.sourceHandle === before.model.sourceHandle && model?.sourceFingerprint === before.model.sourceFingerprint,
+      sameMetadata: JSON.stringify(model?.gaussianSplat) === before.metadata,
+      models: globalThis.__ifc_lite_viewer_store__.getState().models.size };
+  });
+  result.checks.deviceRecovery = { lossTarget, ...recovery, stats: await stats() };
+  assert.equal(recovery.losses.find(loss => loss.id === lossTarget.id)?.reason, 'destroyed');
+  assert.ok(recovery.devicesRequested > lossTarget.devicesRequested, 'production requested a successor device');
+  assert.ok(recovery.sameHandle && recovery.sameSource && recovery.sameMetadata && recovery.sameDisplay && recovery.sameProvenance, 'recovery retains capture identity and metadata');
+  assert.equal(recovery.models, 1);
+  assert.equal(result.checks.deviceRecovery.stats.gaussian.assets, 1);
+  assert.ok(result.checks.deviceRecovery.stats.gaussian.gpuBytes > 0);
+  assert.equal(workers.started.filter(url => /gaussianDecode\.worker/.test(url)).length, 1, 'recovery does not decode/reload the capture');
+  await frame('afterLoss');
+  result.checks.deviceRecovery.frame = await compare('beforeLoss', 'afterLoss');
+  assert.equal(result.checks.deviceRecovery.frame.exactDiffering, 0, 'recovery restores exact RGBA with the same camera');
+
+  // Six world-axis faces, using transformed source-centre bounds. Containment
+  // and total exclusion have authoritative frame references. Partial cuts only
+  // diagnose changed contribution; they do not prove an exact kept-splat set.
+  const boxBounds = await page.evaluate(() => {
+    const record = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()].find(m => m.gaussianSplat).gaussianSplat;
+    const { min, max } = record.sourceCenterBounds, m = record.placement;
+    const corners = Array.from({ length: 8 }, (_, bits) => {
+      const c = [0, 1, 2].map(i => (bits & (1 << i)) ? max[i] : min[i]);
+      return [0, 1, 2].map(r => m[r] * c[0] + m[4 + r] * c[1] + m[8 + r] * c[2] + m[12 + r]);
+    });
+    return { min: [0, 1, 2].map(i => Math.min(...corners.map(c => c[i]))),
+      max: [0, 1, 2].map(i => Math.max(...corners.map(c => c[i]))) };
+  });
+  const containing = { min: boxBounds.min.map((v, i) => v - Math.max(1, boxBounds.max[i] - v)),
+    max: boxBounds.max.map((v, i) => v + Math.max(1, v - boxBounds.min[i])) };
+  const setBox = async (box) => {
+    await page.evaluate(box => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      if (box) state.setSectionBox(box); else state.setSectionPlaneEnabled(false);
+      const next = globalThis.__ifc_lite_viewer_store__.getState();
+      next.setSectionPlaneShowGizmo(next.sectionPlane.id, false);
+    }, box);
+    await page.waitForTimeout(300); // allow the mounted viewport to consume store changes
+  };
+  await frame('boxReference'); await frame('boxStable');
+  assert.equal((await compare('boxReference', 'boxStable')).exactDiffering, 0, 'clip-box reference is stable');
+  await visibility(outcome.id, false); await page.waitForTimeout(300); await frame('boxHidden');
+  await visibility(outcome.id, true); await drawn('box-visible', (await stats()).gaussian.drawnFrames);
+  const boxChecks = result.checks.clipBox = { referenceSemantics: 'exact RGBA, identical view-projection',
+    partialSemantics: 'thresholded pixel-change diagnostic only; no authoritative kept-splat reference', faces: [] };
+  await setBox(containing); await frame('boxContained');
+  boxChecks.contained = await compare('boxReference', 'boxContained');
+  assert.equal(boxChecks.contained.exactDiffering, 0, 'a box containing every centre preserves the full frame');
+  for (const axis of [0, 1, 2]) for (const side of ['min', 'max']) {
+    const label = `box-${axis}-${side}`, excluded = structuredClone(containing), partial = structuredClone(containing);
+    const span = boxBounds.max[axis] - boxBounds.min[axis];
+    assert.ok(span > 0, `fixture must span axis ${axis} for a meaningful partial control`);
+    excluded[side][axis] = side === 'min' ? boxBounds.max[axis] + Math.max(0.5, span * 0.5) : boxBounds.min[axis] - Math.max(0.5, span * 0.5);
+    partial[side][axis] = (boxBounds.min[axis] + boxBounds.max[axis]) / 2;
+    await setBox(excluded); await frame(`${label}-excluded`);
+    const empty = await compare(`${label}-excluded`, 'boxHidden');
+    assert.equal(empty.exactDiffering, 0, `${label}: exclusion of every centre matches the hidden reference`);
+    await setBox(partial); await frame(`${label}-partial`);
+    const kept = await compare(`${label}-partial`, 'boxHidden'), changed = await compare(`${label}-partial`, 'boxReference');
+    assert.ok(kept.differing > 0 && changed.differing > 0, `${label}: partial clipping keeps a contribution and changes the frame`);
+    await setBox(null); await frame(`${label}-restored`);
+    const restored = await compare(`${label}-restored`, 'boxReference');
+    assert.equal(restored.exactDiffering, 0, `${label}: disabling the box restores exact RGBA`);
+    boxChecks.faces.push({ axis, side, excluded, partial, empty, keptDiagnostic: kept, changedDiagnostic: changed, restored });
+  }
 
   // Disclosed centre clipping: a vertical plane through the placed capture's
   // centre, its gizmo hidden. Alpha compositing lets a culled near splat hide a
@@ -276,6 +394,14 @@ try {
   result.failure = String(error?.stack ?? error);
   throw error;
 } finally {
+  // Preserve real lifecycle observations even if recovery times out or a pixel
+  // assertion fails. Never hide a failed read behind a claimed recovery pass.
+  result.deviceObservations = await page.evaluate(() => {
+    const o = globalThis.__witnessDevices;
+    return o ? { requested: o.devices.length, losses: o.losses,
+      configuredDeviceIds: [...o.contexts.values()].map(device => o.devices.indexOf(device)),
+      handleState: globalThis.__ifc_lite_gaussian_handle_state__?.(globalThis.__witnessHandle) ?? null } : null;
+  }).catch(error => ({ observationError: String(error) }));
   await writeFile(`${out}/result.json`, JSON.stringify(result, null, 2));
   await context.close();
   await browser.close();

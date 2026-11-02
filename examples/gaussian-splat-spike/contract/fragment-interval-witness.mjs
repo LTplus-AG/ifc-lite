@@ -99,8 +99,9 @@ async function run() {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error('WebGPU required, no skip');
   const raw = await adapter.requestDevice(), errors = [];
-  raw.addEventListener('uncapturederror', e => errors.push(e.error.message));
-  const device = new WebGPUDevice({ createCanvasContext: false, contractOwnsDevice: false, onError: e => errors.push(e.message) }, raw, adapter, adapter.info);
+  const report = message => { if (errors.length < 8 && !errors.includes(message)) errors.push(message); };
+  raw.addEventListener('uncapturederror', e => report(e.error.message));
+  const device = new WebGPUDevice({ createCanvasContext: false, contractOwnsDevice: false, onError: e => report(e.message) }, raw, adapter, adapter.info);
   try {
     const cases = [];
     for (const projection of ['orthographic', 'perspective']) for (const size of [24, 32]) {

@@ -24,7 +24,7 @@ export function fragmentIntervalPlugin(filter = true) {
     }
     code = code.replace("{ name: 'splatSphericalHarmonics', type: 'read-only-storage', group: 0, location: 8 }",
       "$&, { name: 'contractDepthInterval', type: 'texture', group: 0, location: 9, viewDimension: '2d', sampleType: 'unfilterable-float' }");
-    code = code.replace('@group(0) @binding(auto) var<uniform> splat : SplatUniforms;',
+    code = code.replace('@group(0) @binding(auto) var<storage, read> splatSphericalHarmonics : array<f32>;',
       '$&\n@group(0) @binding(auto) var contractDepthInterval : texture_2d<f32>;');
     code = code.replace('fn fragmentMain(input : SplatFragmentInputs) -> @location(0) vec4<f32> {', `$&
       let interval = textureLoad(contractDepthInterval, vec2<i32>(input.position.xy), 0).rg;

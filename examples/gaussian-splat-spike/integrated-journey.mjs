@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #8567 integrated-viewer journey for record-integrated.mjs: canonical picker load,
-// auto-frame, zoom, orbit, centre clipping, then inspect / hide / remove when the
-// build offers those controls. A missing control is recorded as a skip, never faked.
-// Options: { collapseSidebar, inspect, remove } via --journey-options.
-const removeLabel = name => `Remove model ${name}`;
+// auto-frame, zoom, orbit, centre clipping, then the capture row's inspect, hide/show,
+// fit and remove when the build offers them. A missing control is recorded as a
+// skip, never faked. Options: { collapseSidebar, inspect, visibility, remove }.
 
 export async function prepare(ctx) {
   const { page } = ctx;
@@ -46,24 +45,35 @@ export async function journey(ctx) {
     await page.getByRole('button', { name: 'Close' }).first().click();
     await ctx.hold(800);
   });
-  if (ctx.options.inspect) {
-    await ctx.step('inspect', 'Inspect the loaded capture', async () => {
-      await page.getByRole('button', { name: /Expand sidebar|Show sidebar/ }).first().click().catch(() => {});
-      await ctx.hold(3500);
+  const row = name => page.getByRole('button', { name, exact: true });
+  const offered = async (option, label) => {
+    if (!ctx.options[option]) { ctx.skip(option, 'not requested for this build'); return false; }
+    if (await row(label).isVisible().catch(() => false)) return true;
+    ctx.skip(option, `build shows no "${label}" control`); return false;
+  };
+  if (await offered('inspect', 'Show capture details')) {
+    await ctx.step('inspect', 'Inspect: capture details (uncalibrated, explicit placement)', async () => {
+      await row('Show capture details').click(); await ctx.hold(5000);
     });
-  } else ctx.skip('inspect', 'not requested for this build');
-  const remove = page.getByRole('button', { name: removeLabel(ctx.asset) });
-  if (ctx.options.remove && await remove.isVisible().catch(() => false)) {
-    await ctx.step('remove', 'Remove frees the capture', async () => {
-      await remove.click();
-      const confirm = page.getByRole('button', { name: /^Remove/ }).last();
-      if (await confirm.isVisible().catch(() => false)) await confirm.click();
-      await remove.waitFor({ state: 'detached', timeout: 30_000 });
+  }
+  if (await offered('visibility', 'Hide capture')) {
+    await ctx.step('visibility', 'Hide and show from the model list', async () => {
+      await row('Hide capture').click(); await ctx.hold(1400);
+      await row('Show capture').click(); await ctx.hold(1400);
+      await row('Fit capture in view').click(); await ctx.hold(2200);
+    });
+  }
+  if (await offered('remove', 'Remove capture')) {
+    await ctx.step('remove', 'Remove capture from the model list', async () => {
+      await row('Remove capture').click();
+      // A confirmation, if the build asks for one, is answered inside its own dialog.
+      const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog')).first();
+      if (await dialog.waitFor({ state: 'visible', timeout: 1500 }).then(() => true, () => false)) {
+        await dialog.getByRole('button', { name: /^Remove/ }).click();
+      }
+      await row('Remove capture').waitFor({ state: 'detached', timeout: 30_000 });
       await ctx.hold(2500);
     });
-  } else {
-    ctx.skip('remove', ctx.options.remove ? 'build shows no remove control for this model' : 'not requested for this build');
-    await ctx.step('orbit2', 'Orbit', () => ctx.drag([c[0] + 120, c[1] + 40], [c[0] - 120, c[1] + 40], 4000));
-  }
+  } else await ctx.step('orbit2', 'Orbit', () => ctx.drag([c[0] + 120, c[1] + 40], [c[0] - 120, c[1] + 40], 4000));
   await ctx.step('end', '', () => ctx.hold(1500));
 }

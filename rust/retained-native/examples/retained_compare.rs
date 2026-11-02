@@ -219,21 +219,9 @@ fn compare(
                     if exact_metrics.contains_key(&id) && !unrounded.contains_key(&id) {
                         report.violations.push(format!("{model}:{id}: exact has no mesh before f32 rounding"));
                     }
-                    // An authored face set claims no closed solid: an open shell is its source, and
-                    // the authored-row oracles prove the published triangles are exactly that.
+                    // Closure stays gated on authored sets too (#7955 rulings 12, 13): `checks::face_sets`
+                    // names the ones whose source rows are open or whose zero-area rows explain a gap.
                     let closed_shell = actual.defects == 0;
-                    if shape.parts.iter().any(|part| part.source_exact) {
-                        // Measure closure over what the kernel built: authored parts claim none.
-                        let mut built = Metrics::default();
-                        for part in shape.parts.iter().filter(|part| !part.source_exact) {
-                            let points: Vec<_> = part.positions.chunks_exact(3)
-                                .map(|p| transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();
-                            if let Err(e) = built.add_mesh(&points, &part.indices) {
-                                report.violations.push(format!("{model}:{id}: {e}"));
-                            }
-                        }
-                        actual.defects = built.defects;
-                    }
                     let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
                         // A face set has no analytic quantity: its authored-row oracle is the authority.

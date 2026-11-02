@@ -18,7 +18,7 @@ import { creationTime, decodeDocument, DOCUMENTS_ROOT, rows, type BuildagilDocum
 
 /** The API's default page size; a page shorter than this is the last one. */
 const PAGE = 100;
-/** Above this the project is refused rather than half-listed. */
+/** A project with more IFC documents than this is refused rather than half-listed. */
 export const MAX_SCANNED_DOCUMENTS = 5000;
 export const MODEL_FILE = /\.(ifc|ifczip|ifcxml|ifcx)$/i;
 const MODEL_TYPES = ['ifc', 'ifczip', 'ifcxml', 'ifcx'];
@@ -40,7 +40,7 @@ export async function scanModelDocuments(
     });
     const before = byGuid.size;
     for (const { doc } of page) if (MODEL_FILE.test(doc.filename)) byGuid.set(doc.guid, doc);
-    if (byGuid.size >= MAX_SCANNED_DOCUMENTS) {
+    if (byGuid.size > MAX_SCANNED_DOCUMENTS) {
       throw new Error(`This buildagil project has more than ${MAX_SCANNED_DOCUMENTS} IFC documents; use search to find a model.`);
     }
     // `rows` has already checked that `raw` is a list.

@@ -45,6 +45,8 @@ function slice<T>(items: readonly T[], options?: ListOptions, max = 500): { item
 function offsetPage(cursor: string | undefined, requested: number | undefined, max: number): { offset: number; limit: number } {
   const offset = cursor === undefined ? 0 : Number(cursor);
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid buildagil paging cursor.');
+  // NaN would survive min/max and read as an empty, complete page.
+  if (requested !== undefined && !Number.isFinite(requested)) throw new Error('Invalid buildagil paging limit.');
   return { offset, limit: Math.max(1, Math.min(max, Math.floor(requested ?? 100))) };
 }
 

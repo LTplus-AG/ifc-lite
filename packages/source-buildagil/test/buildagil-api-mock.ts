@@ -69,7 +69,7 @@ function memoryStorage(): KeyValueStore {
  * A context factory over one world. Contexts share storage and fetch, as the
  * host's do (both derive from the manifest), and the session is signed in.
  */
-export function createMockApi(world: MockWorld, clientId = 'client-1') {
+export function createMockApi(world: MockWorld, clientId = 'client-1', options: { tokenGate?: () => Promise<void> } = {}) {
   const calls: MockCall[] = [];
   const storage = memoryStorage();
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -80,6 +80,7 @@ export function createMockApi(world: MockWorld, clientId = 'client-1') {
     calls.push({ url, method, headers, body });
     if (url.origin !== API) throw new Error(`Unexpected host: ${url.origin}`);
     if (url.pathname === '/oauth2/token') {
+      await options.tokenGate?.();
       return json({ access_token: ACCESS_TOKEN, refresh_token: 'rt-2', expires_in: 3600, token_type: 'Bearer' });
     }
     if (headers.get('authorization') !== `Bearer ${ACCESS_TOKEN}`) return json({ message: 'error occurred' }, 401);

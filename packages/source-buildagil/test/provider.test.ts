@@ -87,11 +87,23 @@ describe('BuildagilProvider', () => {
     expect(pages[1].url.searchParams.get('$filter')).toContain('creation_date ge 2026-01-01T00:01:39.000Z');
   });
 
-  it('refuses a project too large to list completely', async () => {
-    const world: MockWorld = { projects: [{ project_id: 'huge', name: 'Huge' }], documents: { huge: manyDocuments(MAX_SCANNED_DOCUMENTS) } };
-    const { api, provider, ctx } = setup(world);
+  it('lists a project of exactly the cap, and refuses one above it (#8364 review)', async () => {
+    const atCap = setup({ projects: [{ project_id: 'cap', name: 'Cap' }], documents: { cap: manyDocuments(MAX_SCANNED_DOCUMENTS) } });
+    await atCap.api.signIn();
+    const files = await atCap.provider.listFiles(atCap.ctx, 'cap', '/documents/bulk', undefined, { limit: 500 });
+    expect(files.cursor).toBeDefined();
+    const over = setup({ projects: [{ project_id: 'huge', name: 'Huge' }], documents: { huge: manyDocuments(MAX_SCANNED_DOCUMENTS + 1) } });
+    await over.api.signIn();
+    await expect(over.provider.listContainers(over.ctx, 'huge')).rejects.toThrow(/more than 5000 IFC documents/);
+  });
+
+  it('rejects a non-finite page limit instead of answering an empty, complete page (#8364 review)', async () => {
+    const { api, provider, ctx } = setup();
     await api.signIn();
-    await expect(provider.listContainers(ctx, 'huge')).rejects.toThrow(/more than 5000 IFC documents/);
+    await expect(provider.listFiles(ctx, 'p1', '/documents', undefined, { limit: Number.NaN })).rejects.toThrow(/paging limit/);
+    const before = api.calls.length;
+    await expect(provider.searchFiles(ctx, 'p1', 'arc', undefined, { limit: Number.NaN })).rejects.toThrow(/paging limit/);
+    expect(api.calls.length).toBe(before);
   });
 
   it('stops instead of looping when a full page cannot advance the cursor', async () => {

@@ -259,8 +259,10 @@ export default defineConfig(({ mode }) => {
     // second proxy config that can drift from it.
     daluxRelayRoute(),
     bimcollabRelayRoute(),
-    // buildagil's API and token endpoint send no CORS headers either; the
-    // token route adds the confidential client's secret server-side.
+    // buildagil's API and token endpoint send CORS headers only to origins
+    // buildagil allowlisted (not previews or localhost); the
+    // token route forwards grants for the deployment's client (adding a
+    // secret server-side only for a confidential one).
     buildagilRelayRoute(),
     // Confidential-client token exchange for BIMcollab (#4919): the same
     // handler as api/bcf/oauth/token.ts, secret from .env.local or the shell.

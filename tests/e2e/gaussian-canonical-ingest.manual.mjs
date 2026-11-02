@@ -148,17 +148,24 @@ try {
     state.setSectionPlaneFromFace([1, 0, 0], point);
     return point;
   });
-  await drawn('clipped', shown.gaussian.drawnFrames);
+  const clippedStats = await drawn('clipped', shown.gaussian.drawnFrames);
   await frame('clipped');
-  const clipVsVisible = await compare('clipped', 'visible', ['visible', 'hidden']);
-  const clipVsHidden = await compare('clipped', 'hidden');
-  result.checks.centreClip = { plane, clipVsVisible, clipVsHidden };
-  assert.ok(clipVsVisible.differing > 0, 'the plane culls part of the capture');
-  assert.ok(clipVsHidden.differing > 0, 'the kept side still contributes');
-  assert.equal(clipVsVisible.escaped, 0, 'clipping never draws outside the unclipped contribution');
   await page.screenshot({ path: `${out}/02-centre-clipped.png` });
+  // The plane draws its own gizmo/outline: the clipped contribution is taken
+  // against the same plane with the capture hidden, then must lie inside the
+  // unclipped contribution (visible vs hidden without the plane).
+  await visibility(outcome.id, false);
+  await page.waitForTimeout(300);
+  await frame('clippedHidden');
+  await visibility(outcome.id, true);
+  await drawn('clipped-again', clippedStats.gaussian.drawnFrames);
+  const kept = await compare('clipped', 'clippedHidden', ['visible', 'hidden']);
+  result.checks.centreClip = { plane, kept, unclipped: contribution };
+  assert.ok(kept.differing > 0, 'the kept side still contributes');
+  assert.ok(kept.differing < contribution.differing, 'the plane culls part of the capture');
+  assert.equal(kept.escaped, 0, 'clipping never draws outside the unclipped contribution');
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setSectionPlaneEnabled(false));
-  const unclipped = await drawn('unclipped', (await stats()).gaussian.drawnFrames - 1);
+  const unclipped = await drawn('unclipped', (await stats()).gaussian.drawnFrames);
 
   await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().removeModel(id), outcome.id);
   await page.waitForTimeout(300);

@@ -33,6 +33,8 @@ export const gaussianCaptureEn = {
   'gaussianCapture.state.invalid': 'Not on this renderer. Reload the capture.',
   'gaussianCapture.scale': 'Scale',
   'gaussianCapture.scale.unknown': 'Unknown: source units, not metres',
+  'gaussianCapture.scale.captureOnly': 'Uncalibrated capture: no metric scale.',
+  'gaussianCapture.scale.mixed': 'Scale applies to IFC geometry. Captures are uncalibrated.',
   'gaussianCapture.attribution': 'Attribution',
   'gaussianCapture.limitation.clipping': 'Section planes and boxes cull whole Gaussians by centre; no section caps.',
   'gaussianCapture.limitation.composition': 'Composited over IFC glass and X-ray approximately.',

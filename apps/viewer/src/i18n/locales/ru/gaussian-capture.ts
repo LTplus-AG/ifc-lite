@@ -27,6 +27,8 @@ export const gaussianCaptureRu = {
   "gaussianCapture.state.invalid": "Отсутствует в этом рендерере. Перезагрузите захват.",
   "gaussianCapture.scale": "Масштаб",
   "gaussianCapture.scale.unknown": "Неизвестен: единицы источника, не метры",
+  "gaussianCapture.scale.captureOnly": "Некалиброванная съёмка: метрический масштаб неизвестен.",
+  "gaussianCapture.scale.mixed": "Масштаб относится к геометрии IFC. Съёмки не откалиброваны.",
   "gaussianCapture.attribution": "Авторство",
   "gaussianCapture.limitation.clipping": "Секущие плоскости и рамки отсекают гауссианы целиком по центру; без заливки разреза.",
   "gaussianCapture.limitation.composition": "Наложение поверх стекла IFC и рентген-режима приблизительное.",

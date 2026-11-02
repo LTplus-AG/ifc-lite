@@ -322,3 +322,67 @@ describe('ofType() still rejects names that are not IFC entity names', () => {
     expect(message).toContain("pass 'Unknown'");
   });
 });
+
+/**
+ * #8671: an MEP file puts many unmapped classes in the Unknown bucket at once -
+ * ports, fittings, relationships, units. The single-unclassified-entity stores
+ * above cannot tell "the bucket" from "the entities of this class"; this one
+ * can. Mirrors the issue's repro file.
+ */
+describe('ofType() narrows the Unknown bucket to the queried class', () => {
+  const mepStore = () =>
+    createMockStore({
+      entities: [
+        { expressId: 2, type: 'IFCSIUNIT', globalId: '', name: '' },
+        { expressId: 3, type: 'IFCSIUNIT', globalId: '', name: '' },
+        { expressId: 4, type: 'IFCUNITASSIGNMENT', globalId: '', name: '' },
+        { expressId: 5, type: 'IFCPIPESEGMENT', globalId: 'g5', name: 'Segment' },
+        { expressId: 6, type: 'IFCPIPEFITTING', globalId: 'g6', name: 'Elbow' },
+        { expressId: 7, type: 'IFCDISTRIBUTIONPORT', globalId: 'g7', name: 'Port' },
+        { expressId: 8, type: 'IFCRELNESTS', globalId: 'g8', name: '' },
+      ],
+    });
+
+  it('the fixture really shares one Unknown bucket between the classes', async () => {
+    // Without this the narrowing tests below could pass on a store that
+    // classified the classes itself.
+    const ids = await queryFor(mepStore()).ofType('Unknown').ids();
+    expect(ids).toEqual(expect.arrayContaining([6, 7]));
+    expect(ids.length).toBeGreaterThan(2);
+  });
+
+  it.each([
+    ['IfcPipeFitting', [6]],
+    ['IfcDistributionPort', [7]],
+    ['IfcRelNests', [8]],
+    ['IfcSIUnit', [2, 3]],
+    ['IfcPipeSegment', [5]],
+  ])('%s answers only its own entities', async (name, expected) => {
+    const q = queryFor(mepStore());
+    expect((await q.ofType(name).ids()).sort((a, b) => a - b)).toEqual(expected);
+  });
+
+  it('every result carries the queried class name', () => {
+    const results = queryFor(mepStore()).ofType('IfcDistributionPort').execute();
+    expect(results.map((e) => e.type)).toEqual(['IfcDistributionPort']);
+  });
+
+  it('matches the class name in any casing, with surrounding space', async () => {
+    const q = queryFor(mepStore());
+    expect(await q.ofType('  IFCPIPEFITTING ').ids()).toEqual([6]);
+    expect(await q.ofType('ifcpipefitting').ids()).toEqual([6]);
+  });
+
+  it('unions mapped and unmapped names without repeating the bucket', async () => {
+    const ids = await queryFor(mepStore()).ofType('IfcPipeSegment', 'IfcPipeFitting', 'IfcDistributionPort').ids();
+    expect(ids.sort((a, b) => a - b)).toEqual([5, 6, 7]);
+  });
+
+  it('a standard class absent from the file answers nothing, not the bucket', async () => {
+    expect(await queryFor(mepStore()).ofType('IfcValve').ids()).toEqual([]);
+  });
+
+  it('count() agrees with ids()', async () => {
+    expect(await queryFor(mepStore()).ofType('IfcSIUnit').count()).toBe(2);
+  });
+});

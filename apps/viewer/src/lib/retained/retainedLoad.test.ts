@@ -122,12 +122,16 @@ describe('#7955 M2-C retained scope', () => {
     const failure = loadFailure(new RetainedHostError('out_of_memory', 'unreachable'));
     assert.match(failure?.message ?? '', /"tower\.ifc" did not fit in the retained engine's memory .*Retry loads it with the exact kernel/);
     assert.equal(requestedGeometryKernel(), 'retained', 'nothing switches until the user retries');
-    failure?.retry();
+    const retry = failure?.retry;
+    assert.ok(retry, 'an out-of-memory failure brings its own Retry');
+    retry();
     assert.equal(load.retried(), 1);
     assert.equal(requestedGeometryKernel(), 'exact', 'Retry switched the next load to the exact kernel');
-    for (const other of [new RetainedHostError('worker_crash', 'unreachable'), new Error('out of memory')]) {
-      assert.equal(loadFailure(other), null, 'every other failure keeps the loader wording and its own Retry');
-    }
+    const crash = loadFailure(new RetainedHostError('worker_crash', 'memory access out of bounds'));
+    assert.equal(crash?.message, 'The retained engine stopped while processing "tower.ifc": memory access out of bounds. Reload with exact kernel.',
+      'another trap is a crash in the host\'s words, never "ran out of memory"');
+    assert.equal(crash?.retry, undefined, 'and keeps the load\'s own Retry');
+    assert.equal(loadFailure(new Error('out of memory')), null, 'a failure outside the host keeps the loader wording');
   });
 
   it('M11-Z keeps federation refused for an open final retained model, including an exact add', async () => {

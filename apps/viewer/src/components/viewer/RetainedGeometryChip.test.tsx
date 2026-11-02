@@ -10,7 +10,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, Profiler } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -152,3 +152,43 @@ describe('#7955 M2-C Retained geometry panel', () => {
     assert.equal(panel(), null, 'the panel closes');
   });
 });
+
+describe('#7955 a large refusal list', () => {
+  const many = (count: number) => Array.from({ length: count }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: i % 2 ? 'operation_unsupported' : 'opening_strategy' }));
+
+  it('renders no rows behind a closed panel, and model updates that leave the summary alone do not re-render the chip', () => {
+    const big = summary({ candidates: 20_000, published: 0, cancelled: 0, completeness: 'running', started: true, refused: many(20_000) });
+    seed(big);
+    let commits = 0;
+    render(<><ViewportHud /><Profiler id="chip" onRender={() => { commits++; }}><RetainedGeometryChip reload={() => {}} /></Profiler></>);
+    assert.ok(chip());
+    assert.equal(document.querySelectorAll('[data-retained-row]').length, 0, 'no rows while the panel is closed');
+    const settled = commits;
+    for (let i = 0; i < 5; i++) {
+      // Streaming geometry replaces the model record without touching its summary.
+      act(() => useViewerStore.setState((state) => {
+        const models = new Map(state.models);
+        models.set('m', { ...models.get('m')!, loadState: 'streaming-geometry', maxExpressId: 100 + i });
+        return { models };
+      }));
+    }
+    assert.equal(commits, settled, 'the chip re-renders on its summary, not on every model update');
+    act(() => useViewerStore.setState((state) => {
+      const models = new Map(state.models);
+      models.set('m', { ...models.get('m')!, retainedGeometry: { ...big, published: 1 } });
+      return { models };
+    }));
+    assert.equal(commits, settled + 1, 'a new summary re-renders it once');
+  });
+
+  it('the open panel renders a bounded number of rows and says so; the code filter reaches the rest', () => {
+    seed(summary({ candidates: 20_000, published: 0, cancelled: 0, refused: many(20_000) }));
+    mount();
+    click(chip()!);
+    assert.equal(rowIds().length, 500);
+    assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 500 of 20000 rows/);
+    const select = panel()!.querySelector('select')!;
+    assert.match(select.textContent ?? '', /opening_strategy \(10000\)/);
+  });
+});
+

@@ -110,8 +110,10 @@ export function beginRetainedLoad(
     },
     events: (request) => interruptible(runner, request),
     loadFailure(error) {
-      if (!(error instanceof RetainedHostError) || error.code !== 'out_of_memory') return null;
-      return { message: translate('retainedGeometry.memory', name), retry: exactRetry };
+      if (!(error instanceof RetainedHostError)) return null;
+      if (error.code === 'out_of_memory') return { message: translate('retainedGeometry.memory', name), retry: exactRetry };
+      // The host knows what failed; the exact path's wording would guess (it reads any trap as memory).
+      return { message: translate('retainedGeometry.hostFailure', { ...name, reason: error.message }) };
     },
   };
 }

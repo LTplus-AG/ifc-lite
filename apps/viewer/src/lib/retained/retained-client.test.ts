@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RetainedClient, type RetainedWorker } from './retained-client';
-import { isAllocationFailure, RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
+import { hostFailure, isAllocationFailure, RETAINED_MAX_SOURCE_BYTES, RetainedHostError, watchUncaught } from './retained-protocol';
 import type { RetainedHostEvent, RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 // Protocol fixture only: no engine/geometry implementation is mocked.
@@ -134,14 +134,46 @@ test('#7955 a source too big to clone into the host is an out_of_memory failure,
   }
 });
 
-test('#7955 an allocation failure is a wasm trap without a recorded panic, or an error that says so', () => {
-  const trap = new WebAssembly.RuntimeError('unreachable');
-  assert.equal(isAllocationFailure(trap, false), true, 'a failed allocation aborts without running the panic hook');
-  assert.equal(isAllocationFailure(trap, true), false, 'a panic recorded its location: a genuine panic, not memory');
+test('#7955 an allocation failure is the abort trap without a recorded panic, or an error that names one', () => {
+  for (const text of ['unreachable', 'unreachable executed', 'Unreachable code should not be executed']) {
+    assert.equal(isAllocationFailure(new WebAssembly.RuntimeError(text), false), true, `${text}: a failed allocation aborts without the panic hook`);
+  }
+  assert.equal(isAllocationFailure(new WebAssembly.RuntimeError('unreachable'), true), false, 'a panic recorded its location: a genuine panic');
+  for (const text of ['memory access out of bounds', 'null function or function signature mismatch', 'divide by zero', 'table index is out of bounds']) {
+    assert.equal(isAllocationFailure(new WebAssembly.RuntimeError(text), false), false, `${text} is a crash, not memory`);
+  }
   assert.equal(isAllocationFailure(new RangeError('WebAssembly.Memory.grow(): Maximum memory size exceeded'), false), true);
   assert.equal(isAllocationFailure(new RangeError('Array buffer allocation failed'), false), true);
+  assert.equal(isAllocationFailure(new RangeError('Maximum call stack size exceeded'), false), false);
   assert.equal(isAllocationFailure(new TypeError('session.run is not a function'), false), false);
   assert.equal(isAllocationFailure('engine unavailable', false), false);
+});
+
+test('#7955 a host failure is out_of_memory when it is one, otherwise the phase it failed in', () => {
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('unreachable'), 'worker_crash', false), { code: 'out_of_memory', message: 'unreachable' });
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('unreachable'), 'worker_crash', true), { code: 'worker_crash', message: 'unreachable' });
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('memory access out of bounds'), 'worker_crash', false),
+    { code: 'worker_crash', message: 'memory access out of bounds' });
+  assert.deepEqual(hostFailure(new TypeError('no engine'), 'engine_missing', false), { code: 'engine_missing', message: 'no engine' });
+});
+
+test('#7955 a trap that escapes the awaited run reaches the host as its own uncaught error or rejection', () => {
+  const target = new EventTarget();
+  const seen: unknown[] = [];
+  let claim = true;
+  watchUncaught(target, (error) => { seen.push(error); return claim; });
+  const trap = new WebAssembly.RuntimeError('unreachable');
+  const error = Object.assign(new Event('error', { cancelable: true }), { error: trap, message: 'Uncaught RuntimeError: unreachable' });
+  target.dispatchEvent(error);
+  assert.equal(seen[0], trap, 'the trap object itself, so its kind can be classified');
+  assert.equal(error.defaultPrevented, true, 'a claimed failure is not also reported to the client as a crash');
+  const rejection = Object.assign(new Event('unhandledrejection', { cancelable: true }), { reason: trap });
+  target.dispatchEvent(rejection);
+  assert.equal(seen[1], trap);
+  claim = false;
+  const idle = Object.assign(new Event('error', { cancelable: true }), { error: trap });
+  target.dispatchEvent(idle);
+  assert.equal(idle.defaultPrevented, false, 'outside a run the error stays the client\'s worker crash');
 });
 
 test('#7955 abort, unload, pagehide and iterator abandonment release the host', async (t) => {

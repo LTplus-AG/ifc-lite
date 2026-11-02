@@ -56,18 +56,50 @@ export const RETAINED_MAX_SOURCE_BYTES = 2 ** 31 - 1;
 /** Where the engine's panic hook records a panic; kept in lockstep with `PANIC_STASH_KEY` in rust/wasm-bindings/src/utils.rs. */
 export const RETAINED_PANIC_STASH_KEY = '__ifclite_wasm_panic';
 const ALLOCATION_FAILURE = /out of memory|allocation failed|could not allocate|maximum memory size exceeded/i;
+/** The abort trap, as V8, SpiderMonkey and JavaScriptCore word it. */
+const ABORT_TRAP = /^(?:uncaught )?(?:runtimeerror: )?(?:unreachable(?: executed)?|unreachable code should not be executed)\b/i;
 
 /**
  * Whether a host failure is the engine (or the source hand-off) running out of
- * memory. With `panic = "abort"` a Rust panic and a failed allocation both reach
- * JavaScript as the same `RuntimeError: unreachable`, but only a panic runs the
- * panic hook, which records its location (`utils.rs`). So a WebAssembly trap
- * with no panic recorded since the run began is an allocation failure; so is
- * any error that says it is (a failed structured clone, a failed `ArrayBuffer`).
+ * memory. With `panic = "abort"` a Rust panic and a failed allocation both end
+ * in the same abort trap (`RuntimeError: unreachable`), but only a panic runs
+ * the panic hook, which records its location (`utils.rs`). So an abort trap
+ * with no panic recorded since the run began is a failed allocation; so is an
+ * error that names one (a refused structured clone, a failed `ArrayBuffer`).
+ * Every other trap (out-of-bounds access, a bad indirect call, division by
+ * zero, stack overflow) is a crash, not memory.
  */
 export function isAllocationFailure(error: unknown, panicked: boolean): boolean {
   if (panicked) return false;
-  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return true;
-  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  return ALLOCATION_FAILURE.test(text);
+  const text = error instanceof Error ? error.message : String(error);
+  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return ABORT_TRAP.test(text);
+  const named = error instanceof Error ? `${error.name}: ${error.message}` : text;
+  return ALLOCATION_FAILURE.test(named);
+}
+
+/** Where a run was when it failed: before the engine loaded, before the first event, or after. */
+export type HostPhase = 'engine_missing' | 'startup' | 'worker_crash';
+
+/** The host's terminal error for a failed run: `out_of_memory` when it is one, else the phase it failed in. */
+export function hostFailure(error: unknown, phase: HostPhase, panicked: boolean): { code: RetainedHostErrorCode; message: string } {
+  const message = error instanceof Error ? error.message : String(error);
+  return { code: isAllocationFailure(error, panicked) ? 'out_of_memory' : phase, message };
+}
+
+/**
+ * Route a Worker's own uncaught errors and rejections to `onFailure` (#7955).
+ * The session's run is a wasm-bindgen future polled from microtasks, so a trap
+ * partway through (a failed allocation, a panic) never rejects the awaited
+ * run: it reaches the Worker global as an uncaught error instead. When
+ * `onFailure` claims it, the event is cancelled so it is not also reported to
+ * the client as an anonymous crash.
+ */
+export function watchUncaught(target: EventTarget, onFailure: (error: unknown) => boolean): void {
+  const handle = (event: Event) => {
+    const carrier = event as Event & { error?: unknown; message?: unknown; reason?: unknown };
+    const error = event.type === 'unhandledrejection' ? carrier.reason : carrier.error ?? carrier.message;
+    if (onFailure(error)) event.preventDefault();
+  };
+  target.addEventListener('error', handle);
+  target.addEventListener('unhandledrejection', handle);
 }

@@ -57,8 +57,8 @@ export interface GeometryKernelLoad {
   refuseSource(format: string, byteLength: number, request: Pick<GeometryEventRequest, 'modelId' | 'activity'>): boolean;
   /** The kernel's own event stream; absent for exact, which streams through `processAdaptive`. */
   events?(request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent>;
-  /** A geometry failure this kernel words itself, with its own Retry (a retained run out of memory retries exact). */
-  loadFailure?(error: unknown): { message: string; retry: () => void } | null;
+  /** A geometry failure this kernel words itself; `retry` replaces the load's own (a retained run out of memory retries exact). */
+  loadFailure?(error: unknown): { message: string; retry?: () => void } | null;
 }
 
 const EXACT_GEOMETRY_KERNEL: GeometryKernelLoad = {

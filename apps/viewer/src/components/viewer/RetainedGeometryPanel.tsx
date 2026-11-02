@@ -26,6 +26,8 @@ import { RetainedFaceTable } from './RetainedFaceTable';
 registerEnglish(retainedGeometryEn);
 
 type SortKey = 'expressId' | 'ifcType' | 'code';
+/** Rows rendered at once: a model can refuse tens of thousands of products. */
+const MAX_LISTED_ROWS = 500;
 const KNOWN_CODES = new Set([
   'opening_strategy', 'material_layer_strategy', 'operation_unsupported', 'source_invalid', 'source_changed',
   'incomplete', 'empty_result', 'family_unqualified', 'kernel_failure', 'worker_fault', 'worker_retired',
@@ -51,55 +53,14 @@ export function useObligationList(obligations: readonly string[]): string {
 
 export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOpenChange, reload }: RetainedGeometryPanelProps) {
   const { t } = useTranslation();
-  const [code, setCode] = useState<string>('');
-  const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: 'expressId', descending: false });
   const notApplied = useObligationList(summary.obligationsUnmet);
   const refused = summary.refused.length - summary.cancelled;
-
-  const codes = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of summary.refused) counts.set(row.code, (counts.get(row.code) ?? 0) + 1);
-    return [...counts].sort(([a], [b]) => a.localeCompare(b));
-  }, [summary.refused]);
-  const rows = useMemo(() => {
-    const visible = code ? summary.refused.filter((row) => row.code === code) : [...summary.refused];
-    const direction = sort.descending ? -1 : 1;
-    return visible.sort((a, b) => direction * (sort.key === 'expressId'
-      ? a.expressId - b.expressId
-      : a[sort.key].localeCompare(b[sort.key]) || a.expressId - b.expressId));
-  }, [summary.refused, code, sort]);
-
-  const select = (row: RetainedUnpublishedRow) => {
-    // Two-channel selection (AGENTS.md): the global id drives 3D highlight,
-    // the {modelId, expressId} ref drives the properties panel.
-    const state = useViewerStore.getState();
-    state.setSelectedEntityIds([]);
-    state.setSelectedEntityId(toGlobalIdFromModels(state.models, modelId, row.expressId));
-    state.setSelectedEntity({ modelId, expressId: row.expressId });
-  };
   const reloadExact = () => {
     if (!sourceFile) return;
     chooseGeometryKernel('exact');
     onOpenChange(false);
     void reload(sourceFile);
   };
-  const sortBy = (key: SortKey) => setSort((prev) => ({ key, descending: prev.key === key && !prev.descending }));
-  const header = (key: SortKey | null, label: TranslationKey) => (
-    <th scope="col" className="px-2 py-1 text-left font-medium" aria-sort={key && sort.key === key ? (sort.descending ? 'descending' : 'ascending') : undefined}>
-      {key ? (
-        <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => sortBy(key)}
-          aria-label={t('retainedGeometry.panel.sortBy', { column: t(label) })}>
-          {t(label)}<ArrowUpDown aria-hidden className="h-3 w-3" />
-        </button>
-      ) : t(label)}
-    </th>
-  );
-  const message = (row: RetainedUnpublishedRow) => KNOWN_CODES.has(row.code)
-    ? t(`retainedGeometry.code.${row.code}` as TranslationKey)
-    : t('retainedGeometry.code.other', { code: row.code });
-  const origin = (row: RetainedUnpublishedRow) => !row.origin ? '' : row.origin.entity !== undefined
-    ? t('retainedGeometry.panel.originEntity', { cause: row.origin.cause, site: row.origin.site, entity: String(row.origin.entity) })
-    : t('retainedGeometry.panel.origin', { cause: row.origin.cause, site: row.origin.site });
   const state = summary.failure
     ? t('retainedGeometry.panel.state.failure', { reason: summary.failure })
     : summary.completeness === 'running' ? t('retainedGeometry.panel.state.running')
@@ -123,54 +84,9 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
           {notApplied && <p className="text-muted-foreground">{t('retainedGeometry.panel.notApplied', { obligations: notApplied })}</p>}
         </div>
         <RetainedFaceTable modelId={modelId} faces={summary.faces} />
-        {summary.refused.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('retainedGeometry.panel.none')}</p>
-        ) : (
-          <>
-            <label className="flex items-center gap-2 text-sm">
-              {t('retainedGeometry.panel.filterLabel')}
-              <select className="rounded border bg-transparent px-1.5 py-0.5 text-sm" value={code} onChange={(event) => setCode(event.target.value)}>
-                <option value="">{t('retainedGeometry.panel.filterAll', { count: String(summary.refused.length) })}</option>
-                {codes.map(([value, count]) => (
-                  <option key={value} value={value}>{t('retainedGeometry.panel.filterCode', { code: value, count: String(count) })}</option>
-                ))}
-              </select>
-            </label>
-            <div className="max-h-80 overflow-auto rounded border">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-background text-muted-foreground">
-                  <tr>
-                    {header('expressId', 'retainedGeometry.panel.column.id')}
-                    {header('ifcType', 'retainedGeometry.panel.column.ifcType')}
-                    {header('code', 'retainedGeometry.panel.column.code')}
-                    {header(null, 'retainedGeometry.panel.column.origin')}
-                    {header(null, 'retainedGeometry.panel.column.message')}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 && (
-                    <tr><td colSpan={5} className="px-2 py-2 text-muted-foreground">{t('retainedGeometry.panel.noMatches')}</td></tr>
-                  )}
-                  {rows.map((row) => (
-                    <tr key={row.expressId} data-retained-row={row.expressId} data-code={row.code}
-                      className="cursor-pointer border-t hover:bg-muted/50" onClick={() => select(row)}>
-                      <td className="px-2 py-1 tabular-nums">
-                        <button type="button" className="hover:underline" aria-label={t('retainedGeometry.panel.selectRow', { id: String(row.expressId) })}
-                          onClick={(event) => { event.stopPropagation(); select(row); }}>
-                          {t('retainedGeometry.panel.rowId', { id: String(row.expressId) })}
-                        </button>
-                      </td>
-                      <td className="px-2 py-1">{row.ifcType || t('retainedGeometry.panel.unknownType')}</td>
-                      <td className="px-2 py-1 font-mono">{row.code}</td>
-                      <td className="px-2 py-1">{origin(row)}</td>
-                      <td className="px-2 py-1">{message(row)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        {summary.refused.length === 0
+          ? <p className="text-sm text-muted-foreground">{t('retainedGeometry.panel.none')}</p>
+          : <UnpublishedRows modelId={modelId} refused={summary.refused} />}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <RetainedEngineDetails />
           <div className="grid justify-items-end gap-1">
@@ -182,5 +98,107 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The unpublished-product table. It lives inside the dialog content, which is
+ * mounted only while the panel is open, so a running model's summary updates
+ * never build rows behind a closed panel. At most `MAX_LISTED_ROWS` rows are
+ * rendered; the code filter, with its counts, reaches the rest.
+ */
+function UnpublishedRows({ modelId, refused }: { modelId: string; refused: readonly RetainedUnpublishedRow[] }) {
+  const { t } = useTranslation();
+  const [code, setCode] = useState<string>('');
+  const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: 'expressId', descending: false });
+  const codes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of refused) counts.set(row.code, (counts.get(row.code) ?? 0) + 1);
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  }, [refused]);
+  const rows = useMemo(() => {
+    const visible = code ? refused.filter((row) => row.code === code) : [...refused];
+    const direction = sort.descending ? -1 : 1;
+    return visible.sort((a, b) => direction * (sort.key === 'expressId'
+      ? a.expressId - b.expressId
+      : a[sort.key].localeCompare(b[sort.key]) || a.expressId - b.expressId));
+  }, [refused, code, sort]);
+
+  const select = (row: RetainedUnpublishedRow) => {
+    // Two-channel selection (AGENTS.md): the global id drives 3D highlight,
+    // the {modelId, expressId} ref drives the properties panel.
+    const state = useViewerStore.getState();
+    state.setSelectedEntityIds([]);
+    state.setSelectedEntityId(toGlobalIdFromModels(state.models, modelId, row.expressId));
+    state.setSelectedEntity({ modelId, expressId: row.expressId });
+  };
+  const sortBy = (key: SortKey) => setSort((prev) => ({ key, descending: prev.key === key && !prev.descending }));
+  const header = (key: SortKey | null, label: TranslationKey) => (
+    <th scope="col" className="px-2 py-1 text-left font-medium" aria-sort={key && sort.key === key ? (sort.descending ? 'descending' : 'ascending') : undefined}>
+      {key ? (
+        <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => sortBy(key)}
+          aria-label={t('retainedGeometry.panel.sortBy', { column: t(label) })}>
+          {t(label)}<ArrowUpDown aria-hidden className="h-3 w-3" />
+        </button>
+      ) : t(label)}
+    </th>
+  );
+  const message = (row: RetainedUnpublishedRow) => KNOWN_CODES.has(row.code)
+    ? t(`retainedGeometry.code.${row.code}` as TranslationKey)
+    : t('retainedGeometry.code.other', { code: row.code });
+  const origin = (row: RetainedUnpublishedRow) => !row.origin ? '' : row.origin.entity !== undefined
+    ? t('retainedGeometry.panel.originEntity', { cause: row.origin.cause, site: row.origin.site, entity: String(row.origin.entity) })
+    : t('retainedGeometry.panel.origin', { cause: row.origin.cause, site: row.origin.site });
+
+  return (
+    <>
+      <label className="flex items-center gap-2 text-sm">
+        {t('retainedGeometry.panel.filterLabel')}
+        <select className="rounded border bg-transparent px-1.5 py-0.5 text-sm" value={code} onChange={(event) => setCode(event.target.value)}>
+          <option value="">{t('retainedGeometry.panel.filterAll', { count: String(refused.length) })}</option>
+          {codes.map(([value, count]) => (
+            <option key={value} value={value}>{t('retainedGeometry.panel.filterCode', { code: value, count: String(count) })}</option>
+          ))}
+        </select>
+      </label>
+      <div className="max-h-80 overflow-auto rounded border">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-background text-muted-foreground">
+            <tr>
+              {header('expressId', 'retainedGeometry.panel.column.id')}
+              {header('ifcType', 'retainedGeometry.panel.column.ifcType')}
+              {header('code', 'retainedGeometry.panel.column.code')}
+              {header(null, 'retainedGeometry.panel.column.origin')}
+              {header(null, 'retainedGeometry.panel.column.message')}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="px-2 py-2 text-muted-foreground">{t('retainedGeometry.panel.noMatches')}</td></tr>
+            )}
+            {rows.slice(0, MAX_LISTED_ROWS).map((row) => (
+              <tr key={row.expressId} data-retained-row={row.expressId} data-code={row.code}
+                className="cursor-pointer border-t hover:bg-muted/50" onClick={() => select(row)}>
+                <td className="px-2 py-1 tabular-nums">
+                  <button type="button" className="hover:underline" aria-label={t('retainedGeometry.panel.selectRow', { id: String(row.expressId) })}
+                    onClick={(event) => { event.stopPropagation(); select(row); }}>
+                    {t('retainedGeometry.panel.rowId', { id: String(row.expressId) })}
+                  </button>
+                </td>
+                <td className="px-2 py-1">{row.ifcType || t('retainedGeometry.panel.unknownType')}</td>
+                <td className="px-2 py-1 font-mono">{row.code}</td>
+                <td className="px-2 py-1">{origin(row)}</td>
+                <td className="px-2 py-1">{message(row)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > MAX_LISTED_ROWS && (
+        <p className="text-xs text-muted-foreground" data-retained-rows-capped="">
+          {t('retainedGeometry.panel.rowsCapped', { shown: String(MAX_LISTED_ROWS), count: String(rows.length) })}
+        </p>
+      )}
+    </>
   );
 }

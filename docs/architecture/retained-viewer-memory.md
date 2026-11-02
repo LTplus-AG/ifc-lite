@@ -87,12 +87,29 @@ through the engine's own `malloc` export failed after 15 blocks, at a
   federated add, a non-STEP source, or a source of 2 GiB or more. Retry loads it
   with the exact kernel.
 - Below that, the engine's own allocations decide. A failed allocation aborts
-  the WASM instance, and the host Worker reports `out_of_memory`: a trap with
-  no panic recorded since the run began (only a panic runs the engine's panic
-  hook), or an error that names an allocation failure, such as a refused
-  clone. The load ends with "did not fit in the retained engine's memory", and
-  Retry switches that load to the exact kernel. The trapped Worker is
-  terminated, which also releases its heap. There is never an automatic exact
-  fallback.
-- Every other host failure (startup, engine missing, a genuine panic, a stall)
-  keeps its existing load error and Retry.
+  the WASM instance with the abort trap (`RuntimeError: unreachable`). A Rust
+  panic ends in the same trap, but only a panic runs the engine's panic hook,
+  which records its location. So the host Worker reports `out_of_memory` for an
+  abort trap with no panic recorded since the run began, and for an error that
+  names an allocation failure, such as a refused clone. Every other trap
+  (out-of-bounds access, a bad indirect call) stays a crash.
+- The run is a wasm-bindgen future polled from microtasks, so a trap partway
+  through does not reject the awaited run: it reaches the Worker as its own
+  uncaught error or rejection. The Worker handles those while a run is active,
+  classifies them the same way and cancels the event, so the client gets one
+  typed error instead of an anonymous crash.
+- An out-of-memory load ends with "did not fit in the retained engine's
+  memory", and Retry switches that load to the exact kernel. The trapped Worker
+  is terminated, which also releases its heap. There is never an automatic
+  exact fallback.
+- Every other host failure (startup, engine missing, a genuine panic, another
+  trap, a stall) keeps its existing load error and Retry.
+- A model over the old cap can refuse tens of thousands of products. The
+  viewport chip re-renders only when the summary changes (at most once a
+  second), the panel builds its table only while it is open, and the table
+  renders at most 500 rows; the code filter and its counts reach the rest.
+- A separate 256 MiB limit remains in the geometry router's annotation-fill
+  acceptance: its style lookup (`rust/core/src/decoder/styled_items.rs`)
+  refuses sources over 256 MiB, so on such a source every
+  `IfcAnnotationFillArea` is refused as an unsupported item, styled or not.
+  This change does not touch it.

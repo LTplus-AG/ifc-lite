@@ -378,6 +378,20 @@ describe('ofType() narrows the Unknown bucket to the queried class', () => {
     expect(ids.sort((a, b) => a - b)).toEqual([5, 6, 7]);
   });
 
+  it("'Unknown' alongside an unmapped name returns each entity once", async () => {
+    const q = queryFor(mepStore());
+    const bucket = await q.ofType('Unknown').ids();
+    const ids = await q.ofType('Unknown', 'IfcPipeFitting').ids();
+    expect(ids.sort((a, b) => a - b)).toEqual([...bucket].sort((a, b) => a - b));
+    expect(await q.ofType('IfcPipeFitting', 'Unknown').count()).toBe(bucket.length);
+  });
+
+  it('a class named twice is returned once', async () => {
+    const q = queryFor(mepStore());
+    expect(await q.ofType('IfcPipeFitting', 'IFCPIPEFITTING').ids()).toEqual([6]);
+    expect(await q.ofType('IfcPipeSegment', 'IfcPipeSegment').ids()).toEqual([5]);
+  });
+
   it('a standard class absent from the file answers nothing, not the bucket', async () => {
     expect(await queryFor(mepStore()).ofType('IfcValve').ids()).toEqual([]);
   });

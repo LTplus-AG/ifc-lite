@@ -156,11 +156,14 @@ export class EntityQuery {
     if (this.idFilter) return [...this.idFilter];
     if (this.typeFilter) {
       const ids: number[] = [];
-      for (const typeEnum of this.typeFilter) {
+      // A Set, so a class named twice is read once.
+      const typeEnums = new Set(this.typeFilter);
+      for (const typeEnum of typeEnums) {
         // @raw-entity-enumeration-ok EntityQuery takes only a parsed store, with no mutation view; fluent bulk queries describe that source snapshot
         ids.push(...this.store.entities.getByType(typeEnum));
       }
-      if (this.unmappedTypeNames.size > 0) {
+      // A literal 'Unknown' already pushed the whole bucket, narrowed names included.
+      if (this.unmappedTypeNames.size > 0 && !typeEnums.has(IfcTypeEnum.Unknown)) {
         // @raw-entity-enumeration-ok same parsed-store snapshot as above; narrowed per entity by its own class name
         for (const id of this.store.entities.getByType(IfcTypeEnum.Unknown)) {
           if (this.unmappedTypeNames.has(resolveEntityTypeName(this.store, id).toUpperCase())) {

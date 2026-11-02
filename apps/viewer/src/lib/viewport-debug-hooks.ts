@@ -136,6 +136,8 @@ export function installViewportDebugHooks(
     return { hiddenIds: [...current.hiddenIds], isolatedIds: current.isolatedIds ? [...current.isolatedIds] : null };
   };
   host.__ifc_lite_annotation_line_vertices__ = annotationLineVertexCount;
+  // The adapter's own state for an exact handle taken from the store (#8565).
+  host.__ifc_lite_gaussian_handle_state__ = (handle: Parameters<Renderer['gaussianSplats']['getState']>[0]) => renderer.gaussianSplats.getState(handle);
   host.__ifc_lite_visibility_reasons__ = () => activeVisibilityReasons(useViewerStore.getState())
     .map(({ id, resetPolicy }) => ({ id, resetPolicy }));
   host.__ifc_lite_scene_owner__ = (globalId: number): SceneOwnerSnapshot => {
@@ -206,6 +208,7 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;
   delete host.__ifc_lite_annotation_line_vertices__;
+  delete host.__ifc_lite_gaussian_handle_state__;
   delete host.__ifc_lite_visibility_reasons__;
   delete host.__ifc_lite_scene_owner__;
   delete host.__ifc_lite_scene_face_hits__;

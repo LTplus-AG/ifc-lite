@@ -4,8 +4,10 @@
 // #8565: canonical Gaussian ingestion in the real production viewer bundle.
 // Build with VITE_GAUSSIAN_SPLATS=internal-unqualified, serve apps/viewer/dist
 // with the capture under /_fixtures/, then run under ifc-gpu-check. The capture
-// enters through `?model=` -> useIfcLoader.loadFile, the canonical loader, and
-// is decoded by the production worker bundle. Not a timing or release witness.
+// enters through `?model=` -> useIfcLoader.loadFile and the production decoder
+// worker chunk. Frames are renderer-owned readbacks with an unchanged camera:
+// the hidden frame is the reference for the splat contribution. Internal,
+// unqualified evidence only: not a timing, hardware-budget or release witness.
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
@@ -24,44 +26,60 @@ const browser = process.env.IFC_GPU_CDP_URL
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
 const page = await context.newPage();
 const errors = [];
-const workers = [];
+const gpuConsole = [];
+const workers = { started: [], closed: [] };
 page.on('pageerror', error => errors.push(error.message));
-page.on('worker', worker => workers.push(worker.url()));
-const result = { base, capture, placement, errors, workers, checks: {} };
+page.on('console', message => {
+  if (message.type() === 'error' && /gpu|webgpu|gaussian|validation|device lost/i.test(message.text())) gpuConsole.push(message.text());
+});
+page.on('worker', worker => {
+  workers.started.push(worker.url());
+  worker.on('close', () => workers.closed.push(worker.url()));
+});
+const result = { base, capture, placement, errors, gpuConsole, workers, checks: {} };
 
-/** Renderer-owned colour readback, decoded in the page: pixels unlike the corner background. */
-const splatPixels = () => page.evaluate(async () => {
+const visibility = (id, visible) => page.evaluate(({ id, visible }) =>
+  globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, visible), { id, visible });
+const stats = () => page.evaluate(() => {
+  const s = globalThis.__ifc_lite_render_stats__?.();
+  return s ? { adapter: s.adapter, gaussian: s.gaussianSplats } : null;
+});
+/** Store one renderer-owned frame in the page under `label`. */
+const frame = (label) => page.evaluate(async (label) => {
   const url = await globalThis.__ifc_lite_capture_color_frame__?.();
   if (!url) return null;
   const bitmap = await createImageBitmap(await (await fetch(url)).blob());
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   const context = canvas.getContext('2d');
   context.drawImage(bitmap, 0, 0);
-  const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
-  const background = data.slice(0, 3);
-  let differing = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    if (Math.abs(data[i] - background[0]) + Math.abs(data[i + 1] - background[1]) + Math.abs(data[i + 2] - background[2]) > 24) differing++;
+  (globalThis.__witnessFrames ??= {})[label] = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+  return { width: bitmap.width, height: bitmap.height };
+}, label);
+/** Pixel comparisons between stored frames, done in the page. */
+const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
+  const f = globalThis.__witnessFrames, x = f[a], y = f[b];
+  const differs = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 6;
+  let differing = 0, escaped = 0;
+  for (let i = 0; i < x.length; i += 4) {
+    if (differs(x, y, i)) {
+      differing++;
+      // `outside`: [frame, reference] whose equal pixels are outside the contribution.
+      if (outside && !differs(f[outside[0]], f[outside[1]], i)) escaped++;
+    }
   }
-  return { differing, total: data.length / 4 };
-});
-const stats = () => page.evaluate(() => {
-  const s = globalThis.__ifc_lite_render_stats__?.();
-  return s ? { adapter: s.adapter, gaussian: s.gaussianSplats } : null;
-});
-const settle = async (label) => {
-  const before = (await stats())?.gaussian?.drawnFrames ?? 0;
-  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.zoomIn?.());
-  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.zoomOut?.());
-  await page.waitForTimeout(400);
-  const after = await stats();
-  result.checks[`${label}.frames`] = { before, after: after?.gaussian?.drawnFrames };
-  return after;
+  return { differing, escaped, total: x.length / 4 };
+}, { a, b, outside });
+const drawn = async (label, previous) => {
+  for (let i = 0; i < 50; i++) {
+    const s = await stats();
+    if ((s?.gaussian?.drawnFrames ?? 0) > previous) return s;
+    await page.waitForTimeout(100);
+  }
+  throw new Error(`${label}: no new Gaussian pass was drawn`);
 };
 
 try {
-  const query = `model=${encodeURIComponent(capture)}${placement ? `&gaussianPlacement=${placement}` : ''}`;
-  await page.goto(`${base}/?${query}`);
+  await page.goto(`${base}/?model=${encodeURIComponent(capture)}${placement ? `&gaussianPlacement=${placement}` : ''}`);
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__);
   const outcome = await page.evaluate(() => new Promise((resolve) => {
     const store = globalThis.__ifc_lite_viewer_store__;
@@ -76,10 +94,11 @@ try {
       if (models.some(m => m.loadState === 'error') || (state.error && !state.loading)) {
         resolve({ ok: false, error: String(state.error ?? models.map(m => m.loadError).join(', ')), phases });
       } else if (model && (model.loadState ?? 'complete') === 'complete' && !state.loading) {
+        globalThis.__witnessHandle = model.gaussianSplat.handle;
         const { handle, ...record } = model.gaussianSplat;
-        resolve({ ok: true, phases, decodeToPublishMs: performance.now() - started, id: model.id, name: model.name,
-          loadPath: model.loadPath, loadFormat: model.loadFormat, handle: { ...handle }, frozen: Object.isFrozen(handle),
-          record: { ...record, placement: [...record.placement] }, entityCount: model.ifcDataStore?.entityCount ?? 0 });
+        resolve({ ok: true, phases, id: model.id, name: model.name, loadPath: model.loadPath, loadFormat: model.loadFormat,
+          handle: { ...handle }, frozen: Object.isFrozen(handle), record: { ...record, placement: [...record.placement] },
+          entityCount: model.ifcDataStore?.entityCount ?? 0, models: models.length });
       } else if (performance.now() - started > 300_000) resolve({ ok: false, error: 'timeout', phases });
       else setTimeout(tick, 20);
     };
@@ -87,35 +106,39 @@ try {
   }));
   result.load = outcome;
   assert.equal(outcome.ok, true, `canonical load failed: ${outcome.error}; page errors: ${errors.join('; ')}`);
+  assert.deepEqual(outcome.phases.slice(-3), ['Decoding Gaussian PLY capture', 'Uploading Gaussian capture', 'Complete']);
   assert.equal(outcome.loadPath, 'gaussian');
   assert.equal(outcome.frozen, true, 'the renderer-issued handle itself is on the model');
   assert.equal(outcome.entityCount, 0, 'no IFC entity is invented for a capture');
   assert.equal(outcome.record.calibration, 'uncalibrated');
   assert.equal(outcome.record.placementOrigin, placement ? 'explicit' : 'source');
-  assert.ok(workers.some(url => /gaussianDecode/.test(url)), `production decoder worker chunk ran: ${workers.join(', ')}`);
+  const decoder = workers.started.filter(url => /gaussianDecode\.worker/.test(url));
+  assert.equal(decoder.length, 1, `one production decoder worker chunk ran: ${workers.started.join(', ')}`);
 
-  const resident = await settle('resident');
-  result.checks.resident = resident;
-  assert.equal(resident?.gaussian?.assets, 1);
-  assert.equal(resident.gaussian.splats, outcome.record.count);
-  assert.ok(resident.gaussian.gpuBytes > 0, 'resident on the current device');
-  assert.ok(resident.gaussian.drawnFrames > 0, 'the viewer frame drew the splat pass');
-  const visible = await splatPixels();
-  result.checks.visiblePixels = visible;
-  assert.ok(visible && visible.differing > visible.total * 0.02, 'the capture is visible in renderer-owned pixels');
+  const first = await drawn('resident', 0);
+  const state = await page.evaluate(() => globalThis.__ifc_lite_gaussian_handle_state__?.(globalThis.__witnessHandle));
+  result.checks.resident = { stats: first, state };
+  assert.deepEqual(state, { state: 'resident' }, 'uploaded on the current device generation');
+  assert.equal(first.gaussian.assets, 1);
+  assert.equal(first.gaussian.splats, outcome.record.count);
+  assert.ok(first.gaussian.gpuBytes > 0);
+
+  await frame('visible');
   await page.screenshot({ path: `${out}/01-loaded.png` });
+  await visibility(outcome.id, false);
+  const hidden = await drawn('hidden', first.gaussian.drawnFrames).catch(async () => stats());
+  await frame('hidden');
+  await visibility(outcome.id, true);
+  const shown = await drawn('shown', hidden?.gaussian?.drawnFrames ?? 0);
+  await frame('shown');
+  const contribution = await compare('visible', 'hidden');
+  const restored = await compare('visible', 'shown');
+  result.checks.hideShow = { hidden: hidden?.gaussian, shown: shown.gaussian, contribution, restored };
+  assert.equal(hidden?.gaussian?.visibleAssetSplats, 0);
+  assert.ok(contribution.differing > contribution.total * 0.02, 'the splat pass contributes pixels beyond the background');
+  assert.equal(restored.differing, 0, 'show restores the exact reference frame');
 
-  await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, false), outcome.id);
-  const hidden = await settle('hidden');
-  const hiddenPixels = await splatPixels();
-  result.checks.hidden = { stats: hidden, pixels: hiddenPixels };
-  assert.equal(hidden.gaussian.visibleAssetSplats, 0);
-  assert.ok(hiddenPixels.differing < visible.differing * 0.1, 'hiding the model hides the capture');
-  await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, true), outcome.id);
-  await settle('shown');
-
-  // Centre clipping (disclosed limitation): a vertical plane through the
-  // placed capture's centre culls whole Gaussians by centre; no caps.
+  // Disclosed centre clipping: a vertical plane through the placed capture's centre.
   const plane = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const record = [...state.models.values()].find(m => m.gaussianSplat).gaussianSplat;
@@ -125,23 +148,33 @@ try {
     state.setSectionPlaneFromFace([1, 0, 0], point);
     return point;
   });
-  const clipped = await settle('clipped');
-  const clippedPixels = await splatPixels();
-  result.checks.centreClip = { plane, stats: clipped, pixels: clippedPixels };
-  assert.ok(clippedPixels.differing > 0 && clippedPixels.differing < visible.differing, 'the section plane culls part of the capture by centre');
+  await drawn('clipped', shown.gaussian.drawnFrames);
+  await frame('clipped');
+  const clipVsVisible = await compare('clipped', 'visible', ['visible', 'hidden']);
+  const clipVsHidden = await compare('clipped', 'hidden');
+  result.checks.centreClip = { plane, clipVsVisible, clipVsHidden };
+  assert.ok(clipVsVisible.differing > 0, 'the plane culls part of the capture');
+  assert.ok(clipVsHidden.differing > 0, 'the kept side still contributes');
+  assert.equal(clipVsVisible.escaped, 0, 'clipping never draws outside the unclipped contribution');
   await page.screenshot({ path: `${out}/02-centre-clipped.png` });
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setSectionPlaneEnabled(false));
-  await settle('unclipped');
+  const unclipped = await drawn('unclipped', (await stats()).gaussian.drawnFrames - 1);
 
   await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().removeModel(id), outcome.id);
-  const removed = await settle('removed');
-  const removedPixels = await splatPixels();
-  result.checks.removed = { stats: removed, pixels: removedPixels };
+  await page.waitForTimeout(300);
+  await frame('removed');
+  const removed = await stats();
+  const baseline = await compare('removed', 'hidden');
+  const handleAfter = await page.evaluate(() => globalThis.__ifc_lite_gaussian_handle_state__?.(globalThis.__witnessHandle));
+  result.checks.removed = { stats: removed, baseline, handleAfter, unclipped: unclipped.gaussian };
   assert.equal(removed.gaussian.assets, 0, 'removal frees the renderer asset');
   assert.equal(removed.gaussian.gpuBytes, 0);
-  assert.ok(removedPixels.differing < visible.differing * 0.1, 'nothing of the capture is drawn after removal');
+  assert.deepEqual(handleAfter, { state: 'invalid' }, 'no surviving handle');
+  assert.equal(baseline.differing, 0, 'the frame returns to the capture-free reference');
+  assert.ok(decoder.every(url => workers.closed.includes(url)), 'the decoder worker ended with its request');
   await page.screenshot({ path: `${out}/03-removed.png` });
   assert.deepEqual(errors, [], `uncaught page errors: ${errors.join('; ')}`);
+  assert.deepEqual(gpuConsole, [], `GPU errors: ${gpuConsole.join('; ')}`);
   result.verdict = 'pass';
 } catch (error) {
   result.verdict = 'fail';

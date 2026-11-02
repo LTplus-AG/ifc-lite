@@ -154,7 +154,7 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt,
         sharedRtcOffset,
-      }, { sourceHandle: options?.sourceHandle, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianAttribution: options?.gaussianAttribution });
+      }, { sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianAttribution: options?.gaussianAttribution });
 
       // Before the session check: a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
       if (useViewerStore.getState().models.has(modelId)) convergeFederationRtcFrame();
@@ -186,7 +186,7 @@ export function useIfcFederation(
       console.error('[useIfc] addModel failed:', err);
       if (isCurrent) {
         reportError(err instanceof Error ? err.message : 'Unknown error', 'federated_add_failed',
-          () => { void addModel(file, options); });
+          options?.retryOperation ?? (() => { void addModel(file, options); }));
         setLoading(false);
       }
       return null;

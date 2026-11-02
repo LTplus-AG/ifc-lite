@@ -17,7 +17,8 @@ import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel } from '@/test/scan-federation';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker } from '@/test/gaussian-loader-harness';
-import { useIfcLoader } from './useIfcLoader.js';
+import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
+import { ViewportLoadErrorCard } from '@/components/viewer/ViewportLoadErrorCard';
 import { useIfcFederation } from './useIfcFederation.js';
 import { setGlobalRendererRef } from './useBCF.js';
 
@@ -27,12 +28,19 @@ const CENTRES: Array<[number, number, number]> = [[1, 2, 3], [4, 5, 6], [-2, 0, 
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
 let federation: ReturnType<typeof useIfcFederation>;
 let qualifiedReload = true;
-function Probe(): null {
+let otherFederation: ReturnType<typeof useIfcFederation>;
+let afterFederationLoad: ((target?: LoadTarget) => Promise<void>) | null = null;
+function Probe() {
   const loader = useIfcLoader();
   hookApi = loader;
-  federation = useIfcFederation((file, target, options) =>
-    loader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) }));
-  return null;
+  federation = useIfcFederation(async (file, target, options) => {
+    await loader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) });
+    await afterFederationLoad?.(target);
+  });
+  const otherLoader = useIfcLoader();
+  otherFederation = useIfcFederation((file, target, options) =>
+    otherLoader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) }));
+  return <ViewportLoadErrorCard />;
 }
 
 let root: Root | null = null;
@@ -55,6 +63,7 @@ function assertNoHeldSlot(): void {
 beforeEach(async () => {
   hookApi = null;
   qualifiedReload = true;
+  afterFederationLoad = null;
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
   modelIndices(new Map());
@@ -220,7 +229,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     const result = await act(async () => reloadGaussianCapture('kept', {
       removeModel: (id) => useViewerStore.getState().removeModel(id),
       addModel: async (file, options) => {
-        const id = crypto.randomUUID();
+        const id = options.modelId!;
         await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement });
         return useViewerStore.getState().models.has(id) ? id : null;
       },
@@ -276,6 +285,93 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     assert.equal(useViewerStore.getState().modelTagAssignments.has('retry'), false);
     await load(source, { kind: 'federated', modelId: 'unrelated' }, QUALIFIED);
     assert.equal(useViewerStore.getState().modelTagAssignments.has('unrelated'), false, 'same filename alone never inherits tags');
+  });
+
+  for (const independent of [false, true]) it(`concurrent reloads share one transaction across ${independent ? 'independent hooks' : 'one federation hook'} (#8566)`, async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('concurrent.ply', CENTRES), { kind: 'federated', modelId: 'old' }, QUALIFIED);
+    const tag = useViewerStore.getState().createModelTag('Concurrent capture')!;
+    useViewerStore.getState().assignModelTags(['old'], [tag]);
+    const created = worker.stats.created;
+    const release = worker.hold();
+    await act(async () => {
+      const first = reloadGaussianCapture('old', federation);
+      let second: ReturnType<typeof reloadGaussianCapture>;
+      try {
+        for (let i = 0; i < 100 && worker.stats.created === created; i++) await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(worker.stats.created, created + 1, 'first reload is decoding before the second click');
+        second = reloadGaussianCapture('old', independent ? otherFederation : federation);
+        assert.equal(first, second, 'all callers await the same owned replacement');
+      } finally { release(); }
+      const [a, b] = await Promise.all([first, second!]);
+      assert.ok(a.ok && b.ok);
+      assert.equal(a.modelId, b.modelId);
+      assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get(a.modelId)!], [tag]);
+    });
+    assert.equal(worker.stats.created - created, 1, 'only one decode/admission was started');
+    assert.equal(useViewerStore.getState().models.size, 1);
+    assert.equal(splats().getStats().assets, 1);
+    assert.equal(model('old'), undefined);
+  });
+
+  it('cleans a published replacement when an unrelated add supersedes its federation session (#8566)', async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('old.ply', CENTRES), { kind: 'federated', modelId: 'old' }, QUALIFIED);
+    const original = model('old');
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let replacementId: string | undefined;
+    // Hold between real loadFile publication and the real federation session
+    // check: another add then makes the first add return null despite publishing.
+    afterFederationLoad = async target => {
+      if (target?.modelId === 'unrelated') return;
+      replacementId = target?.modelId;
+      await held;
+    };
+    await act(async () => {
+      const pending = reloadGaussianCapture('old', federation);
+      try {
+        for (let i = 0; i < 100 && !replacementId; i++) await new Promise(resolve => setTimeout(resolve, 10));
+        assert.ok(replacementId && model(replacementId)?.gaussianSplat);
+        assert.equal(await federation.addModel(gaussianPly('other.ply', CENTRES), { modelId: 'unrelated' }), 'unrelated');
+      } finally { release(); }
+      assert.deepEqual(await pending, { ok: false, reason: 'not-loaded' });
+    });
+    assert.equal(model('old'), original, 'original retry row survives');
+    assert.equal(model(replacementId!), undefined, 'published losing row is removed');
+    assert.equal(useViewerStore.getState().models.size, 2);
+    assert.equal(splats().getStats().assets, 2, 'only original and unrelated assets remain');
+  });
+
+  it('the mounted error-card Retry completes the whole failed reload transaction (#8566)', async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    const source = gaussianPly('retry-click.ply', CENTRES);
+    await load(source, { kind: 'federated', modelId: 'old', name: 'Tagged survey', visible: false },
+      { ...QUALIFIED, gaussianAttribution: 'Survey credit' });
+    const tag = useViewerStore.getState().createModelTag('Retry click')!;
+    useViewerStore.getState().assignModelTags(['old'], [tag]);
+    gpu.loseDevice();
+    gpu = gaussianTestRenderer({ maxStorageBufferBindingSize: 16, maxBufferSize: 16 });
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    assert.deepEqual(await act(async () => reloadGaussianCapture('old', federation)), { ok: false, reason: 'not-loaded' });
+    assert.ok(model('old'));
+    const retry = [...container!.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+    assert.ok(retry, 'the actual canonical error card offers Retry');
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    await act(async () => {
+      retry.click();
+      for (let i = 0; i < 100 && model('old'); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    });
+    assert.equal(model('old'), undefined, 'Retry removed the old row after replacement committed');
+    const models = [...useViewerStore.getState().models.values()];
+    assert.equal(models.length, 1, 'Retry did not leave old and new rows together');
+    const next = models[0];
+    assert.equal(next.sourceFile, source);
+    assert.deepEqual([next.name, next.visible, next.gaussianSplat?.attribution], ['Tagged survey', false, 'Survey credit']);
+    assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get(next.id)!], [tag]);
+    assert.equal(splats().getStats().assets, 1);
+    assert.equal(container!.querySelector('[data-viewport-load-error-card]'), null);
   });
 
   it('a reload without a retained source refuses explicitly', async () => {

@@ -25,24 +25,51 @@ export interface GaussianReloadDeps {
  * builds still refuse), an explicit placement is replayed, and a raw-source
  * placement stays raw. Without a retained source the reload refuses.
  */
-export async function reloadGaussianCapture(modelId: string, deps: GaussianReloadDeps): Promise<GaussianReloadResult> {
+// Shared by hierarchy/properties hooks: one source model owns one replacement.
+const transactions = new Map<string, Promise<GaussianReloadResult>>();
+
+export function reloadGaussianCapture(modelId: string, deps: GaussianReloadDeps): Promise<GaussianReloadResult> {
+  const pending = transactions.get(modelId);
+  if (pending) return pending;
+  // Defer execution until ownership is installed, including re-entrant calls.
+  const transaction = Promise.resolve().then(() => replaceCapture(modelId, deps)).finally(() => {
+    if (transactions.get(modelId) === transaction) transactions.delete(modelId);
+  });
+  transactions.set(modelId, transaction);
+  return transaction;
+}
+
+async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promise<GaussianReloadResult> {
   const model = useViewerStore.getState().models.get(modelId);
   const capture = model?.gaussianSplat;
   if (!model || !capture) return { ok: false, reason: 'not-a-capture' };
   if (!model.sourceFile) return { ok: false, reason: 'source-unavailable' };
   const { sourceFile, sourceHandle, name, visible, collapsed } = model;
-  const next = await deps.addModel(sourceFile, {
-    name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
-    ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
-  });
-  if (!next) return { ok: false, reason: 'not-loaded' };
-  // Keep the retry row (and its owned asset) until admission and loading
-  // succeed. Read tags at commit time so edits during the load survive too.
-  const state = useViewerStore.getState();
-  const tags = captureModelTags(state, [modelId]);
-  restoreModelTags(state, tags, modelId, next);
-  deps.removeModel(modelId);
-  return { ok: true, modelId: next };
+  const replacementId = crypto.randomUUID();
+  let committed = false;
+  try {
+    const next = await deps.addModel(sourceFile, {
+      modelId: replacementId,
+      name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
+      retryOperation: () => { void reloadGaussianCapture(modelId, deps); },
+      ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
+    });
+    const state = useViewerStore.getState();
+    // A superseded federation add can publish but return null. The explicit
+    // id lets finally release that losing asset without touching another load.
+    // Removal/replacement of the source while awaiting also cancels this swap.
+    if (next !== replacementId || !state.models.get(replacementId)?.gaussianSplat
+      || state.models.get(modelId)?.gaussianSplat?.handle !== capture.handle) {
+      return { ok: false, reason: 'not-loaded' };
+    }
+    const tags = captureModelTags(state, [modelId]);
+    restoreModelTags(state, tags, modelId, replacementId);
+    deps.removeModel(modelId);
+    committed = true;
+    return { ok: true, modelId: replacementId };
+  } finally {
+    if (!committed && useViewerStore.getState().models.has(replacementId)) deps.removeModel(replacementId);
+  }
 }
 
 /** The reload action bound to this component's canonical loader. */

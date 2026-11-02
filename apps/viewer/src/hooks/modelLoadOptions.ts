@@ -8,6 +8,8 @@ import type { GaussianQualification } from './ingest/gaussianAdmissionPolicy.js'
 
 export interface ModelLoadOptions {
   sourceHandle?: FileSystemFileHandle;
+  /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
+  retryOperation?: () => void;
   workflowOwner?: string;
   // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit
   // failure re-invokes loadFile, it forces this tier and marks the attempt
@@ -32,7 +34,7 @@ export interface ModelLoadOptions {
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

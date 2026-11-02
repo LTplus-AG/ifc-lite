@@ -448,7 +448,7 @@ export function useIfcLoader() {
 
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
-    const retryThisLoad = () => { void loadFile(file, target, options); };
+    const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = (message: string, code: string) =>
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retryThisLoad, file);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload

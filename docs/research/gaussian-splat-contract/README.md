@@ -212,3 +212,40 @@ then fail. A separate `populated-overflow.oracle.patch` under
 `tests/evidence/gaussian-8564-exact-runs/` deliberately detaches populated buffers
 before throwing, so the preservation assertion must fail even though rejection
 still occurs. Neither negative control changes gate classification or acceptance.
+
+## Next native adapter boundary (#8564)
+
+`@ifc-lite/renderer` now separates raw decode from normalized render attributes.
+The converter preserves source coordinates and unclamped radiance, maps PLY
+channel-major SH into upstream basis-major RGB, and rejects non-finite/degenerate
+channels. Its arrays are independent CPU allocations. It does not upload, infer
+placement, or claim that a model can render. `Renderer.getGaussianReadiness()`
+uses the actual renderer generation and loss/disposal latches: even a healthy IFC
+renderer reports Gaussian blocked. This is the canonical-loader integration seam,
+not a second canvas or a production enablement switch.
+
+The feasible composition candidate is native transparent depth peeling plus
+upstream globally sorted splat draws filtered to the per-pixel intervals between
+peeled layers. With reverse-Z, intervals are lower-exclusive/upper-inclusive; the
+chosen tie order places a splat at the glass depth behind that glass contribution.
+A complete compositor also needs deterministic ordering of coincident native
+transparent fragments. Every fragment must occur exactly once. Peeling exhaustion
+must reject the frame, not present a truncated success.
+
+`contract/fragment-interval-plugin.mjs` proposes only a sampled interval and
+fragment discard in the hash-pinned upstream shader. Covariance projection,
+Gaussian alpha, sort and blending remain upstream. The separate native witness
+rasterizes a sloping glass triangle into two interval textures, then submits far
+splats, glass, near splats on the borrowed native encoder/pass. Its independent
+reference computes the known triangle depth at each pixel center and submits the
+corresponding order with pixel scissors. Removing the discard is the negative
+control. This is a **one-layer mechanism experiment**, not a multi-layer compositor
+or a production renderer. The original counterexample artifacts remain unchanged.
+
+Outstanding upstream work: scalable exact global GPU ordering with no source-run
+approximation; native/paged reverse-Z parity; an explicit depth-interval API with
+per-sample MSAA semantics; clipping and ID output; and borrowed attachment/resource
+ownership across resize and device loss. IFC-Lite still needs native transparent
+peeling integrated into `renderFrame`, RTE/placement/SH rotation, real-model
+interaction, overflow reporting, hardware resource budgets and production smoke
+evidence. The one-layer experiment cannot waive any of these release blockers.

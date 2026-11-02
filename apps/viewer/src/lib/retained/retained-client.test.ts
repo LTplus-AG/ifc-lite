@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RetainedClient, type RetainedWorker } from './retained-client';
-import { RetainedHostError } from './retained-protocol';
+import { isAllocationFailure, RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
 import type { RetainedHostEvent, RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 // Protocol fixture only: no engine/geometry implementation is mocked.
@@ -17,7 +17,7 @@ class FakeWorker implements RetainedWorker {
   terminated = 0;
   postMessage(request: RetainedHostRequest) { this.requests.push(request); }
   terminate() { this.terminated++; }
-  emit(event: RetainedHostEvent | { kind: 'error'; code: 'engine_missing'; message: string }, runId = this.requests.at(-1)!.runId) {
+  emit(event: RetainedHostEvent | { kind: 'error'; code: 'engine_missing' | 'out_of_memory'; message: string }, runId = this.requests.at(-1)!.runId) {
     this.onmessage?.({ data: { ...event, runId } } as MessageEvent<RetainedHostResponse>);
   }
 }
@@ -102,6 +102,46 @@ test('#7955 startup and missing-engine failures never fall back to exact', async
   await assert.rejects(pending, (error: unknown) => error instanceof RetainedHostError && error.code === 'engine_missing');
   assert.equal(worker.requests.length, 1, 'no automatic retry');
   assert.equal(worker.terminated, 1);
+});
+
+test('#7955 a source wasm32 cannot hold is refused before a Worker spawns; one over the old 256 MiB cap is sent', async (t) => {
+  let spawned = 0;
+  const worker = new FakeWorker();
+  const client = new RetainedClient(() => { spawned++; return worker; });
+  t.after(() => client.unload());
+  // The size check reads byteLength only, so no gigabytes are allocated here.
+  const sized = (byteLength: number) => Object.defineProperty(new Uint8Array(1), 'byteLength', { value: byteLength });
+  await assert.rejects(client.run(sized(RETAINED_MAX_SOURCE_BYTES + 1)).next(), (error: unknown) =>
+    error instanceof RetainedHostError && error.code === 'source_too_large' && /2 GiB/.test(error.message));
+  assert.equal(spawned, 0);
+  const pending = client.run(sized(342_657_851)).next();
+  assert.equal(worker.requests.length, 1, 'a 327 MiB source reaches the host');
+  worker.emit({ kind: 'error', code: 'out_of_memory', message: 'unreachable' });
+  await assert.rejects(pending, (error: unknown) => error instanceof RetainedHostError && error.code === 'out_of_memory');
+  assert.equal(worker.terminated, 1, 'the trapped host is released');
+});
+
+test('#7955 a source too big to clone into the host is an out_of_memory failure, other hand-off failures are startup', async () => {
+  for (const [thrown, code] of [
+    [new DOMException("Failed to execute 'postMessage' on 'Worker': Data cannot be cloned, out of memory.", 'DataCloneError'), 'out_of_memory'],
+    [new TypeError('worker gone'), 'startup'],
+  ] as const) {
+    const worker = new FakeWorker();
+    worker.postMessage = () => { throw thrown; };
+    const client = new RetainedClient(() => worker);
+    await assert.rejects(client.run(new Uint8Array(1)).next(), (error: unknown) => error instanceof RetainedHostError && error.code === code);
+    assert.equal(worker.terminated, 1);
+  }
+});
+
+test('#7955 an allocation failure is a wasm trap without a recorded panic, or an error that says so', () => {
+  const trap = new WebAssembly.RuntimeError('unreachable');
+  assert.equal(isAllocationFailure(trap, false), true, 'a failed allocation aborts without running the panic hook');
+  assert.equal(isAllocationFailure(trap, true), false, 'a panic recorded its location: a genuine panic, not memory');
+  assert.equal(isAllocationFailure(new RangeError('WebAssembly.Memory.grow(): Maximum memory size exceeded'), false), true);
+  assert.equal(isAllocationFailure(new RangeError('Array buffer allocation failed'), false), true);
+  assert.equal(isAllocationFailure(new TypeError('session.run is not a function'), false), false);
+  assert.equal(isAllocationFailure('engine unavailable', false), false);
 });
 
 test('#7955 abort, unload, pagehide and iterator abandonment release the host', async (t) => {

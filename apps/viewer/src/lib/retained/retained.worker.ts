@@ -5,12 +5,14 @@
 import { loadRetainedEngine, type RetainedEngine } from '../../../../../packages/wasm/retained.js';
 import { RetainedInstancing } from './retainedInstancing';
 import type { RetainedModelSession } from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
+import { isAllocationFailure, RETAINED_PANIC_STASH_KEY } from './retained-protocol';
 import type { RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 let engine: RetainedEngine | undefined;
 let session: RetainedModelSession | undefined;
 let running = false;
 const send = (message: RetainedHostResponse, transfer: Transferable[] = []) => self.postMessage(message, { transfer });
+const realm = globalThis as Record<string, unknown>;
 
 self.onmessage = async ({ data }: MessageEvent<RetainedHostRequest>) => {
   const { runId, options } = data;
@@ -20,6 +22,8 @@ self.onmessage = async ({ data }: MessageEvent<RetainedHostRequest>) => {
   }
   running = true;
   let phase: 'engine_missing' | 'startup' | 'worker_crash' = 'engine_missing';
+  // A panic records its location here; a failed allocation never does (isAllocationFailure).
+  delete realm[RETAINED_PANIC_STASH_KEY];
   try {
     engine ??= await loadRetainedEngine({ moduleUrl: '/retained-engine/pkg-retained/ifc-lite.js' });
     phase = 'startup';
@@ -37,7 +41,14 @@ self.onmessage = async ({ data }: MessageEvent<RetainedHostRequest>) => {
     send({ runId, kind: 'workerMemory', wasmHeapBytes: engine.get_memory().buffer.byteLength });
     send({ runId, kind: 'complete', cancelled: false });
   } catch (error) {
-    send({ runId, kind: 'error', code: phase, message: error instanceof Error ? error.message : String(error) });
+    const message = error instanceof Error ? error.message : String(error);
+    if (isAllocationFailure(error, realm[RETAINED_PANIC_STASH_KEY] !== undefined)) {
+      // The trapped instance is unusable; the client terminates this Worker on any error.
+      if (engine) send({ runId, kind: 'workerMemory', wasmHeapBytes: engine.get_memory().buffer.byteLength });
+      send({ runId, kind: 'error', code: 'out_of_memory', message });
+    } else {
+      send({ runId, kind: 'error', code: phase, message });
+    }
   } finally {
     running = false;
   }

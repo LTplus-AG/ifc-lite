@@ -29,7 +29,7 @@ export type RetainedHostEvent = RetainedStart
   | { kind: 'workerMemory'; wasmHeapBytes: number }
   | { kind: 'complete'; cancelled: boolean }
   | { kind: 'cancelled'; expressId: number; code: 'cancelled' };
-export type RetainedHostErrorCode = 'startup' | 'worker_crash' | 'engine_missing' | 'source_too_large' | 'busy';
+export type RetainedHostErrorCode = 'startup' | 'worker_crash' | 'engine_missing' | 'source_too_large' | 'out_of_memory' | 'busy';
 export class RetainedHostError extends Error {
   constructor(readonly code: RetainedHostErrorCode, message: string) {
     super(`${message}. Reload with exact kernel`);
@@ -43,4 +43,31 @@ export interface RetainedHostRequest {
 }
 export type RetainedHostResponse = { runId: number } & (RetainedHostEvent
   | { kind: 'error'; code: RetainedHostErrorCode; message: string });
-export const RETAINED_MAX_SOURCE_BYTES = 256 * 1024 * 1024;
+/**
+ * The largest source the retained engine can start (#7955). The bytes enter its
+ * wasm32 linear memory as one Rust `Vec<u8>`, and no wasm32 allocation may exceed
+ * `isize::MAX`, so anything larger fails before any work. This is not a tuned
+ * cap: below it, whether a model fits is decided by the engine's allocations,
+ * and running out of memory ends the load with an `out_of_memory` refusal.
+ * docs/architecture/retained-viewer-memory.md has the measurements.
+ */
+export const RETAINED_MAX_SOURCE_BYTES = 2 ** 31 - 1;
+
+/** Where the engine's panic hook records a panic; kept in lockstep with `PANIC_STASH_KEY` in rust/wasm-bindings/src/utils.rs. */
+export const RETAINED_PANIC_STASH_KEY = '__ifclite_wasm_panic';
+const ALLOCATION_FAILURE = /out of memory|allocation failed|could not allocate|maximum memory size exceeded/i;
+
+/**
+ * Whether a host failure is the engine (or the source hand-off) running out of
+ * memory. With `panic = "abort"` a Rust panic and a failed allocation both reach
+ * JavaScript as the same `RuntimeError: unreachable`, but only a panic runs the
+ * panic hook, which records its location (`utils.rs`). So a WebAssembly trap
+ * with no panic recorded since the run began is an allocation failure; so is
+ * any error that says it is (a failed structured clone, a failed `ArrayBuffer`).
+ */
+export function isAllocationFailure(error: unknown, panicked: boolean): boolean {
+  if (panicked) return false;
+  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return true;
+  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return ALLOCATION_FAILURE.test(text);
+}

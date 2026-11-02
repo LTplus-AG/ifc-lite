@@ -57,7 +57,7 @@
   "devDependencies": {
     "@ifc-lite/parser": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "ajv": "^8.17.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

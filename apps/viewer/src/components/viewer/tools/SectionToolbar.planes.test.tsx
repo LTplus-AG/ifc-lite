@@ -105,7 +105,7 @@ const addPlane = (label: string) => {
 const openPlaneMenu = () => openMenu(bar().querySelector('[data-testid="section-plane-menu"]')!);
 
 describe('with no plane yet (#7545)', () => {
-  it('shows the four ways to add one instead of a row of controls, and says what to do', () => {
+  it('shows the five ways to add one instead of a row of controls, and says what to do', () => {
     renderTool();
     assert.equal(chips().length, 0);
     assert.equal(bar().querySelector('[data-testid="section-active-row"]'), null, 'no row of controls without a plane');
@@ -113,7 +113,7 @@ describe('with no plane yet (#7545)', () => {
     assert.ok(empty);
     assert.deepEqual(
       [...empty.querySelectorAll('button')].map((b) => b.textContent?.trim()),
-      ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…'],
+      ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…', 'Box'],
     );
     assert.match(hint(), /Add a plane to start cutting/);
     assert.equal(s().sectionPickMode, false, 'nothing is armed behind the user');

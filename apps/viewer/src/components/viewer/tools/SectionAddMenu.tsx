@@ -90,7 +90,7 @@ export function SectionAddMenu({ atLimit }: { atLimit: boolean }) {
   );
 }
 
-/** The empty state: no plane yet, so the four ways to add one sit right on the bar. */
+/** The empty state: no plane yet, so the five ways to add one sit right on the bar. */
 export function SectionEmptyAdd() {
   const { t } = useTranslation();
   const testId = useLiveTestId('section-empty-add');
@@ -98,7 +98,7 @@ export function SectionEmptyAdd() {
   return (
     <span className="flex items-center gap-1" data-testid={testId}>
       <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">{t('sectionPlanes.empty')}</span>
-      {ENTRIES.filter((e) => e.kind !== 'alignment' && e.kind !== 'box').map((e) => (
+      {ENTRIES.filter((e) => e.kind !== 'alignment').map((e) => (
         <button key={e.kind} type="button" className={ACTION} onClick={() => add(e.kind)}>{t(e.labelKey)}</button>
       ))}
     </span>

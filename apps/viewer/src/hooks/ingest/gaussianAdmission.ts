@@ -31,8 +31,19 @@ function headerEnd(text: string): number {
   return marker < 0 ? 0 : text.indexOf('\n', marker) + 1;
 }
 
-/** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
+type GaussianDecodeAdmission = Exclude<GaussianAdmission, { kind: 'disabled' }>
+  | (Extract<GaussianAdmission, { kind: 'disabled' }> & { recordStride: number });
+
+/** Keep the public admission result stable; decode uses the same validated layout. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
+  const result = await inspectGaussianDecodeAdmission(file, head);
+  if (result.kind !== 'disabled') return result;
+  const { kind, format, count, shDegree } = result;
+  return { kind, format, count, shDegree };
+}
+
+/** Reads at most 64 KiB, never the body. Framing checks are not payload decoding/validation. */
+export async function inspectGaussianDecodeAdmission(file: File, head: ArrayBuffer): Promise<GaussianDecodeAdmission> {
   // Decode the bounded probe before checking magic, just like parsePlyHeader.
   // TextDecoder consumes an initial UTF-8 BOM; a three-byte probe can contain
   // only that BOM and miss the following magic. Do not trim arbitrary prefixes.
@@ -44,7 +55,7 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     if (!file.size || file.size % 32 !== 0) return { kind: 'invalid', reason: 'Truncated or empty .splat input (32-byte records required).' };
     const count = file.size / 32;
     const reason = limits(file.size, count, 14);
-    return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0 };
+    return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0, recordStride: 32 };
   }
   // Retain BOM bytes in the header used for the payload lower-bound check.
   const headerDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
@@ -60,6 +71,7 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
   const lines = text.slice(0, end).split('\n').map(line => line.trim());
   let vertex = false, count = 0, vertexElements = 0, stride = 0, malformed = false;
   let encoding = '';
+  let precedingElement = false;
   const properties = new Set<string>();
   for (const line of lines) {
     // parsePlyHeader ignores tab-only keyword separators, but splits tokens
@@ -68,6 +80,7 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
     if (line.startsWith('format ')) encoding = fields[1];
     if (line.startsWith('element ')) {
       vertex = fields[1] === 'vertex';
+      if (!vertex && vertexElements === 0) precedingElement = true;
       if (vertex) {
         count = Number(fields[2]); vertexElements++;
         if (!/^\d+$/.test(fields[2] ?? '') || fields.length !== 3) malformed = true;
@@ -87,6 +100,10 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
   const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
     || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));
   if (!gaussian) return { kind: 'ordinary' };
+  // Upstream starts vertex records at headerBytes, without skipping earlier elements.
+  if (precedingElement) {
+    return { kind: 'invalid', reason: 'Unsupported Gaussian PLY element before vertex.' };
+  }
   if (malformed || vertexElements !== 1 || REQUIRED.some(name => !properties.has(name))) {
     return { kind: 'invalid', reason: 'Malformed Gaussian PLY vertex schema.' };
   }
@@ -105,5 +122,5 @@ export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): P
   if (bodyBytes <= 0 || (encoding !== 'ascii' && bodyBytes < count * stride)) {
     return { kind: 'invalid', reason: 'Truncated Gaussian PLY vertex payload.' };
   }
-  return { kind: 'disabled', format: 'gaussian-ply', count, shDegree };
+  return { kind: 'disabled', format: 'gaussian-ply', count, shDegree, recordStride: stride };
 }

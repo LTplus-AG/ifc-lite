@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createChunkDataPool, MemoryReadFileSystem, readPly, readSplat,
   materializeToDataTable, type ChunkSource } from '@playcanvas/splat-transform';
-import { inspectGaussianAdmission } from './gaussianAdmission.js';
+import { inspectGaussianDecodeAdmission } from './gaussianAdmission.js';
 import { validateGaussianDecoded, type GaussianDecoded } from './gaussianDecoded.js';
 
 /** Worker-only upstream decoder. This does not grant admission to the renderer. */
 export async function decodeGaussianFile(file: File): Promise<GaussianDecoded> {
-  const admission = await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer());
+  const admission = await inspectGaussianDecodeAdmission(file, await file.slice(0, 4096).arrayBuffer());
   if (admission.kind !== 'disabled') {
     throw new Error(admission.kind === 'invalid' ? admission.reason : 'Not a Gaussian capture.');
   }
   const fs = new MemoryReadFileSystem();
   fs.set('capture', new Uint8Array(await file.arrayBuffer()));
   const input = await fs.createSource('capture');
-  const pool = createChunkDataPool({ chunkSize: 65_536, maxPooledBytes: 16 * 1024 * 1024 });
+  // Upstream allocates record scratch outside the pool's retained-byte cap.
+  // Include every scalar (even unmaterialized extras) and never reserve absent rows.
+  const scratchBytes = 16 * 1024 * 1024;
+  const chunkSize = Math.min(65_536, admission.count, Math.floor(scratchBytes / admission.recordStride));
+  const pool = createChunkDataPool({ chunkSize, maxPooledBytes: scratchBytes });
   let source: ChunkSource | undefined;
   try {
     source = await (admission.format === 'splat' ? readSplat(input, pool) : readPly(input, pool));

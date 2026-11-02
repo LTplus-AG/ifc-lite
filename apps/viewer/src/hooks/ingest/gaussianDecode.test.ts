@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createChunkDataPool, MemoryReadFileSystem, readPly, materializeToDataTable } from '@playcanvas/splat-transform';
+import { inspectGaussianAdmission } from './gaussianAdmission.js';
 import { decodeGaussianFile } from './gaussianDecode.js';
 
 const base = ['x', 'y', 'z', 'rot_0', 'rot_1', 'rot_2', 'rot_3',
@@ -52,3 +54,80 @@ it('ordinary PLY and truncated Gaussian payload never enter decoding (#8565)', a
   await assert.rejects(decodeGaussianFile(new File(['ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nend_header\n0\n'], 'ordinary.ply')), /Not a Gaussian/);
   await assert.rejects(decodeGaussianFile(new File([new Uint8Array(31)], 'broken.splat')), /Truncated/);
 });
+
+// These are actual binary PLY records, including extras the output does not retain.
+function layoutPly(count: number, extras = 0, metadata: 'before' | 'after' | 'none' = 'none') {
+  const stride = base.length * 4 + extras * 8;
+  const body = new ArrayBuffer(count * stride);
+  const view = new DataView(body);
+  for (let row = 0; row < count; row++) {
+    base.forEach((name, i) => view.setFloat32(row * stride + i * 4,
+      name === 'x' ? 1 : name === 'y' ? 2 : name === 'z' ? 3 : name === 'rot_0' ? 1 : 0, true));
+  }
+  const metaHeader = 'element metadata 1\nproperty float value\n';
+  const metaBody = new ArrayBuffer(4);
+  new DataView(metaBody).setFloat32(0, 123, true);
+  const header = `ply\nformat binary_little_endian 1.0\n${metadata === 'before' ? metaHeader : ''}element vertex ${count}\n`
+    + base.map(name => `property float ${name}\n`).join('')
+    + Array.from({ length: extras }, (_, i) => `property double e${i}\n`).join('')
+    + (metadata === 'after' ? metaHeader : '') + 'end_header\n';
+  return new File([header, ...(metadata === 'before' ? [metaBody] : []), body,
+    ...(metadata === 'after' ? [metaBody] : [])], 'layout.ply');
+}
+
+// Intercept numeric Uint8Array construction BEFORE allocation, so the negative
+// control can prove the 603.5 MiB request without ever allocating that memory.
+async function boundedScratch<T>(run: () => Promise<T>) {
+  const original = globalThis.Uint8Array;
+  const requested: number[] = [];
+  globalThis.Uint8Array = new Proxy(original, {
+    construct(target, args: ConstructorParameters<Uint8ArrayConstructor>) {
+      if (typeof args[0] === 'number') {
+        requested.push(args[0]);
+        if (args[0] > 16 * 1024 * 1024) throw new Error(`Scratch allocation refused: ${args[0]}`);
+      }
+      return Reflect.construct(target, args);
+    },
+  });
+  try { return { result: await run(), requested }; }
+  finally { globalThis.Uint8Array = original; }
+}
+
+for (const count of [1, 1800]) it(`bounds full-stride scratch and actual rows with ${count} wide records (#8565)`, async () => {
+  const file = layoutPly(count, 1200);
+  const { result, requested } = await boundedScratch(() => decodeGaussianFile(file));
+  assert.equal(result.count, count);
+  assert.deepEqual(result.centerBounds, { min: [1, 2, 3], max: [1, 2, 3] });
+  assert.equal(Object.keys(result.columns).length, 14);
+  const stride = 14 * 4 + 1200 * 8;
+  const expected = Math.min(count, Math.floor(16 * 1024 * 1024 / stride)) * stride;
+  assert.ok(requested.includes(expected), 'real upstream record scratch was observed');
+  if (count === 1) assert.ok(Math.max(...requested) < 1024 * 1024, 'one row cannot reserve a full chunk');
+});
+
+it('negative control safely catches the upstream fixed-chunk scratch request (#8565)', async () => {
+  const file = layoutPly(1, 1200);
+  await assert.rejects(boundedScratch(() => rawUpstream(file, 65_536)), /Scratch allocation refused: 632815616/);
+});
+
+it('rejects preceding-element offsets while preserving vertex-first trailing elements (#8565)', async () => {
+  const before = layoutPly(1, 0, 'before');
+  // Negative control: the unguarded pinned upstream reader consumes metadata as x.
+  const wrong = await rawUpstream(before, 1);
+  assert.deepEqual(['x', 'y', 'z'].map(name => wrong.getColumnByName(name)?.data[0]), [123, 1, 2]);
+  await assert.rejects(decodeGaussianFile(before), /element before vertex/);
+  const after = await decodeGaussianFile(layoutPly(1, 0, 'after'));
+  assert.deepEqual(after.centerBounds.min, [1, 2, 3]);
+  const ordinary = new File(['ply\nformat ascii 1.0\nelement metadata 1\nproperty float value\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n123\n1 2 3\n'], 'ordinary.ply');
+  assert.deepEqual(await inspectGaussianAdmission(ordinary, await ordinary.arrayBuffer()), { kind: 'ordinary' });
+});
+
+async function rawUpstream(file: File, chunkSize: number) {
+  const fs = new MemoryReadFileSystem();
+  fs.set('capture', new Uint8Array(await file.arrayBuffer()));
+  const input = await fs.createSource('capture');
+  const pool = createChunkDataPool({ chunkSize, maxPooledBytes: 16 * 1024 * 1024 });
+  const source = await readPly(input, pool);
+  try { return await materializeToDataTable(source, pool, new Set(['position', 'geometric', 'color'])); }
+  finally { try { await source.close(); } finally { pool.destroy(); } }
+}

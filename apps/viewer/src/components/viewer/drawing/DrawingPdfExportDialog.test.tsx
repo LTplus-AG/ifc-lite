@@ -141,7 +141,7 @@ describe('DrawingPdfExportDialog (#5496)', () => {
   it('only asks the user to choose a scale when there is a scale to choose (#8663)', () => {
     const headline = () => document.body.querySelector('[role="dialog"] p')?.textContent;
     const chooser = 'Choose the scale the PDF is drawn at.';
-    const confirmation = "The PDF uses the active sheet's scale and paper.";
+    const confirmation = 'The active sheet sets the scale and paper for this PDF.';
 
     render(
       <DrawingPdfExportDialog

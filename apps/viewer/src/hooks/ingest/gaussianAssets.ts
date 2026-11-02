@@ -47,10 +47,11 @@ export function reconcileGaussianAssets(models: ReadonlyMap<string, FederatedMod
 export function gaussianModelBounds(model: FederatedModel): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
   const asset = owned.get(model.id);
   if (!asset || asset.handle !== model.gaussianSplat?.handle) return null;
-  return toBox(asset.splats.getBounds(asset.handle));
+  return gaussianFitBox(asset.splats.getBounds(asset.handle));
 }
 
-function toBox(bounds: GaussianSplatBounds | null) {
+/** The renderer's centre bounds as the viewer's camera-fit box. */
+export function gaussianFitBox(bounds: GaussianSplatBounds | null) {
   if (!bounds) return null;
   const [x0, y0, z0] = bounds.min, [x1, y1, z1] = bounds.max;
   return { min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } };

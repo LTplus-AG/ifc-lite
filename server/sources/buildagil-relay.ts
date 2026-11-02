@@ -13,8 +13,9 @@
  *   - `oauth2/token`: the provider's form grants, forwarded for this
  *     deployment's client (`buildagil-token.ts`). A configured client secret
  *     is added here and never reaches the browser.
- *   - `1.0/…`: enumerated reads, plus the read-only `POST 1.0/search`, each
- *     with the caller's bearer. No credential is held for these.
+ *   - `1.0/…`: enumerated reads, `POST 1.0/search`, and the BCF topic
+ *     writes (new topic, topic PUT, new comment, new viewpoint), each with
+ *     the caller's bearer. No credential is held for these.
  *
  * Like the BIMcollab and Dalux relays: header allowlists both ways, no
  * cookies, manual redirects, streamed downloads, generic error logging.
@@ -28,13 +29,12 @@ import { BUILDAGIL_REGISTERED_REDIRECT_URIS, BUILDAGIL_TOKEN_URL, readBuildagilG
 export interface BuildagilRelayConfig extends BuildagilClientConfig {
   readonly allowedOrigins: readonly string[];
   readonly upstreamTimeoutMs: number;
-  /** Cap on token and search request bodies and on the token response. */
+  /** Cap on token request bodies and on the token response (API writes have per-route caps). */
   readonly maxBodyBytes: number;
 }
 export interface BuildagilRelayDeps { readonly fetchImpl: typeof fetch }
 
 const RESPONSE_HEADERS = ['content-type', 'content-length', 'content-disposition', 'etag', 'last-modified', 'retry-after'];
-const MAX_SEARCH_BODY_BYTES = 64 * 1024;
 
 function json(status: number, body: unknown, cors: Record<string, string>, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: {
@@ -58,8 +58,8 @@ async function fetchRestricted(fetchImpl: typeof fetch, target: URL, init: Reque
     const location = response.headers.get('location');
     await response.body?.cancel();
     if (!location) throw new Error('Redirect without location');
-    // A search POST is not a redirectable operation.
-    if (init.method === 'POST') throw new Error('Search redirected');
+    // A write is not a redirectable operation.
+    if (init.method !== 'GET' && init.method !== 'HEAD') throw new Error('Write redirected');
     const next = new URL(location, current);
     if (next.hostname === 'login.microsoftonline.com') return new Response(null, { status: 401 });
     if (next.origin === BUILDAGIL_API_ORIGIN && current.origin === BUILDAGIL_API_ORIGIN && !next.username && !next.password) {
@@ -74,12 +74,27 @@ async function fetchRestricted(fetchImpl: typeof fetch, target: URL, init: Reque
   throw new Error('Too many redirects');
 }
 
+/**
+ * The body of a POST/PUT, or the refusal. Browsers attach Origin to every
+ * POST and PUT; one without it is not the viewer. JSON only, so a write is
+ * never a CORS-simple request, and capped per route.
+ */
+async function readJsonWrite(request: Request, origin: string | null, maxBytes: number, cors: Record<string, string>): Promise<string | Response> {
+  if (!origin) return json(403, { error: 'Origin required' }, cors);
+  if ((request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return json(415, { error: 'Content-Type must be application/json' }, cors);
+  }
+  const read = await readCapped(request.body, request.headers.get('content-length'), maxBytes);
+  if (!read.ok) return json(read.reason === 'too_large' ? 413 : 400, { error: 'Request body too large or not UTF-8' }, cors);
+  return read.text;
+}
+
 export function createBuildagilRelayHandler(config: BuildagilRelayConfig, deps: BuildagilRelayDeps) {
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');
     const allowed = !origin || config.allowedOrigins.includes(origin);
     const cors: Record<string, string> = origin && allowed ? {
-      'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS',
+      'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, HEAD, POST, PUT, OPTIONS',
       'access-control-allow-headers': 'Authorization, Accept, Content-Type',
       'access-control-expose-headers': RESPONSE_HEADERS.join(', '),
       'access-control-max-age': '600', vary: 'Origin',
@@ -115,15 +130,10 @@ export function createBuildagilRelayHandler(config: BuildagilRelayConfig, deps: 
     route.target.search = query;
     const headers = new Headers({ authorization, accept: request.headers.get('accept') ?? 'application/json' });
     let body: string | undefined;
-    if (route.method === 'POST') {
-      // Browsers attach Origin to every POST; one without it is not the viewer.
-      if (!origin) return json(403, { error: 'Origin required' }, cors);
-      if ((request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') {
-        return json(415, { error: 'Content-Type must be application/json' }, cors);
-      }
-      const read = await readCapped(request.body, request.headers.get('content-length'), MAX_SEARCH_BODY_BYTES);
-      if (!read.ok) return json(read.reason === 'too_large' ? 413 : 400, { error: 'Request body too large or not UTF-8' }, cors);
-      body = read.text;
+    if (route.method !== 'GET') {
+      const read = await readJsonWrite(request, origin, route.maxBodyBytes, cors);
+      if (read instanceof Response) return read;
+      body = read;
       headers.set('content-type', 'application/json');
     }
     try {

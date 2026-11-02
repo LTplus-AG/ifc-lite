@@ -56,6 +56,12 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
   const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
+  // A type choice and a preflight result belong to one server project.
+  // Whatever moves the target (the project picker, or a reconnect to another
+  // server) drops both, so neither is applied to or shown for a project the
+  // user has not checked.
+  const targetKey = `${config?.serverUrl ?? ''}\u0000${projectId}`;
+  useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
 
   useEffect(() => {
     setProjects(null); setConnection(null);
@@ -115,7 +121,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       <label className="flex items-center gap-2">
         {t('bcfDrafts.publish.project')}
         <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
-          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); setTopicTypes({}); }}>
+          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
       </label>

@@ -64,3 +64,29 @@ test('an unknown draft topic type is mapped to a server type the coordinator pic
   const types = [...peer.state.topics.values()].map(item => item.topic.topic_type);
   assert.deepEqual(types, ['Information', 'Information']);
 });
+
+test('a type choice does not follow a reconnect to another server (#8656 review)', async t => {
+  await connectPeer(t, { topicTypes: SERVER_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'] });
+  const batch = await reviewedBatch();
+  await act(async () => {
+    await bcfDraftLibrary.initialize();
+    await initializeBcfOutbox();
+    assert.equal(await saveDraftBatch(batch), true);
+    useBcfDraftLibrary.setState({ activeId: batch.id });
+  });
+  render(<BCFDraftsDialog open onOpenChange={() => undefined} />);
+  await waitFor(() => document.body.querySelectorAll('section[aria-label="Publish to the BCF server"] option').length === 1, 'server projects listed');
+  click(button(/^Publish 2 topics$/));
+  const findPicker = () => [...document.body.querySelectorAll('label')]
+    .find(label => /This project has no topic type “Clash”/.test(label.textContent ?? ''))?.querySelector('select') ?? null;
+  await waitFor(() => findPicker() !== null, 'type picker shown');
+  choose(findPicker()!, 'Information');
+
+  // Reconnect to another server that offers the same types; the project id is the same.
+  const other = await connectPeer(t, { topicTypes: SERVER_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'] });
+  await waitFor(() => other.state.projectListReads > 0 && findPicker() === null, 'the other server listed, the old check cleared');
+  click(button(/^Publish 2 topics$/));
+  await waitFor(() => findPicker() !== null, 'the picker is shown again for the new server');
+  assert.equal(other.state.receivedWrites, 0, 'nothing published under a choice made for another server');
+  assert.equal(findPicker()!.value, 'Model Issue', 'the closest type is preselected afresh');
+});

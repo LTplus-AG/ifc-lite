@@ -33,6 +33,8 @@ export interface LocalBcfState {
   receivedWrites: number;
   /** Includes write requests refused by authentication before routing. */
   receivedWriteAttempts: number;
+  /** Times the project list was read. */
+  projectListReads: number;
 }
 
 /** Server-assigned timestamps use the peer's clock, as a real server's do. */
@@ -101,7 +103,7 @@ export async function startLocalBcfServer(options: LocalBcfQuirks & { port?: num
   close: () => Promise<void>;
 }> {
   const state: LocalBcfState = { topics: new Map(), writesAllowed: true, tokenValid: true,
-    dropNextWriteBeforeCommit: false, loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
+    dropNextWriteBeforeCommit: false, loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0, projectListReads: 0 };
   let baseUrl = '';
   const token = options.token ?? LOCAL_BCF_TOKEN;
   if (options.guidPrefix !== undefined && !/^[0-9a-f]{4}$/.test(options.guidPrefix)) {
@@ -160,7 +162,7 @@ export async function startLocalBcfServer(options: LocalBcfQuirks & { port?: num
     }
     const project = { project_id: LOCAL_BCF_PROJECT, name: 'Local coordination',
       authorization: { project_actions: state.writesAllowed ? ['createTopic'] : [] } };
-    if (url.pathname === '/bcf/2.1/projects') { json(response, [project]); return; }
+    if (url.pathname === '/bcf/2.1/projects') { state.projectListReads += 1; json(response, [project]); return; }
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     if (parts[0] !== 'bcf' || parts[1] !== '2.1' || parts[2] !== 'projects' || parts[3] !== LOCAL_BCF_PROJECT) {
       json(response, { message: 'Unknown project or route' }, 404); return;

@@ -42,11 +42,13 @@ test('#8564 Gaussians never enter model bounds; only the orthographic depth rang
   const handle = await renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
   assert.deepEqual(renderer.getModelBounds(), annotation, 'a far Gaussian does not expand model bounds (fit fallbacks read them)');
   assert.deepEqual(camera.state.depthOnlyBounds, { min: { x: 500, y: 0, z: 0 }, max: { x: 500, y: 0, z: 0 } });
-  // Looking down -Z from z=200 towards the origin: the far centre at x=500 must lie inside the orthographic depth range.
-  camera.state.camera.position = { x: 0, y: 0, z: 200 }; camera.state.camera.target = { x: 0, y: 0, z: 0 };
+  // Looking along +X: the far centre must be inside the actual near/far interval.
+  camera.state.camera.position = { x: -200, y: 0, z: 0 }; camera.state.camera.target = { x: 0, y: 0, z: 0 };
   const range = computeOrthoNearFar(camera.state, 200);
   const sceneOnly = computeOrthoNearFar({ ...camera.state, depthOnlyBounds: null }, 200);
-  assert.ok(range.far - range.near > sceneOnly.far - sceneOnly.near, 'the depth range widens for the visible Gaussian');
+  const centreDepth = 700; // dot(centre - eye, normalized(target - eye))
+  assert.ok(range.near <= centreDepth && centreDepth <= range.far, 'the visible centre lies between near and far');
+  assert.ok(centreDepth > sceneOnly.far, 'the same centre is beyond the IFC/annotation-only far plane');
   renderer.gaussianSplats.setVisible(handle, false);
   assert.equal(camera.state.depthOnlyBounds, null, 'a hidden capture no longer widens the depth range');
   assert.deepEqual(renderer.getModelBounds(), annotation, 'hiding keeps the annotation bounds');

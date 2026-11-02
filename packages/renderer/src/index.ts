@@ -1902,15 +1902,10 @@ export class Renderer {
             const extraClipPlanes = sectionFrame.extraPlanes;
             const { bounds: frameBounds } = sectionFrame;
             this._sectionFrameInput = frameBounds && { primary: options.sectionPlane ?? null, extras: options.extraSectionPlanes ?? [], bounds: frameBounds, buildingRotation: options.buildingRotation };
-            if (sectionFrame.bounds) {
-                // Store bounds for section plane visual and camera near/far.
-                // Two wrappers over the same min/max, exactly as before the
-                // extraction — the renderer's copy is replaced wholesale by the
-                // bounds helpers, the camera's is not.
-                const { min: boundsMin, max: boundsMax } = sectionFrame.bounds;
-                this.setModelBounds({ min: boundsMin, max: boundsMax });
-                this.camera.setSceneBounds({ min: boundsMin, max: boundsMax });
-            }
+            // Section bounds are frame-local: their visible Gaussian union must
+            // never replace persistent fit bounds or discard annotation extents.
+            // Load/overlay paths own model + camera scene bounds; the Gaussian
+            // layer independently updates the camera's depth-only extent (#8564).
 
             // Stash what we actually clipped this frame so the GPU picker mirrors
             // it (section/crop-clipped geometry must be unpickable, not just hidden).

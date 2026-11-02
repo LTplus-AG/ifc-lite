@@ -1302,7 +1302,9 @@ renderer.gaussianSplats.remove(handle);
   frame an explicit Fit All with it. Gaussian centres never enter
   `Renderer.getModelBounds()`, so hidden or removed captures cannot widen fits that
   read it; the current visible centres only widen the camera's orthographic depth
-  range and, while a section or clip plane is active, its slider range.
+  range and, while a section or clip plane is active, its slider range. Section
+  rendering never writes that transient union back into model or camera scene
+  bounds, and preserves annotation extents.
 - **Lifecycle.** Handles are validated by identity and ids are never reused.
   `getState()` reports `resident` only after upload on the current device;
   during a device loss and recovery assets are `pending`, and a failed re-upload

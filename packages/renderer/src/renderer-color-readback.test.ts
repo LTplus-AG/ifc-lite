@@ -5,6 +5,8 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  traceRendererColorFrameEncoder,
+  discardRendererColorFrameReadback,
   beginRendererColorFrameCapture,
   encodeRendererColorFrameCapture,
   settleRendererColorFrameCapture,
@@ -151,4 +153,74 @@ it('diagnostic readback preserves two independent copies and submitted metadata'
   assert.equal(frame!.rgba[0], 10); assert.equal(frame!.duplicate![0], 11);
   assert.equal(frame!.metadata!.frameId, 7);
   assert.ok(buffers.every(buffer => buffer.destroys === 1 && buffer.unmaps === 1));
+});
+
+function captureHarness(diagnostic = true, failAllocation = 0, failCopy = 0) {
+  const host = {}; const buffers: FakeBuffer[] = []; let allocations = 0, copies = 0, renders = 0;
+  const device = { createBuffer: ({ size }: { size: number }) => {
+    if (++allocations === failAllocation) throw new Error('allocation rejected');
+    const buffer = fakeBuffer(size); buffers.push(buffer); return buffer;
+  } } as unknown as GPUDevice;
+  const encoder = { copyTextureToBuffer() {
+    if (++copies === failCopy) throw new Error('encoding rejected');
+  } } as unknown as GPUCommandEncoder;
+  const pending = requestRendererColorFrame(host, true, () => { renders++; }, diagnostic);
+  const capture = beginRendererColorFrameCapture(host, {} as GPUTexture, 2, 2, 'rgba8unorm')!;
+  return { host, buffers, device, encoder, pending, capture, counts: () => ({ allocations, copies, renders }) };
+}
+
+it('#8566 default capture forwards the original encoder and copies once without diagnostic metadata', async () => {
+  const h = captureHarness(false);
+  assert.strictEqual(traceRendererColorFrameEncoder(h.capture, h.encoder), h.encoder);
+  const copy = encodeRendererColorFrameCapture(h.device, h.encoder, h.capture);
+  settleRendererColorFrameCapture(h.host, h.capture, copy);
+  const frame = await h.pending;
+  assert.deepStrictEqual(h.counts(), { allocations: 1, copies: 1, renders: 1 });
+  assert.equal(frame!.duplicate, undefined); assert.equal(frame!.metadata, undefined);
+  assert.equal(h.buffers[0].destroys, 1);
+});
+
+for (const failure of ['allocation', 'encoding'] as const) {
+  it(`#8566 second-copy ${failure} rejection releases every allocated buffer`, async () => {
+    const h = captureHarness(true, failure === 'allocation' ? 2 : 0, failure === 'encoding' ? 2 : 0);
+    assert.throws(() => encodeRendererColorFrameCapture(h.device, h.encoder, h.capture), /rejected/);
+    // Renderer render-error path cancels the outstanding requester after encoding throws.
+    cancelRendererColorFrame(h.host);
+    assert.equal(await h.pending, null);
+    assert.equal(h.buffers.length, failure === 'allocation' ? 1 : 2);
+    assert.ok(h.buffers.every(buffer => buffer.destroys === 1 && buffer.unmaps === 0));
+  });
+}
+
+for (const failedIndex of [0, 1]) {
+  it(`#8566 rejected mapping of copy ${failedIndex} fails closed and frees both buffers`, async () => {
+    const h = captureHarness();
+    const copy = encodeRendererColorFrameCapture(h.device, h.encoder, h.capture);
+    h.buffers[failedIndex].mapAsync = async () => { throw new Error('expected map rejection'); };
+    settleRendererColorFrameCapture(h.host, h.capture, copy);
+    assert.equal(await h.pending, null);
+    assert.ok(h.buffers.every(buffer => buffer.destroys === 1));
+    assert.equal(h.buffers[failedIndex].unmaps, 0);
+    assert.equal(h.buffers[1 - failedIndex].unmaps, 1);
+    const next = requestRendererColorFrame(h.host, true, () => {});
+    cancelRendererColorFrame(h.host); assert.equal(await next, null);
+  });
+}
+
+it('#8566 rejected submission discards both encoded buffers without attempting mapping', async () => {
+  const h = captureHarness();
+  const copy = encodeRendererColorFrameCapture(h.device, h.encoder, h.capture);
+  discardRendererColorFrameReadback(copy); cancelRendererColorFrame(h.host);
+  assert.equal(await h.pending, null);
+  assert.ok(h.buffers.every(buffer => buffer.destroys === 1 && buffer.unmaps === 0));
+});
+
+it('#8566 a diagnostic request coalesced behind an ordinary capture cannot invent a duplicate', async () => {
+  const h = captureHarness(false);
+  const joined = requestRendererColorFrame(h.host, true, () => { throw new Error('extra render'); }, true);
+  assert.strictEqual(joined, h.pending);
+  const copy = encodeRendererColorFrameCapture(h.device, h.encoder, h.capture);
+  settleRendererColorFrameCapture(h.host, h.capture, copy);
+  assert.equal((await joined)!.duplicate, undefined);
+  assert.equal(h.counts().copies, 1);
 });

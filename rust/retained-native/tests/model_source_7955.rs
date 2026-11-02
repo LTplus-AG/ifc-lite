@@ -33,6 +33,11 @@ fn issue_7955_shared_decoder_and_unit_scale_equal_a_fresh_plain_decoder() {
         let mut fresh = EntityDecoder::new(text.as_bytes());
         let units = ifc_lite_geometry::GeometryRouter::with_units(text.as_bytes(), &mut fresh).unit_scale();
         assert_eq!(model.unit_scale(), units);
+        // The shared decoder's own lazily resolved model facts, not only its entities.
+        let (mut shared, mut plain) = (model.decoder(), EntityDecoder::new(text.as_bytes()));
+        assert_eq!(shared.length_unit_scale(), plain.length_unit_scale());
+        assert_eq!(shared.plane_angle_to_radians(), plain.plane_angle_to_radians());
+        assert_eq!(shared.project_id(), plain.project_id());
         let mut scanner = EntityScanner::new(text.as_bytes());
         let mut shared = model.decoder();
         let mut ids = 0;
@@ -47,7 +52,9 @@ fn issue_7955_shared_decoder_and_unit_scale_equal_a_fresh_plain_decoder() {
     }
     // A millimetre file, so a unit scale left at 1 cannot pass.
     let bundle = SourceBundle::new(MILLIMETRES.as_bytes().to_vec());
-    assert_eq!(ModelSource::new(MILLIMETRES.as_bytes(), &bundle).unit_scale(), 0.001);
+    let model = ModelSource::new(MILLIMETRES.as_bytes(), &bundle);
+    assert_eq!(model.unit_scale(), 0.001);
+    assert_eq!(model.decoder().length_unit_scale(), 0.001);
 }
 
 #[test]

@@ -58,6 +58,9 @@ fn surface(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerance
         any = true;
         let mut decoder = model.decoder();
         let units = model.unit_scale();
+        // The authored rows and surface depend only on the item: read each once per part, not
+        // once per triangle (each read decodes every colour and texture map in the model).
+        let mut authored_items = std::collections::HashMap::new();
         for (t, &key) in faces.triangles.iter().enumerate() {
             let key = &faces.table[key as usize];
             let Some(row) = row_key(&key.role) else {
@@ -65,9 +68,12 @@ fn surface(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerance
                 coverage += f64::from(surface.palette.as_ref().is_some_and(|x| x.triangles[t] != ifc_lite_processing::element::retained_runtime::NO_PALETTE_ENTRY));
                 continue;
             };
-            let Ok(item) = decoder.decode_by_id(key.item) else { coverage += 1.; continue };
-            let Some(set) = face_sets::authored(&item, &mut decoder, units) else { coverage += 1.; continue };
-            let authored = face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder);
+            let read = authored_items.entry(key.item).or_insert_with(|| {
+                let item = decoder.decode_by_id(key.item).ok()?;
+                let set = face_sets::authored(&item, &mut decoder, units)?;
+                Some((set, face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder)))
+            });
+            let Some((set, authored)) = read.as_ref() else { coverage += 1.; continue };
             if let (Some(published), Some(source)) = (&surface.palette, &authored.palette) {
                 palette += f64::from(source.get(row as usize) != Some(&published.triangles[t]));
             }

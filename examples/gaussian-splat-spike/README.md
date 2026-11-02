@@ -72,6 +72,97 @@ The [native transparency contract research](../../docs/research/gaussian-splat-c
 contains the external upstream diagnostic patch and its measured results. These
 are research evidence, not runtime inputs or tests invoked by this package.
 
+## Showcase recording: research preview (#8567)
+
+`showcase.html` renders one catalogued licensed capture with the complete
+upstream PlayCanvas engine and flies the 30-second `demo-camera.mjs` journey.
+It is a **research preview, not a production showcase**. It does not use the
+ifc-lite viewer, `useIfcLoader.loadFile`, IFC geometry or IFC-Lite's renderer,
+and it claims no metric scale, alignment, budget or performance.
+
+The page refuses bytes whose length or SHA-256 differ from
+`tests/models/manifest.json`, and a row count that differs from the catalogued
+Gaussian count. The only placement is a display rotation (`x180`, for a Y-down
+training frame) with no scale. Framing comes from robust opaque-splat bounds
+(`showcase-framing.mjs`); the take records any explicit override next to the
+automatic value. On-screen credits come from `showcase-credits.mjs`, which a
+test keeps consistent with the manifest licence record.
+
+Record on real hardware only. `record-showcase.mjs` needs the hardware Chrome
+that `ifc-gpu-check` starts, and refuses a fallback or SwiftShader adapter, or
+an engine loop under 25 fps. The camera follows wall-clock time inside
+PlayCanvas's own update loop, and `canvas.captureStream` + `MediaRecorder`
+records it. Frame-interval fields describe that one take, nothing more:
+
+```sh
+~/build-workers/ifc-fleet run --route local --pool gaussian-production-8562 \
+  --storage-task TASK --cpu 4 --memory 8 --cwd "$PWD" -- \
+  ~/build-workers/ifc-gpu-check --limit 20 -- \
+  node examples/gaussian-splat-spike/record-showcase.mjs --asset seem-kirke-v1.ply \
+  --assets ~/ifc-fixtures/gaussian --out /abs/take --mode record --azimuth 330
+node examples/gaussian-splat-spike/finish-showcase.mjs --asset seem-kirke-v1.ply \
+  --master /abs/take/seem-kirke-v1-research-preview-master.webm --out /abs/final
+```
+
+`--mode turntable` and `--mode stills` render settled frames through direct
+texture readback, for checking orientation and framing before a take.
+`finish-showcase.mjs` adds the title card, the persistent research label and
+the licence credit with ffmpeg. It passes capture timestamps through, so no
+frames are interpolated or duplicated. The untouched master stays alongside.
+Keep recordings and stills outside Git. The first take's evidence and stills are in
+[`docs/architecture/evidence/8567-showcase-research-preview`](../../docs/architecture/evidence/8567-showcase-research-preview/README.md).
+
+## Integrated-viewer recording (#8567)
+
+`record-integrated.mjs` records the **real ifc-lite viewer** rather than this
+spike. It needs a viewer production bundle built with
+`VITE_GAUSSIAN_SPLATS=internal-unqualified`, and that build exists only on the
+Gaussian integration branches. Serve the bundle with `vite preview`, then run
+the recorder under `ifc-gpu-check`:
+
+- **Load:** the capture enters the viewer's own `#file-input-open` through
+  `DOM.setFileInputFiles`, so it takes the canonical `useIfcLoader.loadFile`
+  path.
+- **Input:** the camera moves only by real mouse and wheel events.
+- **Capture:** a CDP page screencast records the UI and WebGPU canvas together
+  on wall-clock timestamps.
+- **Journey:** `integrated-journey.mjs` always covers load, auto-frame, zoom,
+  orbit, section-tool centre clipping, and restore. Load waits for the capture's
+  model row, not the transient "Complete" phase text.
+- **Opt-in steps:** inspect, hide/show/fit and remove run only when requested in
+  `--journey-options`. A requested step whose control the build lacks is
+  recorded as a skip. A requested action that fails ends the take; that
+  includes the capture-details panel not showing Resident and Uncalibrated, or
+  the explicit placement when `explicitPlacement` is set.
+- **Evidence:** the take records its own source binding (commit, dirty state,
+  recorder and journey hashes) before and after the take. It keeps page errors,
+  console errors (with their URLs) and failed HTTP responses apart.
+
+```sh
+~/build-workers/ifc-gpu-check --limit 12 -- node examples/gaussian-splat-spike/record-integrated.mjs \
+  --viewer-url http://127.0.0.1:PORT/ --query gaussianPlacement=rx180 --asset seem-kirke-v1.ply \
+  --assets ~/ifc-fixtures/gaussian --out /abs/take --viewer-commit SHA \
+  --init-storage '{"ifc-lite-theme":"dark"}' \
+  --journey-options '{"collapseSidebar":true,"inspect":true,"visibility":true,"remove":true,"explicitPlacement":true}'
+node examples/gaussian-splat-spike/finish-integrated.mjs --take /abs/take --out /abs/final \
+  --stem seem-kirke-v1-integrated \
+  --label "INTERNAL DEMO · build SHA · not production" --disclosure "…" [--disclosure "…"]
+```
+
+`?gaussianPlacement=rx180` is the presenter-supplied demo placement in that
+showcase build. It is not alignment; say so in the disclosure. The finisher
+copies the screencast JPEGs unchanged into a master and adds a caption strip
+*below* the capture, so no viewer UI is covered. The strip carries the live step
+caption, the build label, the disclosures and the manifest-checked licence
+credit. Integrated capture timestamps are quantized to millisecond precision,
+then preserved from master to deliverables; no constant-rate resampling is used.
+The recorder retains per-frame capture times in its compact evidence. The finisher
+checks the master against those times and refuses takes lacking that evidence.
+The historical integrated takes used a faulty 40 ms input timebase and are not
+evidence of exact capture timing (see their evidence README). Both finishers tag their outputs as
+limited-range BT.709, check the tags with ffprobe, and refuse to overwrite an
+existing file.
+
 ## Reproduce
 
 Use the root pinned pnpm toolchain. Install dependencies normally, then prepare

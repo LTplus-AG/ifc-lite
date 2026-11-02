@@ -1,5 +1,15 @@
 # @ifc-lite/create
 
+## 5.1.3
+
+### Patch Changes
+
+- [#8167](https://github.com/LTplus-AG/ifc-lite/pull/8167) [`3b86b72`](https://github.com/LTplus-AG/ifc-lite/commit/3b86b727288b4d53851b5dd1588d252009c3abff) Thanks [@louistrue](https://github.com/louistrue)! - `extractGridAxesForStorey` now returns each grid axis's ends in authored order: an `IfcGridAxis` with `SameSense = .F.` has its start and end swapped, so `a` is the authored start. The order is decided by one internal helper, `readGridAxisEnds`, which `addColumnOnGridToStore` and the viewer's native-grid certification share. The curve's own `IfcTrimmedCurve.SenseAgreement` is still not read.
+- Updated dependencies [[`5943cc2`](https://github.com/LTplus-AG/ifc-lite/commit/5943cc28d1b3725ca84dd4d9e7f3e60e867f9fac), [`54ae125`](https://github.com/LTplus-AG/ifc-lite/commit/54ae125d1664c97dbd3f75c24be2b1b0a604c243), [`58442c2`](https://github.com/LTplus-AG/ifc-lite/commit/58442c2da84df10227f79d7b2d2c08a7327bebd2), [`de4c89b`](https://github.com/LTplus-AG/ifc-lite/commit/de4c89b83d8c1b5aa0b6e1c589368e80a3de7c31), [`377aad0`](https://github.com/LTplus-AG/ifc-lite/commit/377aad056d5bcaeec5f760d07d9b1afbc2574ca0), [`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650)]:
+  - @ifc-lite/export@4.13.3
+  - @ifc-lite/geometry@8.1.0
+  - @ifc-lite/parser@9.9.0
+
 ## 5.1.2
 
 ### Patch Changes

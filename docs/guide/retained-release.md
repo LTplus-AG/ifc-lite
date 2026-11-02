@@ -252,5 +252,57 @@ handoff. The pure checks live in
 What it does not cover: the Python **wheel build** from release source (the
 `python-wheels.yml` build/import checks on the release commit), the runtime
 crate's Trusted Publisher (only an OIDC `release.yml` run proves it), the licence
-signature, and any hosted browser or deploy smoke. The published `ifclite-geom`
+signature, and the hosted browser smoke (next section). The published `ifclite-geom`
 wheel is a separate release train from the npm and crate versions.
+
+## Hosted retained preview
+
+Maintainer decision (2026-11-01): the deployment smoke runs on a separate Vercel
+**preview** URL that serves retained only; ifclite.com and its production build are
+untouched. The preview is built off-Vercel (the viewer plugin still refuses retained
+under `VERCEL=1`) and uploaded as static files to the `ifc-lite` project without a
+`target`, so Vercel gives it its own immutable `*.vercel.app` URL and assigns no
+alias or domain. Publishing it distributes SMLib WASM, so it waits for the release
+and the signed [licensing review record](../architecture/retained-licensing.md#review-record),
+and it serves the notices beside the engine.
+
+On a host with the pinned emsdk and usd-brep (see
+[hosting guide](retained-installation.md)), from a clean checkout of the release tag:
+
+```sh
+bash scripts/build-retained-preview.sh --sdk /abs/usd-brep --emsdk /abs/emsdk \
+  --work /abs/new-dir --source-tag v27.1.1
+VERCEL_TOKEN=... node scripts/deploy-retained-preview.mjs --dir /abs/new-dir/preview --source-tag v27.1.1
+node scripts/smoke-retained-preview.mjs --url https://<preview>.vercel.app --source-tag v27.1.1 --out smoke.json
+```
+
+`build-retained-preview.sh` refuses a HEAD that is not the tag, fills the
+covered-source URL in `licenses/retained/THIRD_PARTY_NOTICES.txt` for the build only,
+builds the retained bundle, the SMLib browser build and the staged engine, builds the
+viewer with `VITE_RETAINED_GEOMETRY=on`, and calls `build-retained-preview.mjs`. That
+lays the engine out at `/smlib/` and `/retained-engine/` exactly as the dev middleware
+serves it, and writes `vercel.json` (no build or install on the host, the dashboard
+Ignored Build Step overridden, COOP/COEP/nosniff on every response, explicit MIME
+types, no SPA fallback under the engine prefixes) and `public/retained-preview.json`
+(tag, engine manifest sha256, `publishable`). `deploy-retained-preview.mjs` uploads
+only a publishable build for the given tag, never sends a production target or project
+settings, and reads the token from `VERCEL_TOKEN` without printing it; `--dry-run`
+needs no token.
+
+The smoke is read-only and takes only a URL:
+
+| Step | What it proves |
+|---|---|
+| `identity` | `/retained-preview.json` is a publishable build for `--source-tag` |
+| `engine-assets` | every engine-manifest file is served at its contract URL with the manifest's sha256, COOP/COEP/nosniff and its MIME type; missing engine URLs are 404, not `index.html`; `--expect-engine-manifest-sha256` pins the engine |
+| `notices` | SMLib, IFC-Lite, toolchain and combined notices are served as text; every IFC-Lite notice names `https://github.com/LTplus-AG/ifc-lite/tree/<tag>` with the exact tag |
+| `retained-frame` | fresh Chrome is `crossOriginIsolated`; `?kernel=retained` plus the real file input publishes retained products of `tests/fixtures/cli-retained/layered-wall.ifc` (or `--fixture`) and draws the first retained frame (the [qualification runner](https://github.com/LTplus-AG/ifc-lite/blob/main/scripts/perf/retained-qual.md)'s page instrumentation and assertions) |
+| `default-exact` | without the kernel parameter the same model loads exact, with no request to `/smlib/` or `/retained-engine/` |
+
+Rehearse locally before anything is published: build with `--rehearsal` instead of
+`--source-tag` (notices keep the placeholder; the output says `publishable: false`
+and the deploy script refuses it), serve it with
+`node scripts/serve-retained-preview.mjs --dir /abs/new-dir/preview`, which applies the
+generated `vercel.json` headers and rewrites, and run the smoke with `--rehearsal`
+against `http://127.0.0.1:4380`. A local pass proves the artifact and config; only
+the run against the deployed URL proves the host.

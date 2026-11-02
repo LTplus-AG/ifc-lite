@@ -42,7 +42,17 @@ pub struct Report {
     pub authored_open: Vec<Value>,
     /// #7955 ruling 3: missing face keys allowed as kernel-merged collinear sides.
     pub face_merges: Vec<Value>,
+    /// #7955: published products an independent oracle could not check. A gated row
+    /// stays in `violations` too; this only counts them by family and reason.
+    pub unverified: Vec<Value>,
+    /// This model's voided hosts without a complete source cut expectation, and why.
+    pub opening_gaps: BTreeMap<u32, String>,
+    /// #7955: closed-solid checks that failed on face sets whose source rows are themselves open.
+    pub closure_on_open_source: Vec<Value>,
 }
+#[path = "unverified.rs"]
+mod unverified;
+use unverified::{face_set_closure_summary, says_unverified, unverified_summary};
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
     #[allow(clippy::too_many_arguments)]
@@ -60,7 +70,6 @@ impl Report {
         sources: &super::checks::SourceContext<'_>,
         exact_report_only: bool,
         bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>,
-        bytes: &[u8],
     ) {
         self.published += 1;
         let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
@@ -72,7 +81,7 @@ impl Report {
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
         self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
-        let results = super::checks::check(shape, sources, bytes, tolerances, bounded);
+        let results = super::checks::check(shape, sources, tolerances, bounded);
         let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
         let authority = authorities.first();
         if authorities.iter().any(|a| authority.is_some_and(|first|
@@ -102,6 +111,26 @@ impl Report {
                 &mut self.violations,
             )
         });
+        let product_label = format!("{model}:{}", shape.product_id);
+        // A voided host checked by neither a section authority nor the bounded oracle.
+        if bounded.is_none() && authority.is_none() {
+            match opening {
+                Some(None) | Some(Some(ifc_lite_retained_native::oracle::openings::OpeningExpectation { result_volume: None, .. })) => {
+                    let family = if matches!(opening, Some(None)) { "openingSourceExpectation" } else { "openingResultVolume" };
+                    let reason = self.opening_gaps.get(&shape.product_id).cloned();
+                    self.unverified.push(json!({"product": product_label, "family": family, "gated": family == "openingSourceExpectation", "reason": reason}));
+                }
+                _ => {}
+            }
+        }
+        for result in results.iter().filter(|r| says_unverified(r.family, &results)) {
+            self.unverified.push(json!({"product": product_label, "family": result.family, "gated": result.gated, "reason": result.reason}));
+        }
+        if actual.defects > 0 && !open {
+            if let Some(edges) = results.iter().find(|r| r.family == super::checks::face_sets::SOURCE_OPEN_EDGES) {
+                self.closure_on_open_source.push(json!({"product": product_label, "meshDefects": actual.defects, "sourceOpenEdges": edges.value, "closed": edges.reason}));
+            }
+        }
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
             "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t{}\t{}\t{}\t{}",
@@ -298,6 +327,7 @@ impl Report {
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"products":self.authored_open},
+            "unverified":unverified_summary(&self.unverified), "closureDefectsOnFaceSets":face_set_closure_summary(&self.closure_on_open_source),
             "faceKeysKernelMerged":{"gated":false,"keys":self.face_merges.iter().filter_map(|r| r["keys"].as_f64()).sum::<f64>(),"products":self.face_merges.len(),"rows":self.face_merges}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

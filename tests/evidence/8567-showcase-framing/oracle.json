@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "examples/gaussian-splat-spike/showcase-framing.mjs",
+  "mutation": "tests/evidence/8567-showcase-framing/behaviour.oracle.patch",
+  "test": "examples/gaussian-splat-spike/test/showcase-framing.test.mjs",
+  "why": "#8567: Replacing the robust percentile bounds with min/max lets sparse opaque floaters dominate showcase framing; the floater-rejection assertion must fail while imports stay valid."
+}

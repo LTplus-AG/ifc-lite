@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/processors/texture/mod.rs
++++ b/rust/geometry/src/processors/texture/mod.rs
+@@ -353,7 +353,7 @@
+     let (mut index, mut vertex_lists) = (FxHashMap::default(), FxHashMap::default());
+     scan_texture_maps(content, decoder, |face_set_id, tvl_id, resolved| {
+         index.entry(face_set_id).or_insert(resolved);
+-        vertex_lists.insert(face_set_id, tvl_id);
++        vertex_lists.entry(face_set_id).or_insert(tvl_id);
+     });
+     (index, vertex_lists)
+ }

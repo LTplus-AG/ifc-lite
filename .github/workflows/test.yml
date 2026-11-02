@@ -1671,6 +1671,12 @@ jobs:
           # on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/tests/empty_export_parity.rs | grep -Fxq 'rust/export/tests/empty_export_parity.rs'; then
             oracle_args+=(--mutation tests/evidence/empty-exports-7695/refusal.oracle.patch)
+          # The vertex-list sidecar's new function is named by its own witness, so a
+          # whole-change revert cannot compile it (INCONCLUSIVE). Keep the function
+          # and let a later map win, so the sidecar names a list the index did not
+          # keep. Once texture_vertex_lists.rs is on main, ordinary revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/tests/texture_vertex_lists.rs | grep -Fxq 'rust/geometry/tests/texture_vertex_lists.rs'; then
+            oracle_args+=(--mutation tests/evidence/texture-vertex-lists/behaviour.oracle.patch)
           # #7737: keep the new semver-baseline module loadable (a whole-change
           # revert deletes it under the gate's tests) while removing ONLY the
           # rebuild-from-tag fallback and the NO_VERDICT output excerpt; the

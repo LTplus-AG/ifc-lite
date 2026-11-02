@@ -1,5 +1,22 @@
 # @ifc-lite/server-bin
 
+## 3.0.1
+
+### Patch Changes
+
+- [#8357](https://github.com/LTplus-AG/ifc-lite/pull/8357) [`70c91e8`](https://github.com/LTplus-AG/ifc-lite/commit/70c91e8e617402ea2ca8949117fa2acbe61d97b7) Thanks [@louistrue](https://github.com/louistrue)! - The native pass can now report each mesh's IFC-authored finish itself ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). `ifc-lite-processing` adds `Features::finishes` (off by default) and `ProcessingSink::on_finishes`, which has a no-op default. With the feature on, `on_finishes` fires immediately before every `on_batch` with one entry per mesh, joined by the same rule `ModelFinishes` uses, from the pass's own scan and index. With the feature off, sinks and output are unchanged.
+  
+  The server's JSON, Parquet, optimized-Parquet and streaming routes use the event, so they no longer scan each upload a second time to find finishes. Response bodies are unchanged.
+
+- [#8348](https://github.com/LTplus-AG/ifc-lite/pull/8348) [`3457dc5`](https://github.com/LTplus-AG/ifc-lite/commit/3457dc595fd3404086d7b22b9eca24fdeb46f840) Thanks [@louistrue](https://github.com/louistrue)! - `POST /api/v1/parse/metadata` now reports `geometry_count` as the number of geometry jobs a default parse of the same file schedules, equal to that parse's `metadata.geometry_entity_count` ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). It used to count every record whose class name can carry geometry, so on some files the value goes up:
+  
+  - A spatial container that is otherwise not geometric (`IfcBuildingStorey`, `IfcFacility`, `IfcFacilityPart` and their subtypes) now counts when it carries a Representation ([#1910](https://github.com/LTplus-AG/ifc-lite/issues/1910)). Without one it still does not count.
+  - A type (`IfcWallType`, `IfcDoorType`, …) with no occurrence now counts once per `IfcRepresentationMap` that no `IfcMappedItem` draws ([#957](https://github.com/LTplus-AG/ifc-lite/issues/957)). A type with an occurrence, or a map an `IfcMappedItem` draws, does not count.
+  
+  Ordinary products, including `IfcSite`, `IfcBuilding`, `IfcSpace` and `IfcOpeningElement`, count as before. On a file with neither case the value is unchanged. `entity_count`, `oversized_id_count` and `malformed_record_found` are unchanged. `@ifc-lite/server-client` updates the `MetadataResponse.geometry_count` documentation to match.
+
+- [#8358](https://github.com/LTplus-AG/ifc-lite/pull/8358) [`f140f2f`](https://github.com/LTplus-AG/ifc-lite/commit/f140f2f0d3bd969d2433abc09312ac04c59ea399) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite-processing` adds `ParseResponse::from_result`, the single mapping from a `ProcessingResult` to the serialised parse response ([#8341](https://github.com/LTplus-AG/ifc-lite/issues/8341)). The FFI DLL and the server's `POST /api/v1/parse` now both build on it. The server still adds Y-up meshes, IFC-authored finishes and symbolic data with provenance on top. The FFI buffer is unchanged byte for byte: it still carries no finishes, and a pinned test now checks that.
+
 ## 3.0.0
 
 ### Major Changes

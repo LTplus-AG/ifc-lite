@@ -54,7 +54,8 @@ export function decodeEntry(value: unknown): OutboxEntry | null {
     || !OUTBOX_STATES.includes(value.state as OutboxState) || !Number.isSafeInteger(value.attempts) || !isText(value.queuedAt, 40)
     || !optional(value.sentAt, 40) || value.force !== undefined && typeof value.force !== 'boolean'
     || value.blocked !== undefined && value.blocked !== 'imported' && value.blocked !== 'remote-conflict'
-    || value.baseline !== undefined && !isRecord(value.baseline)) return null;
+    || value.baseline !== undefined && !isRecord(value.baseline)
+    || value.withheld !== undefined && !isRecord(value.withheld)) return null;
   const decodedReceipt = value.receipt === undefined ? undefined : receipt(value.receipt);
   const decodedFailure = value.failure === undefined ? undefined : failure(value.failure);
   const decodedCheck = value.check === undefined ? undefined : check(value.check);
@@ -74,6 +75,7 @@ export function decodeEntry(value: unknown): OutboxEntry | null {
     ...(value.blocked !== undefined ? { blocked: value.blocked } : {}), ...(decodedCheck ? { check: decodedCheck } : {}),
     ...(value.force !== undefined ? { force: value.force } : {}),
     ...(value.baseline !== undefined ? { baseline: JSON.parse(JSON.stringify(value.baseline)) as Record<string, unknown> } : {}),
+    ...(value.withheld !== undefined ? { withheld: JSON.parse(JSON.stringify(value.withheld)) as Record<string, unknown> } : {}),
   };
 }
 

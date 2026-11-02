@@ -15,6 +15,8 @@ import { connectPeer, entriesOf, publish, reviewedBatch } from '@/test/bcf-publi
 import { bcfServerProfile } from '@/services/bcf-server-profiles';
 import { editDraftTopic } from '../bcf-drafts/draft-edit';
 import { checkEntry } from './outbox-check';
+import { publishDraftBatch } from './outbox-publish';
+import { readPublication } from './outbox-store';
 
 const buildagil = bcfServerProfile('https://openapi.buildagil.com');
 
@@ -82,4 +84,57 @@ test('checking an uncertain create on a server that ignores $skip pages by modif
   const created = [...peer.state.topics.values()].filter(item => item.topic.creation_author !== 'architect@example.test');
   assert.ok(created.some(item => item.topic.guid === byDate.check.candidates[0].guid));
   assert.equal(peer.state.receivedWrites, writes, 'the check only reads');
+});
+
+const BUILDAGIL_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];
+/** A peer with buildagil's measured topic vocabulary and status rule. */
+const buildagilLike = { topicTypes: BUILDAGIL_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'],
+  statusOnlyForTypes: ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log'] };
+
+test('a draft type the server lacks is refused before sending, then published as the chosen server type', async t => {
+  const peer = await connectPeer(t, buildagilLike);
+  const connection = { ...peer.connection, rules: buildagil };
+  const batch = await reviewedBatch();
+  const refused = await publishDraftBatch(batch, peer.target, connection);
+  assert.equal(refused?.report.stopped, 'preflight');
+  assert.deepEqual(refused?.report.preflight?.issues.map(issue => [issue.field, issue.value]), [['topic_type', 'Clash'], ['topic_type', 'Clash']]);
+  assert.deepEqual(refused?.report.preflight?.issues[0].allowed, BUILDAGIL_TYPES);
+  assert.equal(peer.state.receivedWrites, 0);
+
+  const published = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Model Issue' } });
+  assert.equal(published?.report.preflight?.ok, true);
+  assert.deepEqual(published?.report.preflight?.warnings.filter(warning => warning.kind === 'withheld'), [], 'Model Issue keeps its status');
+  const topics = [...peer.state.topics.values()].map(item => item.topic);
+  assert.equal(topics.length, 2);
+  assert.ok(topics.every(topic => topic.topic_type === 'Model Issue' && topic.topic_status === 'Open'));
+
+  // A later plan without the choice (a reopened panel) queues an update back to Clash, which preflight refuses;
+  // choosing the type again leaves the published topics as they are instead of a stuck update.
+  const reopened = await publishDraftBatch(batch, peer.target, connection);
+  assert.equal(reopened?.report.stopped, 'preflight');
+  const writes = peer.state.receivedWrites;
+  const chosenAgain = await publishDraftBatch(batch, peer.target, connection, { topicTypes: { Clash: 'Model Issue' } });
+  assert.equal(chosenAgain?.report.preflight?.ok, true);
+  assert.equal(chosenAgain?.report.sent, 0);
+  assert.equal(peer.state.receivedWrites, writes);
+  const stored = (await readPublication(chosenAgain?.plan.record.id ?? ''))?.record;
+  assert.deepEqual(stored?.entries.filter(entry => entry.state !== 'done'), [], 'no unsent update left behind');
+});
+
+test('buildagil: a status the chosen type cannot keep is not sent, and preflight says so', async t => {
+  const peer = await connectPeer(t, buildagilLike);
+  const batch = await reviewedBatch();
+  const published = await publishDraftBatch(batch, peer.target, { ...peer.connection, rules: buildagil }, { topicTypes: { Clash: 'Information' } });
+  assert.equal(published?.report.preflight?.ok, true, 'a warning, not a refusal');
+  assert.deepEqual(published?.report.preflight?.warnings.filter(warning => warning.kind === 'withheld')
+    .map(warning => [warning.topicGuid, warning.field, warning.value, warning.topicType]),
+  batch.topics.map(topic => [topic.guid, 'topic_status', 'Open', 'Information']));
+  const stored = (await readPublication(published?.plan.record.id ?? ''))?.record;
+  for (const create of stored ? entriesOf(stored, 'createTopic') : []) {
+    assert.equal(create.payload.topic_status, undefined, 'the status never left the client');
+    assert.equal(create.payload.topic_type, 'Information');
+    assert.equal(peer.state.topics.get(create.receipt?.remoteGuid ?? '')?.topic.topic_type, 'Information');
+  }
+  assert.equal(stored?.entries.length, 5);
+  assert.ok(stored?.entries.every(entry => entry.state === 'done'));
 });

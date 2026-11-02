@@ -90,6 +90,8 @@ export interface OutboxEntry {
   force?: boolean;
   /** Owned topic fields as last confirmed on the server, for update conflict checks. */
   baseline?: Record<string, unknown>;
+  /** Draft fields left out of the payload because the server cannot keep them (a status for a type without one). */
+  withheld?: Record<string, unknown>;
 }
 
 export interface PublicationTarget {

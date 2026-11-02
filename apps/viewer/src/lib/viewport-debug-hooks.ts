@@ -121,6 +121,8 @@ export function installViewportDebugHooks(
     cpuBytes: renderer.getScene().getResidentCpuBytes(),
     // GPU-resident point-cloud points: what COPC LOD bounds by its budget (#6869).
     pointCloudPoints: renderer.getPointCloudPointCount(),
+    // Internal Gaussian adapter residency and pass counters (#8565): no capture contents.
+    gaussianSplats: renderer.gaussianSplats.getStats(),
   });
   // Renderer-owned color evidence for hardware E2E. The RGBA bytes are copied
   // before the production frame submits, so this avoids compositor retention

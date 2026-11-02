@@ -258,3 +258,48 @@ test('#8564 centre clipping keeps or removes whole Gaussians by centre', async (
   const predicate = scene().filter!.predicate!;
   assert.deepEqual([0, 1, 2, 3].map((row) => predicate(1, row)), [true, true, false, false], 'x = 0, 0.001 kept; 0.002, 0.003 clipped');
 });
+
+test('#8564 abort while the upload is in flight rolls back to the previous source', async () => {
+  const { layer, scene } = harness();
+  const kept = await add(layer, 3);
+  const before = scene().sources.at(-1)!;
+  let open!: () => void;
+  scene().gate = new Promise((resolve) => { open = resolve; });
+  const controller = new AbortController();
+  const pending = add(layer, 4, translate(1), { signal: controller.signal });
+  await settle(); // packing done, upload parked
+  controller.abort();
+  open();
+  scene().gate = null;
+  await assert.rejects(pending, code('aborted'));
+  assert.equal(layer.getStats().assets, 1);
+  assert.deepEqual(layer.getState(kept), { state: 'pending' }, 'the scene held unpublished rows, so residency is withdrawn until re-upload');
+  assert.equal(layer.frameReady(), false);
+  await settle();
+  assert.deepEqual(layer.getState(kept), { state: 'resident' });
+  const now = scene().sources.at(-1)!;
+  assert.equal(now.opacities.length, 3, 'the previous packed rows were uploaded again');
+  assert.deepEqual([...now.positions], [...before.positions]);
+});
+
+test('#8564 an upload that completes after a device change never publishes', async () => {
+  const h = harness();
+  const kept = await add(h.layer, 2);
+  const oldScene = h.scene();
+  let open!: () => void;
+  oldScene.gate = new Promise((resolve) => { open = resolve; });
+  const pending = add(h.layer, 2, translate(1));
+  await settle();
+  h.life.lost = true; // loss, then recovery teardown and a replacement device
+  h.layer.release(false, false);
+  h.life.lost = false; h.life.generation = 2; h.replaceDevice();
+  open();
+  await assert.rejects(pending, code('lost'));
+  assert.ok(oldScene.destroyed);
+  assert.deepEqual(h.layer.getState(kept), { state: 'pending' });
+  h.layer.frameReady();
+  await settle();
+  assert.deepEqual(h.layer.getState(kept), { state: 'resident' });
+  assert.equal(h.scene().sources.at(-1)!.opacities.length, 2, 'only published rows reach the new device');
+  assert.equal(h.layer.getStats().assets, 1);
+});

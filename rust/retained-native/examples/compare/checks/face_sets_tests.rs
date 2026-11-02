@@ -111,6 +111,19 @@ fn issue_7955_an_unset_set_with_open_rows_counts_as_open_by_name() {
     }
 }
 
+/// 819 #5950: an open `.F.` set beside an unset set whose rows and mesh close is an authored open
+/// set. Only an unset set that is itself open names the unset classification.
+#[test]
+fn issue_7955_a_closed_unset_set_beside_an_open_one_is_not_unset_open() {
+    let text = shell(".F.").replace("'Tessellation',(#33)", "'Tessellation',(#33,#34)").replace("ENDSEC;END", "#31=IFCCARTESIANPOINTLIST3D(((2000.,0.,0.),(3000.,0.,0.),(2000.,1000.,0.),(2000.,0.,1000.)));
+#34=IFCTRIANGULATEDFACESET(#31,$,$,((1,3,2),(1,2,4),(2,3,4),(1,4,3)),$);
+ENDSEC;END");
+    let Some(shape) = publish(&text) else { return };
+    let rows = checked(&shape, &text, &crate::tolerances::registered().unwrap());
+    let open = rows.iter().find(|r| r.family == AUTHORED_OPEN).expect("the product is reported open");
+    assert_eq!(open.reason.as_deref(), Some("authored_open_face_set"), "the unset set is closed");
+}
+
 #[test]
 fn issue_7955_an_authored_open_set_with_a_wrong_corner_or_row_still_fails() {
     let text = shell(".F.");

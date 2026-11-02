@@ -120,7 +120,7 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
     let mut published = Vec::new();
     let mut source_open_edges = 0;
     let mut declared = std::collections::BTreeSet::new();
-    let (mut zero_row_edges, mut zero_rows_explain, mut any_open_set) = (0, true, false);
+    let (mut zero_row_edges, mut zero_rows_explain, mut any_open_set, mut unset_open) = (0, true, false, false);
     for part in &product.parts {
         let Some(faces) = part.faces.as_ref().filter(|_| part.source_exact) else { open = false; continue };
         // Any row key opts the part in: the first key's role must not be able to skip it, and
@@ -144,6 +144,8 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
         // (819 #5950, 859 #3020: five sets, some open): only an open one can name a defect.
         let counted_open = item.as_ref().is_some_and(|item| face_set_closure::counts_as_open(item, set.open_edges));
         any_open_set |= counted_open;
+        // Only an unset set that is itself open names the unset classification, not one beside it.
+        unset_open |= counted_open && item.as_ref().is_some_and(|item| face_set_closure::declared(item) == "UNSET");
         let closed_clean = set.open_edges == 0 && face_set_zero_rows::mesh_open_edges(&part.positions, &part.indices).is_some_and(|open| open.is_empty());
         open &= (counted_open || closed_clean) && faces.table.iter().all(|key| key.item == first.item);
         source_open_edges += set.open_edges;
@@ -190,6 +192,6 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
     }
     // Report-only marker: the rows above still gate; `Report` skips only closed-solid checks.
     if open && any && any_open_set { results.push(OracleResult { family: AUTHORED_OPEN, value: 1., limit: 0., pass: true, gated: false,
-        reason: Some(if declared.contains("UNSET") { "unset_rows_open_face_set" } else { "authored_open_face_set" }.into()), ..Default::default() }); }
+        reason: Some(if unset_open { "unset_rows_open_face_set" } else { "authored_open_face_set" }.into()), ..Default::default() }); }
     results
 }

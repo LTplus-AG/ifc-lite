@@ -1,5 +1,21 @@
 # @ifc-lite/rules
 
+## 0.8.0
+
+### Minor Changes
+
+- [#8457](https://github.com/LTplus-AG/ifc-lite/pull/8457) [`36c3379`](https://github.com/LTplus-AG/ifc-lite/commit/36c3379514db92ff58a73cf66bdb7b6399e9bf87) Thanks [@louistrue](https://github.com/louistrue)! - Lists can show each element's custom grouping ([#8425](https://github.com/LTplus-AG/ifc-lite/issues/8425)). The list builder offers a "Grouping: <Lens>" column for every rule-based Lens, and each row shows the group the element belongs to (the same first match the `customGrouping` filter rule applies, live edits included). `@ifc-lite/lists` adds the `customGrouping` column source and the optional `ListDataProvider.getCustomGroup` hook. `@ifc-lite/rules` adds `customGroupOfElement`.
+
+- [#8456](https://github.com/LTplus-AG/ifc-lite/pull/8456) [`2b80af1`](https://github.com/LTplus-AG/ifc-lite/commit/2b80af152da896757b773483275cda569008ef80) Thanks [@louistrue](https://github.com/louistrue)! - A new `customGrouping` filter rule selects elements by their group in a user-authored grouping ([#8425](https://github.com/LTplus-AG/ifc-lite/issues/8425)). A grouping is an ordered list of named filter groups, and each element belongs to the first one it matches, so groups never overlap. In the viewer, every saved rule-based Lens is a grouping: pick "Custom grouping" in the search filter, a clash set, a list scope, a validation rule or another Lens to reuse its rule names. A reference stores the Lens id and name: an existing id wins, otherwise the name must match exactly one Lens, so a Lens file imported into another project still works. An unknown grouping or group matches nothing and is flagged in the editor, and a grouping that refers to itself is refused.
+  
+  `@ifc-lite/rules` also adds `evaluateOptionsOf(model)`, the single-model options that give an `EvaluatorModel` its federated meaning, and the synchronous evaluator now reads a model's live edits through `EvaluateOptions.mutationView`. The viewer's SDK filtered export uses it, so a saved `model` rule keyed by the source fingerprint matches there, and live edits count.
+
+### Patch Changes
+
+- Updated dependencies [[`f7330db`](https://github.com/LTplus-AG/ifc-lite/commit/f7330db71ccf3b3bce6cf690fe17b2660827c650)]:
+  - @ifc-lite/parser@9.9.0
+  - @ifc-lite/ids@3.4.4
+
 ## 0.7.11
 
 ### Patch Changes

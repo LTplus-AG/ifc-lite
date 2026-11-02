@@ -2,7 +2,8 @@
 #![cfg(feature = "retained-runtime")]
 //! #7955: the comparison indexes each model once (`checks::ModelSource`) and its oracles
 //! take that shared source. Sharing must not change an answer: every shared entry point
-//! equals the per-call `bytes` version it replaced, and the shared decoder and unit scale
+//! returns the exact value the pre-#8595 per-call version returned (pinned below, since the
+//! per-call versions now delegate to the shared ones), and the shared decoder and unit scale
 //! equal what a fresh plain decoder resolves. Source-only, so no SMLib worker is needed.
 #[allow(dead_code)]
 #[path = "../examples/compare/metrics.rs"]
@@ -57,48 +58,60 @@ fn issue_7955_shared_decoder_and_unit_scale_equal_a_fresh_plain_decoder() {
     assert_eq!(model.decoder().length_unit_scale(), 0.001);
 }
 
+// Pinned from the pre-#8595 per-call implementations on main (ad10cb7147): each value is the
+// exact `Debug` output of `layers::expected`, `bounded::{applies,unmodelled_reason,expected}`,
+// `mapped::opened` and `face_sets::authored_surface` before they delegated to the shared
+// versions. Since they now delegate, comparing against them here would compare a function with
+// itself; these literals are the independent expectation.
+const PRE_PR_LAYERS_248: &str = "Some(LayerExpectation { volumes: [1.0000000000000002, 1.0000000000000002], opened_volume: 2.0, curved: false })";
+const PRE_PR_BOUNDED: [(&str, u32, &str); 5] = [
+    (HALFSPACES, 1000, "applies=true reason=None expected=Some((64.0, Some(56.0), None, false))"),
+    (HALFSPACES, 1004, "applies=true reason=None expected=Some((64.0, None, Some(\"solid Boolean operand outside section family\"), false))"),
+    (CIRCLE_AND_OPENING, 1062, "applies=true reason=None expected=Some((64.0, None, Some(\"curved or unpartitionable boundary\"), true))"),
+    (MAPPED, 173, "applies=true reason=None expected=Some((6.0, Some(3.0), None, false))"),
+    (MAPPED, 231, "applies=true reason=None expected=Some((6.0, Some(3.0), None, false))"),
+];
+const PRE_PR_OPENED_181: [(&[u32], &str); 2] = [
+    (&[190], "Some(OpeningExpectation { nominal_host_volume: 5.25, volume_bounds: [5.186, 5.25], result_volume: Some(5.186), host_bbox: Some([0.0, 0.0, 0.0, 2.0, 1.0, 3.0]), curved: false })"),
+    (&[190, 190], "Some(OpeningExpectation { nominal_host_volume: 5.25, volume_bounds: [5.122, 5.25], result_volume: Some(5.186), host_bbox: Some([0.0, 0.0, 0.0, 2.0, 1.0, 3.0]), curved: false })"),
+];
+const PRE_PR_SURFACES: [(u32, &str); 4] = [
+    (9, "Some([0, 1, 2, 0, 1, 2, 1, 2, 0, 2, 0, 1]) None"),
+    (19, "None Some([[[0.125, 0.25], [0.75, 0.9375], [0.3125, 0.5]], [[0.5625, 0.1875], [0.875, 0.0625], [0.0625, 0.8125]], [[0.3125, 0.5], [0.125, 0.25], [0.75, 0.9375]], [[0.0625, 0.8125], [0.5625, 0.1875], [0.875, 0.0625]], [[0.75, 0.9375], [0.3125, 0.5], [0.125, 0.25]], [[0.875, 0.0625], [0.0625, 0.8125], [0.5625, 0.1875]], [[0.125, 0.25], [0.75, 0.9375], [0.3125, 0.5]], [[0.5625, 0.1875], [0.875, 0.0625], [0.0625, 0.8125]], [[0.3125, 0.5], [0.125, 0.25], [0.75, 0.9375]], [[0.0625, 0.8125], [0.5625, 0.1875], [0.875, 0.0625]], [[0.75, 0.9375], [0.3125, 0.5], [0.125, 0.25]], [[0.875, 0.0625], [0.0625, 0.8125], [0.5625, 0.1875]]])"),
+    (30, "Some([0, 1, 2, 0, 1, 2, 1, 2, 0, 2, 0, 1]) None"),
+    (48, "None Some([[[0.125, 0.25], [0.75, 0.9375], [0.3125, 0.5]], [[0.5625, 0.1875], [0.875, 0.0625], [0.0625, 0.8125]], [[0.3125, 0.5], [0.125, 0.25], [0.75, 0.9375]], [[0.0625, 0.8125], [0.5625, 0.1875], [0.875, 0.0625]], [[0.75, 0.9375], [0.3125, 0.5], [0.125, 0.25]], [[0.875, 0.0625], [0.0625, 0.8125], [0.5625, 0.1875]], [[0.125, 0.25], [0.75, 0.9375], [0.3125, 0.5]], [[0.5625, 0.1875], [0.875, 0.0625], [0.0625, 0.8125]], [[0.3125, 0.5], [0.125, 0.25], [0.75, 0.9375]], [[0.0625, 0.8125], [0.5625, 0.1875], [0.875, 0.0625]], [[0.75, 0.9375], [0.3125, 0.5], [0.125, 0.25]], [[0.875, 0.0625], [0.0625, 0.8125], [0.5625, 0.1875]]])"),
+];
+
 #[test]
-fn issue_7955_shared_layer_and_bounded_oracles_equal_their_per_call_versions() {
+fn issue_7955_shared_layer_and_bounded_oracles_match_the_pre_pr_values() {
     let sources = extract_analytic_quantity_sources(OPENINGS.as_bytes(), None);
     let bundle = SourceBundle::new(OPENINGS.as_bytes().to_vec());
     let clips = ClipOracle::new(&bundle, &sources);
-    let shared = layers::expected_in(&bundle, &clips, &sources, 248).expect("opened layered wall #248");
-    let per_call = layers::expected(OPENINGS.as_bytes(), &sources, 248).unwrap();
-    assert_eq!(format!("{shared:?}"), format!("{per_call:?}"));
+    assert_eq!(format!("{:?}", layers::expected_in(&bundle, &clips, &sources, 248)), PRE_PR_LAYERS_248);
 
-    for (text, ids) in [(HALFSPACES, &[1000u32, 1004][..]), (CIRCLE_AND_OPENING, &[1062][..]), (MAPPED, &[173, 231][..])] {
+    for (text, id, pinned) in PRE_PR_BOUNDED {
         let sources = extract_analytic_quantity_sources(text.as_bytes(), None);
         let bundle = SourceBundle::new(text.as_bytes().to_vec());
-        for &id in ids {
-            assert!(bounded::applies_in(&bundle, id), "#{id}");
-            assert_eq!(bounded::applies_in(&bundle, id), bounded::applies(text.as_bytes(), id));
-            assert_eq!(bounded::unmodelled_reason_in(&bundle, id), bounded::unmodelled_reason(text.as_bytes(), id));
-            let shared = bounded::expected_in(&bundle, &sources, id).expect("bounded expectation");
-            let per_call = bounded::expected(text.as_bytes(), &sources, id).unwrap();
-            assert_eq!((shared.host_volume, shared.section_volume, &shared.section_unavailable, shared.curved),
-                (per_call.host_volume, per_call.section_volume, &per_call.section_unavailable, per_call.curved), "#{id}");
-        }
+        let expected = bounded::expected_in(&bundle, &sources, id)
+            .map(|e| (e.host_volume, e.section_volume, e.section_unavailable, e.curved));
+        let actual = format!("applies={} reason={:?} expected={:?}",
+            bounded::applies_in(&bundle, id), bounded::unmodelled_reason_in(&bundle, id), expected);
+        assert_eq!(actual, pinned, "#{id}");
     }
-    // The per-call version now delegates to the shared one, so pin what the shared void scan
-    // decides: #1062's authored opening makes the curved section unavailable; without it the
-    // curved integral supplies the volume.
-    let bundle = SourceBundle::new(CIRCLE_AND_OPENING.as_bytes().to_vec());
-    let sources = extract_analytic_quantity_sources(CIRCLE_AND_OPENING.as_bytes(), None);
-    let opened = bounded::expected_in(&bundle, &sources, 1062).unwrap();
-    assert!(opened.section_volume.is_none() && opened.section_unavailable.is_some(), "opening must be found");
+    // #1062's authored opening is what leaves its curved section unavailable: without the
+    // opening the curved integral supplies the volume.
     let bundle = SourceBundle::new(CIRCLE_ONLY.as_bytes().to_vec());
     let sources = extract_analytic_quantity_sources(CIRCLE_ONLY.as_bytes(), None);
     assert!(bounded::expected_in(&bundle, &sources, 1062).unwrap().section_volume.is_some());
 }
 
 #[test]
-fn issue_7955_shared_mapped_and_type_map_oracles_equal_their_per_call_versions() {
+fn issue_7955_shared_mapped_and_type_map_oracles_match_the_pre_pr_values() {
     let bundle = SourceBundle::new(MAPPED.as_bytes().to_vec());
-    for cuts in [&[190u32][..], &[190, 190][..]] {
-        let shared = mapped::opened_in(&bundle, 181, cuts).expect("mapped host #181");
-        let per_call = mapped::opened(MAPPED.as_bytes(), 181, cuts).unwrap();
-        assert_eq!(format!("{shared:?}"), format!("{per_call:?}"));
+    for (cuts, pinned) in PRE_PR_OPENED_181 {
+        assert_eq!(format!("{:?}", mapped::opened_in(&bundle, 181, cuts)), pinned, "{cuts:?}");
     }
+    // `type_maps::expected` still builds its own plain decoder, independent of the shared one.
     let bundle = SourceBundle::new(TYPE_MAPS.as_bytes().to_vec());
     let model = ModelSource::new(TYPE_MAPS.as_bytes(), &bundle);
     let sources = extract_analytic_quantity_sources(TYPE_MAPS.as_bytes(), None);
@@ -109,23 +122,22 @@ fn issue_7955_shared_mapped_and_type_map_oracles_equal_their_per_call_versions()
 }
 
 #[test]
-fn issue_7955_shared_surface_maps_find_every_palette_and_texture() {
-    // #8291 presentation fixture: palette and texture face sets.
+fn issue_7955_shared_surface_maps_match_the_pre_pr_values() {
+    // #8291 presentation fixture: two palette and two texture face sets.
     const PRESENTED: &str = include_str!("../../../tests/fixtures/synthetic-retained/f-t-face-set-presentation.ifc");
     use ifc_lite_retained_native::oracle::face_sets;
     let bundle = SourceBundle::new(PRESENTED.as_bytes().to_vec());
     let model = ModelSource::new(PRESENTED.as_bytes(), &bundle);
-    let (mut palettes, mut textures, mut scanner) = (0, 0, EntityScanner::new(PRESENTED.as_bytes()));
+    let mut ids = Vec::new();
+    let mut scanner = EntityScanner::new(PRESENTED.as_bytes());
     while let Some((id, name, ..)) = scanner.next_entity() {
         if !name.eq_ignore_ascii_case("IFCTRIANGULATEDFACESET") && !name.eq_ignore_ascii_case("IFCPOLYGONALFACESET") { continue; }
         let mut decoder = model.decoder();
         let item = decoder.decode_by_id(id).unwrap();
-        let shared = face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder);
-        let per_call = face_sets::authored_surface(PRESENTED.as_bytes(), &item, &mut EntityDecoder::new(PRESENTED.as_bytes()));
-        assert_eq!((&shared.palette, &shared.uvs), (&per_call.palette, &per_call.uvs), "#{id}");
-        palettes += usize::from(shared.palette.is_some());
-        textures += usize::from(shared.uvs.is_some());
+        let surface = face_sets::authored_surface_in(model.surface_maps(), &item, &mut decoder);
+        let pinned = PRE_PR_SURFACES.iter().find(|(pinned, _)| *pinned == id).map(|(_, value)| *value);
+        assert_eq!(Some(format!("{:?} {:?}", surface.palette, surface.uvs)).as_deref(), pinned, "#{id}");
+        ids.push(id);
     }
-    // The per-call version now reads the same span list, so pin that both kinds are found.
-    assert!(palettes > 0 && textures > 0, "palettes {palettes}, textures {textures}");
+    assert_eq!(ids, PRE_PR_SURFACES.map(|(id, _)| id));
 }

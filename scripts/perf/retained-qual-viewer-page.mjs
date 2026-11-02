@@ -36,7 +36,7 @@ function install(key) {
     workers: { created: 0, terminated: 0, peakLive: 0, byScript: {} } };
   const host = globalThis;
   if (typeof host.Worker === 'function') {
-    const w = q.workers, script = url => String(url).replace(/^blob:.*/, 'blob:').replace(/[?#].*$/, '');
+    const w = q.workers, script = url => String(url);
     const terminated = new WeakSet();
     host.Worker = class extends host.Worker {
       constructor(url, options) {

@@ -170,7 +170,7 @@ test('7955: page-created workers are counted by script, peak live follows termin
   assert.equal(w.created, 3);
   assert.equal(w.terminated, 1);
   assert.equal(w.peakLive, 2);
-  assert.deepEqual({ ...w.byScript }, { 'https://h/assets/retained.worker-abc.js': 2, 'blob:': 1 });
+  assert.deepEqual({ ...w.byScript }, { 'https://h/assets/retained.worker-abc.js?worker_file&type=module': 1, 'https://h/assets/retained.worker-abc.js': 1, 'blob:https://h/1234': 1 });
   assert.ok(vm.runInContext('new Worker("x") instanceof Worker', context), 'still a Worker');
 });
 
@@ -187,4 +187,14 @@ test('8540: distinct worker paths and repeated termination preserve live counts'
   assert.equal(w.terminated, 1);
   assert.equal(w.peakLive, 2);
   assert.deepEqual({ ...w.byScript }, { '/parser/worker.js': 2, '/renderer/worker.js': 1 });
+});
+
+test('8540: blob identities and query variants remain distinct worker scripts', () => {
+  class FakeWorker { terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const urls = ['blob:https://h/first', 'blob:https://h/second', '/worker.js?version=1', '/worker.js?version=2'];
+  for (const url of [...urls, urls[0]]) vm.runInContext(`new Worker(${JSON.stringify(url)})`, context);
+  assert.deepEqual({ ...context[PAGE_KEY].workers.byScript }, Object.fromEntries(urls.map((url, i) => [url, i === 0 ? 2 : 1])));
 });

@@ -41,6 +41,17 @@ fn a_product_alone_past_the_budget_stays_named() {
     assert!(all.extrusion_definitions.diagnostics.iter().any(|d| d.contains("product #9002") && d.contains("budget")), "{:?}", all.extrusion_definitions.diagnostics);
 }
 
+/// A product alone past the budget is skipped, not a wall: the products after it still fit.
+#[test]
+fn a_product_alone_past_the_budget_leaves_later_products_their_sources() {
+    let ids = [9010, 9020, 9030, 9040, 9050];
+    let text = with(&(wall(9000, 25_001) + &ids.map(|id| wall(id, 24_000)).concat()));
+    let all = analytic_sources::analytic_sources(text.as_bytes());
+    for id in ids.map(|id| id + 2) { assert_eq!(all.extrusion_definitions.instances.get(&id).map(Vec::len), Some(24_000), "#{id}: {:?}", all.extrusion_definitions.diagnostics); }
+    assert!(!all.extrusion_definitions.instances.contains_key(&9002));
+    assert!(all.extrusion_definitions.diagnostics.iter().any(|d| d.contains("product #9002") && d.contains("budget")), "{:?}", all.extrusion_definitions.diagnostics);
+}
+
 /// Snowdon #28109: at a circular tangency area grows like t^(3/2), which exhausted uniform
 /// refinement. A plane through a cylinder's diameter cuts a wedge of V = 2/3 r^2 h.
 #[test]

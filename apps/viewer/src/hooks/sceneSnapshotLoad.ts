@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The finished scene on a primary cache hit (`perf.sceneSnapshot`). A hit whose
+ * The finished scene on a primary cache hit (kill switch `perf.sceneSnapshot=0`). A hit whose
  * entry holds a snapshot draws the complete model before its metadata decodes,
  * then attaches the decoded meshes with no upload. Any other hit streams as
  * before, and leaves a snapshot behind for the next one.
@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { lastFinalFitBounds, sceneSnapshotKey, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
+import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
@@ -23,26 +23,22 @@ import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
 
-type CameraBounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
-
 /** What the viewer stores beside the batches: the fit they were finalized under, and where the shards are. */
-interface SnapshotHostData {
-  fitBounds: CameraBounds;
-  sceneBounds: CameraBounds;
-  orbitAnchorBounds: CameraBounds | null;
+interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
 }
 
 export interface AdoptedSceneSnapshot {
   adoption: object;
   shards: ArrayBuffer[];
+  fit: SnapshotCameraFit;
   firstVisible: Promise<void>;
 }
 
-/** Same spellings as every other boolean perf flag: the URL reads as a number, a console global as either. */
+/** On by default; `perf.sceneSnapshot=0` (or `__IFC_LITE_SCENE_SNAPSHOT = 0`) turns it off. */
 function snapshotsEnabled(): boolean {
   const raw = readPerfFlag('sceneSnapshot');
-  return raw === 1 || raw === true;
+  return raw === undefined || raw === null || raw === 1 || raw === true;
 }
 
 function snapshotKey(scene: SceneContents): string {
@@ -62,6 +58,7 @@ async function readSnapshotShards(entry: Blob, shards: SnapshotHostData['shards'
 
 /** A load mounts the viewport, so a first file can reach its hit while the renderer is still starting. */
 async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3000): Promise<Renderer | null> {
+  if (!(globalThis.navigator as { gpu?: unknown } | undefined)?.gpu) return null; // no WebGPU: no renderer is coming
   const deadline = performance.now() + timeoutMs;
   for (;;) {
     const renderer = getGlobalRenderer();
@@ -113,14 +110,10 @@ export async function adoptCachedSceneSnapshot(
   uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
-  const canvas = renderer.getCanvas();
-  const shortSide = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0);
-  camera.fitBoundsAdaptive(host.fitBounds, { viewportShortPx: shortSide > 0 ? shortSide : undefined });
-  camera.setSceneBounds(host.sceneBounds);
-  camera.setOrbitAnchorBounds(host.orbitAnchorBounds);
+  fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
 /** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
@@ -139,7 +132,7 @@ export async function publishAdoptedSceneMeshes(
   setPendingSceneSnapshot(adopted.adoption, () => {
     useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  });
+  }, adopted.fit);
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }
@@ -159,16 +152,20 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }
 
-/** Store the scene this hit is about to finalize, once it has. */
-export function captureSceneSnapshotOfHit(
+/** Store the scene this hit is about to finalize, once it has. Resolves true when the load was superseded while it waited. */
+export async function captureSceneSnapshotOfHit(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
-): void {
+): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
-  const renderer = getGlobalRenderer();
-  if (!snapshotsEnabled() || !renderer || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return;
+  if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
+  const renderer = await rendererReady(isStale);
+  if (!renderer) return isStale?.() ?? false;
+  // Batches built before admission stay f32, and a snapshot would keep them that way for good.
+  if (isQuantizedEnabled()) await renderer.enableQuantizedBatches();
+  if (isStale?.()) return true;
   renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();
@@ -185,4 +182,5 @@ export function captureSceneSnapshotOfHit(
       });
     }, 0);
   });
+  return false;
 }

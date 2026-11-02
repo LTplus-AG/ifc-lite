@@ -54,3 +54,29 @@ test('#8564 Gaussians never enter model bounds; only the orthographic depth rang
   assert.deepEqual(renderer.getModelBounds(), annotation, 'removal keeps the annotation bounds');
   assert.equal(camera.state.depthOnlyBounds, null);
 });
+
+test('#8564 review round 4: moving a Gaussian far away moves the depth extent with it', async () => {
+  const canvas = { width: 64, height: 64, getBoundingClientRect: () => ({ width: 64, height: 64 }), style: {} } as unknown as HTMLCanvasElement;
+  const renderer = new Renderer(canvas);
+  const fields = renderer as unknown as Record<string, unknown>;
+  fields.ready = true;
+  fields.device = { isInitialized: () => true, getDevice: () => ({ limits: { maxBufferSize: 1 << 24, maxStorageBufferBindingSize: 1 << 24 } }), getAdapter: () => null, destroy: () => {} };
+  fields.pipeline = {};
+  ((fields.gaussianLayer as Record<string, unknown>).slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+    upstreamReverseZ: true,
+    createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+  });
+  (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = { setLineOverlay() {} };
+  renderer.setLineOverlay('annotation', new Float32Array([0, 0, 0, 100, 100, 100]));
+  const annotation = structuredClone(renderer.getModelBounds());
+  const camera = fields.camera as { state: Parameters<typeof computeOrthoNearFar>[0] };
+  const attributes = {
+    count: 1, positions: new Float32Array([10, 10, 10]), scales: new Float32Array([1, 1, 1]), rotations: new Float32Array([1, 0, 0, 0]),
+    colors: new Float32Array([1, 0, 0, 1]), opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+  };
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const handle = await renderer.gaussianSplats.add({ attributes, placement: { matrix: identity }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+  assert.equal(await renderer.gaussianSplats.setPlacement(handle, { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 500, 0, 0, 1] }), true);
+  assert.deepEqual(camera.state.depthOnlyBounds, { min: { x: 510, y: 10, z: 10 }, max: { x: 510, y: 10, z: 10 } }, 'the moved, disjoint centre is the depth extent');
+  assert.deepEqual(renderer.getModelBounds(), annotation, 'model bounds stay the annotation bounds');
+});

@@ -28,7 +28,7 @@ export function fragmentIntervalPlugin(filter = true) {
       '$&\n@group(0) @binding(auto) var contractDepthInterval : texture_2d<f32>;');
     code = code.replace('fn fragmentMain(input : SplatFragmentInputs) -> @location(0) vec4<f32> {', `$&
       let interval = textureLoad(contractDepthInterval, vec2<i32>(input.position.xy), 0).rg;
-      ${filter ? 'if (input.position.z <= interval.x || input.position.z > interval.y) { discard; }' : ''}`);
+      ${filter === 'discard-all' ? 'discard;' : filter ? 'if (input.position.z <= interval.x || input.position.z > interval.y) { discard; }' : ''}`);
     return { code, map: null };
   } };
 }

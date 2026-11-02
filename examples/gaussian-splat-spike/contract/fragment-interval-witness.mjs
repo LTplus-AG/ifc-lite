@@ -58,7 +58,7 @@ async function witness(device, raw, projection, size, slope) {
     const intervalPipelines = ['far', 'near'].map(entryPoint => raw.createRenderPipeline({ layout: 'auto',
       vertex: { module: shader, entryPoint: 'vs' }, fragment: { module: shader, entryPoint, targets: [{ format: 'rg32float' }] } }));
     const images = {};
-    for (const mode of ['reference', 'interval']) {
+    for (const mode of [new URLSearchParams(location.search).get('mode') ?? 'interval']) {
       const encoder = raw.createCommandEncoder(), wrapped = device.createCommandEncoder({ handle: encoder });
       try {
         // The native triangle rasterizer writes the actual fragment depth; no
@@ -90,8 +90,8 @@ async function witness(device, raw, projection, size, slope) {
       } finally { wrapped.destroy(); }
       images[mode] = await capture(raw, color.handle, size);
     }
-    const differentChannels = images.interval.reduce((n, v, i) => n + (v !== images.reference[i] ? 1 : 0), 0);
-    return { projection, size, slope, differentChannels, referenceNonzero: images.reference.some((v, i) => i % 4 !== 3 && v > 0) };
+    const pixels = Object.values(images)[0];
+    return { projection, size, slope, pixels: Array.from(pixels) };
   } finally { for (const resource of owned.reverse()) resource.destroy(); }
 }
 

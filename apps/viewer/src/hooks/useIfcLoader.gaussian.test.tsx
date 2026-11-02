@@ -317,7 +317,9 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
   it('cleans a published replacement when an unrelated add supersedes its federation session (#8566)', async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
     await load(gaussianPly('old.ply', CENTRES), { kind: 'federated', modelId: 'old' }, QUALIFIED);
-    const original = model('old');
+    const original = model('old')!;
+    const tag = useViewerStore.getState().createModelTag('Superseded reload')!;
+    useViewerStore.getState().assignModelTags(['old'], [tag]);
     let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
     let replacementId: string | undefined;
@@ -337,7 +339,18 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
       } finally { release(); }
       assert.deepEqual(await pending, { ok: false, reason: 'not-loaded' });
     });
-    assert.equal(model('old'), original, 'original retry row survives');
+    const retained = model('old');
+    assert.ok(retained, 'original retry row survives');
+    assert.equal(retained.sourceFile, original.sourceFile, 'retry retains the exact source');
+    assert.equal(retained.gaussianSplat?.handle, original.gaussianSplat!.handle, 'original renderer handle survives');
+    assert.deepEqual(
+      [retained.name, retained.visible, retained.sourceHandle, retained.sourceFingerprint, retained.gaussianSplat],
+      [original.name, original.visible, original.sourceHandle, original.sourceFingerprint, original.gaussianSplat],
+      'source and capture metadata survive the losing replacement',
+    );
+    assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get('old')!], [tag]);
+    // Canonical addModel collapses existing rows when another model is added.
+    assert.equal(retained.collapsed, true);
     assert.equal(model(replacementId!), undefined, 'published losing row is removed');
     assert.equal(useViewerStore.getState().models.size, 2);
     assert.equal(splats().getStats().assets, 2, 'only original and unrelated assets remain');

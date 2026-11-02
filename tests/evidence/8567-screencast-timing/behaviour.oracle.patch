@@ -1,0 +1,13 @@
+diff --git b/examples/gaussian-splat-spike/screencast-timing.mjs a/examples/gaussian-splat-spike/screencast-timing.mjs
+index 7aabdf2480..da5d2aaccd 100644
+--- b/examples/gaussian-splat-spike/screencast-timing.mjs
++++ a/examples/gaussian-splat-spike/screencast-timing.mjs
+@@ -16,7 +16,7 @@ export function screencastConcat(frames, finalSeconds = 1 / 30) {
+   const lines = ['ffconcat version 1.0'];
+   frames.forEach((frame, i) => {
+     lines.push(`file '${frameName(frame.n)}'`);
+-    lines.push(`duration ${finalSeconds.toFixed(6)}`);
++    lines.push(`duration ${((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frame.ts).toFixed(6)}`);
+   });
+   // The concat demuxer needs the last file repeated for its duration to apply.
+   lines.push(`file '${frameName(frames.at(-1).n)}'`);

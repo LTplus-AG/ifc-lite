@@ -41,6 +41,7 @@ import {
 import { SCHEMA_REGISTRY, isKnownType, type IfcDataStore } from '@ifc-lite/parser';
 import { createMockStore } from './mock-store.js';
 import { IfcQuery } from '../src/ifc-query.js';
+import { EntityQuery } from '../src/entity-query.js';
 
 /** The one error `ofType()`'s guard raises. Nothing else may be mistaken for it. */
 const GUARD_MESSAGE = /is not an entity name in any IFC schema/;
@@ -394,6 +395,13 @@ describe('ofType() narrows the Unknown bucket to the queried class', () => {
 
   it('a standard class absent from the file answers nothing, not the bucket', async () => {
     expect(await queryFor(mepStore()).ofType('IfcValve').ids()).toEqual([]);
+  });
+
+  it('an EntityQuery given only unmapped names returns just those classes', async () => {
+    // The constructor is exported; a null enum list with names must not
+    // fall through to "every entity".
+    const store = mepStore() as unknown as IfcDataStore;
+    expect(await new EntityQuery(store, null, null, ['IfcPipeFitting']).ids()).toEqual([6]);
   });
 
   it('count() agrees with ids()', async () => {

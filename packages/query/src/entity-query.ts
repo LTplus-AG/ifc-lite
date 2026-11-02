@@ -154,10 +154,10 @@ export class EntityQuery {
   
   private getCandidateIds(): number[] {
     if (this.idFilter) return [...this.idFilter];
-    if (this.typeFilter) {
+    if (this.typeFilter || this.unmappedTypeNames.size > 0) {
       const ids: number[] = [];
       // A Set, so a class named twice is read once.
-      const typeEnums = new Set(this.typeFilter);
+      const typeEnums = new Set(this.typeFilter ?? []);
       for (const typeEnum of typeEnums) {
         // @raw-entity-enumeration-ok EntityQuery takes only a parsed store, with no mutation view; fluent bulk queries describe that source snapshot
         ids.push(...this.store.entities.getByType(typeEnum));

@@ -31,11 +31,8 @@ export interface ShRotation { readonly degree: 0 | 1 | 2 | 3; readonly bands: re
 
 /** Packed destination columns; `shBasisCount` (0, 3, 8 or 15) may exceed the source's, extra bands are zero-filled. */
 export interface GaussianRowTarget {
-  positions: Float32Array;
-  scales: Float32Array;
-  rotations: Float32Array;
-  sphericalHarmonics?: Float32Array;
-  shBasisCount: number;
+  positions: Float32Array; scales: Float32Array; rotations: Float32Array;
+  sphericalHarmonics?: Float32Array; shBasisCount: number;
 }
 
 /**
@@ -64,12 +61,8 @@ const RING_HEIGHTS: readonly number[] = [Math.sqrt(1 / 3), 0.3, 0.25];
 const BASIS_TOLERANCE = 1e-9;
 const ZERO_BASE = [0, 0, 0] as const;
 
-function invalidPlacement(reason: string): GaussianSplatError {
-  return new GaussianSplatError('invalid-placement', `Gaussian placement ${reason}`);
-}
-
-function nonSimilarity(reason: string): GaussianSplatError {
-  return new GaussianSplatError('non-similarity-placement', `Gaussian placement ${reason}`);
+function placementError(code: 'invalid-placement' | 'non-similarity-placement', reason: string): GaussianSplatError {
+  return new GaussianSplatError(code, `Gaussian placement ${reason}`);
 }
 
 /**
@@ -80,30 +73,27 @@ function nonSimilarity(reason: string): GaussianSplatError {
  * `unsupported-reflection` (det < 0: mirrored SH bands are not verified here).
  */
 export function decomposeSimilarity(matrix: ArrayLike<number>): SimilarityPlacement {
-  if (matrix.length !== 16) throw invalidPlacement(`needs 16 column-major values, got ${matrix.length}`);
+  if (matrix.length !== 16) throw placementError('invalid-placement', `needs 16 column-major values, got ${matrix.length}`);
   const m = Array.from(matrix);
-  if (!m.every(value => Number.isFinite(value))) throw invalidPlacement('contains non-finite values');
+  if (!m.every(value => Number.isFinite(value))) throw placementError('invalid-placement', 'contains non-finite values');
   if (m[3] !== 0 || m[7] !== 0 || m[11] !== 0 || m[15] !== 1) {
-    throw invalidPlacement('bottom row must be exactly [0, 0, 0, 1]');
+    throw placementError('invalid-placement', 'bottom row must be exactly [0, 0, 0, 1]');
   }
   const magnitude = Math.max(...LINEAR.map(index => Math.abs(m[index])));
-  if (magnitude === 0) throw nonSimilarity('has a zero linear part');
+  if (magnitude === 0) throw placementError('non-similarity-placement', 'has a zero linear part');
   // Dividing by the largest entry keeps the Gram matrix clear of overflow and underflow.
   const columns = [0, 4, 8].map(first => [m[first] / magnitude, m[first + 1] / magnitude, m[first + 2] / magnitude]);
   const gram = (a: number, b: number): number =>
     columns[a][0] * columns[b][0] + columns[a][1] * columns[b][1] + columns[a][2] * columns[b][2];
   const unitScale2 = (gram(0, 0) + gram(1, 1) + gram(2, 2)) / 3;
-  for (let a = 0; a < 3; a++) {
-    for (let b = a; b < 3; b++) {
-      if (!(Math.abs(gram(a, b) - (a === b ? unitScale2 : 0)) <= SIMILARITY_TOLERANCE * unitScale2)) {
-        throw nonSimilarity('linear part is not a uniform scale times a rotation (shear or non-uniform scale)');
-      }
-    }
+  const pairs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]];
+  if (pairs.some(([a, b]) => !(Math.abs(gram(a, b) - (a === b ? unitScale2 : 0)) <= SIMILARITY_TOLERANCE * unitScale2))) {
+    throw placementError('non-similarity-placement', 'linear part is not a uniform scale times a rotation (shear or non-uniform scale)');
   }
   const unitScale = Math.sqrt(unitScale2);
   const scale = magnitude * unitScale;
   if (!(scale >= FLOAT32_MIN_NORMAL && scale <= FLOAT32_MAX)) {
-    throw nonSimilarity(`scale ${scale} is zero or outside the normal float32 range`);
+    throw placementError('non-similarity-placement', `scale ${scale} is zero or outside the normal float32 range`);
   }
   const r = columns.flat().map(value => value / unitScale);
   const determinant = r[0] * (r[4] * r[8] - r[5] * r[7]) + r[1] * (r[5] * r[6] - r[3] * r[8])
@@ -112,13 +102,8 @@ export function decomposeSimilarity(matrix: ArrayLike<number>): SimilarityPlacem
     throw new GaussianSplatError('unsupported-reflection', 'Gaussian placement mirrors handedness; reflected SH is unsupported');
   }
   const quaternion = quaternionFromRotation(r);
-  return {
-    scale,
-    rotation: rotationFromQuaternion(quaternion),
-    quaternion,
-    translation: [m[12], m[13], m[14]],
-    identityRotation: quaternion[1] === 0 && quaternion[2] === 0 && quaternion[3] === 0,
-  };
+  const identityRotation = quaternion[1] === 0 && quaternion[2] === 0 && quaternion[3] === 0;
+  return { scale, rotation: rotationFromQuaternion(quaternion), quaternion, translation: [m[12], m[13], m[14]], identityRotation };
 }
 
 /** Shepperd's branch on the largest diagonal term; normalised with w >= 0. `r` is column-major. */
@@ -235,7 +220,7 @@ function solveLinear(a: Float64Array, b: Float64Array, n: number): Float64Array 
     if (!(Math.abs(a[pivot * n + column]) > BASIS_TOLERANCE * magnitude)) {
       throw new GaussianSplatError('upstream-capability-missing', 'Upstream SH basis is singular at the sample directions');
     }
-    if (pivot !== column) swapRows(a, b, n, pivot, column);
+    if (pivot !== column) swapRows([a, b], n, pivot, column);
     for (let row = 0; row < n; row++) {
       const factor = row === column ? 0 : a[row * n + column] / a[column * n + column];
       if (factor === 0) continue;
@@ -251,21 +236,16 @@ function solveLinear(a: Float64Array, b: Float64Array, n: number): Float64Array 
   return b;
 }
 
-function swapRows(a: Float64Array, b: Float64Array, n: number, first: number, second: number): void {
-  for (let k = 0; k < n; k++) {
-    const ak = a[first * n + k];
-    a[first * n + k] = a[second * n + k];
-    a[second * n + k] = ak;
-    const bk = b[first * n + k];
-    b[first * n + k] = b[second * n + k];
-    b[second * n + k] = bk;
+function swapRows(matrices: readonly Float64Array[], n: number, first: number, second: number): void {
+  for (const matrix of matrices) {
+    const row = matrix.slice(first * n, first * n + n);
+    matrix.copyWithin(first * n, second * n, second * n + n);
+    matrix.set(row, second * n);
   }
 }
 
 function identityMatrix(size: number): Float64Array {
-  const result = new Float64Array(size * size);
-  for (let i = 0; i < size; i++) result[i * size + i] = 1;
-  return result;
+  return Float64Array.from({ length: size * size }, (_, index) => (index % (size + 1) === 0 ? 1 : 0));
 }
 
 /**
@@ -290,14 +270,8 @@ function identityMatrix(size: number): Float64Array {
  * callers discard the target on error.
  */
 export function transformGaussianRows(
-  source: NormalizedGaussianAttributes,
-  placement: SimilarityPlacement,
-  sh: ShRotation,
-  anchor: readonly [number, number, number],
-  target: GaussianRowTarget,
-  targetRow: number,
-  start: number,
-  end: number,
+  source: NormalizedGaussianAttributes, placement: SimilarityPlacement, sh: ShRotation,
+  anchor: readonly [number, number, number], target: GaussianRowTarget, targetRow: number, start: number, end: number,
 ): void {
   const sourceBasis = (source.sphericalHarmonicsDegree + 1) ** 2 - 1;
   checkRowContract(source, sourceBasis, sh, anchor, target, targetRow, start, end);
@@ -308,9 +282,7 @@ export function transformGaussianRows(
   const { positions, scales, rotations } = source;
   for (let row = start; row < end; row++) {
     const out = targetRow + row;
-    const x = positions[row * 3];
-    const y = positions[row * 3 + 1];
-    const z = positions[row * 3 + 2];
+    const x = positions[row * 3], y = positions[row * 3 + 1], z = positions[row * 3 + 2];
     for (let axis = 0; axis < 3; axis++) {
       const position = Math.fround(linear[axis] * x + linear[axis + 3] * y + linear[axis + 6] * z + offset[axis]);
       if (!Number.isFinite(position)) {
@@ -328,10 +300,7 @@ export function transformGaussianRows(
       target.rotations.set(rotations.subarray(row * 4, row * 4 + 4), out * 4);
       continue;
     }
-    const w = rotations[row * 4];
-    const a = rotations[row * 4 + 1];
-    const b = rotations[row * 4 + 2];
-    const c = rotations[row * 4 + 3];
+    const w = rotations[row * 4], a = rotations[row * 4 + 1], b = rotations[row * 4 + 2], c = rotations[row * 4 + 3];
     const rw = qw * w - qx * a - qy * b - qz * c;
     const rx = qw * a + qx * w + qy * c - qz * b;
     const ry = qw * b - qx * c + qy * w + qz * a;

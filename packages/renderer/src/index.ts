@@ -125,6 +125,7 @@ export type { PointPickSizing } from './picker.js';
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 export * from './gaussian/gaussian-public.js';
 import { GaussianSplatLayer, type GaussianSplatApi } from './gaussian/gaussian-splat-layer.js';
+import { unionBounds } from './gaussian/gaussian-frame.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -421,7 +422,7 @@ export class Renderer {
     // the call sites: they do not all push under the same policy.
     private readonly modelBoundsTracker = new ModelBoundsTracker({
         meshBounds: () => this.computeMeshBounds(),
-        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
+        pointCloudBounds: () => unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564 centre framing
     });
 
     /** Read-only view of the tracked scene AABB (live reference, not a copy). */
@@ -1892,7 +1893,7 @@ export class Renderer {
                 options,
                 batchedMeshes: this.scene.getBatchedMeshes(),
                 meshes,
-                pointCloudBounds: this.pointCloudRenderer?.getBounds() ?? null,
+                pointCloudBounds: unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564
                 logSectionBounds: !this._loggedSectionBounds,
                 spendLogLatch: () => { this._loggedSectionBounds = true; },
             });

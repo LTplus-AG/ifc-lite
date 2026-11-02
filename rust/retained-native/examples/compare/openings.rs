@@ -6,7 +6,7 @@ use ifc_lite_processing::{
     prepass::{resolve_prepass, PrepassSpans, ResolveOptions},
     AnalyticQuantitySources,
 };
-use ifc_lite_retained_native::oracle::openings::{self, OpeningExpectation};
+use ifc_lite_retained_native::oracle::{face_set_host, openings::{self, OpeningExpectation}};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -45,10 +45,15 @@ pub fn expectations_and_gaps(
             }
         }
         if !cuts.is_empty() {
-            let expected = openings::expected(sources, host, &cuts).or_else(|| {
-                ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts)
-            }).or_else(|| openings::expected_with_face_set_cutters(&source, sources, host, &cuts));
-            if expected.as_ref().is_none_or(|e| e.result_volume.is_none()) { gaps.insert(host, gap_reason(sources, host, &cuts)); }
+            // A face set in the host or a cutter: nominal extrusion quantities miss it.
+            let any_face_set = std::iter::once(&host).chain(&cuts).any(|id| face_set_host::authors_face_set(&source, *id));
+            let mut gap = None;
+            let expected = if any_face_set {
+                face_set_host::expected(&source, sources, host, &cuts).map_err(|reason| gap = Some(reason)).ok()
+            } else {
+                openings::expected(sources, host, &cuts).or_else(|| ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts))
+            };
+            if expected.as_ref().is_none_or(|e| e.result_volume.is_none()) { gaps.insert(host, gap.map_or_else(|| gap_reason(sources, host, &cuts), str::to_owned)); }
             result.insert(host, expected);
         }
     }

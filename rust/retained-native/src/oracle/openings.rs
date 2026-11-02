@@ -2,7 +2,6 @@
 //! M3 source authority. Exact/display meshes are never inputs to these oracles.
 use super::{
     clipping::{clipped_area, convex_planes},
-    math::{cross, sub, unit},
     prism::{self, Basis},
     quantities, section_net,
     sections::ExtrudedHost,
@@ -72,78 +71,6 @@ fn nominal(sources: &AnalyticQuantitySources, id: u32) -> Option<(f64, Option<[f
         return None;
     }
     quantities::expected(sources, id, parts)
-}
-/// [`expected`] for a host whose cutters are closed convex face sets, or extrusions beside them.
-/// A non-convex or open set is not modelled: the caller keeps its counted gap (#7955).
-pub fn expected_with_face_set_cutters(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, sources: &AnalyticQuantitySources, host: u32, cutters: &[u32]) -> Option<OpeningExpectation> {
-    let (host_volume, host_bbox) = nominal(sources, host)?;
-    let mut cuts = Vec::new();
-    let mut cutter_volume = 0.;
-    let mut arcs = false;
-    for &id in cutters {
-        if sources.extrusion_definitions.instances.contains_key(&id) {
-            cutter_volume += nominal(sources, id)?.0;
-            for instance in &sources.extrusion_definitions.instances[&id] {
-                if instance.source_modified { return None; }
-                let (pieces, curved) = section_net::extrusion_cutters(&ExtrudedHost::from_sources(sources, instance)?)?;
-                cuts.push(pieces);
-                arcs |= curved;
-            }
-        } else {
-            let (pieces, volume) = convex_face_set_cutters(bundle, sources, id)?;
-            cuts.extend(pieces.into_iter().map(|cut| vec![cut]));
-            cutter_volume += volume;
-        }
-    }
-    let mut volume = 0.;
-    for instance in sources.extrusion_definitions.instances.get(&host)? {
-        if instance.source_modified { return None; }
-        volume += section_net::net_volume(&ExtrudedHost::from_sources(sources, instance)?, &[], &cuts)?;
-    }
-    Some(OpeningExpectation { nominal_host_volume: host_volume, volume_bounds: [(host_volume - cutter_volume).max(0.), host_volume],
-        result_volume: Some(volume), curved: host_bbox.is_none() || arcs, host_bbox })
-}
-/// Each Body item as the halfspaces of its authored rows, with their divergence-theorem volume.
-fn convex_face_set_cutters(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, sources: &AnalyticQuantitySources, id: u32) -> Option<(Vec<section_net::ConvexCut>, f64)> {
-    use ifc_lite_geometry::{placement::resolve_object_placement, representation::{product_shape, rep_items, Select}, Matrix4, Point3};
-    let mut decoder = bundle.decoder();
-    let element = decoder.decode_by_id(id).ok()?;
-    let shape = product_shape(&element, &mut decoder).ok()??;
-    let scale = sources.extrusion_definitions.length_unit_scale;
-    let mut world = resolve_object_placement(&element, &mut decoder).ok()?.unwrap_or_else(Matrix4::identity);
-    for i in 0..3 { for j in 0..4 { world[(i, j)] *= scale; } }
-    let (mut cuts, mut total) = (Vec::new(), 0.);
-    for representation in shape.select(&element, Select::Meshed) {
-        for item in rep_items(representation, &mut decoder).ok()? {
-            if !matches!(item.ifc_type, ifc_lite_core::IfcType::IfcPolygonalFaceSet | ifc_lite_core::IfcType::IfcTriangulatedFaceSet) { return None; }
-            let set = super::face_sets::authored(&item, &mut decoder, scale)?;
-            if set.open_edges != 0 || set.rows.iter().any(|row| row.outer != row.points.len()) { return None; }
-            // `world` scales raw file units; a row point is metres from the raw first point.
-            let at = |p: [f64; 3]| { let q = world.transform_point(&Point3::new(p[0] / scale + set.first[0], p[1] / scale + set.first[1], p[2] / scale + set.first[2])); [q.x, q.y, q.z] };
-            let points: Vec<[f64; 3]> = set.rows.iter().flat_map(|row| row.points.iter().map(|p| at(*p))).collect();
-            let mut cut = Vec::new();
-            let mut volume = 0.;
-            let planes: Vec<([f64; 3], [f64; 3])> = set.rows.iter().filter_map(|row| {
-                let ring: Vec<[f64; 3]> = row.points.iter().map(|p| at(*p)).collect();
-                let [a, b, c, ..] = ring[..] else { return None };
-                let n = cross(sub(b, a), sub(c, a));
-                unit(n).map(|n| (a, n))
-            }).collect();
-            if planes.len() != set.rows.len() { return None; }
-            for (row, (origin, normal)) in set.rows.iter().zip(planes) {
-                let side = |p: &[f64; 3]| normal[0] * (p[0] - origin[0]) + normal[1] * (p[1] - origin[1]) + normal[2] * (p[2] - origin[2]);
-                let (low, high) = points.iter().fold((0f64, 0f64), |(l, h), p| (l.min(side(p)), h.max(side(p))));
-                if low < -1e-9 && high > 1e-9 { return None; }
-                let outward = if high > 1e-9 { normal.map(|v| -v) } else { normal };
-                let c = outward[0] * origin[0] + outward[1] * origin[1] + outward[2] * origin[2];
-                cut.push((outward, c));
-                volume += row.area_m2? * c / 3.;
-            }
-            cuts.push(cut);
-            total += volume;
-        }
-    }
-    (!cuts.is_empty()).then_some((cuts, total))
 }
 /// Inclusion-exclusion over at most eight convex cutter values in each height
 /// band. All right-extrusion axes must be parallel in WORLD space, including

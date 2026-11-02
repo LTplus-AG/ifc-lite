@@ -111,7 +111,7 @@ for (const locale of ['en', 'ru'] as const) {
     const state = useViewerStore.getState();
     assert.ok(state.error, 'canonical loader supplies the per-slot failure');
     assert.ok(message.includes(state.error));
-    assert.match(message, /Truncated or empty \.splat input \(32-byte records required\.\)/);
+    assert.match(message, /Truncated or empty \.splat input \(32-byte records required\)\./);
     assert.equal(state.models.size, 1);
     const model = [...state.models.values()][0];
     assert.equal(model.name, good.name);

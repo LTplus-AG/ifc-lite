@@ -145,7 +145,7 @@ the recorder under `ifc-gpu-check`:
   --init-storage '{"ifc-lite-theme":"dark"}' \
   --journey-options '{"collapseSidebar":true,"inspect":true,"visibility":true,"remove":true,"explicitPlacement":true}'
 node examples/gaussian-splat-spike/finish-integrated.mjs --take /abs/take --out /abs/final \
-  --assets ~/ifc-fixtures/gaussian --stem seem-kirke-v1-integrated \
+  --stem seem-kirke-v1-integrated \
   --label "INTERNAL DEMO · build SHA · not production" --disclosure "…" [--disclosure "…"]
 ```
 

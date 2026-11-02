@@ -5,40 +5,24 @@
 // #8567 RESEARCH PREVIEW finishing: adds the title card, persistent research
 // label and licence credit to an untouched master take with ffmpeg drawtext.
 // Frame timestamps pass through unchanged: no interpolated or duplicated frames.
-import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { showcaseCredits } from './showcase-credits.mjs';
+import { catalogEntry, repoRoot as repo, sha256File } from './showcase-fixture.mjs';
+import { absoluteOutput, requireOptions } from './showcase-args.mjs';
+import { BT709_FILTER, BT709_OUTPUT, TIMESTAMP_PASSTHROUGH, assertSameTimestamps, probeVideo, refuseExisting, verifyBt709 } from './showcase-video.mjs';
 
-const repo = fileURLToPath(new URL('../..', import.meta.url));
 const { values: args } = parseArgs({ options: {
   master: { type: 'string' }, asset: { type: 'string' }, out: { type: 'string' }, splats: { type: 'string' },
   'font-dir': { type: 'string', default: '/usr/share/fonts/truetype/dejavu' }, threads: { type: 'string', default: '4' },
 } });
-if (!args.master || !args.asset || !args.out || !isAbsolute(args.out)) throw new Error('usage: --master TAKE --asset NAME.ply --out ABS_DIR');
-const manifest = JSON.parse(await readFile(join(repo, 'tests/models/manifest.json'), 'utf8'));
-const entry = manifest.files.find(file => file.path === `gaussian/${args.asset}`);
+requireOptions(args, ['master', 'asset', 'out'], '--master TAKE --asset NAME.ply --out ABS_DIR');
+absoluteOutput(args.out);
+const entry = await catalogEntry(args.asset);
 const credits = showcaseCredits(entry);
 await mkdir(args.out, { recursive: true });
-const sha256File = path => new Promise((done, fail) => {
-  const hash = createHash('sha256');
-  createReadStream(path).on('data', chunk => hash.update(chunk)).on('error', fail).on('end', () => done(hash.digest('hex')));
-});
-const probe = file => {
-  const json = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
-    'stream=codec_name,profile,width,height,pix_fmt,avg_frame_rate,r_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer:format=duration,size,format_name',
-    '-of', 'json', file], { encoding: 'utf8' }));
-  return { ...json.streams[0], ...json.format };
-};
-const BT709 = { color_range: 'tv', color_space: 'bt709', color_primaries: 'bt709', color_transfer: 'bt709' };
-const verifyTags = (file, stream) => {
-  const wrong = Object.entries(BT709).filter(([key, value]) => stream[key] !== value);
-  if (wrong.length) throw new Error(`${file} colour tags ${wrong.map(([k]) => `${k}=${stream[k]}`).join(', ')}; expected limited-range BT.709`);
-};
 
 const count = Number(args.splats ?? entry.gaussian.count).toLocaleString('en-US');
 const lines = {
@@ -53,7 +37,7 @@ const textDir = join(args.out, 'overlay-text');
 await mkdir(textDir, { recursive: true });
 for (const [name, text] of Object.entries(lines)) await writeFile(join(textDir, `${name}.txt`), text);
 const bold = join(args['font-dir'], 'DejaVuSans-Bold.ttf'), regular = join(args['font-dir'], 'DejaVuSans.ttf');
-const master = { file: resolve(args.master), sha256: await sha256File(args.master), probe: probe(args.master) };
+const master = { file: resolve(args.master), sha256: await sha256File(args.master), probe: probeVideo(args.master) };
 const { width: W, height: H } = master.probe;
 const px = fraction => Math.round(H * fraction);
 // Title card: fade in 0.4-0.9 s, hold, fade out 4.6-5.2 s.
@@ -71,21 +55,20 @@ const vf = [
   text('change', regular, px(0.0195), 'white@0.92', left, H - px(0.056)),
   // Chrome records full-range BT.709. Deliver standard limited range so players
   // that ignore the range flag still show the captured colours.
-  'scale=in_range=pc:out_range=tv,format=yuv420p,setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709',
+  `scale=in_range=pc:out_range=tv,format=yuv420p,${BT709_FILTER}`,
 ].join(',');
 const stem = basename(args.master).replace(/-master\.(webm|mp4)$/, '');
 const outputs = [
   { file: join(args.out, `${stem}.mp4`), codec: ['-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'] },
   { file: join(args.out, `${stem}.webm`), codec: ['-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-pix_fmt', 'yuv420p'] },
 ];
-// Delivered files are never overwritten: regenerate into a new --out directory.
-for (const output of outputs) if (await access(output.file).then(() => true, () => false)) throw new Error(`refusing to overwrite ${output.file}`);
+await refuseExisting(outputs.map(output => output.file));
 for (const output of outputs) {
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-threads', args.threads, '-i', master.file, '-vf', vf,
-    '-fps_mode', 'passthrough', '-enc_time_base:v', 'demux', '-an', ...output.codec, '-color_range', 'tv', '-colorspace', 'bt709',
-    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-threads', args.threads, output.file], { stdio: 'inherit' });
-  Object.assign(output, { sha256: await sha256File(output.file), probe: probe(output.file) });
-  verifyTags(output.file, output.probe);
+    ...TIMESTAMP_PASSTHROUGH, '-an', ...output.codec, ...BT709_OUTPUT, '-threads', args.threads, output.file], { stdio: 'inherit' });
+  Object.assign(output, { sha256: await sha256File(output.file), probe: probeVideo(output.file) });
+  verifyBt709(output.file, output.probe);
+  output.frames = assertSameTimestamps(master.file, output.file);
   delete output.codec;
 }
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' }).trim();

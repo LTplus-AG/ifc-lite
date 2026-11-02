@@ -1,0 +1,13 @@
+diff --git b/examples/gaussian-splat-spike/showcase-credits.mjs a/examples/gaussian-splat-spike/showcase-credits.mjs
+index 08a06e625f..8e1e113d55 100644
+--- b/examples/gaussian-splat-spike/showcase-credits.mjs
++++ a/examples/gaussian-splat-spike/showcase-credits.mjs
+@@ -34,7 +34,7 @@ export function showcaseCredits(entry) {
+   if (!subject) throw new Error(`no showcase credit registered for ${entry?.path}`);
+   const license = entry.provenance?.license;
+   const licenseName = LICENSE_NAMES[license?.spdx];
+-  if (!licenseName || !license.url) {
++  if (!licenseName || !license.url || !license.attribution?.includes(subject.attributionMarker)) {
+     throw new Error(`manifest licence record does not support the ${entry.path} credit`);
+   }
+   const source = entry.provenance.source?.page_url;

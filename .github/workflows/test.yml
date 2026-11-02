@@ -887,6 +887,19 @@ jobs:
           toolchain: stable
           components: rustfmt
       - run: pnpm install --frozen-lockfile
+      # #8567: the finisher oracle runs real encodes and probes their timestamps.
+      # An encoder-less runner skips every baseline test, so no mutation verdict
+      # is possible. Playwright's private ffmpeg binary does not provide ffprobe.
+      - name: Install showcase oracle video tools
+        run: |
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- examples/gaussian-splat-spike 'tests/evidence/8567-*' | grep -q .; then
+            if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends ffmpeg
+            fi
+            ffmpeg -version
+            ffprobe -version
+          fi
       - name: Download build artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

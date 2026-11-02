@@ -60,9 +60,15 @@ try {
   }
   cdp = await page.context().newCDPSession(page);
   let writing = Promise.resolve();
+  evidence.sameInstantFramesReplaced = 0;
   cdp.on('Page.screencastFrame', frame => {
-    const n = frames.length + 1;
-    frames.push({ n, ts: frame.metadata.timestamp });
+    const ts = frame.metadata.timestamp;
+    // Two deliveries can share one swap instant; the newer image takes that instant
+    // rather than inventing a zero-length or shifted frame.
+    const sameInstant = frames.length > 0 && ts <= frames.at(-1).ts;
+    if (sameInstant) evidence.sameInstantFramesReplaced++;
+    else frames.push({ n: frames.length + 1, ts });
+    const n = frames.at(-1).n;
     writing = writing.then(() => writeFile(join(framesDir, `${String(n).padStart(6, '0')}.jpg`), Buffer.from(frame.data, 'base64')))
       .then(() => cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => {}));
   });
@@ -115,9 +121,13 @@ try {
 } finally {
   await cdp?.send('Page.stopScreencast').catch(() => {});
   evidence.frames = frames.length;
-  if (frames.length > 1) {
-    await writeFile(join(args.out, 'frames.ffconcat'), screencastConcat(frames));
-    evidence.screencast = intervalStats(frames);
+  try {
+    if (frames.length > 1) {
+      await writeFile(join(args.out, 'frames.ffconcat'), screencastConcat(frames));
+      evidence.screencast = intervalStats(frames);
+    }
+  } catch (error) {
+    evidence.failure ??= error.stack ?? String(error); process.exitCode = 1;
   }
   await writeFile(join(args.out, 'evidence-integrated.json'), JSON.stringify(evidence, null, 2) + '\n');
   await page?.close().catch(error => console.error('page close:', error.message));

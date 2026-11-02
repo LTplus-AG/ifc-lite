@@ -5,11 +5,11 @@
 /** No ready variant until the native shared-composition contract is qualified. */
 export type GaussianReadiness =
   | { state: 'initializing' | 'lost' | 'disposed'; generation: number }
-  | { state: 'blocked'; generation: number; reasons: readonly string[] };
+  | { state: 'blocked'; generation: number; reasons: typeof blockers };
 
 const blockers = Object.freeze([
   'exact-mixed-transparency', 'scalable-global-order', 'native-viewer-contract',
-]);
+] as const);
 
 /** Uses the renderer's existing lifetime; no second device or readiness latch. */
 export function gaussianReadiness(ready: boolean, lost: boolean, disposed: boolean, generation: number): GaussianReadiness {

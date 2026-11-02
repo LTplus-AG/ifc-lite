@@ -356,6 +356,7 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
         assert.strictEqual(await whenReadyResolves(renderer), true, 'precondition: ready before destroy()');
 
         renderer.destroy();
+        assert.strictEqual(renderer.getGaussianReadiness().state, 'disposed', '#8564: teardown revokes Gaussian access');
 
         assert.strictEqual(
             await whenReadyResolves(renderer),

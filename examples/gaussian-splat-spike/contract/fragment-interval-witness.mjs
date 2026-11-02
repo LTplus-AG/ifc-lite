@@ -4,6 +4,7 @@
 import { WebGPUDevice } from '@luma.gl/webgpu';
 import { makeGPUSplatData, SplatRenderer } from '@luma.gl/splats';
 import { MathUtils } from '../../../packages/renderer/src/math.ts';
+import { normalizeGaussianAttributes } from '../../../packages/renderer/src/gaussian/gaussian-attributes.ts';
 
 async function capture(raw, texture, size) {
   const bytesPerRow = 256 * Math.ceil(size * 4 / 256);
@@ -24,8 +25,13 @@ async function witness(device, raw, projection, size, slope) {
     const matrix = projection === 'orthographic' ? MathUtils.orthographicReverseZ(-1, 1, -1, 1, 0.1, 10).m
       : MathUtils.perspectiveReverseZ(Math.PI / 3, 1, 0.1, 10).m;
     const z = -3, center = (z * matrix[10] + matrix[14]) / (z * matrix[11] + matrix[15]);
-    const data = own(makeGPUSplatData(device, { positions: new Float32Array([0, 0, z]), scales: new Float32Array([0.5, 0.3, 0.2]),
-      rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]), opacities: new Float32Array([0.75]) }));
+    const dc = 0.28209479177387814;
+    const columns = Object.fromEntries(Object.entries({ x: 0, y: 0, z,
+      scale_0: Math.log(0.5), scale_1: Math.log(0.3), scale_2: Math.log(0.2),
+      rot_0: 2, rot_1: 0, rot_2: 0, rot_3: 0, opacity: Math.log(3),
+      f_dc_0: 0.5 / dc, f_dc_1: -0.5 / dc, f_dc_2: -0.5 / dc,
+    }).map(([key, value]) => [key, new Float32Array([value])]));
+    const data = own(makeGPUSplatData(device, normalizeGaussianAttributes({ count: 1, shDegree: 0, columns })));
     const texture = (format, usage) => own(device.createTexture({ width: size, height: size, format, usage }));
     const color = texture('rgba8unorm', GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC);
     const depth = texture('depth24plus-stencil8', GPUTextureUsage.RENDER_ATTACHMENT);

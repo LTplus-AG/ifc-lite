@@ -52,7 +52,7 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   // for a deployment without the relay (docs/research/bimcollab-documents-api.md).
   ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'false' ? [] : [() => new ViewerBimcollabProvider()]),
   // buildagil is offered once the deployment holds its OAuth client:
-  // VITE_BUILDAGIL_CLIENT_ID here, BUILDAGIL_CLIENT_SECRET on the /api/buildagil
+  // VITE_BUILDAGIL_CLIENT_ID here and BUILDAGIL_CLIENT_ID on the /api/buildagil
   // relay. Without a client nobody could sign in, so it is not listed at all.
   ...(BUILDAGIL_CLIENT_ID ? [() => new BuildagilProvider({ clientId: BUILDAGIL_CLIENT_ID })] : []),
 ];

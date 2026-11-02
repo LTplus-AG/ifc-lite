@@ -5,10 +5,11 @@
 /**
  * Sign-in to buildagil's openCDE API: OAuth 2.0 authorization code with PKCE
  * in a popup. buildagil fronts Microsoft Entra ID (its authorize endpoint
- * redirects there) and issues IFClite a CONFIDENTIAL client, so the code
- * exchange and every refresh carry the client secret. This package never
- * holds it: token requests go to the real token URL through `ctx.fetch`, and
- * a browser host's relay (`/api/buildagil/oauth2/token`) adds the secret.
+ * redirects there) and issued IFClite a public PKCE client with refresh
+ * tokens. This package never holds a secret: token requests go to the real
+ * token URL through `ctx.fetch`, which a browser host maps to its relay
+ * (`/api/buildagil/oauth2/token`). The relay adds a secret only for a
+ * deployment that holds a confidential client.
  */
 
 import {

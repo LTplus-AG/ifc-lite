@@ -9,10 +9,10 @@ import { createBuildagilRelayHandler, loadBuildagilRelayConfig } from '../../../
 
 /**
  * Dev serves `/api/buildagil/*` with the production handler
- * (`api/buildagil.ts`). The client secret comes from the shell env or the
- * untracked `apps/viewer/.env.local` (`BUILDAGIL_CLIENT_SECRET=...`); only the
- * `BUILDAGIL_` prefix is loaded, in this Node process, so it never reaches the
- * browser. buildagil registered `http://localhost:5000/oauth/bcf/callback`, so
+ * (`api/buildagil.ts`). Its client id (and a secret, for a confidential
+ * client) comes from the shell env or the untracked `apps/viewer/.env.local`
+ * (`BUILDAGIL_CLIENT_ID=...`); only the `BUILDAGIL_` prefix is loaded, in this
+ * Node process, so a secret never reaches the browser. buildagil registered `http://localhost:5000/oauth/bcf/callback`, so
  * sign in with the dev server on port 5000.
  */
 export function buildagilRelayRoute(): Plugin {

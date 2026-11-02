@@ -13,8 +13,8 @@ interface ImportMetaEnv {
   /** 'false' removes the BIMcollab Documents source (it needs the /api/bimcollab relay). */
   readonly VITE_SOURCE_BIMCOLLAB?: string;
   /**
-   * buildagil OAuth client id. Set = the buildagil source is offered; its
-   * secret is the server-only BUILDAGIL_CLIENT_SECRET (api/buildagil.ts).
+   * buildagil OAuth client id. Set = the buildagil source is offered; the
+   * /api/buildagil relay needs the same id as server-only BUILDAGIL_CLIENT_ID.
    */
   readonly VITE_BUILDAGIL_CLIENT_ID?: string;
   readonly VITE_AUTODESK_CLIENT_ID?: string;

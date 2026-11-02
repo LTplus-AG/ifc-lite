@@ -19,10 +19,12 @@ authorize endpoint redirects there. Client ids are issued by buildagil support
 against registered callback URLs. The default callback is the viewer's generic
 OAuth page, `/oauth/bcf/callback` (option `redirectPath`).
 
-buildagil issues a **confidential** client. This package never holds the
-secret and never sends one: it posts standard RFC 6749 form grants to
-`https://openapi.buildagil.com/oauth2/token` through `ctx.fetch`, and the
-host's relay adds the secret. Tokens live in `ctx.storage` via
+buildagil issued IFClite a public client (a client id, PKCE and refresh
+tokens; no secret). This package never holds a secret and never sends one: it
+posts standard RFC 6749 form grants to
+`https://openapi.buildagil.com/oauth2/token` through `ctx.fetch`. If a
+deployment holds a confidential client instead, the host's relay adds the
+secret. Tokens live in `ctx.storage` via
 `@ifc-lite/oauth-pkce`'s `TokenManager` (refresh is single-flight and cannot
 outlive a sign-out). The account shown comes from the access token's Entra
 claims (`oid`, `name`, `preferred_username`), decoded for display only: the
@@ -30,19 +32,23 @@ API has no current-user endpoint.
 
 ## Relay
 
-openapi.buildagil.com answers no CORS preflight, for the API and the token
-endpoint alike, so the manifest declares a relay:
+openapi.buildagil.com sends CORS headers only to origins buildagil has
+allowlisted (`https://www.ifclite.com`); previews and `localhost` get none, for
+the API and the token endpoint alike. So the manifest declares a relay:
 `https://openapi.buildagil.com` → `/api/buildagil`. A browser host rewrites
 every request onto that same-origin path. In ifc-lite's viewer the relay is
 `api/buildagil.ts` (handler `server/sources/buildagil-relay.ts`), served by
 the dev server too. It forwards enumerated reads and `POST 1.0/search` with
-the caller's bearer, and turns `oauth2/token` grants into confidential ones.
+the caller's bearer, and forwards `oauth2/token` grants for the deployment's
+client only: a public client's PKCE grant as is (with the caller's origin,
+which Entra requires to redeem a browser client's code), a confidential
+client's with the secret added.
 
 | Variable | Where | Value |
 |---|---|---|
 | `VITE_BUILDAGIL_CLIENT_ID` | public, compiled into the bundle | the client id; unset = the source is not offered |
 | `BUILDAGIL_CLIENT_ID` | server-only | the same client id |
-| `BUILDAGIL_CLIENT_SECRET` | server-only, mark *Sensitive* | the client secret |
+| `BUILDAGIL_CLIENT_SECRET` | server-only, mark *Sensitive*; optional | only for a confidential client; unset for buildagil's public client |
 | `BUILDAGIL_REDIRECT_URIS` | server-only, optional | comma-separated; defaults to `https://www.ifclite.com/oauth/bcf/callback` and `http://localhost:5000/oauth/bcf/callback` |
 | `BUILDAGIL_RELAY_ALLOWED_ORIGINS` | server-only, optional | comma-separated; defaults to `APP_URL` plus the callbacks' origins |
 

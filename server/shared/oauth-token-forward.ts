@@ -115,6 +115,8 @@ export interface TokenForward {
   /** Cap on the upstream response body. */
   readonly maxBodyBytes: number;
   readonly fetchImpl: typeof fetch;
+  /** Origin to present upstream, for a public client's cross-origin redemption. */
+  readonly origin?: string;
 }
 
 /** Posts one grant upstream and returns the filtered token or error response. */
@@ -130,6 +132,7 @@ export async function forwardTokenGrant(request: TokenForward): Promise<Response
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         accept: 'application/json',
+        ...(request.origin ? { origin: request.origin } : {}),
       },
       body: request.form.toString(),
       // Following a 3xx would re-post the form, client_secret included, to

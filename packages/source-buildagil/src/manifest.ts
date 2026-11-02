@@ -14,7 +14,8 @@ export const BUILDAGIL_MANIFEST: PluginManifest = {
   auth: 'interactive', preferences: [],
   permissions: {
     network: ['openapi.buildagil.com'],
-    // The API and its token endpoint answer no CORS preflight, so a browser
+    // The API and its token endpoint send CORS headers only to origins
+    // buildagil allowlisted (previews and localhost get none), so a browser
     // host reaches both through its same-origin relay.
     relay: { upstream: BUILDAGIL_API, path: '/api/buildagil' },
   },

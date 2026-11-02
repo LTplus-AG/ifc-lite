@@ -4,12 +4,15 @@
 
 /**
  * Same-origin relay for buildagil's openCDE API (`/api/buildagil/*`).
- * openapi.buildagil.com answers no CORS preflight (404, measured 2026-10-30),
- * so a browser can reach neither its API nor its token endpoint.
+ * openapi.buildagil.com sends CORS headers only to origins buildagil has
+ * allowlisted (`https://www.ifclite.com` since 2026-11-02; preview hosts and
+ * `localhost` get none), so every other origin reaches neither the API nor
+ * the token endpoint from a browser. The relay serves all origins alike.
  *
  * Two route families (`buildagil-routes.ts`):
- *   - `oauth2/token`: the provider's form grants. The deployment's client
- *     secret is added here (`buildagil-token.ts`); it never reaches the browser.
+ *   - `oauth2/token`: the provider's form grants, forwarded for this
+ *     deployment's client (`buildagil-token.ts`). A configured client secret
+ *     is added here and never reaches the browser.
  *   - `1.0/…`: enumerated reads, plus the read-only `POST 1.0/search`, each
  *     with the caller's bearer. No credential is held for these.
  *
@@ -91,10 +94,13 @@ export function createBuildagilRelayHandler(config: BuildagilRelayConfig, deps: 
     if (!route) return json(400, { error: 'Not a relayable buildagil endpoint' }, cors);
 
     if (route.kind === 'token') {
-      const form = await readBuildagilGrant(request, config);
-      if (form instanceof Response) return form;
+      const grant = await readBuildagilGrant(request, config);
+      if (grant instanceof Response) return grant;
       return forwardTokenGrant({
-        tokenUrl: BUILDAGIL_TOKEN_URL, form, clientSecret: config.clientSecret,
+        tokenUrl: BUILDAGIL_TOKEN_URL, form: grant.form, clientSecret: config.clientSecret,
+        // A public client's code is redeemable only cross-origin; a secret
+        // authenticates a confidential one instead.
+        origin: config.clientSecret ? undefined : grant.origin,
         vendor: 'buildagil', logTag: '[buildagil-relay]',
         upstreamTimeoutMs: config.upstreamTimeoutMs, maxBodyBytes: config.maxBodyBytes, fetchImpl: deps.fetchImpl,
       });
@@ -160,7 +166,7 @@ function listFromEnv(raw: string | undefined): string[] {
  * Server-only env (never `VITE_*`, which is compiled into the bundle):
  *
  *   BUILDAGIL_CLIENT_ID               required for sign-in
- *   BUILDAGIL_CLIENT_SECRET           required for sign-in
+ *   BUILDAGIL_CLIENT_SECRET           only for a confidential client; unset = public PKCE client
  *   BUILDAGIL_REDIRECT_URIS           comma-separated; default: the registered callbacks
  *   BUILDAGIL_RELAY_ALLOWED_ORIGINS   comma-separated; default: APP_URL + the callbacks' origins
  */

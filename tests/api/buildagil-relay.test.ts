@@ -204,8 +204,29 @@ test('token refusals never reach upstream', async () => {
   assert.equal(calls.length, 0);
 });
 
+test('token: a public client (id, no secret) is forwarded without a secret, presenting the caller origin', async () => {
+  const { handler, calls } = relay(() => Response.json({ access_token: 'at', refresh_token: 'rt-2' }), { clientSecret: '' });
+  assert.equal((await handler(tokenRequest(CODE))).status, 200);
+  const form = new URLSearchParams(calls[0].body);
+  assert.equal(form.has('client_secret'), false);
+  assert.equal(form.get('client_id'), CLIENT);
+  assert.equal(form.get('code_verifier'), VERIFIER);
+  // Entra redeems a browser client's code only on a cross-origin request.
+  assert.equal(calls[0].headers.get('origin'), ORIGIN);
+  // Still this deployment's client and a registered redirect only.
+  assert.equal((await handler(tokenRequest({ ...CODE, client_id: 'other' }))).status, 400);
+  assert.equal((await handler(tokenRequest({ ...CODE, redirect_uri: 'https://evil.test/cb' }))).status, 400);
+  assert.equal(calls.length, 1);
+});
+
+test('token: a confidential client authenticates with its secret, not an origin', async () => {
+  const { handler, calls } = relay(() => Response.json({ access_token: 'at' }));
+  assert.equal((await handler(tokenRequest(REFRESH))).status, 200);
+  assert.equal(calls[0].headers.get('origin'), null);
+});
+
 test('token: an unconfigured deployment answers relay_not_configured', async () => {
-  const { handler, calls } = relay(undefined, { clientId: '', clientSecret: '' });
+  const { handler, calls } = relay(undefined, { clientId: '', clientSecret: SECRET });
   const response = await handler(tokenRequest(REFRESH));
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error, 'relay_not_configured');

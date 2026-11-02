@@ -3,9 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Token grants for buildagil's openCDE API, whose OAuth app is a
- * CONFIDENTIAL client: the code exchange and every refresh need the client
- * secret, which must never reach the browser.
+ * Token grants for buildagil's openCDE API. buildagil's token endpoint sends
+ * no CORS headers to most origins (only to ones buildagil allowlisted), so a
+ * browser on any other origin, `localhost` included, can only redeem a code
+ * through this relay. Two client kinds:
+ *
+ *   - public (what buildagil issued: a client id, no secret): the PKCE grant
+ *     is forwarded as is, with the caller's allowlisted Origin, because Entra
+ *     redeems codes for browser clients only on cross-origin requests;
+ *   - confidential (a secret is configured): the secret is added here and
+ *     never reaches the browser.
  *
  * The viewer's `@ifc-lite/source-buildagil` sends standard RFC 6749 form
  * grants to `https://openapi.buildagil.com/oauth2/token`, and the host's relay
@@ -36,6 +43,7 @@ const PKCE_VERIFIER = /^[A-Za-z0-9\-._~]{43,128}$/;
 export interface BuildagilClientConfig {
   /** Empty means the token route is not configured. */
   readonly clientId: string;
+  /** Empty for a public client: grants are forwarded without one. */
   readonly clientSecret: string;
   readonly allowedRedirectUris: readonly string[];
 }
@@ -73,7 +81,7 @@ export function buildagilTokenForm(text: string, config: BuildagilClientConfig):
     upstream.set('code_verifier', verifier);
   }
   upstream.set('client_id', config.clientId);
-  upstream.set('client_secret', config.clientSecret);
+  if (config.clientSecret) upstream.set('client_secret', config.clientSecret);
   return upstream;
 }
 
@@ -89,7 +97,7 @@ function isFormContentType(value: string | null): boolean {
 export async function readBuildagilGrant(
   request: Request,
   config: BuildagilClientConfig & { readonly allowedOrigins: readonly string[]; readonly maxBodyBytes: number },
-): Promise<URLSearchParams | Response> {
+): Promise<{ form: URLSearchParams; origin: string } | Response> {
   if (request.method !== 'POST') return tokenRelayError(405, 'invalid_request', 'Only POST is accepted', { allow: 'POST' });
   // A form POST is a CORS-simple request a foreign page could send, so the
   // Origin a browser always attaches to it is what keeps those out.
@@ -102,9 +110,9 @@ export async function readBuildagilGrant(
   if (!isFormContentType(request.headers.get('content-type'))) {
     return tokenRelayError(415, 'invalid_request', 'Content-Type must be application/x-www-form-urlencoded');
   }
-  if (!config.clientId || !config.clientSecret) {
+  if (!config.clientId) {
     return tokenRelayError(503, BUILDAGIL_RELAY_NOT_CONFIGURED,
-      'The buildagil token relay is not configured on this deployment (BUILDAGIL_CLIENT_ID, BUILDAGIL_CLIENT_SECRET).');
+      'The buildagil token relay is not configured on this deployment (BUILDAGIL_CLIENT_ID).');
   }
   const read = await readCapped(request.body, request.headers.get('content-length'), config.maxBodyBytes);
   if (!read.ok) {
@@ -113,5 +121,5 @@ export async function readBuildagilGrant(
       : tokenRelayError(400, 'invalid_request', 'Request body is not UTF-8');
   }
   const form = buildagilTokenForm(read.text, config);
-  return 'problem' in form ? tokenRelayError(400, 'invalid_request', form.problem) : form;
+  return 'problem' in form ? tokenRelayError(400, 'invalid_request', form.problem) : { form, origin };
 }

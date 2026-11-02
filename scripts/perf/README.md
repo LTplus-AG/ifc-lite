@@ -51,7 +51,7 @@ model was O(N^2) in copies and GPU batches.
 **Won: frame CPU (#8439).** One uniform write per arena page, rather than one per
 batch, is why a CPU change also cut GPU time.
 
-**Won, flag off: finished-scene snapshot (#8545, #8592).** A second warm open
+**Won: finished-scene snapshot (#8545, #8592, on by default since this PR's merge).** A second warm open
 draws the batches it stored, so the complete model appears before metadata
 decodes. Its orbit GPU cost matches streaming. A higher post-load CPU figure
 was post-load work moving into the settle window: from the open to quiet, it

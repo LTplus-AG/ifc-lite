@@ -178,6 +178,18 @@ describe('BuildagilProvider', () => {
     expect(scanPages()).toBe(3);
   });
 
+  it('keeps search offsets within the API cap of 50000 (#8364 review)', async () => {
+    const world: MockWorld = { projects: [{ project_id: 'big', name: 'Big' }], documents: { big: manyDocuments(50_400) } };
+    const { api, provider, ctx } = setup(world);
+    await api.signIn();
+    const before = api.calls.length;
+    await expect(provider.searchFiles(ctx, 'big', 'model', undefined, { cursor: '50001', limit: 200 })).rejects.toThrow(/search cursor/);
+    expect(api.calls.length).toBe(before);
+    expect((await provider.searchFiles(ctx, 'big', 'model', undefined, { cursor: '49800', limit: 200 })).cursor).toBe('50000');
+    // The page at the cap is the last one the API can serve.
+    expect((await provider.searchFiles(ctx, 'big', 'model', undefined, { cursor: '50000', limit: 200 })).cursor).toBeUndefined();
+  });
+
   it('reports a rejected session as needing a new sign-in', async () => {
     const { provider, ctx, api } = setup();
     await expect(provider.listProjects(ctx)).rejects.toThrow(/Not signed in|sign in/i);

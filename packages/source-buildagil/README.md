@@ -63,7 +63,8 @@ has `$top` but no `$skip`) and the folder tree is built from their
 `folder_url` (`containerListing: 'flat-subtree'`). Folders without a model
 beneath them are not shown. The scan is reused for a minute and dropped on
 sign-out. Above 5000 IFC documents a project is refused rather than listed
-partially; search still works. Search is `POST /1.0/search` over documents.
+partially; search still works. Search is `POST /1.0/search` over documents; the
+API serves offsets up to 50000, so search pages end after that page.
 
 A revision is a document's `version_index`. Downloading a named revision
 fetches exactly that version; without one, the current content. A download

@@ -22,6 +22,8 @@ export interface BuildagilProviderOptions {
 /** A project's scan is reused this long, so browsing folders costs one scan. */
 const SCAN_TTL_MS = 60_000;
 const SEARCH_LIMIT_MAX = 200;
+/** `POST /1.0/search` refuses an `offset` above this (openCDE spec, `search_POST`). */
+const SEARCH_OFFSET_MAX = 50_000;
 const enc = encodeURIComponent;
 
 function toFile(doc: BuildagilDocument): SourceFile {
@@ -110,6 +112,7 @@ export class BuildagilProvider implements FileSourceProvider {
 
   async searchFiles(ctx: PluginContext, projectId: string, query: string, filter?: FileFilter, options?: ListOptions) {
     const { offset, limit } = offsetPage(options?.cursor, options?.limit, SEARCH_LIMIT_MAX);
+    if (offset > SEARCH_OFFSET_MAX) throw new Error('Invalid buildagil search cursor.');
     const result = decodeSearch(await this.client.json(ctx, '1.0/search', {
       method: 'POST', signal: options?.signal,
       body: { targets: ['Document'], search_text: query, project_ids: [projectId], limit, offset },
@@ -118,8 +121,9 @@ export class BuildagilProvider implements FileSourceProvider {
     return {
       items: result.documents.filter((doc) => accepts(doc.filename, filter)).map(toFile),
       // Without a total, a full raw page may not be the last one (#8364 review).
+      // The API serves no offset past SEARCH_OFFSET_MAX, so paging ends there.
       cursor: (result.total === undefined ? result.pageSize >= limit : offset + limit < result.total)
-        ? String(offset + limit) : undefined,
+        && offset + limit <= SEARCH_OFFSET_MAX ? String(offset + limit) : undefined,
     };
   }
 

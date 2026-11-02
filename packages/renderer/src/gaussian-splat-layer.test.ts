@@ -24,6 +24,7 @@ class FakeScene implements GaussianBackendScene {
   get gpuBytes() { return this.sources.at(-1)?.opacities.byteLength ?? 0; }
   async replaceSource(source: GaussianPackedSource): Promise<void> {
     if (this.gate) await this.gate;
+    if (this.destroyed) throw new GaussianSplatError('lost', 'released during upload'); // as the luma scene does
     if (this.failNext) { const error = this.failNext; this.failNext = null; throw error; }
     this.sources.push(source);
   }
@@ -33,23 +34,24 @@ class FakeScene implements GaussianBackendScene {
   destroy(): void { this.destroyed = true; }
 }
 
-function harness(options: { limits?: number; reverseZ?: boolean } = {}) {
+function harness(options: { limits?: number; reverseZ?: boolean; failFirstBackend?: boolean } = {}) {
   const life = { ready: true, lost: false, disposed: false, generation: 1 };
   const deviceOf = () => ({ limits: { maxStorageBufferBindingSize: options.limits ?? 1 << 30, maxBufferSize: options.limits ?? 1 << 30 } }) as unknown as GPUDevice;
   let device: GPUDevice | null = deviceOf();
   const scenes: FakeScene[] = [];
   const failures: { nextScene: Error | null } = { nextScene: null };
   const translations = new Map<number, [number, number, number]>();
+  const counters = { bounds: 0, backendCalls: 0 };
   const host: GaussianLayerHost = {
     lifetime: () => ({ ...life }), device: () => (life.lost ? null : device), adapter: () => null,
-    modelTranslation: (index) => translations.get(index), requestRender: () => {},
+    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsChanged: () => { counters.bounds++; },
   };
   const backend = async (): Promise<GaussianBackend> => ({
-    upstreamReverseZ: options.reverseZ ?? true,
+    upstreamReverseZ: (++counters.backendCalls === 1 && options.failFirstBackend) ? (() => { throw new Error('chunk fetch failed'); })() : options.reverseZ ?? true,
     createScene: () => { const scene = new FakeScene(); scene.failNext = failures.nextScene; failures.nextScene = null; scenes.push(scene); return scene; },
   });
   const layer = new GaussianSplatLayer(host, backend);
-  return { layer, life, scenes, translations, failures, replaceDevice: () => { device = deviceOf(); }, scene: () => scenes.at(-1)! };
+  return { layer, life, scenes, translations, failures, counters, replaceDevice: () => { device = deviceOf(); }, scene: () => scenes.at(-1)! };
 }
 
 function attributes(count: number, x = 0, degree: 0 | 1 = 0): NormalizedGaussianAttributes {
@@ -302,4 +304,97 @@ test('#8564 an upload that completes after a device change never publishes', asy
   assert.deepEqual(h.layer.getState(kept), { state: 'resident' });
   assert.equal(h.scene().sources.at(-1)!.opacities.length, 2, 'only published rows reach the new device');
   assert.equal(h.layer.getStats().assets, 1);
+});
+
+
+// Independent review of #8564 (races reproduced, then fixed).
+test('#8564 clear() during a compaction never resurrects cleared rows', async () => {
+  const { layer } = harness({ limits: 10_000_000 });
+  await layer.add({ attributes: attributes(200_000, 0, 1), placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  const extra = await add(layer, 10, translate(1));
+  assert.ok(layer.remove(extra)); // queues compaction of the 200k-row asset
+  setTimeout(() => layer.clear(), 0);
+  await settle();
+  assert.equal(layer.getStats().splats, 0);
+  assert.equal(layer.getStats().cpuBytes, 0);
+  const fits = await add(layer, 400_000); // budgeted from live assets, not the stale source
+  assert.deepEqual(layer.getState(fits), { state: 'resident' });
+});
+
+test('#8564 a model translation during an in-flight add is applied after commit', async () => {
+  const h = harness();
+  const pending = h.layer.add({ attributes: attributes(200_000), placement: { matrix: IDENTITY }, modelIndex: 3 }, OPT_IN);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  h.translations.set(3, [0, 0, 7]);
+  h.layer.setModelTranslation(3);
+  const handle = await pending;
+  await settle();
+  assert.ok(Math.abs(h.layer.getBounds(handle)!.min[2] - 5) < 1e-6, 'z = -2 + 7');
+});
+
+test('#8564 a model translation keeps a pending setPlacement', async () => {
+  const h = harness();
+  const a = await h.layer.add({ attributes: attributes(4), placement: { matrix: IDENTITY }, modelIndex: 3 }, OPT_IN);
+  const busy = h.layer.add({ attributes: attributes(200_000), placement: { matrix: translate(1) }, modelIndex: 4 }, OPT_IN);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const edit = h.layer.setPlacement(a, { matrix: translate(2) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  h.translations.set(3, [0, 0, 7]);
+  h.layer.setModelTranslation(3);
+  await busy;
+  assert.equal(await edit, true);
+  await settle();
+  const bounds = h.layer.getBounds(a)!;
+  assert.ok(Math.abs(bounds.min[0] - 2) < 1e-6 && Math.abs(bounds.min[2] - 5) < 1e-6, 'requested placement and the new translation both apply');
+});
+
+test('#8564 placement outside the anchor envelope: an edit rejects unchanged, a model move fails visibly', async () => {
+  const h = harness();
+  const handle = await h.layer.add({ attributes: attributes(2), placement: { matrix: IDENTITY }, modelIndex: 3 }, OPT_IN);
+  const before = h.layer.getBounds(handle);
+  await assert.rejects(h.layer.setPlacement(handle, { matrix: translate(9_000) }), code('anchor-extent'));
+  assert.deepEqual(h.layer.getBounds(handle), before);
+  assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
+  h.translations.set(3, [20_000, 0, 0]);
+  h.layer.setModelTranslation(3);
+  await settle();
+  assert.deepEqual(h.layer.getState(handle), { state: 'failed', reason: 'anchor-extent' });
+  assert.deepEqual([...h.scene().filter!.include], [], 'a failed asset is no longer drawn');
+});
+
+test('#8564 clear() during an upload rejects as aborted, not as a device loss', async () => {
+  const { layer, scene } = harness();
+  await add(layer, 2);
+  let open!: () => void;
+  scene().gate = new Promise((resolve) => { open = resolve; });
+  const pending = add(layer, 2, translate(1));
+  await settle();
+  layer.clear();
+  open();
+  await assert.rejects(pending, code('aborted'));
+});
+
+test('#8564 a failed upstream load is retried by the next add and never reports missing capability', async () => {
+  const h = harness({ failFirstBackend: true });
+  await assert.rejects(add(h.layer, 2), code('upstream-capability-missing'));
+  await settle();
+  const readiness = h.layer.readiness();
+  assert.ok(readiness.state === 'blocked' && !readiness.reasons.includes('upstream-capability-missing'));
+  const handle = await add(h.layer, 2);
+  assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
+});
+
+test('#8564 framing bounds are refreshed whenever Gaussian centres change', async () => {
+  const h = harness();
+  const handle = await add(h.layer, 2);
+  const afterAdd = h.counters.bounds;
+  assert.ok(afterAdd > 0);
+  h.layer.setVisible(handle, false);
+  assert.ok(h.counters.bounds > afterAdd);
+  const afterHide = h.counters.bounds;
+  assert.equal(await h.layer.setPlacement(handle, { matrix: translate(1) }), true);
+  assert.ok(h.counters.bounds > afterHide);
+  const afterMove = h.counters.bounds;
+  h.layer.remove(handle);
+  assert.ok(h.counters.bounds > afterMove);
 });

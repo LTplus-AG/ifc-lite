@@ -16,4 +16,5 @@ export const loadLumaBackend: GaussianBackendFactory = async (...args) =>
 type GaussianOps = typeof import('./gaussian-pack.js') & typeof import('./gaussian-placement.js');
 let ops: Promise<GaussianOps> | null = null;
 export const loadGaussianOps = (): Promise<GaussianOps> =>
-  (ops ??= Promise.all([import('./gaussian-pack.js'), import('./gaussian-placement.js')]).then(([pack, placement]) => ({ ...pack, ...placement })));
+  (ops ??= Promise.all([import('./gaussian-pack.js'), import('./gaussian-placement.js')]).then(([pack, placement]) => ({ ...pack, ...placement }))
+    .catch((error: unknown) => { ops = null; throw error; })); // a failed chunk fetch must not break Gaussians for the page lifetime

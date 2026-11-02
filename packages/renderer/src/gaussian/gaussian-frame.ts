@@ -5,7 +5,8 @@
 /** Pure per-frame helpers of the Gaussian layer (#8564). */
 
 import type { GaussianEncodeCamera, GaussianEncodeTarget, GaussianPackedSource, GaussianRowFilter } from './gaussian-backend.js';
-import type { GaussianSplatBounds } from './gaussian-types.js';
+import type { GaussianSplatBounds, GaussianSplatStats } from './gaussian-types.js';
+import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import { clipIsActive, pointClipped } from '../scene-raycaster.js';
 import type { PickClipState } from '../pick-types.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
@@ -63,4 +64,22 @@ export function packedCpuBytes(source: GaussianPackedSource | undefined): number
   if (!source) return 0;
   return [source.positions, source.scales, source.rotations, source.colors, source.opacities, source.semanticIds, source.sphericalHarmonics]
     .reduce((sum, array) => sum + (array?.byteLength ?? 0), 0);
+}
+
+/** CPU bytes of one retained source asset (kept for re-placement and device recovery). */
+function attributeBytes(a: NormalizedGaussianAttributes): number {
+  return a.positions.byteLength + a.scales.byteLength + a.rotations.byteLength + a.colors.byteLength + a.opacities.byteLength + a.sphericalHarmonics.byteLength;
+}
+
+/** Diagnostics; cpuBytes counts the packed copy plus every retained source asset. */
+export function layerStats(
+  live: readonly { visible: boolean; attributes: NormalizedGaussianAttributes | null }[],
+  source: GaussianPackedSource | undefined, gpuBytes: number, drawnFrames: number, lastEncodeMs: number,
+): GaussianSplatStats {
+  return {
+    assets: live.length, splats: source?.opacities.length ?? 0,
+    visibleAssetSplats: live.filter((r) => r.visible).reduce((sum, r) => sum + (r.attributes?.count ?? 0), 0),
+    cpuBytes: packedCpuBytes(source) + live.reduce((sum, r) => sum + (r.attributes ? attributeBytes(r.attributes) : 0), 0),
+    gpuBytes, drawnFrames, lastEncodeMs, composition: 'over-transparent-approximate', clipping: 'centre',
+  };
 }

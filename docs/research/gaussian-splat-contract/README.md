@@ -249,3 +249,25 @@ ownership across resize and device loss. IFC-Lite still needs native transparent
 peeling integrated into `renderFrame`, RTE/placement/SH rotation, real-model
 interaction, overflow reporting, hardware resource budgets and production smoke
 evidence. The one-layer experiment cannot waive any of these release blockers.
+
+The interval witness passed at `1f957a0a5d` on PC/WSL through fleet admission and
+`ifc-gpu-check`, using Chromium/SwiftShader. All four perspective/orthographic and
+24/32-pixel cases matched the independently submitted reference exactly, with
+nonblank output and zero GPU errors. Removing only the fragment discard produced
+738, 1290, 316 and 566 differing channels respectively. The source hashes, original
+receipt and setup/failing attempts are in `fragment-interval-results.json`.
+The failing binding experiment was rejected by GPU validation and the nonblank
+reference assertion; it is not counted as correctness evidence.
+
+Reproduce from the repository with installed dependencies and Chrome, through
+ordinary fleet admission and the GPU serialization wrapper:
+
+```sh
+~/build-workers/ifc-fleet run --route local --kind ordinary --cpu 2 --memory 4 \
+  --pool gaussian-production-8562 --storage-task UNIQUE_TASK --cwd "$PWD" -- \
+  bash -c '~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-fragment-interval.mjs'
+```
+
+This is a manual GPU witness, not part of root `pnpm test`. It does not qualify
+multi-layer peeling, per-sample MSAA, viewer rendering, licensed capture scenes or
+hardware performance. Public enablement remains blocked.

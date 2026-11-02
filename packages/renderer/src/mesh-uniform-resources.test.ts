@@ -71,7 +71,7 @@ test('#8564 addMesh and ensureMeshResources give each individual mesh its own bo
   assert.equal((first as { bindGroup?: unknown }).bindGroup !== undefined, true);
 
   const second = mesh(2);
-  renderer.getScene().addMesh(second as never); // registered without GPU resources
+  (renderer as unknown as { scene: { addMesh(mesh: unknown): void } }).scene.addMesh(second); // registered without GPU resources
   assert.deepEqual(renderer.ensureMeshResources(), { ok: true, value: undefined });
   assert.equal(recorded.buffers.length, 2, 'only the mesh without resources is allocated');
   assert.equal(bufferOf(recorded.groups[1]), (second as { uniformBuffer?: GPUBuffer }).uniformBuffer);

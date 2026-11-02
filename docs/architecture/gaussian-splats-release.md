@@ -51,7 +51,7 @@ Screenshots establish visible behavior; they do not replace transparent-composit
 
 ## Deployment and rollback
 
-Use `.github/workflows/deploy-nightly.yml`, not a direct push or force-update of `production`. It normally advances production at 05:45 UTC. Manual dispatch accepts a ref reachable from `main`; retain its default green-check requirement. PR builds and merge completion do not themselves prove production availability.
+Use `.github/workflows/deploy-nightly.yml`, not a direct push or force-update of `production`. It normally advances production at 05:45 UTC. Manual dispatch requires the requested commit to be reachable from `main` and on its first-parent line within the 40-commit window starting at the current main tip. A merged PR branch head is not sufficient. Retain the default green-check requirement: within that same window, the workflow selects the newest commit at or older than the requested commit whose latest `Build + WASM + Rust + Node` check succeeded. It can therefore select an older commit, or fail if no eligible green commit exists. PR builds and merge completion do not themselves prove production availability.
 
 Before promoting an opt-in or default-on change:
 
@@ -60,7 +60,7 @@ Before promoting an opt-in or default-on change:
 - Prepare the reviewed disable change and rehearse it on the same deployment path. Record the observed existing-asset policy, not an assumed hot-toggle capability.
 - Dispatch or await normal promotion, then verify the deployed commit and perform the applicable qualification journey on the live viewer.
 
-The production branch only moves forward. Rollback therefore means a new reviewed main commit that disables Gaussian admission and is promoted normally; it does not mean rewinding production or deploying an unreviewed branch. A previously open tab may still run an older bundle. The implementation and smoke test must describe reload/notification behavior explicitly rather than claiming immediate shutdown of existing tabs.
+The production branch only moves forward. Rollback therefore means a new reviewed main commit that disables Gaussian admission and is promoted normally; it does not mean rewinding production or deploying an unreviewed branch. Verify the actual production SHA reported by the workflow, not just the requested SHA: green-ancestor selection can predate the disable change, and an already-ahead production branch can remain unchanged. Confirm that the actual deployed SHA contains the admission-disable change and that each production deployment is `READY`, then smoke-test refusal of new Gaussian loads. A green workflow run without Vercel verification (for example, a missing `VERCEL_TOKEN`) is not deployment evidence. A previously open tab may still run an older bundle. The implementation and smoke test must describe reload/notification behavior explicitly rather than claiming immediate shutdown of existing tabs.
 
 Capture a compact receipt containing commit, deployment URL, browser/GPU identity, corpus hashes, flag/cohort state, actual checks/skips, outcomes and the rollback commit/deployment. Preserve private evidence separately. A production smoke failure keeps general availability blocked and triggers the prepared admission-disable path.
 

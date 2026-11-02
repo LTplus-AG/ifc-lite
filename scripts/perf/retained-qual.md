@@ -148,8 +148,8 @@ present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), 
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
 
 Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
-Only unique successful samples from the same invocation and round are paired;
-different workflows stay separate. Each column reports base, branch and matched n;
+Only unique successful samples from the same invocation (or the same `--pairing-id`)
+and round are paired; different workflows stay separate. Each column reports base, branch and matched n;
 nullable coverage is marked incomplete and medians use matched finite rounds only.
 Unavailable PSS stays null; coverage records readable/attempted process samples and
 complete/partial tree samples. Partial trees never count as a measured total.

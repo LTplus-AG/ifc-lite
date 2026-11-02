@@ -102,6 +102,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.publish.uncertainGuidance': 'Some writes have an unknown outcome: the server may have applied them before the connection failed, or they came from an imported backup. They are never sent again automatically, and neither is anything that depends on them. Use “Check server” on each: a confirmed match is recorded as published; only when the server shows no trace can you send it again.',
   'bcfDrafts.publish.queue': '{done} of {total} writes confirmed',
   'bcfDrafts.publish.removedTopic': 'Topic no longer in this batch',
+  'bcfDrafts.publish.topicType': 'This project has no topic type “{type}”. Publish those topics as',
 
   'bcfDrafts.preflight.ok': { one: 'The project accepts this batch ({warnings} capability not advertised by the server).', other: 'The project accepts this batch ({warnings} capabilities not advertised by the server).' },
   'bcfDrafts.preflight.refused': { one: 'Nothing was sent: {count} problem.', other: 'Nothing was sent: {count} problems.' },
@@ -109,6 +110,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.preflight.vocabulary': '{topic}: {field} “{value}” is not in this project’s list ({allowed}).',
   'bcfDrafts.preflight.assignee': '{topic}: assignee “{value}” is not a user of this project ({allowed}).',
   'bcfDrafts.preflight.unverified': '{topic}: the server does not advertise {field}.',
+  'bcfDrafts.preflight.withheld': '{topic}: status “{value}” is not sent, because this server keeps no status for topic type “{type}”.',
   'bcfDrafts.preflight.none': 'none',
 
   'bcfDrafts.state.queued': 'Queued',

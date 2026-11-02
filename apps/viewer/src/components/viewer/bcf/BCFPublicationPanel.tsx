@@ -6,7 +6,9 @@
  * Publish a reviewed draft batch to the connected BCF server (#6896): pick a
  * project, preflight its permissions and vocabulary, publish through the
  * durable outbox, and review per-topic receipts. Unknown outcomes are
- * explained and resolved per entry; nothing is retried blindly.
+ * explained and resolved per entry; nothing is retried blindly. A draft topic
+ * type the server's fixed list lacks is mapped to one of the server's own
+ * types, preselected and shown before anything is sent.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -19,6 +21,7 @@ import { sameTarget, type DispatchReport, type PublicationConnection } from '@/l
 import { draftPublicationId, planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication, type PreflightReport } from '@/lib/bcf-publication/outbox-preflight';
 import { publishDraftBatch } from '@/lib/bcf-publication/outbox-publish';
+import { preselectTopicTypes, publicationRules, unknownTopicTypes, type TopicTypeChoice } from '@/lib/bcf-publication/outbox-server-rules';
 import { publicationCounts } from '@/lib/bcf-publication/outbox-state';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { PublicationTarget } from '@/lib/bcf-publication/outbox-types';
@@ -52,6 +55,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [preflight, setPreflight] = useState<PreflightReport | null>(null);
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
+  const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
 
   useEffect(() => {
     setProjects(null); setConnection(null);
@@ -84,20 +88,25 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally { setBusy(false); }
   };
+  const adopt = (result: PreflightReport) => {
+    setPreflight(result);
+    setTopicTypes(current => preselectTopicTypes(result, current));
+  };
   const check = () => act(async () => {
     if (!target || !connection) return;
-    const plan = await planDraftPublication(batch, record, target);
+    const plan = await planDraftPublication(batch, record, target, undefined, { rules: publicationRules(connection), topicTypes });
     const result = await preflightPublication(connection.client, plan.record);
-    setPreflight(result);
+    adopt(result);
     onUsers(result.extensions.user_id_type ?? []);
   });
   const publish = () => act(async () => {
     if (!target || !connection) return;
-    const published = await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000 });
+    const published = await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes });
     if (!published) { setError(t('bcfDrafts.publish.storageRefused')); return; }
     setReport(published.report);
-    if (published.report.preflight) setPreflight(published.report.preflight);
+    if (published.report.preflight) adopt(published.report.preflight);
   });
+  const unknownTypes = unknownTopicTypes(preflight);
 
   if (!config) return <p className="text-xs text-muted-foreground">{t('bcfDrafts.publish.notConnected')}</p>;
   const titleOf = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? t('bcfDrafts.publish.removedTopic');
@@ -106,7 +115,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       <label className="flex items-center gap-2">
         {t('bcfDrafts.publish.project')}
         <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
-          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
+          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); setTopicTypes({}); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
       </label>
@@ -118,13 +127,25 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       </div>
       {preflight && (
         <output className={`block ${preflight.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-          {preflight.ok ? t('bcfDrafts.preflight.ok', { warnings: preflight.warnings.length }) : t('bcfDrafts.preflight.refused', { count: preflight.issues.length })}
+          {preflight.ok ? t('bcfDrafts.preflight.ok', { warnings: preflight.warnings.filter(warning => warning.kind === 'unverified').length })
+            : t('bcfDrafts.preflight.refused', { count: preflight.issues.length })}
           <ul className="list-disc pl-4">
-            {preflight.issues.map((issue, index) => <li key={index}>{t(`bcfDrafts.preflight.${issue.kind}`, { field: issue.field ?? '', value: issue.value ?? '',
-              topic: issue.topicGuid ? titleOf(issue.topicGuid) : '', allowed: issue.allowed?.join(', ') || t('bcfDrafts.preflight.none') })}</li>)}
+            {[...preflight.issues.filter(issue => !(issue.field === 'topic_type' && unknownTypes.some(item => item.type === issue.value))),
+              ...preflight.warnings.filter(warning => warning.kind === 'withheld')].map((issue, index) =>
+              <li key={index}>{t(`bcfDrafts.preflight.${issue.kind}`, { field: issue.field ?? '', value: issue.value ?? '', type: issue.topicType ?? '',
+                topic: issue.topicGuid ? titleOf(issue.topicGuid) : '', allowed: issue.allowed?.join(', ') || t('bcfDrafts.preflight.none') })}</li>)}
           </ul>
         </output>
       )}
+      {unknownTypes.map(({ type, allowed }) => (
+        <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-amber-500/10 px-2 py-1">
+          {t('bcfDrafts.publish.topicType', { type })}
+          <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
+            onChange={event => setTopicTypes(current => ({ ...current, [type]: event.target.value }))}>
+            {allowed.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+      ))}
       {report && <output className="block">{t('bcfDrafts.publish.result', { sent: report.sent, done: report.receipts.length, failed: report.failed.length,
         uncertain: report.uncertain.length, waiting: report.waiting.length + report.blocked.length })}</output>}
       {counts && (counts.uncertain > 0 || counts.blocked > 0) && (

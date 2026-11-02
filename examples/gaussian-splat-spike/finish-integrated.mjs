@@ -15,11 +15,11 @@ import { repoRoot, sha256File, verifiedFixture } from './showcase-fixture.mjs';
 import { captionWindows } from './screencast-timing.mjs';
 
 const { values: args } = parseArgs({ options: {
-  take: { type: 'string' }, out: { type: 'string' }, assets: { type: 'string' }, label: { type: 'string' }, disclosure: { type: 'string' },
+  take: { type: 'string' }, out: { type: 'string' }, assets: { type: 'string' }, label: { type: 'string' }, disclosure: { type: 'string', multiple: true },
   stem: { type: 'string', default: 'integrated' }, threads: { type: 'string', default: '4' },
   'font-dir': { type: 'string', default: '/usr/share/fonts/truetype/dejavu' },
 } });
-for (const key of ['take', 'out', 'assets', 'label', 'disclosure']) if (!args[key]) throw new Error(`--${key} required`);
+for (const key of ['take', 'out', 'assets', 'label', 'disclosure']) if (!args[key]?.length) throw new Error(`--${key} required`);
 const take = resolve(args.take);
 const recording = JSON.parse(await readFile(join(take, 'evidence-integrated.json'), 'utf8'));
 if (recording.failure) throw new Error('refusing to finish a failed take');
@@ -35,10 +35,11 @@ const master = join(args.out, `${args.stem}-master.mkv`);
 ffmpeg('-f', 'concat', '-safe', '0', '-i', join(take, 'frames.ffconcat'), '-c', 'copy', master);
 const textDir = join(args.out, 'overlay-text');
 await mkdir(textDir, { recursive: true });
-const lines = { label: args.label, disclosure: args.disclosure, credit: credits.credit, change: credits.change };
+const lines = { label: args.label, ...Object.fromEntries(args.disclosure.map((d, i) => [`disclosure-${i}`, d])), credit: credits.credit, change: credits.change };
 for (const [name, value] of Object.entries(lines)) await writeFile(join(textDir, `${name}.txt`), value);
 for (const [i, window] of captions.entries()) await writeFile(join(textDir, `step-${i}.txt`), window.caption);
-const W = 1920, H = 1080, STRIP = 165;
+// Strip rows: live caption, one row per disclosure, then the two credit rows.
+const W = 1920, H = 1080, ROW = 32, STRIP = 70 + ROW * args.disclosure.length + 2 * 30;
 const bold = join(args['font-dir'], 'DejaVuSans-Bold.ttf'), regular = join(args['font-dir'], 'DejaVuSans.ttf');
 const text = (file, font, size, color, x, y, extra) =>
   `drawtext=fontfile=${font}:textfile=${join(textDir, file)}:expansion=none:fontsize=${size}:fontcolor=${color}:x=${x}:y=${y}${extra ? `:${extra}` : ''}`;
@@ -46,9 +47,9 @@ const filter = [
   `scale=${W}:${H}:flags=lanczos,pad=${W}:${H + STRIP}:0:0:color=0x0b0d10`,
   ...captions.map((w, i) => text(`step-${i}.txt`, bold, 30, 'white', 32, H + 16, `enable='between(t,${w.start},${w.end})'`)),
   text('label.txt', bold, 22, '0xFFC857', 'w-tw-32', H + 22),
-  text('disclosure.txt', regular, 21, 'white@0.92', 32, H + 62),
-  text('credit.txt', regular, 19, 'white@0.80', 32, H + 96),
-  text('change.txt', regular, 19, 'white@0.80', 32, H + 126),
+  ...args.disclosure.map((_, i) => text(`disclosure-${i}.txt`, regular, 21, 'white@0.92', 32, H + 62 + ROW * i)),
+  text('credit.txt', regular, 19, 'white@0.80', 32, H + 66 + ROW * args.disclosure.length),
+  text('change.txt', regular, 19, 'white@0.80', 32, H + 96 + ROW * args.disclosure.length),
   // Screencast JPEGs are full range; deliver standard limited-range BT.709.
   'scale=in_range=pc:out_range=tv,format=yuv420p',
 ].join(',');

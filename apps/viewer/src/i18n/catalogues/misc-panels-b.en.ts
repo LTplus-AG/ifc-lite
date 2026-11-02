@@ -60,6 +60,16 @@ import type { TranslationValue } from '../types';
  * rule as an IFC class/property/tag NAME anywhere else in this sweep.
  */
 export const miscPanelsBEn = {
+  "federationSetupControls.saved": "Federation setup saved.",
+  "federationSetupControls.invalid": "Not a valid federation setup file: {reason}",
+  "federationSetupControls.pickSources": "Loaded a setup with {count} model slots — now pick the source files to match.",
+  "federationSetupControls.result.restored": "Restored {restored}/{total} models",
+  "federationSetupControls.result.missing": "source files missing: {names}",
+  "federationSetupControls.result.mismatched": "same name, different content: {names}",
+  "federationSetupControls.result.anchorMissing": "alignment anchor could not be restored",
+  "federationSetupControls.result.tagsMissing": "tags not restored for missing sources: {names}",
+  "federationSetupControls.result.failed": "source files found but not loaded: {slots}",
+  "federationSetupControls.result.failedSlot": "{name} ({reason})",
   // ---- PointCloudPanel.tsx --------------------------------------------
   'pointCloudPanel.title': 'Point Cloud',
   'pointCloudPanel.close': 'Close point cloud panel',

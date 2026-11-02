@@ -68,9 +68,9 @@ export function FederationSetupControls() {
   const handleSave = useCallback(() => {
     void exportFederationSetup().then((result) => {
       if (!result.ok) toast.error(result.error);
-      else toast.success('Federation setup saved.');
+      else toast.success(t('federationSetupControls.saved'));
     });
-  }, [exportFederationSetup]);
+  }, [exportFederationSetup, t]);
 
   useEffect(() => {
     const onSave = () => handleSave();
@@ -90,16 +90,16 @@ export function FederationSetupControls() {
     void file.text().then((text) => {
       const result = parseFederationSetupFile(text);
       if (!result.ok) {
-        toast.error(`Not a valid federation setup file: ${result.error}`);
+        toast.error(t('federationSetupControls.invalid', { reason: result.error }));
         return;
       }
       setPendingSetup(result.setup);
       toast.info(
-        `Loaded a setup with ${result.setup.slots.length} model slot${result.setup.slots.length === 1 ? '' : 's'} — now pick the model file(s) to match against it.`,
+        t('federationSetupControls.pickSources', { count: result.setup.slots.length }),
       );
       modelFilesInputRef.current?.click();
     });
-  }, []);
+  }, [t]);
 
   const handleModelFilesSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -119,21 +119,23 @@ export function FederationSetupControls() {
     void applyFederationSetup(pendingSetup, matches).then((result) => {
       setApplying(false);
       closeReview();
-      if (result.outcome === 'failed') {
-        toast.error('Could not restore the federation setup — none of the saved models were found.');
-        return;
-      }
-      const parts: string[] = [`Restored ${result.restoredCount}/${result.totalSlots} model(s)`];
-      if (result.missingSlots.length > 0) parts.push(`missing: ${result.missingSlots.join(', ')}`);
-      if (result.mismatchedSlots.length > 0) parts.push(`same name, different content: ${result.mismatchedSlots.join(', ')}`);
-      if (result.anchorMissing) parts.push('alignment anchor could not be restored');
-      if (result.taggedSlotsMissing.length > 0) parts.push(`tags not restored for: ${result.taggedSlotsMissing.join(', ')}`);
-      if (result.failedSlots.length > 0) parts.push(`not loaded: ${result.failedSlots.map((f) => `${f.name} (${f.reason})`).join(', ')}`);
+      // #8566: a found file can be refused by the canonical loader. Preserve
+      // its reason even when no slot succeeds; missing sources are separate.
+      const parts: string[] = [t('federationSetupControls.result.restored', {
+        restored: result.restoredCount, total: result.totalSlots,
+      })];
+      if (result.missingSlots.length > 0) parts.push(t('federationSetupControls.result.missing', { names: result.missingSlots.join(', ') }));
+      if (result.mismatchedSlots.length > 0) parts.push(t('federationSetupControls.result.mismatched', { names: result.mismatchedSlots.join(', ') }));
+      if (result.anchorMissing) parts.push(t('federationSetupControls.result.anchorMissing'));
+      if (result.taggedSlotsMissing.length > 0) parts.push(t('federationSetupControls.result.tagsMissing', { names: result.taggedSlotsMissing.join(', ') }));
+      if (result.failedSlots.length > 0) parts.push(t('federationSetupControls.result.failed', {
+        slots: result.failedSlots.map((f) => t('federationSetupControls.result.failedSlot', { name: f.name, reason: f.reason })).join(', '),
+      }));
       const message = parts.join(' — ');
       if (result.outcome === 'restored' && !result.anchorMissing) toast.success(message);
       else toast.error(message);
     });
-  }, [matches, pendingSetup, applyFederationSetup, closeReview]);
+  }, [matches, pendingSetup, applyFederationSetup, closeReview, t]);
 
   return (
     <>

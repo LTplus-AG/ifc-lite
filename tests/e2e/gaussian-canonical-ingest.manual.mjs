@@ -9,12 +9,14 @@
 // the hidden frame is the reference for the splat contribution. Internal,
 // unqualified evidence only: not a timing, hardware-budget or release witness.
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
 const base = process.env.GAUSSIAN_BASE ?? 'http://127.0.0.1:5291';
 const capture = process.env.GAUSSIAN_CAPTURE ?? '/_fixtures/seem-kirke-v1.ply';
 const placement = process.env.GAUSSIAN_PLACEMENT ?? 'rx180';
+// An IFC model added beside the capture keeps frames rendering after its removal.
+const ifc = process.env.GAUSSIAN_IFC ?? 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
 const out = process.env.GAUSSIAN_EVIDENCE ?? '/tmp/gaussian-8565-browser';
 await mkdir(out, { recursive: true });
 const browser = process.env.IFC_GPU_CDP_URL
@@ -58,16 +60,25 @@ const frame = (label) => page.evaluate(async (label) => {
 /** Pixel comparisons between stored frames, done in the page. */
 const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
   const f = globalThis.__witnessFrames, x = f[a], y = f[b];
-  const differs = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 6;
+  const delta = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
+  const width = Math.round(Math.sqrt(x.length / 4)); // diagnostic only; frames are square-ish
   let differing = 0, escaped = 0;
+  const samples = [];
   for (let i = 0; i < x.length; i += 4) {
-    if (differs(x, y, i)) {
+    const d = delta(x, y, i);
+    if (d > 6) {
       differing++;
       // `outside`: [frame, reference] whose equal pixels are outside the contribution.
-      if (outside && !differs(f[outside[0]], f[outside[1]], i)) escaped++;
+      if (outside) {
+        const reference = delta(f[outside[0]], f[outside[1]], i);
+        if (reference <= 6) {
+          escaped++;
+          samples.push({ pixel: i / 4, column: (i / 4) % width, delta: d, referenceDelta: reference });
+        }
+      }
     }
   }
-  return { differing, escaped, total: x.length / 4 };
+  return { differing, escaped, total: x.length / 4, samples };
 }, { a, b, outside });
 const drawn = async (label, previous) => {
   for (let i = 0; i < 50; i++) {
@@ -138,48 +149,102 @@ try {
   assert.ok(contribution.differing > contribution.total * 0.02, 'the splat pass contributes pixels beyond the background');
   assert.equal(restored.differing, 0, 'show restores the exact reference frame');
 
-  // Disclosed centre clipping: a vertical plane through the placed capture's centre.
-  const plane = await page.evaluate(() => {
+  // Disclosed centre clipping: a vertical plane through the placed capture's
+  // centre, its gizmo hidden. Alpha compositing lets a culled near splat hide a
+  // far one, so a pixel can gain colour once clipped; a kept Gaussian drawing
+  // where nothing was drawn before would gain it over ANY background. The
+  // invariant is therefore: no pixel escapes the unclipped contribution over
+  // both the dark and the light theme background.
+  const clipOn = () => page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const record = [...state.models.values()].find(m => m.gaussianSplat).gaussianSplat;
     const { min, max } = record.sourceCenterBounds, m = record.placement;
     const c = [0, 1, 2].map(i => (min[i] + max[i]) / 2);
     const point = [0, 1, 2].map(r => m[r] * c[0] + m[4 + r] * c[1] + m[8 + r] * c[2] + m[12 + r]);
     state.setSectionPlaneFromFace([1, 0, 0], point);
+    const next = globalThis.__ifc_lite_viewer_store__.getState();
+    next.setSectionPlaneShowGizmo(next.sectionPlane.id, false);
     return point;
   });
-  const clippedStats = await drawn('clipped', shown.gaussian.drawnFrames);
-  await frame('clipped');
-  await page.screenshot({ path: `${out}/02-centre-clipped.png` });
-  // The plane draws its own gizmo/outline: the clipped contribution is taken
-  // against the same plane with the capture hidden, then must lie inside the
-  // unclipped contribution (visible vs hidden without the plane).
-  await visibility(outcome.id, false);
-  await page.waitForTimeout(300);
-  await frame('clippedHidden');
-  await visibility(outcome.id, true);
-  await drawn('clipped-again', clippedStats.gaussian.drawnFrames);
-  const kept = await compare('clipped', 'clippedHidden', ['visible', 'hidden']);
-  result.checks.centreClip = { plane, kept, unclipped: contribution };
-  assert.ok(kept.differing > 0, 'the kept side still contributes');
-  assert.ok(kept.differing < contribution.differing, 'the plane culls part of the capture');
-  assert.equal(kept.escaped, 0, 'clipping never draws outside the unclipped contribution');
-  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setSectionPlaneEnabled(false));
-  const unclipped = await drawn('unclipped', (await stats()).gaussian.drawnFrames);
+  const clipOff = () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setSectionPlaneEnabled(false));
+  const measure = async (suffix) => {
+    let last = (await stats()).gaussian.drawnFrames;
+    await clipOff(); await page.waitForTimeout(300);
+    await frame(`visible${suffix}`);
+    await visibility(outcome.id, false); await page.waitForTimeout(300);
+    await frame(`hidden${suffix}`);
+    await visibility(outcome.id, true); last = (await drawn(`shown${suffix}`, last)).gaussian.drawnFrames;
+    const plane = await clipOn(); last = (await drawn(`clipped${suffix}`, last)).gaussian.drawnFrames;
+    await frame(`clipped${suffix}`);
+    await page.screenshot({ path: `${out}/02-centre-clipped${suffix || '-dark'}.png` });
+    await visibility(outcome.id, false); await page.waitForTimeout(300);
+    await frame(`clippedHidden${suffix}`);
+    await visibility(outcome.id, true); await drawn(`clipped-again${suffix}`, last);
+    const full = await compare(`visible${suffix}`, `hidden${suffix}`);
+    const kept = await compare(`clipped${suffix}`, `clippedHidden${suffix}`, [`visible${suffix}`, `hidden${suffix}`]);
+    await clipOff();
+    return { plane, full, kept };
+  };
+  // The initial theme follows prefers-color-scheme; set both explicitly.
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setTheme('dark'));
+  await page.waitForTimeout(500);
+  const dark = await measure('');
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setTheme('light'));
+  await page.waitForTimeout(500);
+  const light = await measure('Light');
+  const backgrounds = await compare('hidden', 'hiddenLight');
+  assert.ok(backgrounds.differing > backgrounds.total * 0.9, 'the two measurements really use different backgrounds');
+  const lightEscaped = new Set(light.kept.samples.map(sample => sample.pixel));
+  const both = dark.kept.samples.filter(sample => lightEscaped.has(sample.pixel));
+  result.checks.centreClip = {
+    dark: { plane: dark.plane, full: dark.full.differing, kept: dark.kept.differing, escaped: dark.kept.samples },
+    light: { full: light.full.differing, kept: light.kept.differing, escaped: light.kept.samples },
+    escapedOverBoth: both, backgroundsDiffer: backgrounds.differing,
+  };
+  for (const run of [dark, light]) {
+    assert.ok(run.kept.differing > 0, 'the kept side still contributes');
+    assert.ok(run.kept.differing < run.full.differing, 'the plane culls part of the capture');
+  }
+  assert.deepEqual(both, [], 'no kept Gaussian draws outside the unclipped contribution over both backgrounds');
+  const unclipped = await stats();
 
+  // Phase B: an IFC model beside the capture, through the real Add-model input.
+  // IFC frames refine after load, so wait until two consecutive capture-hidden
+  // frames are identical; that settled frame is the removal reference.
+  await page.locator('#file-input-add').setInputFiles({ name: 'AC20-FZK-Haus.ifc', mimeType: 'application/x-step', buffer: await readFile(ifc) });
+  await page.waitForFunction(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return state.models.size === 2 && !state.loading && !state.geometryStreamingActive;
+  }, null, { timeout: 120_000 });
+  result.checks.ifcBeside = await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().models.values()]
+    .map(m => ({ name: m.name, capture: Boolean(m.gaussianSplat), entities: m.ifcDataStore?.entityCount ?? 0 })));
+  await page.screenshot({ path: `${out}/03-ifc-beside-capture.png` });
+  await visibility(outcome.id, false);
+  let settled = null;
+  for (let attempt = 0; attempt < 40 && !settled; attempt++) {
+    await page.waitForTimeout(500);
+    await frame('ifcA'); await frame('ifcB');
+    const noise = await compare('ifcA', 'ifcB');
+    if (noise.differing === 0) settled = { attempts: attempt + 1 };
+  }
+  result.checks.ifcSettled = settled;
+  assert.ok(settled, 'the IFC-only frame settles to a repeatable reference');
+  await visibility(outcome.id, true);
+  await drawn('ifc-shown', (await stats()).gaussian.drawnFrames - 1);
   await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().removeModel(id), outcome.id);
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
   await frame('removed');
   const removed = await stats();
-  const baseline = await compare('removed', 'hidden');
+  const baseline = await compare('removed', 'ifcB');
   const handleAfter = await page.evaluate(() => globalThis.__ifc_lite_gaussian_handle_state__?.(globalThis.__witnessHandle));
   result.checks.removed = { stats: removed, baseline, handleAfter, unclipped: unclipped.gaussian };
   assert.equal(removed.gaussian.assets, 0, 'removal frees the renderer asset');
   assert.equal(removed.gaussian.gpuBytes, 0);
   assert.deepEqual(handleAfter, { state: 'invalid' }, 'no surviving handle');
-  assert.equal(baseline.differing, 0, 'the frame returns to the capture-free reference');
+  assert.equal(baseline.differing, 0, 'the frame returns to the settled capture-free reference');
+  assert.equal(result.checks.ifcBeside.length, 2);
   assert.ok(decoder.every(url => workers.closed.includes(url)), 'the decoder worker ended with its request');
-  await page.screenshot({ path: `${out}/03-removed.png` });
+  await page.screenshot({ path: `${out}/04-capture-removed.png` });
   assert.deepEqual(errors, [], `uncaught page errors: ${errors.join('; ')}`);
   assert.deepEqual(gpuConsole, [], `GPU errors: ${gpuConsole.join('; ')}`);
   result.verdict = 'pass';

@@ -303,11 +303,11 @@ export class WebGPUDevice {
   }
 
   getDevice(): GPUDevice {
-    if (!this.device) {
-      throw new Error('Device not initialized');
-    }
+    if (!this.device) throw new Error('Device not initialized');
     return this.device;
   }
+
+  getAdapter(): GPUAdapter | null { return this.adapter; } // borrowed by the Gaussian adapter's luma wrapper (#8564)
 
   /**
    * Register the callback fired when this device is lost for a non-intentional

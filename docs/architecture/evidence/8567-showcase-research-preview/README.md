@@ -65,5 +65,5 @@ take was rejected and its video discarded; its evidence record is kept.
 The integrated viewer workflow (load, inspect, orbit, clipping, removal through
 the canonical loader and IFC-Lite's renderer), mixed IFC/splat composition,
 hardware performance and budgets, and metric alignment all remain open under
-#8566 and #8567. The integrated-viewer recording replaces this preview once the
-viewer can load Gaussian files.
+#8566 and #8567. The internal-demo recording in the real viewer, built from the
+integration branch, is in [`../8567-showcase-integrated`](../8567-showcase-integrated/README.md).

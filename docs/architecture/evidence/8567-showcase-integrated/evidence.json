@@ -1,0 +1,191 @@
+{
+  "label": "INTERNAL DEMO - final integrated-viewer take. Real ifc-lite viewer production bundle (VITE_GAUSSIAN_SPLATS=internal-unqualified), canonical file-picker load through useIfcLoader.loadFile, native WebGPU adapter. Not production qualified.",
+  "issue": 8567,
+  "date": "2026-11-02T08:44:05.466Z",
+  "viewer": {
+    "productionSource": "16897873e6d7ece25962d4e082c95ad8106f5d59",
+    "finalHead": "cfabfaa4e7 (witness-only commit; delta 16897873e6..cfabfaa4e7 is tests/e2e only, verified with git diff --name-only)",
+    "laterHeads": {
+      "cfabfaa4e7": "witness-only commit after 16897873e6 (tests/e2e only); loader GPU witness run 7 passed",
+      "d8fe061309": "type-only fix after the take: apps/viewer/src/components/viewer/hierarchy/CaptureModelPanel.tsx changes an `import type` line, the rootProps type annotation (HTMLAttributes -> Record<`data-${string}`, string>) and a doc comment, all erased from emitted JS; plus tests/e2e/gaussian-canonical-ingest.manual.mjs. Verified with git diff 16897873e6 d8fe061309. The recorded bundle is runtime-equivalent; exact-head checks were running at take time."
+    },
+    "witness": "loader GPU witness run 6 passed on the 670ebb71f7 bundle and run 7 on cfabfaa4e7 (loader evidence kept with its run receipts); 670ebb71f7..16897873e6 changes one test file only",
+    "build": "VITE_GAUSSIAN_SPLATS=internal-unqualified NODE_OPTIONS=--max-old-space-size=8192 pnpm exec turbo run build --filter=@ifc-lite/viewer... --filter=!@ifc-lite/wasm; fleet local admission job 95dab76d, exit 0, 57/57 tasks (56 cached)",
+    "equalsWitnessedBundle": "after normalising 8-character content hashes, only the main and analytics chunks differ, and only by the embedded build timestamp (2026-11-02T08:25:09.212Z witnessed vs 2026-11-02T08:34:38.881Z here); the witnessed copy additionally carries _fixtures/seem-kirke-v1.ply for its ?model= route",
+    "wasm": {
+      "ifc-lite_bg.wasm sha256 prefix": "ae7ee826d9d3b89c",
+      "rustTree": "332f265ad16eb56139fe5887729a1b24e1627370",
+      "proof": "byte-identical across two independent sibling builds of this exact rust tree; committed pkg/ifc-lite.d.ts unchanged; turbo build excluded @ifc-lite/wasm to avoid a redundant identical Rust rebuild"
+    },
+    "query": "gaussianPlacement=rx180",
+    "distDigest": {
+      "method": "sha256 of the ./-relative sorted per-file sha256 list over apps/viewer/dist",
+      "value": "449e4aaba5bb5a046129fcf0fac3ac19f71d2178460f5e1210371ae6b3da8a07",
+      "files": 1017
+    }
+  },
+  "tooling": {
+    "head": "ff219fbd0c1780630ddad28d29c80e9b1bf789d8",
+    "dirty": false,
+    "branch": "t3/real-scan-video-deliverable (PR #8629)",
+    "recorderJourneyCommit": "d9bab8bcfd (record-integrated.mjs, integrated-journey.mjs)",
+    "finisherCommit": "ff219fbd0c (finish-integrated.mjs)"
+  },
+  "environment": {
+    "browser": "Windows Chrome 156.0.8078.74 headless via ~/build-workers/ifc-gpu-check (CDP)",
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell",
+      "fallback": false
+    },
+    "viewport": "1920x1080"
+  },
+  "asset": {
+    "path": "gaussian/seem-kirke-v1.ply",
+    "bytes": 226795353,
+    "sha256": "9178c73620ac6dd1e18f4b91870d71b7e06ded83d4beb0344ba8aa90630ab228",
+    "localSha256Verified": true
+  },
+  "capture": {
+    "method": "CDP page screencast JPEG q90 (UI + WebGPU canvas) on wall-clock timestamps; real mouse/wheel input; the PLY entered #file-input-open via DOM.setFileInputFiles (canonical loadFile); sidebar collapsed during camera motion and expanded only for the inspect hold",
+    "screencast": {
+      "frames": 1597,
+      "seconds": 55.491,
+      "p50": 33.3,
+      "p95": 33.4,
+      "max": 333.5,
+      "over50ms": 17
+    },
+    "timeline": [
+      {
+        "name": "intro",
+        "caption": "ifc-lite viewer · internal Gaussian build",
+        "start": 0.35,
+        "end": 2.351
+      },
+      {
+        "name": "load",
+        "caption": "File picker → canonical useIfcLoader.loadFile",
+        "start": 2.351,
+        "end": 8.511
+      },
+      {
+        "name": "fit",
+        "caption": "Auto-framed on splat centres",
+        "start": 8.531,
+        "end": 11.032
+      },
+      {
+        "name": "zoom",
+        "caption": "Zoom",
+        "start": 11.032,
+        "end": 13.923
+      },
+      {
+        "name": "orbit",
+        "caption": "Orbit",
+        "start": 13.923,
+        "end": 20.754
+      },
+      {
+        "name": "section",
+        "caption": "Section tool: centre clipping (internal demo)",
+        "start": 20.754,
+        "end": 36.469
+      },
+      {
+        "name": "restore",
+        "caption": "Cut off: full capture restored",
+        "start": 36.469,
+        "end": 38.699
+      },
+      {
+        "name": "inspect",
+        "caption": "Inspect: capture details (uncalibrated, explicit placement)",
+        "start": 38.705,
+        "end": 44.607
+      },
+      {
+        "name": "visibility",
+        "caption": "Hide and show from the model list",
+        "start": 44.62,
+        "end": 49.863
+      },
+      {
+        "name": "remove",
+        "caption": "Remove capture from the model list",
+        "start": 49.869,
+        "end": 53.986
+      },
+      {
+        "name": "end",
+        "caption": "",
+        "start": 53.986,
+        "end": 55.487
+      }
+    ],
+    "skipped": [],
+    "gapsAttribution": "of 17 gaps >50 ms: 4 during load (decode/upload), 9 during the wheel zoom plus 3 in the first 0.6 s of the following orbit (zoom settling; the remaining 6 s of orbit run at 33 ms), 1 at removal. Diagnostics of this take only, not performance evidence."
+  },
+  "finishing": {
+    "method": "concat demuxer with real screencast intervals; JPEG frames copied to the master; strip below the capture; timestamps passed through",
+    "strip": {
+      "label": "INTERNAL DEMO · viewer build 16897873e6 · not production",
+      "disclosure-0": "Internal unqualified preview · presenter-supplied demo placement (rx180), not alignment · uncalibrated: no units or measurement",
+      "disclosure-1": "Centre clipping: whole Gaussians culled by centre, no caps · approximate composition over IFC glass/X-ray · not pickable",
+      "credit": "Seem Kirke, Danmark — Peter Rødsgaard Rasmussen (roedsgaard) · CC BY 4.0 · superspl.at/scene/e832997f",
+      "change": "Published quantized SOG converted to PLY; viewpoint changed · creativecommons.org/licenses/by/4.0"
+    },
+    "captions": [
+      "ifc-lite viewer · internal Gaussian build",
+      "File picker → canonical useIfcLoader.loadFile",
+      "Auto-framed on splat centres",
+      "Zoom",
+      "Orbit",
+      "Section tool: centre clipping (internal demo)",
+      "Cut off: full capture restored",
+      "Inspect: capture details (uncalibrated, explicit placement)",
+      "Hide and show from the model list",
+      "Remove capture from the model list"
+    ],
+    "colour": "full-range JPEG capture mapped to limited-range BT.709"
+  },
+  "videos": [
+    {
+      "file": "seem-kirke-v1-integrated.mp4",
+      "bytes": 13342364,
+      "sha256": "10f7d415ee43918caf9f43163ca4a461d6224672da788b5979a99f1bc67c2603",
+      "frames": 1598,
+      "size": "1920x1274"
+    },
+    {
+      "file": "seem-kirke-v1-integrated.webm",
+      "bytes": 11505535,
+      "sha256": "992326bbd253888dbc564c2950e1ff633ac1bdc560e64276fd3d69efe4f05bff",
+      "frames": 1598,
+      "size": "1920x1274"
+    },
+    {
+      "file": "seem-kirke-v1-integrated-master.mkv",
+      "bytes": 334109542,
+      "sha256": "a0f16b3d6f9ba8aa1d940b62a18cdc3ed3b67e7606bbf557fb9a6c92348144ed",
+      "frames": 1598
+    }
+  ],
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "credit": "Seem Kirke, Danmark — Peter Rødsgaard Rasmussen (roedsgaard) · CC BY 4.0 · superspl.at/scene/e832997f",
+    "change": "Published quantized SOG converted to PLY; viewpoint changed · creativecommons.org/licenses/by/4.0"
+  },
+  "diagnosticObservations": [
+    "an expanded right sidebar slows camera motion in this build: the same orbit ran at p90 66.7 ms open vs 33.4 ms collapsed (probe in the same session)",
+    "wheel zoom steps run at ~100-133 ms intervals while orbiting runs at 33 ms"
+  ],
+  "notQualified": [
+    "production readiness or public enablement",
+    "hardware performance, frame budgets or memory (timings are diagnostics)",
+    "metric scale, georeference or IFC alignment (no IFC model in the scene; uncalibrated capture)",
+    "exact transparency composition (approximate) and clipping caps (none; whole Gaussians culled by centre)",
+    "picking (not pickable; model-list selection only)"
+  ]
+}

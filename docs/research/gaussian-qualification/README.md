@@ -10,8 +10,12 @@ changes the fixture tools and offline research harness only.
 [`docs/architecture/evidence/8567-showcase-research-preview`](../../architecture/evidence/8567-showcase-research-preview/README.md)
 holds a 30-second hardware recording of `gaussian/seem-kirke-v1.ply`, rendered
 by the upstream PlayCanvas research spike. It is labelled RESEARCH PREVIEW and
-is not production viewer evidence. Integrated-viewer recording, hardware
-budgets and alignment remain open.
+is not production viewer evidence.
+[`docs/architecture/evidence/8567-showcase-integrated`](../../architecture/evidence/8567-showcase-integrated/README.md)
+holds the internal-demo recording in the real viewer. The capture loads through
+the picker's canonical path, then the take shows orbit, centre clipping, the
+capture details and removal, with its disclosures on screen. Hardware budgets,
+alignment and production qualification remain open.
 
 ## Reproduce the bounded corpus slice
 

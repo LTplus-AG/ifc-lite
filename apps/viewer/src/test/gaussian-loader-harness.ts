@@ -71,7 +71,11 @@ export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 <
     lifetime: () => ({ ready: renderer.isReady(), lost: internals.deviceLost, disposed: internals.destroyed, generation: internals.initGeneration }),
     device: () => device, adapter: () => null,
     modelTranslation: (index) => internals.scene.getModelTranslation(index), requestRender: () => {},
-    boundsGrew: () => {}, // camera bounds are the renderer's concern, not the loader's
+    // Match the renderer host: capture extents affect depth only, never model/fit bounds.
+    extentChanged: (visible) => renderer.getCamera().setDepthOnlyBounds(visible && {
+      min: { x: visible.min[0], y: visible.min[1], z: visible.min[2] },
+      max: { x: visible.max[0], y: visible.max[1], z: visible.max[2] },
+    }),
   }, backend.factory);
   return { renderer, backend, loseDevice: () => { internals.deviceLost = true; } };
 }

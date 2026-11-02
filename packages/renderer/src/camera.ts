@@ -61,6 +61,7 @@ export class Camera {
       orthoSize: DEFAULT_ORTHO_SIZE, // Half-height in world units
       sceneBounds: null,
       orbitAnchorBounds: null,
+      depthOnlyBounds: null,
     };
 
     // All pose writers publish the ordinary and relative frames together.
@@ -585,6 +586,12 @@ export class Camera {
    */
   getSceneBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
     return this.state.sceneBounds;
+  }
+
+  /** Widen only the orthographic depth range by this extent (never fitting or pivots); null clears it. */
+  setDepthOnlyBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null): void {
+    this.state.depthOnlyBounds = bounds;
+    this.updateMatrices();
   }
 
   /**

@@ -99,10 +99,10 @@ export function SectionAddMenu({ atLimit }: { atLimit: boolean }) {
 }
 
 /**
- * The empty state: nothing cuts yet, so every way to start a cut sits right on
- * the bar, grouped like the Add menu: the three axis planes, then Face and Box
- * (#8672: Box must be discoverable without first adding a plane). Alignment
- * stays in the Add menu; it only applies to infrastructure models.
+ * The empty state: nothing cuts yet, so the common ways to start a cut sit right
+ * on the bar's second row, grouped like the Add menu: the three axis planes, then
+ * Face and Box (#8672: Box must be discoverable without first adding a plane).
+ * Alignment is only in the Add menu, because it applies only to infrastructure models.
  */
 export function SectionEmptyAdd() {
   const { t } = useTranslation();

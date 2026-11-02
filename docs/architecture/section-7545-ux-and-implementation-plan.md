@@ -36,7 +36,7 @@ The redesign answers each of these; "make the number field bigger" does not.
 | --- | --- | --- |
 | A1 | **Offset is shown relative to the plane's datum.** A face-picked plane shows the distance from the picked face (`0.000` at the face, negative into the solid, matching the issue's `-0.200`). A cardinal plane shows the world coordinate along its axis (the elevation for a Down plane), with the datum named next to the field ("level", "from face", "X") so the number is never anonymous. `custom.distance` stays the stored absolute; a `datum` is stored at commit and the field displays `distance − datum` | Spec D5 shows an absolute value for every plane. `custom.distance` is `dot(point, normal)`, meaningless to a user |
 | A2 | **Three decimals** (millimetres) in the field and in saved sets' display, in the project unit | Field today is `precision={2}` |
-| A3 | **No auto-arm and no restore-last-mode on open.** The tool opens showing the current plane set. With an empty set it shows an empty state with the four Add actions. `sectionLastMode.ts` and its `SectionPanel` restore effect are deleted, not kept as a fallback (supersede means delete) | Today's `loadLastSectionMode` effect in `SectionPanel.tsx` |
+| A3 | **No auto-arm and no restore-last-mode on open.** The tool opens showing the current plane set. With an empty set it shows an empty state with the Add actions (all but Alignment; Box joined in #8672). `sectionLastMode.ts` and its `SectionPanel` restore effect are deleted, not kept as a fallback (supersede means delete) | Today's `loadLastSectionMode` effect in `SectionPanel.tsx` |
 | A4 | **No per-plane hues.** #5488 decided the section plane, gizmo and pick preview use the single interaction accent. Planes are told apart by *state* (active: solid outline and filled name tag; inactive: dashed, dim; cut-off: hollow) and by their name tag, never by colour | Spec's "brighter/dimmed + name tag" stays; any idea of a colour per plane is excluded |
 | A5 | **Fill slice is a switch.** One toggle sets the cap to a solid fill in the cap's own colour (`pattern: 'solid'`, surfaces on) and back to the previous hatch; the `Cap ▾` popover keeps every existing detail | Spec D4 says only "caps for every plane" |
 | A6 | **"Section" (2D) is renamed in the UI**: the control that opens the drawing is labelled `2D section`, tooltip names the active plane ("Open the 2D section of plane D") | Today's glyph + `2D` |
@@ -101,7 +101,7 @@ This is the part the current tool lacks entirely, and the part most likely to ma
 
 ### 3.4 Interaction rules
 
-- **Empty state**: opening the tool with no planes shows `New cut: Z  Y  X │ Face  Box` as five buttons in row 1, each with a title saying what it makes, and the hint "Pick a plane or a box to start cutting" (Box joined in #8672 so it is discoverable before any plane exists). No auto-armed pick (A3).
+- **Empty state**: opening the tool with no planes shows `New cut: Z  Y  X │ Face  Box` as five buttons in row 2 (row 1 keeps the heading, Views and close), each with a title saying what it makes, and the hint "Choose a plane or a box to start cutting" (Box joined in #8672 so it is discoverable before any plane exists). No auto-armed pick (A3).
 - **Adding** never replaces; it creates the next name, activates it, and flashes its tag for ~600 ms. At 8 planes `(+)` is disabled with the reason as visible text, not only a tooltip.
 - **Face add**: hint becomes "Click a face to cut through it · Esc cancels"; the existing hover preview stays; the committed plane's offset reads `0.000 from face`.
 - **Offset field**: click to type, Enter commits, Esc reverts, arrow keys step (Shift ×10, Alt ÷10), drag scrubs, **wheel steps** by exactly one step per notch, `−`/`+` buttons step. A tooltip names the wheel behaviour once ("Scroll to step by 10 cm"). While scrubbing a point-cloud model the existing preview stride still applies.
@@ -110,7 +110,7 @@ This is the part the current tool lacks entirely, and the part most likely to ma
 - **Remove** shows an Undo toast for 6 s; **Clear all** shows the same. No confirmation dialog.
 - **Esc** disarms a pending pick, then, if nothing is armed, closes the tool (today's order). Closing the tool does not discard the planes (#5893 lasting scene state); the HUD chip reads `Section · 3 cuts` and keeps its hide/resume/clear actions.
 - **Keyboard**: `[` / `]` previous/next plane, `Delete` remove (when a chip or the handle has focus), `F2` rename, `Alt+Wheel` over the canvas steps the active plane (off until the shortcut is learned from the dialog; documented in `KeyboardShortcutsDialog`).
-- **Hints** (bottom-center, one line): empty → "Pick a plane or a box to start cutting"; pick → "Click a face…"; cutting → "Drag the arrow or scroll to move plane D"; cut off → "Cut is off · turn on Cut to clip the model".
+- **Hints** (bottom-center, one line): empty → "Choose a plane or a box to start cutting"; pick → "Click a face…"; cutting → "Drag the arrow or scroll to move plane D"; cut off → "Cut is off · turn on Cut to clip the model".
 
 ### 3.5 Copy, i18n, accessibility
 

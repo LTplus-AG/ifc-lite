@@ -115,7 +115,7 @@ describe('with no plane yet (#7545)', () => {
       [...empty.querySelectorAll('button')].map((b) => b.textContent?.trim()),
       ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…', 'Box'],
     );
-    assert.match(hint(), /Pick a plane or a box to start cutting/);
+    assert.match(hint(), /Choose a plane or a box to start cutting/);
     assert.match(empty.textContent ?? '', /^New cut:/);
     for (const b of empty.querySelectorAll('button')) assert.ok(b.title, `"${b.textContent}" explains itself on hover`);
     assert.equal(s().sectionPickMode, false, 'nothing is armed behind the user');

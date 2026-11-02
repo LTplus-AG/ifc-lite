@@ -100,7 +100,8 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
     store.updateModel(ctx.modelId, { sourceFingerprint: `${ctx.file.name}:${fingerprint.hex}`, loadFormat: format });
     void identifyLoadedPlacementSource(ctx.modelId, ctx.file);
   }
-  if (ctx.target.kind === 'primary') {
+  // A primary capture, or one opened into an empty scene, has no other framing.
+  if (ctx.target.kind === 'primary' || useViewerStore.getState().models.size === 1) {
     try { frameModels([ctx.modelId]); } catch { /* bounds pending: the user can fit later */ }
   }
   store.setProgress({ phase: 'Complete', percent: 100 });

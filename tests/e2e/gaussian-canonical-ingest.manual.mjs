@@ -75,7 +75,7 @@ try {
       const model = models.find(m => m.gaussianSplat);
       if (models.some(m => m.loadState === 'error') || (state.error && !state.loading)) {
         resolve({ ok: false, error: String(state.error ?? models.map(m => m.loadError).join(', ')), phases });
-      } else if (model?.loadState === 'complete' && !state.loading) {
+      } else if (model && (model.loadState ?? 'complete') === 'complete' && !state.loading) {
         const { handle, ...record } = model.gaussianSplat;
         resolve({ ok: true, phases, decodeToPublishMs: performance.now() - started, id: model.id, name: model.name,
           loadPath: model.loadPath, loadFormat: model.loadFormat, handle: { ...handle }, frozen: Object.isFrozen(handle),

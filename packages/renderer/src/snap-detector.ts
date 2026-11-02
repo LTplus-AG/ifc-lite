@@ -267,8 +267,11 @@ export class SnapDetector {
     if (currentEdgeLock.edge && currentEdgeLock.meshExpressId === intersectedMesh.expressId && this.lockClipKey !== clipKey) {
       wasLockReleased = true;
     } else if (currentEdgeLock.edge && currentEdgeLock.meshExpressId === intersectedMesh.expressId) {
+      // Only a contour lock was acquired from the entry point; an inner edge was found from the hit.
+      const lock = currentEdgeLock.edge;
+      const onContour = cache.edges.some((e) => e.cut && ((vecEquals(e.v0, lock.v0) && vecEquals(e.v1, lock.v1)) || (vecEquals(e.v0, lock.v1) && vecEquals(e.v1, lock.v0))));
       const lockResult = this.maintainEdgeLock(
-        entry ?? intersection.point,
+        entry && onContour ? entry : intersection.point,
         currentEdgeLock,
         cache,
         worldSnapRadius,

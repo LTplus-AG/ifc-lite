@@ -170,6 +170,42 @@ describe('magnetic snap under a section (#8659)', () => {
     assert.equal(snapTarget?.position.z, 0, 'through the hole the floor shows; treated as inside, the rim 0.5 m away would win');
   });
 
+  it('an inner-edge lock under a cut stays where the hit is, not where the entry point projects', () => {
+    // A 10 m box cut at z=8; the ray enters at (5,5,8) and hits the inner face at
+    // (10,9.8,3), next to the vertical edge at (10,10) and far from any contour.
+    const big = box(11);
+    big.positions = big.positions.map((v) => v * 5);
+    const dir = { x: 5, y: 4.8, z: -5 };
+    const len = Math.hypot(dir.x, dir.y, dir.z);
+    const direction = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
+    const origin = { x: 5 - direction.x * 20, y: 5 - direction.y * 20, z: 8 - direction.z * 20 };
+    const ray: Ray = { origin, direction };
+    const hit = new Raycaster().raycast(ray, [big], (h) => h.point.z <= 8);
+    assert.ok(hit);
+    const camera = { position: origin, fov: Math.PI / 4 };
+    const options = { ...OPTIONS, screenSnapRadius: 79 };
+    const detector = new SnapDetector();
+    const first = detector.detectMagneticSnap(ray, [big], hit, camera, 800, NO_LOCK, options, section(8));
+    assert.ok(Math.abs(first.snapTarget!.position.z - hit.point.z) < 1e-3, 'acquired beside the hit');
+    const lock = { edge: first.edgeLock.edge, meshExpressId: 11, lockStrength: 1.5 };
+    const held = detector.detectMagneticSnap(ray, [big], hit, camera, 800, lock, options, section(8));
+    assert.equal(held.edgeLock.shouldRelease, false);
+    assert.ok(Math.abs(held.snapTarget!.position.z - hit.point.z) < 1e-3, 'the same ray must not move the snap');
+  });
+
+  it('with edges off, a face centre on the removed side is not offered', () => {
+    const ray: Ray = { origin: { x: 0.2, y: -50, z: 0.6 }, direction: { x: 0, y: 1, z: 0 } };
+    const camera = { position: ray.origin, fov: Math.PI / 4 };
+    const options = { snapToVertices: false, snapToEdges: false, snapToFaces: true, screenSnapRadius: 20 };
+    const hit = new Raycaster().raycast(ray, [box()]);
+    assert.ok(hit);
+    const whole = new SnapDetector().detectMagneticSnap(ray, [box()], hit, camera, 800, NO_LOCK, options);
+    assert.equal(whole.snapTarget?.type, SnapType.FACE_CENTER, 'its triangle reaches z=2, so the centre sits above the cut');
+    assert.ok(whole.snapTarget!.position.z > 1);
+    const cut = new SnapDetector().detectMagneticSnap(ray, [box()], hit, camera, 800, NO_LOCK, options, section(1));
+    assert.equal(cut.snapTarget?.type, SnapType.FACE);
+  });
+
   it('without a clip the geometry is the unclipped cache', () => {
     const { snapTarget } = pick(new SnapDetector(), box(), down(1, 0.05));
     assert.equal(snapTarget?.position.z, 2);

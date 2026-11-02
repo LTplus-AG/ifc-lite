@@ -274,7 +274,7 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const EPS = 1e-3;
   const raycaster = new Raycaster();
   const detector = new SnapDetector();
-  let cuts = 0, removed = 0, contour = 0, abovePlaneUnclipped = 0;
+  let cuts = 0, removed = 0, contour = 0, abovePlaneUnclipped = 0, fromInside = 0, fromInsideContour = 0;
   for (const mesh of loadMeshes('building-architecture.ifc')) {
     const { min, max } = worldBounds(mesh);
     if (max.y - min.y < 0.5) continue;
@@ -301,7 +301,13 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
         const { snapTarget } = detector.detectMagneticSnap(ray, [mesh], surface, camera, 800, NO_LOCK, OPTIONS, clip);
         if (!snapTarget) continue;
         if (snapTarget.position.y > distance + EPS) removed++;
-        if (snapTarget.type !== 'face' && Math.abs(snapTarget.position.y - distance) < EPS) contour++;
+        const onContour = snapTarget.type !== 'face' && Math.abs(snapTarget.position.y - distance) < EPS;
+        if (onContour) contour++;
+        // The section removed the first surface and the ray went on into the solid.
+        if (whole && whole.point.y > distance + EPS && surface.point.y < distance - EPS) {
+          fromInside++;
+          if (onContour) fromInsideContour++;
+        }
       }
     }
   }
@@ -309,7 +315,8 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   assert.ok(abovePlaneUnclipped > 0, 'unclipped rays never snapped above the plane, so the clip check is vacuous');
   assert.equal(removed, 0, 'a snap target lies in the half-space the section removed');
   assert.ok(contour > 0, 'no ray reached the cut contour');
-  console.log(`  ok section through ${cuts} meshes: 0 removed targets (${abovePlaneUnclipped} without the clip), ${contour} contour snaps`);
+  assert.ok(fromInsideContour * 2 >= fromInside, `only ${fromInsideContour} of ${fromInside} rays into a cut solid reached its contour`);
+  console.log(`  ok section through ${cuts} meshes: 0 removed targets (${abovePlaneUnclipped} without the clip), ${contour} contour snaps (${fromInsideContour} of ${fromInside} from inside the cut)`);
   checks++;
 }
 

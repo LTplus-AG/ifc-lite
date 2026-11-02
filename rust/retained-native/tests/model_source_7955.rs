@@ -63,11 +63,13 @@ fn issue_7955_shared_decoder_and_unit_scale_equal_a_fresh_plain_decoder() {
 // `mapped::opened` and `face_sets::authored_surface` before they delegated to the shared
 // versions. Since they now delegate, comparing against them here would compare a function with
 // itself; these literals are the independent expectation.
-const PRE_PR_LAYERS_248: &str = "Some(LayerExpectation { volumes: [1.0000000000000002, 1.0000000000000002], opened_volume: 2.0, curved: false })";
+// section_net (#7955, layered/voided PR): #248 is opened through section_net, and #1004 and
+// #1062 now have sections (41 by the hand volume; the polygonised circle), as the oracle intends.
+const PRE_PR_LAYERS_248: &str = "Some(LayerExpectation { volumes: [1.0000000000000002, 1.0000000000000002], opened_volume: 2.0000000000000004, curved: false })";
 const PRE_PR_BOUNDED: [(&str, u32, &str); 5] = [
     (HALFSPACES, 1000, "applies=true reason=None expected=Some((64.0, Some(56.0), None, false))"),
-    (HALFSPACES, 1004, "applies=true reason=None expected=Some((64.0, None, Some(\"solid Boolean operand outside section family\"), false))"),
-    (CIRCLE_AND_OPENING, 1062, "applies=true reason=None expected=Some((64.0, None, Some(\"curved or unpartitionable boundary\"), true))"),
+    (HALFSPACES, 1004, "applies=true reason=None expected=Some((64.0, Some(41.0), None, false))"),
+    (CIRCLE_AND_OPENING, 1062, "applies=true reason=None expected=Some((64.0, Some(62.179617653671436), None, true))"),
     (MAPPED, 173, "applies=true reason=None expected=Some((6.0, Some(3.0), None, false))"),
     (MAPPED, 231, "applies=true reason=None expected=Some((6.0, Some(3.0), None, false))"),
 ];
@@ -98,11 +100,17 @@ fn issue_7955_shared_layer_and_bounded_oracles_match_the_pre_pr_values() {
             bounded::applies_in(&bundle, id), bounded::unmodelled_reason_in(&bundle, id), expected);
         assert_eq!(actual, pinned, "#{id}");
     }
-    // #1062's authored opening is what leaves its curved section unavailable: without the
-    // opening the curved integral supplies the volume.
+    // The per-call version now delegates to the shared one, so pin what the shared void scan
+    // decides: #1062's authored opening is removed from the section; without it the curved
+    // integral supplies the larger volume.
+    let bundle = SourceBundle::new(CIRCLE_AND_OPENING.as_bytes().to_vec());
+    let sources = extract_analytic_quantity_sources(CIRCLE_AND_OPENING.as_bytes(), None);
+    let opened = bounded::expected_in(&bundle, &sources, 1062).unwrap();
+    let opened_volume = opened.section_volume.expect("the opening is in the section family");
     let bundle = SourceBundle::new(CIRCLE_ONLY.as_bytes().to_vec());
     let sources = extract_analytic_quantity_sources(CIRCLE_ONLY.as_bytes(), None);
-    assert!(bounded::expected_in(&bundle, &sources, 1062).unwrap().section_volume.is_some());
+    let whole = bounded::expected_in(&bundle, &sources, 1062).unwrap().section_volume.expect("the curved integral");
+    assert!(opened_volume < whole, "the shared scan found the opening: {opened_volume} vs {whole}");
 }
 
 #[test]

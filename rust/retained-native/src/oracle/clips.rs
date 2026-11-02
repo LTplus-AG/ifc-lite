@@ -33,6 +33,13 @@ impl ClipPart {
         planes.extend_from_slice(extra);
         section_volume(self.host.as_ref()?, &planes)
     }
+    /// [`Self::volume_with_planes`], minus the product's opening cutters.
+    pub(super) fn net_volume_with_planes(&self, extra: &[([f64; 3], f64)], cuts: &[Vec<super::section_net::ConvexCut>]) -> Option<f64> {
+        if self.mixed { return None; }
+        let mut planes: Vec<_> = self.planes.iter().map(Plane::equation).collect();
+        planes.extend_from_slice(extra);
+        super::section_net::net_volume(self.host.as_ref()?, &planes, cuts)
+    }
 }
 pub struct ClipExpectation { pub parts: Vec<ClipPart> }
 impl ClipExpectation {
@@ -173,14 +180,19 @@ impl<'a> ClipOracle<'a> {
     pub fn new(model: &'a Arc<SourceBundle>, sources: &'a AnalyticQuantitySources) -> Self {
         Self { model, sources, openings: openings::index(model) }
     }
+    /// The product's filtered source openings as convex world cutters (M3 and M5 share them).
+    pub(super) fn opening_cutters(&self, product: u32) -> Result<(Vec<Vec<super::section_net::ConvexCut>>,bool), String> {
+        openings::cutters(self.model,self.sources,self.openings.get(&product).map_or(&[],Vec::as_slice))
+    }
     /// A supported outer plane always supplies kept-side and closure gates,
     /// including when a mixed subtree has no independent volume prediction.
     pub fn expected(&self, product: u32) -> Result<Option<ClipExpectation>, String> {
         let mut parts=source_parts(self.model,self.sources,product)?;
         if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
-        let cuts=openings::cutters(self.model,self.sources,self.openings.get(&product).map_or(&[],Vec::as_slice))?;
+        let (cuts,arcs)=self.opening_cutters(product)?;
         if !cuts.is_empty() {
             for part in &mut parts {
+                part.curved|=arcs;
                 part.section_volume=if part.mixed {None} else {part.host.as_ref().and_then(|h|openings::net_volume(h,&part.planes,&cuts))};
                 if part.section_volume.is_none()&&part.section_gap.is_none()&&!part.mixed {part.section_gap=Some("opening_net_volume".into());}
             }

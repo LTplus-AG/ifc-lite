@@ -125,6 +125,7 @@ export type { PointPickSizing } from './picker.js';
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 export * from './gaussian/gaussian-public.js';
 import { GaussianSplatLayer, type GaussianSplatApi } from './gaussian/gaussian-splat-layer.js';
+import { unionBounds } from './gaussian/gaussian-frame.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -144,6 +145,7 @@ import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.
 import { configureRendererGpuTiming, readRendererGpuTiming, releaseRendererGpuTiming, beginRendererGpuTiming, renderPassTimestampWrites, submitRendererGpuTiming } from './renderer-frame-timing.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
+import { ensureMeshUniform } from './mesh-uniform-resources.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { remapOverrideColors } from './scene-derived-batches.js';
@@ -420,7 +422,7 @@ export class Renderer {
     // the call sites: they do not all push under the same policy.
     private readonly modelBoundsTracker = new ModelBoundsTracker({
         meshBounds: () => this.computeMeshBounds(),
-        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
+        pointCloudBounds: () => unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564 centre framing
     });
 
     /** Read-only view of the tracked scene AABB (live reference, not a copy). */
@@ -1302,17 +1304,7 @@ export class Renderer {
         if (!this.pipeline) return { ok: true, value: undefined };
         const pipeline = this.pipeline;
         const outcome: GpuUploadOutcome<void> = (!mesh.uniformBuffer && !this.isDeviceLost() && this.device.isInitialized())
-            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => {
-                const device = this.device.getDevice();
-                mesh.uniformBuffer = device.createBuffer({
-                    size: pipeline.getUniformBufferSize(),
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                });
-                mesh.bindGroup = device.createBindGroup({
-                    layout: pipeline.getBindGroupLayout(),
-                    entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
-                });
-            }, (error) => this.reportUploadLoss(error))
+            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => ensureMeshUniform(this.device.getDevice(), pipeline, mesh), (error) => this.reportUploadLoss(error))
             : { ok: true, value: undefined };
 
         this.scene.addMesh(mesh);
@@ -1327,18 +1319,7 @@ export class Renderer {
         const pipeline = this.pipeline;
         return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
             const device = this.device.getDevice();
-            for (const mesh of this.scene.getMeshes()) {
-                if (!mesh.uniformBuffer) {
-                    mesh.uniformBuffer = device.createBuffer({
-                        size: pipeline.getUniformBufferSize(),
-                        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                    });
-                    mesh.bindGroup = device.createBindGroup({
-                        layout: pipeline.getBindGroupLayout(),
-                        entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
-                    });
-                }
-            }
+            for (const mesh of this.scene.getMeshes()) ensureMeshUniform(device, pipeline, mesh);
         }, (error) => this.reportUploadLoss(error));
     }
 
@@ -1912,7 +1893,7 @@ export class Renderer {
                 options,
                 batchedMeshes: this.scene.getBatchedMeshes(),
                 meshes,
-                pointCloudBounds: this.pointCloudRenderer?.getBounds() ?? null,
+                pointCloudBounds: unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564
                 logSectionBounds: !this._loggedSectionBounds,
                 spendLogLatch: () => { this._loggedSectionBounds = true; },
             });
@@ -2922,23 +2903,7 @@ export class Renderer {
                 }
 
                 // Ensure selected meshes have uniform buffers and bind groups
-                for (const mesh of selectedMeshes) {
-                    if (!mesh.uniformBuffer && this.pipeline) {
-                        mesh.uniformBuffer = device.createBuffer({
-                            size: this.pipeline.getUniformBufferSize(),
-                            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                        });
-                        mesh.bindGroup = device.createBindGroup({
-                            layout: this.pipeline.getBindGroupLayout(),
-                            entries: [
-                                {
-                                    binding: 0,
-                                    resource: { buffer: mesh.uniformBuffer },
-                                },
-                            ],
-                        });
-                    }
-                }
+                for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
 
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
                 for (const mesh of selectedMeshes) {

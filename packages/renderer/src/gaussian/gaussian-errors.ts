@@ -23,3 +23,10 @@ export class GaussianSplatError extends Error {
     this.name = 'GaussianSplatError';
   }
 }
+
+/** Map the renderer lifetime to the error an operation must reject with, if any. */
+export function assertUsableLifetime(life: { ready: boolean; lost: boolean; disposed: boolean }): void {
+  if (life.disposed) throw new GaussianSplatError('disposed', 'The renderer was destroyed.');
+  if (life.lost) throw new GaussianSplatError('lost', 'The GPU device is lost.');
+  if (!life.ready) throw new GaussianSplatError('not-ready', 'The renderer is not initialized.');
+}

@@ -106,10 +106,8 @@ async function transformInto(
     for (let row = offset + start; row < offset + end; row++) {
       for (let axis = 0; axis < 3; axis++) {
         const local = target.positions[row * 3 + axis];
-        if (!(Math.abs(local) <= MAX_GAUSSIAN_ANCHOR_EXTENT_METRES)) {
-          throw Number.isFinite(local)
-            ? new GaussianSplatError('anchor-extent', `A Gaussian centre lies ${Math.abs(local)} m from the shared anchor (limit ${MAX_GAUSSIAN_ANCHOR_EXTENT_METRES} m).`)
-            : new GaussianSplatError('invalid-attributes', 'A placed Gaussian centre is not finite.');
+        if (!(Math.abs(local) <= MAX_GAUSSIAN_ANCHOR_EXTENT_METRES)) { // placement already rejects non-finite results
+          throw new GaussianSplatError('anchor-extent', `A Gaussian centre lies ${Math.abs(local)} m from the shared anchor (limit ${MAX_GAUSSIAN_ANCHOR_EXTENT_METRES} m).`);
         }
         min[axis] = Math.min(min[axis], local);
         max[axis] = Math.max(max[axis], local);

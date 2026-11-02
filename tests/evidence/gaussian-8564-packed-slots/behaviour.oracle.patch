@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/gaussian/gaussian-pack.ts
++++ b/packages/renderer/src/gaussian/gaussian-pack.ts
+@@ -175,7 +175,7 @@
+     const { attributes } = added;
+     source.colors.set(attributes.colors, offset * 4);
+     source.opacities.set(attributes.opacities, offset);
+-    source.semanticIds.fill(previous ? 1 : added.slot, offset, offset + attributes.count);
++    source.semanticIds.fill(added.slot, offset, offset + attributes.count);
+     const reduced = added.degree === attributes.sphericalHarmonicsDegree ? attributes : truncateSh(attributes, added.degree);
+     addedBounds = await transformInto(reduced, added.placement, anchor, source, offset, checkpoint);
+     slices.set(added.slot, { offset, rows: attributes.count });

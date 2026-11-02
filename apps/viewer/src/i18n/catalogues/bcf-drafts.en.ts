@@ -106,6 +106,7 @@ export const bcfDraftsEn = {
 
   'bcfDrafts.preflight.ok': { one: 'The project accepts this batch ({warnings} capability not advertised by the server).', other: 'The project accepts this batch ({warnings} capabilities not advertised by the server).' },
   'bcfDrafts.preflight.refused': { one: 'Nothing was sent: {count} problem.', other: 'Nothing was sent: {count} problems.' },
+  'bcfDrafts.preflight.chooseType': 'Nothing was sent: choose a server topic type below.',
   'bcfDrafts.preflight.permission': 'You may not {value} in this project (allowed: {allowed}).',
   'bcfDrafts.preflight.vocabulary': '{topic}: {field} “{value}” is not in this project’s list ({allowed}).',
   'bcfDrafts.preflight.assignee': '{topic}: assignee “{value}” is not a user of this project ({allowed}).',

@@ -55,8 +55,9 @@ const MAX_PAGES = 250;
  * A server that ignores `$skip` (profile `topicPaging: 'modified-date'`) is
  * paged by `modified_date` instead, the way `@ifc-lite/bcf-api` pulls it:
  * ascending, from the last page's latest date (inclusive; ties deduped).
- * There a short page proves nothing (the server may cap `$top` below what was
- * asked, #8656 review): the list is complete only when a page from the last
+ * A short page proves nothing on either path (a server may cap `$top` below
+ * what was asked, #8656 review). Offset paging advances by what was served and
+ * ends at an empty page. By date, the list is complete only when a page from the last
  * date brings nothing new, and not if that page was as full as the server
  * serves and all one timestamp, where more ties may hide behind the cap.
  */
@@ -66,16 +67,20 @@ async function allTopics(connection: PublicationConnection, projectId: string): 
   const seen = new Set<string>();
   let cursor: string | undefined;
   let served = 0;
+  let skip = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
     const batch = await connection.client.getTopics(projectId, byDate
       ? { top: PAGE, orderby: 'modified_date asc', ...(cursor ? { filter: `modified_date ge ${cursor}` } : {}) }
-      : { top: PAGE, skip: page * PAGE });
+      : { top: PAGE, skip });
     const fresh = batch.filter(topic => !seen.has(topic.guid));
     for (const topic of fresh) { seen.add(topic.guid); topics.push(topic); }
     if (!byDate) {
-      if (batch.length < PAGE) return { topics, complete: true };
-      // A full page with nothing new (a server ignoring $skip) cannot go on.
+      // A short page proves nothing either (the server may cap `$top`): advance
+      // by what was served and stop at an empty page.
+      if (batch.length === 0) return { topics, complete: true };
+      // A page with nothing new (a server ignoring $skip) cannot go on.
       if (fresh.length === 0) return { topics, complete: false };
+      skip += batch.length;
       continue;
     }
     served = Math.max(served, batch.length);

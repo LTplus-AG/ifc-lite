@@ -57,7 +57,8 @@ test('an unknown draft topic type is mapped to a server type the coordinator pic
   assert.deepEqual([...picker.options].map(option => option.value), SERVER_TYPES, 'only the server\'s own types');
   assert.equal(picker.value, 'Model Issue', 'the closest type is preselected');
   assert.doesNotMatch(text(), /topic_type “Clash” is not in/, 'the picker replaces the bare refusal');
-  assert.doesNotMatch(text(), /Nothing was sent/, 'no problem count for what the picker resolves (#8656 review)');
+  assert.doesNotMatch(text(), /Nothing was sent: \d+ problem/, 'no problem count for what the picker resolves (#8656 review)');
+  assert.match(text(), /Nothing was sent: choose a server topic type below\./, 'the refusal stays visible beside the picker');
 
   choose(picker, 'Information');
   click(button(/^Publish 2 topics$/));

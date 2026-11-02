@@ -137,7 +137,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         <output className={`block ${preflight.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
           {preflight.ok ? t('bcfDrafts.preflight.ok', { warnings: preflight.warnings.filter(warning => warning.kind === 'unverified').length })
             // The count covers only the problems listed: a type the picker below resolves is not one.
-            : listedIssues.length > 0 ? t('bcfDrafts.preflight.refused', { count: listedIssues.length }) : null}
+            : listedIssues.length > 0 ? t('bcfDrafts.preflight.refused', { count: listedIssues.length }) : t('bcfDrafts.preflight.chooseType')}
           <ul className="list-disc pl-4">
             {[...listedIssues, ...preflight.warnings.filter(warning => warning.kind === 'withheld')].map((issue, index) =>
               <li key={index}>{t(`bcfDrafts.preflight.${issue.kind}`, { field: issue.field ?? '', value: issue.value ?? '', type: issue.topicType ?? '',

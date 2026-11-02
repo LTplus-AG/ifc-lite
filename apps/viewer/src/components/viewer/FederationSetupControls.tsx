@@ -128,6 +128,7 @@ export function FederationSetupControls() {
       if (result.mismatchedSlots.length > 0) parts.push(`same name, different content: ${result.mismatchedSlots.join(', ')}`);
       if (result.anchorMissing) parts.push('alignment anchor could not be restored');
       if (result.taggedSlotsMissing.length > 0) parts.push(`tags not restored for: ${result.taggedSlotsMissing.join(', ')}`);
+      if (result.failedSlots.length > 0) parts.push(`not loaded: ${result.failedSlots.map((f) => `${f.name} (${f.reason})`).join(', ')}`);
       const message = parts.join(' — ');
       if (result.outcome === 'restored' && !result.anchorMissing) toast.success(message);
       else toast.error(message);

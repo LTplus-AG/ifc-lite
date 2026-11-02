@@ -32,7 +32,7 @@ export interface ModelLoadOptions {
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'workflowOwner'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'workflowOwner' | 'gaussianPlacement'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

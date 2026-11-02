@@ -193,3 +193,58 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.deepEqual(splats().getBounds(placed.handle), { min: [1, -2, -3], max: [1, -2, -3] });
   });
 });
+
+describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () => {
+  it('a replaced renderer never receives an old handle; the capture reports it and reloads from source', async () => {
+    const { rebindGaussianAssets, gaussianModelState } = await import('./ingest/gaussianAssets.js');
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('kept.ply', CENTRES), { kind: 'federated', modelId: 'kept', name: 'kept.ply' }, QUALIFIED);
+    const old = model('kept')!.gaussianSplat!.handle;
+    const previous = gpu;
+    previous.renderer.gaussianSplats.clear(); // what destroying the old viewport's renderer releases
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    rebindGaussianAssets(gpu.renderer.gaussianSplats);
+    assert.deepEqual(gaussianModelState(model('kept')!), { state: 'invalid', reason: 'renderer-replaced' }, 'never shown as loaded');
+    assert.equal(splats().getStats().assets, 0, 'the old handle was not handed to the new renderer');
+    const result = await act(async () => reloadGaussianCapture('kept', {
+      removeModel: (id) => useViewerStore.getState().removeModel(id),
+      addModel: async (file, options) => {
+        const id = crypto.randomUUID();
+        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement });
+        return useViewerStore.getState().models.has(id) ? id : null;
+      },
+    }));
+    assert.ok(result.ok);
+    const reloaded = model(result.modelId)!.gaussianSplat!;
+    assert.notEqual(reloaded.handle, old);
+    assert.equal(splats().getState(reloaded.handle).state, 'resident', 'resident on the renderer that issued it');
+    assert.equal(model('kept'), undefined);
+    useViewerStore.getState().clearAllModels();
+    assertNoHeldSlot();
+  });
+
+  it('a reload without a retained source refuses explicitly', async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('nosource.ply', CENTRES), { kind: 'federated', modelId: 'nosource' }, QUALIFIED);
+    useViewerStore.getState().updateModel('nosource', { sourceFile: undefined });
+    const result = await reloadGaussianCapture('nosource', { removeModel: () => assert.fail('nothing is removed'), addModel: async () => assert.fail('nothing is loaded') });
+    assert.deepEqual(result, { ok: false, reason: 'source-unavailable' });
+    assert.ok(model('nosource'), 'the capture stays until a source is available');
+  });
+
+  it('a re-evaluated assets module reuses the one registry and store subscription', async () => {
+    await load(gaussianPly('one.ply', CENTRES), { kind: 'federated', modelId: 'one' }, QUALIFIED);
+    const subscribe = useViewerStore.subscribe;
+    let subscriptions = 0;
+    useViewerStore.subscribe = ((...args: Parameters<typeof subscribe>) => { subscriptions++; return subscribe(...args); }) as typeof subscribe;
+    try {
+      const fresh = await import(`./ingest/gaussianAssets.js?reload=${Date.now()}`) as typeof import('./ingest/gaussianAssets.js');
+      const handle = model('one')!.gaussianSplat!.handle;
+      fresh.adoptGaussianAsset('one', handle, splats());
+      assert.equal(subscriptions, 0, 'no second subscription after HMR/remount');
+      useViewerStore.getState().removeModel('one');
+      assert.equal(splats().getState(handle).state, 'invalid', 'freed exactly once through the shared registry');
+    } finally { useViewerStore.subscribe = subscribe; }
+  });
+});

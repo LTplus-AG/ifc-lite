@@ -154,7 +154,7 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt,
         sharedRtcOffset,
-      }, { sourceHandle: options?.sourceHandle, workflowOwner: options?.workflowOwner });
+      }, { sourceHandle: options?.sourceHandle, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement });
 
       // Before the session check: a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
       if (useViewerStore.getState().models.has(modelId)) convergeFederationRtcFrame();

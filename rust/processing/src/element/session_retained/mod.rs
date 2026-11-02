@@ -44,6 +44,7 @@ use value::RuntimeRealization;
 mod predispatch;
 pub(super) mod affine_final;
 mod chordal;
+mod kernel_refusal;
 pub(super) mod clip_sliver;
 use predispatch::RuntimeRejectedExecution;
 mod entry;

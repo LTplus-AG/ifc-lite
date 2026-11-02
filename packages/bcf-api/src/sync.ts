@@ -19,6 +19,7 @@ import {
   topicFromApi,
   viewpointFromApi,
 } from './mapping.js';
+import { fetchAllTopics } from './topic-paging.js';
 import type { BcfComponentsDto, BcfTopicDto, BcfViewpointDto } from './types.js';
 
 export interface BcfSyncProgress {
@@ -38,8 +39,28 @@ export interface FetchProjectOptions {
   includeSnapshots?: boolean;
   /** OData `$filter` passed through to the topics collection. */
   filter?: string;
-  /** OData `$orderby` passed through to the topics collection. */
+  /**
+   * OData `$orderby` passed through to the topics collection. Rejected (a
+   * `RangeError`) with `topicPaging: 'modified-date'`, which must order by
+   * `modified_date asc` itself.
+   */
   orderby?: string;
+  /**
+   * How the topics collection is paged; defaults to `'skip'`.
+   *
+   * - `'skip'`: `$top` + `$skip` offset paging (the BCF API's own). A server
+   *   that ignores `$skip` yields only its first page.
+   * - `'modified-date'`: keyset paging for servers that ignore `$skip` but
+   *   honour `$filter`/`$orderby` on `modified_date` (buildagil's openCDE
+   *   API). Requests `$orderby=modified_date asc` and, from the second page,
+   *   `$filter=modified_date ge <last seen modified_date>` (ANDed with
+   *   `filter`). Ties at the boundary come back again and are deduped by
+   *   guid. Paging stops with a warning, rather than looping, when a full page
+   *   brings nothing new (more topics share one timestamp than fit
+   *   `pageSize`) or when the last topic of a full page has no ISO 8601
+   *   `modified_date` to continue from.
+   */
+  topicPaging?: 'skip' | 'modified-date';
   /** Concurrent per-topic detail requests; defaults to 4. */
   concurrency?: number;
   onProgress?: (progress: BcfSyncProgress) => void;
@@ -81,67 +102,6 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return `data:${blob.type || 'image/png'};base64,${btoa(binary)}`;
-}
-
-async function fetchAllTopics(
-  client: BcfApiClient,
-  projectId: string,
-  options: FetchProjectOptions,
-  warnings: string[],
-): Promise<BcfTopicDto[]> {
-  if (
-    options.maxTopics !== undefined &&
-    (!Number.isInteger(options.maxTopics) || options.maxTopics < 0)
-  ) {
-    throw new RangeError('maxTopics must be a non-negative integer');
-  }
-  const pageSize = Math.max(1, Math.floor(options.pageSize ?? 100));
-  const maxTopics = options.maxTopics ?? 1000;
-  const topics: BcfTopicDto[] = [];
-  const seen = new Set<string>();
-  let skippedNoGuid = 0;
-  let truncated = false;
-  let skip = 0;
-  let page = 0;
-  for (;;) {
-    const batch = await client.getTopics(projectId, {
-      filter: options.filter,
-      orderby: options.orderby,
-      top: pageSize,
-      skip,
-    });
-    page += 1;
-    let fresh = 0;
-    for (const topic of batch) {
-      // A guid-less topic can't be keyed, deduped, or addressed by any later
-      // request; deduping on `undefined` would silently collapse them all.
-      if (typeof topic.guid !== 'string' || topic.guid.length === 0) {
-        skippedNoGuid += 1;
-        continue;
-      }
-      if (seen.has(topic.guid)) continue;
-      seen.add(topic.guid);
-      fresh += 1;
-      if (topics.length < maxTopics) {
-        topics.push(topic);
-      } else {
-        truncated = true;
-      }
-    }
-    options.onProgress?.({ phase: 'topics', loaded: topics.length });
-    if (truncated) {
-      warnings.push(`Topic list truncated at ${maxTopics} topics (server has more)`);
-      break;
-    }
-    // A server that ignores $top/$skip returns the same page forever; the
-    // fresh-count guard turns that into a single-page fetch instead of a loop.
-    if (batch.length < pageSize || fresh === 0) break;
-    skip = page * pageSize;
-  }
-  if (skippedNoGuid > 0) {
-    warnings.push(`Skipped ${skippedNoGuid} topic(s) the server sent without a guid`);
-  }
-  return topics;
 }
 
 async function fetchViewpointComponents(

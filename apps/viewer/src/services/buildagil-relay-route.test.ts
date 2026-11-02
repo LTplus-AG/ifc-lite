@@ -9,12 +9,13 @@ import { createServer } from 'vite';
 import { buildagilRelayRoute } from '../../vite-plugins/buildagil-relay.js';
 
 // The dev adapter over HTTP, with no buildagil traffic: it must forward the
-// POST bodies of token grants and searches, and respect its path boundary.
-test('buildagil relay task: Vite runs the real handler, forwards POST bodies, and respects route boundaries', async (t) => {
+// POST bodies of token grants, searches and BCF writes, the PUT body of a
+// topic update, and respect its path boundary.
+test('buildagil relay task: Vite runs the real handler, forwards POST and PUT bodies, and respects route boundaries', async (t) => {
   const realFetch = globalThis.fetch;
-  const upstream: { url: string; body: string }[] = [];
+  const upstream: { url: string; body: string; method?: string }[] = [];
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-    upstream.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : '' });
+    upstream.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : '', ...(init?.method === 'PUT' ? { method: 'PUT' } : {}) });
     return Response.json(String(input).endsWith('/oauth2/token') ? { access_token: 'at' } : { search_result: [], total_count: 0 });
   });
   const previous = { id: process.env.BUILDAGIL_CLIENT_ID, secret: process.env.BUILDAGIL_CLIENT_SECRET };
@@ -46,8 +47,16 @@ test('buildagil relay task: Vite runs the real handler, forwards POST bodies, an
     assert.equal(token.status, 200);
     assert.equal(new URLSearchParams(upstream[1].body).get('client_secret'), 'dev-secret');
 
+    const topic = '0002d584-0100-0030-0000-000000000000';
+    const put = await realFetch(`${base}/api/buildagil/1.0/projects/185732/topics/${topic}`, {
+      method: 'PUT', body: '{"title":"Clash"}',
+      headers: { authorization: 'Bearer t', origin, 'content-type': 'application/json' },
+    });
+    assert.equal(put.status, 200);
+    assert.deepEqual(upstream[2], { url: `https://openapi.buildagil.com/1.0/projects/185732/topics/${topic}`, body: '{"title":"Clash"}', method: 'PUT' });
+
     assert.equal((await realFetch(`${base}/api/buildagilX/1.0/projects`)).status, 404);
-    assert.equal(upstream.length, 2);
+    assert.equal(upstream.length, 3);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     await vite.close();

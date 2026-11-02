@@ -22,6 +22,12 @@ const REDIRECT = 'https://www.ifclite.com/oauth/bcf/callback';
 const VERIFIER = 'v'.repeat(43);
 const PROJECT = 'p-1';
 const DOC = '0f8fad5b-d9cb-469f-a165-70867728950e';
+const BCF_PROJECT = '185732';
+const TOPIC = '0002d584-0100-0030-0000-000000000000';
+const VIEWPOINT = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const TOPICS_PATH = `1.0/projects/${BCF_PROJECT}/topics`;
+const TOPIC_PATH = `${TOPICS_PATH}/${TOPIC}`;
+const VIEWPOINT_PATH = `${TOPIC_PATH}/viewpoints/${VIEWPOINT}`;
 
 interface Captured { url: string; method: string; headers: Headers; body: string }
 
@@ -64,7 +70,7 @@ test('route allowlist: documents reads, search and the token route only', () => 
   assert.equal(resolveBuildagilRoute('oauth2/token', 'POST')?.kind, 'token');
   for (const [path, method] of [
     ['1.0/search', 'GET'], ['oauth2/token', 'GET'], [`1.0/projects/${PROJECT}/documents`, 'POST'],
-    [`1.0/projects/${PROJECT}/topics`, 'GET'], [`1.0/projects/${PROJECT}/documents/${DOC}`, 'PUT'],
+    [`1.0/projects/${PROJECT}/members`, 'GET'], [`1.0/projects/${PROJECT}/documents/${DOC}`, 'PUT'],
     [`1.0/projects/../documents`, 'GET'], [`1.0/projects/${PROJECT}%2Fx/documents`, 'GET'],
     ['1.0//projects', 'GET'], ['oauth2/authorize', 'GET'], ['foundation/versions', 'GET'],
     [`1.0/projects/${PROJECT}/documents/${DOC}/versions/-1`, 'GET'],
@@ -111,7 +117,7 @@ test('API refusals never reach upstream', async () => {
   const { handler, calls } = relay();
   assert.equal((await handler(get('1.0/projects', { origin: ORIGIN }))).status, 401);
   assert.equal((await handler(get('1.0/projects', { authorization: 'Bearer tok', origin: 'https://evil.test' }))).status, 403);
-  assert.equal((await handler(get(`1.0/projects/${PROJECT}/topics`))).status, 400);
+  assert.equal((await handler(get(`1.0/projects/${PROJECT}/members`))).status, 400);
   assert.equal((await handler(get('1.0/projects?$top=5'))).status, 400);
   assert.equal(calls.length, 0);
 });
@@ -150,6 +156,138 @@ test('search: POST with JSON from an allowed origin is forwarded with its body',
   assert.equal((await handler(request({}))).status, 403);
   assert.equal((await handler(request({ origin: ORIGIN, 'content-type': 'text/plain' }))).status, 415);
   assert.equal(calls.length, 1);
+});
+
+test('BCF route table: each topic route with its method and query keys; anything else refused', () => {
+  const reads: [string, string[]][] = [
+    [`1.0/projects/${BCF_PROJECT}`, []], [`1.0/projects/${BCF_PROJECT}/extensions`, []],
+    [TOPICS_PATH, ['$filter', '$orderby', '$top', '$expand']], [TOPIC_PATH, ['$expand']],
+    [`${TOPIC_PATH}/comments`, []], [`${TOPIC_PATH}/viewpoints`, []], [VIEWPOINT_PATH, []],
+    [`${VIEWPOINT_PATH}/selection`, []], [`${VIEWPOINT_PATH}/coloring`, []],
+    [`${VIEWPOINT_PATH}/visibility`, []], [`${VIEWPOINT_PATH}/snapshot`, []],
+  ];
+  for (const [path, keys] of reads) {
+    for (const method of ['GET', 'HEAD']) {
+      const route = resolveBuildagilRoute(path, method);
+      assert.ok(route?.kind === 'api' && route.method === 'GET', `${method} ${path}`);
+      assert.deepEqual(route.queryKeys, keys, path);
+      assert.equal(route.download, false, path);
+      assert.equal(route.target.toString(), `https://openapi.buildagil.com/${path}`);
+    }
+  }
+  const writes: [string, string, number][] = [
+    [TOPICS_PATH, 'POST', 64 * 1024], [TOPIC_PATH, 'PUT', 64 * 1024],
+    [`${TOPIC_PATH}/comments`, 'POST', 64 * 1024], [`${TOPIC_PATH}/viewpoints`, 'POST', 16 * 1024 * 1024],
+    ['1.0/search', 'POST', 64 * 1024],
+  ];
+  for (const [path, method, cap] of writes) {
+    const route = resolveBuildagilRoute(path, method);
+    assert.ok(route?.kind === 'api' && route.method === method, `${method} ${path}`);
+    assert.ok(route.method !== 'GET' && route.maxBodyBytes === cap && route.queryKeys.length === 0, path);
+  }
+  for (const [path, method] of [
+    [TOPICS_PATH, 'PUT'], [TOPIC_PATH, 'POST'], [TOPIC_PATH, 'PATCH'], [TOPIC_PATH, 'DELETE'],
+    [`${TOPIC_PATH}/comments/${VIEWPOINT}`, 'GET'], [`${TOPIC_PATH}/comments`, 'PUT'],
+    [VIEWPOINT_PATH, 'PUT'], [VIEWPOINT_PATH, 'POST'], [`${VIEWPOINT_PATH}/bitmaps`, 'GET'],
+    [`${VIEWPOINT_PATH}/snapshot`, 'POST'], [`${VIEWPOINT_PATH}/selection/x`, 'GET'],
+    [`1.0/projects/${BCF_PROJECT}/extensions`, 'PUT'], [`1.0/projects/${BCF_PROJECT}`, 'POST'],
+    [`${TOPICS_PATH}/../documents`, 'GET'], [`${TOPICS_PATH}/a%2Fb`, 'GET'], ['1.0/search', 'PUT'],
+  ]) {
+    assert.equal(resolveBuildagilRoute(path, method), null, `${method} ${path}`);
+  }
+});
+
+test('BCF queries: topics take filter/orderby/top/expand, a topic only expand', async () => {
+  const { handler, calls } = relay();
+  const filter = '%24filter=modified_date%20ge%202026-01-01T00%3A00%3A00.000Z&%24orderby=modified_date%20desc&%24top=50&%24expand=comments';
+  assert.equal((await handler(get(`${TOPICS_PATH}?${filter}`))).status, 200);
+  assert.equal(calls[0].url, `https://openapi.buildagil.com/${TOPICS_PATH}?${filter}`);
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer tok');
+  assert.equal((await handler(get(`${TOPIC_PATH}?$expand=comments`))).status, 200);
+  for (const path of [`${TOPICS_PATH}?$skip=10`, `${TOPIC_PATH}?$filter=x`, `${TOPIC_PATH}/comments?$top=1`, `${VIEWPOINT_PATH}/snapshot?x=1`]) {
+    assert.equal((await handler(get(path))).status, 400, path);
+  }
+  assert.equal(calls.length, 2);
+});
+
+function write(path: string, method: string, body: string, headers: Record<string, string> = {}): Request {
+  return new Request(`${ORIGIN}/api/buildagil/${path}`, {
+    method, body, headers: { authorization: 'Bearer tok', origin: ORIGIN, 'content-type': 'application/json', ...headers },
+  });
+}
+
+test('BCF writes: a topic PUT and a viewpoint POST are forwarded with method and body intact', async () => {
+  const { handler, calls } = relay(() => Response.json({ guid: TOPIC }, { status: 201 }));
+  const topic = JSON.stringify({ title: 'Clash at grid C4', topic_status: 'Open', labels: ['MEP'] });
+  const put = await handler(write(TOPIC_PATH, 'PUT', topic));
+  assert.equal(put.status, 201);
+  assert.match(put.headers.get('access-control-allow-methods') ?? '', /\bPUT\b/);
+  assert.deepEqual([calls[0].url, calls[0].method, calls[0].body], [`https://openapi.buildagil.com/${TOPIC_PATH}`, 'PUT', topic]);
+  assert.equal(calls[0].headers.get('content-type'), 'application/json');
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer tok');
+  const viewpoint = JSON.stringify({ snapshot: { snapshot_type: 'png', snapshot_data: 'iVBORw0KGgo'.repeat(100) } });
+  assert.equal((await handler(write(`${TOPIC_PATH}/viewpoints`, 'POST', viewpoint))).status, 201);
+  assert.deepEqual([calls[1].url, calls[1].method, calls[1].body], [`https://openapi.buildagil.com/${TOPIC_PATH}/viewpoints`, 'POST', viewpoint]);
+
+  const preflight = await handler(new Request(`${ORIGIN}/api/buildagil/${TOPIC_PATH}`, { method: 'OPTIONS', headers: { origin: ORIGIN } }));
+  assert.equal(preflight.status, 204);
+  assert.match(preflight.headers.get('access-control-allow-methods') ?? '', /\bPUT\b/);
+});
+
+test('BCF writes without Origin, with non-JSON, or redirected never land', async () => {
+  const { handler, calls } = relay();
+  const body = '{"comment":"x"}';
+  for (const [path, method] of [[TOPICS_PATH, 'POST'], [TOPIC_PATH, 'PUT'], [`${TOPIC_PATH}/comments`, 'POST'], [`${TOPIC_PATH}/viewpoints`, 'POST']]) {
+    const noOrigin = new Request(`${ORIGIN}/api/buildagil/${path}`, {
+      method, body, headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+    });
+    assert.equal((await handler(noOrigin)).status, 403, `${method} ${path} without Origin`);
+    assert.equal((await handler(write(path, method, body, { 'content-type': 'text/plain' }))).status, 415, `${method} ${path} text/plain`);
+    assert.equal((await handler(write(path, method, body, { origin: 'https://evil.test' }))).status, 403, `${method} ${path} foreign Origin`);
+    assert.equal((await handler(write(path, method, body, { authorization: '' }))).status, 401, `${method} ${path} no bearer`);
+  }
+  assert.equal(calls.length, 0);
+
+  const redirecting = relay(() => new Response(null, { status: 307, headers: { location: `https://openapi.buildagil.com/${TOPIC_PATH}` } }));
+  assert.equal((await redirecting.handler(write(TOPIC_PATH, 'PUT', body))).status, 502);
+  assert.equal(redirecting.calls.length, 1);
+});
+
+test('BCF body caps: a viewpoint admits ~1 MiB and refuses >16 MiB; a comment refuses >64 KiB', async () => {
+  const { handler, calls } = relay(() => Response.json({}, { status: 201 }));
+  const json = (bytes: number) => JSON.stringify({ snapshot: { snapshot_type: 'png', snapshot_data: 'A'.repeat(bytes) } });
+  const viewpoints = `${TOPIC_PATH}/viewpoints`;
+  assert.equal((await handler(write(viewpoints, 'POST', json(1024 * 1024)))).status, 201);
+  assert.equal(calls[0].body.length, json(1024 * 1024).length);
+  assert.equal((await handler(write(viewpoints, 'POST', json(16 * 1024 * 1024 + 1)))).status, 413);
+  // A declared length over the cap is refused before the body is read.
+  assert.equal((await handler(write(viewpoints, 'POST', '{}', { 'content-length': String(17 * 1024 * 1024) }))).status, 413);
+  const comment = JSON.stringify({ comment: 'x'.repeat(64 * 1024) });
+  assert.equal((await handler(write(`${TOPIC_PATH}/comments`, 'POST', comment))).status, 413);
+  assert.equal((await handler(write(TOPIC_PATH, 'PUT', comment))).status, 413);
+  assert.equal((await handler(write(`${TOPIC_PATH}/comments`, 'POST', '{"comment":"ok"}'))).status, 201);
+  assert.equal(calls.length, 2);
+});
+
+test('BCF snapshot: binary streams through with its content-type; a storage redirect is refused', async () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0x80]);
+  const { handler, calls } = relay(() => new Response(png, { headers: { 'content-type': 'image/png', 'content-length': String(png.byteLength) } }));
+  const response = await handler(get(`${VIEWPOINT_PATH}/snapshot`, { authorization: 'Bearer tok', origin: ORIGIN, accept: 'image/*' }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'image/png');
+  assert.equal(response.headers.get('content-length'), String(png.byteLength));
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), png);
+  assert.equal(calls[0].headers.get('accept'), 'image/*');
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer tok');
+
+  const head = await handler(new Request(`${ORIGIN}/api/buildagil/${VIEWPOINT_PATH}/snapshot`, { method: 'HEAD', headers: { authorization: 'Bearer tok' } }));
+  assert.equal(head.status, 200);
+  assert.equal(head.body, null);
+  assert.equal(calls[1].method, 'HEAD');
+
+  const blob = relay(() => new Response(null, { status: 302, headers: { location: 'https://acct.blob.core.windows.net/c/s.png?sig=1' } }));
+  assert.equal((await blob.handler(get(`${VIEWPOINT_PATH}/snapshot`))).status, 502);
+  assert.equal(blob.calls.length, 1);
 });
 
 test('rate limiting: 429 keeps Retry-After so the host can back off', async () => {

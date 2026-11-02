@@ -10,6 +10,7 @@ import {
   BASE_OPTIONS, BLUE, GREEN, MAGENTA, RED, SIZE, boxMesh, centrePixel, compare, composite, destroyCalls, disc, expectSplat,
   footprint, nonBackground, pixelAt, placement, plain, pointPatch, project, rect, resetCamera, resizeCanvas, setPhase,
 } from './native-adapter-witness-lib.mjs';
+import { sortRefresh } from './native-adapter-witness-sort.mjs';
 
 const PENDING = Object.freeze({ status: 'pending', reason: 'renderer.gaussianSplats is not available in this build' });
 const OPAQUE = 0.9975;
@@ -355,4 +356,4 @@ export async function deviceRecovery(h) {
   };
 }
 
-export const SCENES = { occlusion, globalOrder, projectionMsaaResize, centreClipping, removalVisibility, deviceLifetime, picking, deviceRecovery };
+export const SCENES = { occlusion, globalOrder, projectionMsaaResize, centreClipping, removalVisibility, deviceLifetime, picking, deviceRecovery, sortRefresh };

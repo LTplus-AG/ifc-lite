@@ -300,15 +300,7 @@ export class RaycastEngine {
                 return {
                     intersection: null,
                     snapTarget: null,
-                    edgeLock: {
-                        edge: null,
-                        meshExpressId: null,
-                        edgeT: 0,
-                        shouldLock: false,
-                        shouldRelease: true,
-                        isCorner: false,
-                        cornerValence: 0,
-                    },
+                    edgeLock: releasedEdgeLock(),
                 };
             }
 
@@ -332,10 +324,9 @@ export class RaycastEngine {
                 // Use BVH for performance if we have many meshes
                 const meshesToTest = this.filterWithBVH(allMeshData, ray);
 
-                // Perform raycasting
-                // Magnetic mesh snapping predates source curves and keeps its
-                // existing clip policy; only the opt-in source query below is clipped.
-                intersection = this.raycaster.raycast(ray, meshesToTest);
+                // Same clip policy as raycastScene: what the section removed cannot be hit (#8659).
+                intersection = this.raycaster.raycast(ray, meshesToTest,
+                    hit => !pointClipped(entityClip(clip, hit.expressId), hit.point.x, hit.point.y, hit.point.z));
 
                 // Use magnetic snap detection
                 magneticResult = this.snapDetector.detectMagneticSnap(
@@ -345,7 +336,8 @@ export class RaycastEngine {
                     { position: cameraPos, fov: cameraFov },
                     viewport.height,
                     currentEdgeLock,
-                    options?.snapOptions || {}
+                    options?.snapOptions || {},
+                    clip,
                 );
             }
 
@@ -366,7 +358,7 @@ export class RaycastEngine {
             };
             const maxPointDistance = intersection ? intersection.distance : Infinity;
             const pointHit = pointCloudSnapEnabled(options?.snapOptions)
-                ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options)
+                ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options, clip)
                 : null;
             if (pointHit) {
                 // A point-cloud hit only OVERRIDES an existing mesh snap
@@ -409,15 +401,7 @@ export class RaycastEngine {
             return {
                 intersection: null,
                 snapTarget: null,
-                edgeLock: {
-                    edge: null,
-                    meshExpressId: null,
-                    edgeT: 0,
-                    shouldLock: false,
-                    shouldRelease: true,
-                    isCorner: false,
-                    cornerValence: 0,
-                },
+                edgeLock: releasedEdgeLock(),
             };
         }
     }

@@ -64,6 +64,8 @@ export interface SnapEdge {
    * boundary) from losing its vertex snap in the process.
    */
   junctions: SnapEdgeJunction[];
+  /** Where a clip plane crosses the mesh rather than a model edge (#8659). */
+  cut?: boolean;
 }
 
 /** A mesh edge as a pair of welded vertex ids. */

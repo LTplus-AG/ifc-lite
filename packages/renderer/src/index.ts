@@ -123,9 +123,8 @@ export type { PointPickSizing } from './picker.js';
 
 // Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
-export { normalizeGaussianAttributes, type GaussianAttributeSource, type NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
-export type { GaussianReadiness } from './gaussian/gaussian-readiness.js';
-import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
+export * from './gaussian/gaussian-public.js';
+import { GaussianSplatLayer, type GaussianSplatApi } from './gaussian/gaussian-splat-layer.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -410,6 +409,8 @@ export class Renderer {
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
+    private readonly gaussianLayer = new GaussianSplatLayer({ lifetime: () => ({ ready: this.isReady(), lost: this.deviceLost, disposed: this.destroyed, generation: this.initGeneration }), // #8564
+        device: () => this.getGPUDevice(), adapter: () => this.device.getAdapter(), modelTranslation: (i) => this.scene.getModelTranslation(i), requestRender: () => this.requestRender() });
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
     // Model bounds for fitToView, section planes, camera. The value itself
@@ -1110,6 +1111,7 @@ export class Renderer {
         this.pointCloudRenderer?.validateModelTranslation(modelIndex, translation);
         this.scene.setModelTranslation(modelIndex, translation);
         this.pointCloudRenderer?.setModelTranslation(modelIndex, translation);
+        this.gaussianLayer.setModelTranslation(modelIndex);
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -2172,15 +2174,16 @@ export class Renderer {
             const useMSAA = msaaView !== null && this.pipeline.getSampleCount() > 1;
 
             // Build color attachments — skip objectId in single-target mode
+            const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
             const colorAttachments: GPURenderPassColorAttachment[] = [
                 {
                     // If MSAA enabled: render to multisample texture, resolve to swap chain
                     // If MSAA disabled: render directly to swap chain
                     view: useMSAA ? msaaView : textureView,
-                    resolveTarget: useMSAA ? textureView : undefined,
+                    resolveTarget: useMSAA && !splatFrame ? textureView : undefined,
                     loadOp: 'clear' as const,
                     clearValue: clearColor,
-                    storeOp: (useMSAA ? 'discard' : 'store') as GPUStoreOp,
+                    storeOp: (useMSAA && !splatFrame ? 'discard' : 'store') as GPUStoreOp,
                 },
             ];
             colorAttachments.push({
@@ -3046,6 +3049,7 @@ export class Renderer {
             });
 
             pass.end();
+            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox } });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
@@ -3528,7 +3532,8 @@ export class Renderer {
     }
 
     /** Report Gaussian qualification and the current renderer lifetime; this does not enable rendering. */
-    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
+    getGaussianReadiness() { return this.gaussianLayer.readiness(); }
+    get gaussianSplats(): GaussianSplatApi { return this.gaussianLayer; } // internal, unqualified adapter (#8564); readiness stays blocked
     /**
      * Check if renderer is fully initialized and ready to use.
      *
@@ -3677,6 +3682,7 @@ export class Renderer {
         // Done before queue.destroy() so the GPU calls inside
         // `destroy()` still have a valid device.
         this.deviationComputer.destroy();
+        this.gaussianLayer.release(clearScene, this.destroyed); // upstream allocations only; never the device destroyed below
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

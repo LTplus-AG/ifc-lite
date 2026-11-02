@@ -125,7 +125,7 @@ fn convex_face_set_cutters(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>,
             let mut volume = 0.;
             let planes: Vec<([f64; 3], [f64; 3])> = set.rows.iter().filter_map(|row| {
                 let ring: Vec<[f64; 3]> = row.points.iter().map(|p| at(*p)).collect();
-                let (a, b, c) = (*ring.first()?, *ring.get(1)?, *ring.get(2)?);
+                let [a, b, c, ..] = ring[..] else { return None };
                 let n = cross(sub(b, a), sub(c, a));
                 unit(n).map(|n| (a, n))
             }).collect();

@@ -177,8 +177,7 @@ export function useIfcCache() {
           firstVisible = adopted.firstVisible;
           allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, appendGeometryBatch);
         } else {
-          await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale);
-          if (isStale?.()) {
+          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);

@@ -152,20 +152,20 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }
 
-/** Store the scene this hit is about to finalize, once it has. */
+/** Store the scene this hit is about to finalize, once it has. Resolves true when the load was superseded while it waited. */
 export async function captureSceneSnapshotOfHit(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
-): Promise<void> {
+): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
-  if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return;
+  if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
   const renderer = await rendererReady(isStale);
-  if (!renderer) return;
+  if (!renderer) return isStale?.() ?? false;
   // Batches built before admission stay f32, and a snapshot would keep them that way for good.
   if (isQuantizedEnabled()) await renderer.enableQuantizedBatches();
-  if (isStale?.()) return;
+  if (isStale?.()) return true;
   renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();
@@ -182,4 +182,5 @@ export async function captureSceneSnapshotOfHit(
       });
     }, 0);
   });
+  return false;
 }

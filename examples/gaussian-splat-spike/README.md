@@ -109,7 +109,8 @@ texture readback, for checking orientation and framing before a take.
 `finish-showcase.mjs` adds the title card, the persistent research label and
 the licence credit with ffmpeg. It passes capture timestamps through, so no
 frames are interpolated or duplicated. The untouched master stays alongside.
-Keep recordings and stills outside Git.
+Keep recordings and stills outside Git. The first take's evidence and stills are in
+[`docs/architecture/evidence/8567-showcase-research-preview`](../../docs/architecture/evidence/8567-showcase-research-preview/README.md).
 
 ## Reproduce
 

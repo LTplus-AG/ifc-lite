@@ -1,0 +1,202 @@
+{
+  "label": "RESEARCH PREVIEW - not a production showcase. Rendered by the upstream PlayCanvas engine in the ifc-lite research spike, not by the ifc-lite viewer.",
+  "issue": 8567,
+  "date": "2026-11-02T07:17:41.462Z",
+  "source": {
+    "branch": "t3/real-scan-video-deliverable",
+    "takeCommit": "de7040723b3f0a7046fb8423d91acb8aff4c9511",
+    "takeDirty": false,
+    "finishCommit": "9cd6fc5e754a79891d7e25544709bf799e023516",
+    "finishDirty": false,
+    "rebase": {
+      "onto": "ab8a6a3843 (origin/main)",
+      "take": {
+        "recorded": "de7040723b3f0a7046fb8423d91acb8aff4c9511",
+        "rebasedAs": "48f72a6053"
+      },
+      "finish": {
+        "recorded": "9cd6fc5e754a79891d7e25544709bf799e023516",
+        "rebasedAs": "ac30ec93d6"
+      },
+      "identity": "git blob equality for showcase.html, showcase.mjs, showcase-framing.mjs, showcase-credits.mjs, demo-camera.mjs, capture.mjs, record-showcase.mjs, vite.config.mjs, prepare.mjs, package.json, finish-showcase.mjs, pnpm-lock.yaml and tests/models/manifest.json; main only added unrelated #8616 fragment-interval files"
+    }
+  },
+  "asset": {
+    "path": "gaussian/seem-kirke-v1.ply",
+    "bytes": 226795353,
+    "sha256": "9178c73620ac6dd1e18f4b91870d71b7e06ded83d4beb0344ba8aa90630ab228",
+    "count": 960991,
+    "shDegree": 3,
+    "nonzeroSh": false,
+    "verified": "Node SHA-256 before serving and browser crypto.subtle SHA-256 of the exact fetched bytes; decoded row count equals manifest count"
+  },
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/",
+    "credit": "Seem Kirke, Danmark — Peter Rødsgaard Rasmussen (roedsgaard) · CC BY 4.0 · superspl.at/scene/e832997f",
+    "change": "Published quantized SOG converted to PLY; viewpoint changed · creativecommons.org/licenses/by/4.0"
+  },
+  "renderer": {
+    "engine": "PlayCanvas 2.23.3 GSplat (complete upstream engine, WebGPU)",
+    "decoder": "@playcanvas/splat-transform 3.10.3 PLY reader",
+    "gsplatRenderer": 2,
+    "sortPath": "gpu-in-frame",
+    "shBands": 3,
+    "numSplats": 960991,
+    "toneMapping": "linear",
+    "gamma": "sRGB",
+    "background": [
+      0,
+      0,
+      0
+    ]
+  },
+  "environment": {
+    "host": "louistrue-pc",
+    "gpuWrapper": "~/build-workers/ifc-gpu-check (host lock shared, GPU lock exclusive)",
+    "browser": "Windows Chrome 156.0.8078.74 headless over CDP",
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "blackwell",
+      "description": "",
+      "fallback": false
+    },
+    "automation": "Playwright 1.64.1 connectOverCDP, Node v24.21.0"
+  },
+  "camera": {
+    "path": "examples/gaussian-splat-spike/demo-camera.mjs demoCameraAt(wall-clock seconds), 30 s, 55 degree vertical FOV, smoothstep keys 0-3 hold, 3-15 orbit 110 deg, 15-22 approach to 1.65 radii, 22-27 pull back to 155 deg, 27-30 hold",
+    "displayRotation": "x180 (source Y-down training frame to viewer Y-up; proper rotation, no scale)",
+    "framingUsed": {
+      "center": [
+        0.19956493377685547,
+        9.760895749088377,
+        -0.24824190139770508
+      ],
+      "radius": 19.5,
+      "initialAzimuth": 330
+    },
+    "framingAuto": {
+      "center": [
+        0.19956493377685547,
+        9.760895749088377,
+        -0.24824190139770508
+      ],
+      "radius": 23.400458834777208,
+      "box": {
+        "min": [
+          -16.738656997680664,
+          0.008247415535151958,
+          -13.115407943725586
+        ],
+        "max": [
+          17.137786865234375,
+          19.5135440826416,
+          12.618924140930176
+        ]
+      },
+      "method": "opacity>0.5 percentiles p2-p98, half box diagonal; rotation x180"
+    },
+    "framingNote": "Center = automatic robust opaque-splat box center. Radius 19.5 chosen over automatic 23.40 after a stills check along the journey so the church fills more of the frame; the closest approach stays outside the churchyard capture. Units are reconstruction units, not metres."
+  },
+  "capture": {
+    "mimeType": "video/webm;codecs=vp9",
+    "requestedBitsPerSecond": 40000000,
+    "method": "canvas.captureStream() (every painted frame) + MediaRecorder; camera from demoCameraAt(wall-clock seconds) inside the PlayCanvas update loop",
+    "engineFrames": 909,
+    "journeySeconds": 30.279399999976157,
+    "diagnosticFrameIntervalMs": {
+      "p50": 33.3,
+      "p95": 33.5,
+      "p99": 33.5,
+      "max": 34.8,
+      "over50ms": 0
+    },
+    "videoTimestamps": "904 frames; one 199 ms gap at 0.333 s inside the static 0-3 s opening hold (identical view); all motion at ~33 ms"
+  },
+  "videos": [
+    {
+      "file": "seem-kirke-v1-research-preview.mp4",
+      "role": "titled deliverable",
+      "bytes": 39134874,
+      "sha256": "22187bc51b508260a90832fcbf808dae167680ce62b9611d45b14238a9b4ddc0",
+      "codec": "h264",
+      "size": "1920x1080",
+      "frames": 904
+    },
+    {
+      "file": "seem-kirke-v1-research-preview.webm",
+      "role": "titled deliverable",
+      "bytes": 41496619,
+      "sha256": "d92285ca0f809fea2199e24dbe812ad5655105ddf09813b2b9ef4605433b7071",
+      "codec": "vp9",
+      "size": "1920x1080",
+      "frames": 904
+    },
+    {
+      "file": "seem-kirke-v1-research-preview-master.webm",
+      "role": "untouched capture master (no overlay)",
+      "bytes": 55739665,
+      "sha256": "3dcc32b0a16f734daefbd37f02896e32fbcdac7e63bd82fe6b84890d45318dc1",
+      "codec": "vp9",
+      "size": "1920x1080",
+      "frames": 904
+    }
+  ],
+  "stills": [
+    {
+      "file": "still-t00s.png",
+      "sha256": "09e3607b3dc293d92ee5d5a4b42cb81ba871ad2404399333217fb68a7290968f",
+      "journeySecond": 0
+    },
+    {
+      "file": "still-t08s.png",
+      "sha256": "e87c36e46ea540a0c0f6cb20998834a7e0f3ab0be90a5ffb7064721c997c26cb",
+      "journeySecond": 8
+    },
+    {
+      "file": "still-t15s.png",
+      "sha256": "275ba951936292682bc705706db008309b8c6ab744d8dc5099171054141853b4",
+      "journeySecond": 15
+    },
+    {
+      "file": "still-t19s.png",
+      "sha256": "ac5cb8f06a16c4d051ae816e70e86a8bf0fa25bc3d830634ba5ea8214dbd0b3b",
+      "journeySecond": 19
+    },
+    {
+      "file": "still-t22s.png",
+      "sha256": "00d56e2c4dbdfd2a738cb803c44df0fd61ac620a101b85b4673aea33170bafa6",
+      "journeySecond": 22
+    },
+    {
+      "file": "still-t26s.png",
+      "sha256": "53c9b73e8c855fcf54fdfa234ca5a4c02328050cc028420cef9b8643871dcd5e",
+      "journeySecond": 26
+    },
+    {
+      "file": "still-t30s.png",
+      "sha256": "ee43721b0fad9fc5a4ac8625a1b9c8ea7e1f5eacc8469e3561f469294e188e23",
+      "journeySecond": 30
+    }
+  ],
+  "finishing": {
+    "method": "ffmpeg drawtext over the untouched master; -fps_mode passthrough with the demuxer time base keeps capture timestamps",
+    "ffmpeg": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+    "timestampCheck": "master, MP4 and WebM frame timestamp lists identical (904 frames)",
+    "colour": "full-range BT.709 capture mapped to limited range for compatibility; luma mean 46.0 vs 46.5 against direct renderer readback at t=0 (PSNR 34.2 dB through two lossy generations)"
+  },
+  "rejectedTake": {
+    "reason": "captureStream(30) rate limiting dropped 107 of 909 engine frames (66 ms judder through motion)",
+    "sha256": "ccb878fd5b0ed925b4c8fdf01a330ab2c12e970e558d458388672c1c33e1ac6f",
+    "commit": "8176840773e8ebc02635d87854153efe776c12cb",
+    "videoDiscarded": true
+  },
+  "notQualified": [
+    "integrated ifc-lite viewer and useIfcLoader.loadFile ingestion",
+    "ifc-lite renderer, mixed IFC/splat composition, clipping, picking, removal",
+    "performance, frame budgets, memory or device limits (timings are diagnostics of one take)",
+    "metric scale, georeference or IFC alignment (no IFC overlay)",
+    "higher-order SH appearance (published SH coefficients are zero)",
+    "production rollout"
+  ]
+}

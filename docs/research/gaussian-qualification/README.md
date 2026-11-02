@@ -5,6 +5,14 @@ metric alignment approval, hardware performance measurement or supported limit
 is established here. M2/M3 and #8566 precede full #8567 acceptance. This slice
 changes the fixture tools and offline research harness only.
 
+## Showcase recording: research preview
+
+[`docs/architecture/evidence/8567-showcase-research-preview`](../../architecture/evidence/8567-showcase-research-preview/README.md)
+holds a 30-second hardware recording of `gaussian/seem-kirke-v1.ply`, rendered
+by the upstream PlayCanvas research spike. It is labelled RESEARCH PREVIEW and
+is not production viewer evidence. Integrated-viewer recording, hardware
+budgets and alignment remain open.
+
 ## Reproduce the bounded corpus slice
 
 From the repository root, through the registered fleet launcher (use pool

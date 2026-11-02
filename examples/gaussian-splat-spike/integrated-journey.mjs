@@ -5,7 +5,10 @@
 // #8567 integrated-viewer journey for record-integrated.mjs: canonical picker load,
 // auto-frame, zoom, orbit, centre clipping, then the capture row's inspect, hide/show,
 // fit and remove when the build offers them. A missing control is recorded as a
-// skip, never faked. Options: { collapseSidebar, inspect, visibility, remove }.
+// skip, never faked; a requested action that fails ends the take instead of
+// reading as success. Options: { collapseSidebar, inspect, visibility, remove }.
+const CAPTURE_ROW = '[data-testid="capture-model-row"]';
+const CAPTURE_DETAILS = '[data-testid="gaussian-capture-metadata"]';
 
 export async function prepare(ctx) {
   const { page } = ctx;
@@ -13,7 +16,8 @@ export async function prepare(ctx) {
   // First-run privacy notice: acknowledged through its own button, as a user would.
   const dismiss = page.getByRole('button', { name: 'Dismiss notification' });
   await dismiss.waitFor({ state: 'visible', timeout: 10_000 }).then(() => dismiss.click(), () => {});
-  if (ctx.options.collapseSidebar) await page.getByRole('button', { name: 'Collapse sidebar to icons' }).click().catch(() => {});
+  // A requested collapse must happen: an open sidebar measurably slows camera motion.
+  if (ctx.options.collapseSidebar) await page.getByRole('button', { name: 'Collapse sidebar to icons' }).click({ timeout: 10_000 });
   await page.waitForTimeout(1500);
 }
 
@@ -22,7 +26,9 @@ export async function journey(ctx) {
   await ctx.step('intro', 'ifc-lite viewer · internal Gaussian build', () => ctx.hold(2000));
   await ctx.step('load', 'File picker → canonical useIfcLoader.loadFile', async () => {
     await ctx.uploadToInput('#file-input-open');
-    await page.waitForFunction(() => /Complete/.test(document.body.innerText), undefined, { timeout: 300_000, polling: 100 });
+    // Durable ready state: the capture's own model row. The "Complete" phase text is transient.
+    await page.locator(CAPTURE_ROW).waitFor({ state: 'visible', timeout: 300_000 });
+    ctx.observe('loadedRow', (await page.locator(CAPTURE_ROW).innerText()).replace(/\s+/g, ' ').trim());
   });
   // The viewport canvas mounts with the first model.
   const box = await page.locator('canvas:visible').first().boundingBox();
@@ -58,6 +64,13 @@ export async function journey(ctx) {
       const expand = row('Expand sidebar');
       const collapsed = await expand.isVisible().catch(() => false);
       if (collapsed) await expand.click();
+      const details = page.locator(CAPTURE_DETAILS);
+      await details.waitFor({ state: 'visible', timeout: 10_000 });
+      const text = (await details.innerText()).replace(/\s+/g, ' ').trim();
+      ctx.observe('captureDetails', text);
+      for (const expected of ['Resident', 'Uncalibrated', ...(ctx.options.explicitPlacement ? ['Explicitly supplied placement'] : [])]) {
+        if (!text.includes(expected)) throw new Error(`capture details panel lacks "${expected}"`);
+      }
       await ctx.hold(5000);
       if (collapsed) { await row('Collapse sidebar to icons').click(); await ctx.hold(600); }
     });
@@ -78,6 +91,8 @@ export async function journey(ctx) {
         await dialog.getByRole('button', { name: /^Remove/ }).click();
       }
       await row('Remove capture').waitFor({ state: 'detached', timeout: 30_000 });
+      await page.locator(CAPTURE_ROW).waitFor({ state: 'detached', timeout: 30_000 });
+      ctx.observe('afterRemoveCaptureRows', await page.locator(CAPTURE_ROW).count());
       await ctx.hold(2500);
     });
   } else await ctx.step('orbit2', 'Orbit', () => ctx.drag([c[0] + 120, c[1] + 40], [c[0] - 120, c[1] + 40], 4000));

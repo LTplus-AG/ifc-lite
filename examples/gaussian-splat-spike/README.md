@@ -126,16 +126,24 @@ the recorder under `ifc-gpu-check`:
 - **Input:** the camera moves only by real mouse and wheel events.
 - **Capture:** a CDP page screencast records the UI and WebGPU canvas together
   on wall-clock timestamps.
-- **Journey:** `integrated-journey.mjs` covers load, auto-frame, zoom, orbit,
-  section-tool centre clipping, and restore. It adds inspect and remove only
-  where the build provides those controls; otherwise the take records an
-  explicit skip.
+- **Journey:** `integrated-journey.mjs` always covers load, auto-frame, zoom,
+  orbit, section-tool centre clipping, and restore. Load waits for the capture's
+  model row, not the transient "Complete" phase text.
+- **Opt-in steps:** inspect, hide/show/fit and remove run only when requested in
+  `--journey-options`. A requested step whose control the build lacks is
+  recorded as a skip. A requested action that fails ends the take; that
+  includes the capture-details panel not showing Resident and Uncalibrated, or
+  the explicit placement when `explicitPlacement` is set.
+- **Evidence:** the take records its own source binding (commit, dirty state,
+  recorder and journey hashes) before and after the take. It keeps page errors,
+  console errors (with their URLs) and failed HTTP responses apart.
 
 ```sh
 ~/build-workers/ifc-gpu-check --limit 12 -- node examples/gaussian-splat-spike/record-integrated.mjs \
   --viewer-url http://127.0.0.1:PORT/ --query gaussianPlacement=rx180 --asset seem-kirke-v1.ply \
   --assets ~/ifc-fixtures/gaussian --out /abs/take --viewer-commit SHA \
-  --init-storage '{"ifc-lite-theme":"dark"}' --journey-options '{"collapseSidebar":true}'
+  --init-storage '{"ifc-lite-theme":"dark"}' \
+  --journey-options '{"collapseSidebar":true,"inspect":true,"visibility":true,"remove":true,"explicitPlacement":true}'
 node examples/gaussian-splat-spike/finish-integrated.mjs --take /abs/take --out /abs/final \
   --assets ~/ifc-fixtures/gaussian --stem seem-kirke-v1-integrated \
   --label "INTERNAL DEMO · build SHA · not production" --disclosure "…" [--disclosure "…"]
@@ -146,7 +154,9 @@ showcase build. It is not alignment; say so in the disclosure. The finisher
 copies the screencast JPEGs unchanged into a master and adds a caption strip
 *below* the capture, so no viewer UI is covered. The strip carries the live step
 caption, the build label, the disclosures and the manifest-checked licence
-credit. Timestamps pass through unchanged.
+credit. Timestamps pass through unchanged. Both finishers tag their outputs as
+limited-range BT.709, check the tags with ffprobe, and refuse to overwrite an
+existing file.
 
 ## Reproduce
 

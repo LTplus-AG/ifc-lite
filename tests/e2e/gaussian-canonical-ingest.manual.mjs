@@ -10,6 +10,7 @@
 // unqualified evidence only: not a timing, hardware-budget or release witness.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
@@ -19,9 +20,29 @@ const placement = process.env.GAUSSIAN_PLACEMENT ?? 'rx180';
 // An IFC model added beside the capture keeps frames rendering after its removal.
 const ifc = process.env.GAUSSIAN_IFC ?? 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
 const captureProbe = process.env.GAUSSIAN_CAPTURE_PROBE === '1';
+const captureDiscriminator = process.env.GAUSSIAN_CAPTURE_DISCRIMINATOR === '1';
+assert.ok(!(captureProbe && captureDiscriminator), 'Choose one fixed sequence');
 const probeFrames = [];
 const out = process.env.GAUSSIAN_EVIDENCE ?? '/tmp/gaussian-8565-browser';
 await mkdir(out, { recursive: true });
+if (captureDiscriminator) {
+  // Test-only successor may consume the frozen eb4b production bundle. Fail
+  // closed if ANY other tracked path changed; this is not a rebuild exemption.
+  const manifestBytes = await readFile(process.env.GAUSSIAN_BUNDLE_MANIFEST);
+  const manifestSha256 = createHash('sha256').update(manifestBytes).digest('hex');
+  assert.equal(manifestSha256, '55b56fe06326a1adb0a8e4120f2032c5d3b3cc023e9fbd1b8ee1194e287747c6');
+  const manifest = JSON.parse(manifestBytes.toString('utf8'));
+  const productionSource = 'eb4badafc5acd7fee74110408f288c7c1a2c8a8a';
+  assert.equal(manifest.sourceBinding.head, productionSource);
+  const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+  assert.equal(git('status', '--porcelain'), '', 'Witness requires clean exact source');
+  assert.equal(git('diff', '--name-only', productionSource, 'HEAD', '--', '.', ':!tests/e2e/gaussian-canonical-ingest.manual.mjs'), '', 'Frozen bundle production sources differ');
+  await writeFile(`${out}/witness-bundle-binding.json`, JSON.stringify({
+    witnessSource: git('rev-parse', 'HEAD'), witnessSha256: createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex'),
+    productionSource, productionTree: manifest.sourceBinding.tree, manifestSha256,
+    changedPaths: git('diff', '--name-only', productionSource, 'HEAD'),
+  }, null, 2));
+}
 const browser = process.env.IFC_GPU_CDP_URL
   ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)
   : await chromium.launch({ headless: true, args: [
@@ -92,41 +113,67 @@ const frame = async (label) => {
 // Sort FNV32 is a diagnostic checksum, not collision-proof content identity;
 // source arrays are not exposed; preserve fixture/source/bundle SHA256 bindings.
 // Fixed five-frame probe. Persist each boundary before any comparison can fail.
-async function diagnosticFrame(label) {
-  const captured = await page.evaluate(async () => {
-    const frame = await globalThis.__ifc_lite_capture_color_diagnostic__?.();
-    if (!frame?.png) throw new Error('Diagnostic frame unavailable');
+async function diagnosticFrame(label, ordinary = false) {
+  const captured = await page.evaluate(async (ordinary) => {
+    const observe = () => {
+      const s = globalThis.__ifc_lite_viewer_store__.getState();
+      const keys = ['theme', 'visualEnhancementsEnabled', 'centrelineOverlayEnabled',
+        'contactShadingQuality', 'contactShadingIntensity', 'contactShadingRadius',
+        'separationLinesEnabled', 'separationLinesQuality', 'separationLinesIntensity',
+        'separationLinesRadius', 'pointCloudEdlEnabled', 'pointCloudEdlStrength', 'sectionPlane'];
+      if (keys.some(key => s[key] === undefined)) throw new Error('Capture settings unavailable');
+      return { worldViewProjection: globalThis.__ifc_lite_view_projection__?.(),
+        settings: JSON.stringify(Object.fromEntries(keys.map(key => [key, s[key]]))), at: performance.now() };
+    };
+    const before = observe();
+    // Deliberately invoke distinct existing APIs. Ordinary API calls
+    // captureColorFrame() with no diagnostic option, returning only a PNG URL.
+    const returned = ordinary ? await globalThis.__ifc_lite_capture_color_frame__?.()
+      : await globalThis.__ifc_lite_capture_color_diagnostic__?.();
+    if (ordinary ? typeof returned !== 'string'
+      : !returned || typeof returned !== 'object' || typeof returned.raw !== 'string' || typeof returned.duplicate !== 'string') {
+      throw new Error('Capture route returned an unexpected shape');
+    }
+    const frame = ordinary ? { png: returned } : returned;
+    if (typeof frame.png !== 'string' || !frame.png.startsWith('data:image/png;base64,')) throw new Error('Capture PNG unavailable');
     const bitmap = await createImageBitmap(await (await fetch(frame.png)).blob());
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const width = bitmap.width, height = bitmap.height;
+    const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
-    const decoded = ctx.getImageData(0, 0, frame.width, frame.height).data;
+    const decoded = ctx.getImageData(0, 0, width, height).data;
     let binary = '';
     for (let i = 0; i < decoded.length; i += 0x8000) binary += String.fromCharCode(...decoded.subarray(i, i + 0x8000));
-    return { ...frame, decoded: btoa(binary), decodedAt: performance.now() };
-  });
-  const buffers = Object.fromEntries(['raw', 'duplicate', 'decoded'].map(k => [k, Buffer.from(captured[k], 'base64')]));
+    return { ...frame, width, height, decoded: btoa(binary), decodedAt: performance.now(),
+      route: ordinary ? 'ordinary-png-string' : 'diagnostic-raw-duplicate-object',
+      observations: { before, after: observe(), atomic: false } };
+  }, ordinary);
+  const kinds = ordinary ? ['decoded'] : ['raw', 'duplicate', 'decoded'];
+  const buffers = Object.fromEntries(kinds.map(k => [k, Buffer.from(captured[k], 'base64')]));
   for (const [kind, bytes] of Object.entries(buffers)) await writeFile(`${out}/${label}-${kind}.rgba`, bytes);
   await writeFile(`${out}/${label}.png`, Buffer.from(captured.png.split(',')[1], 'base64'));
   const metadata = { label, width: captured.width, height: captured.height, ...captured.metadata, decodedAt: captured.decodedAt,
+    route: captured.route, observations: captured.observations,
+    unavailable: ordinary ? ['raw GPU RGBA', 'same-submit duplicate', 'atomic frame metadata', 'sort hash'] : [],
     sha256: Object.fromEntries(Object.entries(buffers).map(([k, b]) => [k, createHash('sha256').update(b).digest('hex')])) };
   await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2));
   probeFrames.push({ label, ...buffers }); result.frames[label] = metadata;
   return metadata;
 }
+async function compareProbeBytes(comparisons, name, a, b) {
+  assert.equal(a.length, b.length);
+  const mask = Buffer.alloc(a.length); const channels = [0, 0, 0, 0]; let pixels = 0, max = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    let changed = false;
+    for (let c = 0; c < 4; c++) { const d = Math.abs(a[i+c] - b[i+c]); mask[i+c] = d;
+      if (d) { channels[c]++; changed = true; max = Math.max(max, d); } }
+    if (changed) pixels++;
+  }
+  await writeFile(`${out}/${name}-absolute-delta.rgba`, mask);
+  comparisons.push({ name, exactDiffering: pixels, channels, maxChannelDelta: max, exactZero: pixels === 0 });
+}
 async function finishProbe() {
   const comparisons = [];
-  const compareBytes = async (name, a, b) => {
-    assert.equal(a.length, b.length);
-    const mask = Buffer.alloc(a.length); const channels = [0, 0, 0, 0]; let pixels = 0, max = 0;
-    for (let i = 0; i < a.length; i += 4) {
-      let changed = false;
-      for (let c = 0; c < 4; c++) { const d = Math.abs(a[i+c] - b[i+c]); mask[i+c] = d;
-        if (d) { channels[c]++; changed = true; max = Math.max(max, d); } }
-      if (changed) pixels++;
-    }
-    await writeFile(`${out}/${name}-absolute-delta.rgba`, mask);
-    comparisons.push({ name, exactDiffering: pixels, channels, maxChannelDelta: max, exactZero: pixels === 0 });
-  };
+  const compareBytes = (name, a, b) => compareProbeBytes(comparisons, name, a, b);
   for (const [i, f] of probeFrames.entries()) {
     await compareBytes(`${f.label}-duplicate`, f.raw, f.duplicate);
     await compareBytes(`${f.label}-decode`, f.raw, f.decoded);
@@ -138,6 +185,47 @@ async function finishProbe() {
   await writeFile(`${out}/capture-comparisons.json`, JSON.stringify(result.checks.captureProbe, null, 2));
   const required = comparisons.filter(c => /-duplicate$|-decode$|beforeLoss-beforeLossStable|shown-beforeLoss|visible-shown/.test(c.name));
   assert.ok(required.every(c => c.exactZero), 'fixed capture probe exact-zero controls failed; all deltas retained');
+}
+// #8566: existing frozen bundle, fixed D,D,O,O,H sequence; no new renderer
+// instrumentation or settling loops. Order/time and readback/PNG/I/O overhead
+// confound pair differences: this cannot establish observer causation.
+// GAUSSIAN_CAPTURE_DISCRIMINATOR=1 requires GAUSSIAN_BUNDLE_MANIFEST.
+// At 512x512 retain 9 MiB RGBA + 10 MiB delta maps + five PNGs (~6 MiB);
+// reserve 64 MiB for metadata/logs. Ordinary PNG encoding/readback still observes
+// rendering; only the full diagnostic proxy/index-hash/duplicate path is absent.
+async function runCaptureDiscriminator(modelId) {
+  await diagnosticFrame('D1'); await diagnosticFrame('D2');
+  await diagnosticFrame('O1', true); await diagnosticFrame('O2', true);
+  await visibility(modelId, false);
+  await diagnosticFrame('hidden', true);
+  const [d1, d2, o1, o2, hidden] = probeFrames;
+  const comparisons = [];
+  for (const d of [d1, d2]) {
+    await compareProbeBytes(comparisons, `${d.label}-duplicate`, d.raw, d.duplicate);
+    await compareProbeBytes(comparisons, `${d.label}-decode`, d.raw, d.decoded);
+  }
+  await compareProbeBytes(comparisons, 'D1-D2', d1.raw, d2.raw);
+  await compareProbeBytes(comparisons, 'O1-O2', o1.decoded, o2.decoded);
+  for (const f of [d1, d2, o1, o2]) await compareProbeBytes(comparisons, `${f.label}-hidden`, f.decoded, hidden.decoded);
+  const reference = result.frames.D1.observations.before;
+  const stateEqual = Object.values(result.frames).every(m =>
+    [m.observations.before, m.observations.after].every(o =>
+      o.settings === reference.settings && JSON.stringify(o.worldViewProjection) === JSON.stringify(reference.worldViewProjection)));
+  const exactControlsPass = comparisons.filter(c => !c.name.endsWith('-hidden')).every(c => c.exactZero);
+  const contributionPass = comparisons.filter(c => c.name.endsWith('-hidden')).every(c => c.exactDiffering > 0);
+  result.checks.captureDiscriminator = { exactControlsPass, contributionPass, sequence: probeFrames.map(f => f.label), comparisons, stateEqual,
+    stoppedBeforeLoss: true, ordinaryRawUnavailable: true,
+    criterion: 'Both visible pairs and diagnostic same-frame controls require zero; each visible-hidden control requires nonzero.',
+    limitations: 'Ordinary camera/settings observations bracket asynchronous readback, not atomic GPU state. Fixed order/time and observer overhead prevent causal attribution; ordinary variation can show full diagnostic observer unnecessary in this scene.' };
+  await writeFile(`${out}/capture-comparisons.json`, JSON.stringify(result.checks.captureDiscriminator, null, 2));
+  assert.deepEqual(probeFrames.map(f => f.label), ['D1', 'D2', 'O1', 'O2', 'hidden']);
+  assert.ok(reference.worldViewProjection?.length === 16 && stateEqual, 'Camera/settings observations must remain equal');
+  assert.ok(result.frames.D1.rteEye?.length === 3 && result.frames.D1.rteViewProjection?.length === 16, 'Atomic diagnostic camera unavailable');
+  assert.deepEqual(result.frames.D1.rteEye, result.frames.D2.rteEye);
+  assert.deepEqual(result.frames.D1.rteViewProjection, result.frames.D2.rteViewProjection);
+  assert.ok(exactControlsPass, 'Exact pair/boundary criterion failed; every frame retained');
+  assert.ok(contributionPass, 'Visible-hidden contribution missing');
+  assert.deepEqual(errors, [], 'Page errors'); assert.deepEqual(gpuConsole, [], 'GPU errors');
 }
 const frameIn = (label) => page.evaluate(async (label) => {
   const url = await globalThis.__ifc_lite_capture_color_frame__?.();
@@ -237,6 +325,10 @@ try {
   assert.equal(first.gaussian.splats, outcome.record.count);
   assert.ok(first.gaussian.gpuBytes > 0);
 
+  if (captureDiscriminator) {
+    await runCaptureDiscriminator(outcome.id);
+    result.verdict = 'discriminator-pass';
+  } else {
   await frame('visible');
   await page.screenshot({ path: `${out}/01-loaded.png` });
   await visibility(outcome.id, false);
@@ -460,6 +552,7 @@ try {
   assert.deepEqual(errors, [], `uncaught page errors: ${errors.join('; ')}`);
   assert.deepEqual(gpuConsole, [], `GPU errors: ${gpuConsole.join('; ')}`);
   result.verdict = 'pass';
+  }
   }
 } catch (error) {
   result.verdict = 'fail';

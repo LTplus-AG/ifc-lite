@@ -230,7 +230,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
       removeModel: (id) => useViewerStore.getState().removeModel(id),
       addModel: async (file, options) => {
         const id = options.modelId!;
-        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement });
+        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
         return useViewerStore.getState().models.has(id) ? id : null;
       },
     }));
@@ -354,6 +354,63 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     assert.equal(model(replacementId!), undefined, 'published losing row is removed');
     assert.equal(useViewerStore.getState().models.size, 2);
     assert.equal(splats().getStats().assets, 2, 'only original and unrelated assets remain');
+  });
+
+  for (const cancel of [true, false]) it(`a reload ${cancel ? 'cancelled' : 'completed'} during post-publication fingerprinting preserves the transaction contract (#8566)`, async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    const source = gaussianPly('fingerprint.ply', CENTRES);
+    await load(source, { kind: 'federated', modelId: 'old', name: 'Original survey', visible: false },
+      { ...QUALIFIED, gaussianAttribution: 'Original credit' });
+    const original = model('old')!;
+    const tag = useViewerStore.getState().createModelTag('Fingerprint race')!;
+    useViewerStore.getState().assignModelTags(['old'], [tag]);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let held = false;
+    let hold = true;
+    let replacementId: string | undefined;
+    const slice = source.slice.bind(source);
+    // Hold a real Blob read only AFTER the canonical loader published its
+    // replacement. Admission and the worker decoder still run unmodified.
+    source.slice = (start, end, contentType) => {
+      const blob = slice(start, end, contentType);
+      const replacement = [...useViewerStore.getState().models.values()].find(m =>
+        m.id !== 'old' && m.sourceFile === source && m.gaussianSplat);
+      if (hold && replacement && start === 0 && end === source.size) {
+        replacementId = replacement.id;
+        const read = blob.arrayBuffer.bind(blob);
+        blob.arrayBuffer = async () => { held = true; await gate; return read(); };
+      }
+      return blob;
+    };
+    try {
+      await act(async () => {
+        const pending = reloadGaussianCapture('old', federation);
+        try {
+          for (let i = 0; i < 100 && !held; i++) await new Promise(resolve => setTimeout(resolve, 10));
+          assert.ok(held && replacementId, 'fingerprint read reached after publication');
+          assert.ok(model(replacementId)?.gaussianSplat);
+          assert.equal(splats().getStats().assets, 2, 'both original and uncommitted replacement exist');
+          const cancelLoad = useViewerStore.getState().activeLoadCanceller;
+          assert.ok(cancelLoad, 'Cancel remains active while the fingerprint is pending');
+          if (cancel) cancelLoad();
+        } finally { hold = false; release(); }
+        const result = await pending;
+        if (cancel) assert.deepEqual(result, { ok: false, reason: 'not-loaded' });
+        else assert.deepEqual(result, { ok: true, modelId: replacementId });
+      });
+    } finally { hold = false; release(); source.slice = slice; }
+    const survivor = model(cancel ? 'old' : replacementId!);
+    assert.ok(survivor);
+    assert.equal(model(cancel ? replacementId! : 'old'), undefined);
+    assert.equal(survivor.sourceFile, source);
+    assert.deepEqual([survivor.name, survivor.visible, survivor.gaussianSplat?.attribution],
+      ['Original survey', false, 'Original credit']);
+    assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get(survivor.id)!], [tag]);
+    if (cancel) assert.equal(survivor.gaussianSplat?.handle, original.gaussianSplat!.handle);
+    else assert.notEqual(survivor.gaussianSplat?.handle, original.gaussianSplat!.handle);
+    assert.equal(useViewerStore.getState().models.size, 1);
+    assert.equal(splats().getStats().assets, 1, 'the transaction releases only its losing asset');
   });
 
   it('the mounted error-card Retry completes the whole failed reload transaction (#8566)', async () => {

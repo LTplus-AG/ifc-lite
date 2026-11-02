@@ -47,9 +47,11 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
   const { sourceFile, sourceHandle, name, visible, collapsed } = model;
   const replacementId = crypto.randomUUID();
   let committed = false;
+  let completed = false;
   try {
     const next = await deps.addModel(sourceFile, {
       modelId: replacementId,
+      onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
       name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
       retryOperation: () => { void reloadGaussianCapture(modelId, deps); },
       ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
@@ -58,7 +60,7 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
     // A superseded federation add can publish but return null. The explicit
     // id lets finally release that losing asset without touching another load.
     // Removal/replacement of the source while awaiting also cancels this swap.
-    if (next !== replacementId || !state.models.get(replacementId)?.gaussianSplat
+    if (!completed || next !== replacementId || !state.models.get(replacementId)?.gaussianSplat
       || state.models.get(modelId)?.gaussianSplat?.handle !== capture.handle) {
       return { ok: false, reason: 'not-loaded' };
     }

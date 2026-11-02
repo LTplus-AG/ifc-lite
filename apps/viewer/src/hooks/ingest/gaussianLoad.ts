@@ -11,7 +11,7 @@ import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-sour
 import { frameModels } from '@/lib/model-placement/scene';
 import { getGlobalRenderer } from '../useBCF.js';
 import type { GaussianAdmission } from './gaussianAdmission.js';
-import type { ModelLoadOptions } from '../modelLoadOptions.js';
+import type { GaussianLoadOutcome, ModelLoadOptions } from '../modelLoadOptions.js';
 import { resolveGaussianQualification, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
 import { adoptGaussianAsset } from './gaussianAssets.js';
 import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
@@ -42,12 +42,13 @@ const DISABLED = 'Gaussian splat loading is disabled pending the native renderin
  * publication. Every exit before adoption leaves no worker, renderer asset or
  * model-index reservation; a superseded load writes no UI or store state.
  */
-export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<void> {
+export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<GaussianLoadOutcome> {
   const store = useViewerStore.getState();
-  const fail = (message: string, code: string) => {
+  const fail = (message: string, code: string): GaussianLoadOutcome => {
     ctx.showLoadError(message, code);
     if (ctx.target.kind === 'primary') store.updateModel(ctx.modelId, { loadState: 'error', loadError: message });
     store.setLoading(false);
+    return 'failed';
   };
   if (ctx.admission.kind === 'invalid') return fail(ctx.admission.reason, 'gaussian_invalid_input');
   if (!resolveGaussianQualification(ctx.options?.gaussianQualification)) return fail(DISABLED, 'gaussian_disabled');
@@ -55,7 +56,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   if (!renderer) return fail('Renderer not initialised; the capture was not decoded.', 'renderer_not_ready');
   const splats = renderer.gaussianSplats; // internal, unqualified adapter (#8564)
   const readiness = await settledReadiness(renderer);
-  if (!ctx.isCurrent()) return;
+  if (!ctx.isCurrent()) return 'cancelled';
   if (readiness.state !== 'blocked' || readiness.reasons.includes('upstream-capability-missing')) {
     return fail(readiness.state === 'lost'
       ? 'The graphics device was lost; reload the page and open the capture again.'
@@ -66,7 +67,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   let upload: Awaited<ReturnType<typeof uploadGaussianCapture>>;
   try {
     const capture = prepareGaussianCapture(await (ctx.decode ?? decodeGaussianInWorker)(ctx.file, ctx.signal));
-    if (!ctx.isCurrent()) return;
+    if (!ctx.isCurrent()) return 'cancelled';
     store.setProgress({ phase: 'Uploading Gaussian capture', percent: 70 });
     upload = await uploadGaussianCapture({
       modelId: ctx.modelId, format, capture, splats, generation: readiness.generation,
@@ -76,10 +77,10 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
     });
   } catch (error) {
     // A superseded or cancelled load: its canceller or successor owns the UI.
-    if (!ctx.isCurrent()) return;
+    if (!ctx.isCurrent()) return 'cancelled';
     return fail(`Gaussian capture could not be loaded: ${error instanceof Error ? error.message : String(error)}`, 'gaussian_load_failed');
   }
-  if (!upload) return;
+  if (!upload) return ctx.isCurrent() ? 'failed' : 'cancelled';
   const shell = gaussianModelShell(ctx.file.size);
   try {
     await ctx.finalize(shell.dataStore, shell.geometryResult, 'IFC4', { gaussianSplat: upload.record, loadPath: 'gaussian' });
@@ -89,13 +90,13 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   }
   if (useViewerStore.getState().models.get(ctx.modelId)?.gaussianSplat?.handle !== upload.record.handle) {
     upload.rollback(); // Finalization declined: superseded before publication.
-    return;
+    return ctx.isCurrent() ? 'failed' : 'cancelled';
   }
   adoptGaussianAsset(ctx.modelId, upload.record.handle, splats);
   upload.commit();
-  if (!ctx.isCurrent()) return;
+  if (!ctx.isCurrent()) return 'cancelled';
   const fingerprint = await computeSourceFingerprintFromBlob(ctx.file);
-  if (!ctx.isCurrent()) return;
+  if (!ctx.isCurrent()) return 'cancelled';
   if (useViewerStore.getState().models.has(ctx.modelId)) {
     store.updateModel(ctx.modelId, { sourceFingerprint: `${ctx.file.name}:${fingerprint.hex}`, loadFormat: format });
     void identifyLoadedPlacementSource(ctx.modelId, ctx.file);
@@ -106,6 +107,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   }
   store.setProgress({ phase: 'Complete', percent: 100 });
   store.setLoading(false);
+  return ctx.isCurrent() ? 'completed' : 'cancelled';
 }
 
 /** Wait out initialization only; loss and disposal are reported, not awaited. */

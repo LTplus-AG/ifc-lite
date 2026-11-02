@@ -6,6 +6,9 @@ import type { TessellationQuality } from '@ifc-lite/geometry';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 import type { GaussianQualification } from './ingest/gaussianAdmissionPolicy.js';
 
+/** Terminal Gaussian load result; publication alone is not completion. */
+export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
+
 export interface ModelLoadOptions {
   sourceHandle?: FileSystemFileHandle;
   /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
@@ -31,10 +34,12 @@ export interface ModelLoadOptions {
   // world) and credit. Never inferred from file contents.
   gaussianPlacement?: readonly number[];
   gaussianAttribution?: string;
+  /** Report settlement after awaited Gaussian source metadata, including cancellation. */
+  onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

@@ -9,7 +9,9 @@
  * Ownership: the luma `WebGPUDevice` merely wraps the viewer's GPUDevice and is
  * NEVER destroyed (its destroy() would destroy the borrowed device); it dies with
  * that device. Upstream registers an `uncapturederror` listener on the device for
- * the device's lifetime, forwarded to `onError`. The viewer's encoder and
+ * the device's lifetime, forwarded to `onError`; it calls `preventDefault()`, so the
+ * browser's default console report for every uncaptured error of the shared device
+ * is replaced by that callback once Gaussian rendering has started. The viewer's encoder and
  * attachments are borrowed per pass. luma's framebuffer here is a 1x1 format
  * descriptor that luma owns; viewer textures are never wrapped.
  */
@@ -28,7 +30,8 @@ export const createLumaGaussianBackend: GaussianBackendFactory = async (raw, ada
   if (!adapter || !info) {
     throw new GaussianSplatError('upstream-capability-missing', 'Gaussian rendering needs the WebGPU adapter and its info.');
   }
-  const device = new WebGPUDevice({ id: 'ifc-lite-gaussian-borrowed', onError: (error) => onError(error) }, raw, adapter, info);
+  // Returning true marks the error handled, so luma does not log it a second time.
+  const device = new WebGPUDevice({ id: 'ifc-lite-gaussian-borrowed', onError: (error) => { onError(error); return true; } }, raw, adapter, info);
   // The installed renderer must order reverse-Z depth back to front (luma.gl #3619,
   // applied as patches/@luma.gl__splats@9.4.2.patch). Unpatched builds ignore the prop.
   const probe = new SplatRenderer(device, { depthConvention: 'reverse' });

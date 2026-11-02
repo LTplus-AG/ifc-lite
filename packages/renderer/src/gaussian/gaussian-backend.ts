@@ -56,7 +56,8 @@ export interface GaussianBackendScene {
   replaceSource(source: GaussianPackedSource): Promise<void>;
   /** Rewrite rows in place; upstream also updates its CPU copy, which is the packed source itself. */
   updateRows(rowOffset: number, rows: GaussianRowUpdate): void;
-  setFilter(exclude: ReadonlySet<number>, predicate: GaussianRowFilter | null): void;
+  /** Draw only rows whose asset slot is in `include` and that pass `predicate`. */
+  setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void;
   /** Record one pass that loads the viewer colour, tests read-only depth and resolves if requested. */
   encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera): void;
   destroy(): void;

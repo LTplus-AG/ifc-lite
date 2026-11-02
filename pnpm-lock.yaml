@@ -42,7 +42,7 @@ packageExtensionsChecksum: sha256-LM9e1121wHlk+b2fEsPdhl89vi3DhRlX5kymYPR0Yyc=
 
 patchedDependencies:
   '@luma.gl/splats@9.4.2':
-    hash: 69b0d22c9aef6ddb868ca4038aef42f37372ebcc5bf4078ff7abd96eb5640bf4
+    hash: 75bbfd0c2b0b13d6eee661a6ed1103bd1ab7a2706591f14d9de19051db8810d0
     path: patches/@luma.gl__splats@9.4.2.patch
   '@radix-ui/react-popover@1.1.23':
     hash: fe213643c8f6f0681916d1b1e8e6853f5c4f70f0b6b2b9a8f27de5eb8a3a2506
@@ -854,7 +854,7 @@ importers:
         version: 9.4.2
       '@luma.gl/splats':
         specifier: 9.4.2
-        version: 9.4.2(patch_hash=69b0d22c9aef6ddb868ca4038aef42f37372ebcc5bf4078ff7abd96eb5640bf4)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+        version: 9.4.2(patch_hash=75bbfd0c2b0b13d6eee661a6ed1103bd1ab7a2706591f14d9de19051db8810d0)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
       '@luma.gl/webgpu':
         specifier: 9.4.2
         version: 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
@@ -2213,7 +2213,7 @@ importers:
         version: 9.4.2
       '@luma.gl/splats':
         specifier: 9.4.2
-        version: 9.4.2(patch_hash=69b0d22c9aef6ddb868ca4038aef42f37372ebcc5bf4078ff7abd96eb5640bf4)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+        version: 9.4.2(patch_hash=75bbfd0c2b0b13d6eee661a6ed1103bd1ab7a2706591f14d9de19051db8810d0)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
       '@luma.gl/webgpu':
         specifier: 9.4.2
         version: 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
@@ -8486,7 +8486,7 @@ snapshots:
       '@math.gl/core': 4.1.0
       '@math.gl/types': 4.1.0
 
-  '@luma.gl/splats@9.4.2(patch_hash=69b0d22c9aef6ddb868ca4038aef42f37372ebcc5bf4078ff7abd96eb5640bf4)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))':
+  '@luma.gl/splats@9.4.2(patch_hash=75bbfd0c2b0b13d6eee661a6ed1103bd1ab7a2706591f14d9de19051db8810d0)(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))':
     dependencies:
       '@luma.gl/core': 9.4.2
       '@luma.gl/engine': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))

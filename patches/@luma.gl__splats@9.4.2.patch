@@ -1,3 +1,16 @@
+diff --git a/dist/gpu-splat-graph-renderer.d.ts b/dist/gpu-splat-graph-renderer.d.ts
+index 74ac68030eb8cc140385833d88a82fd96dbb7eb6..722f6bb9fb95c5006123c1bd9a8a8ecc7f8fff9d 100644
+--- a/dist/gpu-splat-graph-renderer.d.ts
++++ b/dist/gpu-splat-graph-renderer.d.ts
+@@ -6,7 +6,7 @@ import type { SplatSemanticFilter } from "./splat-filter.js";
+ import { type SplatSphericalHarmonicsDegree } from "./splat-spherical-harmonics.js";
+ import type { SplatSortMode } from "./splat-sort.js";
+ /** Camera, styling, borrowed data, and canvas clearing for graph-native Gaussian rendering. */
+-export type GPUSplatGraphRendererProps = Omit<SplatRendererProps, 'depthCompare' | 'depthWriteEnabled'> & {
++export type GPUSplatGraphRendererProps = Omit<SplatRendererProps, 'depthCompare' | 'depthWriteEnabled' | 'depthConvention'> & {
+     /** Color used when the graph opens its single default-framebuffer render pass. */
+     clearColor?: [number, number, number, number];
+     /** Optional final row count used to reserve one persistent progressively populated graph. */
 diff --git a/dist/index.cjs b/dist/index.cjs
 index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..261672856b5c584d0f4f51f03d1e2b625bcbd787 100644
 --- a/dist/index.cjs
@@ -83,6 +96,32 @@ index bca4d1df87c1919d837be4698304941ccad2c897..e9167bb8924b3fc19029b0fa9da61e9a
                  let reference = cachedBatchReferences[batchRowIndex];
                  if (reference) {
                      reference.depth = depth;
+diff --git a/dist/splat-sort.d.ts b/dist/splat-sort.d.ts
+index f5ffaf9a719ae0c64b52b81968cd0e9ecd7400f0..3dcf20691505d642849e5cdba47b9f2f5ef59f02 100644
+--- a/dist/splat-sort.d.ts
++++ b/dist/splat-sort.d.ts
+@@ -12,7 +12,7 @@ export type SplatSortReference = {
+     batchRowIndex: number;
+     /** Stable global source-row index. */
+     rowIndex: number;
+-    /** Positive back-to-front camera depth. */
++    /** Back-to-front sort depth; reverse-Z renderers negate projected depth. */
+     depth: number;
+     /** Screen tile identity used by tile-local sorting. */
+     tileIndex: number;
+diff --git a/src/gpu-splat-graph-renderer.ts b/src/gpu-splat-graph-renderer.ts
+index 6630501ec6e971174383bf8c2513ea2bfa359262..8ef9191805aa56bc653d4cc812d73d3fafa62748 100644
+--- a/src/gpu-splat-graph-renderer.ts
++++ b/src/gpu-splat-graph-renderer.ts
+@@ -39,7 +39,7 @@ import type {SplatSortMode} from './splat-sort';
+ /** Camera, styling, borrowed data, and canvas clearing for graph-native Gaussian rendering. */
+ export type GPUSplatGraphRendererProps = Omit<
+   SplatRendererProps,
+-  'depthCompare' | 'depthWriteEnabled'
++  'depthCompare' | 'depthWriteEnabled' | 'depthConvention'
+ > & {
+   /** Color used when the graph opens its single default-framebuffer render pass. */
+   clearColor?: [number, number, number, number];
 diff --git a/src/splat-renderer.ts b/src/splat-renderer.ts
 index e12c6dd98458f576a1dbea210d60f0d1ffb68a99..3a33bfcbfbccc8d44efeeeac866c87761b830cfb 100644
 --- a/src/splat-renderer.ts
@@ -132,3 +171,16 @@ index e12c6dd98458f576a1dbea210d60f0d1ffb68a99..3a33bfcbfbccc8d44efeeeac866c8776
          let reference = cachedBatchReferences[batchRowIndex];
          if (reference) {
            reference.depth = depth;
+diff --git a/src/splat-sort.ts b/src/splat-sort.ts
+index 21b41ffb2e5fdd062bfa0cca4dd2907cc6d2d721..1043c39367eea9fc4a9e39ba0638d1070f5a741e 100644
+--- a/src/splat-sort.ts
++++ b/src/splat-sort.ts
+@@ -25,7 +25,7 @@ export type SplatSortReference = {
+   batchRowIndex: number;
+   /** Stable global source-row index. */
+   rowIndex: number;
+-  /** Positive back-to-front camera depth. */
++  /** Back-to-front sort depth; reverse-Z renderers negate projected depth. */
+   depth: number;
+   /** Screen tile identity used by tile-local sorting. */
+   tileIndex: number;

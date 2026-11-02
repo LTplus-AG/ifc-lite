@@ -278,3 +278,52 @@ ordinary fleet admission and the GPU serialization wrapper:
 This is a manual GPU witness, not part of root `pnpm test`. It does not qualify
 multi-layer peeling, per-sample MSAA, viewer rendering, licensed capture scenes or
 hardware performance. Public enablement remains blocked.
+
+## Internal native adapter in the viewer frame (#8564 increment)
+
+`Renderer.gaussianSplats` is an internal, unqualified adapter: upstream luma.gl
+`SplatRenderer` draws on the renderer's own `GPUDevice` inside `renderFrame`.
+Readiness stays `blocked` (now with `capabilities` beside `reasons`), and `add()`
+requires `{ qualification: 'internal-unqualified' }`. The guide's "Internal
+Gaussian adapter" section states the contract and its disclosed demo semantics.
+
+What the increment settles, in the restricted scenes below:
+
+- **Shared device and frame.** One pass after the main pass loads colour, tests the
+  shared reverse-Z depth read-only and performs the MSAA resolve. luma wraps the
+  viewer device without owning it; a 1x1 luma-owned framebuffer only describes
+  formats. No viewer device, encoder or attachment is destroyed by the adapter.
+- **Global order across assets.** Packing every asset into one upstream source
+  removes the run partitioning entirely, so the published 64-run slab fallback and
+  the 128-run research budget no longer apply. Upstream's own sort and draw run
+  unchanged.
+- **Placement.** Similarity transforms with covariance and SH band rotation; the SH
+  matrices come from upstream's basis evaluator and are checked against
+  f_rot(d) = f(R^T d). Reflections are rejected rather than baked unverified.
+- **Lifecycle.** Identity-validated handles; loss makes assets `pending` at once;
+  `recoverDevice()` re-uploads them under the same handles.
+
+GPU witness (`contract/validate-native-adapter.mjs`, manual, through
+`ifc-gpu-check`) drives the real `Renderer`. Each scene compares against an
+independent reference: analytic colours, a one-asset or base-commit frame, or the
+same frame without the asset. Recorded at `989a3630cc` (harness committed as
+`7c6c550882`): SwiftShader 213/213, NVIDIA hardware over the documented CDP
+endpoint 214/214, zero WebGPU errors. Scenes: opaque IFC and point-cloud
+occlusion; two assets equal one asset equal reversed add order with 96
+interleaved runs; perspective, orthographic and resize under 4x MSAA; centre
+clipping; visibility, placement and removal round trips with stale handles; device
+lifetime; pick pass-through; and a real loss (raw `GPUDevice.destroy()`)
+recovered by `recoverDevice()` with the post-recovery frame pixel-identical to the
+pre-loss frame. An IFC-only page shows base and head frames pixel-identical for
+the shared per-mesh uniform helper.
+
+```sh
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=swiftshader
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware
+```
+
+Still blocked, not waived: exact per-sample composition with IFC glass and X-ray
+(splats currently composite over them), per-fragment clipping and caps, picking
+semantics beyond pass-through, scalable GPU ordering (the upstream CPU sort runs
+per camera change), hardware resource budgets, canonical viewer ingestion and
+production smoke tests.

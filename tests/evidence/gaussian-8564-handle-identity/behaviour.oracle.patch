@@ -1,6 +1,6 @@
 --- a/packages/renderer/src/gaussian/gaussian-splat-layer.ts
 +++ b/packages/renderer/src/gaussian/gaussian-splat-layer.ts
-@@ -118,9 +118,9 @@
+@@ -129,9 +129,9 @@
    }
  
    remove(handle: GaussianSplatHandle): boolean {
@@ -10,5 +10,5 @@
 -    this.records.delete(record.handle);
 +    this.records.delete(handle);
      record.attributes = null;
-     this.applyFilter();
+     this.applyFilter(true);
      this.compact();

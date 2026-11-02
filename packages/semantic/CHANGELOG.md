@@ -1,5 +1,13 @@
 # @ifc-lite/semantic
 
+## 0.2.3
+
+### Patch Changes
+
+- [#8411](https://github.com/LTplus-AG/ifc-lite/pull/8411) [`58442c2`](https://github.com/LTplus-AG/ifc-lite/commit/58442c2da84df10227f79d7b2d2c08a7327bebd2) Thanks [@louistrue](https://github.com/louistrue)! - Update the n3 runtime dependency in @ifc-lite/semantic and the optional @tauri-apps/api dependency in @ifc-lite/geometry.
+
+- [#8560](https://github.com/LTplus-AG/ifc-lite/pull/8560) [`d35bc6b`](https://github.com/LTplus-AG/ifc-lite/commit/d35bc6b247f579d6077501625bad19e756c9d5a1) Thanks [@louistrue](https://github.com/louistrue)! - Allow identity resolvers to use a caller-owned GlobalId index for batch selection while retaining model/revision ambiguity and validation rules.
+
 ## 0.2.2
 
 ### Patch Changes

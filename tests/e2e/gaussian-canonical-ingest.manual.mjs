@@ -38,7 +38,7 @@ page.on('worker', worker => {
   workers.started.push(worker.url());
   worker.on('close', () => workers.closed.push(worker.url()));
 });
-const result = { base, capture, placement, errors, gpuConsole, workers, checks: {} };
+const result = { base, capture, placement, errors, gpuConsole, workers, checks: {}, frames: {} };
 
 const visibility = (id, visible) => page.evaluate(({ id, visible }) =>
   globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, visible), { id, visible });
@@ -47,19 +47,30 @@ const stats = () => page.evaluate(() => {
   return s ? { adapter: s.adapter, gaussian: s.gaussianSplats } : null;
 });
 /** Store one renderer-owned frame in the page under `label`. */
-const frame = (label) => page.evaluate(async (label) => {
+const frame = async (label) => { const info = await frameIn(label); result.frames[label] = info; return info; };
+const frameIn = (label) => page.evaluate(async (label) => {
   const url = await globalThis.__ifc_lite_capture_color_frame__?.();
   if (!url) return null;
   const bitmap = await createImageBitmap(await (await fetch(url)).blob());
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   const context = canvas.getContext('2d');
   context.drawImage(bitmap, 0, 0);
-  (globalThis.__witnessFrames ??= {})[label] = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
-  return { width: bitmap.width, height: bitmap.height };
+  const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+  (globalThis.__witnessFrames ??= {})[label] = data;
+  // The camera every mesh draw used for this frame; compared frames must share it.
+  (globalThis.__witnessCameras ??= {})[label] = globalThis.__ifc_lite_view_projection__?.() ?? null;
+  return { width: bitmap.width, height: bitmap.height, corner: Array.from(data.slice(0, 3)) };
 }, label);
 /** Pixel comparisons between stored frames, done in the page. */
 const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
   const f = globalThis.__witnessFrames, x = f[a], y = f[b];
+  const cameras = globalThis.__witnessCameras;
+  for (const label of [a, b, ...(outside ?? [])]) {
+    const camera = cameras[label], reference = cameras[a];
+    if (!camera || camera.length !== 16 || camera.some((value, i) => value !== reference[i])) {
+      throw new Error(`frame ${label} was not drawn with the reference camera of ${a}`);
+    }
+  }
   const delta = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
   const width = Math.round(Math.sqrt(x.length / 4)); // diagnostic only; frames are square-ish
   let differing = 0, escaped = 0;
@@ -78,7 +89,7 @@ const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
       }
     }
   }
-  return { differing, escaped, total: x.length / 4, samples };
+  return { differing, escaped, total: x.length / 4, samples, sameCamera: true };
 }, { a, b, outside });
 const drawn = async (label, previous) => {
   for (let i = 0; i < 50; i++) {

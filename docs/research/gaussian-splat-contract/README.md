@@ -250,16 +250,23 @@ peeling integrated into `renderFrame`, RTE/placement/SH rotation, real-model
 interaction, overflow reporting, hardware resource budgets and production smoke
 evidence. The one-layer experiment cannot waive any of these release blockers.
 
-The interval witness passed at `1f957a0a5d` on PC/WSL through fleet admission and
-`ifc-gpu-check`, using Chromium/SwiftShader. All four perspective/orthographic and
-24/32-pixel cases matched the independently submitted reference exactly, with
-nonblank output and zero GPU errors. Removing only the fragment discard produced
-738, 1290, 316 and 566 differing channels respectively. The source hashes, original
-receipt and setup/failing attempts are in `fragment-interval-results.json`.
-The failing binding experiment was rejected by GPU validation and the nonblank
-reference assertion; it is not counted as correctness evidence.
+The historical run at `1f957a0a5d` and its original
+`fragment-interval-results.json` remain unchanged. Review #8616 found that its
+nonblank check counted green glass and its reference shared the interval filter.
+Those results therefore do not establish independent splat contribution.
 
-Reproduce from the repository with installed dependencies and Chrome, through
+The revised witness serves the reference separately using `exactRunsPlugin` only:
+the upstream fragment shader has no interval binding, texture read or discard
+extension. Pixel scissors still select the independently computed glass order.
+Both reference and candidate must contain red pixels (only splats write red in
+this scene), and their complete images must match exactly. The discard-removal
+control must differ while retaining splats. The all-splat-discard control must
+have zero red pixels and fail the same positive acceptance predicate. A CPU
+regression also rejects identical green-only images even with zero differences.
+New GPU evidence is recorded separately in `fragment-interval-oracle-results.json`.
+Production qualification remains blocked.
+
+Reproduce from the repository with installed dependencies and Playwright Chromium, through
 ordinary fleet admission and the GPU serialization wrapper:
 
 ```sh

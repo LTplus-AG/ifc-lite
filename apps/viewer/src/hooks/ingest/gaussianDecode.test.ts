@@ -267,3 +267,87 @@ it('other upstream PLY model discriminators cannot reach materialization (#8565 
   const twoDimensional = await changeHeader(layoutPly(1), header => header.replace('property float scale_2\n', ''));
   await assert.rejects(decodeGaussianFile(twoDimensional), /Malformed/);
 });
+
+// #8613 review r4: decoder admission must read the header exactly as the pinned
+// reader does. Its readHeader drops empty lines and empty words, i.e.
+// split('\n').filter(Boolean) and split(' ').filter(Boolean).
+async function decodeAdmission(file: File) {
+  const { inspectGaussianDecodeAdmission } = await import('./gaussianAdmission.js');
+  assert.ok(inspectGaussianDecodeAdmission, 'Gaussian decoding needs its own bounded admission');
+  return inspectGaussianDecodeAdmission(file, await file.slice(0, 4096).arrayBuffer());
+}
+
+async function upstreamMeta(file: File) {
+  const fs = new MemoryReadFileSystem();
+  fs.set('capture', new Uint8Array(await file.arrayBuffer()));
+  const input = await fs.createSource('capture');
+  const pool = createChunkDataPool({ chunkSize: 1, maxPooledBytes: 1024 * 1024 });
+  let source: Awaited<ReturnType<typeof readPly>> | undefined;
+  try { source = await readPly(input, pool); return source.meta; }
+  finally { try { await (source ?? input).close(); } finally { pool.destroy(); } }
+}
+
+const tableColumns = (table: Awaited<ReturnType<typeof rawUpstream>>) =>
+  table.columns.map(({ name, data }) => [name, Array.from(data)]);
+
+it('repeated, leading and trailing spaces decode as the pinned reader tokenizes them (#8613 review r4)', async () => {
+  const canonical = layoutPly(2, 2);
+  const upstream = tableColumns(await rawUpstream(canonical, 2));
+  const decoded = await decodeGaussianFile(canonical);
+  const admitted = { kind: 'disabled', format: 'gaussian-ply', count: 2, shDegree: 0, recordStride: 14 * 4 + 2 * 8 };
+  assert.deepEqual(await decodeAdmission(canonical), admitted);
+  for (const edit of [
+    (header: string) => header.replace('property float x', 'property  float x'),
+    (header: string) => header.replace('element vertex 2', 'element  vertex 2        '),
+    (header: string) => header.replace('property double e1', '   property   double  e1   '),
+    (header: string) => header.replace('format binary_little_endian 1.0', 'format  binary_little_endian 1.0 '),
+  ]) {
+    const file = await changeHeader(canonical, edit);
+    // The real pinned reader keeps the canonical layout; it does not shift tokens.
+    assert.deepEqual(tableColumns(await rawUpstream(file, 2)), upstream);
+    assert.deepEqual(await decodeAdmission(file), admitted);
+    assert.deepEqual(await decodeGaussianFile(file), decoded);
+  }
+});
+
+it('headers the pinned reader rejects stop at bounded admission before any body read (#8613 review r4)', async () => {
+  const cases: [(header: string) => string, RegExp][] = [
+    [header => header.replace('element vertex', '   \nelement vertex'), /unrecognized header line/],
+    [header => header.replace('\nend_header\n', '\nelement\nend_header\n'), /invalid element line/],
+    [header => header.replace('\nend_header\n', '\nelement face 0\nproperty list uchar int vertex_indices\nend_header\n'), /invalid property line/],
+    [header => header.replace('\nend_header\n', '\nelement face 0\nproperty float32 area\nend_header\n'), /invalid property line/],
+    [header => header.replace('format', 'property float orphan\nformat'), /invalid property line/],
+  ];
+  for (const [edit, upstreamError] of cases) {
+    const file = await changeHeader(layoutPly(1), edit);
+    // Negative control: the real pinned reader refuses the same bytes.
+    await assert.rejects(upstreamMeta(file), upstreamError);
+    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'disabled');
+    let wholeFileReads = 0;
+    const read = file.arrayBuffer.bind(file);
+    file.arrayBuffer = () => { wholeFileReads++; return read(); };
+    await assert.rejects(decodeGaussianFile(file), /Unsupported Gaussian decoder (?:header directive|element or property)/);
+    assert.equal(wholeFileReads, 0, 'refuse in bounded admission, not inside the upstream reader');
+  }
+});
+
+it('indented comments cannot hide a render model from the decoder (#8613 review r4)', async () => {
+  for (const comment of ['SplatRenderMode: mip', 'antialiased 1']) {
+    const flush = await changeHeader(layoutPly(1), header => header.replace('element vertex', `comment ${comment}\nelement vertex`));
+    const indented = await changeHeader(layoutPly(1), header => header.replace('element vertex', `  comment ${comment}\nelement vertex`));
+    // Real pinned reader: comments are line.substring(8), so indentation loses the model.
+    assert.equal((await upstreamMeta(flush)).model, 'antialiased');
+    assert.equal((await upstreamMeta(indented)).model, 'default');
+    await assert.rejects(decodeGaussianFile(indented), /indented Gaussian decoder header comment/);
+  }
+  const spaced = await changeHeader(layoutPly(1), header => header.replace('element vertex', 'comment  exported   by tool\nelement vertex'));
+  assert.deepEqual((await decodeGaussianFile(spaced)).centerBounds.min, [1, 2, 3]);
+});
+
+it('public admission keeps a preceding-element Gaussian PLY disabled; only the decoder refuses it (#8613 review r4)', async () => {
+  const before = layoutPly(1, 0, 'before');
+  assert.deepEqual(await inspectGaussianAdmission(before, await before.slice(0, 4096).arrayBuffer()),
+    { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 0 });
+  assert.deepEqual(await decodeAdmission(before), { kind: 'invalid', reason: 'Unsupported Gaussian PLY element before vertex.' });
+  await assert.rejects(decodeGaussianFile(before), /element before vertex/);
+});

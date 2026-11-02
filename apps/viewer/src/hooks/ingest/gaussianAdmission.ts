@@ -11,6 +11,9 @@ const SCALAR_BYTES: Readonly<Record<string, number>> = {
   char: 1, uchar: 1, int8: 1, uint8: 1, short: 2, ushort: 2, int16: 2, uint16: 2,
   int: 4, uint: 4, int32: 4, uint32: 4, float: 4, float32: 4, double: 8, float64: 8,
 };
+// The complete pinned readHeader vocabulary; anything else throws upstream.
+const DECODE_DIRECTIVES = ['ply', 'format', 'element', 'property', 'comment', 'end_header'];
+const DECODE_TYPES = ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float', 'double'];
 
 export type GaussianAdmission =
   | { kind: 'ordinary' }
@@ -80,26 +83,44 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     return { kind: 'invalid', reason: 'PLY header is truncated or exceeds the 64 KiB admission limit.' };
   }
   const header = text.slice(0, end);
-  // Decode only the ASCII/space/LF subset whose tokenization agrees with
-  // upstream's TextDecoder('ascii') + split(' '). Ordinary dispatch retains
-  // parsePlyHeader's BOM, Unicode trim and whitespace compatibility above.
+  // Decode only the ASCII/space/LF subset that upstream's TextDecoder('ascii')
+  // reads identically. Ordinary dispatch retains parsePlyHeader's BOM, Unicode
+  // trim and whitespace compatibility above.
   if (decode && (!header.startsWith('ply\n') || /[^\x20-\x7e\n]/.test(header))) {
     return { kind: 'invalid', reason: 'Unsupported Gaussian decoder header whitespace or magic.' };
   }
-  const lines = header.split('\n').map(line => line.trim());
-  let vertex = false, count = 0, vertexElements = 0, stride = 0, malformed = false;
+  // Decoder lines and words are pinned readHeader's split('\n') and split(' '),
+  // each without empty entries: repeated, leading and trailing spaces (such as
+  // space-padded counts) are its grammar, not shifted tokens.
+  const lines = decode ? header.split('\n').filter(Boolean) : header.split('\n').map(line => line.trim());
+  let vertex = false, count = 0, elements = 0, vertexElements = 0, stride = 0, malformed = false;
   let encoding = '';
   let precedingElement = false;
   const properties = new Set<string>();
   for (const line of lines) {
     // parsePlyHeader ignores tab-only keyword separators, but splits tokens
     // with /\s+/ once the directive's literal-space prefix matches.
-    const fields = line.split(/\s+/);
-    if (decode && line && !['ply', 'format', 'element', 'property', 'comment', 'end_header'].includes(fields[0])) {
-      return { kind: 'invalid', reason: 'Unsupported Gaussian decoder header directive.' };
+    const fields = decode ? line.split(' ').filter(Boolean) : line.split(/\s+/);
+    const keyword = decode ? fields[0] : ['format', 'element', 'property'].find(word => line.startsWith(`${word} `));
+    if (decode) {
+      // readHeader throws on any other first word (none: a space-only line),
+      // on element/property arity, list or alias types, and orphan properties.
+      if (!DECODE_DIRECTIVES.includes(keyword ?? '')) {
+        return { kind: 'invalid', reason: 'Unsupported Gaussian decoder header directive.' };
+      }
+      if ((keyword === 'element' && fields.length !== 3)
+        || (keyword === 'property' && (!elements || fields.length !== 3 || !DECODE_TYPES.includes(fields[1])))) {
+        return { kind: 'invalid', reason: 'Unsupported Gaussian decoder element or property declaration.' };
+      }
+      // Its comment text is line.substring(8): indentation shifts the words
+      // that select a render model (SplatRenderMode, antialiased) out of view.
+      if (keyword === 'comment' && !line.startsWith('comment')) {
+        return { kind: 'invalid', reason: 'Unsupported indented Gaussian decoder header comment.' };
+      }
     }
-    if (line.startsWith('format ')) encoding = fields[1];
-    if (line.startsWith('element ')) {
+    if (keyword === 'format') encoding = fields[1] ?? '';
+    if (keyword === 'element') {
+      elements++;
       vertex = fields[1] === 'vertex';
       if (!vertex && vertexElements === 0) precedingElement = true;
       if (vertex) {
@@ -107,14 +128,13 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
         if (!/^\d+$/.test(fields[2] ?? '') || fields.length !== 3) malformed = true;
       }
     }
-    if (!line.startsWith('property ') || !vertex) continue;
+    if (keyword !== 'property' || !vertex) continue;
     const list = fields[1] === 'list';
     const name = fields[list ? 4 : 2];
     if (!name) { malformed = true; continue; }
     if (properties.has(name)) malformed = true;
     properties.add(name);
     const width = SCALAR_BYTES[fields[1]];
-    if (decode && !['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float', 'double'].includes(fields[1])) malformed = true;
     if (list || typeof width !== 'number' || fields.length !== 3) malformed = true;
     else stride += width;
   }
@@ -129,8 +149,9 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
   const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
     || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));
   if (!gaussian) return { kind: 'ordinary' };
-  // Upstream starts vertex records at headerBytes, without skipping earlier elements.
-  if (precedingElement) {
+  // Upstream starts vertex records at headerBytes, without skipping earlier
+  // elements. Public admission keeps reporting these captures as disabled.
+  if (decode && precedingElement) {
     return { kind: 'invalid', reason: 'Unsupported Gaussian PLY element before vertex.' };
   }
   if (malformed || vertexElements !== 1 || REQUIRED.some(name => !properties.has(name))) {

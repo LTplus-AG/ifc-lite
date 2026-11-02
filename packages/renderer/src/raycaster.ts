@@ -31,6 +31,8 @@ export interface Intersection {
   /** Triangle ordinal in the canonical evaluated surface. */
   sourceTriangleIndex?: number;
   barycentricCoord: { u: number; v: number; w: number };
+  /** The hit is on a drawn section cut face; triangle fields name the hidden surface behind it. */
+  cutCap?: boolean;
 }
 
 export class Raycaster {

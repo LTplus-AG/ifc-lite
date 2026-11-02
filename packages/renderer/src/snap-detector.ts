@@ -9,6 +9,12 @@ import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } fro
 import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
 import type { SnapEdge } from './snap-edge-runs.js';
 import { bestEdgeCandidate, detectCorner, type EdgeCandidate } from './snap-corner.js';
+import type { PickClipState } from './pick-types.js';
+import { clipHalfSpaces, type ClipHalfSpace } from './clip-half-spaces.js';
+import { entityClip } from './section-exclusions.js';
+import { buildClippedGeometryCache, cutCapIntersection, type ClippedGeometryCache } from './snap-clip.js';
+import { clipIsActive, pointClipped } from './scene-raycaster.js';
+import { releasedEdgeLock } from './raycast-point-cloud-query.js';
 
 export enum SnapType {
   VERTEX = 'vertex',
@@ -107,6 +113,18 @@ const MAGNETIC_CONFIG = {
   MAX_LOCK_STRENGTH: 1.5,
 };
 
+/** Section views kept per detector; a dragged plane would otherwise accumulate one per position. */
+const MAX_CLIPPED_CACHES = 256;
+
+function planesFor(id: number, clip?: PickClipState | null): ClipHalfSpace[] {
+  const entity = entityClip(clip, id);
+  return entity && clipIsActive(entity) ? clipHalfSpaces(entity) : [];
+}
+
+function planesKey(planes: readonly ClipHalfSpace[]): string {
+  return planes.map((p) => `${p.n[0]},${p.n[1]},${p.n[2]},${p.limit},${p.capped}`).join(';');
+}
+
 export class SnapDetector {
   private raycaster = new Raycaster();
   private defaultOptions: SnapOptions = {
@@ -135,6 +153,11 @@ export class SnapDetector {
   // expressId alone served the first piece's edges/vertices for every later one,
   // so snap lit up on a single piece of a multi-piece element.
   private geometryCache = new Map<string, MeshGeometryCache>();
+  // Section views of that cache, by clip + mesh key; a moved plane leaves old keys behind.
+  private clippedCaches = new Map<string, ClippedGeometryCache>();
+  // The clip a held edge lock was acquired under. A lock is a trimmed edge or a
+  // contour of THAT clip, so it cannot outlive a section change.
+  private lockClipKey = '';
 
   /**
    * Detect best snap target near cursor
@@ -199,24 +222,14 @@ export class SnapDetector {
     camera: { position: Vec3; fov: number },
     screenHeight: number,
     currentEdgeLock: EdgeLockInput,
-    options: Partial<SnapOptions> = {}
+    options: Partial<SnapOptions> = {},
+    clip?: PickClipState | null,
   ): MagneticSnapResult {
     const opts = { ...this.defaultOptions, ...options };
 
     // Default result when no intersection
     if (!intersection) {
-      return {
-        snapTarget: null,
-        edgeLock: {
-          edge: null,
-          meshExpressId: null,
-          edgeT: 0,
-          shouldLock: false,
-          shouldRelease: true,
-          isCorner: false,
-          cornerValence: 0,
-        },
-      };
+      return { snapTarget: null, edgeLock: releasedEdgeLock() };
     }
 
     const distanceToCamera = distance(camera.position, intersection.point);
@@ -229,21 +242,12 @@ export class SnapDetector {
 
     const intersectedMesh = meshes[intersection.meshIndex];
     if (!intersectedMesh) {
-      return {
-        snapTarget: null,
-        edgeLock: {
-          edge: null,
-          meshExpressId: null,
-          edgeT: 0,
-          shouldLock: false,
-          shouldRelease: true,
-          isCorner: false,
-          cornerValence: 0,
-        },
-      };
+      return { snapTarget: null, edgeLock: releasedEdgeLock() };
     }
 
-    const cache = this.getGeometryCache(intersectedMesh);
+    const { cache, key: clipKey } = this.visibleGeometry(intersectedMesh, clip);
+    const entity = entityClip(clip, intersectedMesh.expressId);
+    const visible = (t: SnapTarget) => !pointClipped(entity, t.position.x, t.position.y, t.position.z);
 
     // If edge snapping is disabled, skip edge logic entirely
     if (!opts.snapToEdges) {
@@ -253,10 +257,10 @@ export class SnapDetector {
         targets.push(...this.findFaces(intersectedMesh, intersection, worldSnapRadius));
       }
       if (opts.snapToVertices) {
-        targets.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius));
+        targets.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius, cache));
       }
       return {
-        snapTarget: this.getBestSnapTarget(targets),
+        snapTarget: this.getBestSnapTarget(targets.filter(visible)),
         edgeLock: {
           edge: null,
           meshExpressId: null,
@@ -273,7 +277,9 @@ export class SnapDetector {
     let wasLockReleased = false;
 
     // If we have an active edge lock, try to maintain it
-    if (currentEdgeLock.edge && currentEdgeLock.meshExpressId === intersectedMesh.expressId) {
+    if (currentEdgeLock.edge && currentEdgeLock.meshExpressId === intersectedMesh.expressId && this.lockClipKey !== clipKey) {
+      wasLockReleased = true;
+    } else if (currentEdgeLock.edge && currentEdgeLock.meshExpressId === intersectedMesh.expressId) {
       const lockResult = this.maintainEdgeLock(
         intersection.point,
         currentEdgeLock,
@@ -344,10 +350,10 @@ export class SnapDetector {
         candidates.push(...this.findFaces(intersectedMesh, intersection, worldSnapRadius));
       }
       if (opts.snapToVertices) {
-        candidates.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius));
+        candidates.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius, cache));
       }
       return {
-        snapTarget: this.getBestSnapTarget(candidates),
+        snapTarget: this.getBestSnapTarget(candidates.filter(visible)),
         edgeLock: {
           edge: null,
           meshExpressId: null,
@@ -402,6 +408,7 @@ export class SnapDetector {
     // boolean that cannot place a mid-run junction (see `CornerInfo.atEndpoint`).
     // The junction keeps its exact vertex snap through `snapTarget` above.
     const cornerAtEnd = cornerInfo.isCorner && cornerInfo.atEndpoint;
+    this.lockClipKey = clipKey;
     return {
       snapTarget,
       edgeLock: {
@@ -427,18 +434,7 @@ export class SnapDetector {
     meshExpressId: number
   ): MagneticSnapResult {
     if (!currentLock.edge) {
-      return {
-        snapTarget: null,
-        edgeLock: {
-          edge: null,
-          meshExpressId: null,
-          edgeT: 0,
-          shouldLock: false,
-          shouldRelease: true,
-          isCorner: false,
-          cornerValence: 0,
-        },
-      };
+      return { snapTarget: null, edgeLock: releasedEdgeLock() };
     }
 
     const { v0, v1 } = currentLock.edge;
@@ -455,18 +451,7 @@ export class SnapDetector {
 
     // Check if we should release the lock
     if (perpDistance > escapeThreshold) {
-      return {
-        snapTarget: null,
-        edgeLock: {
-          edge: null,
-          meshExpressId: null,
-          edgeT: 0,
-          shouldLock: false,
-          shouldRelease: true,
-          isCorner: false,
-          cornerValence: 0,
-        },
-      };
+      return { snapTarget: null, edgeLock: releasedEdgeLock() };
     }
 
     // Still locked - calculate position along edge
@@ -573,6 +558,32 @@ export class SnapDetector {
     return cache;
   }
 
+  /** The mesh's snap geometry under `clip`, and the key naming that clip ('' when nothing clips it). */
+  private visibleGeometry(mesh: MeshData, clip?: PickClipState | null): { cache: MeshGeometryCache; key: string } {
+    const planes = planesFor(mesh.expressId, clip);
+    if (planes.length === 0) return { cache: this.getGeometryCache(mesh), key: '' };
+    return { cache: this.clippedGeometry(mesh, planes), key: planesKey(planes) };
+  }
+
+  private clippedGeometry(mesh: MeshData, planes: readonly ClipHalfSpace[]): ClippedGeometryCache {
+    const key = `${planesKey(planes)}|${this.cacheKeyFor(mesh)}`;
+    let view = this.clippedCaches.get(key);
+    if (!view) {
+      if (this.clippedCaches.size >= MAX_CLIPPED_CACHES) this.clippedCaches.clear();
+      view = buildClippedGeometryCache(mesh, this.getGeometryCache(mesh), planes);
+      this.clippedCaches.set(key, view);
+    }
+    return view;
+  }
+
+  /** The drawn cut face `hit`'s ray reaches first, or null when it reaches none (#8659). */
+  resolveCutCap(ray: Ray, mesh: MeshData | undefined, hit: Intersection, clip?: PickClipState | null): Intersection | null {
+    if (!mesh) return null;
+    const planes = planesFor(mesh.expressId, clip);
+    if (!planes.some((plane) => plane.capped)) return null;
+    return cutCapIntersection(ray, this.clippedGeometry(mesh, planes), planes, hit);
+  }
+
   /**
    * Stable cache key for a mesh's snap geometry.
    *
@@ -609,9 +620,8 @@ export class SnapDetector {
   /**
    * Find vertices near point
    */
-  private findVertices(mesh: MeshData, point: Vec3, radius: number): SnapTarget[] {
+  private findVertices(mesh: MeshData, point: Vec3, radius: number, cache = this.getGeometryCache(mesh)): SnapTarget[] {
     const targets: SnapTarget[] = [];
-    const cache = this.getGeometryCache(mesh);
 
     // Find vertices within radius - ONLY when VERY close for smooth edge sliding
     for (const vertex of cache.vertices) {
@@ -666,6 +676,7 @@ export class SnapDetector {
    */
   clearCache(): void {
     this.geometryCache.clear();
+    this.clippedCaches.clear();
   }
 
   /**
@@ -683,6 +694,7 @@ export class SnapDetector {
       confidence: 0.5, // Lower priority than vertices/edges
       metadata: { faceIndex: intersection.triangleIndex },
     });
+    if (intersection.cutCap) return targets; // Its triangle is the hidden surface behind the cap.
 
     // Calculate face center (centroid of triangle). Positions are in the
     // element's local frame; the intersection point is world-space, so lift

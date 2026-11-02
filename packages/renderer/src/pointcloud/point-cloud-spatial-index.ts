@@ -517,6 +517,7 @@ export class PointCloudSpatialIndex {
     best: { hit: PointCloudRayHit | null },
     slabAxis: -1 | 0 | 1 | 2 = -1,
     slabDir: -1 | 1 = 1,
+    accept?: (point: Vec3) => boolean,
   ): void {
     const r = radiusCells;
     const lead = slabDir * r;
@@ -559,7 +560,7 @@ export class PointCloudSpatialIndex {
             const o = local * 3;
             const p = { x: chunk.positions[o], y: chunk.positions[o + 1], z: chunk.positions[o + 2] };
             const hit = this.testPoint(p, origin, dir, maxDistance, toleranceAt);
-            if (hit && (!best.hit || hit.distance < best.hit.distance)) best.hit = hit;
+            if (hit && (!best.hit || hit.distance < best.hit.distance) && (!accept || accept(p))) best.hit = hit;
           }
         }
       }
@@ -595,6 +596,8 @@ export class PointCloudSpatialIndex {
     /** Normalized 8-word LAS class visibility bitmask (#1783); points of
      *  hidden classes are skipped. Omit/null for "everything visible". */
     classMask?: Uint32Array | null,
+    /** Skips a point without ending the search, so a section-clipped point cannot shadow a visible one behind it. */
+    accept?: (point: Vec3) => boolean,
   ): PointCloudRayHit | null {
     if (this.total === 0 || maxDistance <= 0) return null;
     const bounds = this.getBounds();
@@ -691,7 +694,7 @@ export class PointCloudSpatialIndex {
       const slabAxis = radius === prevRadius ? steppedAxis : -1;
       this.testCellNeighborhood(
         cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best,
-        slabAxis, steppedDir,
+        slabAxis, steppedDir, accept,
       );
       prevRadius = radius;
 

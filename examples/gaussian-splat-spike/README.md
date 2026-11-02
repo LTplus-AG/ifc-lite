@@ -154,7 +154,12 @@ showcase build. It is not alignment; say so in the disclosure. The finisher
 copies the screencast JPEGs unchanged into a master and adds a caption strip
 *below* the capture, so no viewer UI is covered. The strip carries the live step
 caption, the build label, the disclosures and the manifest-checked licence
-credit. Timestamps pass through unchanged. Both finishers tag their outputs as
+credit. Integrated capture timestamps are quantized to millisecond precision,
+then preserved from master to deliverables; no constant-rate resampling is used.
+The recorder retains per-frame capture times in its compact evidence. The finisher
+checks the master against those times and refuses takes lacking that evidence.
+The historical integrated takes used a faulty 40 ms input timebase and are not
+evidence of exact capture timing (see their evidence README). Both finishers tag their outputs as
 limited-range BT.709, check the tags with ffprobe, and refuse to overwrite an
 existing file.
 

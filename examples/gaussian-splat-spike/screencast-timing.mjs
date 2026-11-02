@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #8567 integrated recording: pure timing helpers for CDP screencast frames.
-// Frames keep their capture intervals; nothing is resampled or interpolated.
+// Frame times are quantized to milliseconds (the delivered Matroska timebase).
+// No constant-rate resampling or interpolation.
 
 const frameName = n => `frames/${String(n).padStart(6, '0')}.jpg`;
 
@@ -16,10 +17,13 @@ export function screencastConcat(frames, finalSeconds = 1 / 30) {
   const lines = ['ffconcat version 1.0'];
   frames.forEach((frame, i) => {
     lines.push(`file '${frameName(frame.n)}'`);
+    // image2 defaults to 25 fps, otherwise rounding every timestamp to 40 ms.
+    lines.push('option framerate 1000');
     lines.push(`duration ${((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frame.ts).toFixed(6)}`);
   });
   // The concat demuxer needs the last file repeated for its duration to apply.
   lines.push(`file '${frameName(frames.at(-1).n)}'`);
+  lines.push('option framerate 1000');
   return lines.join('\n') + '\n';
 }
 

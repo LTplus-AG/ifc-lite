@@ -1,0 +1,18 @@
+diff --git a/examples/gaussian-splat-spike/screencast-timing.mjs b/examples/gaussian-splat-spike/screencast-timing.mjs
+--- a/examples/gaussian-splat-spike/screencast-timing.mjs
++++ b/examples/gaussian-splat-spike/screencast-timing.mjs
+@@ -18,12 +18,12 @@
+   frames.forEach((frame, i) => {
+     lines.push(`file '${frameName(frame.n)}'`);
+     // image2 defaults to 25 fps, otherwise rounding every timestamp to 40 ms.
+-    lines.push('option framerate 25');
++    lines.push('option framerate 1000');
+     lines.push(`duration ${((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frame.ts).toFixed(6)}`);
+   });
+   // The concat demuxer needs the last file repeated for its duration to apply.
+   lines.push(`file '${frameName(frames.at(-1).n)}'`);
+-  lines.push('option framerate 25');
++  lines.push('option framerate 1000');
+   return lines.join('\n') + '\n';
+ }
+ 

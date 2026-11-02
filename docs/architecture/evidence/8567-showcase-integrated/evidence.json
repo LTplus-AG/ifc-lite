@@ -206,5 +206,11 @@
     "metric scale, georeference or IFC alignment (no IFC model in the scene; uncalibrated capture)",
     "exact transparency composition (approximate) and clipping caps (none; whole Gaussians culled by centre)",
     "picking (not pickable; model-list selection only)"
-  ]
+  ],
+  "timingCorrection": {
+    "historicalInputTimebaseMs": 40,
+    "zeroAdjacentIntervals": 261,
+    "adjacentIntervals": 1597,
+    "disposition": "Historical master quantized capture times; deliverables preserve the quantized master. Original per-frame capture timestamps are unavailable. New take required for corrected timing. Original files preserved."
+  }
 }

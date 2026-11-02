@@ -1,0 +1,7 @@
+{
+  "issue": 8567,
+  "key": "examples/gaussian-splat-spike/showcase-video.mjs",
+  "mutation": "tests/evidence/8567-finisher-colour-probe/behaviour.oracle.patch",
+  "test": "examples/gaussian-splat-spike/test/finish-smoke.test.mjs",
+  "why": "Both finishers must obtain color_range from ffprobe before checking it; real encodes must finish and preserve all required tags."
+}

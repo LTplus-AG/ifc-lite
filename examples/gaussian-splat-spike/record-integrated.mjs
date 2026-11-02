@@ -138,6 +138,7 @@ try {
 } finally {
   await cdp?.send('Page.stopScreencast').catch(() => {});
   evidence.frames = frames.length;
+  evidence.frameTimestampsSeconds = frames.map(frame => frame.ts - frames[0].ts);
   evidence.tooling.after = await tooling().catch(error => ({ error: error.message }));
   try {
     if (frames.length > 1) {

@@ -83,9 +83,9 @@ test('integrated finisher copies the captured frames and keeps their intervals i
   const dir = await mkdtemp(join(tmpdir(), 'showcase-finish-integrated-'));
   try {
     const take = join(dir, 'take');
-    await capturedFrames(take);
+    const { frames } = await capturedFrames(take);
     const entry = await catalogEntry('seem-kirke-v1.ply');
-    const recording = { issue: 8567, asset: { path: entry.path, sha256: entry.sha256 },
+    const recording = { issue: 8567, frameTimestampsSeconds: frames.map(frame => frame.ts - frames[0].ts), asset: { path: entry.path, sha256: entry.sha256 },
       timeline: [{ name: 'a', caption: 'Step A', start: 0, end: 0.06 }, { name: 'b', caption: 'Step B', start: 0.06, end: 0.6 }] };
     await writeFile(join(take, 'evidence-integrated.json'), JSON.stringify(recording));
     const out = join(dir, 'final');
@@ -94,8 +94,9 @@ test('integrated finisher copies the captured frames and keeps their intervals i
     assert.equal(run.status, 0, run.stderr);
     const evidence = JSON.parse(await readFile(join(out, 'finish-integrated-evidence.json'), 'utf8'));
     const expected = assertDelivered(evidence.outputs, evidence.master.file);
-    const intervals = expected.slice(1).map((t, i) => t - expected[i]);
-    assert.deepEqual(intervals.slice(0, STEPS.length), STEPS.map(step => Math.round(step * 1000)), 'master keeps the captured intervals');
+    const captureTimes = frames.map(frame => Math.round((frame.ts - frames[0].ts) * 1000));
+    assert.deepEqual(expected.slice(0, frames.length), captureTimes, 'master keeps capture timestamps at millisecond precision');
+    assert.ok(expected.every((t, i) => !i || t > expected[i - 1]), 'distinct capture frames do not acquire duplicate timestamps');
     // A take whose recorded capture hash disagrees with the catalogue is refused.
     await writeFile(join(take, 'evidence-integrated.json'), JSON.stringify({ ...recording, asset: { ...recording.asset, sha256: '0'.repeat(64) } }));
     const mismatch = finish('finish-integrated.mjs', [...args.slice(0, 3), join(dir, 'final-2'), ...args.slice(4)]);

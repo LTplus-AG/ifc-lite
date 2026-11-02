@@ -87,6 +87,15 @@ in the load, the wheel zoom (with its settling into the orbit's first 0.6 s)
 and the removal. The outputs are limited range with the BT.709 matrix; that
 finisher version left the primaries and transfer untagged (ffprobe: unknown).
 
+**Timing correction:** the historical finisher's concat image input defaulted to
+25 fps. The master timestamps were quantized to 40 ms; 261 of its 1,597 adjacent
+intervals are zero. MP4 and WebM preserve those already-quantized timestamps,
+not the original capture times. The frame-interval statistics above describe
+capture diagnostics, not delivered playback timing. Original per-frame capture
+timestamps were not retained, so exact timing cannot be recovered by re-finishing
+this take. The original files remain unchanged; a new recording with the corrected
+millisecond input timebase is needed. The research preview is unaffected.
+
 Two diagnostics from the same session, not performance claims:
 
 - With the right sidebar expanded, the same orbit ran at p90 66.7 ms; with it

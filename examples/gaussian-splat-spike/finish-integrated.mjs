@@ -5,7 +5,7 @@
 // #8567 integrated-viewer finishing. The screencast's JPEG frames are copied
 // unchanged into the master. Deliverables add a strip *below* the capture with
 // the live step caption, build label, disclosures and licence credit, so no
-// viewer UI is covered. Capture timestamps pass through; nothing is resampled.
+// viewer UI is covered. Capture timestamps use millisecond precision, without CFR resampling.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -14,7 +14,7 @@ import { showcaseCredits } from './showcase-credits.mjs';
 import { catalogEntry, repoRoot, sha256File } from './showcase-fixture.mjs';
 import { captionWindows } from './screencast-timing.mjs';
 import { absoluteOutput, requireOptions } from './showcase-args.mjs';
-import { BT709_FILTER, BT709_OUTPUT, TIMESTAMP_PASSTHROUGH, assertSameTimestamps, probeVideo, refuseExisting, verifyBt709 } from './showcase-video.mjs';
+import { BT709_FILTER, BT709_OUTPUT, TIMESTAMP_PASSTHROUGH, assertCaptureTimestamps, assertSameTimestamps, probeVideo, refuseExisting, verifyBt709 } from './showcase-video.mjs';
 
 const { values: args } = parseArgs({ options: {
   take: { type: 'string' }, out: { type: 'string' }, label: { type: 'string' }, disclosure: { type: 'string', multiple: true },
@@ -39,6 +39,7 @@ const ffmpeg = (...a) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'e
 const master = join(args.out, `${args.stem}-master.mkv`);
 await refuseExisting([master, join(args.out, `${args.stem}.mp4`), join(args.out, `${args.stem}.webm`)]);
 ffmpeg('-f', 'concat', '-safe', '0', '-i', join(take, 'frames.ffconcat'), '-c', 'copy', master);
+assertCaptureTimestamps(recording.frameTimestampsSeconds, master);
 const textDir = join(args.out, 'overlay-text');
 await mkdir(textDir, { recursive: true });
 const lines = { label: args.label, ...Object.fromEntries(args.disclosure.map((d, i) => [`disclosure-${i}`, d])), credit: credits.credit, change: credits.change };
@@ -74,7 +75,7 @@ const git = (...a) => execFileSync('git', ['-C', repoRoot, ...a], { encoding: 'u
 const evidence = { issue: 8567, recording, credits, captions, overlay: lines,
   tooling: { head: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain', '--', 'examples/gaussian-splat-spike') !== '' },
   master: { file: master, sha256: await sha256File(master), probe: probeVideo(master) }, outputs,
-  method: 'concat demuxer with real screencast intervals; JPEG frames copied to the master; strip below the capture; timestamps passed through' };
+  method: 'concat demuxer with real screencast intervals; JPEG frames copied to the master; strip below the capture; timestamps preserved from the millisecond-quantized master' };
 await writeFile(join(args.out, 'finish-integrated-evidence.json'), JSON.stringify(evidence, null, 2) + '\n');
 console.log(JSON.stringify({ master: evidence.master.sha256, outputs: outputs.map(o => ({ file: o.file, sha256: o.sha256,
   frames: o.frames, duration: o.probe.duration })) }, null, 1));

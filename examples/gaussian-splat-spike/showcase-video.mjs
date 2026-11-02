@@ -34,6 +34,21 @@ export function frameTimestamps(file) {
   return out.split('\n').map(line => line.replace(/,$/, '').trim()).filter(Boolean).map(value => Math.round(Number(value) * 1000));
 }
 
+/** Verify the integrated master against retained capture times, not itself. */
+export function assertCaptureTimestamps(seconds, file) {
+  if (!Array.isArray(seconds) || seconds.length < 2 || seconds[0] !== 0
+      || seconds.some((t, i) => !Number.isFinite(t) || (i > 0 && t <= seconds[i - 1]))) {
+    throw new Error('take lacks valid retained capture timestamps; record a new take');
+  }
+  const expected = seconds.map(t => Math.round(t * 1000));
+  const actual = frameTimestamps(file);
+  // ffconcat repeats the last JPEG to express its final hold duration.
+  if (actual.length !== expected.length + 1 || expected.some((t, i) => actual[i] !== t)
+      || actual.at(-1) <= actual.at(-2)) {
+    throw new Error('master timestamps differ from the retained capture at millisecond precision');
+  }
+}
+
 /** Throws unless `file` carries exactly the reference's frame timestamps. */
 export function assertSameTimestamps(reference, file) {
   const expected = frameTimestamps(reference), actual = frameTimestamps(file);

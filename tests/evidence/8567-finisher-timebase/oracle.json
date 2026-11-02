@@ -1,0 +1,7 @@
+{
+  "issue": 8567,
+  "key": "examples/gaussian-splat-spike/screencast-timing.mjs",
+  "mutation": "tests/evidence/8567-finisher-timebase/behaviour.oracle.patch",
+  "test": "examples/gaussian-splat-spike/test/finish-smoke.test.mjs",
+  "why": "A 25 fps image input quantizes capture timestamps to 40 ms. Real master/output timestamps must instead follow irregular input times to millisecond precision."
+}

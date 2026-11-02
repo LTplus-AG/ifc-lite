@@ -236,7 +236,7 @@ export function traceRendererColorFrameEncoder(capture: RendererColorFrameCaptur
   if (!capture?.pending.diagnostic) return encoder;
   const passes: Record<string, unknown>[] = [];
   capture.metadata = { diagnosticFrameId: ++diagnosticSequence, recordingAt: performance.now(), passes };
-  return new Proxy(encoder, { set: forwardNativeAssignment, get(target, property) {
+  return new Proxy<GPUCommandEncoder>(encoder, { set: forwardNativeAssignment, get(target, property) {
     if (property === 'beginRenderPass') return (descriptor: GPURenderPassDescriptor) => {
       const pass = target.beginRenderPass(descriptor);
       const trace: Record<string, unknown> = { label: descriptor.label,
@@ -245,7 +245,7 @@ export function traceRendererColorFrameEncoder(capture: RendererColorFrameCaptur
         rasterCalls: [], defaultRaster: 'full attachment viewport/scissor until overridden' };
       if (passes.length < 64) passes.push(trace);
       else capture.metadata!.passesTruncated = true;
-      return new Proxy(pass, { set: forwardNativeAssignment, get(native, key) {
+      return new Proxy<GPURenderPassEncoder>(pass, { set: forwardNativeAssignment, get(native, key) {
         const value = Reflect.get(native, key, native);
         if (typeof value !== 'function') return value;
         if (key !== 'setViewport' && key !== 'setScissorRect' && key !== 'setBlendConstant' && key !== 'setStencilReference') return value.bind(native);

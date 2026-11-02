@@ -26,6 +26,7 @@ import { commentMarker, ownedFields, sameOwnedFields } from './outbox-plan.js';
 import { markDone, replaceEntry, requeue } from './outbox-state.js';
 import { mutatePublication, readPublication } from './outbox-store.js';
 import { sameTarget, type PublicationConnection } from './outbox-dispatch.js';
+import { publicationRules } from './outbox-server-rules.js';
 import type { BcfPublication, OutboxCandidate, OutboxCheck, OutboxEntry } from './outbox-types.js';
 
 /**
@@ -43,17 +44,37 @@ function withinWindow(date: string | null | undefined, entry: OutboxEntry, check
   return value >= start && value <= checkedAt.getTime() + WINDOW_MS;
 }
 
-async function allTopics(connection: PublicationConnection, projectId: string): Promise<BcfTopicDto[]> {
+const PAGE = 200;
+const MAX_PAGES = 250;
+
+/**
+ * Every topic of the project, and whether the list is known to be complete.
+ * Only a complete list may prove a create absent (absence allows a resend).
+ * A server that ignores `$skip` (profile `topicPaging: 'modified-date'`) is
+ * paged by `modified_date` instead, the way `@ifc-lite/bcf-api` pulls it:
+ * ascending, from the last page's latest date (inclusive; ties deduped).
+ */
+async function allTopics(connection: PublicationConnection, projectId: string): Promise<{ topics: BcfTopicDto[]; complete: boolean }> {
+  const byDate = publicationRules(connection).topicPaging === 'modified-date';
   const topics: BcfTopicDto[] = [];
   const seen = new Set<string>();
-  for (let skip = 0; skip < 50_000; skip += 200) {
-    const page = await connection.client.getTopics(projectId, { top: 200, skip });
-    const fresh = page.filter(topic => !seen.has(topic.guid));
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const batch = await connection.client.getTopics(projectId, byDate
+      ? { top: PAGE, orderby: 'modified_date asc', ...(cursor ? { filter: `modified_date ge ${cursor}` } : {}) }
+      : { top: PAGE, skip: page * PAGE });
+    const fresh = batch.filter(topic => !seen.has(topic.guid));
     for (const topic of fresh) { seen.add(topic.guid); topics.push(topic); }
-    // A server ignoring $skip repeats its first page; stop instead of looping.
-    if (page.length < 200 || fresh.length === 0) break;
+    if (batch.length < PAGE) return { topics, complete: true };
+    // A full page with nothing new (a server ignoring $skip, or more same-second ties than a page) cannot go on.
+    if (fresh.length === 0) return { topics, complete: false };
+    if (byDate) {
+      const last = batch[batch.length - 1]?.modified_date;
+      if (!last || !Number.isFinite(Date.parse(last))) return { topics, complete: false };
+      cursor = last;
+    }
   }
-  return topics;
+  return { topics, complete: false };
 }
 
 const candidateOf = (item: BcfTopicDto | BcfCommentDto): OutboxCandidate => ({ guid: item.guid,
@@ -75,7 +96,9 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
   const projectId = record.target.projectId;
   const author = (value: string | null | undefined) => !record.target.userId || !value || value === record.target.userId;
   if (entry.operation === 'createTopic') {
-    const topics = await allTopics(connection, projectId);
+    const { topics, complete } = await allTopics(connection, projectId);
+    const listed = (check: OutboxCheck): OutboxCheck => check.result === 'absent' && !complete
+      ? { at, result: 'unavailable', candidates: [], note: 'The server topic list could not be read completely, so absence is not proven.' } : check;
     if (record.origin === 'draft') {
       const sent = parseDraftFooter(String(entry.payload.description ?? ''));
       const ours = topics.filter(topic => {
@@ -84,11 +107,11 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
       });
       const strong = ours.filter(topic => author(topic.creation_author)).map(candidateOf);
       const weak = ours.filter(topic => !author(topic.creation_author)).map(candidateOf);
-      return verdict(strong, weak, at, weak.length ? 'Matching topics by another author need your decision.' : undefined);
+      return listed(verdict(strong, weak, at, weak.length ? 'Matching topics by another author need your decision.' : undefined));
     }
     const weak = topics.filter(topic => topic.title === entry.payload.title && author(topic.creation_author)
       && withinWindow(topic.creation_date, entry, now)).map(candidateOf);
-    return verdict([], weak, at, 'Flow writes carry no correlation marker; a title match is not proof.');
+    return listed(verdict([], weak, at, 'Flow writes carry no correlation marker; a title match is not proof.'));
   }
   const dependency = record.entries.find(item => item.id === entry.dependsOn);
   const topicGuid = entry.remoteTopicGuid ?? dependency?.receipt?.remoteGuid;

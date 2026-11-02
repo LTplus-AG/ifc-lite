@@ -22,6 +22,7 @@ import { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
 export { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
 import { confirmedOwnedFields, normalizeServerUrl, sameOwnedFields } from './outbox-plan.js';
 import { preflightPublication, type PreflightReport } from './outbox-preflight.js';
+import type { PublicationServerRules } from './outbox-server-rules.js';
 import { markBlocked, markDone, markFailed, markSending, markUncertain, replaceEntry, waitingOn } from './outbox-state.js';
 import { inFlightEntries, mutatePublication, readPublication } from './outbox-store.js';
 import type { BcfPublication, OutboxEntry, OutboxFailure, OutboxReceipt } from './outbox-types.js';
@@ -33,6 +34,8 @@ export interface PublicationConnection {
   client: PublicationClient;
   serverUrl: string;
   userId: string;
+  /** How this server departs from the BCF API; defaults to its profile (`publicationRules`). */
+  rules?: PublicationServerRules | null;
 }
 
 export interface DispatchOptions {

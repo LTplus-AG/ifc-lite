@@ -14,7 +14,7 @@ export type GaussianQualification = 'internal-unqualified';
  */
 export function resolveGaussianQualification(explicit?: GaussianQualification): GaussianQualification | undefined {
   if (explicit === 'internal-unqualified') return explicit;
-  return showcaseBuild() ? 'internal-unqualified' : undefined;
+  return gaussianShowcaseBuild() ? 'internal-unqualified' : undefined;
 }
 
 const ROTATE_X_180: readonly number[] = Object.freeze([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]);
@@ -25,10 +25,11 @@ const ROTATE_X_180: readonly number[] = Object.freeze([1, 0, 0, 0, 0, -1, 0, 0, 
  * contents, and public builds ignore it. The capture stays uncalibrated.
  */
 export function showcaseGaussianPlacement(): readonly number[] | undefined {
-  if (!showcaseBuild() || typeof window === 'undefined') return undefined;
+  if (!gaussianShowcaseBuild() || typeof window === 'undefined') return undefined;
   return new URLSearchParams(window.location.search).get('gaussianPlacement') === 'rx180' ? ROTATE_X_180 : undefined;
 }
 
-function showcaseBuild(): boolean {
+/** A build made for internal test/showcase use; never a public deployment. */
+export function gaussianShowcaseBuild(): boolean {
   return import.meta.env.VITE_GAUSSIAN_SPLATS === 'internal-unqualified';
 }

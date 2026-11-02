@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "typescript": "^5.3.0",
     "vitest": "^5.0.5"
   },

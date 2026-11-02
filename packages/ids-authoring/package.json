@@ -28,7 +28,7 @@
   "devDependencies": {
     "@ifc-lite/parser": "workspace:*",
     "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "fake-indexeddb": "^6.2.6",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

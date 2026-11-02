@@ -33,7 +33,7 @@
     "@mergifyio/vitest": "^2026.10.11",
     "@types/jsonld": "^1.5.15",
     "@types/n3": "^1.26.6",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

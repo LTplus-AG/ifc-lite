@@ -73,6 +73,8 @@ pub enum RetainedExecutionError {
     /// volume tolerance of its exact sweep (`chordal.rs`). Settled after
     /// every invocation returned; the worker stays healthy.
     ChordalVolume { entity: Option<u32> },
+    /// #7955: material the kernel left beyond a plane clip, past the volume limit (`clip_sliver.rs`).
+    ClipSliver { entity: Option<u32> },
     Stopped(ProgramStop),
     /// A presentation slice (M11) declined to attest the product: explicit
     /// absence with its typed origin, never a fabricated value.

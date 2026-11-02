@@ -1243,3 +1243,26 @@ The World view and WebGPU renderer use `DEFAULT_MIN_CAST_ALPHA` from
 casting. Geometry below this floor receives shadows without blocking direct
 sunlight. Opaque window frames and walls still cast; X-Ray ghost styling does
 not change a material’s shadow-casting classification.
+
+### Gaussian preparation and readiness
+
+`Renderer.getGaussianReadiness()` reports `initializing`, `blocked`, `lost`, or
+`disposed`, with the renderer's lifetime generation. A ready IFC renderer still
+reports Gaussian `blocked`: the exact mixed-transparency, scalable global-order,
+and native-viewer contracts are not qualified. No flag or successful decode
+changes that result. There is no production Gaussian upload/draw API yet.
+
+`normalizeGaussianAttributes({ count, shDegree, columns })` converts upstream
+PLY-space float32 columns to source-local render arrays. It exponentiates
+`scale_0..2`, applies the sigmoid to `opacity`, normalizes WXYZ `rot_0..3`, and
+converts `f_dc_0..2` to unclamped float RGBA radiance. The alpha channel is one;
+opacity remains separate. Non-DC `f_rest_*` columns are repacked from PLY
+channel-major order to row-major, basis-major RGB triplets. Missing, non-finite,
+degenerate, or non-representable covariance data throws. No coordinate flip,
+reconstruction scale, placement, or RTC translation is inferred. These transforms
+still require an explicit placement contract before upload.
+
+Normalization allocates independent CPU arrays and borrows the raw inputs without
+mutation or detachment. Ingestion owns decoded buffers; an eventual native adapter
+must own its uploaded buffers and ordering resources while borrowing the viewer's
+device, encoder and attachments. Successful normalization is not render readiness.

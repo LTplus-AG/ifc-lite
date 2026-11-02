@@ -1,6 +1,6 @@
 # buildagil openCDE API — findings & implementation
 
-Status: implemented; client issued 2026-11-02, live sign-in not yet shown. Code: `server/sources/buildagil-*.ts` + `api/buildagil.ts` (relay), `packages/source-buildagil` (provider). The viewer offers the source only when `VITE_BUILDAGIL_CLIENT_ID` is set.
+Status: implemented. Shown live on 2026-11-02 with a signed-in buildagil account: documents source sign-in, browsing and opening a model on `localhost:5000`, and the BCF topic API measured directly (reads and writes in a test project). Pulling and publishing BCF topics from the running viewer is not yet shown. Code: `server/sources/buildagil-*.ts` + `api/buildagil.ts` (relay), `packages/source-buildagil` (provider). The viewer offers the source only when `VITE_BUILDAGIL_CLIENT_ID` is set.
 
 ## What the API is
 
@@ -36,18 +36,17 @@ buildagil publishes an "openCDE API" based on buildingSMART's BCF and Documents 
 - **Sign-in in the source, not the BCF connection.** The provider implements interactive auth (PKCE popup, `@ifc-lite/oauth-pkce` `TokenManager` in `ctx.storage`). It returns to the viewer's generic `/oauth/bcf/callback` page, the callback registered with buildagil. A buildagil session does not occupy the viewer's single BCF connection, so a BIMcollab BCF connection and a buildagil documents session can coexist.
 - **One relay, declared in the manifest.** `permissions.relay` maps `https://openapi.buildagil.com` to `/api/buildagil`, so the provider names real URLs and the host rewrites them (as for Dalux). `api/buildagil.ts` has two route families:
   - `oauth2/token`: standard form grants (`authorization_code` with PKCE verifier and a registered `redirect_uri`, or `refresh_token`), exact field sets, this deployment's `client_id`, allowlisted `Origin`, same-origin `Sec-Fetch-Site`, posted to the one fixed token URL without following redirects. For the public client the grant is forwarded as is, without an `Origin`: buildagil's gateway answers a token request from an origin it has not allowlisted (`http://localhost:5000`, measured 2026-11-02) with an empty `200`, while one with no `Origin` reaches Entra. A deployment holding a confidential client sets `BUILDAGIL_CLIENT_SECRET` and the relay adds it. The upstream half is shared with the BIMcollab BCF token relay (`server/shared/oauth-token-forward.ts`).
-  - `1.0/…`: enumerated reads plus `POST 1.0/search`, caller bearer required, query keys allowlisted per route, header allowlists both ways, no cookies, streamed downloads. The bearer goes only to `openapi.buildagil.com`. A download redirected to `*.blob.core.windows.net` is followed without it; an Entra login redirect becomes `401`.
+  - `1.0/…`: enumerated reads (documents, projects, extensions, topics, comments, viewpoints and their parts), `POST 1.0/search`, and the topic writes: `POST` topics, comments and viewpoints, `PUT` topic. Search, topic and comment bodies are capped at 64 KiB, viewpoint bodies at 16 MiB; writes need an allowlisted Origin and JSON and never follow redirects. Caller bearer required, query keys allowlisted per route, header allowlists both ways, no cookies, streamed downloads. The bearer goes only to `openapi.buildagil.com`. A download redirected to `*.blob.core.windows.net` is followed without it; an Entra login redirect becomes `401`.
 - **Folders from one scan.** IFC documents are listed with a `file_type` filter (both cases) and paged by `creation_date` (`ge` the last seen, deduplicated by guid), which never changes mid-scan. The folder tree is derived from their paths (`flat-subtree`), cached for a minute, capped at 5000 documents.
 - **Revisions** are `version_index`; a named revision downloads exactly that version.
 
 ## To verify with a live account
 
-1. Code exchange and refresh through the relay for the public client: does Entra redeem the code server to server, or does the registration require a cross-origin (single-page-application) redemption, which only an allowlisted browser origin could make? How long do tokens live?
-2. Access-token claims: the scope maps to SharePoint (`.default`), so an Entra JWT with `oid` / `name` / `preferred_username` is expected; confirm.
-3. `file_type` values (case, dot) and the OData literal format for `creation_date ge …` (unquoted ISO 8601 assumed).
-4. Whether `$top` above 100 is honoured or capped. The scan uses 100, so it is correct either way, at the cost of more requests.
-5. Document content: direct bytes or a redirect to blob storage, and large models through the edge relay (support: large files are supported upstream).
-6. Search result shape for documents, and whether `folder_url` is present on hits.
+1. Token refresh after expiry through the relay (the code exchange works server to server with no secret and no `Origin`, shown live), and how long tokens live.
+2. `file_type` values beyond the lower-case extensions seen so far (the scan filters both cases). The date literal is settled: quoted and unquoted ISO timestamps both work (measured on topics).
+3. Whether `$top` above 100 is honoured or capped. The scan uses 100, so it is correct either way, at the cost of more requests.
+4. Document content: direct bytes or a redirect to blob storage, and large models through the edge relay (support: large files are supported upstream).
+5. Search result shape for documents, and whether `folder_url` is present on hits.
 
 
 ## BCF topics, measured live (2026-11-02, test project, signed-in account)

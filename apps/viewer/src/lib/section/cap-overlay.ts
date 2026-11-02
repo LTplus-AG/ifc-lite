@@ -18,6 +18,11 @@ function opaque(c: [number, number, number, number] | undefined): [number, numbe
   return c ? [c[0], c[1], c[2], 1] : undefined;
 }
 
+/** Whether a cut has anything to show: an open surface's cut is only lines (#8664). */
+export function capOverlayHasContent(cut: Pick<Cut, 'cutPolygons' | 'lines'>): boolean {
+  return cut.cutPolygons.length > 0 || cut.lines.some((line) => line.openSurfaceCut);
+}
+
 export function capOverlayInput(cut: Cut, showHiddenLines: boolean, fillMode: 'uniform' | 'element' = 'uniform'): { polygons: CutPolygon2D[]; lines: DrawingLine2D[] } {
   // Opaque base cross-sections FIRST (one per multi-material entity, built from the
   // watertight union so they always close). The overlay triangulates polygons in

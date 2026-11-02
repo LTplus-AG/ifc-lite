@@ -16,7 +16,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
 import { useViewerStore } from '@/store';
-import { capOverlayBasis, capOverlayInput } from '@/lib/section/cap-overlay';
+import { capOverlayBasis, capOverlayHasContent, capOverlayInput } from '@/lib/section/cap-overlay';
 import { capSignature } from '@/lib/section/section-cut-config';
 import { planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
@@ -120,7 +120,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
 
-    if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
+    if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && capOverlayHasContent(drawing2D) && show3DOverlay) {
       const { polygons, lines } = capOverlayInput(drawing2D, showHiddenLines, fillMode);
       const customPlane = capOverlayBasis(sectionPlane.custom);
 
@@ -151,7 +151,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     for (const plane of shown) {
       const cap = extraCaps[plane.id];
       if (!cap || !cap.signature.endsWith(`:${capSignature(plane)}`)) continue;
-      if (cap.cutPolygons.length === 0) { renderer.clearSection2DOverlay(plane.id); continue; }
+      if (!capOverlayHasContent(cap)) { renderer.clearSection2DOverlay(plane.id); continue; }
       const { polygons, lines } = capOverlayInput(cap, showHiddenLines, fillMode);
       renderer.uploadSection2DOverlay(
         polygons, lines, plane.axis, plane.position, planeRange(plane, sectionBoundsRef?.current) ?? undefined,

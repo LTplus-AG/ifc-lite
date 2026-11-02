@@ -18,7 +18,7 @@ import {
   renderTitleBlock,
   exportToDXF,
   formatScaleFactorLabel,
-  makeEntityKey,
+  makeEntityKey, isPolygonCutLine,
   fitRasterPixels,
   type RasterFit,
   type Drawing2D,
@@ -425,8 +425,7 @@ function useDrawingExport({
 
     svg += '  <g id="drawing-lines">\n';
     for (const line of drawing.lines) {
-      // Skip 'cut' lines - they're triangulation edges, already handled by polygons
-      if (line.category === 'cut') continue;
+      if (isPolygonCutLine(line)) continue;
 
       // Skip hidden lines if not showing
       if (!displayOptions.showHiddenLines && line.visibility === 'hidden') continue;
@@ -447,6 +446,7 @@ function useDrawingExport({
       let dashArray = '';
 
       switch (line.category) {
+        case 'cut': lineWidth = 0.5; break;
         case 'projection':
           lineWidth = 0.25;
           strokeColor = '#000000';
@@ -762,7 +762,7 @@ function useDrawingExport({
 
     svg += '    <g id="drawing-lines">\n';
     for (const line of drawing.lines) {
-      if (line.category === 'cut') continue;
+      if (isPolygonCutLine(line)) continue;
       if (!displayOptions.showHiddenLines && line.visibility === 'hidden') continue;
 
       const { start, end } = line.line;
@@ -775,6 +775,7 @@ function useDrawingExport({
       let dashArray = '';
 
       switch (line.category) {
+        case 'cut': lineWidth = 0.5; break;
         case 'projection': lineWidth = 0.25; break;
         case 'hidden': lineWidth = 0.18; strokeColor = '#666666'; dashArray = '1 0.5'; break;
         case 'silhouette': lineWidth = 0.35; break;
@@ -1112,7 +1113,7 @@ function useDrawingExport({
         // Drawing lines (projection/hidden/silhouette/crease/boundary).
         for (const line of drawing.lines) {
           if (
-            line.category === 'cut' &&
+            isPolygonCutLine(line) &&
             entitiesWithCutPolygon.has(makeEntityKey(line.modelIndex, line.entityId))
           ) {
             continue;

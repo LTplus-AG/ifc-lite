@@ -33,10 +33,10 @@ const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
-/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[] }} pr */
+/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string }} pr */
 function matches(cond, pr) {
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
-  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=)(.*)$/.exec(cond) ?? [];
+  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
   const hit = {
     draft: () => pr.draft,
@@ -44,6 +44,7 @@ function matches(cond, pr) {
     'label=': () => pr.labels.includes(arg),
     // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
     'files~=': () => pr.files.some((f) => new RegExp(arg).test(f)),
+    'head=': () => pr.head === arg,
   }[kind]();
   return negated ? !hit : hit;
 }
@@ -61,7 +62,8 @@ function queueFor(pr) {
   assert.equal(rules[0].actions.queue.name, queues[0].name, 'the routing rule names the queue that admits the PR');
   return queues[0];
 }
-const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, ...extra });
+const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', ...extra });
+const RELEASE = 'changeset-release/main';
 
 test('a lowering PR like #8459 is queued alone, for every committed ceiling family', () => {
   assert.ok(CEILING_FILES.length > 0, 'tests/perf-ratchets holds ceiling files');
@@ -80,6 +82,24 @@ test('ordinary PRs keep batching; drafts and unlabelled PRs are not queued', () 
   assert.ok(queueFor(pr(['scripts/perf-ratchet/lower.mjs'])).batch_size > 1, 'the ratchet scripts are code, not ceilings');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { draft: true })), null);
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { labels: [] })), null);
+});
+
+test('the Version Packages PR is queued alone, never batched with PRs carrying changesets (#8630)', () => {
+  const release = queueFor(pr(['.changeset/x.md', 'packages/parser/package.json', 'Cargo.toml'], { head: RELEASE }));
+  assert.equal(release.batch_size, 1);
+  assert.equal(release.name, 'release');
+  assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { head: RELEASE })).name, 'release', 'even if it ever touches a ceiling');
+  assert.notEqual(queueFor(pr(['.changeset/x.md'])).name, 'release', 'a PR adding a changeset is ordinary work');
+  assert.equal(queueFor(pr(['Cargo.toml'], { head: RELEASE, draft: true })), null, 'a stale, drafted release leaves the queue');
+});
+
+test('the Version Packages PR goes first, interrupting checks, so it is tested on main itself', () => {
+  const rules = (cfg.priority_rules ?? []).filter((r) => all(r.conditions, pr(['Cargo.toml'], { head: RELEASE })));
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].allow_checks_interruption, true);
+  const top = Math.max(...(cfg.priority_rules ?? []).map((r) => (typeof r.priority === 'number' ? r.priority : 0)));
+  assert.equal(rules[0].priority, top, 'no rule outranks the release');
+  assert.equal((cfg.priority_rules ?? []).filter((r) => all(r.conditions, pr(['x.ts']))).length, 0, 'ordinary PRs get no priority');
 });
 
 test('the ceilings queue is not a weaker gate: every queue requires the same full-lane checks', () => {

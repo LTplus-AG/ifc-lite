@@ -160,6 +160,23 @@ export function parseDeclarations({ title = '', body = '', labels = [] } = {}) {
   return { all: byLabel || byTitle, reason: byLabel ? `label ${EXEMPT_LABEL}` : byTitle ? 'a revert title' : null, prs };
 }
 
+/**
+ * The same split for a Mergify batch draft, whose text declares nothing. Each queued PR
+ * answers only for the files its own merge step changed, and a finding is declared only
+ * when every PR that touched a restored file declares it: a neighbour's `revert:` title
+ * or `Reverts #N` line never covers another PR's undeclared revert.
+ * @param {Array<{pr:number,declarations:ReturnType<typeof parseDeclarations>,paths:Set<string>}>} sources
+ */
+export function applyBatchDeclarations(findings, sources) {
+  const isDeclared = (f) => {
+    const accountable = sources.filter((s) => f.restored.some((r) => s.paths.has(r.path)));
+    return accountable.length > 0 && accountable.every((s) => s.declarations.all || (f.pr !== null && s.declarations.prs.has(f.pr)));
+  };
+  const declared = findings.filter(isDeclared);
+  const undeclared = findings.filter((f) => !declared.includes(f));
+  return { undeclared, declared, reason: declared.length ? "the queued PRs' own declarations" : null };
+}
+
 /** Split findings into those the PR declared and those it did not. */
 export function applyDeclarations(findings, declarations) {
   if (declarations.all) return { undeclared: [], declared: findings, reason: declarations.reason };

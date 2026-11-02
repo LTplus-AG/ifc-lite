@@ -315,6 +315,7 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   assert.ok(abovePlaneUnclipped > 0, 'unclipped rays never snapped above the plane, so the clip check is vacuous');
   assert.equal(removed, 0, 'a snap target lies in the half-space the section removed');
   assert.ok(contour > 0, 'no ray reached the cut contour');
+  assert.ok(fromInside > 0, 'no ray entered a cut solid, so the contour check below is vacuous');
   assert.ok(fromInsideContour * 2 >= fromInside, `only ${fromInsideContour} of ${fromInside} rays into a cut solid reached its contour`);
   console.log(`  ok section through ${cuts} meshes: 0 removed targets (${abovePlaneUnclipped} without the clip), ${contour} contour snaps (${fromInsideContour} of ${fromInside} from inside the cut)`);
   checks++;

@@ -1097,6 +1097,139 @@
         "source_method": "capture",
         "metadata_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/textile_ball/meta.json"
       }
+    },
+    {
+      "path": "gaussian/delft-aula-library-v1.ply",
+      "size": 493823100,
+      "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://osf.io/p3cw7/",
+          "version": "OSF file 73wq8 version 1",
+          "fetched_at": "2026-11-02",
+          "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a",
+          "artifacts": [
+            {
+              "path": "Aula-Library.ply",
+              "url": "https://osf.io/download/73wq8/?version=1",
+              "size": 493823100,
+              "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Yu, Y. (2025). 3D Gaussian Splatting for Modern Architectural Heritage: Integrating UAV-Based Data Acquisition and Advanced Photorealistic 3D Techniques [Data set]. OSF. https://doi.org/10.17605/OSF.IO/P3CW7",
+          "evidence_url": "https://osf.io/download/kjtfb/?version=1",
+          "evidence_sha256": "ceb907f9b6e12cdfb8fa258b0f5be1fd828ef755a3bd854a0c37b4c55892e58d"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 1991216,
+        "sh_degree": 3,
+        "nonzero_sh": true,
+        "units": "Unknown reconstruction units; not survey calibrated",
+        "up_axis": "Unverified source frame; inspect before viewer placement",
+        "source_method": "Real UAV and ground RGB photography; publisher Postshot reconstruction; unmodified Gaussian PLY",
+        "metadata_url": "https://api.osf.io/v2/files/680786679faab7a7f7b7d175/"
+      }
+    },
+    {
+      "path": "gaussian/seem-kirke-v1.ply",
+      "size": 226795353,
+      "sha256": "9178c73620ac6dd1e18f4b91870d71b7e06ded83d4beb0344ba8aa90630ab228",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://superspl.at/scene/e832997f",
+          "version": "SuperSplat scene e832997f v1",
+          "sha256": "29d26ce46ef80eec801b41fe27f04c8d31a77aa929f25112d6cd0b10cbb02f65",
+          "fetched_at": "2026-11-02",
+          "artifacts": [
+            {
+              "path": "meta.json",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json",
+              "size": 10794,
+              "sha256": "29d26ce46ef80eec801b41fe27f04c8d31a77aa929f25112d6cd0b10cbb02f65"
+            },
+            {
+              "path": "means_l.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_l.webp",
+              "size": 2684042,
+              "sha256": "4af1a1be093c613ad48083bb206758d6001b109c30698a3d7a19e0468fb9acc9"
+            },
+            {
+              "path": "means_u.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_u.webp",
+              "size": 465414,
+              "sha256": "da31d2d59c8ecac55811da5a14d2c02f39eaed9edbfc996e5846ff271c5c8d86"
+            },
+            {
+              "path": "scales.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/scales.webp",
+              "size": 2662990,
+              "sha256": "7016723d4f6b14cd50772eed2c9606c3cbf13ee4a716aae80cf0ad33ed1c1964"
+            },
+            {
+              "path": "quats.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/quats.webp",
+              "size": 2717980,
+              "sha256": "b044c8876ed8ca5641ab36b3ba70cfa8d7c0ff05c5925eb29ff6e3450672bd16"
+            },
+            {
+              "path": "sh0.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/sh0.webp",
+              "size": 3321348,
+              "sha256": "c2bb729c7972291fd527895103ea161969f43342ef7995310c62105d15a3d1f9"
+            },
+            {
+              "path": "shN_centroids.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_centroids.webp",
+              "size": 82,
+              "sha256": "860ee94ae09eb7c37ca5d0adbfefcb53a956ecedd6a1202936267f53601d5608"
+            },
+            {
+              "path": "shN_labels.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_labels.webp",
+              "size": 90,
+              "sha256": "08ff45f6153bdd3e11d656ff3387144382443caa285271052ed832571b9b181a"
+            },
+            {
+              "path": "settings.json",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/settings.json",
+              "size": 671,
+              "sha256": "13a94d36f0d6e3af14f41c5e25755a86c53c6c0c63dc1cc5fe7d2f07d1e48956"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Seem Kirke, Danmark by Peter Rødsgaard Rasmussen (roedsgaard), https://superspl.at/scene/e832997f. CC BY 4.0. Converted from the published quantized SOG v1 to uncompressed PLY with @playcanvas/splat-transform 3.10.3; no geometry edits or calibration.",
+          "evidence_url": "https://superspl.at/scene/e832997f",
+          "evidence_sha256": "1cfa5628d3e9fa96c6cdff97dbdf2b6711cadbacfcecbaa4633b230558755c2f"
+        },
+        "modification": {
+          "status": "modified",
+          "description": "Offline splat-transform 3.10.3 (4f90012): splat-transform seem-kirke-v1/meta.json seem-kirke-v1.ply. Expands published quantized SOG to float PLY; retains 45 zero higher-order channels. Not lossless original captured PLY; no SOG launch support."
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 960991,
+        "sh_degree": 3,
+        "nonzero_sh": false,
+        "units": "Unknown reconstruction units; not survey calibrated",
+        "up_axis": "Source reconstruction frame; publisher camera is in its viewer frame, verify conversion before reuse",
+        "source_method": "DJI drone photographs, RealityScan alignment, LichtFeld Studio training; publisher SOG export splat-transform v2.0.6; offline PLY derivative v3.10.3",
+        "metadata_url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json"
+      }
     }
   ]
 }

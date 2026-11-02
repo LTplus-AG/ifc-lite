@@ -53,7 +53,13 @@ export async function journey(ctx) {
   };
   if (await offered('inspect', 'Show capture details')) {
     await ctx.step('inspect', 'Inspect: capture details (uncalibrated, explicit placement)', async () => {
-      await row('Show capture details').click(); await ctx.hold(5000);
+      await row('Show capture details').click();
+      // An open sidebar slows camera motion in this build, so it opens only to inspect.
+      const expand = row('Expand sidebar');
+      const collapsed = await expand.isVisible().catch(() => false);
+      if (collapsed) await expand.click();
+      await ctx.hold(5000);
+      if (collapsed) { await row('Collapse sidebar to icons').click(); await ctx.hold(600); }
     });
   }
   if (await offered('visibility', 'Hide capture')) {

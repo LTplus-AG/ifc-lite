@@ -44,7 +44,9 @@
  *               this and never the event payload, which is frozen when the run is
  *               created: a re-run would judge the old title, and a `Reverts #N`
  *               line added to a failed PR would never be seen. An API failure
- *               exits 2.
+ *               exits 2. A Mergify batch draft (`mergify/merge-queue/*`, opened by
+ *               Mergify) carries no declaration of its own, so each queued PR on
+ *               its first-parent chain is read instead; see `applyBatchDeclarations`.
  *   Without --pr, declarations come from --title/--body/--label, then
  *   PR_TITLE / PR_BODY / PR_LABELS (a JSON array), then the head commit's own
  *   message for a local run.
@@ -59,6 +61,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_MIN_FILES,
   DEFAULT_WINDOW,
+  applyBatchDeclarations,
   applyDeclarations,
   findSilentReverts,
   formatFailure,
@@ -68,6 +71,7 @@ import {
 } from './lib/silent-revert.mjs';
 import { gh } from './lib/gh.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { isBatchBranch } from './ci-pr-lane.mjs';
 
 class Unevaluable extends Error {}
 
@@ -137,14 +141,14 @@ function mergedChange(git, base, head) {
   return { net, mergeBase: mb.out.trim(), moved };
 }
 
-export function evaluate({ git, base, head, window, minFiles, declarations }) {
+export function evaluate({ git, base, head, window, minFiles, declarations, judge = (found) => applyDeclarations(found, declarations) }) {
   const { net, mergeBase, moved } = mergedChange(git, base, head);
   // Attribute against the larger of "the last N" and "everything since the merge base";
   // look back another N beyond that so the un-revert rule can see the commit it repairs.
   const attributable = Math.max(window, moved);
   const commits = loadCommits(git, base, attributable + window);
   const findings = findSilentReverts({ net, commits, attributable, minFiles });
-  const { undeclared, declared, reason } = applyDeclarations(findings, declarations);
+  const { undeclared, declared, reason } = judge(findings);
   return { netFiles: net.size, examined: Math.min(attributable, commits.length), mergeBase, moved, findings, undeclared, declared, reason };
 }
 
@@ -191,13 +195,39 @@ function parseArgs(argv) {
   return o;
 }
 
-function livePr(o) {
+function readPr(o, number) {
   if (!o.repo) throw new Unevaluable('--pr needs --repo owner/name (or GITHUB_REPOSITORY) to read the PR');
   let pr;
-  try { pr = gh(['api', `repos/${o.repo}/pulls/${o.pr}`], `PR #${o.pr}`); }
-  catch (err) { throw new Unevaluable(`could not read PR #${o.pr} from the API, so its declarations are unknown: ${err.message}`); }
-  if (typeof pr?.title !== 'string' || !Array.isArray(pr.labels)) throw new Unevaluable(`the API's answer for PR #${o.pr} carried no title/labels`);
-  return { title: pr.title, body: pr.body ?? '', labels: pr.labels.map((l) => l.name), source: `PR #${o.pr} as read live from the API` };
+  try { pr = gh(['api', `repos/${o.repo}/pulls/${number}`], `PR #${number}`); }
+  catch (err) { throw new Unevaluable(`could not read PR #${number} from the API, so its declarations are unknown: ${err.message}`); }
+  if (typeof pr?.title !== 'string' || !Array.isArray(pr.labels)) throw new Unevaluable(`the API's answer for PR #${number} carried no title/labels`);
+  return pr;
+}
+
+function livePr(o) {
+  const pr = readPr(o, o.pr);
+  // Author and branch together: anyone with push access can name a branch like Mergify's.
+  const batch = pr.user?.login === 'mergify[bot]' && isBatchBranch(pr.head?.ref) && pr.head?.repo?.full_name === o.repo;
+  return { title: pr.title, body: pr.body ?? '', labels: pr.labels.map((l) => l.name), batch, source: `PR #${o.pr} as read live from the API` };
+}
+
+/**
+ * The PRs a batch draft carries, oldest first, from its own history: the metadata in
+ * its body lists only this batch, but the tip also holds the PRs queued ahead of it.
+ * Any other commit on the chain is a source nobody can read, so it refuses.
+ */
+function batchSources(git, o) {
+  const chain = git(['log', '--first-parent', '--reverse', '--format=%H%x1f%P%x1f%s', `${o.base}..${o.head}`]).out.split('\n').filter(Boolean);
+  if (!chain.length) throw new Unevaluable(`Mergify draft #${o.pr} has no commits over ${o.base}, so no queued PR can declare anything`);
+  return chain.map((line) => {
+    const [sha, parents, subject] = line.split('\x1f');
+    const number = /^Merge of #(\d+)$/.exec(subject)?.[1];
+    if (!number) throw new Unevaluable(`Mergify draft #${o.pr} carries ${sha.slice(0, 10)} "${subject}", not a \`Merge of #N\` commit, so its source PR is unknown`);
+    const pr = readPr(o, Number(number));
+    const declarations = parseDeclarations({ title: pr.title, body: pr.body ?? '', labels: pr.labels.map((l) => l.name) });
+    const changes = commitChanges(git, { sha, firstParent: parents.split(' ')[0] });
+    return { pr: Number(number), declarations, paths: new Set(changes.keys()) };
+  });
 }
 
 function declarationInputs(o, git) {
@@ -241,12 +271,18 @@ function main(argv) {
 
   const decl = declarationInputs(o, git);
   const declarations = parseDeclarations(decl);
-  const r = evaluate({ git, base: o.base, head: o.head, window: o.window, minFiles: o.minFiles, declarations });
+  const judge = decl.batch ? (found) => {
+    if (!found.length) return applyDeclarations(found, declarations);
+    const sources = batchSources(git, o);
+    decl.source = `queued ${sources.map((s) => `#${s.pr}`).join(', ')} behind Mergify draft #${o.pr}, read live from the API`;
+    return applyBatchDeclarations(found, sources);
+  } : undefined;
+  const r = evaluate({ git, base: o.base, head: o.head, window: o.window, minFiles: o.minFiles, declarations, judge });
   if (o.json) { console.log(JSON.stringify({ ...r, findings: undefined, declared: r.declared.map((f) => f.sha), undeclared: r.undeclared })); }
   const scope = `${r.netFiles} file(s) changed by the merge against ${o.base}; ${r.examined} base commit(s) examined (merge base ${r.mergeBase.slice(0, 10)}, base moved ${r.moved} since).`;
   if (r.undeclared.length) {
     const text = formatFailure(r.undeclared, o.base);
-    console.error(`check-silent-revert: ${scope}\n\n${text}`);
+    console.error(`check-silent-revert: ${scope}${decl.batch ? ` Judged on the declarations of ${decl.source}.` : ''}\n\n${text}`);
     if (process.env.GITHUB_ACTIONS === 'true') console.error(`::error title=Silent revert::${r.undeclared.map((f) => `${f.restored.length} files of ${f.pr === null ? f.sha.slice(0, 10) : `#${f.pr}`} restored`).join('; ')}. See the job log.`);
     summarize(['### Silent revert', '```', text, '```']);
     return 1;

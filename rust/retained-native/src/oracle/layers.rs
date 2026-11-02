@@ -50,7 +50,7 @@ pub fn explain_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips_or
             let (a,b)=if sigma*usage.sense>0. {(next.unwrap_or(inner).max(inner),previous.unwrap_or(outer).min(outer))}
                 else {(previous.unwrap_or(inner).max(inner),next.unwrap_or(outer).min(outer))};
             if a>=b {result.push(0.);continue;}
-            let band=radial_band(&host,a,b).ok_or("curved_band")?;
+            let band=super::layer_sector::radial_band(&host,a,b).ok_or("curved_band")?;
             result.push(super::openings::cut_prisms_volume(vec![band],cuts.clone()).ok_or("curved_band_integral")?);
         }
         (result,true)
@@ -115,21 +115,4 @@ fn sector(host: &Prism,center:[f64;3]) -> Option<(f64,f64)> {
         radii.push(r);
     }
     Some((radii[0].min(radii[1]),radii[0].max(radii[1])))
-}
-fn radial_band(host: &Prism,inner:f64,outer:f64) -> Option<Prism> {
-    let edges=&host.loops[0].1;
-    let mut result=Vec::new();
-    let arcs:Vec<_>=edges.iter().filter(|e|matches!(e,Edge::Arc{..})).collect();
-    let radius=|e:&Edge|match e {Edge::Arc{u,..}=>u[0].hypot(u[1]),_=>0.};
-    let minimum=arcs.iter().map(|e|radius(e)).fold(f64::INFINITY,f64::min);
-    for edge in edges {
-        if let Edge::Arc{c,u,v,a,sweep}=*edge {
-            let r=radius(edge); let target=if r==minimum {inner} else {outer};
-            result.push(Edge::Arc{c,u:u.map(|x|x*target/r),v:v.map(|x|x*target/r),a,sweep});
-        }
-    }
-    if result.len()!=2 {return None;}
-    let first=result.remove(0); let second=result.remove(0);
-    let e1=Edge::Line(first.point(1.),second.point(0.)); let e2=Edge::Line(second.point(1.),first.point(0.));
-    Some(Prism{loops:vec![(true,vec![first,e1,second,e2])],low:host.low,high:host.high,start:host.start})
 }

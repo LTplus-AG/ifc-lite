@@ -1,0 +1,11 @@
+diff --git a/rust/retained-native/src/oracle/face_set_zero_rows.rs b/rust/retained-native/src/oracle/face_set_zero_rows.rs
+index 6892c29cab..794cc05326 100644
+--- a/rust/retained-native/src/oracle/face_set_zero_rows.rs
++++ b/rust/retained-native/src/oracle/face_set_zero_rows.rs
+@@ -39,5 +39,5 @@ pub fn explained_open_edges(set: &AuthoredFaceSet, positions: &[f64], indices: &
+     let dropped_have_no_area = set.rows.iter().enumerate()
+         .all(|(k, row)| published.contains(&k) || row.area_m2 == Some(0.));
+     let left = open_of(published.iter().filter_map(|k| set.row_edges.get(*k)).flatten());
+-    dropped_have_no_area.then_some(open.len())
++    (dropped_have_no_area && open == left).then_some(open.len())
+ }

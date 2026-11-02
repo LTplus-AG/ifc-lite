@@ -47,7 +47,7 @@ pub fn expectations_and_gaps(
         if !cuts.is_empty() {
             let expected = openings::expected(sources, host, &cuts).or_else(|| {
                 ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts)
-            });
+            }).or_else(|| openings::expected_with_face_set_cutters(&source, sources, host, &cuts));
             if expected.as_ref().is_none_or(|e| e.result_volume.is_none()) { gaps.insert(host, gap_reason(sources, host, &cuts)); }
             result.insert(host, expected);
         }

@@ -14,6 +14,7 @@ mod prism;
 pub mod quantities;
 
 pub mod sections;
+mod section_net;
 mod sections_source;
 pub mod layers;
 pub mod clips;

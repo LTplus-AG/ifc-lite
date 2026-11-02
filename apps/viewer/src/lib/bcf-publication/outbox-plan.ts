@@ -30,6 +30,17 @@ export function ownedFields(dto: Readonly<Record<string, unknown>> | undefined):
   return owned;
 }
 
+/**
+ * Owned fields as the server stored them after a topic write: the response's
+ * value wherever it states a field (null included, which a server uses for a
+ * value it would not keep), the sent value only where the response omits it.
+ */
+export function confirmedOwnedFields(response: Readonly<Record<string, unknown>>, sent: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const stored: Record<string, unknown> = {};
+  for (const field of OWNED_FIELDS) stored[field] = Object.hasOwn(response, field) ? response[field] : sent[field];
+  return ownedFields(stored);
+}
+
 export function sameOwnedFields(left: Readonly<Record<string, unknown>> | undefined, right: Readonly<Record<string, unknown>> | undefined): boolean {
   return JSON.stringify(ownedFields(left)) === JSON.stringify(ownedFields(right));
 }
@@ -112,7 +123,8 @@ export async function planDraftPublication(batch: DraftBatch, existing: BcfPubli
         && item.state !== 'done' && item.state !== 'failed');
       if (!sameOwnedFields(published?.payload, write)) {
         if (pending >= 0 && entries[pending].state === 'queued') entries[pending] = withPayload(entries[pending], write);
-        else if (pending < 0) entries.push(entry('updateTopic', topic.guid, write, { dependsOn: create.id, baseline: ownedFields(published?.payload) }));
+        else if (pending < 0) entries.push(entry('updateTopic', topic.guid, write, { dependsOn: create.id,
+          baseline: published?.receipt?.fields ?? ownedFields(published?.payload) }));
       }
     }
     if (topic.viewpoint && !entries.some(item => item.operation === 'createViewpoint' && item.subject === topic.viewpoint?.guid)) {

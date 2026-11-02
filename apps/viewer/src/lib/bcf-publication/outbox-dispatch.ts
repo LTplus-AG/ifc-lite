@@ -17,10 +17,10 @@
  * second 401 is recorded as a definite `auth` failure.
  */
 
-import type { BcfApiClient, BcfCommentWriteDto, BcfRequestOptions, BcfTopicWriteDto, BcfViewpointDto } from '@ifc-lite/bcf-api';
+import type { BcfApiClient, BcfCommentWriteDto, BcfRequestOptions, BcfTopicDto, BcfTopicWriteDto, BcfViewpointDto } from '@ifc-lite/bcf-api';
 import { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
 export { classifyWriteError } from '@ifc-lite/flow-nodes/bcf-publication';
-import { normalizeServerUrl, sameOwnedFields } from './outbox-plan.js';
+import { confirmedOwnedFields, normalizeServerUrl, sameOwnedFields } from './outbox-plan.js';
 import { preflightPublication, type PreflightReport } from './outbox-preflight.js';
 import { markBlocked, markDone, markFailed, markSending, markUncertain, replaceEntry, waitingOn } from './outbox-state.js';
 import { inFlightEntries, mutatePublication, readPublication } from './outbox-store.js';
@@ -73,11 +73,11 @@ async function prepare(connection: PublicationConnection, record: BcfPublication
   const projectId = record.target.projectId;
   const receipt = (remoteGuid: string, topicActions?: string[] | null): OutboxReceipt =>
     ({ remoteGuid, at, evidence: 'response', ...(Array.isArray(topicActions) ? { topicActions: [...topicActions] } : {}) });
+  // A topic write's receipt keeps what the server stored, the baseline of the next update's conflict check.
+  const topicReceipt = (written: BcfTopicDto): OutboxReceipt => ({ ...receipt(written.guid, written.authorization?.topic_actions),
+    fields: confirmedOwnedFields(written as unknown as Record<string, unknown>, entry.payload) });
   if (entry.operation === 'createTopic') {
-    return { send: async options => {
-      const created = await client.createTopic(projectId, entry.payload as unknown as BcfTopicWriteDto, options);
-      return receipt(created.guid, created.authorization?.topic_actions);
-    } };
+    return { send: async options => topicReceipt(await client.createTopic(projectId, entry.payload as unknown as BcfTopicWriteDto, options)) };
   }
   const topic = remoteTopic(record, entry);
   if (!topic.guid) return { refuse: { code: 'rejected', message: 'The server topic of this entry is unknown.', at } };
@@ -90,10 +90,7 @@ async function prepare(connection: PublicationConnection, record: BcfPublication
     const refusal = denied('update', remote.authorization?.topic_actions);
     if (refusal) return refusal;
     if (!entry.force && !sameOwnedFields(remote as unknown as Record<string, unknown>, entry.baseline)) return { block: 'remote-conflict' };
-    return { send: async options => {
-      const updated = await client.updateTopic(projectId, topicGuid, entry.payload as unknown as BcfTopicWriteDto, options);
-      return receipt(updated.guid, updated.authorization?.topic_actions);
-    } };
+    return { send: async options => topicReceipt(await client.updateTopic(projectId, topicGuid, entry.payload as unknown as BcfTopicWriteDto, options)) };
   }
   if (entry.operation === 'createComment') {
     const refusal = denied('createComment', topic.actions);

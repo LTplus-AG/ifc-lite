@@ -31,6 +31,13 @@ export interface OutboxReceipt {
   evidence: 'response' | 'lookup' | 'user-choice';
   /** `authorization.topic_actions` the server reported for a created topic. */
   topicActions?: string[];
+  /**
+   * Owned topic fields as the server stored them, read from a topic write's
+   * response (sent values only where the response omits a field). A server
+   * may normalise what it keeps, e.g. drop a status the topic type has none
+   * of, so the next update's conflict baseline is this, not the payload.
+   */
+  fields?: Record<string, unknown>;
 }
 
 export interface OutboxFailure {

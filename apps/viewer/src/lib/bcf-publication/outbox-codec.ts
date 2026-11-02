@@ -18,9 +18,11 @@ const optional = (value: unknown, max: number) => value === undefined || isText(
 function receipt(value: unknown): OutboxReceipt | null {
   if (!isRecord(value) || !isText(value.remoteGuid, 200) || !isText(value.at, 40)
     || !['response', 'lookup', 'user-choice'].includes(String(value.evidence))
-    || value.topicActions !== undefined && !strings(value.topicActions)) return null;
+    || value.topicActions !== undefined && !strings(value.topicActions)
+    || value.fields !== undefined && !isRecord(value.fields)) return null;
   return { remoteGuid: value.remoteGuid, at: value.at, evidence: value.evidence as OutboxReceipt['evidence'],
-    ...(value.topicActions ? { topicActions: [...value.topicActions as string[]] } : {}) };
+    ...(value.topicActions ? { topicActions: [...value.topicActions as string[]] } : {}),
+    ...(value.fields !== undefined ? { fields: JSON.parse(JSON.stringify(value.fields)) as Record<string, unknown> } : {}) };
 }
 
 function failure(value: unknown): OutboxFailure | null {

@@ -15,6 +15,7 @@ import { connectPeer, entriesOf, publish, reviewedBatch } from '@/test/bcf-publi
 import { bcfServerProfile } from '@/services/bcf-server-profiles';
 import { editDraftTopic } from '../bcf-drafts/draft-edit';
 import { checkEntry } from './outbox-check';
+import { planDraftPublication } from './outbox-plan';
 import { publishDraftBatch } from './outbox-publish';
 import { readPublication } from './outbox-store';
 
@@ -143,6 +144,19 @@ test('a recovered create whose server leaves the dropped status out keeps no sta
   assert.ok(edited.ok);
   const second = await publishDraftBatch(edited.batch, peer.target, connection);
   assert.deepEqual(second?.report.blocked, [], 'no false remote conflict');
+});
+
+test('an unsent update that no longer differs from the published topic is dropped from the plan (#8656 review)', async t => {
+  // Any server: publish, plan an edit without sending it, then revert the edit before publishing.
+  const peer = await connectPeer(t);
+  const batch = await reviewedBatch();
+  const first = await publish(batch, peer);
+  const edited = editDraftTopic(batch, batch.topics[0].guid, { title: 'Riser (resized sleeves)' });
+  assert.ok(edited.ok);
+  const planned = await planDraftPublication(edited.batch, first.record, peer.target);
+  assert.equal(planned.record.entries.filter(entry => entry.operation === 'updateTopic' && entry.state === 'queued').length, 1, 'the edit queues an update');
+  const reverted = await planDraftPublication(batch, planned.record, peer.target);
+  assert.deepEqual(reverted.record.entries.filter(entry => entry.operation === 'updateTopic'), [], 'the reverted edit leaves no update behind');
 });
 
 const BUILDAGIL_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];

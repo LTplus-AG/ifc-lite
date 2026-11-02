@@ -8,8 +8,6 @@
 // diagnostics of one take, never performance evidence.
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
-import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -17,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { showcaseCredits } from './showcase-credits.mjs';
+import { sha256File, verifiedFixture } from './showcase-fixture.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const repo = resolve(root, '../..');
@@ -34,17 +33,8 @@ if (!['turntable', 'stills', 'record'].includes(args.mode)) throw new Error(`unk
 const cdp = process.env.IFC_GPU_CDP_URL;
 if (!cdp) throw new Error('IFC_GPU_CDP_URL is not set: run under ~/build-workers/ifc-gpu-check for a hardware Chrome');
 
-const manifest = JSON.parse(await readFile(join(repo, 'tests/models/manifest.json'), 'utf8'));
-const entry = manifest.files.find(file => file.path === `gaussian/${args.asset}`);
-if (!entry?.gaussian) throw new Error(`gaussian/${args.asset} is not a catalogued Gaussian fixture`);
+const { entry, localPath } = await verifiedFixture(args.asset, assets);
 const credits = showcaseCredits(entry);
-const sha256File = path => new Promise((done, fail) => {
-  const hash = createHash('sha256');
-  createReadStream(path).on('data', chunk => hash.update(chunk)).on('error', fail).on('end', () => done(hash.digest('hex')));
-});
-const localPath = join(assets, args.asset);
-const localSha = await sha256File(localPath);
-if (localSha !== entry.sha256) throw new Error(`${localPath} SHA-256 ${localSha} differs from the manifest`);
 await mkdir(args.out, { recursive: true });
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' }).trim();
 const pkg = async name => JSON.parse(await readFile(join(root, 'node_modules', name, 'package.json'), 'utf8')).version;

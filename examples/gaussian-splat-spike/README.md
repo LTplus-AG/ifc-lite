@@ -112,6 +112,42 @@ frames are interpolated or duplicated. The untouched master stays alongside.
 Keep recordings and stills outside Git. The first take's evidence and stills are in
 [`docs/architecture/evidence/8567-showcase-research-preview`](../../docs/architecture/evidence/8567-showcase-research-preview/README.md).
 
+## Integrated-viewer recording (#8567)
+
+`record-integrated.mjs` records the **real ifc-lite viewer** rather than this
+spike. It needs a viewer production bundle built with
+`VITE_GAUSSIAN_SPLATS=internal-unqualified`, and that build exists only on the
+Gaussian integration branches. Serve the bundle with `vite preview`, then run
+the recorder under `ifc-gpu-check`:
+
+- **Load:** the capture enters the viewer's own `#file-input-open` through
+  `DOM.setFileInputFiles`, so it takes the canonical `useIfcLoader.loadFile`
+  path.
+- **Input:** the camera moves only by real mouse and wheel events.
+- **Capture:** a CDP page screencast records the UI and WebGPU canvas together
+  on wall-clock timestamps.
+- **Journey:** `integrated-journey.mjs` covers load, auto-frame, zoom, orbit,
+  section-tool centre clipping, and restore. It adds inspect and remove only
+  where the build provides those controls; otherwise the take records an
+  explicit skip.
+
+```sh
+~/build-workers/ifc-gpu-check --limit 12 -- node examples/gaussian-splat-spike/record-integrated.mjs \
+  --viewer-url http://127.0.0.1:PORT/ --query gaussianPlacement=rx180 --asset seem-kirke-v1.ply \
+  --assets ~/ifc-fixtures/gaussian --out /abs/take --viewer-commit SHA \
+  --init-storage '{"ifc-lite-theme":"dark"}' --journey-options '{"collapseSidebar":true}'
+node examples/gaussian-splat-spike/finish-integrated.mjs --take /abs/take --out /abs/final \
+  --assets ~/ifc-fixtures/gaussian --stem seem-kirke-v1-integrated \
+  --label "INTERNAL DEMO · build SHA · not production" --disclosure "…"
+```
+
+`?gaussianPlacement=rx180` is the presenter-supplied demo placement in that
+showcase build. It is not alignment; say so in the disclosure. The finisher
+copies the screencast JPEGs unchanged into a master and adds a caption strip
+*below* the capture, so no viewer UI is covered. The strip carries the live step
+caption, the build label, the disclosures and the manifest-checked licence
+credit. Timestamps pass through unchanged.
+
 ## Reproduce
 
 Use the root pinned pnpm toolchain. Install dependencies normally, then prepare

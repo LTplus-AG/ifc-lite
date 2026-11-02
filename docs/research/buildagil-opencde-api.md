@@ -50,8 +50,21 @@ buildagil publishes an "openCDE API" based on buildingSMART's BCF and Documents 
 6. Search result shape for documents, and whether `folder_url` is present on hits.
 
 
+## BCF topics, measured live (2026-11-02, test project, signed-in account)
+
+- **Token:** an Entra access token for SharePoint (`aud` SharePoint, `scp` `AllSites.Write`) with `oid`, `name`, `upn` and `email`; the BCF connection names the account from those claims.
+- **Topic list:** `$skip` is ignored (`$skip=1` returns the same topics); `$filter` on `modified_date` / `creation_date` works with quoted and unquoted ISO literals (a future date returns none); `$orderby` and `$top` work; `$expand=comments` works. Timestamps are second-precision (`2026-11-02T06:43:37Z`), so date paging must de-duplicate ties.
+- **Topic update:** `PUT` works (200) as well as the documented `PATCH`.
+- **Status rule:** a topic type without a status (e.g. `Information`) created with `topic_status: Open` is accepted (201) and stored with `topic_status: null`, silently.
+- **Comments:** a new comment is only its text; a `viewpoint_guid` sent with it is accepted (201) and discarded. Comments list newest first; your own comments can be deleted.
+- **Viewpoints:** camera, `components` (selection, colouring, visibility) and a base64 PNG snapshot round-trip; the parts come back from `…/selection`, `…/coloring`, `…/visibility`, and `…/snapshot` as `image/png`. `aspect_ratio` 1.6 came back as 1, and selection keeps only `ifc_guid`.
+- **Topics cannot be deleted** through the API (no `DELETE`).
+
+The viewer connects to it as a BCF server through a profile (`apps/viewer/src/services/bcf-server-profiles.ts`): fixed sign-in endpoints instead of `/1.0/auth`, version `1.0`, identity from the token, every request through `/api/buildagil`, and `topicPaging: 'modified-date'` (`@ifc-lite/bcf-api`).
+
 ## Follow-ups
 
-- **BCF topics.** The topic, comment and viewpoint endpoints follow BCF 3.0's shapes under `/1.0/…` but differ: fixed `topic_type` / `topic_status` enums, comments without `viewpoint_guid`, no `auth` / `current-user`. A buildagil BCF connection would reuse this provider's session and relay (adding the topic routes) with a BCF client configured for those differences.
+- **Publishing topics** from the viewer (next PR): the pre-check drops a status the topic type does not take, comments are published unlinked from their viewpoint, the project's `createTopic` permission is checked, and snapshots stay small (Vercel caps request bodies at about 4 MB).
+- **One buildagil session** for the documents source and the BCF connection, instead of two sign-ins.
 - **Save back:** `PUT …/documents/{guid}` (new version) and `POST …/documents` behind the project's `createDocument` / document `updateContent` permissions.
 - **Change detection:** the `documents.content_updated` webhook needs a server endpoint; polling `modified_date` is the browser-only alternative.

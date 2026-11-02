@@ -37,9 +37,10 @@ export function buildagilRelayRoute(): Plugin {
               if (typeof v === 'string') headers.set(k, v);
               else if (Array.isArray(v)) headers.set(k, v.join(', '));
             }
-            // Token grants and search are POSTs; the handler caps their bodies.
+            // Token grants, search and BCF writes are POSTs, a topic update a
+            // PUT; the handler caps their bodies.
             const method = req.method ?? 'GET';
-            const hasBody = method === 'POST';
+            const hasBody = method === 'POST' || method === 'PUT';
             const response = await handler(new Request(`http://localhost${url}`, {
               method,
               headers,

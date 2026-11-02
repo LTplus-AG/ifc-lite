@@ -5,8 +5,10 @@
 /**
  * Known BCF API servers, offered as a dropdown in the connect form. Every
  * fixed URL below answered `GET {baseUrl}/versions` and `GET
- * {baseUrl}/2.1/auth` when the list was compiled (2026-08-25); entries with
- * an empty URL are tenant-hosted (the user supplies their instance).
+ * {baseUrl}/2.1/auth` when the list was compiled (2026-08-25), except
+ * buildagil, whose sign-in, version and relay come from its profile
+ * (`services/bcf-server-profiles.ts`); entries with an empty URL are
+ * tenant-hosted (the user supplies their instance).
  *
  * A preset pre-fills the server URL and narrows the auth methods to what
  * the server's `/auth` discovery document advertises; "Custom" leaves
@@ -131,6 +133,11 @@ function publicVendorEnv(presetId: string): VendorEnv | null {
         import.meta.env.VITE_BCF_APP_BIMTRACK_CLIENT_ID,
         import.meta.env.VITE_BCF_APP_BIMTRACK_REDIRECT_URI,
       ];
+    case 'buildagil':
+      // The same public PKCE client as the buildagil documents source
+      // (`registered-providers.ts`); its callback is this origin's
+      // /oauth/bcf/callback, so no redirect override.
+      return [import.meta.env.VITE_BUILDAGIL_CLIENT_ID, undefined];
     case 'catenda':
       return [
         import.meta.env.VITE_BCF_APP_CATENDA_CLIENT_ID,
@@ -281,6 +288,19 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     baseUrl: 'https://bcfrestapi.bimtrackapp.co/bcf',
     authMethods: ['oauth', 'token'],
     note: VENDOR_NOTE,
+  },
+  {
+    id: 'buildagil',
+    label: 'buildagil',
+    // No `/versions` or `/1.0/auth` here: buildagil's endpoints, API version
+    // and relay come from its profile (`services/bcf-server-profiles.ts`).
+    baseUrl: 'https://openapi.buildagil.com',
+    authMethods: ['oauth'],
+    // The openCDE spec's scopes; the authorize endpoint maps `api` for Entra.
+    oauthScope: 'openid offline_access api',
+    // buildagil support issues client ids to applications; users cannot.
+    vendorIssuedClientsOnly: true,
+    note: 'Sign in with your buildagil account.',
   },
   {
     id: 'catenda',

@@ -48,6 +48,25 @@ const { project, warnings } = await fetchProjectAsBCF(client, projects[0].projec
 
 `fetchProjectAsBCF` pages the topics collection (`$top`/`$skip`), fetches each topic's comments and viewpoints concurrently, resolves viewpoint components (inline or via the `/selection`, `/coloring`, `/visibility` subresources), and downloads snapshots. Non-authentication per-item failures (one topic's details, a components resource, a snapshot) degrade to entries in `warnings`; authentication failures (401) and an unreachable topics collection reject the whole pull.
 
+### Servers that ignore `$skip`
+
+Some servers (buildagil's openCDE API, for one) ignore `$skip` and answer every page with the first one; the default `'skip'` paging then stops after that page, so a large project comes back truncated to its first page without an error. For such servers that do honour `$filter` and `$orderby` on `modified_date`, opt into keyset paging:
+
+```ts
+import { BcfApiClient, fetchProjectAsBCF } from '@ifc-lite/bcf-api';
+
+const client = new BcfApiClient({
+  baseUrl: 'https://openapi.buildagil.com/1.0',
+  getAccessToken: () => 'your-access-token',
+});
+const { project, warnings } = await fetchProjectAsBCF(client, 'my-project-id', {
+  topicPaging: 'modified-date',
+  filter: "topic_status eq 'Open'", // optional; ANDed with the paging boundary
+});
+```
+
+`topicPaging: 'modified-date'` requests `$orderby=modified_date asc` and, from the second page on, `$filter=modified_date ge <last modified_date seen>` (as `(<filter>) and modified_date ge <ts>` when you pass `filter`). The boundary is inclusive because timestamps are often second-precision; topics returned again are deduped by guid. It stops with a warning rather than looping when a full page brings nothing new (more topics share one timestamp than fit `pageSize`, so raise `pageSize`) or when the last topic of a full page has no ISO 8601 `modified_date` to continue from. `orderby` cannot be honoured in this mode and is rejected with a `RangeError`. `maxTopics`, its truncation warning and `onProgress` behave as with `'skip'`.
+
 ## Direct endpoint access
 
 ```ts

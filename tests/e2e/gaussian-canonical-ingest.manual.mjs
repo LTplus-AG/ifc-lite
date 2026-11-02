@@ -162,10 +162,13 @@ try {
 
   // Disclosed centre clipping: a vertical plane through the placed capture's
   // centre, its gizmo hidden. Alpha compositing lets a culled near splat hide a
-  // far one, so a pixel can gain colour once clipped; a kept Gaussian drawing
-  // where nothing was drawn before would gain it over ANY background. The
-  // invariant is therefore: no pixel escapes the unclipped contribution over
-  // both the dark and the light theme background.
+  // far one, so a pixel can gain colour once clipped over one background. This
+  // is a thresholded differential DIAGNOSTIC, not a proof: it reports pixels
+  // that escape the unclipped contribution over the dark and the light theme
+  // background and requires none over both. Blind spots: a wrong fragment can
+  // match one background, low alpha can stay below the threshold, and 8-bit
+  // clamping/tone mapping break any affine compositing model. Kept-subset
+  // correctness is the renderer's own test (gaussian-splat-layer.test.ts).
   const clipOn = () => page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const record = [...state.models.values()].find(m => m.gaussianSplat).gaussianSplat;
@@ -216,7 +219,7 @@ try {
     assert.ok(run.kept.differing > 0, 'the kept side still contributes');
     assert.ok(run.kept.differing < run.full.differing, 'the plane culls part of the capture');
   }
-  assert.deepEqual(both, [], 'no kept Gaussian draws outside the unclipped contribution over both backgrounds');
+  assert.deepEqual(both, [], 'diagnostic: no pixel escapes the unclipped contribution over both backgrounds');
   const unclipped = await stats();
 
   // Phase B: an IFC model beside the capture, through the real Add-model input.

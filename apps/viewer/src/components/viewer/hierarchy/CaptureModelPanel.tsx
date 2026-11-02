@@ -8,7 +8,7 @@
  * multi-model header rows provide: inspect, hide/show, fit and remove.
  */
 
-import type { HTMLAttributes, MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
 import { Eye, EyeOff, Maximize2, Sparkles, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -21,7 +21,8 @@ export interface CaptureModelPanelProps {
   model: FederatedModel;
   title: string;
   onRemove: (modelId: string, event: MouseEvent) => void;
-  rootProps?: HTMLAttributes<HTMLDivElement>;
+  /** `data-*` attributes for the panel root, e.g. the welcome tour anchor. */
+  rootProps?: Record<`data-${string}`, string>;
 }
 
 const ACTION = 'p-1 shrink-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:hover:text-zinc-100 dark:hover:bg-zinc-800';

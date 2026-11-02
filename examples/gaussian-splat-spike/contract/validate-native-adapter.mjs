@@ -42,7 +42,8 @@ async function hashFile(path) {
   const info = await stat(resolve(repo, path)).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
   return info?.isFile() ? sha256(await readFile(resolve(repo, path))) : null;
 }
-const porcelain = git('status', '--porcelain=v1', '--untracked-files=all').split('\n').filter(Boolean);
+// Not trimmed: the first line's leading status space is significant.
+const porcelain = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: repo, encoding: 'utf8' }).split('\n').filter(Boolean);
 const worktreeFiles = [];
 for (const line of porcelain) {
   const path = line.slice(3).split(' -> ').at(-1);

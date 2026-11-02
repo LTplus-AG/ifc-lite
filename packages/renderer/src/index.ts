@@ -413,7 +413,7 @@ export class Renderer {
     private readonly deviationComputer = new DeviationComputer();
     private readonly gaussianLayer = new GaussianSplatLayer({ lifetime: () => ({ ready: this.isReady(), lost: this.deviceLost, disposed: this.destroyed, generation: this.initGeneration }), // #8564
         device: () => this.getGPUDevice(), adapter: () => this.device.getAdapter(), modelTranslation: (i) => this.scene.getModelTranslation(i), requestRender: () => this.requestRender(),
-        boundsChanged: (grew) => { if (grew) this.modelBoundsTracker.expandForPointClouds(); else this.modelBoundsTracker.recompute(); this.camera.setSceneBounds(this.modelBounds); } }); // paired like the point-cloud paths
+        boundsGrew: () => { this.modelBoundsTracker.expandForPointClouds(); this.camera.setSceneBounds(this.modelBounds); } }); // grow-only, paired like the point-cloud add path
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
     // Model bounds for fitToView, section planes, camera. The value itself

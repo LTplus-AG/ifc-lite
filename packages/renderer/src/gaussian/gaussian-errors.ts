@@ -32,3 +32,8 @@ export function assertUsableLifetime(life: { ready: boolean; lost: boolean; disp
   if (life.lost) throw new GaussianSplatError('lost', 'The GPU device is lost.');
   if (!life.ready) throw new GaussianSplatError('not-ready', 'The renderer is not initialized.');
 }
+
+export function requireDevice(device: GPUDevice | null): GPUDevice {
+  if (!device) throw new GaussianSplatError('lost', 'No current GPU device.');
+  return device;
+}

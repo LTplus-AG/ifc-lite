@@ -34,19 +34,19 @@ class FakeScene implements GaussianBackendScene {
   destroy(): void { this.destroyed = true; }
 }
 
-function harness(options: { limits?: number; reverseZ?: boolean; failFirstBackend?: boolean } = {}) {
+function harness(options: { limits?: number; reverseZ?: boolean; failFirstBackend?: boolean; backendGate?: Promise<void> } = {}) {
   const life = { ready: true, lost: false, disposed: false, generation: 1 };
   const deviceOf = () => ({ limits: { maxStorageBufferBindingSize: options.limits ?? 1 << 30, maxBufferSize: options.limits ?? 1 << 30 } }) as unknown as GPUDevice;
   let device: GPUDevice | null = deviceOf();
   const scenes: FakeScene[] = [];
   const failures: { nextScene: Error | null } = { nextScene: null };
   const translations = new Map<number, [number, number, number]>();
-  const counters = { bounds: 0, backendCalls: 0, grew: [] as boolean[] };
+  const counters = { bounds: 0, backendCalls: 0 };
   const host: GaussianLayerHost = {
     lifetime: () => ({ ...life }), device: () => (life.lost ? null : device), adapter: () => null,
-    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsChanged: (grew) => { counters.bounds++; counters.grew.push(grew); },
+    modelTranslation: (index) => translations.get(index), requestRender: () => {}, boundsGrew: () => { counters.bounds++; },
   };
-  const backend = async (): Promise<GaussianBackend> => ({
+  const backend = async (): Promise<GaussianBackend> => (options.backendGate && counters.backendCalls >= 1 ? await options.backendGate : undefined, {
     upstreamReverseZ: (++counters.backendCalls === 1 && options.failFirstBackend) ? (() => { throw new Error('chunk fetch failed'); })() : options.reverseZ ?? true,
     createScene: () => { const scene = new FakeScene(); scene.failNext = failures.nextScene; failures.nextScene = null; scenes.push(scene); return scene; },
   });
@@ -384,19 +384,20 @@ test('#8564 a failed upstream load is retried by the next add and never reports 
   assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
 });
 
-test('#8564 framing bounds are refreshed only when the visible centre union changes', async () => {
+test('#8564 framing bounds only grow, and only when the visible centre union grows', async () => {
   const h = harness();
   const handle = await add(h.layer, 2);
-  assert.deepEqual(h.counters.grew, [true], 'the first asset grows the bounds');
+  assert.equal(h.counters.bounds, 1, 'the first asset grows the bounds');
   assert.ok(h.layer.setVisible(handle, true));
   assert.equal(h.counters.bounds, 1, 'an unchanged union notifies nothing');
   h.layer.setVisible(handle, false);
-  assert.deepEqual(h.counters.grew, [true, false], 'hiding shrinks the bounds');
+  assert.equal(h.counters.bounds, 1, 'hiding never shrinks framing bounds');
   h.layer.setVisible(handle, true);
+  assert.equal(h.counters.bounds, 2, 'showing grows them again');
   assert.equal(await h.layer.setPlacement(handle, { matrix: translate(1) }), true);
-  assert.deepEqual(h.counters.grew.slice(2), [true, false], 'show grows; a move to a disjoint box is not a pure growth');
+  assert.equal(h.counters.bounds, 2, 'a move to a disjoint box is not a growth');
   h.layer.remove(handle);
-  assert.equal(h.counters.grew.at(-1), false);
+  assert.equal(h.counters.bounds, 2, 'removal never shrinks framing bounds');
 });
 
 
@@ -478,4 +479,32 @@ test('#8564 clear() during a compaction or a queued re-upload reports no failure
   } finally {
     errors.mock.restore();
   }
+});
+
+
+// Independent review round 3 (#8564).
+test('#8564 clear() right after add() is called aborts that add', async () => {
+  const { layer } = harness();
+  await add(layer, 1); // warm the lazy imports
+  layer.clear();
+  const pending = add(layer, 2);
+  layer.clear();
+  await assert.rejects(pending, code('aborted'));
+  assert.equal(layer.getStats().assets, 0);
+});
+
+test('#8564 clear() while recovery loads the backend creates and uploads nothing', async () => {
+  let open!: () => void;
+  const h = harness({ backendGate: new Promise<void>((resolve) => { open = resolve; }) });
+  await add(h.layer, 2);
+  h.layer.release(false, false); // recovery teardown
+  h.life.generation = 2; h.replaceDevice();
+  h.layer.frameReady(); // queues the re-upload, which parks in the backend load
+  await settle();
+  h.layer.clear();
+  open();
+  await settle();
+  const created = h.scenes.slice(1);
+  assert.ok(created.every((scene) => scene.destroyed || scene.sources.length === 0), 'no live scene holds cleared rows');
+  assert.equal(h.layer.getStats().gpuBytes, 0);
 });

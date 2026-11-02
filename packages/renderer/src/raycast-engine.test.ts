@@ -711,23 +711,24 @@ describe('magnetic authored source curves (#5780)', () => {
     assert.equal(pick(400).snapTarget, null);
   });
 
-  it('clips new source curves without changing existing magnetic mesh or scan picks (#5780)', () => {
+  it('clips source curves, mesh picks and scan points alike (#5780, #8659)', () => {
     const scene = new Scene();
     addRegularQuad(scene, makeQuad({ expressId: 1, translate: [0, 0, 10] }));
     addRegularQuad(scene, makeQuad({ expressId: 2, translate: [0, 0, -10] }));
     const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
     engine.setSourceSnapCurves([{ ...source('a', 42, 0), pointAt: (t) => ({ x: (t - 0.5) * 0.2, y: 0, z: 1 }) }]);
     const index = new PointCloudSpatialIndex(0.5);
-    index.insertRange(new Float32Array([0, 0, 1]), 1, null);
+    index.insertRange(new Float32Array([0, 0, 1, 0, 0, -1]), 2, null);
     engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
     const clip = { sectionPlane: { normal: [0, 0, 1] as [number, number, number], distance: 0, flipped: false } };
     const hit = engine.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
-    assert.equal(hit.intersection?.expressId, 1, 'preexisting magnetic mesh pick remains reachable');
+    assert.equal(hit.intersection?.expressId, 2, 'the quad the section removed cannot be hit');
     assert.equal(hit.snapTarget?.metadata?.sourceCurve, undefined);
+    assert.equal(engine.raycastSceneMagnetic(400, 300, lock, { snapOptions }).intersection?.expressId, 1);
     const scanOnly = engineFor(new Scene(), orthoCameraLookingDownZ([0, 0, 0], 50));
     scanOnly.setPointCloudProvider(() => [{ expressId: 77, index }]);
     const scanHit = scanOnly.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
-    assert.equal(scanHit.snapTarget?.expressId, 77, 'preexisting magnetic scan pick remains reachable');
+    assert.equal(scanHit.snapTarget?.position.z, -1, 'a clipped scan point does not shadow the visible one behind it');
   });
 });
 

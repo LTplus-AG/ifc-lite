@@ -117,7 +117,7 @@ try {
     const intervals = take.frames.slice(1).map((t, i) => (t - take.frames[i]) * 1000).sort((a, b) => a - b);
     const at = q => +intervals[Math.min(intervals.length - 1, Math.floor(q * intervals.length))].toFixed(2);
     evidence.recording = { file, bytes: video.length, sha256: await sha256File(file), mimeType: take.mimeType, requestedBitsPerSecond: Number(args.bitrate),
-      method: 'canvas.captureStream(30) + MediaRecorder; camera from demoCameraAt(wall-clock seconds) inside the PlayCanvas update loop',
+      method: 'canvas.captureStream() (every painted frame) + MediaRecorder; camera from demoCameraAt(wall-clock seconds) inside the PlayCanvas update loop',
       engineFrames: take.frames.length, journeySeconds: take.frames.at(-1), sortsDuringRecording: take.sortsDuringRecording,
       diagnosticFrameIntervalMs: { p50: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1), over50ms: intervals.filter(v => v > 50).length } };
   }

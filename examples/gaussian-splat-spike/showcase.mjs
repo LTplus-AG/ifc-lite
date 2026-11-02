@@ -135,9 +135,11 @@ try {
       finally { camera.camera.renderTarget = null; }
       return { ...(await pending), pose, settled, azimuth };
     },
-    async record({ seconds = DEMO_DURATION_SECONDS, tail = 0.25, fps = 30, mimeType, bitsPerSecond = 40e6 }) {
+    async record({ seconds = DEMO_DURATION_SECONDS, tail = 0.25, mimeType, bitsPerSecond = 40e6 }) {
       setPose(0); await settle();
-      const stream = canvas.captureStream(fps);
+      // No rate cap: every painted engine frame becomes one video frame with its
+      // own timestamp. captureStream(30) dropped frames whenever ticks jittered.
+      const stream = canvas.captureStream();
       const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitsPerSecond });
       const chunks = [], frames = [];
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };

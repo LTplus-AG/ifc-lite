@@ -17,7 +17,7 @@ import { showcaseCredits } from './showcase-credits.mjs';
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const { values: args } = parseArgs({ options: {
   master: { type: 'string' }, asset: { type: 'string' }, out: { type: 'string' }, splats: { type: 'string' },
-  'font-dir': { type: 'string', default: '/usr/share/fonts/truetype/dejavu' },
+  'font-dir': { type: 'string', default: '/usr/share/fonts/truetype/dejavu' }, threads: { type: 'string', default: '4' },
 } });
 if (!args.master || !args.asset || !args.out || !isAbsolute(args.out)) throw new Error('usage: --master TAKE --asset NAME.ply --out ABS_DIR');
 const manifest = JSON.parse(await readFile(join(repo, 'tests/models/manifest.json'), 'utf8'));
@@ -71,7 +71,8 @@ const outputs = [
   { file: join(args.out, `${stem}.webm`), codec: ['-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-pix_fmt', 'yuv420p'] },
 ];
 for (const output of outputs) {
-  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', master.file, '-vf', vf, '-fps_mode', 'passthrough', '-an', ...output.codec, output.file], { stdio: 'inherit' });
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-threads', args.threads, '-i', master.file, '-vf', vf,
+    '-fps_mode', 'passthrough', '-an', ...output.codec, '-threads', args.threads, output.file], { stdio: 'inherit' });
   Object.assign(output, { sha256: await sha256File(output.file), probe: probe(output.file) });
   delete output.codec;
 }

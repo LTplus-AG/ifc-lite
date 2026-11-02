@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { lastFinalFitBounds, sceneSnapshotKey, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
+import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
@@ -23,19 +23,15 @@ import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
 
-type CameraBounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
-
 /** What the viewer stores beside the batches: the fit they were finalized under, and where the shards are. */
-interface SnapshotHostData {
-  fitBounds: CameraBounds;
-  sceneBounds: CameraBounds;
-  orbitAnchorBounds: CameraBounds | null;
+interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
 }
 
 export interface AdoptedSceneSnapshot {
   adoption: object;
   shards: ArrayBuffer[];
+  fit: SnapshotCameraFit;
   firstVisible: Promise<void>;
 }
 
@@ -113,14 +109,10 @@ export async function adoptCachedSceneSnapshot(
   uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
-  const canvas = renderer.getCanvas();
-  const shortSide = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0);
-  camera.fitBoundsAdaptive(host.fitBounds, { viewportShortPx: shortSide > 0 ? shortSide : undefined });
-  camera.setSceneBounds(host.sceneBounds);
-  camera.setOrbitAnchorBounds(host.orbitAnchorBounds);
+  fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
 /** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
@@ -139,7 +131,7 @@ export async function publishAdoptedSceneMeshes(
   setPendingSceneSnapshot(adopted.adoption, () => {
     useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  });
+  }, adopted.fit);
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }
@@ -160,15 +152,19 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
 }
 
 /** Store the scene this hit is about to finalize, once it has. */
-export function captureSceneSnapshotOfHit(
+export async function captureSceneSnapshotOfHit(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
-): void {
+): Promise<void> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
-  const renderer = getGlobalRenderer();
-  if (!snapshotsEnabled() || !renderer || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return;
+  if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return;
+  const renderer = await rendererReady(isStale);
+  if (!renderer) return;
+  // Batches built before admission stay f32, and a snapshot would keep them that way for good.
+  if (isQuantizedEnabled()) await renderer.enableQuantizedBatches();
+  if (isStale?.()) return;
   renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();

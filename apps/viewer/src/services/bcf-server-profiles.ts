@@ -14,7 +14,9 @@
  *   - it sends no CORS headers to most origins, so every request, token
  *     grants included, goes through the same-origin `/api/buildagil` relay
  *     (`server/sources/buildagil-relay.ts`);
- *   - its topic list ignores `$skip`, so topics are paged by `modified_date`.
+ *   - its topic list ignores `$skip`, so topics are paged by `modified_date`;
+ *   - only some topic types keep a status (a status sent with `Information`
+ *     returns 201 and is stored as null).
  */
 
 import type { BcfAuthInfo, FetchLike } from '@ifc-lite/bcf-api';
@@ -31,6 +33,12 @@ export interface BcfServerProfile {
   readonly identityFromToken: true;
   /** How topic lists page (the server ignores `$skip`). */
   readonly topicPaging: 'modified-date';
+  /**
+   * Topic types that keep a `topic_status`. The server accepts a status with
+   * any other type and stores it as null, silently, so publication withholds
+   * it and says so. Absent: every type keeps its status.
+   */
+  readonly topicStatusTypes?: readonly string[];
 }
 
 const BUILDAGIL_API = 'https://openapi.buildagil.com';
@@ -45,6 +53,10 @@ const PROFILES: ReadonlyMap<string, BcfServerProfile> = new Map([
     relay: { upstream: BUILDAGIL_API, path: '/api/buildagil' },
     identityFromToken: true,
     topicPaging: 'modified-date',
+    // The known rule, not data from the server: it reveals the statuses a type
+    // allows only per existing topic (`authorization.topic_status`), never
+    // per type up front. Measured on the live API, 2026-11-02.
+    topicStatusTypes: ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log'],
   }],
 ]);
 

@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
 import { SectionCutter } from './section-cutter.js';
 import { PolygonBuilder } from './polygon-builder.js';
+import { OpenSurfaceIndex } from './open-surface.js';
 import { EdgeExtractor } from './edge-extractor.js';
 import { HiddenLineClassifier } from './hidden-line.js';
 import { mergeDrawingLines } from './line-merger.js';
@@ -185,11 +186,12 @@ export class Drawing2DGenerator {
     // ─────────────────────────────────────────────────────────────────────────
     report('polygons', 0);
 
-    const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments);
+    const openSurfaces = new OpenSurfaceIndex(meshes), openSurfaceSegments = new Set<CutSegment>();
+    const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments, openSurfaces, openSurfaceSegments);
     // Opaque base cross-section per multi-material entity, for the 3D overlay to
     // draw behind the per-layer fills (never see-through). Kept out of
     // `cutPolygons` so the flat 2D drawing / export / measure paths are untouched.
-    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments);
+    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments, openSurfaces);
 
     report('polygons', 1);
 
@@ -199,6 +201,7 @@ export class Drawing2DGenerator {
     const cutLines: DrawingLine[] = cutSegments.map((seg) => ({
       line: { start: seg.p0_2d, end: seg.p1_2d },
       category: 'cut' as LineCategory,
+      ...(openSurfaceSegments.has(seg) ? { openSurfaceCut: true as const } : {}),
       visibility: 'visible' as const,
       entityId: seg.entityId,
       ifcType: seg.ifcType,

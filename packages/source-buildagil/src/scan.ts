@@ -26,14 +26,14 @@ const MODEL_TYPES = ['ifc', 'ifczip', 'ifcxml', 'ifcx'];
 const TYPE_FILTER = `(${[...MODEL_TYPES, ...MODEL_TYPES.map((t) => t.toUpperCase())].map((t) => `file_type eq '${t}'`).join(' or ')})`;
 
 export async function scanModelDocuments(
-  ctx: PluginContext, client: BuildagilClient, projectId: string, signal?: AbortSignal,
+  ctx: PluginContext, client: BuildagilClient, projectId: string,
 ): Promise<BuildagilDocument[]> {
   const byGuid = new Map<string, BuildagilDocument>();
   let after: string | undefined;
   for (;;) {
     const filter = after ? `${TYPE_FILTER} and creation_date ge ${after}` : TYPE_FILTER;
     const params = new URLSearchParams({ $filter: filter, $orderby: 'creation_date asc', $top: String(PAGE) });
-    const raw = await client.json(ctx, `1.0/projects/${encodeURIComponent(projectId)}/documents?${params}`, { signal });
+    const raw = await client.json(ctx, `1.0/projects/${encodeURIComponent(projectId)}/documents?${params}`);
     const page = rows(raw, (row) => {
       const doc = decodeDocument(row);
       return doc && { doc, created: creationTime(row) };

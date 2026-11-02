@@ -161,6 +161,23 @@ describe('BuildagilProvider', () => {
     expect(pages).toBe(3);
   });
 
+  it('one caller aborting does not abort the scan another caller shares (#8364 review)', async () => {
+    const world: MockWorld = { projects: [{ project_id: 'big', name: 'Big' }], documents: { big: manyDocuments(250) } };
+    const { api, provider, ctx } = setup(world);
+    await api.signIn();
+    const first = new AbortController();
+    const abandoned = provider.listContainers(ctx, 'big', undefined, { signal: first.signal });
+    const second = provider.listFiles(ctx, 'big', '/documents/bulk', undefined, { limit: 500 });
+    first.abort(new DOMException('folder changed', 'AbortError'));
+    await expect(abandoned).rejects.toThrow(/folder changed/);
+    expect((await second).items).toHaveLength(250);
+    // One scan served both callers and stays cached.
+    const scanPages = () => api.calls.filter((c) => c.url.pathname.endsWith('/documents')).length;
+    expect(scanPages()).toBe(3);
+    await provider.listContainers(ctx, 'big');
+    expect(scanPages()).toBe(3);
+  });
+
   it('reports a rejected session as needing a new sign-in', async () => {
     const { provider, ctx, api } = setup();
     await expect(provider.listProjects(ctx)).rejects.toThrow(/Not signed in|sign in/i);

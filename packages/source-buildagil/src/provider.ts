@@ -36,6 +36,17 @@ function accepts(name: string, filter?: FileFilter): boolean {
   return MODEL_FILE.test(name) && (!filter?.namePatterns?.length || filter.namePatterns.some((pattern) => matchesGlob(name, pattern)));
 }
 
+/** `promise`, abandoned (not cancelled) when this caller's `signal` aborts. */
+function withSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /** One page of a list the API returned whole, `cursor` being the offset. */
 function slice<T>(items: readonly T[], options?: ListOptions, max = 500): { items: T[]; cursor?: string } {
   const { offset, limit } = offsetPage(options?.cursor, options?.limit, max);
@@ -64,12 +75,14 @@ export class BuildagilProvider implements FileSourceProvider {
 
   private documents(ctx: PluginContext, projectId: string, signal?: AbortSignal): Promise<BuildagilDocument[]> {
     const cached = this.scans.get(projectId);
-    if (cached && Date.now() - cached.at < SCAN_TTL_MS) return cached.documents;
-    const documents = scanModelDocuments(ctx, this.client, projectId, signal);
+    if (cached && Date.now() - cached.at < SCAN_TTL_MS) return withSignal(cached.documents, signal);
+    // Shared by every caller for this project, so no one caller's signal may
+    // end it; each caller stops waiting on its own signal instead (#8364 review).
+    const documents = scanModelDocuments(ctx, this.client, projectId);
     this.scans.set(projectId, { at: Date.now(), documents });
-    // A failed or aborted scan is not cached.
+    // A failed scan is not cached.
     documents.catch(() => { if (this.scans.get(projectId)?.documents === documents) this.scans.delete(projectId); });
-    return documents;
+    return withSignal(documents, signal);
   }
 
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions) {

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState } from './pick-types.js';
 import { Raycaster, type Ray } from './raycaster.js';
-import { SnapDetector, SnapType } from './snap-detector.js';
+import { SnapDetector, SnapType, type EdgeLockInput } from './snap-detector.js';
 
 /**
  * #8659. A 2 x 2 x 2 box [0,2]^3, viewed from above along -z with the section
@@ -30,7 +30,7 @@ function box(expressId = 7, origin?: [number, number, number]): MeshData {
   };
 }
 
-const NO_LOCK = { edge: null, meshExpressId: null, lockStrength: 0 };
+const NO_LOCK: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
 const CAMERA = { position: { x: 1, y: 1, z: 50 }, fov: Math.PI / 4 };
 const OPTIONS = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 10 };
 const down = (x: number, y: number): Ray => ({ origin: { x, y, z: 50 }, direction: { x: 0, y: 0, z: -1 } });

@@ -17,14 +17,14 @@
  *   - its topic list ignores `$skip`, so topics are paged by `modified_date`.
  */
 
-import type { FetchLike } from '@ifc-lite/bcf-api';
+import type { BcfAuthInfo, FetchLike } from '@ifc-lite/bcf-api';
 import { applyRelay } from './sources/host-fetch.js';
 
 export interface BcfServerProfile {
   /** BCF API version segment the server serves its routes under. */
   readonly version: string;
   /** Authorization and token endpoints, in place of `/{version}/auth` discovery. */
-  readonly authInfo: { readonly oauth2_auth_url: string; readonly oauth2_token_url: string };
+  readonly authInfo: BcfAuthInfo;
   /** Same-origin relay the server is reached through. */
   readonly relay: { readonly upstream: string; readonly path: string };
   /** No `current-user` endpoint: the account is read from the access token. */

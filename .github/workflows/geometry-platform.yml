@@ -281,7 +281,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Upload native comparison evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: retained-native-comparison
           path: |
@@ -448,7 +448,7 @@ jobs:
       # The report-only browser corpus job reads the staged engine from here.
       - name: Keep the staged retained engine for the browser corpus
         if: inputs.corpus == true || github.event_name == 'schedule'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-retained-engine
           path: ${{ runner.temp }}/cli-retained-engine
@@ -481,7 +481,7 @@ jobs:
           VITE_RETAINED_GEOMETRY= IFCLITE_RETAINED_ENGINE= pnpm exec playwright test --project=viewer-retained-default
       - name: Upload retained viewer evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: retained-viewer-comparison
           path: |
@@ -588,7 +588,7 @@ jobs:
           [[ "$COMPARE_OUTCOME" == success ]]
       - name: Upload shard evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-corpus-shard-${{ matrix.shard }}
           path: |
@@ -627,7 +627,7 @@ jobs:
           [[ "$SHARDS_RESULT" == success ]]
       - name: Merge the shards' product tables for the browser corpus
         run: node scripts/retained-compare/corpus-shards.mjs merge --shards 8 --out products.tsv shards/native-corpus-shard-*/products.tsv
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-corpus-products
           path: products.tsv
@@ -667,7 +667,7 @@ jobs:
         run: |
           node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \
             --native native-corpus/products.tsv --out "$RUNNER_TEMP/viewer-retained-corpus" --corpus
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: retained-browser-corpus

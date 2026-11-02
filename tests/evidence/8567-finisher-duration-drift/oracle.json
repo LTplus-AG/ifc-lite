@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "examples/gaussian-splat-spike/screencast-timing.mjs",
+  "mutation": "tests/evidence/8567-finisher-duration-drift/behaviour.oracle.patch",
+  "test": "examples/gaussian-splat-spike/test/finish-smoke.test.mjs",
+  "why": "#8567: Rounding each interval before accumulating introduces drift on a 1600-frame 30 fps take. The real master must retain every absolute millisecond-rounded capture timestamp."
+}

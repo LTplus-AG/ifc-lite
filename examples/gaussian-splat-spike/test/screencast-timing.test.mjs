@@ -10,10 +10,10 @@ const frames = [{ n: 1, ts: 100 }, { n: 2, ts: 100.0333 }, { n: 3, ts: 100.4333 
 test('concat durations are the captured intervals, so a stall stays a held frame (#8567)', () => {
   const script = screencastConcat(frames);
   const durations = [...script.matchAll(/^duration ([0-9.]+)$/gm)].map(m => Number(m[1]));
-  assert.deepEqual(durations.slice(0, 3).map(d => Math.round(d * 1e4)), [333, 4000, 333]);
-  assert.ok(Math.abs(durations[3] - 1 / 30) < 1e-6, 'last frame lasts one nominal frame');
-  // Total timeline equals capture span plus that last frame: nothing resampled.
-  assert.ok(Math.abs(durations.reduce((a, b) => a + b, 0) - (0.4666 + 1 / 30)) < 1e-5);
+  assert.deepEqual(durations.slice(0, 3).map(d => Math.round(d * 1000)), [33, 400, 34]);
+  assert.equal(Math.round(durations[3] * 1000), 33, 'last nominal frame is rounded on the same absolute timeline');
+  // Total timeline is rounded once to milliseconds, not once per interval.
+  assert.equal(Math.round(durations.reduce((a, b) => a + b, 0) * 1000), 500);
   const files = [...script.matchAll(/^file '(.+)'$/gm)].map(m => m[1]);
   assert.deepEqual(files, ['frames/000001.jpg', 'frames/000002.jpg', 'frames/000003.jpg', 'frames/000004.jpg', 'frames/000004.jpg']);
 });

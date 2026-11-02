@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catalogEntry } from '../showcase-fixture.mjs';
 import { screencastConcat } from '../screencast-timing.mjs';
-import { BT709_TAGS, frameTimestamps, probeVideo } from '../showcase-video.mjs';
+import { BT709_TAGS, assertCaptureTimestamps, frameTimestamps, probeVideo } from '../showcase-video.mjs';
 
 const spike = fileURLToPath(new URL('..', import.meta.url));
 const FONTS = '/usr/share/fonts/truetype/dejavu';
@@ -102,6 +102,25 @@ test('integrated finisher copies the captured frames and keeps their intervals i
     const mismatch = finish('finish-integrated.mjs', [...args.slice(0, 3), join(dir, 'final-2'), ...args.slice(4)]);
     assert.notEqual(mismatch.status, 0);
     assert.match(mismatch.stderr, /differs from the catalogue/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('a 1600-frame capture retains absolute millisecond timestamps without accumulated drift (#8567)', { skip }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'showcase-timing-long-'));
+  try {
+    await mkdir(join(dir, 'frames'));
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc=size=16x16:rate=30', '-frames:v', '1', '-pix_fmt', 'yuvj420p', join(dir, 'frames', '000001.jpg'));
+    // Reuse one tiny JPEG: the invariant is timestamp preservation, not appearance.
+    const frames = Array.from({ length: 1600 }, (_, i) => ({ n: 1, ts: 100 + i / 30 }));
+    const concat = join(dir, 'frames.ffconcat'), master = join(dir, 'master.mkv');
+    await writeFile(concat, screencastConcat(frames));
+    ffmpeg('-f', 'concat', '-safe', '0', '-i', concat, '-c', 'copy', master);
+    const seconds = frames.map(frame => frame.ts - frames[0].ts);
+    assert.doesNotThrow(() => assertCaptureTimestamps(seconds, master));
+    assert.deepEqual(frameTimestamps(master).slice(0, frames.length), seconds.map(t => Math.round(t * 1000)));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

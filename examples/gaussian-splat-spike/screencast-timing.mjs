@@ -19,7 +19,10 @@ export function screencastConcat(frames, finalSeconds = 1 / 30) {
     lines.push(`file '${frameName(frame.n)}'`);
     // image2 defaults to 25 fps, otherwise rounding every timestamp to 40 ms.
     lines.push('option framerate 1000');
-    lines.push(`duration ${((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frame.ts).toFixed(6)}`);
+    // Round absolute offsets first: rounding each 1/30 s gap accumulates drift.
+    const startMs = Math.round((frame.ts - frames[0].ts) * 1000);
+    const endMs = Math.round(((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frames[0].ts) * 1000);
+    lines.push(`duration ${((endMs - startMs) / 1000).toFixed(3)}`);
   });
   // The concat demuxer needs the last file repeated for its duration to apply.
   lines.push(`file '${frameName(frames.at(-1).n)}'`);

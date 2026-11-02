@@ -12,9 +12,10 @@
 
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import type { GaussianBackend, GaussianBackendFactory, GaussianBackendScene, GaussianEncodeTarget } from './gaussian-backend.js';
-import { GaussianSplatError } from './gaussian-errors.js';
-import { assertPackedBudget, buildPacked, effectiveShDegree, placeInWorld, transformSlice, validateGaussianAttributes, type PackedScene, type ShDegree } from './gaussian-pack.js';
-import { decomposeSimilarity, type SimilarityPlacement } from './gaussian-placement.js';
+import { assertUsableLifetime, GaussianSplatError } from './gaussian-errors.js';
+import { loadGaussianOps as loadOps, loadLumaBackend } from './gaussian-lazy.js';
+import type { PackedScene, ShDegree } from './gaussian-pack.js';
+import type { SimilarityPlacement } from './gaussian-placement.js';
 import { gaussianReadiness, type GaussianReadiness, type GaussianUpstreamStatus } from './gaussian-readiness.js';
 export type { GaussianSplatApi } from './gaussian-types.js';
 import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
@@ -52,7 +53,6 @@ interface AssetRecord {
 const INVALID: GaussianSplatState = Object.freeze({ state: 'invalid' });
 const PENDING: GaussianSplatState = Object.freeze({ state: 'pending' });
 const RESIDENT: GaussianSplatState = Object.freeze({ state: 'resident' });
-const loadLumaBackend: GaussianBackendFactory = async (...args) => (await import('./gaussian-luma-backend.js')).createLumaGaussianBackend(...args);
 
 export class GaussianSplatLayer implements GaussianSplatApi {
   private readonly records = new Map<GaussianSplatHandle, AssetRecord>();
@@ -85,10 +85,12 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     if (options?.qualification !== 'internal-unqualified') {
       throw new GaussianSplatError('not-ready', 'Gaussian rendering is unqualified; internal use must pass { qualification: "internal-unqualified" }.');
     }
-    const life = this.usableLifetime();
-    validateGaussianAttributes(input.attributes);
+    const life = this.host.lifetime();
+    assertUsableLifetime(life);
     if (!Number.isSafeInteger(input.modelIndex) || input.modelIndex < 0) throw new GaussianSplatError('invalid-placement', 'modelIndex must be a non-negative integer.');
-    const local = decomposeSimilarity(input.placement.matrix);
+    const ops = await loadOps();
+    ops.validateGaussianAttributes(input.attributes);
+    const local = ops.decomposeSimilarity(input.placement.matrix);
     const checkpoint = this.checkpoint(this.epoch, life.generation, options.signal);
     checkpoint();
     const backend = await this.backendFor(this.currentDevice());
@@ -98,13 +100,13 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       checkpoint();
       const { attributes, modelIndex } = input;
       const slot = this.nextSlot++;
-      const placement = placeInWorld(local, this.host.modelTranslation(modelIndex));
+      const placement = ops.placeInWorld(local, this.host.modelTranslation(modelIndex));
       const anchor = this.anchor ?? [...placement.translation] as [number, number, number];
-      const degree = effectiveShDegree(attributes);
+      const degree = ops.effectiveShDegree(attributes);
       const packedDegree = Math.max(degree, this.packed?.source.sphericalHarmonicsDegree ?? 0) as ShDegree;
       const rows = attributes.count + (this.packed?.source.opacities.length ?? 0);
-      assertPackedBudget(rows, packedDegree, this.currentDevice().limits);
-      const built = await buildPacked(this.packed, this.liveSlots(), { slot, attributes, placement, degree }, anchor, packedDegree, checkpoint);
+      ops.assertPackedBudget(rows, packedDegree, this.currentDevice().limits);
+      const built = await ops.buildPacked(this.packed, this.liveSlots(), { slot, attributes, placement, degree }, anchor, packedDegree, checkpoint);
       const scene = this.sceneFor(this.currentDevice(), await this.backendFor(this.currentDevice()));
       await scene.replaceSource(built.scene.source);
       try { checkpoint(); } catch (error) { this.uploadedVersion = -1; throw error; } // scene holds rows the layer never published
@@ -134,9 +136,10 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   }
 
   async setPlacement(handle: GaussianSplatHandle, input: GaussianSplatPlacement): Promise<boolean> {
+    if (!this.records.get(handle) || this.records.get(handle)?.failure) return false;
+    const local = (await loadOps()).decomposeSimilarity(input.matrix);
     const record = this.records.get(handle);
     if (!record || record.failure) return false;
-    const local = decomposeSimilarity(input.matrix);
     const token = ++record.editToken;
     return this.replace(record, token, local);
   }
@@ -228,8 +231,9 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       const packed = this.packed;
       const slice = packed?.slices.get(record.slot);
       if (stale() || !packed || !slice || !this.anchor || !record.attributes) return false;
-      const placement = placeInWorld(local, this.host.modelTranslation(record.handle.modelIndex));
-      const rows = await transformSlice(record.attributes, placement, this.anchor, packed.source.sphericalHarmonicsDegree, () => {
+      const ops = await loadOps();
+      const placement = ops.placeInWorld(local, this.host.modelTranslation(record.handle.modelIndex));
+      const rows = await ops.transformSlice(record.attributes, placement, this.anchor, packed.source.sphericalHarmonicsDegree, () => {
         if (stale()) throw new GaussianSplatError('aborted', 'Superseded Gaussian placement edit.');
       }).catch((error: unknown) => { if (stale()) return null; throw error; });
       if (!rows || stale() || this.packed !== packed) return false;
@@ -259,10 +263,13 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       const live = this.liveSlots();
       if (live.length === 0) { this.resetPacked(); return; }
       const degree = Math.max(0, ...[...this.records.values()].filter((r) => !r.failure).map((r) => r.degree)) as ShDegree;
-      const built = await buildPacked(this.packed, live, null, this.anchor!, degree, () => {
-        if (this.epoch !== epoch) throw new GaussianSplatError('lost', 'Gaussian compaction superseded.');
-      });
-      this.commit(built.scene, this.anchor!, false);
+      const check = () => { if (this.epoch !== epoch) throw new GaussianSplatError('lost', 'Gaussian compaction superseded.'); };
+      const built = await (await loadOps()).buildPacked(this.packed, live, null, this.anchor!, degree, check);
+      // Upload before publishing: the previous source keeps drawing (removed slots filtered) meanwhile.
+      const uploaded = this.uploadedOnCurrentDevice() && this.scene ? this.scene.scene : null;
+      if (uploaded) await uploaded.replaceSource(built.scene.source);
+      check();
+      this.commit(built.scene, this.anchor!, uploaded !== null && this.scene?.scene === uploaded);
     }).catch((error: unknown) => { if (!(error instanceof GaussianSplatError)) console.error('[Gaussian] compaction failed:', error); });
   }
 
@@ -364,14 +371,6 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     return [...this.records.values()].filter((r) => !r.failure).map((r) => r.slot);
   }
 
-  private usableLifetime() {
-    const life = this.host.lifetime();
-    if (life.disposed) throw new GaussianSplatError('disposed', 'The renderer was destroyed.');
-    if (life.lost) throw new GaussianSplatError('lost', 'The GPU device is lost.');
-    if (!life.ready) throw new GaussianSplatError('not-ready', 'The renderer is not initialized.');
-    return life;
-  }
-
   private currentDevice(): GPUDevice {
     const device = this.host.device();
     if (!device) throw new GaussianSplatError('lost', 'No current GPU device.');
@@ -381,10 +380,10 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   private checkpoint(epoch: number, generation: number, signal?: AbortSignal): () => void {
     const clears = this.clears;
     return () => {
-      if (signal?.aborted || this.clears !== clears) throw new GaussianSplatError('aborted', 'Gaussian add was aborted or cleared.');
       const life = this.host.lifetime();
       if (life.disposed) throw new GaussianSplatError('disposed', 'The renderer was destroyed.');
       if (this.epoch !== epoch || life.lost || life.generation !== generation) throw new GaussianSplatError('lost', 'The GPU lifetime changed during the Gaussian add.');
+      if (signal?.aborted || this.clears !== clears) throw new GaussianSplatError('aborted', 'Gaussian add was aborted or cleared.');
     };
   }
 

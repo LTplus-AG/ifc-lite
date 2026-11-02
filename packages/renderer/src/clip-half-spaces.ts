@@ -9,23 +9,20 @@ import type { Vec3 } from './types.js';
 export interface ClipHalfSpace {
   n: readonly [number, number, number];
   limit: number;
-  /** A filled cut face is drawn on this plane. A crop box never fills its faces. */
-  capped: boolean;
 }
 
 /** The half-spaces of a clip state, in the renderer's discard convention. */
 export function clipHalfSpaces(clip: PickClipState): ClipHalfSpace[] {
   const planes: ClipHalfSpace[] = [];
-  const capped = clip.capsVisible === true;
   const section = clip.sectionPlane;
   if (section) {
     const side = section.flipped ? -1 : 1;
     planes.push({ n: [section.normal[0] * side, section.normal[1] * side, section.normal[2] * side],
-      limit: section.distance * side, capped });
+      limit: section.distance * side });
   }
   for (const extra of clip.extraPlanes ?? []) {
     const side = extra.flipped ? -1 : 1;
-    planes.push({ n: [extra.normal[0] * side, extra.normal[1] * side, extra.normal[2] * side], limit: extra.distance * side, capped });
+    planes.push({ n: [extra.normal[0] * side, extra.normal[1] * side, extra.normal[2] * side], limit: extra.distance * side });
   }
   const box = clip.clipBox;
   if (box?.enabled) for (let axis = 0; axis < 3; axis++) {
@@ -33,7 +30,7 @@ export function clipHalfSpaces(clip: PickClipState): ClipHalfSpace[] {
     const negative: [number, number, number] = [0, 0, 0];
     positive[axis] = 1;
     negative[axis] = -1;
-    planes.push({ n: positive, limit: box.max[axis], capped: false }, { n: negative, limit: -box.min[axis], capped: false });
+    planes.push({ n: positive, limit: box.max[axis] }, { n: negative, limit: -box.min[axis] });
   }
   return planes;
 }

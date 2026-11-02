@@ -264,9 +264,9 @@ if (existsSync(join(SAMPLES, 'infra-bridge.ifc'))) {
 }
 
 // A section through real geometry (#8659): sweep rays straight down over every
-// mesh cut at mid-height. Nothing the section removed may be reported, the cut
-// face must stop the ray, and the contour must be reachable. The same rays with
-// no clip have to report points above the plane, or the first check proves nothing.
+// mesh cut at mid-height. Nothing the section removed may be reported and the
+// contour must be reachable. The same rays with no clip have to report points
+// above the plane, or the first check proves nothing.
 if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const OPTIONS = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 10 };
   const NO_LOCK = { edge: null, meshExpressId: null, lockStrength: 0 };
@@ -274,12 +274,12 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const EPS = 1e-3;
   const raycaster = new Raycaster();
   const detector = new SnapDetector();
-  let cuts = 0, removed = 0, caps = 0, contour = 0, abovePlaneUnclipped = 0;
+  let cuts = 0, removed = 0, contour = 0, abovePlaneUnclipped = 0;
   for (const mesh of loadMeshes('building-architecture.ifc')) {
     const { min, max } = worldBounds(mesh);
     if (max.y - min.y < 0.5) continue;
     const distance = (min.y + max.y) / 2;
-    const clip = { sectionPlane: { normal: [0, 1, 0], distance, flipped: false }, capsVisible: true };
+    const clip = { sectionPlane: { normal: [0, 1, 0], distance, flipped: false } };
     const accept = (hit) => hit.point.y <= distance;
     cuts++;
     for (let i = 0; i <= STEPS; i++) {
@@ -298,12 +298,7 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
         }
         const surface = raycaster.raycast(ray, [mesh], accept);
         if (!surface) continue;
-        const cap = detector.resolveCutCap(ray, mesh, surface, clip);
-        if (cap) {
-          caps++;
-          assert.ok(Math.abs(cap.point.y - distance) < EPS, `#${mesh.expressId}: a cap hit off the section plane`);
-        }
-        const { snapTarget } = detector.detectMagneticSnap(ray, [mesh], cap ?? surface, camera, 800, NO_LOCK, OPTIONS, clip);
+        const { snapTarget } = detector.detectMagneticSnap(ray, [mesh], surface, camera, 800, NO_LOCK, OPTIONS, clip);
         if (!snapTarget) continue;
         if (snapTarget.position.y > distance + EPS) removed++;
         if (snapTarget.type !== 'face' && Math.abs(snapTarget.position.y - distance) < EPS) contour++;
@@ -313,9 +308,8 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   assert.ok(cuts > 0, 'no mesh tall enough to section');
   assert.ok(abovePlaneUnclipped > 0, 'unclipped rays never snapped above the plane, so the clip check is vacuous');
   assert.equal(removed, 0, 'a snap target lies in the half-space the section removed');
-  assert.ok(caps > 0, 'no ray stopped on a cut face');
   assert.ok(contour > 0, 'no ray reached the cut contour');
-  console.log(`  ok section through ${cuts} meshes: 0 removed targets (${abovePlaneUnclipped} without the clip), ${caps} cap hits, ${contour} contour snaps`);
+  console.log(`  ok section through ${cuts} meshes: 0 removed targets (${abovePlaneUnclipped} without the clip), ${contour} contour snaps`);
   checks++;
 }
 

@@ -34,34 +34,31 @@ const NO_LOCK = { edge: null, meshExpressId: null, lockStrength: 0 };
 const CAMERA = { position: { x: 1, y: 1, z: 50 }, fov: Math.PI / 4 };
 const OPTIONS = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 10 };
 const down = (x: number, y: number): Ray => ({ origin: { x, y, z: 50 }, direction: { x: 0, y: 0, z: -1 } });
-const section = (distance: number, capped = true): PickClipState => ({
-  sectionPlane: { normal: [0, 0, 1], distance, flipped: false }, capsVisible: capped,
-});
+const section = (distance: number): PickClipState => ({ sectionPlane: { normal: [0, 0, 1], distance, flipped: false } });
 
-/** The magnetic pick the engine runs: clipped ray, then cap resolution, then snap. */
-function pick(detector: SnapDetector, mesh: MeshData, ray: Ray, clip?: PickClipState | null, lock = NO_LOCK) {
-  const surface = new Raycaster().raycast(ray, [mesh], (hit) => {
+/** The magnetic pick the engine runs: the clipped ray, then the snap. */
+function pick(detector: SnapDetector, mesh: MeshData, ray: Ray, clip?: PickClipState | null, lock = NO_LOCK, options = OPTIONS) {
+  const intersection = new Raycaster().raycast(ray, [mesh], (hit) => {
     if (!clip?.sectionPlane) return true;
     return hit.point.z <= clip.sectionPlane.distance;
   });
-  assert.ok(surface, 'the ray hits the box');
-  const intersection = detector.resolveCutCap(ray, mesh, surface, clip) ?? surface;
-  return { intersection, ...detector.detectMagneticSnap(ray, [mesh], intersection, CAMERA, 800, lock, OPTIONS, clip) };
+  assert.ok(intersection, 'the ray hits the box');
+  return { intersection, ...detector.detectMagneticSnap(ray, [mesh], intersection, CAMERA, 800, lock, options, clip) };
 }
 
 describe('magnetic snap under a section (#8659)', () => {
-  it('a ray over the cap stops on the cut face, not the hidden inside of the solid', () => {
-    const { intersection } = pick(new SnapDetector(), box(), down(1, 1), section(1));
-    assert.equal(intersection.point.z, 1);
-    assert.equal(intersection.distance, 49);
-    assert.deepEqual(intersection.normal, { x: 0, y: 0, z: 1 });
-    assert.equal(intersection.cutCap, true);
+  it('looking into the cut solid, the visible inside stays the hit but the rim is reachable from straight above', () => {
+    const { intersection, snapTarget } = pick(new SnapDetector(), box(), down(1, 0.2), section(1));
+    assert.equal(intersection.point.z, 0, 'no cap is drawn under a magnetic pick, so the inside surface is what shows');
+    assert.equal(snapTarget?.type, SnapType.EDGE);
+    assert.ok(Math.abs(snapTarget!.position.z - 1) < 1e-6, 'the contour, measured from where the ray crossed the plane');
+    assert.ok(Math.abs(snapTarget!.position.y) < 1e-6);
   });
 
-  it('a hidden cap leaves the ray on the inside surface the user actually sees', () => {
-    const { intersection } = pick(new SnapDetector(), box(), down(1, 1), section(1, false));
-    assert.equal(intersection.point.z, 0);
-    assert.equal(intersection.cutCap, undefined);
+  it('far from the rim, a ray into the cut solid keeps the inside surface', () => {
+    const options = { ...OPTIONS, screenSnapRadius: 0.2 };
+    const { snapTarget } = pick(new SnapDetector(), box(), down(1, 1), section(1), NO_LOCK, options);
+    assert.equal(snapTarget?.position.z, 0);
   });
 
   it('snaps to the cut contour, sliding along it', () => {
@@ -121,24 +118,17 @@ describe('magnetic snap under a section (#8659)', () => {
     const ray = down(1, 0.05);
     const surface = new Raycaster().raycast(ray, [box()]);
     assert.ok(surface);
-    const detector = new SnapDetector();
-    assert.equal(detector.resolveCutCap(ray, box(), surface, clip), null);
-    const { snapTarget } = detector.detectMagneticSnap(ray, [box()], surface, CAMERA, 800, NO_LOCK, OPTIONS, clip);
+    const { snapTarget } = new SnapDetector().detectMagneticSnap(ray, [box()], surface, CAMERA, 800, NO_LOCK, OPTIONS, clip);
     assert.equal(snapTarget?.position.z, 2);
   });
 
-  it('a crop box trims edges and yields a contour but draws no cap', () => {
+  it('a crop box trims edges and yields a reachable contour', () => {
     const clip: PickClipState = { clipBox: { enabled: true, min: [-1, -1, -1], max: [3, 3, 1] } };
-    const detector = new SnapDetector();
-    const ray = down(1, 1);
-    const surface = new Raycaster().raycast(ray, [box()], (hit) => hit.point.z <= 1);
-    assert.ok(surface);
-    assert.equal(detector.resolveCutCap(ray, box(), surface, clip), null);
     const side: Ray = { origin: { x: 1, y: -50, z: 0.98 }, direction: { x: 0, y: 1, z: 0 } };
     const front = new Raycaster().raycast(side, [box()]);
     assert.ok(front);
-    const { snapTarget } = detector.detectMagneticSnap(side, [box()], front, { position: side.origin, fov: Math.PI / 4 }, 800, NO_LOCK, OPTIONS, clip);
-    assert.ok(Math.abs(snapTarget!.position.z - 1) < 1e-6, 'the contour on the visible wall is reachable');
+    const { snapTarget } = new SnapDetector().detectMagneticSnap(side, [box()], front, { position: side.origin, fov: Math.PI / 4 }, 800, NO_LOCK, OPTIONS, clip);
+    assert.ok(Math.abs(snapTarget!.position.z - 1) < 1e-6);
   });
 
   it('releases a held lock when the section changes, then acquires from the new geometry', () => {
@@ -152,13 +142,32 @@ describe('magnetic snap under a section (#8659)', () => {
     assert.ok(Math.abs(moved.snapTarget!.position.z - 0.5) < 1e-6, 'the stale contour is gone');
   });
 
-  it('an open shell has no cap: even parity between its walls must not invent one', () => {
+  it('an open shell has no section interior: parity between its walls must not attract the rim', () => {
     // Floor plus the two walls at y=0 and y=2, so the section is two open lines.
     const shell = box();
     shell.indices = new Uint32Array([0, 1, 2, 0, 2, 3, 0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7]);
-    const { intersection } = pick(new SnapDetector(), shell, down(1, 1), section(1));
-    assert.equal(intersection.point.z, 0, 'the visible floor, not a point in the air');
-    assert.equal(intersection.cutCap, undefined);
+    const { snapTarget } = pick(new SnapDetector(), shell, down(1, 1), section(1));
+    assert.equal(snapTarget?.position.z, 0, 'the visible floor, not a wall top over a metre away');
+  });
+
+  it('a ring section has a hole: a ray down through it is not inside the solid', () => {
+    // A [0,3]^2 tube with a [1,2]^2 hole, on a floor, so the section is two nested loops.
+    const v = [[0, 0], [3, 0], [3, 3], [0, 3], [1, 1], [2, 1], [2, 2], [1, 2]];
+    const positions = new Float32Array([...v.flatMap(([x, y]) => [x, y, 0]), ...v.flatMap(([x, y]) => [x, y, 2])]);
+    const quad = (a: number, b: number, c: number, d: number) => [a, b, c, a, c, d];
+    const ring = (o: number) => [...quad(o, o + 1, o + 5, o + 4), ...quad(o + 1, o + 2, o + 6, o + 5), ...quad(o + 2, o + 3, o + 7, o + 6), ...quad(o + 3, o, o + 4, o + 7)];
+    const floor = [8, 9, 10, 8, 10, 11].map((i) => i - 8);
+    const tube: MeshData = {
+      expressId: 9, positions, normals: new Float32Array(positions.length), color: [0.5, 0.5, 0.5, 1],
+      indices: new Uint32Array([...floor, ...ring(0).map((i) => (i < 4 ? i : i + 4)), ...ring(4).map((i) => (i < 8 ? i : i + 4)),
+        ...ring(0).map((i) => (i < 4 ? i + 8 : i + 8))]),
+    };
+    const camera = { position: { x: 1.5, y: 1.5, z: 50 }, fov: Math.PI / 4 };
+    const ray = down(1.5, 1.5);
+    const hit = new Raycaster().raycast(ray, [tube], (h) => h.point.z <= 1);
+    assert.ok(hit);
+    const { snapTarget } = new SnapDetector().detectMagneticSnap(ray, [tube], hit, camera, 800, NO_LOCK, OPTIONS, section(1));
+    assert.equal(snapTarget?.position.z, 0, 'through the hole the floor shows; treated as inside, the rim 0.5 m away would win');
   });
 
   it('without a clip the geometry is the unclipped cache', () => {

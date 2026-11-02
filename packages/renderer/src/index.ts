@@ -541,7 +541,7 @@ export class Renderer {
     // What the last render() actually clipped, so the GPU picker can mirror it and
     // section/crop-clipped geometry stays unpickable, not just invisible. Updated
     // every render; read by pick()/pickRect(). null = nothing clipped that frame.
-    private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean; capped: boolean } | null = null;
+    private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
     private _sectionExcludedIds: ReadonlySet<number> = new Set();
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
@@ -1938,7 +1938,7 @@ export class Renderer {
                 ? {
                     normal: [...sectionPlaneData.normal] as [number, number, number],
                     distance: sectionPlaneData.distance,
-                    flipped: !!options.sectionPlane?.flipped, capped: options.sectionPlane?.enabled === true && options.sectionPlane.showCap !== false,
+                    flipped: !!options.sectionPlane?.flipped,
                 }
                 : null;
             this._sectionExcludedIds = new Set(options.sectionExcludedIds);
@@ -3199,7 +3199,7 @@ export class Renderer {
      * same fragments and clipped-away geometry can't be selected.
      */
     private activePickClip(): PickClipState {
-        return { sectionExcludedIds: this._sectionExcludedIds, sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox, capsVisible: this._activePickSection?.capped };
+        return { sectionExcludedIds: this._sectionExcludedIds, sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
     }
 
     /**

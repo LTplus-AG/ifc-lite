@@ -23,7 +23,7 @@ interface MeshCut {
   plane: ClipHalfSpace;
   /** World-space segment endpoints, `[ax, ay, az, bx, by, bz, ...]`. */
   segments: Float64Array;
-  /** Every contour vertex meets an even number of segments: only closed loops bound a filled face. */
+  /** Every contour vertex meets an even number of segments: only closed loops bound a solid's section. */
   closed: boolean;
 }
 
@@ -39,7 +39,7 @@ export function planesFor(id: number, clip?: PickClipState | null): ClipHalfSpac
 }
 
 export function planesKey(planes: readonly ClipHalfSpace[]): string {
-  return planes.map((p) => `${p.n[0]},${p.n[1]},${p.n[2]},${p.limit},${p.capped}`).join(';');
+  return planes.map((p) => `${p.n[0]},${p.n[1]},${p.n[2]},${p.limit}`).join(';');
 }
 
 /** Views kept at once; a moved plane leaves its old keys behind. */
@@ -162,7 +162,7 @@ export function buildClippedGeometryCache(
     const contour: SnapEdge[] = [];
     for (const run of mergeCollinearRuns(welded, points, tolerance)) clipEdge(run, others, tolerance, contour);
     for (const edge of contour) {
-      edges.push({ ...edge, index: edges.length });
+      edges.push({ ...edge, index: edges.length, cut: true });
       vertices.push(edge.v0, edge.v1);
     }
   });
@@ -188,18 +188,20 @@ function insideCut(cut: MeshCut, p: Vec3): boolean {
 }
 
 /**
- * The drawn cut face this ray reaches before `hit`, as a hit of its own. Without
- * it a ray over a cap hits the inside of the solid behind the cap, so the measured
- * point lands at a depth nothing on screen shows and the contour is out of reach.
- * Containment rather than back-face testing: IFC winding is not reliably outward.
+ * Where this ray entered the solid through its section, if it did. The viewer
+ * only fills cut faces while the Section tool is active, so under a magnetic pick
+ * such a ray sees into the hollow solid and hits an inside surface far behind the
+ * plane, out of reach of the contour it passed through. The hit stays what it is;
+ * this is the point the contour is measured from. Containment rather than a
+ * back-face test: IFC winding is not reliably outward.
  */
-export function cutCapIntersection(
+export function cutEntryPoint(
   ray: Ray, view: ClippedGeometryCache, planes: readonly ClipHalfSpace[], hit: Intersection,
-): Intersection | null {
+): Vec3 | null {
   const { origin, direction } = ray;
   for (const cut of view.cuts) {
-    const { n, limit, capped } = cut.plane;
-    if (!capped || !cut.closed) continue;
+    if (!cut.closed) continue;
+    const { n, limit } = cut.plane;
     const slope = direction.x * n[0] + direction.y * n[1] + direction.z * n[2];
     if (slope >= -1e-12) continue;
     const distance = (limit - (origin.x * n[0] + origin.y * n[1] + origin.z * n[2])) / slope;
@@ -209,9 +211,7 @@ export function cutCapIntersection(
       y: origin.y + direction.y * distance,
       z: origin.z + direction.z * distance,
     };
-    if (!keeps(planes, point, view.tolerance) || !insideCut(cut, point)) continue;
-    const { sourceTriangleIndex: _hiddenTriangle, ...rest } = hit;
-    return { ...rest, point, distance, normal: { x: n[0], y: n[1], z: n[2] }, cutCap: true };
+    if (keeps(planes, point, view.tolerance) && insideCut(cut, point)) return point;
   }
   return null;
 }

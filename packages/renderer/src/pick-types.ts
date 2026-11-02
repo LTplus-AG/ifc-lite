@@ -19,6 +19,4 @@ export interface PickClipState {
   /** Further planes (#7545), world-space; the picker clips against all of them. */
   extraPlanes?: readonly ExtraClipPlane[] | null;
   clipBox?: ClipBox | null;
-  /** Section planes draw a filled cut face, so a ray stops there rather than passing into the solid. */
-  capsVisible?: boolean;
 }

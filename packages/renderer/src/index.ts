@@ -123,6 +123,9 @@ export type { PointPickSizing } from './picker.js';
 
 // Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export { normalizeGaussianAttributes, type GaussianAttributeSource, type NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
+export type { GaussianReadiness } from './gaussian/gaussian-readiness.js';
+import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -3544,6 +3547,7 @@ export class Renderer {
      * synchronously, so a latch left standing until the queued body clears it
      * cannot make this method spuriously false in the meantime.
      */
+    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
     isReady(): boolean {
         return this.ready && !this.deviceLost && this.device.isInitialized() && this.pipeline !== null;
     }

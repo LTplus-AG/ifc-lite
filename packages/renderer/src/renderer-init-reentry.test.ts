@@ -316,7 +316,11 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
             'precondition: the harness is a fully initialised renderer, or the assertion below is vacuous',
         );
 
+        const gaussianGeneration = renderer.getGaussianReadiness().generation;
         void renderer.init();
+        // #8564: canonical ingestion observes the same synchronous revocation.
+        assert.strictEqual(renderer.getGaussianReadiness().state, 'initializing');
+        assert.ok(renderer.getGaussianReadiness().generation > gaussianGeneration);
 
         assert.strictEqual(
             renderer.isReady(),

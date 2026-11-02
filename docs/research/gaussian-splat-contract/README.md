@@ -212,3 +212,69 @@ then fail. A separate `populated-overflow.oracle.patch` under
 `tests/evidence/gaussian-8564-exact-runs/` deliberately detaches populated buffers
 before throwing, so the preservation assertion must fail even though rejection
 still occurs. Neither negative control changes gate classification or acceptance.
+
+## Next native adapter boundary (#8564)
+
+`@ifc-lite/renderer` now separates raw decode from normalized render attributes.
+The converter preserves source coordinates and unclamped radiance, maps PLY
+channel-major SH into upstream basis-major RGB, and rejects non-finite/degenerate
+channels. Its arrays are independent CPU allocations. It does not upload, infer
+placement, or claim that a model can render. `Renderer.getGaussianReadiness()`
+uses the actual renderer generation and loss/disposal latches: even a healthy IFC
+renderer reports Gaussian blocked. This is the canonical-loader integration seam,
+not a second canvas or a production enablement switch.
+
+The feasible composition candidate is native transparent depth peeling plus
+upstream globally sorted splat draws filtered to the per-pixel intervals between
+peeled layers. With reverse-Z, intervals are lower-exclusive/upper-inclusive; the
+chosen tie order places a splat at the glass depth behind that glass contribution.
+A complete compositor also needs deterministic ordering of coincident native
+transparent fragments. Every fragment must occur exactly once. Peeling exhaustion
+must reject the frame, not present a truncated success.
+
+`contract/fragment-interval-plugin.mjs` proposes only a sampled interval and
+fragment discard in the hash-pinned upstream shader. Covariance projection,
+Gaussian alpha, sort and blending remain upstream. The separate native witness
+rasterizes a sloping glass triangle into two interval textures, then submits far
+splats, glass, near splats on the borrowed native encoder/pass. Its independent
+reference computes the known triangle depth at each pixel center and submits the
+corresponding order with pixel scissors. Removing the discard is the negative
+control. This is a **one-layer mechanism experiment**, not a multi-layer compositor
+or a production renderer. The original counterexample artifacts remain unchanged.
+
+Outstanding upstream work: scalable exact global GPU ordering with no source-run
+approximation; native/paged reverse-Z parity; an explicit depth-interval API with
+per-sample MSAA semantics; clipping and ID output; and borrowed attachment/resource
+ownership across resize and device loss. IFC-Lite still needs native transparent
+peeling integrated into `renderFrame`, RTE/placement/SH rotation, real-model
+interaction, overflow reporting, hardware resource budgets and production smoke
+evidence. The one-layer experiment cannot waive any of these release blockers.
+
+The historical run at `1f957a0a5d` and its original
+`fragment-interval-results.json` remain unchanged. Review #8616 found that its
+nonblank check counted green glass and its reference shared the interval filter.
+Those results therefore do not establish independent splat contribution.
+
+The revised witness serves the reference separately using `exactRunsPlugin` only:
+the upstream fragment shader has no interval binding, texture read or discard
+extension. Pixel scissors still select the independently computed glass order.
+Both reference and candidate must contain red pixels (only splats write red in
+this scene), and their complete images must match exactly. The discard-removal
+control must differ while retaining splats. The all-splat-discard control must
+have zero red pixels and fail the same positive acceptance predicate. A CPU
+regression also rejects identical green-only images even with zero differences.
+New GPU evidence is recorded separately in `fragment-interval-oracle-results.json`.
+Production qualification remains blocked.
+
+Reproduce from the repository with installed dependencies and Playwright Chromium, through
+ordinary fleet admission and the GPU serialization wrapper:
+
+```sh
+~/build-workers/ifc-fleet run --route local --kind ordinary --cpu 2 --memory 4 \
+  --pool gaussian-production-8562 --storage-task UNIQUE_TASK --cwd "$PWD" -- \
+  bash -c '~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-fragment-interval.mjs'
+```
+
+This is a manual GPU witness, not part of root `pnpm test`. It does not qualify
+multi-layer peeling, per-sample MSAA, viewer rendering, licensed capture scenes or
+hardware performance. Public enablement remains blocked.

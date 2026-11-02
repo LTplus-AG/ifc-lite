@@ -1,0 +1,77 @@
+{
+  "page_url": "https://superspl.at/scene/e832997f",
+  "page_sha256": "1cfa5628d3e9fa96c6cdff97dbdf2b6711cadbacfcecbaa4633b230558755c2f",
+  "fetched_at": "2026-11-02",
+  "artifacts": [
+    {
+      "path": "meta.json",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json",
+      "size": 10794,
+      "sha256": "29d26ce46ef80eec801b41fe27f04c8d31a77aa929f25112d6cd0b10cbb02f65"
+    },
+    {
+      "path": "means_l.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_l.webp",
+      "size": 2684042,
+      "sha256": "4af1a1be093c613ad48083bb206758d6001b109c30698a3d7a19e0468fb9acc9"
+    },
+    {
+      "path": "means_u.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_u.webp",
+      "size": 465414,
+      "sha256": "da31d2d59c8ecac55811da5a14d2c02f39eaed9edbfc996e5846ff271c5c8d86"
+    },
+    {
+      "path": "scales.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/scales.webp",
+      "size": 2662990,
+      "sha256": "7016723d4f6b14cd50772eed2c9606c3cbf13ee4a716aae80cf0ad33ed1c1964"
+    },
+    {
+      "path": "quats.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/quats.webp",
+      "size": 2717980,
+      "sha256": "b044c8876ed8ca5641ab36b3ba70cfa8d7c0ff05c5925eb29ff6e3450672bd16"
+    },
+    {
+      "path": "sh0.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/sh0.webp",
+      "size": 3321348,
+      "sha256": "c2bb729c7972291fd527895103ea161969f43342ef7995310c62105d15a3d1f9"
+    },
+    {
+      "path": "shN_centroids.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_centroids.webp",
+      "size": 82,
+      "sha256": "860ee94ae09eb7c37ca5d0adbfefcb53a956ecedd6a1202936267f53601d5608"
+    },
+    {
+      "path": "shN_labels.webp",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_labels.webp",
+      "size": 90,
+      "sha256": "08ff45f6153bdd3e11d656ff3387144382443caa285271052ed832571b9b181a"
+    },
+    {
+      "path": "settings.json",
+      "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/settings.json",
+      "size": 671,
+      "sha256": "13a94d36f0d6e3af14f41c5e25755a86c53c6c0c63dc1cc5fe7d2f07d1e48956"
+    }
+  ],
+  "publisher_camera": {
+    "initial": {
+      "position": [
+        -12.421453475952148,
+        10.829668045043945,
+        -21.73072052001953
+      ],
+      "target": [
+        -4.814439652520558,
+        10.377790210301438,
+        -0.09553461726887491
+      ],
+      "fov": 90
+    }
+  },
+  "sh_warning": "Published SH3 codebook is all zero. This asset does not qualify captured higher-order appearance."
+}

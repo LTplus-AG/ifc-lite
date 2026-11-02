@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/gaussian/gaussian-readiness.ts
++++ b/packages/renderer/src/gaussian/gaussian-readiness.ts
+@@ -14,7 +14,7 @@
+ /** Uses the renderer's existing lifetime; no second device or readiness latch. */
+ export function gaussianReadiness(ready: boolean, lost: boolean, disposed: boolean, generation: number): GaussianReadiness {
+   if (disposed) return { state: 'disposed', generation };
+-  if (lost) return { state: 'blocked', generation, reasons: blockers };
++  if (lost) return { state: 'lost', generation };
+   if (!ready) return { state: 'initializing', generation };
+   return { state: 'blocked', generation, reasons: blockers };
+ }

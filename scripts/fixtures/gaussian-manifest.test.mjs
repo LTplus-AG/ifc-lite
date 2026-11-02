@@ -55,3 +55,34 @@ test('noncanonical paths cannot bypass Gaussian provenance (#8580)', () => {
     assert.ok(errors.some(error => error.includes('canonical relative POSIX path')), path);
   }
 });
+
+test('publisher Gaussian artifacts retain hash provenance and release hosting (#8567)', async () => {
+  const { fixtureDownloadUrl } = await import('./download-url.mjs');
+  const entry = structuredClone(source);
+  entry.provenance.source = {
+    kind: 'publisher-artifacts', page_url: 'https://example.org/scene', version: 'v1',
+    sha256: entry.sha256, fetched_at: '2026-11-02',
+    artifacts: [{ path: 'capture.splat', url: 'https://example.org/v1/capture.splat', size: entry.size, sha256: entry.sha256 }],
+  };
+  entry.provenance.license.evidence_url = 'https://example.org/license';
+  entry.provenance.license.evidence_sha256 = 'a'.repeat(64);
+  assert.deepEqual(validateManifest({ version: 1, files: [entry] }), []);
+  assert.equal(fixtureDownloadUrl('https://release.example', entry), `https://release.example/${entry.sha256}`);
+  for (const mutate of [
+    e => delete e.provenance.source.artifacts,
+    e => { e.provenance.source.artifacts[0].sha256 = 'not-a-hash'; },
+    e => { e.provenance.source.artifacts[0].size = -1; },
+    e => { e.provenance.source.artifacts[0].path = '../capture.splat'; },
+    e => { e.provenance.source.artifacts.push(e.provenance.source.artifacts[0]); },
+    e => { e.provenance.source.artifacts[0].url = 'http://example.org/capture'; },
+    e => { e.provenance.source.sha256 = 'b'.repeat(64); },
+    e => { e.provenance.source.commit = 'b'.repeat(40); },
+    e => delete e.provenance.license.evidence_sha256,
+  ]) {
+    const invalid = structuredClone(entry); mutate(invalid);
+    assert.notDeepEqual(validateManifest({ version: 1, files: [invalid] }), []);
+  }
+  const landxml = { ...entry, path: 'landxml/capture.xml' };
+  assert.ok(validateManifest({ version: 1, files: [landxml] }).some(e => e.includes('commit')),
+    'publisher source does not relax LandXML Git provenance');
+});

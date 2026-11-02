@@ -94,13 +94,13 @@ export function createBuildagilRelayHandler(config: BuildagilRelayConfig, deps: 
     if (!route) return json(400, { error: 'Not a relayable buildagil endpoint' }, cors);
 
     if (route.kind === 'token') {
-      const grant = await readBuildagilGrant(request, config);
-      if (grant instanceof Response) return grant;
+      const form = await readBuildagilGrant(request, config);
+      if (form instanceof Response) return form;
       return forwardTokenGrant({
-        tokenUrl: BUILDAGIL_TOKEN_URL, form: grant.form, clientSecret: config.clientSecret,
-        // A public client's code is redeemable only cross-origin; a secret
-        // authenticates a confidential one instead.
-        origin: config.clientSecret ? undefined : grant.origin,
+        // No Origin upstream: buildagil's gateway answers a token request from
+        // an origin it has not allowlisted with an empty 200 (measured with
+        // http://localhost:5000, 2026-11-02), and the relay serves every origin.
+        tokenUrl: BUILDAGIL_TOKEN_URL, form, clientSecret: config.clientSecret,
         vendor: 'buildagil', logTag: '[buildagil-relay]',
         upstreamTimeoutMs: config.upstreamTimeoutMs, maxBodyBytes: config.maxBodyBytes, fetchImpl: deps.fetchImpl,
       });

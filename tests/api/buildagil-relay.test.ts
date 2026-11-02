@@ -204,22 +204,23 @@ test('token refusals never reach upstream', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('token: a public client (id, no secret) is forwarded without a secret, presenting the caller origin', async () => {
+test('token: a public client (id, no secret) is forwarded without a secret or an Origin', async () => {
   const { handler, calls } = relay(() => Response.json({ access_token: 'at', refresh_token: 'rt-2' }), { clientSecret: '' });
   assert.equal((await handler(tokenRequest(CODE))).status, 200);
   const form = new URLSearchParams(calls[0].body);
   assert.equal(form.has('client_secret'), false);
   assert.equal(form.get('client_id'), CLIENT);
   assert.equal(form.get('code_verifier'), VERIFIER);
-  // Entra redeems a browser client's code only on a cross-origin request.
-  assert.equal(calls[0].headers.get('origin'), ORIGIN);
+  // buildagil's gateway answers an origin it has not allowlisted with an
+  // empty 200, so the relay never presents the browser's.
+  assert.equal(calls[0].headers.get('origin'), null);
   // Still this deployment's client and a registered redirect only.
   assert.equal((await handler(tokenRequest({ ...CODE, client_id: 'other' }))).status, 400);
   assert.equal((await handler(tokenRequest({ ...CODE, redirect_uri: 'https://evil.test/cb' }))).status, 400);
   assert.equal(calls.length, 1);
 });
 
-test('token: a confidential client authenticates with its secret, not an origin', async () => {
+test('token: a confidential client authenticates with its secret', async () => {
   const { handler, calls } = relay(() => Response.json({ access_token: 'at' }));
   assert.equal((await handler(tokenRequest(REFRESH))).status, 200);
   assert.equal(calls[0].headers.get('origin'), null);

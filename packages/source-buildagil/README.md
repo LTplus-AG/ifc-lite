@@ -40,9 +40,9 @@ every request onto that same-origin path. In ifc-lite's viewer the relay is
 `api/buildagil.ts` (handler `server/sources/buildagil-relay.ts`), served by
 the dev server too. It forwards enumerated reads and `POST 1.0/search` with
 the caller's bearer, and forwards `oauth2/token` grants for the deployment's
-client only: a public client's PKCE grant as is (with the caller's origin,
-which Entra requires to redeem a browser client's code), a confidential
-client's with the secret added.
+client only: a public client's PKCE grant as is, a confidential client's with
+the secret added. It sends no `Origin` upstream: buildagil's gateway answers a
+token request from an origin it has not allowlisted with an empty `200`.
 
 | Variable | Where | Value |
 |---|---|---|

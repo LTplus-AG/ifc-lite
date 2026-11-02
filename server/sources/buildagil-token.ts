@@ -9,8 +9,7 @@
  * through this relay. Two client kinds:
  *
  *   - public (what buildagil issued: a client id, no secret): the PKCE grant
- *     is forwarded as is, with the caller's allowlisted Origin, because Entra
- *     redeems codes for browser clients only on cross-origin requests;
+ *     is forwarded as is, server to server;
  *   - confidential (a secret is configured): the secret is added here and
  *     never reaches the browser.
  *
@@ -97,7 +96,7 @@ function isFormContentType(value: string | null): boolean {
 export async function readBuildagilGrant(
   request: Request,
   config: BuildagilClientConfig & { readonly allowedOrigins: readonly string[]; readonly maxBodyBytes: number },
-): Promise<{ form: URLSearchParams; origin: string } | Response> {
+): Promise<URLSearchParams | Response> {
   if (request.method !== 'POST') return tokenRelayError(405, 'invalid_request', 'Only POST is accepted', { allow: 'POST' });
   // A form POST is a CORS-simple request a foreign page could send, so the
   // Origin a browser always attaches to it is what keeps those out.
@@ -121,5 +120,5 @@ export async function readBuildagilGrant(
       : tokenRelayError(400, 'invalid_request', 'Request body is not UTF-8');
   }
   const form = buildagilTokenForm(read.text, config);
-  return 'problem' in form ? tokenRelayError(400, 'invalid_request', form.problem) : { form, origin };
+  return 'problem' in form ? tokenRelayError(400, 'invalid_request', form.problem) : form;
 }

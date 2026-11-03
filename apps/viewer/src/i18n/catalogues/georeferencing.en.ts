@@ -106,8 +106,12 @@ export const georeferencingEn = {
   'properties.georef.globePlacement.resolvedAnchor': 'Placed by one anchor point.',
   'properties.georef.globePlacement.resolvedExact': 'Every vertex placed through the map projection.',
   'properties.georef.globePlacement.estimate': 'Anchor error estimate: {value} cm',
+  'properties.georef.globePlacement.resolvedRigid':
+    'IfcRigidOperation: the coordinates are map coordinates, so every vertex is placed through the map projection.',
+  'properties.georef.globePlacement.rigidAnchorWarning':
+    'This file uses an IfcRigidOperation, whose coordinates are map coordinates. Anchor only approximates them; Auto or Exact places every vertex.',
   'properties.georef.globePlacement.help':
-    'Auto places every vertex once one anchor point would be more than 1 cm off (Earth curvature, projection scale, geoid slope).',
+    'Auto places every vertex for an IfcRigidOperation, and for an IfcMapConversion once one anchor point would be more than 1 cm off (Earth curvature, projection scale, geoid slope).',
   'properties.georef.setOrthogonalHeightTooltip': 'Set OrthogonalHeight to sampled terrain height ({value} m)',
   'properties.georef.setOrthogonalHeightTooltipViaSource': 'Set OrthogonalHeight to sampled terrain height ({value} m via {source})',
 } as const satisfies Record<string, TranslationValue>;

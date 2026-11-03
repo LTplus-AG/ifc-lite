@@ -2241,11 +2241,7 @@ export class Renderer {
                 // zero-length axes, which is the same picture. Reading the
                 // shared basis also keeps the horizon in the sky aligned with
                 // the horizon in the geometry for free.
-                const camBasis = viewBasis(
-                    this.camera.getPosition(),
-                    this.camera.getTarget(),
-                    this.camera.getUp(),
-                );
+                const camBasis = viewBasis(this.camera.getPosition(), this.camera.getTarget(), this.camera.getUp());
                 this.skyPass.draw(pass, {
                     forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
                     right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],

@@ -124,15 +124,23 @@ const stats = () => page.evaluate(() => {
   const s = globalThis.__ifc_lite_render_stats__?.();
   return s ? { adapter: s.adapter, gaussian: s.gaussianSplats } : null;
 });
+// #8566: reserve before capture or writes, including diagnostic paths. Never
+// replace earlier evidence when a later phase accidentally reuses its label.
+const capturedLabels = new Set();
+const reserveFrameLabel = (label) => {
+  assert.ok(!capturedLabels.has(label), `Duplicate frame artifact label: ${label}`);
+  capturedLabels.add(label);
+};
 /** Store one renderer-owned frame in the page under `label`. */
 const frame = async (label) => {
   if (captureProbe) return diagnosticFrame(label);
+  reserveFrameLabel(label);
   const info = await frameIn(label);
   assert.ok(info, `${label}: renderer capture unavailable`);
   const { png, decoded, ...metadata } = info;
-  await writeFile(`${out}/${label}.png`, Buffer.from(png.split(',')[1], 'base64'));
-  await writeFile(`${out}/${label}-decoded.rgba`, Buffer.from(decoded, 'base64'));
-  await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2));
+  await writeFile(`${out}/${label}.png`, Buffer.from(png.split(',')[1], 'base64'), { flag: 'wx' });
+  await writeFile(`${out}/${label}-decoded.rgba`, Buffer.from(decoded, 'base64'), { flag: 'wx' });
+  await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2), { flag: 'wx' });
   result.frames[label] = metadata; return metadata; };
 // #8566 / original d394: opt in with GAUSSIAN_CAPTURE_PROBE=1 in a rebuilt
 // internal bundle. Fixed five-frame probe, stops before device destruction.
@@ -147,6 +155,7 @@ const frame = async (label) => {
 // source arrays are not exposed; preserve fixture/source/bundle SHA256 bindings.
 // Fixed five-frame probe. Persist each boundary before any comparison can fail.
 async function diagnosticFrame(label, ordinary = false) {
+  reserveFrameLabel(label);
   const captured = await page.evaluate(async (ordinary) => {
     const observe = () => {
       const s = globalThis.__ifc_lite_viewer_store__.getState();
@@ -182,13 +191,13 @@ async function diagnosticFrame(label, ordinary = false) {
   }, ordinary);
   const kinds = ordinary ? ['decoded'] : ['raw', 'duplicate', 'decoded'];
   const buffers = Object.fromEntries(kinds.map(k => [k, Buffer.from(captured[k], 'base64')]));
-  for (const [kind, bytes] of Object.entries(buffers)) await writeFile(`${out}/${label}-${kind}.rgba`, bytes);
-  await writeFile(`${out}/${label}.png`, Buffer.from(captured.png.split(',')[1], 'base64'));
+  for (const [kind, bytes] of Object.entries(buffers)) await writeFile(`${out}/${label}-${kind}.rgba`, bytes, { flag: 'wx' });
+  await writeFile(`${out}/${label}.png`, Buffer.from(captured.png.split(',')[1], 'base64'), { flag: 'wx' });
   const metadata = { label, width: captured.width, height: captured.height, ...captured.metadata, decodedAt: captured.decodedAt,
     route: captured.route, observations: captured.observations,
     unavailable: ordinary ? ['raw GPU RGBA', 'same-submit duplicate', 'atomic frame metadata', 'sort hash'] : [],
     sha256: Object.fromEntries(Object.entries(buffers).map(([k, b]) => [k, createHash('sha256').update(b).digest('hex')])) };
-  await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2));
+  await writeFile(`${out}/${label}-metadata.json`, JSON.stringify(metadata, null, 2), { flag: 'wx' });
   probeFrames.push({ label, ...buffers }); result.frames[label] = metadata;
   return metadata;
 }
@@ -212,11 +221,11 @@ async function finishProbe() {
     await compareBytes(`${f.label}-decode`, f.raw, f.decoded);
     if (i) await compareBytes(`${probeFrames[i-1].label}-${f.label}`, probeFrames[i-1].raw, f.raw);
   }
-  await compareBytes('visible-shown', probeFrames[0].raw, probeFrames[2].raw);
+  await compareBytes('initial-visible-initial-shown', probeFrames[0].raw, probeFrames[2].raw);
   result.checks.captureProbe = { comparisons, criterion: 'zero byte differences; visibility transitions are expected nonzero controls',
     sequence: probeFrames.map(f => f.label), stoppedBeforeLoss: true };
   await writeFile(`${out}/capture-comparisons.json`, JSON.stringify(result.checks.captureProbe, null, 2));
-  const required = comparisons.filter(c => /-duplicate$|-decode$|beforeLoss-beforeLossStable|shown-beforeLoss|visible-shown/.test(c.name));
+  const required = comparisons.filter(c => /-duplicate$|-decode$|beforeLoss-beforeLossStable|shown-beforeLoss|initial-visible-initial-shown/.test(c.name));
   assert.ok(required.every(c => c.exactZero), 'fixed capture probe exact-zero controls failed; all deltas retained');
 }
 // #8566: existing frozen bundle, fixed D,D,O,O,H sequence; no new renderer
@@ -281,6 +290,7 @@ const frameIn = (label) => page.evaluate(async (label) => {
 const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
   const f = globalThis.__witnessFrames, x = f[a], y = f[b];
   const cameras = globalThis.__witnessCameras;
+  for (const label of [a, b, ...(outside ?? [])]) if (!f?.[label]) throw new Error(`Comparison frame unavailable: ${label}`);
   if (!x || !y || x.length !== y.length) throw new Error('Missing or incompatible captured frames');
   const sameCamera = [a, b, ...(outside ?? [])].every(label => {
     const camera = cameras[label], reference = cameras[a];
@@ -367,14 +377,14 @@ try {
     result.verdict = 'discriminator-pass';
   } else {
   beginStage('hideShow');
-  await frame('visible');
+  await frame('initial-visible');
   await page.screenshot({ path: `${out}/01-loaded.png` });
   await visibility(outcome.id, false);
   const hidden = await stats(); // Hidden assets need no Gaussian draw; capture requests the reference frame.
-  await frame('hidden');
+  await frame('initial-hidden');
   await visibility(outcome.id, true);
   const shown = await drawn('shown', hidden?.gaussian?.drawnFrames ?? 0);
-  await frame('shown');
+  await frame('initial-shown');
   if (captureProbe) {
     await frame('beforeLoss'); await frame('beforeLossStable');
     await finishProbe();
@@ -382,8 +392,8 @@ try {
     assert.deepEqual(gpuConsole, [], 'GPU errors');
     result.verdict = 'diagnostic-pass';
   } else {
-  const contribution = await compare('visible', 'hidden');
-  const restored = await compare('visible', 'shown');
+  const contribution = await compare('initial-visible', 'initial-hidden');
+  const restored = await compare('initial-visible', 'initial-shown');
   result.checks.hideShow = { hidden: hidden?.gaussian, shown: shown.gaussian, contribution, restored };
   assert.equal(hidden?.gaussian?.visibleAssetSplats, 0);
   visual('visible contribution', contribution.sameCamera && contribution.thresholdedDiffering > contribution.total * 0.02, contribution, 'RGB L1 > 6 on more than 2% of pixels');
@@ -520,29 +530,29 @@ try {
   const measure = async (suffix) => {
     let last = (await stats()).gaussian.drawnFrames;
     await clipOff(); await page.waitForTimeout(300);
-    await frame(`visible${suffix}`);
+    await frame(`centre-${suffix}-visible`);
     await visibility(outcome.id, false); await page.waitForTimeout(300);
-    await frame(`hidden${suffix}`);
+    await frame(`centre-${suffix}-hidden`);
     await visibility(outcome.id, true); last = (await drawn(`shown${suffix}`, last)).gaussian.drawnFrames;
-    const plane = await clipOn(); last = (await drawn(`clipped${suffix}`, last)).gaussian.drawnFrames;
-    await frame(`clipped${suffix}`);
-    await page.screenshot({ path: `${out}/02-centre-clipped${suffix || '-dark'}.png` });
+    const plane = await clipOn(); last = (await drawn(`centre-${suffix}-clipped`, last)).gaussian.drawnFrames;
+    await frame(`centre-${suffix}-clipped`);
+    await page.screenshot({ path: `${out}/02-centre-clipped-${suffix}.png` });
     await visibility(outcome.id, false); await page.waitForTimeout(300);
-    await frame(`clippedHidden${suffix}`);
+    await frame(`centre-${suffix}-clippedHidden`);
     await visibility(outcome.id, true); await drawn(`clipped-again${suffix}`, last);
-    const full = await compare(`visible${suffix}`, `hidden${suffix}`);
-    const kept = await compare(`clipped${suffix}`, `clippedHidden${suffix}`, [`visible${suffix}`, `hidden${suffix}`]);
+    const full = await compare(`centre-${suffix}-visible`, `centre-${suffix}-hidden`);
+    const kept = await compare(`centre-${suffix}-clipped`, `centre-${suffix}-clippedHidden`, [`centre-${suffix}-visible`, `centre-${suffix}-hidden`]);
     await clipOff();
     return { plane, full, kept };
   };
   // The initial theme follows prefers-color-scheme; set both explicitly.
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setTheme('dark'));
   await page.waitForTimeout(500);
-  const dark = await measure('');
+  const dark = await measure('dark');
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setTheme('light'));
   await page.waitForTimeout(500);
-  const light = await measure('Light');
-  const backgrounds = await compare('hidden', 'hiddenLight');
+  const light = await measure('light');
+  const backgrounds = await compare('centre-dark-hidden', 'centre-light-hidden');
   visual('distinct backgrounds diagnostic', backgrounds.sameCamera && backgrounds.thresholdedDiffering > backgrounds.total * 0.9, backgrounds, 'RGB L1 > 6 on more than 90% of pixels');
   const lightEscaped = new Set(light.kept.samples.map(sample => sample.pixel));
   const both = dark.kept.samples.filter(sample => lightEscaped.has(sample.pixel));

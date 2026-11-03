@@ -56,12 +56,19 @@ export function gitIdentity(root) {
 }
 
 /** Host identity without secrets: the machine id is only ever recorded hashed. */
-export function hostIdentity() {
-  const machine = ['/etc/machine-id', '/var/lib/dbus/machine-id'].find(existsSync);
+// An empty file or systemd's first-boot 'uninitialized' is no id: hashing it would give every such host the same value.
+const readMachineId = path => {
+  if (!existsSync(path)) return null;
+  const id = readFileSync(path, 'utf8').trim();
+  return id && id !== 'uninitialized' ? id : null;
+};
+
+export function hostIdentity({ machineIdPaths = ['/etc/machine-id', '/var/lib/dbus/machine-id'] } = {}) {
+  const machine = machineIdPaths.map(readMachineId).find(id => id !== null);
   const [load1, load5] = loadavg();
   return { hostname: hostname(), platform: platform(), arch: arch(), kernel: release(),
     cpuModel: cpus()[0]?.model ?? null, cpuCount: cpus().length, memTotalBytes: totalmem(), node: process.version,
-    machineIdSha256: machine ? sha256Bytes(readFileSync(machine, 'utf8').trim()) : null, loadAtStart: { load1, load5 } };
+    machineIdSha256: machine ? sha256Bytes(machine) : null, loadAtStart: { load1, load5 } };
 }
 
 /** Every unreleased quiet window blocks work on Pop. */

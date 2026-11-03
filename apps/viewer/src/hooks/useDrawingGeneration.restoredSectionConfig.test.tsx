@@ -48,6 +48,7 @@ import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawin
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 import {
   saveDrawing2DEntry,
+  loadDrawing2DEntry,
   clearAllDrawing2DEntries,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -291,4 +292,41 @@ describe('restore keeps an out-of-bounds saved cut (#8162)', () => {
       assert.ok(Math.abs(plane.position - expected) < 1e-9, `restored to ${plane.position} %, not ${expected} %`);
     });
   }
+});
+
+// A drawing generated for the untouched placeholder plane (the Section tool open
+// with no cut yet) saved that plane as the model's cut. The next restore, on a
+// reload or when the viewport remounted at a layout breakpoint, then turned it
+// into a real, cutting plane A that the user never made.
+describe('the placeholder plane is never saved as a cut', () => {
+  it('saves no cut for the placeholder, and a remount brings none back; a real cut is still saved', async () => {
+    const file = fileWithBytes(91, 'placeholder-cut.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    assert.equal(useViewerStore.getState().sectionPlane.name, '', 'the fixture starts on the placeholder');
+
+    await act(async () => { await runGenerate!(); });
+    const saved = loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    assert.equal(saved?.sectionConfig ?? null, null, 'no cut saved for a plane the user never made');
+
+    // The viewport remounting (a layout breakpoint) re-runs the restore.
+    const first = root!;
+    await act(async () => first.unmount());
+    container!.remove();
+    await mount();
+    await restoreDecided('model-a');
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const plane = useViewerStore.getState().sectionPlane;
+    assert.equal(plane.name, '', 'no plane A appears');
+    assert.equal(plane.enabled, false, 'nothing starts cutting');
+
+    // Positive control: a cut the user made is still saved with the drawing.
+    await act(async () => { useViewerStore.getState().addSectionPlane('side'); });
+    await act(async () => { await runGenerate!(); });
+    const real = loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    assert.equal(real?.sectionConfig?.plane.axis, 'x', 'a real Side cut is saved');
+  });
 });

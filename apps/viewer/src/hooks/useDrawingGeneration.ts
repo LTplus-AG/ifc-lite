@@ -43,7 +43,7 @@ import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFi
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
-import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
+import { FIRST_SECTION_PLANE_NAME, isPristineSectionPlane } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
@@ -878,8 +878,11 @@ export function useDrawingGeneration({
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —
       // `drawing2D` itself is derived output and is never persisted.
+      // The untouched placeholder plane is not a cut the user made: saving it
+      // would let the next restore (a reload, or the viewport remounting at a
+      // layout breakpoint) turn it into a real, cutting plane A.
       const generatedForModelId = useViewerStore.getState().activeModelId;
-      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, config);
+      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, isPristineSectionPlane(sectionPlane) ? null : config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');

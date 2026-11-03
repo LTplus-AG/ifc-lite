@@ -238,3 +238,19 @@ describe('a create/edit/delete session round-trips through export_ifc (#2012)', 
     expect(after.entityCount).toBe(before.entityCount - 1);
   }, 30_000);
 });
+
+// GHSA-xf2f-wgcc-928h: exercise real exporters with the real loaded model.
+describe('exports preserve loaded source bytes', () => {
+  it.each(['export_csv', 'export_json', 'export_ifc'])('%s refuses the source but writes a separate output', async (name) => {
+    await session();
+    ctx.config = { ...DEFAULT_CONFIG };
+    const source = join(tmp, 'm.ifc');
+    const before = await readFile(source);
+    await expect(tool(name).handler({ file_path: source }, ctx)).rejects.toThrow(/overwrite loaded model/);
+    expect(await readFile(source)).toEqual(before);
+    const output = join(tmp, `${name}.out`);
+    await call(name, { file_path: output });
+    expect((await readFile(output)).length).toBeGreaterThan(0);
+    expect(await readFile(source)).toEqual(before);
+  });
+});

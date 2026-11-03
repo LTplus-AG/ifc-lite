@@ -23,7 +23,7 @@
  *      allowlist is configured.
  */
 
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, resolve, sep } from 'node:path';
 import type { LoadedModel, ServerConfig } from './context.js';
@@ -103,7 +103,34 @@ export async function resolveSafePath(
   const canonical = await canonicalise(requested, mode);
   rejectIfSensitiveHome(canonical);
   ensureWithinRoots(canonical, roots);
+  if (mode === 'write') await rejectLoadedModel(canonical, ctx);
   return canonical;
+}
+
+/** Loaded sources are read-only even inside an explicitly allowed directory. */
+async function rejectLoadedModel(target: string, ctx: PathContext): Promise<void> {
+  const targetStat = await statIfPresent(target);
+  for (const model of ctx.registry.list()) {
+    if (!model.filePath) continue;
+    const source = await canonicalise(resolve(model.filePath), 'write');
+    const sourceStat = targetStat ? await statIfPresent(source) : undefined;
+    if (target === source || (targetStat && sourceStat &&
+        targetStat.dev === sourceStat.dev && targetStat.ino === sourceStat.ino)) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.PERMISSION_DENIED,
+        message: `Refusing to overwrite loaded model '${model.filePath}'. Choose a different output file.`,
+      });
+    }
+  }
+}
+
+async function statIfPresent(path: string) {
+  try {
+    return await stat(path, { bigint: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return undefined;
+  }
 }
 
 async function buildAllowedRoots(ctx: PathContext): Promise<string[]> {

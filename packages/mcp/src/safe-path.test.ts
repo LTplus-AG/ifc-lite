@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdir, mkdtemp, realpath, symlink, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, link, readFile, realpath, symlink, writeFile, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -215,6 +215,33 @@ describe('resolveSafePath', () => {
       } finally {
         await rm(modelDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('loaded source protection (GHSA-xf2f-wgcc-928h)', () => {
+    it.each([undefined, 'explicit'])('rejects source aliases with %s roots', async (mode) => {
+      const source = join(scratch, 'model.ifc');
+      const symbolic = join(scratch, 'alias.csv');
+      const hard = join(scratch, 'alias.json');
+      await writeFile(source, 'original model bytes');
+      await symlink(source, symbolic);
+      await link(source, hard);
+      const ctx = makeCtx(mode ? [scratch] : undefined, [join(scratch, 'other.ifc'), symbolic]);
+      for (const target of [source, symbolic, hard]) {
+        await expect(resolveSafePath(target, ctx, 'write')).rejects.toThrow(/overwrite loaded model/);
+        expect(await readFile(source, 'utf8')).toBe('original model bytes');
+      }
+      await expect(resolveSafePath(source, ctx, 'read')).resolves.toBe(source);
+      const output = join(scratch, 'output.ifc');
+      await expect(resolveSafePath(output, ctx, 'write')).resolves.toBe(output);
+      await writeFile(output, 'previous export');
+      await expect(resolveSafePath(output, ctx, 'write')).resolves.toBe(output);
+    });
+
+    it('protects a loaded source path even if the source was removed', async () => {
+      const source = join(scratch, 'removed.ifc');
+      await expect(resolveSafePath(source, makeCtx([scratch], [source]), 'write'))
+        .rejects.toThrow(/overwrite loaded model/);
     });
   });
 

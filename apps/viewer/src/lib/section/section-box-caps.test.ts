@@ -31,7 +31,7 @@ describe('section box face caps (#8696)', () => {
     for (const p of planes) {
       const c = p.custom!;
       const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-      assert.equal(dot(c.pickedAt, c.normal), c.distance, 'the basis origin is on the face');
+      assert.ok(Math.abs(dot(c.pickedAt, c.normal) - c.distance) < 1e-12, 'the basis origin is on the face');
       assert.equal(dot(c.tangent, c.normal), 0);
       assert.equal(dot(c.bitangent, c.normal), 0);
     }

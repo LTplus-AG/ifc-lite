@@ -22,6 +22,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
+import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
 
 const ACTIVITY_BAR_PX = 48; // w-12
 // Mirrors the clamp in sidebarSlice so the live drag matches what is persisted.
@@ -31,6 +32,8 @@ const MAX_WIDTH_PCT = 60;
 export function SidebarDock() {
   const { t } = useTranslation();
   const mode = useViewerStore((s) => s.sidebarMode);
+  // The start screen folds a Properties-only pane; the stored mode is untouched.
+  const foldedForStart = useEmptyStartFoldsSidebarPane();
   const widthPct = useViewerStore((s) => s.sidebarWidthPct);
   const setSidebarWidthPct = useViewerStore((s) => s.setSidebarWidthPct);
 
@@ -96,7 +99,7 @@ export function SidebarDock() {
 
   return (
     <div ref={rootRef} className="flex h-full shrink-0">
-      {mode === 'expanded' && (
+      {mode === 'expanded' && !foldedForStart && (
         <>
           {/* Resize handle */}
           <div

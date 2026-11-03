@@ -1252,10 +1252,9 @@ reports Gaussian `blocked`, listing its release blockers in `reasons` and what t
 internal adapter implements in `capabilities`. There is no `ready` state: exact
 mixed transparency, scalable global ordering and the qualified native-viewer
 contract are outstanding. No flag, decode or successful upload changes that.
-`reasons` gains `upstream-capability-missing` once the backend has loaded and found
-that the installed upstream renderer cannot order reverse-Z depth, normally on the
-first valid `add()`. Before that check the upstream status is unknown and the
-reason is absent.
+`upstream` is `missing` once the backend has loaded and found that the installed
+upstream renderer cannot order reverse-Z depth, normally on the first valid
+`add()`. Before that check it is `unknown`.
 
 `normalizeGaussianAttributes({ count, shDegree, columns })` converts upstream
 PLY-space float32 columns to source-local render arrays. It exponentiates
@@ -1281,6 +1280,8 @@ const handle = await renderer.gaussianSplats.add(
   { attributes, placement: { matrix }, modelIndex },
   { qualification: 'internal-unqualified', signal },
 );
+// After a successful add() the renderer owns `attributes` and reads them again on
+// setPlacement(): keep them unchanged during add() and do not touch them afterwards.
 renderer.gaussianSplats.setVisible(handle, false);
 await renderer.gaussianSplats.setPlacement(handle, { matrix: next });
 renderer.gaussianSplats.remove(handle);
@@ -1294,8 +1295,9 @@ renderer.gaussianSplats.remove(handle);
 - **Ordering.** All assets are packed into one upstream source, so upstream sorts
   and draws them globally without a draw-run limit. Equal depths draw the earlier
   added asset first, then source row order. The CPU sort runs per camera change.
-- **Placement.** `matrix` maps source-local coordinates to renderer world space
-  (Y-up metres) before the model's translation. Only similarity transforms are
+- **Placement.** `matrix` is a column-major 4×4 (translation at indices 12–14,
+  like the renderer's other matrices) mapping source-local coordinates to renderer
+  world space (Y-up metres) before the model's translation. Only similarity transforms are
   accepted; reflections, shear and non-uniform scale are rejected. Covariances and
   spherical-harmonic bands 1–3 are rotated with the placement. `placement.matrix`
   is required; pass an explicit identity matrix for raw source coordinates. Nothing

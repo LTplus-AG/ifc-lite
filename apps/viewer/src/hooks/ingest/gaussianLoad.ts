@@ -27,7 +27,7 @@ export interface GaussianLoadContext {
   target: { kind: 'primary' | 'federated'; visible?: boolean };
   modelId: string;
   /** Caller/user placement and credit; admission itself is the build's (`gaussianAdmissionEnabled`). */
-  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution'>;
+  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId'>;
   /** The load's own cancellation: it terminates the decoder worker and the upload. */
   signal: AbortSignal;
   isCurrent(): boolean;
@@ -87,7 +87,7 @@ async function runGaussianCapture(ctx: GaussianLoadContext, noteFailure: (code: 
   if (readiness.state !== 'blocked' || readiness.upstream === 'missing') {
     return refuse(captureRefusal({ kind: 'renderer', state: readiness.state }));
   }
-  const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models);
+  const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models, ctx.options?.gaussianReplacingModelId);
   if (!budget.ok) return refuse(captureRefusal({ kind: 'scene', total: budget.total, limit: budget.limit }));
   try {
     return await decodeAndPublish(ctx, ctx.admission.format, renderer, readiness.generation, budget.release, fail);

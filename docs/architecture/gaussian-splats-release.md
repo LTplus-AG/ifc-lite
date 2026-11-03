@@ -79,6 +79,46 @@ The production branch only moves forward. Rollback therefore means a new reviewe
 
 Capture a compact receipt containing commit, deployment URL, browser/GPU identity, corpus hashes, admission mode, actual checks/skips, outcomes and the rollback commit/deployment. Preserve private evidence separately. A production smoke failure triggers the prepared admission-disable path.
 
+### Production admission-disable runbook (#8745)
+
+1. Create a reviewed change setting `GAUSSIAN_SPLATS_DEFAULT = 'disabled'` in
+   `apps/viewer/src/hooks/ingest/gaussianAdmissionPolicy.ts`. Alternatively set
+   `VITE_GAUSSIAN_SPLATS=disabled` in the production build environment and rebuild;
+   an environment change alone cannot change an existing bundle. Merge the disable
+   commit through the normal queue and record its **main first-parent SHA**.
+2. After its required checks pass, dispatch (do not bypass `require_green`):
+   ```sh
+   gh workflow run deploy-nightly.yml -R LTplus-AG/ifc-lite --ref main -f ref=DISABLE_MAIN_SHA -f require_green=true
+   gh run list -R LTplus-AG/ifc-lite --workflow deploy-nightly.yml --limit 5
+   gh run watch RUN_ID -R LTplus-AG/ifc-lite --exit-status
+   gh run view RUN_ID -R LTplus-AG/ifc-lite --log
+   gh api repos/LTplus-AG/ifc-lite/git/ref/heads/production --jq .object.sha
+   ```
+   Use the actual `sha` emitted by the advance step, and verify it contains the
+   disable commit. Green-ancestor selection may choose an older commit; an
+   already-ahead production branch may stay unchanged. Either case requires
+   investigation if the resulting SHA lacks the disable. Never force production.
+3. Verify the workflow's Vercel verification step reports a production deployment
+   **READY for that exact SHA for all three projects**. A skipped verification
+   step or a green advance step alone is insufficient. Inspect the deployment's
+   Git SHA and production URL in Vercel as well; do not test a preview URL.
+4. Open a fresh Chromium tab at the production viewer URL. Load the catalogued
+   `gaussian/plant.splat` through Open and Add model/drop. Expect “Gaussian capture
+   loading is turned off in this viewer build. IFC models and point clouds still
+   load.” Observe browser workers from before navigation: no
+   `gaussianDecode.worker` may start for the refused load and no capture may be
+   added to the model list. Then open `AC20-FZK-Haus.ifc` and an ordinary XYZ/RGB
+   `.ply`; both must publish models and render. Record SHA, URL, browser/GPU,
+   fixture hashes, worker URLs and outcomes. Repeat the capture in the default
+   bundle when rehearsing locally; it must load using the decode worker.
+5. Already-open tabs keep their old JavaScript and any resident captures. There
+   is no remote flag polling, forced tab reload or retroactive asset destruction.
+   Ask users to reload the viewer after saving their work; verify refusal in a
+   fresh/reloaded tab. Removing a capture still follows normal asset teardown.
+
+The PR's “Rollback rehearsal” records local production-build evidence only. It
+neither dispatches this workflow nor claims a production deployment occurred.
+
 ## Ownership and completion
 
 The authenticated assignee of #8562 owns the release decision and coordinates the milestone assignees. Dependency upgrades must rerun the same regression corpus before changing supported limits. Assign ongoing upgrade ownership in the release receipt; a package version bump alone does not renew qualification.

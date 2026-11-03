@@ -30,12 +30,14 @@ export interface ModelLoadOptions {
   // world) and credit. Never inferred from file contents.
   gaussianPlacement?: readonly number[];
   gaussianAttribution?: string;
+  /** Internal reload: reserve against the scene excluding this source model. */
+  gaussianReplacingModelId?: string;
   /** Report settlement after awaited Gaussian source metadata, including cancellation. */
   onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution' | 'onGaussianLoadSettled'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

@@ -210,3 +210,19 @@ it('BOM bytes cannot disguise a truncated Gaussian payload or exceed the header 
   assert.equal((await inspect(file)).kind, 'invalid');
   assert.deepEqual(reads, [4096, 65536]);
 });
+
+it('SH-only extra scalars remain point clouds; partial core is malformed; full core is admitted (#8745)', async () => {
+  for (const extra of ['f_dc_0', 'f_rest_0']) {
+    const file = ply(['x', 'y', 'z', extra]);
+    assert.deepEqual(await inspect(file), { kind: 'ordinary' });
+    const source = new PlyStreamingSource(file);
+    try {
+      assert.equal((await source.open()).totalPointCount, 1);
+      assert.equal((await source.next(1))!.positions.length, 3);
+    } finally { source.close(); }
+  }
+  for (const extra of [['opacity', 'scale_1'], ['opacity', 'rot_3']]) {
+    assert.match(String((await inspect(ply(['x', 'y', 'z', ...extra])) as { reason?: string }).reason), /Malformed Gaussian PLY vertex schema/);
+  }
+  assert.equal((await inspect(ply())).kind, 'capture');
+});

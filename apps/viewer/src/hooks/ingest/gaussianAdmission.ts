@@ -157,9 +157,10 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     return { kind: 'invalid', reason: 'Unsupported compressed Gaussian PLY (packed_position).' };
   }
   // Only vertex properties count; comments and similarly named face properties do not.
-  const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
-    || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));
-  if (!gaussian) return { kind: 'ordinary' };
+  const core = REQUIRED.filter(name => !['x', 'y', 'z'].includes(name));
+  const gaussian = core.every(name => properties.has(name));
+  const partialCore = properties.has('opacity') && [...properties].some(name => /^(?:scale|rot)_\d+$/.test(name));
+  if (!gaussian && !partialCore) return { kind: 'ordinary' };
   // Upstream starts vertex records at headerBytes, without skipping earlier
   // elements. Public admission keeps reporting these captures as disabled.
   if (decode && precedingElement) {

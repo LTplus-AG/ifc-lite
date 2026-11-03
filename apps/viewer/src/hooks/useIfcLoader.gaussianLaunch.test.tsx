@@ -20,6 +20,7 @@ import { beforeSend, posthog } from '@/lib/analytics';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { noteGaussianDeviceEvent } from './ingest/gaussianTelemetry.js';
 import { useIfcLoader } from './useIfcLoader.js';
+import { useIfcFederation } from './useIfcFederation.js';
 import { setGlobalRendererRef } from './useBCF.js';
 
 const BASE = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
@@ -40,6 +41,7 @@ function claimedPly(name: string, count: number, restColumns = 0, size?: number)
 }
 
 let loader: ReturnType<typeof useIfcLoader> | null = null;
+let federation: ReturnType<typeof useIfcFederation>;
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 let worker: ReturnType<typeof installInThreadGaussianWorker>;
@@ -49,6 +51,7 @@ let captured: Array<[string, Record<string, unknown>]> = [];
 
 function Probe() {
   loader = useIfcLoader();
+  federation = useIfcFederation(loader.loadFile);
   return null;
 }
 const load = (file: File, target: Parameters<NonNullable<typeof loader>['loadFile']>[1]) =>
@@ -246,4 +249,70 @@ describe('Gaussian capture diagnostics are content-free (#8568)', () => {
     } });
     assert.deepEqual(scrubbed?.properties, { outcome: 'completed', format: 'splat', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' });
   });
+});
+
+// PR #8745: the complete SDK before_send pipeline must fail closed.
+for (const event of ['gaussian_capture_load', 'gaussian_capture_device']) {
+  it(`${event} before_send rejects SDK content and invalid known values (#8745)`, () => {
+    const properties = {
+      outcome: 'completed', format: 'Plant.splat', size_bucket: 12345678,
+      splat_bucket: 'lt_100k', phase: 'lost', loss_count: 1, recovery_count: 12345678,
+      $current_url: 'https://example.test/private/site?secret=1', $pathname: '/private/site',
+      $host: 'private.test', $referrer: 'https://private.test', $title: 'Plant',
+      $unknown: 'Plant.splat', $bytes: 12345678, $coordinates: [1.25, 2.5, 3.75],
+      $lib: 'web', $session_id: '01900000-0000-7000-8000-000000000001',
+      token: 'phc_12345678901234567890', distinct_id: '01900000-0000-7000-8000-000000000002',
+    };
+    const sdk = { $lib: properties.$lib, $session_id: properties.$session_id, token: properties.token, distinct_id: properties.distinct_id };
+    assert.deepEqual(beforeSend({ event, properties })?.properties, event.endsWith('_load')
+      ? { ...sdk, outcome: 'completed', splat_bucket: 'lt_100k' }
+      : { ...sdk, phase: 'lost', loss_count: 1 });
+  });
+}
+
+it('a live capture reload owns one scene share; growth, failure and cancellation preserve the budget (#8745)', async () => {
+  const { reserveSceneSplats } = await import('./ingest/gaussianSceneBudget.js');
+  const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+  await load(gaussianPly('live.ply', CENTRES), { kind: 'federated', modelId: 'live' });
+  const state = useViewerStore.getState();
+  const original = state.models.get('live')!;
+  state.updateModel('live', { gaussianSplat: { ...original.gaussianSplat!, count: 600_000 } });
+  const models = () => useViewerStore.getState().models;
+  const hold = reserveSceneSplats(600_000, models(), 'live');
+  assert.ok(hold.ok, '600k replacing 600k is admitted');
+  try {
+    assert.equal(reserveSceneSplats(400_001, models()).ok, false, 'other loads see the replacement reservation');
+  } finally { hold.release(); hold.release(); }
+  const shrinking = reserveSceneSplats(300_000, models(), 'live');
+  assert.ok(shrinking.ok);
+  try { assert.equal(reserveSceneSplats(400_001, models()).ok, false, 'rollback must retain the original share'); }
+  finally { shrinking.release(); }
+  await load(gaussianPly('other.ply', CENTRES), { kind: 'federated', modelId: 'other' });
+  const other = models().get('other')!;
+  state.updateModel('other', { gaussianSplat: { ...other.gaussianSplat!, count: 400_000 } });
+  assert.equal(reserveSceneSplats(600_001, models(), 'live').ok, false, 'growth plus other captures exceeds the limit');
+  state.removeModel('other');
+  state.updateModel('live', { gaussianSplat: { ...original.gaussianSplat!, count: 1_000_000 } });
+  // Exercise actual canonical failure/cancellation paths, then try the budget
+  // again: neither may release the still-live original or retain a new hold.
+  const originalAdd = gpu.renderer.gaussianSplats.add;
+  gpu.renderer.gaussianSplats.add = async () => { throw new Error('upload refused'); };
+  const failed = await act(async () => reloadGaussianCapture('live', federation));
+  assert.equal(failed.ok, false);
+  assert.equal(reserveSceneSplats(1, models()).ok, false, 'failure preserves original million');
+  // Restore the same renderer's upload method without orphaning the original.
+  gpu.renderer.gaussianSplats.add = originalAdd;
+  const release = worker.hold();
+  await act(async () => {
+    const pending = reloadGaussianCapture('live', federation);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    useViewerStore.getState().activeLoadCanceller?.();
+    release();
+    assert.equal((await pending).ok, false);
+  });
+  assert.equal(reserveSceneSplats(1, models()).ok, false, 'cancellation preserves original million');
+  const result = await act(async () => reloadGaussianCapture('live', federation));
+  assert.ok(result.ok, error());
+  assert.equal(models().has('live'), false);
+  assert.equal(models().get(result.modelId)?.gaussianSplat?.count, 3);
 });

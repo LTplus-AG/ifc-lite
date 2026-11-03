@@ -2,7 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isSdkProperty } from './analytics-ui-events.js';
+// posthog-js _runBeforeSend requires token; distinct_id is ingestion identity.
+// No page, referrer, device metadata or arbitrary SDK property is needed here.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function captureSdkProperty(key: string, value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  if (key === '$lib') return value === 'web';
+  if (key === 'token') return /^phc_[A-Za-z0-9]{16,128}$/.test(value);
+  return (key === 'distinct_id' || key === '$session_id') && UUID.test(value);
+}
 
 // Gaussian capture diagnostics (#8568). Content-free by construction: only
 // closed vocabularies, buckets and session counters. Never a file name, path,
@@ -78,10 +86,10 @@ export function scrubCaptureEvent<T extends { event?: string; properties?: Recor
   const enums = ENUMS[name];
   const counters = COUNTERS[name];
   for (const [key, value] of Object.entries(event.properties)) {
-    if (isSdkProperty(key)) continue;
-    const allowed = enums[key];
+    if (captureSdkProperty(key, value)) continue;
+    const allowed = Object.prototype.hasOwnProperty.call(enums, key) ? enums[key] : undefined;
     const valid = allowed ? typeof value === 'string' && allowed.includes(value)
-      : counters.includes(key) && Number.isSafeInteger(value) && (value as number) >= 0;
+      : counters.includes(key) && Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 100;
     if (!valid) delete event.properties[key];
   }
   return event;

@@ -45,7 +45,7 @@ export function noteGaussianDeviceEvent(phase: CaptureDeviceProperties['phase'])
     if (!loaded) return;
     if (phase === 'lost') counts.loss++;
     else if (phase === 'recovered') counts.recovery++;
-    trackCaptureDevice({ phase, loss_count: counts.loss, recovery_count: counts.recovery });
+    trackCaptureDevice({ phase, loss_count: Math.min(100, counts.loss), recovery_count: Math.min(100, counts.recovery) });
   } catch (error) {
     console.warn('[gaussian] capture device telemetry failed:', error);
   }

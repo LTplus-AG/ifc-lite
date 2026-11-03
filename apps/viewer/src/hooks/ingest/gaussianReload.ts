@@ -51,6 +51,7 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
   try {
     const next = await deps.addModel(sourceFile, {
       modelId: replacementId,
+      gaussianReplacingModelId: modelId,
       onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
       name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
       retryOperation: () => { void reloadGaussianCapture(modelId, deps); },

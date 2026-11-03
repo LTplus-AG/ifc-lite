@@ -95,6 +95,8 @@ import {
   consumeSuppressedSave,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
+import { isPristineSectionPlane } from '@/lib/section/section-plane-set';
+import type { SectionPlane } from '@/store/types';
 
 /**
  * The `SectionConfig` that produced the drawing currently on screen, if any.
@@ -162,6 +164,7 @@ let restoringModelId: string | null = null;
 
 /** Reset all save-path bookkeeping — call when no model is active at all. */
 export function resetSaveState(): void {
+  generatedCut = null;
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
   pendingSectionConfigModelId = null;
@@ -233,11 +236,43 @@ export function notifyDrawing2DSectionConfig(modelId: string, config: SectionCon
   persistFor(modelId);
 }
 
+/**
+ * The cut the drawing on screen was generated for. The untouched placeholder
+ * plane is not a cut the user made: saving it let the next restore (a reload,
+ * or the viewport remounting at a layout breakpoint) turn it into a real,
+ * cutting plane A. And because the placeholder is a Down plane at 50 %, a Down
+ * cut added there (or cleared) moves nothing and generates no new drawing, so
+ * the save follows the plane's placeholder status here instead.
+ */
+let generatedCut: { modelId: string; config: SectionConfig; geometry: string } | null = null;
+const cutGeometry = (p: SectionPlane): string => JSON.stringify([p.axis, p.position, p.flipped, p.custom]);
+
+/** Save the cut a 2D drawing was just generated for, or no cut while the plane is the placeholder. */
+export function saveGeneratedSectionConfig(modelId: string, config: SectionConfig | null): void {
+  const plane = useViewerStore.getState().sectionPlane;
+  generatedCut = config ? { modelId, config, geometry: cutGeometry(plane) } : null;
+  notifyDrawing2DSectionConfig(modelId, isPristineSectionPlane(plane) ? null : config);
+}
+
+/** Re-save (or forget) the drawing's cut when the plane stops (or starts) being the placeholder without moving. */
+function followPlaceholderStatus(): void {
+  let wasPristine = isPristineSectionPlane(useViewerStore.getState().sectionPlane);
+  useViewerStore.subscribe((state) => {
+    const pristine = isPristineSectionPlane(state.sectionPlane);
+    if (pristine === wasPristine) return;
+    wasPristine = pristine;
+    const cut = generatedCut;
+    if (!cut || cut.modelId !== state.activeModelId || cut.geometry !== cutGeometry(state.sectionPlane)) return;
+    notifyDrawing2DSectionConfig(cut.modelId, pristine ? null : cut.config);
+  });
+}
+
 /** Registers the raw store subscription that saves on every persisted-field change. Idempotent — module-level, subscribed once regardless of how many components mount `useDrawing2DPersistence`. */
 let saveSubscriptionStarted = false;
 export function ensureSaveSubscription(): void {
   if (saveSubscriptionStarted) return;
   saveSubscriptionStarted = true;
+  followPlaceholderStatus();
   let prev = useViewerStore.getState();
   useViewerStore.subscribe((state) => {
     const modelId = state.activeModelId;

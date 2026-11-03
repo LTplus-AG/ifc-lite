@@ -37,13 +37,13 @@ import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-l
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
-import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
+import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
-import { FIRST_SECTION_PLANE_NAME, isPristineSectionPlane } from '@/lib/section/section-plane-set';
+import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
@@ -162,11 +162,6 @@ export function useDrawingGeneration({
   // channels so pending → standalone/explicit retriggers the drawing.
   const { context: drawingRtcContext, key: drawingRtcContextKey } =
     useDrawingRtcContext(ifcDataStore);
-
-  // The cut the drawing on screen was generated for, so a plane that stops (or
-  // starts) being the untouched placeholder without moving can be saved (or
-  // forgotten) without generating the same drawing again.
-  const lastGeneratedConfig = useRef<{ modelId: string; config: SectionConfig } | null>(null);
 
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
@@ -883,12 +878,9 @@ export function useDrawingGeneration({
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —
       // `drawing2D` itself is derived output and is never persisted.
-      // The untouched placeholder plane is not a cut the user made: saving it
-      // would let the next restore (a reload, or the viewport remounting at a
-      // layout breakpoint) turn it into a real, cutting plane A.
-      const { activeModelId: generatedForModelId, sectionPlane: livePlane } = useViewerStore.getState();
-      lastGeneratedConfig.current = generatedForModelId ? { modelId: generatedForModelId, config } : null;
-      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, isPristineSectionPlane(livePlane) ? null : config);
+      const generatedForModelId = useViewerStore.getState().activeModelId;
+      // Never the untouched placeholder plane (see `saveGeneratedSectionConfig`).
+      if (generatedForModelId) saveGeneratedSectionConfig(generatedForModelId, config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');
@@ -1003,7 +995,6 @@ export function useDrawingGeneration({
   const previousInputs = useRef<unknown[]>([]);
   const wasActive = useRef(false);
   const previousPlane = useRef('');
-  const wasPristine = useRef<boolean | null>(null);
   useEffect(() => () => {
     queue.cancel();
     wasActive.current = false;
@@ -1017,22 +1008,11 @@ export function useDrawingGeneration({
       computedIsolatedIds, models, drawingRtcContextKey];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
-    // Adding a Down cut at 50 % (or clearing one) leaves the geometry as the
-    // placeholder had it, so no new drawing is made; the saved cut must still
-    // follow. A regeneration that also runs just saves the same cut again.
-    const live = useViewerStore.getState();
-    const pristine = isPristineSectionPlane(live.sectionPlane);
-    const pristineChanged = wasPristine.current !== null && pristine !== wasPristine.current;
-    wasPristine.current = pristine;
     const activated = drawingActive && !wasActive.current;
     const deactivated = !drawingActive && wasActive.current;
     previousInputs.current = inputs;
     previousPlane.current = plane;
     wasActive.current = drawingActive;
-    const generated = lastGeneratedConfig.current;
-    if (pristineChanged && !planeChanged && generated && generated.modelId === live.activeModelId) {
-      notifyDrawing2DSectionConfig(generated.modelId, pristine ? null : generated.config);
-    }
     if (!drawingActive) { if (deactivated) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();

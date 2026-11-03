@@ -158,11 +158,10 @@ fn a_voided_host_has_a_result_volume_for_convex_face_set_cutters() {
     assert!(face_set_host::expected(&bundle, &sources, 22, &[8104, 8207]).unwrap().curved, "a polygonised arc stays curved");
     let dented = points.replacen("(1.5,0.7,2.)", "(1.,0.3,1.5)", 1);
     assert_eq!(cut(with(&opening(8100, &dented, rows, ".T."))).err(), Some("non_convex_face_set_cutter"), "a non-convex set stays a gap");
-    // A row whose corner is unreadable is stored empty and adds no edge or face: the other rows
-    // still close the box, so its cut is exact, never a panic.
+    // A row whose corner is unreadable is source the oracle cannot see: a named gap, never the
+    // volume of the rows it could read.
     let unreadable = format!("{rows},(1,2,99)");
-    let e = cut(with(&opening(8100, points, &unreadable, ".T."))).expect("the readable rows close the box");
-    assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
+    assert_eq!(cut(with(&opening(8100, points, &unreadable, ".T."))).err(), Some("face_set_row_unreadable"));
 }
 
 /// Snowdon #81962: a cutter inside the host's own void removes nothing, and rounding in

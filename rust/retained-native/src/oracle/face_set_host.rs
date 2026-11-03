@@ -103,6 +103,9 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
     let mut directed: std::collections::BTreeMap<([u64; 3], [u64; 3]), usize> = std::collections::BTreeMap::new();
     let bits = |p: &[f64; 3]| p.map(|v| (v + 0.).to_bits());
     for (row, ends) in set.rows.iter().zip(&set.row_rings) {
+        // `authored` stores a row it could not read (an index past the points, under three
+        // corners) empty: what the source says there is unknown, so the shell is too.
+        if row.points.is_empty() { return Err("face_set_row_unreadable"); }
         let points: Vec<[f64; 3]> = row.points.iter().map(&at).collect();
         let Some(&outer_end) = ends.first() else { continue };
         let outer_normal = newell(&points[..outer_end]);

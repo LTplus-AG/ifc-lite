@@ -340,6 +340,18 @@ export function resolveRotationState(
   return { axisPlacementId: chain.axisPlacementId, axisDirectionId, refDirectionId, refDirection: ratios, yawZ };
 }
 
+/**
+ * A yaw turns RefDirection's horizontal part about Z. A vertical
+ * RefDirection has none, so the turn would leave the placement unchanged
+ * while the caller reports success: refuse it until rotating the whole
+ * frame is supported.
+ */
+export function verticalRefDirectionRefusal(state: RotationState): string | null {
+  const [x, y, z] = state.refDirection;
+  if (Math.hypot(x, y) > 1e-9 * Math.hypot(x, y, z)) return null;
+  return 'Cannot rotate about Z: the placement\'s RefDirection is vertical, so the turn would not change the placement';
+}
+
 export type RotateResult =
   | { ok: true; oldYawZ: number; newYawZ: number; newRefDirection: [number, number, number] }
   | { ok: false; reason: string };
@@ -372,6 +384,8 @@ export function rotateProductYaw(
         'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
     };
   }
+  const vertical = verticalRefDirectionRefusal(state);
+  if (vertical) return { ok: false, reason: vertical };
   const newYaw = state.yawZ + deltaYaw;
   // Keep the in-plane length so a tilted direction turns about Z unchanged in slope.
   const inPlane = Math.hypot(state.refDirection[0], state.refDirection[1]);

@@ -5,7 +5,7 @@
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
-import { translateProduct, rotateProductYaw, resolvePlacementChain, resolveRotationState, translatedCoordinates } from './edit/placement-core.js';
+import { translateProduct, rotateProductYaw, resolvePlacementChain, resolveRotationState, translatedCoordinates, verticalRefDirectionRefusal } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { toNativeLength } from './anchor.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
@@ -81,6 +81,9 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
     if (turn !== 0) {
       const rotation = resolveRotationState(input.dataStore, input.view, input.editor, root.expressId);
       if (!rotation) throw new Error(`#${root.expressId} has no writable axis placement`);
+      // Refuse before any write, so a multi-element turn changes nothing.
+      const vertical = verticalRefDirectionRefusal(rotation);
+      if (vertical) throw new Error(`#${root.expressId}: ${vertical}`);
       // An implicit RefDirection is materialised onto the axis placement itself (#8446).
       writtenIds.push(rotation.refDirectionId ?? rotation.axisPlacementId);
     }

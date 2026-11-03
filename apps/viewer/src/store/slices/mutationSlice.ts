@@ -62,6 +62,7 @@ import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
+  verticalRefDirectionRefusal,
   resolveWallEditChain,
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
@@ -1412,6 +1413,8 @@ export const createMutationSlice: StateCreator<
         return rotateImplicitRefEntity(api, get, modelId, expressId, deltaYaw);
       }
       if (state && state.refDirectionId !== null) {
+        const vertical = verticalRefDirectionRefusal(state);
+        if (vertical) return { ok: false, reason: vertical };
         const newYaw = state.yawZ + deltaYaw;
         const inPlane = Math.hypot(state.refDirection[0], state.refDirection[1]);
         const newRatios: [number, number, number] = [

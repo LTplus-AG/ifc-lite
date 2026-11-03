@@ -27,6 +27,7 @@ export {
   setProductPosition,
   resolveRotationState,
   rotateProductYaw,
+  verticalRefDirectionRefusal,
   type SourceAttrsReader,
   type PlacementChain,
   type TranslateResult,

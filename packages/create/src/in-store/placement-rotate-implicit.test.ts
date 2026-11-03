@@ -53,6 +53,8 @@ const BOILERPLATE = `#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#
  *  - #103: Axis explicit and tilted, RefDirection implicit — `(#70,#71,$)`.
  *    The renderer draws `firstProjAxis(Axis)` for the missing RefDirection
  *    (#5992), here `(0.8,0,-0.6)`, so rotation must not materialise +X.
+ *  - #104: Axis +X and RefDirection +Z, both explicit — a vertical
+ *    RefDirection, which a yaw about Z cannot turn.
  */
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -81,6 +83,12 @@ ${BOILERPLATE}
 #72=IFCAXIS2PLACEMENT3D(#70,#71,$);
 #73=IFCLOCALPLACEMENT($,#72);
 #103=IFCWALL('guidD0000000000000000D',$,'WallTiltedAxis',$,$,#73,$,$,.STANDARD.);
+#80=IFCCARTESIANPOINT((7.,8.,0.));
+#81=IFCDIRECTION((1.,0.,0.));
+#82=IFCDIRECTION((0.,0.,1.));
+#83=IFCAXIS2PLACEMENT3D(#80,#81,#82);
+#84=IFCLOCALPLACEMENT($,#83);
+#104=IFCWALL('guidE0000000000000000E',$,'WallVerticalRef',$,$,#84,$,$,.STANDARD.);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -91,6 +99,7 @@ const AXIS_PLACEMENT_IMPLICIT = 41;
 const WALL_TILTED_AXIS = 103;
 const AXIS_PLACEMENT_TILTED = 72;
 const TILTED_AXIS: [number, number, number] = [0.6, 0, 0.8];
+const WALL_VERTICAL_REF = 104;
 
 function expectClose(actual: unknown, expected: readonly number[]): void {
   const ratios = actual as number[];
@@ -195,6 +204,38 @@ describe('#8446 rotateProductYaw with implicit placement directions', () => {
     expect(state?.refDirectionId).toBe(63);
     expect(state?.yawZ).toBeCloseTo(-Math.PI / 2, 12);
     expect(readAttributes(store, view, editor, 61)?.[0]).toEqual([0, 0, 1]);
+  });
+
+  it('refuses to rotate a vertical RefDirection instead of reporting a no-op as success', async () => {
+    const store = await parseFixture();
+    const view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+
+    const result = rotateProductYaw(store, view, editor, WALL_VERTICAL_REF, Math.PI / 2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/vertical/);
+    expect(view.getNewEntities()).toEqual([]);
+    expect(view.getMutations()).toEqual([]);
+  });
+
+  it('refuses a vertical RefDirection through transformElementsInStore before writing anything', async () => {
+    // hello-wall's wall #1222 sits on a storey; its frame is turned so Axis
+    // is +X and RefDirection is +Z.
+    const sample = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url), 'utf8');
+    const vertical = sample
+      .replace('#1232=IFCDIRECTION((0.,0.,1.));', '#1232=IFCDIRECTION((1.,0.,0.));')
+      .replace('#1233=IFCDIRECTION((1.,0.,0.));', '#1233=IFCDIRECTION((0.,0.,1.));');
+    expect(vertical).not.toBe(sample);
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(vertical).buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+
+    expect(() => transformElementsInStore({
+      dataStore: store, view, editor,
+      selected: [1222], op: { kind: 'rotate', pivot: [0, 0], angle: Math.PI / 2 },
+    })).toThrow(/vertical/);
+    expect(view.getNewEntities()).toEqual([]);
+    expect(view.getMutations()).toEqual([]);
   });
 
   it('materialises the firstProjAxis fill, not +X, when an explicit tilted Axis leaves RefDirection implicit', async () => {

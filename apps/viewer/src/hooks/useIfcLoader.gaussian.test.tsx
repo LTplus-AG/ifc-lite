@@ -256,6 +256,25 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     assertNoHeldSlot();
   });
 
+  it('a reloaded capture keeps the federation anchor it held (#8566)', async () => {
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('anchor.ply', CENTRES), { kind: 'federated', modelId: 'anchor', name: 'anchor.ply' }, QUALIFIED);
+    useViewerStore.getState().setAnchorModelIdOverride('anchor');
+    const result = await act(async () => reloadGaussianCapture('anchor', {
+      removeModel: (id) => useViewerStore.getState().removeModel(id),
+      addModel: async (file, options) => {
+        const id = options.modelId!;
+        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
+        return useViewerStore.getState().models.has(id) ? id : null;
+      },
+    }));
+    assert.ok(result.ok);
+    assert.equal(useViewerStore.getState().anchorModelIdOverride, result.modelId, 'the replacement is the anchor, not the removed id');
+    useViewerStore.getState().setAnchorModelIdOverride(null);
+    useViewerStore.getState().clearAllModels();
+    assertNoHeldSlot();
+  });
+
   it('failed admission and upload preserve the retry row; successful retry carries metadata (#8566)', async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
     const placement = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];

@@ -66,6 +66,8 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
     }
     const tags = captureModelTags(state, [modelId]);
     restoreModelTags(state, tags, modelId, replacementId);
+    // The replacement takes over a federation anchor the old capture held (setup restore can set one).
+    if (state.anchorModelIdOverride === modelId) state.setAnchorModelIdOverride(replacementId);
     deps.removeModel(modelId);
     committed = true;
     return { ok: true, modelId: replacementId };

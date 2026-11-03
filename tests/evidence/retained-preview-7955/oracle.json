@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/lib/retained-preview.mjs",
+  "mutation": "tests/evidence/retained-preview-7955/behaviour.oracle.patch",
+  "test": "scripts/lib/retained-preview.test.mjs",
+  "why": "Whole-change inversion deletes the new helper before assertions run. Keep its API and let missing engine paths reach the SPA fallback; the engine URL contract must fail an assertion."
+}

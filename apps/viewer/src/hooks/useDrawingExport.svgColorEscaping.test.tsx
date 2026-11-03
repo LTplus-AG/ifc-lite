@@ -27,16 +27,13 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import {
   GraphicOverrideEngine,
   ifcTypeCriterion,
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
-import { useViewerStore } from '@/store';
-import useDrawingExport from './useDrawingExport.js';
+import { exportDrawingSvg } from '@/test/export-drawing-svg.js';
 
 const WALL_ID = 1;
 
@@ -100,80 +97,9 @@ function maliciousRules(): GraphicOverrideRule[] {
   ];
 }
 
-interface HarnessProps {
-  onReady: (fn: () => void) => void;
-}
-
-function Harness({ onReady }: HarnessProps): null {
-  const { handleExportSVG } = useDrawingExport({
-    drawing: buildDrawing(),
-    displayOptions: {
-      showHiddenLines: true,
-      scale: 50,
-      showScanSection: false,
-      scanSectionOpacity: 0,
-      scanSectionIncludeInExport: false,
-    },
-    sectionPlane: { axis: 'down', position: 0, flipped: false },
-    activePresetId: null,
-    entityColorMap: new Map(),
-    overridesEnabled: true,
-    overrideEngine: new GraphicOverrideEngine(maliciousRules()),
-    measure2DResults: [],
-    polygonArea2DResults: [],
-    textAnnotations2D: [],
-    cloudAnnotations2D: [],
-    sheetEnabled: false,
-    activeSheet: null,
-    dxfUnderlays: [],
-    ifcDataStore: null,
-    coordinateInfo: undefined,
-    scanSection: { points: [] },
-  });
-  onReady(handleExportSVG);
-  return null;
-}
-
-/** Runs the real `handleExportSVG` and returns the SVG text it produced, by
- *  intercepting the `Blob` `downloadFile` hands to `URL.createObjectURL`. */
-async function exportSvg(): Promise<string> {
-  useViewerStore.setState({ models: new Map() });
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  let root: Root | null = null;
-  let exportFn: (() => void) | null = null;
-
-  const originalCreate = URL.createObjectURL;
-  let resolveSvg!: (blob: Blob) => void;
-  const svgBlob = new Promise<Blob>((resolve) => {
-    resolveSvg = resolve;
-  });
-  URL.createObjectURL = function (obj: Blob | MediaSource): string {
-    if (obj instanceof Blob && obj.type === 'image/svg+xml') resolveSvg(obj);
-    return originalCreate.call(URL, obj);
-  };
-
-  try {
-    await act(async () => {
-      root = createRoot(container);
-      root.render(<Harness onReady={(fn) => { exportFn = fn; }} />);
-    });
-    let blob: Blob | null = null;
-    await act(async () => {
-      exportFn!();
-      blob = await svgBlob;
-    });
-    return await (blob as unknown as Blob).text();
-  } finally {
-    URL.createObjectURL = originalCreate;
-    if (root) await act(async () => { (root as Root).unmount(); });
-    container.remove();
-  }
-}
-
 describe('useDrawingExport SVG writer — override-rule colors are XML-escaped', () => {
   it('a rule whose fillColor/strokeColor carries an XML metacharacter still produces well-formed, script-free SVG', async () => {
-    const svg = await exportSvg();
+    const svg = await exportDrawingSvg(buildDrawing(), new GraphicOverrideEngine(maliciousRules()));
 
     // Strict parse: a real browser opening the file would build this same
     // DOM. A `parsererror` node means the file is not well-formed XML.
@@ -200,76 +126,18 @@ describe('useDrawingExport SVG writer — override-rule colors are XML-escaped',
   });
 
   it('CONTROL: a plain hex-color rule still exports valid, parseable SVG', async () => {
-    useViewerStore.setState({ models: new Map() });
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    let root: Root | null = null;
-    let exportFn: (() => void) | null = null;
-    const originalCreate = URL.createObjectURL;
-    let resolveSvg!: (blob: Blob) => void;
-    const svgBlob = new Promise<Blob>((resolve) => { resolveSvg = resolve; });
-    URL.createObjectURL = function (obj: Blob | MediaSource): string {
-      if (obj instanceof Blob && obj.type === 'image/svg+xml') resolveSvg(obj);
-      return originalCreate.call(URL, obj);
-    };
-
-    function ControlHarness({ onReady }: HarnessProps): null {
-      const { handleExportSVG } = useDrawingExport({
-        drawing: buildDrawing(),
-        displayOptions: {
-          showHiddenLines: true,
-          scale: 50,
-          showScanSection: false,
-          scanSectionOpacity: 0,
-          scanSectionIncludeInExport: false,
-        },
-        sectionPlane: { axis: 'down', position: 0, flipped: false },
-        activePresetId: null,
-        entityColorMap: new Map(),
-        overridesEnabled: true,
-        overrideEngine: new GraphicOverrideEngine([
-          {
-            id: 'plain',
-            name: 'Plain style',
-            enabled: true,
-            priority: 100,
-            criteria: ifcTypeCriterion(['IfcWall']),
-            style: { fillColor: '#BBDEFB', strokeColor: '#000000' },
-          },
-        ]),
-        measure2DResults: [],
-        polygonArea2DResults: [],
-        textAnnotations2D: [],
-        cloudAnnotations2D: [],
-        sheetEnabled: false,
-        activeSheet: null,
-        dxfUnderlays: [],
-        ifcDataStore: null,
-        coordinateInfo: undefined,
-        scanSection: { points: [] },
-      });
-      onReady(handleExportSVG);
-      return null;
-    }
-
-    try {
-      await act(async () => {
-        root = createRoot(container);
-        root.render(<ControlHarness onReady={(fn) => { exportFn = fn; }} />);
-      });
-      let blob: Blob | null = null;
-      await act(async () => {
-        exportFn!();
-        blob = await svgBlob;
-      });
-      const svg = await (blob as unknown as Blob).text();
-      const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-      assert.equal(doc.querySelector('parsererror'), null, 'a plain hex-color rule must still export well-formed SVG');
-      assert.ok(svg.includes('#BBDEFB'), 'the plain color must still reach the output');
-    } finally {
-      URL.createObjectURL = originalCreate;
-      if (root) await act(async () => { (root as Root).unmount(); });
-      container.remove();
-    }
+    const svg = await exportDrawingSvg(buildDrawing(), new GraphicOverrideEngine([
+      {
+        id: 'plain',
+        name: 'Plain style',
+        enabled: true,
+        priority: 100,
+        criteria: ifcTypeCriterion(['IfcWall']),
+        style: { fillColor: '#BBDEFB', strokeColor: '#000000' },
+      },
+    ]));
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    assert.equal(doc.querySelector('parsererror'), null, 'a plain hex-color rule must still export well-formed SVG');
+    assert.ok(svg.includes('#BBDEFB'), 'the plain color must still reach the output');
   });
 });

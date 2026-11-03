@@ -23,7 +23,11 @@ struct Item {
 /// leaf returns no oracle, never an expectation for a supported subset.
 pub fn expected(bytes: &[u8], sources: &AnalyticQuantitySources, maps: &[(u32, u8)])
     -> Result<Option<TypeMapExpectation>, String> {
-    let mut decoder = EntityDecoder::new(bytes);
+    expected_with(EntityDecoder::new(bytes), sources, maps)
+}
+/// [`expected`] on a caller-built decoder, e.g. one sharing a model-wide entity index.
+pub fn expected_with(mut decoder: EntityDecoder<'_>, sources: &AnalyticQuantitySources, maps: &[(u32, u8)])
+    -> Result<Option<TypeMapExpectation>, String> {
     // The source definitions are in raw IFC units. Apply their unit scale once
     // at the root; all nested transforms use the canonical raw-unit resolver.
     let router = GeometryRouter::with_scale(1.);

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/face_set_zero_rows.rs",
+  "mutation": "tests/evidence/face-set-zero-rows-7955/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/face_set_oracle_7955.rs",
+  "why": "Without the edge-by-edge match any open edge reads as explained by zero-area rows, so a lost real row passes and the witness fails."
+}

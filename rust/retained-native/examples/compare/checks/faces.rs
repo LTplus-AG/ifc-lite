@@ -95,12 +95,12 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     results
 }
 
-/// #7955 ruling 3: the only missing key the comparison allows is a 2-4 mm side
-/// the kernel folded into a collinear neighbour of the same authored run
-/// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074). The
-/// 1 nm slack only absorbs the rounding of the width's own arithmetic, so an
-/// authored 2.0 or 4.0 mm side is not lost a few ulps short of the bound.
-pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.002 - 1e-9..=0.004 + 1e-9;
+/// #7955 rulings 3 and 16: the only missing key the comparison allows is a 0.8-4 mm
+/// side the kernel folded into a collinear neighbour of the same authored run
+/// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074; ISSUE_129
+/// #170114 `#170106:side(0,6)`, 0.831 mm). The 1 nm slack only absorbs the rounding of
+/// the width's own arithmetic, so an authored 0.8 or 4.0 mm side is not lost a few ulps short.
+pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.0008 - 1e-9..=0.004 + 1e-9;
 
 /// Receiver assignments searched per run. Single-receiver sides cost nothing; only
 /// sides with a present neighbour on both ends double it (16 such sides).
@@ -168,7 +168,16 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
             gated: false, reason: Some(merged.join("; ")), ..Default::default() });
     }
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
-    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });
+    // Name the keys: an authored width, and whether the published total still holds the area.
+    let reason = (mismatched > 0).then(|| {
+        let width = |key: &str| widest.get(key).map_or(String::from("no run"), |w| format!("{:.3} mm", w * 1e3));
+        let lost: Vec<_> = expected.iter().filter(|(k, _)| !actual.contains_key(*k)).take(8)
+            .map(|(k, e)| format!("{k} ({}, {:.6} m2)", width(k), e.area_m2)).collect();
+        let extra: Vec<_> = actual.keys().filter(|k| !expected.contains_key(*k)).take(8).cloned().collect();
+        format!("missing [{}]; extra [{}]; total source {:.9} published {:.9} m2", lost.join(", "), extra.join(", "),
+            expected.values().map(|e| e.area_m2).sum::<f64>(), actual.values().sum::<f64>())
+    });
+    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, reason, ..Default::default() });
     for (family, curved) in [("faceAreaLinear", false), ("faceAreaCurved", true)] {
         let worst = expected.iter().filter(|(_, e)| e.curved == curved)
             .map(|(k, e)| actual.get(k).map_or(f64::INFINITY, |a| (a - e.area_m2).abs() / e.area_m2)).fold(0., f64::max);

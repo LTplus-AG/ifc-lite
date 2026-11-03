@@ -97,3 +97,11 @@ test('count and read failures name their remedy in the CLI output', (context) =>
   const unreadable = spawnSync(process.execPath, [script, join(dir, 'nope.json')], { encoding: 'utf8' });
   assert.match(unreadable.stderr, /uploaded its artifact/);
 });
+
+test('an unverified count is always reported, never a clean pass (#7955)', () => {
+  const unverified = { count: 2, gated: 1, byFamily: { layerSourceAvailable: { l_opening_cuts: 1 }, clipSectionMixedSubtree: { unnamed: 1 } } };
+  const found = corpusFindings({ ...ok, unverified });
+  assert.deepEqual(found.problems, []);
+  assert.match(found.warnings.join(), /UNVERIFIED: 2 .*layerSourceAvailable/);
+  assert.deepEqual(corpusFindings({ ...ok, unverified: { count: 0, gated: 0, byFamily: {} } }).warnings, []);
+});

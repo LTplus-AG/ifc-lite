@@ -89,10 +89,10 @@ pub fn face_set_openings(model: &std::path::Path) -> Result<Vec<(u32, ifc_lite_r
 
 /// A closed face-set product's solid volume from its authored rows: exact's f32 storage
 /// cannot measure a small shell at survey scale, so this is what outranks it (#8291).
-pub fn face_set_volume(shape: &ifc_lite_retained_native::ShapeOnlyProduct, bytes: &[u8]) -> Option<SourceExpectation> {
+pub fn face_set_volume(shape: &ifc_lite_retained_native::ShapeOnlyProduct, model: &super::checks::ModelSource<'_>) -> Option<SourceExpectation> {
     use ifc_lite_retained_native::oracle::face_sets;
-    let mut decoder = ifc_lite_core::EntityDecoder::new(bytes);
-    let units = ifc_lite_geometry::GeometryRouter::with_units(bytes, &mut decoder).unit_scale();
+    let mut decoder = model.decoder();
+    let units = model.unit_scale();
     let mut volume = 0.;
     for part in &shape.parts {
         let key = part.faces.as_ref().filter(|_| part.source_exact)?.table.first()?;

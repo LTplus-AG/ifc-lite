@@ -2054,6 +2054,7 @@ export class Renderer {
                             aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                             ortho: this.camera.getProjectionMode() === 'orthographic',
                             orthoHalfHeight: this.camera.getOrthoSize(),
+                            lensShift: this.camera.getActiveLensShift(),
                             boundsMin: sourceBoundsMin,
                             boundsMax: sourceBoundsMax,
                         })?.map((corner) => ({
@@ -2220,17 +2221,14 @@ export class Renderer {
                 // zero-length axes, which is the same picture. Reading the
                 // shared basis also keeps the horizon in the sky aligned with
                 // the horizon in the geometry for free.
-                const camBasis = viewBasis(
-                    this.camera.getPosition(),
-                    this.camera.getTarget(),
-                    this.camera.getUp(),
-                );
+                const camBasis = viewBasis(this.camera.getPosition(), this.camera.getTarget(), this.camera.getUp());
                 this.skyPass.draw(pass, {
                     forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
                     right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
                     up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                    lensShift: this.camera.getActiveLensShift(),
                 }, environment);
             }
 

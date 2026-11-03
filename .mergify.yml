@@ -12,12 +12,41 @@
 # the retry batch #8501 passed only because #8411, also in it, cut eager JS.
 # So ceiling PRs get their own queue with batch_size 1: the commit that lands is
 # the tip that was tested (scripts/perf-ratchet/merge-queue.test.mjs).
+#
+# The Version Packages PR (`changeset-release/main`) consumes every pending
+# changeset, so it is only correct against `main` exactly as it was generated.
+# Batched or stacked with PRs that carry changesets, its tested tree holds
+# changesets it did not consume and the late-changeset gate fails (#8621, #8630).
+# So it gets its own queue of one, first in priority, interrupting running
+# checks so it is tested on `main` itself rather than on top of other PRs.
+# release-pr-freshness.yml drafts it, which leaves the queue, whenever `main`
+# moves under it.
+priority_rules:
+  - name: Version Packages release first
+    conditions:
+      - head=changeset-release/main
+    priority: 5000
+    allow_checks_interruption: true
+
 queue_rules:
+  - name: release
+    queue_conditions:
+      - label=mergify-trial
+      - -draft
+      - head=changeset-release/main
+    merge_conditions:
+      - check-success=Build + WASM + Rust + Node
+      - check-success=Viewer tests (shard 0)
+      - check-success=Rust tests (feature builds)
+    batch_size: 1
+    merge_method: squash
+
   - name: default
     # TRIAL: only labelled PRs. GitHub's own queue stays on until this is proven.
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
     # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
     # lane cannot merge even if branch detection in test.yml ever broke.
@@ -35,6 +64,7 @@ queue_rules:
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
@@ -48,6 +78,7 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
     actions:
       queue:
@@ -57,10 +88,20 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     actions:
       queue:
         name: ceilings
+
+  - name: queue the Version Packages PR alone, first
+    conditions:
+      - label=mergify-trial
+      - -draft
+      - head=changeset-release/main
+    actions:
+      queue:
+        name: release
 
 merge_protections_settings:
   auto_merge_conditions: true

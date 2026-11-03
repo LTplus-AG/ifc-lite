@@ -16,7 +16,7 @@
  * only re-renders when the hovered block changes.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useThreeScene } from '@/components/mcp/useThreeScene';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -46,7 +46,11 @@ export default function WelcomeLayerScene() {
   const dotRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
 
+  // The scene reports the anchor in the same frame it reports the hover, before
+  // React has mounted the tag; keep it so the tag is placed as it mounts.
+  const anchorRef = useRef<{ x: number; y: number } | null>(null);
   const placeTag = useCallback((x: number, y: number) => {
+    anchorRef.current = { x, y };
     const card = cardRef.current;
     const line = lineRef.current;
     const dot = dotRef.current;
@@ -73,6 +77,13 @@ export default function WelcomeLayerScene() {
   useEffect(() => {
     handleRef.current?.setDark(dark);
   }, [dark, handleRef]);
+
+  // Place a freshly mounted tag before paint, so it never flashes at 0,0.
+  const hovering = hover !== null;
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (hovering && anchor) placeTag(anchor.x, anchor.y);
+  }, [hovering, placeTag]);
 
   if (unavailable) return null;
   const tag = hover ? blockTag(hover.layer, hover.column) : null;

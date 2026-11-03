@@ -186,7 +186,7 @@ describe('the section box\'s face caps reach the renderer (#8696)', () => {
   const faceKeys = SECTION_BOX_CAP_FACES.map(sectionBoxCapKey);
   const cutFaces = () => {
     for (const face of sectionBoxCapPlanes(state().sectionPlane.box ?? state().inactiveSectionPlanes.find((p) => p.box)!.box!)) {
-      state().setSectionExtraCap(face.id, { signature: `1:${capSignature(face)}`, cutPolygons: [{ ...POLYGON, sourceColor: [1, 0, 0, 1] } as never], lines: [] });
+      state().setSectionExtraCap(face.id, { signature: `1:${capSignature(face)}`, cutPolygons: [{ polygon: { outer: [], holes: [] }, ifcType: 'IfcWall', entityId: 1, sourceColor: [1, 0, 0, 1] } as never], lines: [] });
     }
   };
 

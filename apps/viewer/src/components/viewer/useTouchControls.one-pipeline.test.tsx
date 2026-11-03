@@ -57,7 +57,9 @@ function rig(tool: string, pickedId: number | null = null) {
   const menus: Array<{ id: number | null; x: number; y: number }> = [];
   let selections = 0;
   const activeToolRef = ref(tool);
-  const pickOptions = () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null });
+  // One stable object, as between real frames: the select path refuses a pick whose options changed.
+  const stablePickOptions = { isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null };
+  const pickOptions = () => stablePickOptions;
 
   const mouseParams = {
     canvasRef: ref(canvas), rendererRef: ref(renderer), isInitialized: true,
@@ -186,6 +188,25 @@ describe('touch long press (#5859)', () => {
     });
     mock.timers.tick(500);
     assert.deepEqual(menus, [], 'a pinch opened the menu');
+  });
+
+  it('a diagonal tap wobble that cancels the long press still selects without orbiting', async () => {
+    const { canvas, camera, selectionCount } = rig('select', 42);
+    const before = pos(camera);
+    await act(async () => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(touchEvent('touchmove', canvas, [[208, 308]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    assert.equal(pos(camera), before, "BUG: 8px,8px leaves the long-press slop (radius) but not the tap's per-axis slop: it orbited, which discards the tap's pick as stale");
+    assert.equal(selectionCount(), 1, 'the tap still selects');
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(touchEvent('touchmove', canvas, [[230, 300]]));
+    });
+    assert.notEqual(pos(camera), before, 'past the slop the finger orbits');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
   });
 
   it('lets the remaining finger orbit after a second finger cancels a fired hold', async () => {

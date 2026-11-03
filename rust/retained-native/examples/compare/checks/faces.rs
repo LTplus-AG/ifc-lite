@@ -119,13 +119,13 @@ fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &Fa
     // whole circle) continues across its closing vertex; an open one ends at its own ends.
     let n = run.keys.len();
     let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {
-        let (left, right): (Vec<usize>, Vec<usize>) = if run.closed {
-            ((1..n).map(|k| (i + n - k) % n).collect(), (1..n).map(|k| (i + k) % n).collect())
+        // Lazily: each search stops at the first side that is not absorbable.
+        let nearest = |mut side: Box<dyn Iterator<Item = usize>>| side.find(|&j| !absorbable(j)).filter(|&j| present(j));
+        let (left, right) = if run.closed {
+            (nearest(Box::new((1..n).map(|k| (i + n - k) % n))), nearest(Box::new((1..n).map(|k| (i + k) % n))))
         } else {
-            ((0..i).rev().collect(), (i + 1..n).collect())
+            (nearest(Box::new((0..i).rev())), nearest(Box::new(i + 1..n)))
         };
-        let left = left.into_iter().find(|&j| !absorbable(j)).filter(|&j| present(j));
-        let right = right.into_iter().find(|&j| !absorbable(j)).filter(|&j| present(j));
         let mut sides: Vec<usize> = left.into_iter().chain(right).collect();
         sides.dedup();
         sides

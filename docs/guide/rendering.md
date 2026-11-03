@@ -1248,9 +1248,13 @@ not change a material’s shadow-casting classification.
 
 `Renderer.getGaussianReadiness()` reports `initializing`, `blocked`, `lost`, or
 `disposed`, with the renderer's lifetime generation. A ready IFC renderer still
-reports Gaussian `blocked`: the exact mixed-transparency, scalable global-order,
-and native-viewer contracts are not qualified. No flag or successful decode
-changes that result. There is no production Gaussian upload/draw API yet.
+reports Gaussian `blocked`, listing its release blockers in `reasons` and what the
+internal adapter implements in `capabilities`. There is no `ready` state: exact
+mixed transparency, scalable global ordering and the qualified native-viewer
+contract are outstanding. No flag, decode or successful upload changes that.
+`upstream` is `missing` once the backend has loaded and found that the installed
+upstream renderer cannot order reverse-Z depth, normally on the first valid
+`add()`. Before that check it is `unknown`.
 
 `normalizeGaussianAttributes({ count, shDegree, columns })` converts upstream
 PLY-space float32 columns to source-local render arrays. It exponentiates
@@ -1259,10 +1263,64 @@ converts `f_dc_0..2` to unclamped float RGBA radiance. The alpha channel is one;
 opacity remains separate. Non-DC `f_rest_*` columns are repacked from PLY
 channel-major order to row-major, basis-major RGB triplets. Missing, non-finite,
 degenerate, or non-representable covariance data throws. No coordinate flip,
-reconstruction scale, placement, or RTC translation is inferred. These transforms
-still require an explicit placement contract before upload.
+reconstruction scale, placement, or RTC translation is inferred.
 
 Normalization allocates independent CPU arrays and borrows the raw inputs without
-mutation or detachment. Ingestion owns decoded buffers; an eventual native adapter
-must own its uploaded buffers and ordering resources while borrowing the viewer's
-device, encoder and attachments. Successful normalization is not render readiness.
+mutation or detachment. Successful normalization is not render readiness.
+
+### Internal Gaussian adapter (unqualified)
+
+`Renderer.gaussianSplats` is an internal adapter for qualification work, not a
+public feature. Every call to `add()` must pass
+`{ qualification: 'internal-unqualified' }`; it never changes readiness.
+
+<!-- docs-check: skip -->
+```ts
+const handle = await renderer.gaussianSplats.add(
+  { attributes, placement: { matrix }, modelIndex },
+  { qualification: 'internal-unqualified', signal },
+);
+// After a successful add() the renderer owns `attributes` and reads them again on
+// setPlacement(): keep them unchanged during add() and do not touch them afterwards.
+renderer.gaussianSplats.setVisible(handle, false);
+await renderer.gaussianSplats.setPlacement(handle, { matrix: next });
+renderer.gaussianSplats.remove(handle);
+```
+
+- **Rendering.** Upstream luma.gl `SplatRenderer` draws on the renderer's own
+  `GPUDevice` inside its frame: one extra pass after the main pass loads the
+  colour target, tests the shared reverse-Z depth read-only and performs the MSAA
+  resolve. There is no second canvas or device. The adapter never destroys the
+  device, command encoder or attachments it borrows.
+- **Ordering.** All assets are packed into one upstream source, so upstream sorts
+  and draws them globally without a draw-run limit. Equal depths draw the earlier
+  added asset first, then source row order. The CPU sort runs per camera change.
+- **Placement.** `matrix` is a column-major 4×4 (translation at indices 12–14,
+  like the renderer's other matrices) mapping source-local coordinates to renderer
+  world space (Y-up metres) before the model's translation. Only similarity transforms are
+  accepted; reflections, shear and non-uniform scale are rejected. Covariances and
+  spherical-harmonic bands 1–3 are rotated with the placement. `placement.matrix`
+  is required; pass an explicit identity matrix for raw source coordinates. Nothing
+  is inferred: no axis flip, units, metric scale or alignment.
+- **Bounds.** `getBounds()` returns Gaussian centres in world space, for framing
+  only. It ignores Gaussian extent; never use it for geometry or measurement, and
+  frame an explicit Fit All with it. Gaussian centres never enter
+  `Renderer.getModelBounds()`, so hidden or removed captures cannot widen fits that
+  read it; the current visible centres only widen the camera's orthographic depth
+  range and, while a section or clip plane is active, its slider range. Section
+  rendering never writes that transient union back into model or camera scene
+  bounds, and preserves annotation extents.
+- **Lifecycle.** Handles are validated by identity and ids are never reused.
+  `getState()` reports `resident` only after upload on the current device;
+  during a device loss and recovery assets are `pending`, and a failed re-upload
+  reports `failed` with `reload-required`.
+- **Limitations (internal demo semantics).** Splats composite over IFC glass and
+  X-ray rather than in exact per-sample depth order. Section planes, extra planes
+  and the clip box keep or remove whole Gaussians by centre; footprints are not
+  cut and no caps are drawn. Splats write no depth or object ids: they are not
+  pickable, picks pass through them, and post-effects that read depth or ids
+  (edges, ambient occlusion, outlines) see only IFC and point geometry and are
+  drawn over splats.
+
+The workspace applies luma.gl #3619 (`depthConvention`) to `@luma.gl/splats@9.4.2`
+through `patches/@luma.gl__splats@9.4.2.patch` until an upstream release includes it.

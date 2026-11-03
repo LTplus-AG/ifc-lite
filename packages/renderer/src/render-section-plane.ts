@@ -82,8 +82,8 @@ export interface SectionPlaneFrameResult {
     sectionPlaneData: SectionPlaneFrameData | undefined;
     /**
      * The bounds the section slider was resolved against, or null when
-     * `options.sectionPlane` was absent (in which case the renderer's cached
-     * model bounds are left alone).
+     * neither a primary nor extra section plane was supplied. These bounds
+     * are transient and must not replace persistent model/camera scene bounds.
      */
     bounds: SectionFrameBounds | null;
     /** `options.extraSectionPlanes` resolved against the same bounds (#7545): enabled planes only. */

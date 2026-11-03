@@ -105,12 +105,13 @@ export function RetainedGeometryPanel({ modelId, summary, sourceFile, open, onOp
  * The unpublished-product table. It lives inside the dialog content, which is
  * mounted only while the panel is open, so a running model's summary updates
  * never build rows behind a closed panel. At most `MAX_LISTED_ROWS` rows are
- * rendered; the code filter, with its counts, reaches the rest.
+ * rendered at first; "Show more" adds that many again, so every row is reachable.
  */
 function UnpublishedRows({ modelId, refused }: { modelId: string; refused: readonly RetainedUnpublishedRow[] }) {
   const { t } = useTranslation();
   const [code, setCode] = useState<string>('');
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: 'expressId', descending: false });
+  const [limit, setLimit] = useState(MAX_LISTED_ROWS);
   const codes = useMemo(() => {
     const counts = new Map<string, number>();
     for (const row of refused) counts.set(row.code, (counts.get(row.code) ?? 0) + 1);
@@ -176,7 +177,7 @@ function UnpublishedRows({ modelId, refused }: { modelId: string; refused: reado
             {rows.length === 0 && (
               <tr><td colSpan={5} className="px-2 py-2 text-muted-foreground">{t('retainedGeometry.panel.noMatches')}</td></tr>
             )}
-            {rows.slice(0, MAX_LISTED_ROWS).map((row) => (
+            {rows.slice(0, limit).map((row) => (
               <tr key={row.expressId} data-retained-row={row.expressId} data-code={row.code}
                 className="cursor-pointer border-t hover:bg-muted/50" onClick={() => select(row)}>
                 <td className="px-2 py-1 tabular-nums">
@@ -194,9 +195,12 @@ function UnpublishedRows({ modelId, refused }: { modelId: string; refused: reado
           </tbody>
         </table>
       </div>
-      {rows.length > MAX_LISTED_ROWS && (
-        <p className="text-xs text-muted-foreground" data-retained-rows-capped="">
-          {t('retainedGeometry.panel.rowsCapped', { shown: String(MAX_LISTED_ROWS), count: String(rows.length) })}
+      {rows.length > limit && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground" data-retained-rows-capped="">
+          {t('retainedGeometry.panel.rowsCapped', { shown: String(limit), count: String(rows.length) })}
+          <Button variant="outline" size="sm" data-retained-rows-more="" onClick={() => setLimit((prev) => prev + MAX_LISTED_ROWS)}>
+            {t('retainedGeometry.panel.rowsMore', { count: String(Math.min(MAX_LISTED_ROWS, rows.length - limit)) })}
+          </Button>
         </p>
       )}
     </>

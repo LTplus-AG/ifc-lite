@@ -181,7 +181,7 @@ describe('#7955 a large refusal list', () => {
     assert.equal(commits, settled + 1, 'a new summary re-renders it once');
   });
 
-  it('the open panel renders a bounded number of rows and says so; the code filter reaches the rest', () => {
+  it('the open panel renders a bounded number of rows and says so; "Show more" reaches every row', () => {
     seed(summary({ candidates: 20_000, published: 0, cancelled: 0, refused: many(20_000) }));
     mount();
     click(chip()!);
@@ -189,6 +189,16 @@ describe('#7955 a large refusal list', () => {
     assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 500 of 20000 rows/);
     const select = panel()!.querySelector('select')!;
     assert.match(select.textContent ?? '', /opening_strategy \(10000\)/);
+    const more = () => panel()!.querySelector<HTMLButtonElement>('[data-retained-rows-more]');
+    click(more()!);
+    assert.equal(rowIds().length, 1000);
+    assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 1000 of 20000 rows/);
+    // One code holding almost every row must not hide rows past the first page.
+    seed(summary({ candidates: 1_201, published: 0, cancelled: 0, refused: Array.from({ length: 1_201 }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: 'operation_unsupported' })) }));
+    for (let page = 0; page < 3 && more(); page++) click(more()!);
+    assert.equal(rowIds().length, 1_201);
+    assert.ok(rowIds().includes(1201), 'the last row is reachable');
+    assert.equal(more(), null);
   });
 });
 

@@ -98,9 +98,9 @@ const result = { base, capture, placement, deviceLossDiagnostics, errors, gpuCon
 const stageNames = ['load', 'hideShow', 'recovery', 'clipBox', 'centreClip', 'ifcCoexistence', 'removal', 'runtime'];
 result.stageSemantics = 'Structural/lifecycle execution only; visual predicates have independent verdicts';
 result.stages = Object.fromEntries(stageNames.map(name => [name, { status: 'not-reached', reason: 'Earlier stage has not completed' }]));
-const visualNames = ['visible contribution', 'hide/show thresholded restoration', 'hide/show exact restoration',
-  'pre-loss exact stability', 'recovery exact restoration', 'clip-box exact reference stability', 'clip-box exact containment',
-  ...[0, 1, 2].flatMap(axis => ['min', 'max'].flatMap(side => ['exact exclusion', 'partial diagnostic', 'exact disable restoration'].map(check => `box-${axis}-${side} ${check}`))),
+const visualNames = ['visible contribution', 'hide/show thresholded restoration', 'hide/show bounded restoration',
+  'pre-loss bounded stability', 'recovery bounded restoration', 'clip-box bounded reference stability', 'clip-box bounded containment',
+  ...[0, 1, 2].flatMap(axis => ['min', 'max'].flatMap(side => ['exact exclusion', 'partial diagnostic', 'bounded disable restoration'].map(check => `box-${axis}-${side} ${check}`))),
   'distinct backgrounds diagnostic', 'centre clipping dark diagnostic', 'centre clipping light diagnostic',
   'centre clipping escaped pixels diagnostic', 'IFC reference thresholded stability', 'IFC reference exact stability',
   'removal thresholded reference', 'removal exact reference'];
@@ -118,6 +118,12 @@ const visual = (name, pass, evidence, semantics = 'authoritative exact RGBA pred
   result.visual[index] = { name, status: pass ? 'pass' : 'fail', semantics, evidence };
 };
 
+// Frames that draw splats are not bit-reproducible on hardware: the a04 NVIDIA
+// run showed static, same-camera frames with the same sort differing on ~0.6% of
+// opaque pixels, almost all by 1/255 and at most two pixels by 2/255, in a
+// different pixel set each time. Bound that noise; frames without splats stay exact.
+const BOUNDED = 'splat frame: every channel within 2/255 on at most 2% of pixels; exact count retained';
+const bounded = (c) => c.sameCamera && c.maxChannelDelta <= 2 && c.exactDiffering <= c.total * 0.02;
 const visibility = (id, visible) => page.evaluate(({ id, visible }) =>
   globalThis.__ifc_lite_viewer_store__.getState().setModelVisibility(id, visible), { id, visible });
 const stats = () => page.evaluate(() => {
@@ -298,11 +304,12 @@ const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
   });
   const delta = (p, q, i) => Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]);
   const width = Math.round(Math.sqrt(x.length / 4)); // diagnostic only; frames are square-ish
-  let thresholdedDiffering = 0, exactDiffering = 0, escaped = 0;
+  let thresholdedDiffering = 0, exactDiffering = 0, escaped = 0, maxChannelDelta = 0;
   const samples = [];
   for (let i = 0; i < x.length; i += 4) {
     const d = delta(x, y, i);
     if (d !== 0 || x[i + 3] !== y[i + 3]) exactDiffering++;
+    for (let k = 0; k < 4; k++) maxChannelDelta = Math.max(maxChannelDelta, Math.abs(x[i + k] - y[i + k]));
     if (d > 6) {
       thresholdedDiffering++;
       // `outside`: [frame, reference] whose equal pixels are outside the contribution.
@@ -315,7 +322,7 @@ const compare = (a, b, outside) => page.evaluate(({ a, b, outside }) => {
       }
     }
   }
-  return { thresholdedDiffering, threshold: 'RGB L1 > 6', exactDiffering, escaped, total: x.length / 4, samples, sameCamera, cameraObservation: 'after decode, not atomic' };
+  return { thresholdedDiffering, threshold: 'RGB L1 > 6', exactDiffering, maxChannelDelta, escaped, total: x.length / 4, samples, sameCamera, cameraObservation: 'after decode, not atomic' };
 }, { a, b, outside });
 const drawn = async (label, previous) => {
   for (let i = 0; i < 50; i++) {
@@ -398,13 +405,13 @@ try {
   assert.equal(hidden?.gaussian?.visibleAssetSplats, 0);
   visual('visible contribution', contribution.sameCamera && contribution.thresholdedDiffering > contribution.total * 0.02, contribution, 'RGB L1 > 6 on more than 2% of pixels');
   visual('hide/show thresholded restoration', restored.sameCamera && restored.thresholdedDiffering === 0, restored, 'RGB L1 > 6 count is zero');
-  visual('hide/show exact restoration', restored.sameCamera && restored.exactDiffering === 0, restored);
+  visual('hide/show bounded restoration', bounded(restored), restored, BOUNDED);
 
   // A real device loss must pass through the mounted viewport's recovery
   // subscription. No reload, direct recoverDevice call or fabricated state.
   await frame('beforeLoss'); await frame('beforeLossStable');
   const preLoss = await compare('beforeLoss', 'beforeLossStable');
-  visual('pre-loss exact stability', preLoss.sameCamera && preLoss.exactDiffering === 0, preLoss);
+  visual('pre-loss bounded stability', bounded(preLoss), preLoss, BOUNDED);
   beginStage('recovery');
   const lossTarget = await page.evaluate(() => {
     const o = globalThis.__witnessDevices;
@@ -450,7 +457,7 @@ try {
   assert.equal(workers.started.filter(url => /gaussianDecode\.worker/.test(url)).length, 1, 'recovery does not decode/reload the capture');
   await frame('afterLoss');
   result.checks.deviceRecovery.frame = await compare('beforeLoss', 'afterLoss');
-  visual('recovery exact restoration', result.checks.deviceRecovery.frame.sameCamera && result.checks.deviceRecovery.frame.exactDiffering === 0, result.checks.deviceRecovery.frame);
+  visual('recovery bounded restoration', bounded(result.checks.deviceRecovery.frame), result.checks.deviceRecovery.frame, BOUNDED);
   beginStage('clipBox');
 
   // Six world-axis faces, using transformed source-centre bounds. Containment
@@ -479,14 +486,14 @@ try {
   };
   await frame('boxReference'); await frame('boxStable');
   const boxStable = await compare('boxReference', 'boxStable');
-  visual('clip-box exact reference stability', boxStable.sameCamera && boxStable.exactDiffering === 0, boxStable);
+  visual('clip-box bounded reference stability', bounded(boxStable), boxStable, BOUNDED);
   await visibility(outcome.id, false); await page.waitForTimeout(300); await frame('boxHidden');
   await visibility(outcome.id, true); await drawn('box-visible', (await stats()).gaussian.drawnFrames);
-  const boxChecks = result.checks.clipBox = { referenceSemantics: 'exact RGBA plus identical post-decode camera observations; not atomic frame metadata',
+  const boxChecks = result.checks.clipBox = { referenceSemantics: 'bounded RGBA (exact for exclusion) plus identical post-decode camera observations; not atomic frame metadata',
     partialSemantics: 'thresholded pixel-change diagnostic only; no authoritative kept-splat reference', faces: [] };
   await setBox(containing); await frame('boxContained');
   boxChecks.contained = await compare('boxReference', 'boxContained');
-  visual('clip-box exact containment', boxChecks.contained.sameCamera && boxChecks.contained.exactDiffering === 0, boxChecks.contained);
+  visual('clip-box bounded containment', bounded(boxChecks.contained), boxChecks.contained, BOUNDED);
   for (const axis of [0, 1, 2]) for (const side of ['min', 'max']) {
     const label = `box-${axis}-${side}`, excluded = structuredClone(containing), partial = structuredClone(containing);
     const span = boxBounds.max[axis] - boxBounds.min[axis];
@@ -501,7 +508,7 @@ try {
     visual(`${label} partial diagnostic`, kept.sameCamera && changed.sameCamera && kept.thresholdedDiffering > 0 && changed.thresholdedDiffering > 0, { kept, changed }, 'RGB L1 > 6; no authoritative kept-set reference');
     await setBox(null); await frame(`${label}-restored`);
     const restored = await compare(`${label}-restored`, 'boxReference');
-    visual(`${label} exact disable restoration`, restored.sameCamera && restored.exactDiffering === 0, restored);
+    visual(`${label} bounded disable restoration`, bounded(restored), restored, BOUNDED);
     boxChecks.faces.push({ axis, side, excluded, partial, empty, keptDiagnostic: kept, changedDiagnostic: changed, restored });
   }
 

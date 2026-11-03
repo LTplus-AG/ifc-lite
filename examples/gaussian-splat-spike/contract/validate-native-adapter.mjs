@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
 import { isHardwareAdapter } from '../../../scripts/perf/hardware-adapter.mjs';
+import { browserClean, consoleErrorSelfCheck } from './native-adapter-clean-render.mjs';
 import { judge } from './native-adapter-acceptance.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -115,7 +116,7 @@ async function runWitness(browser) {
     const verdict = judge(result, { allowPendingAdapter: flag('--allow-pending-adapter') });
     const extra = [
       { name: 'no page errors', pass: log.pageErrors.length === 0, detail: log.pageErrors },
-      { name: 'no browser console errors', pass: log.consoleErrors.length === 0, detail: log.consoleErrors },
+      { name: 'no browser console errors', pass: browserClean(log), detail: log.consoleErrors },
       { name: 'no failed requests', pass: log.failedRequests.length === 0, detail: log.failedRequests },
       ...(backend === 'hardware' ? [{ name: 'hardware run used a non-software adapter', pass: isHardwareAdapter(result.environment.adapterInfo), detail: result.environment.adapterInfo }] : []),
     ].map(({ pass, detail, ...rest }) => ({ ...rest, pass, ...(pass ? {} : { detail }) }));
@@ -142,6 +143,7 @@ try {
     ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)
     : await chromium.launch({ headless: true, ...(process.env.NATIVE_ADAPTER_CHANNEL ? { channel: process.env.NATIVE_ADAPTER_CHANNEL } : {}), args: SWIFTSHADER });
   evidence.browser = { version: browser.version(), channel: backend === 'hardware' ? 'windows-chrome-cdp' : process.env.NATIVE_ADAPTER_CHANNEL ?? 'playwright-chromium' };
+  evidence.cleanRenderSelfCheck = await consoleErrorSelfCheck(browser, openPage);
   if (realGlassRoot) {
     const { runRealGlass } = await import('./native-adapter-real-glass-check.mjs');
     Object.assign(evidence, await runRealGlass({ browser, openPage, output, backend, stamp, repo, kLayerRoot: resolve(realGlassRoot) }));

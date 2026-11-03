@@ -14,6 +14,7 @@
 // Both predicates apply where only the front window lies over the capture; pixels where
 // the house's back windows show through (glass behind the capture) are beyond exact and
 // only reported.
+import { renderClean } from './native-adapter-clean-render.mjs';
 import { writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -127,6 +128,7 @@ export async function runRealGlass({ browser, openPage, output, backend, stamp, 
       beyondExactPixelsOverTolerance: beyondOver },
     stable: Object.fromEntries([...Object.entries(h).map(([n, f]) => [`head-${n}`, f.stable]), ...Object.entries(k).map(([n, f]) => [`k-layer-${n}`, f.stable])]),
     jitter: Object.fromEntries([...Object.entries(h).map(([n, f]) => [`head-${n}`, f.jitter]), ...Object.entries(k).map(([n, f]) => [`k-layer-${n}`, f.jitter])]),
+    browserLog: { head: head.browserLog, kLayer: kLayer.browserLog },
     errors: { head: head.errors, kLayer: kLayer.errors, headDiagnostics: head.diagnostics, kLayerDiagnostics: kLayer.diagnostics },
     adapterInfo: head.adapterInfo,
   };
@@ -140,7 +142,9 @@ export async function runRealGlass({ browser, openPage, output, backend, stamp, 
   // A disclosure bound only; the correctness predicates above stay at TOLERANCE per pixel.
   check('real glass: capture-frame jitter stays within 3/255 on <= 0.1% of channels (upstream; also in the single pass)',
     Object.entries(result.jitter).every(([n, jit]) => !withCapture(n) || !jit || (jit.maxDelta <= 3 && jit.changedChannels <= pixels * 4 / 1000)), result.jitter);
-  check('real glass: no GPU or render errors', !head.errors.length && !kLayer.errors.length && !head.diagnostics.renderErrors && !kLayer.diagnostics.renderErrors, result.errors);
+  check('real glass: no GPU or render errors', renderClean(head, [head.reports.split, head.reports.windowsSplit])
+    && renderClean(kLayer, [kLayer.reports.split]),
+    { errors: result.errors, browserLog: result.browserLog, reports: result.reports });
   check('real glass: the capture is visible through the window (>= 200 px)', result.capturePixels >= 200 && affineCapture >= 200, { capture: result.capturePixels, behindGlass: affineCapture });
   check('real glass: this branch split the frame', head.reports.split?.composition === 'nearest-glass-split', head.reports.split);
   check(`real glass: windows over the capture equal the independent affine reference (<= ${TOLERANCE}/255)`, affineOver === 0, result.affine);

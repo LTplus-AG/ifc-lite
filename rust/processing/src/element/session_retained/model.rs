@@ -177,6 +177,8 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
                 // A band-phase fault spends only the layer allowance, never the
                 // restarts later non-layer products need (#7955).
                 restart_budget.layer_retirement();
+            } else if outcome.as_ref().err().is_some_and(super::kernel_refusal::is_typed_refusal) {
+                restart_budget.kernel_refusal();
             }
             *worker = None;
         }

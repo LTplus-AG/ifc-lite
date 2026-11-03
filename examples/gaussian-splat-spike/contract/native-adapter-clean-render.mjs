@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Shared fail-closed render acceptance for #8743 / #8564 witnesses.
 export function browserClean(log) {
   return Boolean(log && log.pageErrors?.length === 0 && log.consoleErrors?.length === 0);

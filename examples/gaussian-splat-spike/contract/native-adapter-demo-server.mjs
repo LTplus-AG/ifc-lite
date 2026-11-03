@@ -53,8 +53,10 @@ export function seemFixturePlugin() {
   return { name: 'native-adapter-seem-fixture-8564', configureServer(server) {
     server.middlewares.use(SEEM_ROUTE, async (req, res) => {
       try {
-        verdict ??= seemFixture().then(verify);
-        const checked = await verdict;
+        // Cache only a verified fixture, so `pnpm fixtures` or a fix applies on reload.
+        const pending = (verdict ??= seemFixture().then(verify));
+        const checked = await pending.catch((error) => { if (verdict === pending) verdict = null; throw error; });
+        if (!checked.ok && verdict === pending) verdict = null;
         if (!checked.ok) { console.error(`[seem fixture] refused: ${checked.reason}`); res.writeHead(checked.status).end(checked.reason); return; }
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('Content-Length', checked.size);

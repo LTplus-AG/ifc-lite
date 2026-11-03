@@ -1251,9 +1251,11 @@ not change a material’s shadow-casting classification.
 reports Gaussian `blocked`, listing its release blockers in `reasons` and what the
 internal adapter implements in `capabilities`. There is no `ready` state: exact
 mixed transparency, scalable global ordering and the qualified native-viewer
-contract are outstanding. No flag, decode or successful upload changes that, and
-`reasons` gains `upstream-capability-missing` when the installed upstream renderer
-cannot order reverse-Z depth.
+contract are outstanding. No flag, decode or successful upload changes that.
+`reasons` gains `upstream-capability-missing` once the backend has loaded and found
+that the installed upstream renderer cannot order reverse-Z depth, normally on the
+first valid `add()`. Before that check the upstream status is unknown and the
+reason is absent.
 
 `normalizeGaussianAttributes({ count, shDegree, columns })` converts upstream
 PLY-space float32 columns to source-local render arrays. It exponentiates
@@ -1295,8 +1297,9 @@ renderer.gaussianSplats.remove(handle);
 - **Placement.** `matrix` maps source-local coordinates to renderer world space
   (Y-up metres) before the model's translation. Only similarity transforms are
   accepted; reflections, shear and non-uniform scale are rejected. Covariances and
-  spherical-harmonic bands 1–3 are rotated with the placement. Identity is the
-  default and nothing is inferred: no axis flip, units, metric scale or alignment.
+  spherical-harmonic bands 1–3 are rotated with the placement. `placement.matrix`
+  is required; pass an explicit identity matrix for raw source coordinates. Nothing
+  is inferred: no axis flip, units, metric scale or alignment.
 - **Bounds.** `getBounds()` returns Gaussian centres in world space, for framing
   only. It ignores Gaussian extent; never use it for geometry or measurement, and
   frame an explicit Fit All with it. Gaussian centres never enter

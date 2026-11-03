@@ -362,3 +362,25 @@ describe('a cut where the placeholder sat is saved without a new drawing', () =>
     assert.equal(lastDrawing === drawn, true, 'both saves came without generating a new drawing');
   });
 });
+
+// Clearing a cut away from where the placeholder sits, with no drawing view open,
+// generates no drawing either; the saved cut must still be forgotten.
+describe('clearing any cut forgets it', () => {
+  it('a saved Side cut is forgotten when the planes are cleared, with no new drawing', async () => {
+    const file = fileWithBytes(93, 'side-cleared.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    await act(async () => { useViewerStore.getState().addSectionPlane('side'); });
+    await act(async () => { await runGenerate!(); });
+    const saved = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions)?.sectionConfig ?? null;
+    assert.equal(saved()?.plane.axis ?? 'none', 'x', 'the Side cut is saved');
+    const drawn = lastDrawing;
+
+    await act(async () => { useViewerStore.getState().clearSectionPlanes(); });
+    assert.equal(saved(), null, 'clearing the cut forgets it');
+    assert.equal(lastDrawing === drawn, true, 'no new drawing was generated');
+  });
+});

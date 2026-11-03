@@ -257,16 +257,21 @@ export function saveGeneratedSectionConfig(modelId: string, config: SectionConfi
   notifyDrawing2DSectionConfig(modelId, isPristineSectionPlane(plane) ? null : config);
 }
 
-/** Re-save (or forget) the drawing's cut when the plane stops (or starts) being the placeholder without moving. */
+/** Forget the saved cut when the plane goes back to the placeholder; re-save the drawing's cut when the plane becomes a real cut without moving. */
 function followPlaceholderStatus(): void {
   let wasPristine = isPristineSectionPlane(useViewerStore.getState().sectionPlane);
   useViewerStore.subscribe((state) => {
     const pristine = isPristineSectionPlane(state.sectionPlane);
     if (pristine === wasPristine) return;
     wasPristine = pristine;
+    // Back to the placeholder: whatever cut was saved is gone, wherever it was.
+    if (pristine) {
+      if (state.activeModelId) notifyDrawing2DSectionConfig(state.activeModelId, null);
+      return;
+    }
     const cut = generatedCut;
     if (!cut || cut.modelId !== state.activeModelId || cut.geometry !== cutGeometry(state.sectionPlane)) return;
-    notifyDrawing2DSectionConfig(cut.modelId, pristine ? null : cut.config);
+    notifyDrawing2DSectionConfig(cut.modelId, cut.config);
   });
 }
 

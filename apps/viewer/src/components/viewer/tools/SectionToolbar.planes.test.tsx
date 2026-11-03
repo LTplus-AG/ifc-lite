@@ -123,12 +123,13 @@ describe('with no plane yet (#7545)', () => {
 
   it('puts the ways to start a cut on row 2, under the heading, Views and close (#8672)', () => {
     renderTool();
+    // Booleans and strings only: a failing assert on a DOM node makes node:test inspect the whole jsdom graph and hang.
     const [row1, row2] = [...bar().children] as HTMLElement[];
-    assert.match(row1.textContent ?? '', /Section/i, 'the heading says which tool is open');
-    assert.match(row1.textContent ?? '', /Views/, 'Views keeps its label');
-    assert.equal(row1.querySelector('[data-testid="section-empty-add"]'), null);
-    assert.equal(row2.dataset.testid, 'section-start-row');
-    assert.ok(row2.querySelector('[data-testid="section-empty-add"]'));
+    assert.match(row1?.textContent ?? '', /Section/i, 'the heading says which tool is open');
+    assert.match(row1?.textContent ?? '', /Views/, 'Views keeps its label');
+    assert.equal(!!row1?.querySelector('[data-testid="section-empty-add"]'), false, 'the ways to start a cut are not on row 1');
+    assert.equal(row2?.dataset.testid, 'section-start-row', 'row 2 is the start row');
+    assert.equal(!!row2?.querySelector('[data-testid="section-empty-add"]'), true, 'the ways to start a cut are on row 2');
   });
 
   it('a button adds plane A, cutting; the chip, the row of controls and the hint follow', () => {

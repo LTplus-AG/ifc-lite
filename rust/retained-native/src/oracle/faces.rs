@@ -127,6 +127,8 @@ pub struct CollinearRun {
     pub keys: Vec<String>,
     /// #7955 ruling 19: a run of arc sides on one circle, not of collinear lines.
     pub arcs: bool,
+    /// The whole loop, linked all round: its last side's neighbour is its first.
+    pub closed: bool,
     /// World width of each side (its swept segment length), metres.
     pub widths_m: Vec<f64>,
 }
@@ -172,6 +174,7 @@ pub fn collinear_runs(sources: &AnalyticQuantitySources, product: u32) -> Option
             let linked: Vec<bool> = (0..n).map(|i| n > 1 && collinear(&edges[i], &edges[(i + 1) % n])).collect();
             // Start after a break so a run crossing the loop's closing vertex stays whole. A loop
             // linked all round is one circle in arcs (964 #7374): the whole loop is the run.
+            let closed = linked.iter().all(|&l| l);
             let start = (0..n).find(|&i| !linked[i]).unwrap_or(n - 1);
             let mut linked = linked;
             linked[start] = false;
@@ -184,6 +187,7 @@ pub fn collinear_runs(sources: &AnalyticQuantitySources, product: u32) -> Option
                         runs.push(CollinearRun {
                             keys: run.iter().map(|&i| key(source.solid_id, 0, &format!("side({index},{i})"))).collect(),
                             arcs: matches!(edges[run[0]], Edge::Arc { .. }),
+                            closed,
                             widths_m: run.iter().map(|&i| match edges[i] {
                                 Edge::Line(a, b) => ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt() * s,
                                 Edge::Arc { u, sweep, .. } => u[0].hypot(u[1]) * sweep.abs() * s,

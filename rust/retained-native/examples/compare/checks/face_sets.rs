@@ -162,9 +162,12 @@ fn rows(product: &ShapeOnlyProduct, model: &super::ModelSource<'_>, tolerances: 
         let part_worst = face_sets::deviation(&set, &part.positions, &part.indices, &keys);
         // Ruling 20 holds only while the row area still passes: a dropped triangle with area stays red.
         let row_area_holds = part_worst.area_relative <= tolerances["faceSetRowAreaRelative"].as_f64().unwrap_or(f64::NAN) && part_worst.missing_rows == 0;
-        match face_set_zero_rows::mesh_open_edges(&part.positions, &part.indices).filter(|open| !open.is_empty()) {
-            None => {}
-            Some(_) => match face_set_dropped_triangles::dropped_triangle_edges(&set, &part.positions, &part.indices).filter(|_| row_area_holds) {
+        match face_set_zero_rows::mesh_open_edges(&part.positions, &part.indices) {
+            Some(open) if open.is_empty() => {}
+            // An unreadable mesh, or a dropped triangle with area (the row gate fails), explains nothing.
+            None => dropped_explain = false,
+            Some(_) if !row_area_holds => dropped_explain = false,
+            Some(_) => match face_set_dropped_triangles::dropped_triangle_edges(&set, &part.positions, &part.indices) {
                 Some(edges) => dropped_edges += edges,
                 None => dropped_explain = false,
             },

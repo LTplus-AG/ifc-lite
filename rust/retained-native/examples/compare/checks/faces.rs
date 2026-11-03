@@ -115,11 +115,20 @@ fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &Fa
     let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i])
         && (run.arcs || MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]));
     let missing: Vec<usize> = (0..run.keys.len()).filter(|&i| absorbable(i)).collect();
-    // Nearest present key on each side, skipping only other absorbable sides.
+    // Nearest present key on each side, skipping only other absorbable sides. A closed run (a
+    // whole circle) continues across its closing vertex; an open one ends at its own ends.
+    let n = run.keys.len();
     let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {
-        let left = (0..i).rev().find(|&j| !absorbable(j)).filter(|&j| present(j));
-        let right = (i + 1..run.keys.len()).find(|&j| !absorbable(j)).filter(|&j| present(j));
-        left.into_iter().chain(right).collect()
+        let (left, right): (Vec<usize>, Vec<usize>) = if run.closed {
+            ((1..n).map(|k| (i + n - k) % n).collect(), (1..n).map(|k| (i + k) % n).collect())
+        } else {
+            ((0..i).rev().collect(), (i + 1..n).collect())
+        };
+        let left = left.into_iter().find(|&j| !absorbable(j)).filter(|&j| present(j));
+        let right = right.into_iter().find(|&j| !absorbable(j)).filter(|&j| present(j));
+        let mut sides: Vec<usize> = left.into_iter().chain(right).collect();
+        sides.dedup();
+        sides
     }).collect();
     if missing.is_empty() || candidates.iter().any(Vec::is_empty) { return Vec::new(); }
     // Only a side between two present neighbours has a choice. Fail closed past

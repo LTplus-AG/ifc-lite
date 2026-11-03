@@ -235,6 +235,26 @@ fn ruling_19_arcs_on_one_circle_merge_by_name_only_with_a_matching_total() {
     assert!(gated_failures(&rows).contains(&"faceKeys"), "{:?}", gated_failures(&rows));
 }
 
+/// Four arcs closing one circle: the run is the whole loop, so its last side's neighbour across
+/// the closing vertex is its first, and the fold the kernel makes there is a named merge too.
+#[test]
+fn ruling_19_a_closed_circle_folds_across_its_closing_vertex() {
+    let tolerances = tolerances::registered().unwrap();
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let points = [[2., 0.5], [1. + h, 0.5 + h], [1., 1.5], [1. - h, 0.5 + h], [0., 0.5], [1. - h, 0.5 - h], [1., -0.5], [1. + h, 0.5 - h]];
+    let list: String = points.iter().map(|p| format!("({:?},{:?})", p[0], p[1])).collect::<Vec<_>>().join(",");
+    let curve = format!("#8998=IFCCARTESIANPOINTLIST2D(({list}));\n#8999=IFCINDEXEDPOLYCURVE(#8998,(IFCARCINDEX((1,2,3)),IFCARCINDEX((3,4,5)),IFCARCINDEX((5,6,7)),IFCARCINDEX((7,8,1))),.F.);\n");
+    let text = BOX.replace(RECTANGLE, "#18=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#8999);")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{curve}ENDSEC;\nEND-ISO-10303-21;"));
+    let (expected, runs) = faces_of(&text);
+    let run = runs.iter().find(|r| r.arcs).expect("the four arcs are one circle's run");
+    assert_eq!(run.keys.len(), 4);
+    let (last, first) = (run.keys[3].clone(), run.keys[0].clone());
+    let rows = compare(&expected, &folded(&expected, &last, &first, 0.), &runs, &tolerances);
+    assert!(gated_failures(&rows).is_empty(), "{:?}", gated_failures(&rows));
+    assert_eq!(row(&rows, "faceKeysKernelMerged").map(|r| r.value), Some(1.));
+}
+
 #[test]
 fn ruling_19_arcs_on_different_circles_are_no_run_and_stay_red() {
     let tolerances = tolerances::registered().unwrap();

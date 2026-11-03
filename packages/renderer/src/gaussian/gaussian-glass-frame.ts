@@ -125,8 +125,8 @@ export class GaussianGlassComposer {
         pass.end();
       }
     } catch (error) {
+      if (isPendingVisibility(error)) throw error; // readiness: discard the frame without disabling the split
       this.fail(recorder);
-      if (isPendingVisibility(error)) throw error; // the renderer defers the whole frame
       failed = true;
       console.error('[Gaussian] transparent IFC replay failed; frame may be incomplete:', error);
     }

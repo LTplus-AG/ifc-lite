@@ -121,18 +121,47 @@ export class GaussianGlassSplit {
     const token = this.frame, read = this.query.read;
     this.queried = -1;
     this.reading = true;
-    read.mapAsync(GPUMapMode.READ).then(() => {
+    void this.readLayers(token, read);
+  }
+
+  /** Readback is diagnostic: processing/callback failures must never reject into the frame loop. */
+  private async readLayers(token: number, read: GPUBuffer): Promise<void> {
+    let mapped = false;
+    try {
+      await read.mapAsync(GPUMapMode.READ);
+      mapped = true;
       if (this.destroyed) return;
       const samples = Number(new BigUint64Array(read.getMappedRange(0, 8))[0]);
       read.unmap();
+      mapped = false;
       if (token !== this.frame) return;
       this.layers = samples > 0 ? 'multiple' : 'single';
       this.layerSamples = samples;
       this.onResult();
-    }, () => { /* lost or destroyed: the frame stays unknown */ }).finally(() => {
+    } catch (error) {
+      if (token === this.frame) { this.layers = 'unknown'; this.layerSamples = null; }
+      console.error('[Gaussian] glass layer readback failed; count stays unknown:', error);
+    } finally {
+      if (mapped) {
+        try { read.unmap(); }
+        catch (error) {
+          console.error('[Gaussian] glass layer buffer could not unmap; releasing query resources:', error);
+          const query = this.query;
+          if (query?.read === read) {
+            this.query = null; // recreate the slot next frame instead of reusing a mapped buffer
+            for (const resource of [query.set, query.resolve, query.read]) {
+              try { resource.destroy(); }
+              catch (releaseError) { console.error('[Gaussian] glass query release failed:', releaseError); }
+            }
+          }
+        }
+      }
       this.reading = false;
-      if (this.missing && !this.destroyed) this.onReady(); // the latest frame has no count of its own yet
-    });
+      if (this.missing && !this.destroyed) {
+        try { this.onReady(); } // the latest frame has no count of its own yet
+        catch (error) { console.error('[Gaussian] glass layer redraw callback failed:', error); }
+      }
+    }
   }
 
   destroy(): void {

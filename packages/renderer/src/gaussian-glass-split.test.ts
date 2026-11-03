@@ -12,6 +12,7 @@ import { DeferredPassRecorder } from './gaussian/gaussian-pass-recorder.js';
 import { GaussianGlassSplit, glassDepthShader } from './gaussian/gaussian-glass-split.js';
 import { GaussianGlassComposer } from './gaussian/gaussian-glass-frame.js';
 import { compositionReport } from './gaussian/gaussian-composition.js';
+import { OpaqueVisibilityPass, deferOpaqueVisibilityFrame, isPendingVisibility } from './opaque-visibility-pass.js';
 import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { ghostShaderSource } from './shaders/ghost.wgsl.js';
@@ -20,10 +21,11 @@ import type { GaussianBackendScene, GaussianDepthInterval, GaussianEncodeTarget 
 
 (globalThis as Record<string, unknown>).GPUBufferUsage ??= { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, QUERY_RESOLVE: 512 };
 (globalThis as Record<string, unknown>).GPUTextureUsage ??= { TEXTURE_BINDING: 4, RENDER_ATTACHMENT: 16 };
+(globalThis as Record<string, unknown>).GPUShaderStage ??= { FRAGMENT: 2 };
 (globalThis as Record<string, unknown>).GPUMapMode ??= { READ: 1 };
 
 type Log = unknown[][];
-const pipeline = (label: string) => ({ label }) as unknown as GPURenderPipeline;
+const pipeline = (label: string) => ({ label, getBindGroupLayout: () => ({}) }) as unknown as GPURenderPipeline;
 const GLASS = pipeline('glass'), GHOST = pipeline('ghost'), SELECTION = pipeline('selection'), OPAQUE = pipeline('opaque');
 
 /** A pass that logs every call with its arguments. */
@@ -145,13 +147,16 @@ test('#8564 readiness keeps the published blocker tuple and adds the nearest-gla
 });
 
 /** A device that records pipeline descriptors, passes and readbacks. */
-function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?: boolean } = {}) {
+function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?: boolean; readFailure?: 'range' | 'conversion' | 'unmap' } = {}) {
   const log: Log = [];
   const descriptors: GPURenderPipelineDescriptor[] = [];
   const counts = new BigUint64Array([options.count ?? 0n]), read = counts.buffer;
   const parked: Array<() => void> = [];
-  let mapped = 0;
+  let mapped = 0, fault = true;
+  const buffers: Array<{ mapped: boolean; destroyed: boolean }> = [];
   const device = {
+    createBindGroupLayout: () => ({}), createBindGroup: () => ({}), createPipelineLayout: () => ({}),
+    createCommandEncoder: () => encoder,
     createShaderModule: (d: GPUShaderModuleDescriptor) => ({ code: d.code }),
     createRenderPipelineAsync: async (d: GPURenderPipelineDescriptor) => {
       descriptors.push(d);
@@ -161,19 +166,38 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?
     createRenderPipeline: (d: GPURenderPipelineDescriptor) => pipeline(d.label ?? 'quad'),
     createTexture: (d: GPUTextureDescriptor) => ({ ...d, createView: () => ({ of: d.label }), destroy: () => log.push(['destroy', d.label]) }),
     createQuerySet: (d: GPUQuerySetDescriptor) => ({ ...d, destroy() {} }),
-    createBuffer: (d: GPUBufferDescriptor) => ({
-      ...d, destroy() {}, unmap() {}, getMappedRange: () => read,
-      mapAsync: () => { mapped++; return options.deferMaps ? new Promise<void>((resolve) => parked.push(resolve)) : Promise.resolve(); },
-    }),
+    createBuffer: (d: GPUBufferDescriptor) => {
+      const state = { mapped: false, destroyed: false };
+      buffers.push(state);
+      const brokenUnmap = d.label?.endsWith('layers-read') && options.readFailure === 'unmap' && fault;
+      if (brokenUnmap) fault = false;
+      return {
+        ...d, destroy() { state.destroyed = true; state.mapped = false; },
+        unmap() { if (brokenUnmap) throw new Error('injected unmap failure'); state.mapped = false; },
+        getMappedRange: () => {
+          if (fault && options.readFailure === 'range') { fault = false; throw new Error('injected range failure'); }
+          if (fault && options.readFailure === 'conversion') { fault = false; return new ArrayBuffer(1); }
+          return read;
+        },
+        mapAsync: () => {
+          assert.equal(state.mapped, false, 'a previously mapped buffer must be unmapped or replaced');
+          assert.equal(state.destroyed, false, 'destroyed buffers cannot be reused');
+          mapped++;
+          return (options.deferMaps ? new Promise<void>((resolve) => parked.push(resolve)) : Promise.resolve())
+            .then(() => { state.mapped = true; });
+        },
+      };
+    },
   } as unknown as GPUDevice;
   const encoder = {
+    finish: () => ({}),
     beginRenderPass: (d: GPURenderPassDescriptor) => { log.push(['begin', d]); return loggingPass(log, d.label ?? ''); },
     resolveQuerySet: (...a: unknown[]) => log.push(['resolveQuerySet', ...a]),
     copyBufferToBuffer: (...a: unknown[]) => log.push(['copyBufferToBuffer', ...a]),
   } as unknown as GPUCommandEncoder;
   /** Complete the oldest pending readback with `count` samples beyond one layer. */
   const resolveMap = async (count: bigint) => { counts[0] = count; parked.shift()!(); await new Promise((resolve) => setTimeout(resolve, 0)); };
-  return { device, encoder, log, descriptors, mapped: () => mapped, resolveMap, pendingMaps: () => parked.length };
+  return { device, encoder, log, descriptors, buffers, mapped: () => mapped, resolveMap, pendingMaps: () => parked.length };
 }
 
 const registration = (label: string): { descriptor: GPURenderPipelineDescriptor; source: string } => ({
@@ -426,11 +450,12 @@ test('#8564 review F1: a pending count never overwrites a later non-split frame'
 });
 
 // #8564 round-2: failures can happen before or after recording, including pass cleanup.
-for (const phase of ['behind-before', 'behind-after', 'front-after', 'glass-after'] as const) {
-  test(`#8564 review2 ${phase}: stop splats, report incomplete, redraw sticky single-pass`, async () => {
+for (const phase of ['behind-before', 'behind-after', 'front-after', 'glass-after', 'front-before', 'query-encode'] as const) {
+  test(`#8564 ${phase === 'front-before' || phase === 'query-encode' ? 'review3' : 'review2'} ${phase}: stop splats, report incomplete, redraw sticky single-pass`, async () => {
     const { fake, composer, visibility, target, camera, recorderFor, renders } = await readyComposer();
     class FailingScene extends SceneLog {
       override encode(t: GaussianEncodeTarget, c: unknown, interval?: GaussianDepthInterval) {
+        if (phase === 'front-before' && interval?.compare === 'greater') throw new Error(phase);
         if (phase === 'behind-before' && interval?.compare === 'less-equal') throw new Error(phase);
         super.encode(t, c, interval); // a real draw is now recorded, even if cleanup throws
         if ((phase === 'behind-after' && interval?.compare === 'less-equal') ||
@@ -448,9 +473,12 @@ for (const phase of ['behind-before', 'behind-after', 'front-after', 'glass-afte
     try {
       fake.log.length = 0;
       const before = renders();
+      const originalResolve = target.encoder.resolveQuerySet;
+      if (phase === 'query-encode') target.encoder.resolveQuerySet = () => { throw new Error(phase); };
       assert.equal(composer.encode(new FailingScene(fake.log), target, camera, { recorder: recorderFor(), visibility: failingVisibility }), false);
+      target.encoder.resolveQuerySet = originalResolve;
       const draws = fake.log.filter((c) => c[0] === 'splats');
-      assert.deepEqual(draws.map((c) => c[1]), phase === 'behind-before' ? [] : phase === 'front-after' ? ['less-equal', 'greater'] : ['less-equal'], 'no unfiltered retry or splat pass after failure');
+      assert.deepEqual(draws.map((c) => c[1]), phase === 'behind-before' || phase === 'query-encode' ? [] : phase === 'front-after' ? ['less-equal', 'greater'] : ['less-equal'], 'no unfiltered retry or splat pass after failure');
       assert.ok(fake.log.some((c) => c[0] === 'ifc-lite-gaussian-transparent' && c[1] === 'drawIndexed'), 'glass is replayed even when behind fails');
       assert.equal(composer.report.composition, 'split-failed', 'the failed frame may be incomplete, never the single-pass approximation');
       assert.equal(composer.report.fallback, 'split-failed');
@@ -474,5 +502,65 @@ for (const phase of ['behind-before', 'behind-after', 'front-after', 'glass-afte
       assert.deepEqual(fake.log.filter((c) => c[0] === 'splats').map((c) => c[1]), ['less-equal', 'greater'], 'release re-enables the split');
       assert.equal(composer.report.composition, 'nearest-glass-split');
     } finally { console.error = original; composer.release(); }
+  });
+}
+
+
+test('#8564 review3 pending visibility defers without latching failure; the compiled frame splits', async () => {
+  const { fake, composer, target, camera, recorderFor } = await readyComposer();
+  const visibility = new OpaqueVisibilityPass(fake.device, 4);
+  for (const base of [GLASS, GHOST]) {
+    const r = registration('visibility');
+    visibility.register(base, r.descriptor, r.source);
+  }
+  const main = visibility.begin(fake.encoder, { colorAttachments: [] }, true, 8, 6);
+  main.end();
+  let deferredRenders = 0;
+  try {
+    assert.throws(() => composer.encode(new SceneLog(fake.log), target, camera, { recorder: recorderFor(), visibility }), error => {
+      assert.ok(isPendingVisibility(error));
+      assert.equal(deferOpaqueVisibilityFrame(error, () => { deferredRenders++; }), true);
+      return true;
+    });
+    // The real visibility pass completes the async pipeline compilation.
+    await visibility.prepare();
+    assert.equal(deferredRenders, 1);
+    const recorder = recorderFor();
+    assert.equal(recorder.deferred, true, 'normal compilation must not disable the split');
+    fake.log.length = 0;
+    assert.equal(composer.encode(new SceneLog(fake.log), target, camera, { recorder, visibility }), true);
+    assert.equal(composer.report.composition, 'nearest-glass-split');
+    assert.equal(composer.report.fallback, null);
+    assert.deepEqual(fake.log.filter(c => c[0] === 'splats').map(c => c[1]), ['less-equal', 'greater']);
+  } finally { composer.release(); visibility.destroy(); }
+});
+
+for (const failure of ['range', 'conversion', 'unmap', 'callback'] as const) {
+  test(`#8564 review3 readback ${failure}: contained rejection, unknown count, reusable query slot`, async () => {
+    const fake = fakeDevice({ deferMaps: true, ...(failure !== 'callback' ? { readFailure: failure } : {}) });
+    let failCallback = failure === 'callback', results = 0;
+    const split = new GaussianGlassSplit(fake.device, () => {}, () => {
+      if (failCallback) { failCallback = false; throw new Error('injected result callback failure'); }
+      results++;
+    });
+    const errors: unknown[] = [], original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      split.prepare(new Set([GLASS, GHOST]), () => registration('glass'));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const submit = () => { split.beginFrame(); split.encodeNearest(frame(fake.encoder), recorded()); split.submitted(); };
+      submit();
+      await fake.resolveMap(7n); // node:test also fails the test on any unhandled rejection
+      assert.equal(split.layers, 'unknown');
+      assert.equal(split.layerSamples, null);
+      assert.ok(errors.length > 0, 'processing errors are reported');
+      assert.ok(fake.buffers.every(b => !b.mapped), 'mapped buffers are unmapped or destroyed');
+      submit();
+      assert.equal(fake.pendingMaps(), 1, 'the query slot was released after the processing failure');
+      await fake.resolveMap(0n);
+      assert.equal(split.layers, 'single');
+      assert.equal(split.layerSamples, 0);
+      assert.equal(results, 1, 'a subsequent query completes normally');
+    } finally { split.destroy(); console.error = original; }
   });
 }

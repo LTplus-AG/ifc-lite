@@ -30,7 +30,7 @@ These limits are checked before a capture is decoded, so an oversized file is re
 | Spherical-harmonics degree | 3 |
 | Graphics | A WebGPU device, as for the rest of the 3D view ([Browser Requirements](browser-requirements.md)) |
 
-The scene limit counts every capture that is loaded or still loading. If opening a capture would take the scene past 1,000,000 splats, it is refused and the message gives the total it would have reached; remove a capture and try again. Removing a capture frees its share straight away.
+The scene limit bounds **logical scene splats**: one share per capture, loaded or still loading. A reload counts once at the larger of its old and replacement counts until the swap commits or rolls back. Temporary renderer allocations can overlap during reload; this is not a strict bound on simultaneous renderer allocations. If opening a capture would take the scene past 1,000,000 splats, it is refused and the message gives the total it would have reached; remove a capture and try again. Removing a capture frees its share straight away.
 
 ## Limitations
 

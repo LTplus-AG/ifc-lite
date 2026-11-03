@@ -157,10 +157,10 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     return { kind: 'invalid', reason: 'Unsupported compressed Gaussian PLY (packed_position).' };
   }
   // Only vertex properties count; comments and similarly named face properties do not.
-  const core = REQUIRED.filter(name => !['x', 'y', 'z'].includes(name));
-  const gaussian = core.every(name => properties.has(name));
-  const partialCore = properties.has('opacity') && [...properties].some(name => /^(?:scale|rot)_\d+$/.test(name));
-  if (!gaussian && !partialCore) return { kind: 'ordinary' };
+  // Opacity alone, or with an unrelated scale/rotation scalar, is ordinary
+  // point-cloud metadata. Only the full 3DGS transform signature claims capture.
+  const signature = ['opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
+  if (!signature.every(name => properties.has(name))) return { kind: 'ordinary' };
   // Upstream starts vertex records at headerBytes, without skipping earlier
   // elements. Public admission keeps reporting these captures as disabled.
   if (decode && precedingElement) {

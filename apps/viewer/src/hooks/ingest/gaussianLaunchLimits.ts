@@ -11,7 +11,9 @@
 export const GAUSSIAN_LAUNCH_LIMITS = Object.freeze({
   /** One capture file, in bytes (500 MB, decimal). */
   maxCaptureBytes: 500_000_000,
-  /** Splats resident in one scene, all captures together. One capture can hold at most this many. */
+  /** Logical scene splats: one share per capture, including in-flight loads.
+   * A reload holds max(old, new) once through swap/rollback; temporary renderer
+   * allocations can overlap, so this is not a simultaneous allocation bound. */
   maxSceneSplats: 1_000_000,
   /** Highest spherical-harmonics degree accepted (PLY `f_rest_*` up to 45 columns). */
   maxShDegree: 3,

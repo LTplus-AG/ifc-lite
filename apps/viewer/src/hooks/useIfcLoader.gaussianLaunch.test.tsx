@@ -316,3 +316,55 @@ it('a live capture reload owns one scene share; growth, failure and cancellation
   assert.equal(models().has('live'), false);
   assert.equal(models().get(result.modelId)?.gaussianSplat?.count, 3);
 });
+
+for (const removeOriginal of [false, true]) {
+  it(`reload keeps one logical share while fingerprint is paused; original removed=${removeOriginal} (#8745 round 2)`, async () => {
+    const { reserveSceneSplats } = await import('./ingest/gaussianSceneBudget.js');
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    await load(gaussianPly('paused.ply', CENTRES), { kind: 'federated', modelId: 'original' });
+    const state = useViewerStore.getState();
+    const original = state.models.get('original')!;
+    state.updateModel('original', { gaussianSplat: { ...original.gaussianSplat!, count: 600_000 } });
+    const file = original.sourceFile!;
+    const slice = file.slice.bind(file);
+    let releaseFingerprint = () => {};
+    const gate = new Promise<void>(resolve => { releaseFingerprint = resolve; });
+    let published = () => {};
+    const publication = new Promise<void>(resolve => { published = resolve; });
+    file.slice = (start, end, type) => {
+      const blob = slice(start, end, type);
+      if ([...useViewerStore.getState().models.values()].some(m => m.id !== 'original' && m.gaussianSplat)) {
+        const read = blob.arrayBuffer.bind(blob);
+        blob.arrayBuffer = async () => { published(); await gate; return read(); };
+      }
+      return blob;
+    };
+    let releaseConcurrent = () => {};
+    await act(async () => {
+      const pending = reloadGaussianCapture('original', federation);
+      try {
+        // Publication is real; only the source File's fingerprint read is held.
+        await publication;
+        assert.equal(useViewerStore.getState().models.size, 2);
+        const concurrent = reserveSceneSplats(400_000, useViewerStore.getState().models);
+        assert.ok(concurrent.ok, '600k logical reload + 400k fits despite two published model rows');
+        releaseConcurrent = concurrent.release;
+        if (removeOriginal) state.removeModel('original');
+        assert.equal(reserveSceneSplats(1, useViewerStore.getState().models).ok, false,
+          'the transaction retains its single 600k share until swap/rollback, even after source removal');
+        releaseFingerprint();
+        const result = await pending;
+        assert.equal(result.ok, !removeOriginal);
+        assert.equal(useViewerStore.getState().models.size, removeOriginal ? 0 : 1);
+        const after = reserveSceneSplats(removeOriginal ? 600_000 : 599_997, useViewerStore.getState().models);
+        assert.ok(after.ok, 'swap/rollback released the transaction hold');
+        after.release();
+      } finally {
+        releaseFingerprint();
+        await pending;
+        releaseConcurrent();
+        file.slice = slice;
+      }
+    });
+  });
+}

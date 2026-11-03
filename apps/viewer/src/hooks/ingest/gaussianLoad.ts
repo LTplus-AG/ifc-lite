@@ -27,7 +27,7 @@ export interface GaussianLoadContext {
   target: { kind: 'primary' | 'federated'; visible?: boolean };
   modelId: string;
   /** Caller/user placement and credit; admission itself is the build's (`gaussianAdmissionEnabled`). */
-  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId'>;
+  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved'>;
   /** The load's own cancellation: it terminates the decoder worker and the upload. */
   signal: AbortSignal;
   isCurrent(): boolean;
@@ -87,12 +87,20 @@ async function runGaussianCapture(ctx: GaussianLoadContext, noteFailure: (code: 
   if (readiness.state !== 'blocked' || readiness.upstream === 'missing') {
     return refuse(captureRefusal({ kind: 'renderer', state: readiness.state }));
   }
-  const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models, ctx.options?.gaussianReplacingModelId);
+  const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models, ctx.options?.gaussianReplacingModelId, ctx.modelId);
   if (!budget.ok) return refuse(captureRefusal({ kind: 'scene', total: budget.total, limit: budget.limit }));
+  let transferred = false;
   try {
-    return await decodeAndPublish(ctx, ctx.admission.format, renderer, readiness.generation, budget.release, fail);
+    if (ctx.options?.gaussianReplacingModelId && ctx.options.onGaussianBudgetReserved) {
+      ctx.options.onGaussianBudgetReserved(budget.release);
+      transferred = true;
+    }
+    // Reload owns its logical scene share through the swap, including the
+    // fingerprint await after publication. Ordinary loads release on adoption.
+    return await decodeAndPublish(ctx, ctx.admission.format, renderer, readiness.generation,
+      () => { if (!transferred) budget.release(); }, fail);
   } finally {
-    budget.release();
+    if (!transferred) budget.release();
   }
 }
 

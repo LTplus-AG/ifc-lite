@@ -86,7 +86,12 @@ Capture a compact receipt containing commit, deployment URL, browser/GPU identit
    `VITE_GAUSSIAN_SPLATS=disabled` in the production build environment and rebuild;
    an environment change alone cannot change an existing bundle. Merge the disable
    commit through the normal queue and record its **main first-parent SHA**.
-2. After its required checks pass, dispatch (do not bypass `require_green`):
+2. After its required checks pass, dispatch a **recent first-parent `main` SHA
+   containing the disable change**: `deploy-nightly.yml` accepts only the
+   40-commit first-parent window starting at the current main tip. If the disable
+   commit has aged outside that window, choose a recent descendant in the window
+   that contains it. Set `DISABLE_MAIN_SHA` below to that SHA, and retain
+   `require_green` (then verify the actual deployed SHA as described below):
    ```sh
    gh workflow run deploy-nightly.yml -R LTplus-AG/ifc-lite --ref main -f ref=DISABLE_MAIN_SHA -f require_green=true
    gh run list -R LTplus-AG/ifc-lite --workflow deploy-nightly.yml --limit 5

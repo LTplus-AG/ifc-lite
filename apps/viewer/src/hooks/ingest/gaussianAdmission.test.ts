@@ -211,9 +211,9 @@ it('BOM bytes cannot disguise a truncated Gaussian payload or exceed the header 
   assert.deepEqual(reads, [4096, 65536]);
 });
 
-it('SH-only extra scalars remain point clouds; partial core is malformed; full core is admitted (#8745)', async () => {
-  for (const extra of ['f_dc_0', 'f_rest_0']) {
-    const file = ply(['x', 'y', 'z', extra]);
+it('weak Gaussian metadata remains point clouds; full transform without SH is malformed; full core admits (#8745 round 2)', async () => {
+  for (const extra of [['f_dc_0'], ['f_rest_0'], ['opacity', 'scale_1'], ['opacity', 'rot_3']]) {
+    const file = ply(['x', 'y', 'z', 'red', 'green', 'blue', ...extra]);
     assert.deepEqual(await inspect(file), { kind: 'ordinary' });
     const source = new PlyStreamingSource(file);
     try {
@@ -221,8 +221,8 @@ it('SH-only extra scalars remain point clouds; partial core is malformed; full c
       assert.equal((await source.next(1))!.positions.length, 3);
     } finally { source.close(); }
   }
-  for (const extra of [['opacity', 'scale_1'], ['opacity', 'rot_3']]) {
-    assert.match(String((await inspect(ply(['x', 'y', 'z', ...extra])) as { reason?: string }).reason), /Malformed Gaussian PLY vertex schema/);
-  }
+  const malformed = await inspect(ply(fields.filter(name => !name.startsWith('f_dc_'))));
+  assert.equal(malformed.kind, 'invalid');
+  assert.match(String((malformed as { reason?: string }).reason), /Malformed Gaussian PLY vertex schema/);
   assert.equal((await inspect(ply())).kind, 'capture');
 });

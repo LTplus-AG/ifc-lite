@@ -272,7 +272,6 @@ let saveSubscriptionStarted = false;
 export function ensureSaveSubscription(): void {
   if (saveSubscriptionStarted) return;
   saveSubscriptionStarted = true;
-  followPlaceholderStatus();
   let prev = useViewerStore.getState();
   useViewerStore.subscribe((state) => {
     const modelId = state.activeModelId;
@@ -324,4 +323,7 @@ export function ensureSaveSubscription(): void {
     if (suppressed) return;
     persistFor(modelId);
   });
+  // After the listener above, so a `set()` that moves `activeModelId` has armed
+  // `restoringModelId` before this one can save for that model.
+  followPlaceholderStatus();
 }

@@ -162,3 +162,21 @@ describe('opMatchesScopeClaim (write/publish-time enforcement)', () => {
     expect(findCoveringClaim(claims, { capability: 'model.delete' })).toBeUndefined();
   });
 });
+
+// GHSA-mrmg-3996-9vp3: no accepted selector key may disappear or widen authority.
+describe('prototype-named scope constraints', () => {
+  it.each(['__proto__', 'constructor', 'toString', 'storey'])('enforces %s in claims and grants', (key) => {
+    const constrained = claim(`model.mutate@IfcWall&${key}=EG`);
+    const bare = claim('model.mutate@IfcWall');
+    const other = claim(`model.mutate@IfcWall&${key}=OG1`);
+    expect(Object.entries(constrained.selector!.constraints)).toEqual([[key, 'EG']]);
+    expect(scopeClaimCovers(constrained, bare)).toBe(false);
+    expect(scopeClaimCovers(constrained, other)).toBe(false);
+    expect(scopeClaimCovers(constrained, constrained)).toBe(true);
+    const op = { capability: 'model.mutate', ifcType: 'IfcWall' };
+    expect(opMatchesScopeClaim(constrained, op)).toBe(false);
+    expect(opMatchesScopeClaim(constrained, { ...op, tags: { [key]: 'OG1' } })).toBe(false);
+    expect(opMatchesScopeClaim(constrained, { ...op, tags: { [key]: 'EG' } })).toBe(true);
+    expect(findCoveringClaim([constrained], op)).toBeUndefined();
+  });
+});

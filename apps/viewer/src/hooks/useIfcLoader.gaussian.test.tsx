@@ -158,7 +158,7 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
   for (const removeFirst of ['capture', 'ifc'] as const) it(`splat-first IFC join preserves both models when removing ${removeFirst} first (#8565)`, async () => {
     const placement = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 12, 20, 30, 1];
     await load(gaussianPly('primary.ply', CENTRES), { kind: 'primary', modelId: 'capture' },
-      { ...QUALIFIED, gaussianPlacement: placement });
+      { gaussianPlacement: placement });
     const capture = model('capture')!;
     const record = capture.gaussianSplat!;
     const index = modelIndices(useViewerStore.getState().models).get('capture');

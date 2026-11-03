@@ -37,7 +37,7 @@ mod exact_area;
 mod report;
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_retained_native::oracle::{face_set_closure::{authored_open, counts_as_open}, face_set_zero_rows::explained_open_edges, face_sets};
+use ifc_lite_retained_native::oracle::{face_set_closure::{authored_open, counts_as_open}, face_set_dropped_triangles::dropped_triangle_edges, face_set_zero_rows::explained_open_edges, face_sets};
 
 const SET: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4X3'));ENDSEC;DATA;
 #30=IFCCARTESIANPOINTLIST3D((POINTS));
@@ -201,3 +201,70 @@ fn issue_7955_zero_area_rows_explain_only_their_own_open_edges() {
     assert_eq!(explained_open_edges(&open, &positions, &indices, &keys), None);
 }
 fn set_text_open(points: &[[f64; 3]]) -> String { set(points, &[[1, 2, 5], [2, 3, 5], [1, 5, 4], [3, 4, 5], [1, 3, 2]], "$") }
+
+/// A 2 x 1 x 1 box whose bottom and front rows hold the edge point b = (1, `lift`, 0): the bottom
+/// pentagon's fan has the triangle a-b-c, of area `lift` (zero when b is on the edge).
+fn pentagon_box(lift: f64) -> face_sets::AuthoredFaceSet {
+    let points = [[0., 0., 0.], [1., lift, 0.], [2., 0., 0.], [2., 1., 0.], [0., 1., 0.], [0., 0., 1.], [2., 0., 1.], [2., 1., 1.], [0., 1., 1.]];
+    let text = format!("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4X3'));ENDSEC;DATA;\n#30=IFCCARTESIANPOINTLIST3D(({}));\n\
+#40=IFCINDEXEDPOLYGONALFACE((1,5,4,3,2));\n#41=IFCINDEXEDPOLYGONALFACE((6,7,8,9));\n#42=IFCINDEXEDPOLYGONALFACE((1,2,3,7,6));\n\
+#43=IFCINDEXEDPOLYGONALFACE((3,4,8,7));\n#44=IFCINDEXEDPOLYGONALFACE((4,5,9,8));\n#45=IFCINDEXEDPOLYGONALFACE((5,1,6,9));\n\
+#33=IFCPOLYGONALFACESET(#30,.T.,(#40,#41,#42,#43,#44,#45),$);\nENDSEC;END-ISO-10303-21;",
+        points.iter().map(|p| format!("({:?},{:?},{:?})", p[0], p[1], p[2])).collect::<Vec<_>>().join(","));
+    let mut decoder = EntityDecoder::new(text.as_bytes());
+    let item = decoder.decode_by_id(33).unwrap();
+    face_sets::authored(&item, &mut decoder, 1.).unwrap()
+}
+/// Every row fanned from its first corner, leaving out the triangles `skip` names (row, fan index).
+fn fanned(set: &face_sets::AuthoredFaceSet, skip: &[(usize, usize)]) -> (Vec<f64>, Vec<u32>, Vec<Option<u32>>) {
+    let (mut positions, mut indices, mut keys) = (Vec::new(), Vec::new(), Vec::new());
+    for (k, row) in set.rows.iter().enumerate() {
+        for i in 1..row.points.len() - 1 {
+            if skip.contains(&(k, i)) { continue; }
+            for p in [row.points[0], row.points[i], row.points[i + 1]] { indices.push((positions.len() / 3) as u32); positions.extend_from_slice(&p); }
+            keys.push(Some(k as u32));
+        }
+    }
+    (positions, indices, keys)
+}
+
+/// Ruling 20 (rvt01's doors): a dropped sliver inside a closed polygon row is named edge by edge;
+/// a dropped triangle with area loses row area, which the row gate still fails.
+#[test]
+fn issue_7955_a_dropped_sliver_is_named_and_a_dropped_triangle_with_area_is_not() {
+    let sliver = pentagon_box(1e-13);
+    assert_eq!(sliver.open_edges, 0, "the authored rows close");
+    // The bottom row's last fan triangle is a-b-c (corners 1, 2, 3 of 1,5,4,3,2 reversed order).
+    let (positions, indices, keys) = fanned(&sliver, &[(0, 3)]);
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), Some(3));
+    assert!(face_sets::deviation(&sliver, &positions, &indices, &keys).area_relative <= 1e-9, "a sliver carries no row area");
+    // The same triangle with real area: edges explain it, but the row area does not hold.
+    let wedge = pentagon_box(0.2);
+    let (positions, indices, keys) = fanned(&wedge, &[(0, 3)]);
+    assert_eq!(dropped_triangle_edges(&wedge, &positions, &indices), Some(3));
+    assert!(face_sets::deviation(&wedge, &positions, &indices, &keys).area_relative > 1e-9, "the row gate sees the lost area");
+    // Two adjacent dropped triangles leave one cycle of four edges on the row: named only if the
+    // row area still holds, which it cannot with a real triangle among them.
+    let (positions, indices, keys) = fanned(&sliver, &[(0, 2), (0, 3)]);
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), Some(4));
+    assert!(face_sets::deviation(&sliver, &positions, &indices, &keys).area_relative > 1e-9, "the second triangle has area");
+    // A real triangle lost from the top row beside the sliver: each cycle lies on its own row, so
+    // only the row gate can tell, and it does.
+    let (positions, indices, keys) = fanned(&sliver, &[(0, 3), (1, 1)]);
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), Some(6));
+    assert!(face_sets::deviation(&sliver, &positions, &indices, &keys).area_relative > 1e-9);
+    // A moved corner lies on no authored row: not a cycle of that row.
+    let (mut positions, indices, _) = fanned(&sliver, &[(0, 3)]);
+    positions[0] += 1e-3;
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), None);
+    // Two adjacent fan triangles published twice: their shared edge is used four times, so its
+    // corners meet three open edges. Every corner is on the row, so only the even-degree rule
+    // tells this from a dropped triangle.
+    let (positions, mut indices, _) = fanned(&sliver, &[]);
+    // The bottom row's first two fan triangles, p0-p1-p2 and p0-p2-p3, share p0-p2.
+    indices.extend(indices[..6].to_vec());
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), None);
+    // Nothing dropped: nothing to name.
+    let (positions, indices, _) = fanned(&sliver, &[]);
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), None);
+}

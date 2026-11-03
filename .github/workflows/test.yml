@@ -1056,7 +1056,7 @@ jobs:
           # #8112: retain the scan helper API; weaken fingerprint identity.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-preview-7955/behaviour.oracle.patch | grep -Fxq 'tests/evidence/retained-preview-7955/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/retained-preview-7955/behaviour.oracle.patch --test scripts/lib/retained-preview.test.mjs)
-          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-qual-8540/behaviour.oracle.patch | grep -q .; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-qual-8540/behaviour.oracle.patch | grep -Fxq 'tests/evidence/retained-qual-8540/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/retained-qual-8540/behaviour.oracle.patch --test scripts/perf/retained-qual-regressions.test.mjs --test scripts/perf/retained-qual-report.test.mjs --test scripts/perf/retained-qual-viewer-page.test.mjs)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch --test scripts/retained-session-scan.test.mjs)

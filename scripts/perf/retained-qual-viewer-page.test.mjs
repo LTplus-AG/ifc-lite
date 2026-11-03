@@ -198,3 +198,15 @@ test('8540: blob identities and query variants remain distinct worker scripts', 
   for (const url of [...urls, urls[0]]) vm.runInContext(`new Worker(${JSON.stringify(url)})`, context);
   assert.deepEqual({ ...context[PAGE_KEY].workers.byScript }, Object.fromEntries(urls.map((url, i) => [url, i === 0 ? 2 : 1])));
 });
+
+test('7955: a Worker constructor that throws counts no worker and the error still reaches the page', () => {
+  class FakeWorker { constructor(url) { if (url === 'bad') throw new SyntaxError('invalid worker URL'); } terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  assert.throws(() => vm.runInContext('new Worker("bad")', context), /invalid worker URL/);
+  const w = context[PAGE_KEY].workers;
+  assert.deepEqual([w.created, w.peakLive, { ...w.byScript }], [0, 0, {}], 'no worker exists, so none is counted');
+  vm.runInContext('new Worker("/ok.js")', context);
+  assert.deepEqual([w.created, w.peakLive, { ...w.byScript }], [1, 1, { '/ok.js': 1 }]);
+});

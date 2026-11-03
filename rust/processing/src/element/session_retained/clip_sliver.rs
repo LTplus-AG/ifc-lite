@@ -21,7 +21,9 @@ pub fn volume_beyond(positions: &[f64], indices: &[u32], plane_from_part: &[f64;
     let point = |index: u32| -> Option<[f64; 3]> {
         let at = usize::try_from(index).ok()?.checked_mul(3)?;
         let p: &[f64] = positions.get(at..at.checked_add(3)?)?;
-        Some(std::array::from_fn(|i| m[i] * p[0] + m[i + 4] * p[1] + m[i + 8] * p[2] + m[i + 12]))
+        let q: [f64; 3] = std::array::from_fn(|i| m[i] * p[0] + m[i + 4] * p[1] + m[i + 8] * p[2] + m[i + 12]);
+        // A non-finite corner fails every `> 0.` test: it would read as nothing beyond the plane.
+        q.iter().all(|v| v.is_finite()).then_some(q)
     };
     let mut volume = 0.;
     let mut polygon: Vec<[f64; 3]> = Vec::with_capacity(4);

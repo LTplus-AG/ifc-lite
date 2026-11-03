@@ -30,6 +30,9 @@ fn a_clean_cut_has_nothing_beyond_its_plane() {
     assert_eq!(volume_beyond(&positions, &indices, &plane), Some(0.));
     let clear = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., -2., 1.];
     assert_eq!(volume_beyond(&positions, &indices, &clear), Some(0.));
+    // A non-finite plane offset measures nothing, never a clean cut.
+    let unmeasured = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., f64::NAN, 1.];
+    assert_eq!(volume_beyond(&positions, &indices, &unmeasured), None);
 }
 
 #[test]

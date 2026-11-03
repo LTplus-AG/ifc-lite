@@ -96,6 +96,9 @@ export const mainShaderSource = `
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
           @location(9) @interpolate(flat) sectionEntityId: u32,
+          // Entity depth rank (0-255) for the per-fragment perspective nudge
+          // (depth-nudge.wgsl.ts nudgedFragDepth, written by meshFragDepth).
+          @location(3) @interpolate(flat) zHash: u32,
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
           // per-batch colour) AND the instanced path
@@ -176,6 +179,7 @@ export const mainShaderSource = `
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
+          output.zHash = zHash;
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(localNormal, 0.0)).xyz);
           output.entityId = entityId;
@@ -218,6 +222,7 @@ export const mainShaderSource = `
           let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
+          output.zHash = zHash;
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = input.entityId;
@@ -248,6 +253,7 @@ export const mainShaderSource = `
           let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
+          output.zHash = zHash;
           output.worldPos = worldPos.xyz;
           output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = inst.instEntityId;
@@ -268,6 +274,13 @@ export const mainShaderSource = `
         struct FragmentOutput {
           @location(0) color: vec4<f32>,
           @location(1) objectIdEncoded: vec4<f32>,
+          @builtin(frag_depth) depth: f32,
+        }
+
+        // Every mesh fragment's depth, nudged per entity (depth-nudge.wgsl.ts).
+        // Each pass that depth-tests against the scene writes this same value.
+        fn meshFragDepth(input: VertexOutput) -> f32 {
+          return nudgedFragDepth(input.position.z, input.zHash, uniforms.viewProj);
         }
 
         @fragment
@@ -544,6 +557,7 @@ export const mainShaderSource = `
             out.color = paintEntityOverride(out.color, entityOverride, irradiance, N);
           }
           out.objectIdEncoded = encodeId24(input.entityId);
+          out.depth = meshFragDepth(input);
           return out;
         }
       `;

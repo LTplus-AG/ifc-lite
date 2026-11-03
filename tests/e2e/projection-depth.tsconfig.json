@@ -26,6 +26,8 @@
     "projection-texture.gpu.ts",
     "projection-texture.e2e.spec.ts",
     "selective-clipping.gpu.ts",
-    "selective-clipping.e2e.spec.ts"
+    "selective-clipping.e2e.spec.ts",
+    "perspective-distance-depth.gpu.ts",
+    "perspective-distance-depth.e2e.spec.ts"
   ]
 }

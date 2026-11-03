@@ -130,7 +130,11 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   described above. `stage-retained-browser-assets.mjs` and
   `stage-cli-retained-engine.mjs` hash-inventory those copies. The viewer Vite
   integration does not copy these into build output and rejects retained Vercel
-  builds; this scope does not claim the production viewer currently serves them.
+  builds (except the verified `lazy` production build). Production on ifclite.com
+  serves exactly this set, with the same notices served as text beside it, only
+  to browsers that choose the retained kernel; the archive is a release asset of
+  the root tag its notices name. See
+  [Production on ifclite.com](../guide/retained-installation.md#production-on-ifclitecom-opt-in-setting).
 * **Native retained worker binaries are not distributed in this release.** Users
   build from the pinned SDK. CMake install support and native CI evidence are not
   a release channel. `.github/workflows/release.yml` publishes npm and source

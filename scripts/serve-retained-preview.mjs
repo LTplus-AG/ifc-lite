@@ -11,6 +11,11 @@
 // hosted platform, so the URL smoke still has to run against the real preview.
 //
 //   node scripts/serve-retained-preview.mjs --dir /abs/preview [--port 4380] [--host 127.0.0.1]
+//
+// --production serves a production-shaped checkout instead (#7955): `--dir` is the
+// repository root, so its own vercel.json and `outputDirectory` (apps/viewer/dist)
+// apply. Rewrites that proxy to other hosts or use named parameters (/api/*) are
+// skipped, and files with no Content-Type rule get the type a static host infers.
 
 import { createServer } from 'node:http';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
@@ -18,8 +23,17 @@ import { join, relative, isAbsolute } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { headersFor, rewriteFor } from './lib/retained-preview.mjs';
 
-export function createPreviewServer(dir) {
-  const config = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8'));
+/** What a static host infers when no header rule sets a type (only consulted with `production`). */
+const INFERRED_TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json', '.wasm': 'application/wasm', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
+
+export function createPreviewServer(dir, { production = false } = {}) {
+  let config = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8'));
+  if (production) {
+    config = { ...config, rewrites: (config.rewrites ?? []).filter(rule => !/:[A-Za-z]/.test(rule.source) && rule.destination.startsWith('/')) };
+  }
   const root = realpathSync(join(dir, config.outputDirectory));
   const fileFor = pathname => {
     const candidate = join(root, pathname);
@@ -43,7 +57,8 @@ export function createPreviewServer(dir) {
       if (file) for (const [key, value] of Object.entries(headersFor(config, destination))) res.setHeader(key, value);
     }
     if (!file) { res.statusCode = 404; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('Not found\n'); return; }
-    if (!res.hasHeader('Content-Type')) res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/octet-stream');
+    const inferred = production ? INFERRED_TYPES[file.slice(file.lastIndexOf('.'))] : undefined;
+    if (!res.hasHeader('Content-Type')) res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : inferred ?? 'application/octet-stream');
     const bytes = readFileSync(file);
     res.setHeader('Content-Length', bytes.byteLength);
     res.end(req.method === 'HEAD' ? undefined : bytes);
@@ -53,7 +68,8 @@ export function createPreviewServer(dir) {
 if (isMainEntry(import.meta.url)) {
   const args = process.argv.slice(2), get = (name, fallback) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : fallback; };
   const dir = get('--dir');
-  if (!dir || !isAbsolute(dir)) { console.error('Usage: node scripts/serve-retained-preview.mjs --dir ABS [--port 4380] [--host 127.0.0.1]'); process.exit(1); }
+  if (!dir || !isAbsolute(dir)) { console.error('Usage: node scripts/serve-retained-preview.mjs --dir ABS [--port 4380] [--host 127.0.0.1] [--production]'); process.exit(1); }
   const port = Number(get('--port', 4380)), host = get('--host', '127.0.0.1');
-  createPreviewServer(dir).listen(port, host, () => console.log(`retained preview at http://${host}:${port}/`));
+  const production = args.includes('--production');
+  createPreviewServer(dir, { production }).listen(port, host, () => console.log(`retained ${production ? 'production-shaped' : 'preview'} host at http://${host}:${port}/`));
 }

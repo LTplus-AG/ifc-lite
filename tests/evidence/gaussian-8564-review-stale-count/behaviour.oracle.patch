@@ -1,0 +1,10 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-split.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-split.ts
+@@ -134,6 +134,7 @@
+       const samples = Number(new BigUint64Array(read.getMappedRange(0, 8))[0]);
+       read.unmap();
+       mapped = false;
++      if (token !== this.frame) return;
+       this.layers = samples > 0 ? 'multiple' : 'single';
+       this.layerSamples = samples;
+       this.onResult();

@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-split.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-split.ts
+@@ -142,7 +142,7 @@
+       if (token === this.frame) { this.layers = 'unknown'; this.layerSamples = null; }
+       console.error('[Gaussian] glass layer readback failed; count stays unknown:', error);
+     } finally {
+-      if (mapped && false) {
++      if (mapped) {
+         try { read.unmap(); }
+         catch (error) {
+           console.error('[Gaussian] glass layer buffer could not unmap; releasing query resources:', error);

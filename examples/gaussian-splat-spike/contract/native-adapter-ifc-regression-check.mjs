@@ -6,6 +6,7 @@
 // --ifc-regression=<base checkout>: the same page renders through the base and
 // the head renderer sources (one Vite server per checkout, each aliasing its own
 // renderer/spatial/load-trace) and every frame must match pixel-exactly.
+import { renderClean, browserClean } from './native-adapter-clean-render.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -62,10 +63,13 @@ export async function runIfcRegression({ browser, openPage, output, backend, sta
   check('ifc regression: selection highlight changes the frame (sensitivity)', frames.selectedBatched.headSha256 !== frames.plain.headSha256
     && frames.selectedAuthored.headSha256 !== frames.plain.headSha256, frames);
   check('ifc regression: authored mesh drawn and frames repeatable', frames.plainAgain.headSha256 === frames.plain.headSha256, frames);
+  check('ifc regression: transparent cases change the frame (sensitivity)', ['glassPartial', 'selectedGlass', 'xray', 'orthographic', 'withoutInstances', 'partialGlassTranslucentInstance']
+    .every(name => frames[name] && frames[name].headSha256 !== frames.plain.headSha256)
+    && frames.partialGlassTranslucentInstance.headSha256 !== frames.glassPartial.headSha256, frames);
   for (const [label, run] of Object.entries(runs)) {
-    check(`ifc regression: ${label} renderer clean`, run.errors.length === 0 && run.diagnostics.gpuErrors === 0 && run.diagnostics.renderErrors === 0,
+    check(`ifc regression: ${label} renderer clean`, renderClean(run),
       { errors: run.errors, diagnostics: run.diagnostics });
-    check(`ifc regression: ${label} browser clean`, run.browserLog.pageErrors.length === 0 && run.browserLog.consoleErrors.length === 0, run.browserLog);
+    check(`ifc regression: ${label} browser clean`, browserClean(run.browserLog), run.browserLog);
   }
   const failed = checks.filter(c => !c.pass);
   return {

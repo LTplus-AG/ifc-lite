@@ -26,6 +26,9 @@ class PendingVisibility extends Error {
   constructor(readonly ready: Promise<void>, readonly alive: () => boolean) { super('Orthographic pipelines are compiling'); }
 }
 
+/** A frame whose orthographic variants are still compiling; callers must let it propagate (#8564). */
+export const isPendingVisibility = (error: unknown): boolean => error instanceof PendingVisibility;
+
 /** A compiling frame is discarded before submit; completion requests its replacement. */
 export function deferOpaqueVisibilityFrame(error: unknown, requestRender: () => void): boolean {
   if (!(error instanceof PendingVisibility)) return false;
@@ -67,6 +70,31 @@ export class OpaqueVisibilityPass {
   }
 
   getBinding(): GPUBindGroup | undefined { return this.active ? this.binding ?? undefined : undefined; }
+
+  /** The registered descriptor and WGSL of a base pipeline, for derived variants (#8564). */
+  describe(pipeline: GPURenderPipeline): Readonly<Registration> | undefined { return this.registrations.get(pipeline); }
+
+  /**
+   * A later pass of the frame `begin` opened (#8564 glass split): orthographic
+   * frames draw the same colour variants against the same geometric depth; no
+   * second prepass. A variant that is still compiling defers the frame as in `begin`.
+   */
+  resume(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+    const pass = encoder.beginRenderPass(descriptor);
+    const section = this.sectionBinding?.();
+    if (section) pass.setBindGroup(3, section);
+    if (!this.active) return pass;
+    const setPipeline = (base: GPURenderPipeline) => {
+      const variant = this.forPipeline(base);
+      pass.setPipeline(variant?.colour ?? base);
+      if (variant) pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, this.binding!);
+    };
+    return new Proxy(pass, { get: (target, key) => {
+      if (key === 'setPipeline') return setPipeline;
+      const member: unknown = Reflect.get(target, key);
+      return typeof member === 'function' ? member.bind(target) : member;
+    } });
+  }
 
   /** The orthographic geometric-depth target while allocated, for render-target telemetry. */
   renderTarget(): GPUTexture | null { return this.texture; }

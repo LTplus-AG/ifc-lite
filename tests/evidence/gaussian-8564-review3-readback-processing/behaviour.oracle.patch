@@ -1,0 +1,12 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-split.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-split.ts
+@@ -138,6 +138,9 @@
+       this.layers = samples > 0 ? 'multiple' : 'single';
+       this.layerSamples = samples;
+       this.onResult();
++    } catch (error) {
++      if (token === this.frame) { this.layers = 'unknown'; this.layerSamples = null; }
++      console.error('[Gaussian] glass layer readback failed; count stays unknown:', error);
+     } finally {
+       if (mapped) {
+         try { read.unmap(); }

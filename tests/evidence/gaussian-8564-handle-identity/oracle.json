@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-splat-layer.ts",
+  "mutation": "tests/evidence/gaussian-8564-handle-identity/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-splat-layer.test.ts",
+  "why": "#8564: Reverse applying validates handles by numeric id; a forged or cross-renderer handle must no longer remove another asset."
+}

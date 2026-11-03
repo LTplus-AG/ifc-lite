@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/gaussian/gaussian-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-frame.ts
+@@ -37,7 +37,7 @@
+ export function centreClipFilter(clip: PickClipState | null, source: GaussianPackedSource | undefined, anchor: readonly [number, number, number] | null): GaussianRowFilter | null {
+   if (!clipIsActive(clip) || !clip || !source || !anchor) return null;
+   const { positions } = source;
+-  return (_slot, row) => pointClipped(clip, anchor[0] + positions[row * 3], anchor[1] + positions[row * 3 + 1], anchor[2] + positions[row * 3 + 2]);
++  return (_slot, row) => !pointClipped(clip, anchor[0] + positions[row * 3], anchor[1] + positions[row * 3 + 1], anchor[2] + positions[row * 3 + 2]);
+ }
+ 
+ /** Keep the frame's MSAA resolve when there is nothing to draw. */

@@ -16,6 +16,7 @@ import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_BYTES, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { GaussianBackend } from './gaussian/gaussian-backend.js';
 
 async function requireColorTable() {
     const module = await import('./entity-color-table.js').catch(() => null);
@@ -261,7 +262,7 @@ function makeHarness(): Harness {
         get(_t, prop) {
             switch (prop) {
                 case 'lost': return lost;
-                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024 };
+                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024, maxStorageBufferBindingSize: 128 * 1024 * 1024 };
                 case 'queue': return queue;
                 case 'pushErrorScope': return () => { stats.push++; };
                 case 'popErrorScope': return () => {
@@ -415,6 +416,72 @@ function seedBatches(h: Harness): { grey: BatchedMesh; red: BatchedMesh } {
     const grey = batches.find((b) => b.expressIds.includes(1))!;
     const red = batches.find((b) => b.expressIds.includes(3))!;
     return { grey, red };
+}
+
+// #8564 round 5: section resolution used to persist the visible Gaussian union
+// into fit bounds. Exercise the real render/submit path, not just layer callbacks.
+for (const action of ['hide', 'remove'] as const) {
+    for (const keepSection of [false, true]) {
+        it(`#8564 section render preserves model/annotation bounds after ${action}, section=${keepSection}`, async () => {
+            const h = makeHarness();
+            const fields = h.renderer as unknown as Record<string, unknown>;
+            fields.ready = true;
+            const layer = fields.gaussianLayer as Record<string, unknown>;
+            (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+                upstreamReverseZ: true,
+                createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+            });
+            const mesh = triangle(1, GREY);
+            mesh.positions = new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 100]);
+            assert.equal(h.renderer.loadGeometry([mesh]).ok, true);
+            // Keep the real overlay/bounds facade, stubbing only its GPU renderer.
+            (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = new Proxy({}, { get: () => () => undefined });
+            h.renderer.setLineOverlay('annotation', new Float32Array([-20, -20, -20, 120, 120, 120]));
+            const persistent = structuredClone(h.renderer.getModelBounds());
+            assert.deepEqual(persistent, { min: { x: -20, y: -20, z: -20 }, max: { x: 120, y: 120, z: 120 } });
+            const camera = h.renderer.getCamera();
+            camera.setProjectionMode('orthographic');
+            camera.setPosition(-200, 50, 50);
+            camera.setTarget(0, 50, 50);
+            const attributes = {
+                count: 1, positions: new Float32Array([500, 50, 50]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            const handle = await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+            const render = (enabled: boolean) => {
+                const before = h.stats.submissions;
+                h.render({ sectionPlane: { enabled, axis: 'side', position: 50 } });
+                assert.equal(h.stats.submissions, before + 1, 'the actual section frame submits successfully');
+            };
+            // Reverse-Z orthographic clip depth for a point 700m along +X from
+            // this eye: view z=-700, and the public projection must map to [0,1].
+            const centreClipDepth = () => {
+                const m = camera.getProjMatrix().m;
+                return -700 * m[10] + m[14];
+            };
+            try {
+                render(true);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 250, 'transient slider spans IFC 0..100 plus the visible centre at 500');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'section rendering cannot pollute fit bounds or drop annotations');
+                assert.deepEqual(camera.getSceneBounds(), persistent, 'persistent camera bounds also retain annotations');
+                assert.ok(centreClipDepth() >= 0 && centreClipDepth() <= 1, 'visible centre is inside the rendered near/far interval');
+                render(keepSection);
+                if (action === 'hide') h.renderer.gaussianSplats.setVisible(handle, false);
+                else h.renderer.gaussianSplats.remove(handle);
+                render(keepSection);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 50, 'slider returns to IFC bounds after withdrawal');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'fits retain only model/annotation bounds');
+                assert.deepEqual(camera.getSceneBounds(), persistent);
+                assert.ok(centreClipDepth() < 0, 'withdrawn far centre no longer inflates the rendered depth interval');
+                assert.equal(h.renderer.getDiagnostics().errors, 0);
+            } finally {
+                h.renderer.gaussianSplats.remove(handle);
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
 }
 
 describe('canonical render submission result (#6709)', () => {

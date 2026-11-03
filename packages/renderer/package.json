@@ -21,7 +21,10 @@
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/load-trace": "workspace:^",
-    "@ifc-lite/spatial": "workspace:^"
+    "@ifc-lite/spatial": "workspace:^",
+    "@luma.gl/core": "9.4.2",
+    "@luma.gl/splats": "9.4.2",
+    "@luma.gl/webgpu": "9.4.2"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.74",

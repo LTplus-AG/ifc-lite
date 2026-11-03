@@ -56,7 +56,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<voi
   const splats = renderer.gaussianSplats; // internal, unqualified adapter (#8564)
   const readiness = await settledReadiness(renderer);
   if (!ctx.isCurrent()) return;
-  if (readiness.state !== 'blocked' || readiness.reasons.includes('upstream-capability-missing')) {
+  if (readiness.state !== 'blocked' || readiness.upstream === 'missing') {
     return fail(readiness.state === 'lost'
       ? 'The graphics device was lost; reload the page and open the capture again.'
       : 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.', `gaussian_renderer_${readiness.state}`);

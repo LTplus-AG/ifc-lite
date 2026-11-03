@@ -20,7 +20,7 @@ import { checkRetainedLazy, staticImports } from './check-viewer-retained-free.m
 import { createPreviewServer } from './serve-retained-preview.mjs';
 import { productionIdentity, startupGraph } from './smoke-retained-preview.mjs';
 import { REQUIRED_NOTICES, SOURCE_URL_NOTICES, responseProblems } from './lib/retained-preview.mjs';
-import { archiveUrl, contractProblems, lockProblems } from './lib/retained-engine-artifact.mjs';
+import { archiveUrl, contractProblems, lockProblems, readLock } from './lib/retained-engine-artifact.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TAG = 'v1.2.3';
@@ -106,6 +106,14 @@ test('#7955 a lock pins the tag release asset and every hash', () => {
   assert.match(lockProblems({ ...good, sourceTag: 'main' }).join(), /vX\.Y\.Z/);
   assert.match(lockProblems({ ...good, archiveSha256: 'x' }).join(), /archiveSha256/);
   assert.equal(archiveUrl(TAG), `https://github.com/LTplus-AG/ifc-lite/releases/download/${TAG}/ifc-lite-retained-engine-${TAG}.tar.gz`);
+});
+
+test('#7955 the committed viewer lock pins a published release asset', () => {
+  const path = join(REPO, 'apps/viewer/retained-engine.lock.json');
+  assert.ok(existsSync(path), 'ifclite.com builds retained from apps/viewer/retained-engine.lock.json');
+  const lock = readLock(path);
+  assert.equal(lock.url, archiveUrl(lock.sourceTag), 'the lock names its own tag release asset');
+  assert.equal(lock.sdkRevision, SDK, 'the lock was packed against the pinned SMLib SDK revision');
 });
 
 test('#7955 packing is deterministic and refuses notices that do not name the tag', t => {

@@ -66,6 +66,7 @@ it('Exact: builds an Exact bridge, publishes it with the estimate, and turns the
   const { bridge, state } = await mount('exact');
   assert.equal(bridge.placement.mode, 'exact');
   assert.equal(state.cesiumGlobePlacementStatus?.mode, 'exact');
+  assert.equal(state.cesiumGlobePlacementStatus?.prescribed, 'exact', 'the line is an IfcRigidOperation');
   // Curvature at the 20 km line's 10 km ends alone: 1e8 / 12 742 000 = 7.85 m.
   assert.ok((state.cesiumGlobePlacementStatus?.anchorErrorMetres ?? 0) > 7.85);
   assert.equal(state.cesiumTerrainClipY, null);

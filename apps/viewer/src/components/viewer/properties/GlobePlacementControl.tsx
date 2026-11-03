@@ -25,6 +25,13 @@ export default function GlobePlacementControl() {
     { value: 'exact', label: t('properties.georef.globePlacement.exact') },
   ];
   const errorCm = status?.anchorErrorMetres;
+  const resolved = status?.mode === 'exact'
+    ? t(mode === 'auto' && status.prescribed === 'exact'
+      ? 'properties.georef.globePlacement.resolvedRigid'
+      : 'properties.georef.globePlacement.resolvedExact')
+    : t('properties.georef.globePlacement.resolvedAnchor');
+  // An explicit choice that contradicts what the georeference prescribes.
+  const contradicts = status?.prescribed != null && mode !== 'auto' && mode !== status.prescribed;
   return (
     <div className="ml-5 space-y-1">
       <div className="flex items-center gap-2">
@@ -33,7 +40,7 @@ export default function GlobePlacementControl() {
       </div>
       {status && (
         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-          {status.mode === 'exact' ? t('properties.georef.globePlacement.resolvedExact') : t('properties.georef.globePlacement.resolvedAnchor')}
+          {resolved}
           {errorCm != null && (
             <span className="ml-1 font-mono">
               {t('properties.georef.globePlacement.estimate', {
@@ -41,6 +48,11 @@ export default function GlobePlacementControl() {
               })}
             </span>
           )}
+        </div>
+      )}
+      {contradicts && (
+        <div role="note" className="text-xs text-amber-600 dark:text-amber-400">
+          {t('properties.georef.globePlacement.rigidAnchorWarning')}
         </div>
       )}
       <div className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.globePlacement.help')}</div>

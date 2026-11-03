@@ -21,6 +21,20 @@ fn clipped_box(depth: f64) -> String {
 #36=IFCSLAB('0000000000000000000001',$,'SYNTHETIC slab',$,$,#13,#34,$,.FLOOR.);
 ENDSEC;END-ISO-10303-21;", z0 = 1. - depth, nx = -depth / 2., rx = depth / 2.)
 }
+/// `clipped_box`, then `extra` clips that each shave 0.1 mm more off the end x = 2, so the
+/// sliver's plane sits that deep on the host spine.
+fn deep(depth: f64, extra: u32) -> String {
+    let mut clips = String::from("#40=IFCDIRECTION((1.,0.,0.));\n");
+    let mut previous = 26;
+    for i in 0..extra {
+        let (point, place, plane, half, clip) = (1000 + 5 * i, 1001 + 5 * i, 1002 + 5 * i, 1003 + 5 * i, 1004 + 5 * i);
+        let x = 1.95 - f64::from(i) * 1e-4;
+        clips += &format!("#{point}=IFCCARTESIANPOINT(({x:?},0.,0.));#{place}=IFCAXIS2PLACEMENT3D(#{point},#40,#12);#{plane}=IFCPLANE(#{place});\
+#{half}=IFCHALFSPACESOLID(#{plane},.F.);#{clip}=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#{previous},#{half});\n");
+        previous = clip;
+    }
+    clipped_box(depth).replace("'Clipping',(#26)", &format!("'Clipping',(#{previous})")).replace("#33=", &format!("{clips}#33="))
+}
 fn run(text: &str, worker: &std::ffi::OsStr) -> ProductOutcome {
     let mut outcomes = Vec::new();
     ifc_lite_retained_native::run_model_native(SourceBundle::new(text.as_bytes().to_vec()), worker,
@@ -56,4 +70,23 @@ fn a_wedge_the_kernel_keeps_is_refused_and_a_real_cut_publishes() {
         assert!((six.abs() / 6. - (2. - depth)).abs() < 1e-9, "{depth}: {}", six.abs() / 6.);
     }
     println!("sdk witness executed: clip_sliver_refusal");
+}
+
+/// The worker realizes at most 128 Booleans per product, the spine scan's own bound: the
+/// sliver's plane at the deepest of 128 is still checked, and one more clip is refused anyway.
+#[test]
+fn a_wedge_at_the_deepest_spine_operation_is_still_refused() {
+    let Some(worker) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(), "real SDK required");
+        return;
+    };
+    let outcome = run(&deep(5e-5, 127), &worker);
+    let ProductOutcome::Published(_) = outcome else { panic!("a real cut under 127 clips publishes: {outcome:?}") };
+    let outcome = run(&deep(1e-5, 127), &worker);
+    let ProductOutcome::Refused { origin, .. } = &outcome else { panic!("must not publish: {outcome:?}") };
+    assert_eq!(origin.expect("typed origin").cause, "material_beyond_clip_plane");
+    let outcome = run(&deep(5e-5, 128), &worker);
+    let ProductOutcome::Refused { refusal, .. } = &outcome else { panic!("a 129th Boolean must not publish: {outcome:?}") };
+    assert_eq!(refusal.code(), "resource_exhausted");
+    println!("sdk witness executed: clip_sliver_spine_bound");
 }

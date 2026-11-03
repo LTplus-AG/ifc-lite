@@ -165,7 +165,7 @@ impl RetainedExecutionError {
             return true;
         }
         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
-            | Self::DeadlineExceeded | Self::ChordalVolume { .. }
+            | Self::DeadlineExceeded | Self::ChordalVolume { .. } | Self::ClipSliver { .. }
             | Self::Unsupported(_) | Self::InvalidTypeSource
             | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
             | Self::Recipe(RetainedRefusal::InvalidSource(_)
@@ -193,6 +193,7 @@ impl RetainedExecutionError {
                 | Self::DeadlineExceeded
                 | Self::Unsupported(_)
                 | Self::ChordalVolume { .. }
+                | Self::ClipSliver { .. }
                 | Self::InvalidTypeSource
                 | Self::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)
                 | Self::Transition(CANCELLED)

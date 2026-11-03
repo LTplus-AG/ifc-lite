@@ -8,6 +8,8 @@ use super::runtime::ReceiptEvidence;
 use super::*;
 use ifc_lite_geometry::{document::{retained_wire, PrismRole}, program::transactions::relative_frame, BoolOp};
 
+/// The worker realizes at most 128 Booleans per product (geometry-runtime `MAX_OPERATIONS`), so
+/// a published spine is never deeper: this bound scans it whole.
 const MAX_SPINE: usize = 128;
 const IDENTITY: [f64; 16] = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.];
 

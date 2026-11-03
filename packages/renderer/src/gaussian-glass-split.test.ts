@@ -317,9 +317,9 @@ test('#8564 frame schedule: P1, splats behind, the held transparent IFC and high
   assert.equal(second.deferred, true);
   composer.encode(scene, target, camera, { recorder: second, visibility, objectIdView: 'ids' as never, objectIdStore: 'store', initialBindGroups: [[1, 'env' as never]] });
   const order = fake.log.filter((c) => c[0] === 'begin' || c[0] === 'splats').map((c) => c[0] === 'begin' ? (c[1] as GPURenderPassDescriptor).label : `splats:${c[1]}`);
-  assert.deepEqual(order, ['ifc-lite-gaussian-nearest-transparent', 'ifc-lite-gaussian-transparent-layers', 'splats:less-equal', 'ifc-lite-gaussian-transparent', 'splats:greater']);
+  assert.deepEqual(order, ['ifc-lite-gaussian-nearest-transparent', 'ifc-lite-gaussian-transparent-layers', 'splats:less-equal', 'ifc-lite-gaussian-transparent', 'splats:greater', 'ifc-lite-gaussian-resolve']);
   assert.equal(fake.log.find((c) => c[0] === 'splats' && c[1] === 'less-equal')![2], null, 'splats behind the glass do not resolve');
-  assert.equal(fake.log.find((c) => c[0] === 'splats' && c[1] === 'greater')![2], 'swapchain', 'splats in front resolve MSAA');
+  assert.equal(fake.log.find((c) => c[0] === 'splats' && c[1] === 'greater')![2], null, 'front splats store MSAA until the split outcome is known');
   const glassPass = fake.log.find((c) => c[0] === 'begin' && (c[1] as GPURenderPassDescriptor).label === 'ifc-lite-gaussian-transparent')![1] as GPURenderPassDescriptor;
   assert.deepEqual(glassPass.colorAttachments, [{ view: 'msaa', loadOp: 'load', storeOp: 'store' }, { view: 'ids', loadOp: 'load', storeOp: 'store' }]);
   assert.deepEqual(glassPass.depthStencilAttachment, { view: 'main-depth', depthLoadOp: 'load', depthStoreOp: 'store', stencilLoadOp: 'load', stencilStoreOp: 'discard' });
@@ -425,30 +425,54 @@ test('#8564 review F1: a pending count never overwrites a later non-split frame'
   assert.equal(composer.report.transparentLayers, 'unknown', 'D starts unknown: a published count never carries over');
 });
 
-class FailingScene extends SceneLog {
-  constructor(log: Log, private readonly failing: GaussianDepthInterval['compare']) { super(log); }
-  override encode(target: GaussianEncodeTarget, camera: unknown, interval?: GaussianDepthInterval) {
-    if (interval?.compare === this.failing) throw new Error(`injected ${this.failing} failure`);
-    super.encode(target, camera, interval);
-  }
+// #8564 round-2: failures can happen before or after recording, including pass cleanup.
+for (const phase of ['behind-before', 'behind-after', 'front-after', 'glass-after'] as const) {
+  test(`#8564 review2 ${phase}: stop splats, report incomplete, redraw sticky single-pass`, async () => {
+    const { fake, composer, visibility, target, camera, recorderFor, renders } = await readyComposer();
+    class FailingScene extends SceneLog {
+      override encode(t: GaussianEncodeTarget, c: unknown, interval?: GaussianDepthInterval) {
+        if (phase === 'behind-before' && interval?.compare === 'less-equal') throw new Error(phase);
+        super.encode(t, c, interval); // a real draw is now recorded, even if cleanup throws
+        if ((phase === 'behind-after' && interval?.compare === 'less-equal') ||
+            (phase === 'front-after' && interval?.compare === 'greater')) throw new Error(phase);
+      }
+    }
+    const failingVisibility = phase !== 'glass-after' ? visibility : {
+      ...visibility, resume: (encoder: GPUCommandEncoder, d: GPURenderPassDescriptor) => {
+        const pass = visibility.resume(encoder, d);
+        return new Proxy(pass, { get: (p, key) => key === 'end' ? () => { p.end(); throw new Error(phase); } : Reflect.get(p, key) });
+      },
+    };
+    const errors: unknown[] = [], original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      fake.log.length = 0;
+      const before = renders();
+      assert.equal(composer.encode(new FailingScene(fake.log), target, camera, { recorder: recorderFor(), visibility: failingVisibility }), false);
+      const draws = fake.log.filter((c) => c[0] === 'splats');
+      assert.deepEqual(draws.map((c) => c[1]), phase === 'behind-before' ? [] : phase === 'front-after' ? ['less-equal', 'greater'] : ['less-equal'], 'no unfiltered retry or splat pass after failure');
+      assert.ok(fake.log.some((c) => c[0] === 'ifc-lite-gaussian-transparent' && c[1] === 'drawIndexed'), 'glass is replayed even when behind fails');
+      assert.equal(composer.report.composition, 'split-failed', 'the failed frame may be incomplete, never the single-pass approximation');
+      assert.equal(composer.report.fallback, 'split-failed');
+      assert.ok(renders() > before, 'request a clean replacement frame');
+      assert.equal(errors.length, 1);
+      composer.setMode('nearest-glass-split'); // mode changes must not undo the sticky failure
+      for (let frame = 0; frame < 3; frame++) {
+        fake.log.length = 0;
+        const recorder = recorderFor();
+        assert.equal(recorder.deferred, false);
+        assert.equal(composer.encode(new SceneLog(fake.log), target, camera, { recorder, visibility }), true);
+        assert.deepEqual(fake.log.filter((c) => c[0] === 'splats').map((c) => c[1]), ['all']);
+        assert.equal(composer.report.composition, 'over-transparent-approximate');
+        assert.equal(composer.report.fallback, 'split-failed');
+      }
+      composer.release(); // same lifecycle hook as renderer teardown/device recovery
+      recorderFor(); // new variants compile on the clean slate
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fake.log.length = 0;
+      composer.encode(new SceneLog(fake.log), target, camera, { recorder: recorderFor(), visibility });
+      assert.deepEqual(fake.log.filter((c) => c[0] === 'splats').map((c) => c[1]), ['less-equal', 'greater'], 'release re-enables the split');
+      assert.equal(composer.report.composition, 'nearest-glass-split');
+    } finally { console.error = original; composer.release(); }
+  });
 }
-
-test('#8564 review F4: a failed behind-glass encode draws every splat once after the glass and reports split-failed', async () => {
-  const { fake, composer, visibility, target, camera, recorderFor } = await readyComposer();
-  const errors: unknown[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => { errors.push(args); };
-  try {
-    fake.log.length = 0;
-    assert.equal(composer.encode(new FailingScene(fake.log, 'less-equal'), target, camera, { recorder: recorderFor(), visibility }), false);
-    const order = fake.log.filter((c) => c[0] === 'begin' || c[0] === 'splats').map((c) => c[0] === 'begin' ? (c[1] as GPURenderPassDescriptor).label : `splats:${c[1]}:${c[2]}`);
-    assert.deepEqual(order.slice(-2), ['ifc-lite-gaussian-transparent', 'splats:all:swapchain'], 'the held glass, then one unfiltered splat pass that resolves');
-    assert.equal(fake.log.filter((c) => c[0] === 'splats').length, 1, 'every splat is drawn exactly once');
-    assert.equal(composer.report.composition, 'over-transparent-approximate');
-    assert.equal(composer.report.fallback, 'split-failed');
-    assert.equal(errors.length, 1);
-    // A failure in front of the glass is reported the same way.
-    assert.equal(composer.encode(new FailingScene(fake.log, 'greater'), target, camera, { recorder: recorderFor(), visibility }), false);
-    assert.equal(composer.report.fallback, 'split-failed');
-  } finally { console.error = original; }
-});

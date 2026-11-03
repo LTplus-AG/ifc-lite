@@ -11,7 +11,8 @@
  *   3. the held draws exactly as recorded: transparent IFC, the highlight, then points,
  *      reference images and overlays in their established order;
  *   4. splats with depth > P1 (in front of the glass), resolving MSAA.
- * A split pass that fails falls back to the held draws plus one splat pass (`split-failed`).
+ * A failed split may be incomplete: replay held draws, stop splats, then request a clean
+ * single-pass frame. Split stays disabled until release() or a new device.
  * Every splat sample lands in exactly one of 2 and 4: same depth value, same
  * P1 value, complementary tests. Both still test opaque depth in hardware, as
  * the single pass does. Where no transparent IFC covers a sample, P1 is the far
@@ -48,6 +49,7 @@ export interface GlassFrameInput {
 }
 
 export class GaussianGlassComposer {
+  private failed = false;
   private mode: GaussianCompositionMode = 'nearest-glass-split';
   private split: { device: GPUDevice; split: GaussianGlassSplit } | null = null;
   /** What the last splat frame did; its report is rebuilt when that frame's layer count arrives. */
@@ -64,7 +66,8 @@ export class GaussianGlassComposer {
 
   /** A fresh recorder for one splat frame; it holds transparent IFC only when the split can run. */
   recorder(device: GPUDevice, depthInterval: boolean, visibility: GlassVisibility): DeferredPassRecorder {
-    const disabled = this.mode === 'single-pass' ? 'single-pass-mode' : depthInterval ? null : 'upstream-interval-missing';
+    if (this.split && this.split.device !== device) this.release();
+    const disabled = this.failed ? 'split-failed' : this.mode === 'single-pass' ? 'single-pass-mode' : depthInterval ? null : 'upstream-interval-missing';
     return new DeferredPassRecorder(disabled, (pipelines) => this.splitFor(device).prepare(pipelines, (pipeline) => visibility.describe(pipeline)));
   }
 
@@ -99,47 +102,63 @@ export class GaussianGlassComposer {
     if (scene && camera) {
       try {
         const nearest = split.encodeNearest({ ...target, initial }, recorder);
-        // The backend prepares an interval draw before beginning its pass, so a throw here records no splats.
+        // Any throw can follow recorded draws; never retry splats in this frame.
         scene.encode({ ...target, resolveTarget: undefined }, camera, { bound: nearest, compare: 'less-equal' });
         bound = nearest;
       } catch (error) {
-        failed = true; // no P1 filter below: every splat draws once, in one pass after the held draws
-        console.error('[Gaussian] splats behind transparent IFC failed; falling back to one splat pass:', error);
+        failed = true;
+        console.error('[Gaussian] splats behind transparent IFC failed; frame may be incomplete:', error);
       }
     }
     const last = !scene || !camera;
     const colour: GPURenderPassColorAttachment = { view: target.colorView, loadOp: 'load', ...(last && target.resolveTarget
       ? { resolveTarget: target.resolveTarget, storeOp: 'discard' } : { storeOp: 'store' }) };
-    const pass = visibility.resume(target.encoder, {
-      label: 'ifc-lite-gaussian-transparent',
-      colorAttachments: [colour, ...(input.objectIdView ? [{ view: input.objectIdView, loadOp: 'load' as const, storeOp: input.objectIdStore ?? 'discard' }] : [])],
-      depthStencilAttachment: { view: target.depthView, depthLoadOp: 'load', depthStoreOp: 'store', stencilLoadOp: 'load', stencilStoreOp: 'discard' },
-    });
     try {
-      recorder.replay(pass, { initial });
+      const pass = visibility.resume(target.encoder, {
+        label: 'ifc-lite-gaussian-transparent',
+        colorAttachments: [colour, ...(input.objectIdView ? [{ view: input.objectIdView, loadOp: 'load' as const, storeOp: input.objectIdStore ?? 'discard' }] : [])],
+        depthStencilAttachment: { view: target.depthView, depthLoadOp: 'load', depthStoreOp: 'store', stencilLoadOp: 'load', stencilStoreOp: 'discard' },
+      });
+      try {
+        recorder.replay(pass, { initial });
+      } finally {
+        pass.end();
+      }
     } catch (error) {
+      this.fail(recorder);
       if (isPendingVisibility(error)) throw error; // the renderer defers the whole frame
-      console.error('[Gaussian] transparent IFC replay failed; the frame still resolves:', error);
-    } finally {
-      pass.end();
+      failed = true;
+      console.error('[Gaussian] transparent IFC replay failed; frame may be incomplete:', error);
     }
+    if (failed) { this.fail(recorder); encodeResolveOnly(target); return false; }
     if (!scene || !camera) { this.finish(recorder, false); return true; }
     try {
-      scene.encode(target, camera, bound ? { bound, compare: 'greater' } : undefined);
+      scene.encode({ ...target, resolveTarget: undefined }, camera, bound ? { bound, compare: 'greater' } : undefined);
     } catch (error) {
       failed = true;
-      console.error('[Gaussian] splats in front of transparent IFC failed; the frame still resolved:', error);
+      console.error('[Gaussian] splats in front of transparent IFC failed; frame may be incomplete:', error);
     }
-    this.finish(recorder, !failed, failed ? 'split-failed' : null);
+    if (failed) this.fail(recorder);
+    else this.finish(recorder, true);
+    encodeResolveOnly(target); // keep MSAA stored until either split outcome is known
     return !failed;
   }
 
   /** After the frame's command buffer is submitted: start reading the layer count back. */
   submitted(): void { this.split?.split.submitted(); }
 
+  /** Clean slate on device loss/recovery or renderer rebuild; mode changes do not reset failures. */
   release(): void {
+    this.failed = false;
     this.split?.split.destroy();
     this.split = null;
+  }
+
+  private fail(recorder: DeferredPassRecorder): void {
+    const first = !this.failed;
+    this.failed = true;
+    this.finish(recorder, false, 'split-failed');
+    if (first) this.requestRender();
   }
 
   private splitFor(device: GPUDevice): GaussianGlassSplit {
@@ -153,7 +172,7 @@ export class GaussianGlassComposer {
   private finish(recorder: DeferredPassRecorder | null | undefined, split: boolean, failure: GaussianCompositionFallback | null = null): void {
     this.last = {
       transparent: recorder?.transparent ?? false, split, highlight: (recorder?.highlightDraws ?? 0) > 0,
-      later: (recorder?.laterDraws ?? 0) > 0, fallback: failure ?? recorder?.fallback ?? null,
+      later: (recorder?.laterDraws ?? 0) > 0, incomplete: failure === 'split-failed', fallback: failure ?? recorder?.fallback ?? null,
     };
     this.publish();
   }

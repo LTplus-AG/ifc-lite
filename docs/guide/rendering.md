@@ -1321,7 +1321,11 @@ renderer.gaussianSplats.remove(handle);
   `nearest-glass-split`, `no-transparent`, or `over-transparent-approximate` with a
   `fallback` (`single-pass-mode`, `pipelines-compiling` while the depth-only
   variants compile, `unsupported-draw`, `upstream-interval-missing`, `split-failed`
-  when a split pass failed and the frame drew one splat pass instead).
+  after a split failure). A failing frame reports `composition: 'split-failed'` and
+  may be incomplete: already recorded draws cannot be retracted, so no further splat
+  pass is attempted. A redraw requests a clean single pass; this stays sticky until
+  device recovery or a renderer rebuild (`GaussianGlassComposer.release()`), or a new
+  device. Changing composition mode does not reset the failure.
   `transparentLayers` is `multiple` when an occlusion query found a sample with two
   or more transparent surfaces in front of opaque geometry: a closed glass solid
   counts as two, and X-Ray ghosts report `multiple` almost always. It describes only
@@ -1336,7 +1340,8 @@ renderer.gaussianSplats.remove(handle);
   place after transparent IFC, so the IFC look never depends on splats; they draw after
   the splats behind the nearest layer, covering those where they lie behind them, and
   before the splats in front of it (`laterOverBehindSplats`). Only transparent IFC
-  meshes take part: translucent overlays and reference images keep splats drawn over them.
+  meshes define P1: translucent overlays and reference images draw over behind-glass
+  splats, while front-glass splats draw over them.
   The split costs a depth32float target at the drawing-buffer size and sample count
   (about 33 MB at 1920x1080 with 4x MSAA), two depth-only replays of the transparent
   draws, one more transparent-pass load/store and two splat draws over one sort.

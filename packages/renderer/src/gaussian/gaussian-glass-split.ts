@@ -104,8 +104,9 @@ export class GaussianGlassSplit {
       label: 'ifc-lite-gaussian-nearest-transparent', colorAttachments: [],
       depthStencilAttachment: { view: texture.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
     });
-    recorder.replay(pass, { depthOnly: (pipeline) => this.ready(pipeline).nearest, initial: frame.initial });
-    pass.end();
+    try {
+      recorder.replay(pass, { depthOnly: (pipeline) => this.ready(pipeline).nearest, initial: frame.initial });
+    } finally { pass.end(); }
     if (this.reading || !hasStencil(frame.depthFormat)) this.missing = hasStencil(frame.depthFormat);
     else { this.encodeCount(frame, recorder); this.queried = this.frame; }
     return texture;
@@ -155,21 +156,22 @@ export class GaussianGlassSplit {
       label: 'ifc-lite-gaussian-transparent-layers', colorAttachments: [], occlusionQuerySet: query.set,
       depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilClearValue: 0, stencilLoadOp: 'clear', stencilStoreOp: 'discard' },
     });
-    recorder.replay(pass, { depthOnly: (pipeline) => this.ready(pipeline).count!, initial: frame.initial });
-    const module = this.quad ? null : this.device.createShaderModule({ label: 'ifc-lite-gaussian-layer-count', code: COUNT_SHADER });
-    pass.setPipeline(this.quad ??= this.device.createRenderPipeline({
-      label: 'ifc-lite-gaussian-layer-count', layout: 'auto',
-      vertex: { module: module!, entryPoint: 'vs' },
-      fragment: { module: module!, entryPoint: 'fs', targets: [] },
-      depthStencil: { format: frame.depthFormat, depthWriteEnabled: false, depthCompare: 'always', stencilReadMask: 0xff, stencilWriteMask: 0,
-        stencilFront: { compare: 'less-equal' }, stencilBack: { compare: 'less-equal' } },
-      multisample: { count: frame.sampleCount },
-    }));
-    pass.setStencilReference(2);
-    pass.beginOcclusionQuery(0);
-    pass.draw(3);
-    pass.endOcclusionQuery();
-    pass.end();
+    try {
+      recorder.replay(pass, { depthOnly: (pipeline) => this.ready(pipeline).count!, initial: frame.initial });
+      const module = this.quad ? null : this.device.createShaderModule({ label: 'ifc-lite-gaussian-layer-count', code: COUNT_SHADER });
+      pass.setPipeline(this.quad ??= this.device.createRenderPipeline({
+        label: 'ifc-lite-gaussian-layer-count', layout: 'auto',
+        vertex: { module: module!, entryPoint: 'vs' },
+        fragment: { module: module!, entryPoint: 'fs', targets: [] },
+        depthStencil: { format: frame.depthFormat, depthWriteEnabled: false, depthCompare: 'always', stencilReadMask: 0xff, stencilWriteMask: 0,
+          stencilFront: { compare: 'less-equal' }, stencilBack: { compare: 'less-equal' } },
+        multisample: { count: frame.sampleCount },
+      }));
+      pass.setStencilReference(2);
+      pass.beginOcclusionQuery(0);
+      pass.draw(3);
+      pass.endOcclusionQuery();
+    } finally { pass.end(); }
     frame.encoder.resolveQuerySet(query.set, 0, 1, query.resolve, 0);
     frame.encoder.copyBufferToBuffer(query.resolve, 0, query.read, 0, 8);
   }

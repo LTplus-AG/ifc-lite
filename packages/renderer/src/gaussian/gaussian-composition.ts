@@ -14,12 +14,14 @@
 export type GaussianComposition =
   /** No transparent IFC was submitted: one splat pass after the main pass, as before. Exact. */
   | 'no-transparent'
+  /** A split failed while encoding; recorded draws cannot be retracted and the frame may be incomplete. */
+  | 'split-failed'
   /** Splats split around the nearest transparent layer. Exact where a sample has at most one; see `transparentLayers`. */
   | 'nearest-glass-split'
   /** One splat pass over transparent IFC (approximate); `fallback` says why. */
   | 'over-transparent-approximate';
 
-/** Why a frame with splats and transparent IFC kept the single, approximate splat pass. */
+/** Why a frame with splats and transparent IFC did not complete the split. */
 export type GaussianCompositionFallback =
   /** `setCompositionMode('single-pass')`. */
   | 'single-pass-mode'
@@ -29,7 +31,7 @@ export type GaussianCompositionFallback =
   | 'unsupported-draw'
   /** The installed @luma.gl/splats lacks the depth-interval hook (patches/@luma.gl__splats@9.4.2.patch). */
   | 'upstream-interval-missing'
-  /** A split pass failed while encoding (logged); the frame drew transparent IFC and one splat pass instead. */
+  /** A split failed (possibly incomplete); subsequent frames keep one pass until device recovery or rebuild. */
   | 'split-failed';
 
 /** Selects the split or the single approximate pass; the split is the default. */
@@ -72,10 +74,13 @@ export const NO_TRANSPARENT: GaussianCompositionReport = Object.freeze({
 
 /** The report of one frame from what the recorder saw and why it did or did not split. */
 export function compositionReport(
-  frame: { transparent: boolean; split: boolean; highlight: boolean; later: boolean; fallback: GaussianCompositionFallback | null },
+  frame: { incomplete?: boolean; transparent: boolean; split: boolean; highlight: boolean; later: boolean; fallback: GaussianCompositionFallback | null },
   layers: GaussianTransparentLayers,
 ): GaussianCompositionReport {
   if (!frame.transparent) return NO_TRANSPARENT;
+  if (frame.incomplete) {
+    return Object.freeze({ composition: 'split-failed', fallback: 'split-failed', transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
+  }
   if (!frame.split) {
     return Object.freeze({ composition: 'over-transparent-approximate', fallback: frame.fallback ?? 'unsupported-draw', transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
   }

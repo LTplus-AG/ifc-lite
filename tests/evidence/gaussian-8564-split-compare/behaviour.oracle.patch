@@ -1,20 +1,20 @@
 --- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
 +++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
-@@ -100,7 +100,7 @@
+@@ -103,7 +103,7 @@
        try {
          const nearest = split.encodeNearest({ ...target, initial }, recorder);
-         // The backend prepares an interval draw before beginning its pass, so a throw here records no splats.
+         // Any throw can follow recorded draws; never retry splats in this frame.
 -        scene.encode({ ...target, resolveTarget: undefined }, camera, { bound: nearest, compare: 'greater' });
 +        scene.encode({ ...target, resolveTarget: undefined }, camera, { bound: nearest, compare: 'less-equal' });
          bound = nearest;
        } catch (error) {
-         failed = true; // no P1 filter below: every splat draws once, in one pass after the held draws
-@@ -125,7 +125,7 @@
-     }
+         failed = true;
+@@ -133,7 +133,7 @@
+     if (failed) { this.fail(recorder); encodeResolveOnly(target); return false; }
      if (!scene || !camera) { this.finish(recorder, false); return true; }
      try {
--      scene.encode(target, camera, bound ? { bound, compare: 'less-equal' } : undefined);
-+      scene.encode(target, camera, bound ? { bound, compare: 'greater' } : undefined);
+-      scene.encode({ ...target, resolveTarget: undefined }, camera, bound ? { bound, compare: 'less-equal' } : undefined);
++      scene.encode({ ...target, resolveTarget: undefined }, camera, bound ? { bound, compare: 'greater' } : undefined);
      } catch (error) {
        failed = true;
-       console.error('[Gaussian] splats in front of transparent IFC failed; the frame still resolved:', error);
+       console.error('[Gaussian] splats in front of transparent IFC failed; frame may be incomplete:', error);

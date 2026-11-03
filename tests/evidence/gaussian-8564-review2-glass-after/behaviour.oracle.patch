@@ -1,0 +1,20 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -127,7 +127,7 @@
+     } catch (error) {
+       this.fail(recorder);
+       if (isPendingVisibility(error)) throw error; // the renderer defers the whole frame
+-      failed = false;
++      failed = true;
+       console.error('[Gaussian] transparent IFC replay failed; frame may be incomplete:', error);
+     }
+     if (failed) { this.fail(recorder); encodeResolveOnly(target); return false; }
+@@ -135,7 +135,7 @@
+     try {
+       scene.encode({ ...target, resolveTarget: undefined }, camera, bound ? { bound, compare: 'greater' } : undefined);
+     } catch (error) {
+-      failed = false;
++      failed = true;
+       console.error('[Gaussian] splats in front of transparent IFC failed; frame may be incomplete:', error);
+     }
+     if (failed) this.fail(recorder);

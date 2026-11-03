@@ -1,0 +1,10 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -149,6 +149,7 @@
+ 
+   /** Clean slate on device loss/recovery or renderer rebuild; mode changes do not reset failures. */
+   release(): void {
++    this.failed = false;
+     this.split?.split.destroy();
+     this.split = null;
+   }

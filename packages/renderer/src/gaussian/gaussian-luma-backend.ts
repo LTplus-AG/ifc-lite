@@ -108,8 +108,8 @@ class LumaGaussianScene implements GaussianBackendScene {
   }
 
   encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera, interval?: GaussianDepthInterval): void {
-    // A split (interval) draw prepares before its pass begins: if that throws, nothing is recorded and
-    // the caller falls back to one full splat pass. The single pass begins first so its resolve always runs.
+    // Split preparation can fail before recording, but draw/cleanup can fail afterwards. The caller
+    // must never retry splats in this frame. Single-pass preparation stays inside its resolving pass.
     const prepared = interval ? { renderer: this.prepare(target, camera, interval) } : null;
     const pass = target.encoder.beginRenderPass({
       label: 'ifc-lite-gaussian-splats',

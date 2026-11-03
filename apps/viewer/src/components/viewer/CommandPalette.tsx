@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Search } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
@@ -39,6 +40,8 @@ import {
  *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
 function activateRightPanel(panel: RightPanel) {
   closeActiveAnalysisExtension();
+  // A pane folded for the start screen LOOKS closed: open it, don't toggle it shut.
+  if (liftStartFold('right')) { useViewerStore.getState().openPanelInHome(panel, 'palette'); return; }
   useViewerStore.getState().toggleWorkspacePanel(panel, 'palette');
 }
 

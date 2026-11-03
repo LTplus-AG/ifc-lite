@@ -49,7 +49,7 @@ export function prepareModelFiles(files: readonly File[], handles: Handles | und
     // A bundle cannot be reopened from the recent list without its sidecars.
     recordRecentFiles(models.map(file => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(models);
-    setRecentFiles?.(getRecentFiles().slice(0, 3));
+    setRecentFiles?.(getRecentFiles());
     route(resolved, alignHandles(files, handles, resolved));
   });
   // A rejected bundle is reported to its own caller and must not stall later picks.

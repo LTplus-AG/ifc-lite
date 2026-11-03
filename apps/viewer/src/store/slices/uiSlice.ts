@@ -97,6 +97,9 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // State
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  /** Runtime only: an explicit panel action lifted that side's empty-start-screen
+   *  fold (`useEmptyStartFold.ts`) instead of writing the stored layout. */
+  startFoldLifted: { left: boolean; right: boolean };
   activeTool: string;
   /**
    * Global edit mode. When `true`, all in-place editing affordances (inline
@@ -151,6 +154,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setStartFoldLifted: (lifted: { left: boolean; right: boolean }) => void;
   setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
@@ -201,6 +205,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
+  startFoldLifted: { left: false, right: false },
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
   propertiesActiveTab: 'properties',
@@ -232,6 +237,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
+  setStartFoldLifted: (startFoldLifted) => set({ startFoldLifted }),
   setActiveTool: (activeTool) => {
     // Authoring tools require edit mode; entering one flips the global
     // toggle on so the rest of the UI (Properties panel, future

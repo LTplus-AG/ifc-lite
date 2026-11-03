@@ -1,5 +1,19 @@
 # @ifc-lite/renderer
 
+## 7.1.0
+
+### Minor Changes
+
+- [#8690](https://github.com/LTplus-AG/ifc-lite/pull/8690) [`066f42b`](https://github.com/LTplus-AG/ifc-lite/commit/066f42bba33808904be6a2588570451ed8d04df6) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.setLensShift(x, y)`, `getLensShift()` and `getActiveLensShift()`: a perspective lens shift (off-axis frustum) in NDC for two-point perspective. Picking, sections, overlays, cursor zoom, ambient occlusion, edge detection, the sky background and shadow focus follow the shift. Orthographic projection ignores it.
+
+- [#8640](https://github.com/LTplus-AG/ifc-lite/pull/8640) [`1ac08ab`](https://github.com/LTplus-AG/ifc-lite/commit/1ac08ab1d03116511281d1c2afd534b75fea2db5) Thanks [@louistrue](https://github.com/louistrue)! - Add an internal, unqualified Gaussian splat adapter, `Renderer.gaussianSplats`, that draws upstream luma.gl splats on the renderer's own WebGPU device and frame. `add()` requires `{ qualification: 'internal-unqualified' }`; `getGaussianReadiness()` stays `blocked` and now also lists the adapter's `capabilities`. Exports the adapter's handle, placement, state, bounds and error types.
+
+- [#8714](https://github.com/LTplus-AG/ifc-lite/pull/8714) [`68a464d`](https://github.com/LTplus-AG/ifc-lite/commit/68a464d27a08df115dae374ca9e47d7f02852c35) Thanks [@louistrue](https://github.com/louistrue)! - The section box caps its cut faces like a section plane does ([#8696](https://github.com/LTplus-AG/ifc-lite/issues/8696)): every box face that cuts through an element gets a cap, with the same Cap settings (Surfaces / Lines, Uniform or Element colour fill, hatch) and the selection highlight. The box bar now has Fill and the Cap popover. The renderer draws a cap per box face from polygons uploaded under `sectionBoxCapKey(face)`, styled by the new `ClipBox` `showCap` / `showOutlines` / `capStyle`.
+
+### Patch Changes
+
+- [#8673](https://github.com/LTplus-AG/ifc-lite/pull/8673) [`87f6ff8`](https://github.com/LTplus-AG/ifc-lite/commit/87f6ff8e91d2d43948929e92e4c1372ee4222106) Thanks [@louistrue](https://github.com/louistrue)! - Measure magnetic snap now follows the active section: it no longer snaps to geometry or scan points the section removed, and snaps to the cut contour, including from straight above a cut solid.
+
 ## 7.0.0
 
 ### Major Changes

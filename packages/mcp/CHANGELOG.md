@@ -1,5 +1,18 @@
 # @ifc-lite/mcp
 
+## 0.29.0
+
+### Minor Changes
+
+- [#8705](https://github.com/LTplus-AG/ifc-lite/pull/8705) [`ec33ac5`](https://github.com/LTplus-AG/ifc-lite/commit/ec33ac54d4f88d535fc0e0fa62b453bf084342a2) Thanks [@louistrue](https://github.com/louistrue)! - Protect loaded model sources from file-writing tools, including filesystem aliases and source paths changed after loading. In-place writes now return PERMISSION_DENIED; export to a separate file instead.
+
+### Patch Changes
+
+- Updated dependencies [[`8eefa8e`](https://github.com/LTplus-AG/ifc-lite/commit/8eefa8ec68c25b595bf3bce92f406b767c3f9f1f)]:
+  - @ifc-lite/query@2.5.4
+  - @ifc-lite/flow-nodes@0.12.2
+  - @ifc-lite/sdk@9.6.1
+
 ## 0.28.2
 
 ### Patch Changes

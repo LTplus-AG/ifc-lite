@@ -1,5 +1,31 @@
 # @ifc-lite/viewer
 
+## 5.5.0
+
+### Minor Changes
+
+- [#8710](https://github.com/LTplus-AG/ifc-lite/pull/8710) [`b65994d`](https://github.com/LTplus-AG/ifc-lite/commit/b65994da705dfd2d7812fd333eec868c4526e544) Thanks [@louistrue](https://github.com/louistrue)! - Settings → Performance → Geometry kernel chooses Exact (default) or Retained (experimental) and is now saved per browser; `?kernel=` in the address still overrides it for one tab, and "Reload with exact kernel" switches only the current tab. A new `VITE_RETAINED_GEOMETRY=lazy` build offers this choice while keeping every retained file out of the startup bundle: the retained code, the engine and its notices are downloaded only after Retained is chosen.
+
+- [#8714](https://github.com/LTplus-AG/ifc-lite/pull/8714) [`68a464d`](https://github.com/LTplus-AG/ifc-lite/commit/68a464d27a08df115dae374ca9e47d7f02852c35) Thanks [@louistrue](https://github.com/louistrue)! - The section box caps its cut faces like a section plane does ([#8696](https://github.com/LTplus-AG/ifc-lite/issues/8696)): every box face that cuts through an element gets a cap, with the same Cap settings (Surfaces / Lines, Uniform or Element colour fill, hatch) and the selection highlight. The box bar now has Fill and the Cap popover. The renderer draws a cap per box face from polygons uploaded under `sectionBoxCapKey(face)`, styled by the new `ClipBox` `showCap` / `showOutlines` / `capStyle`.
+
+### Patch Changes
+
+- [#8673](https://github.com/LTplus-AG/ifc-lite/pull/8673) [`87f6ff8`](https://github.com/LTplus-AG/ifc-lite/commit/87f6ff8e91d2d43948929e92e4c1372ee4222106) Thanks [@louistrue](https://github.com/louistrue)! - Measure magnetic snap now follows the active section: it no longer snaps to geometry or scan points the section removed, and snaps to the cut contour, including from straight above a cut solid.
+
+- [#8667](https://github.com/LTplus-AG/ifc-lite/pull/8667) [`8f28d3d`](https://github.com/LTplus-AG/ifc-lite/commit/8f28d3d6fa6a4114b4d70216773199f27315eae4) Thanks [@louistrue](https://github.com/louistrue)! - The PDF export dialog no longer says "Choose the scale" when the active sheet fixes the scale and paper. It now says the active sheet sets them, so the read-only fields look intentional. Without an active sheet the dialog still offers the scale choice.
+
+- [#8693](https://github.com/LTplus-AG/ifc-lite/pull/8693) [`fdfa534`](https://github.com/LTplus-AG/ifc-lite/commit/fdfa534d70f51ecc6e319479d754840217d3ad46) Thanks [@louistrue](https://github.com/louistrue)! - Opening the Section tool no longer makes a cut on its own. With the tool open and no cut yet, the background 2D drawing saved the untouched placeholder plane as the model's cut. Resizing the window across a layout breakpoint, or reloading, then restored it as a real, cutting plane A. The placeholder is no longer saved; a cut you make still is.
+
+- [#8674](https://github.com/LTplus-AG/ifc-lite/pull/8674) [`2051b0b`](https://github.com/LTplus-AG/ifc-lite/commit/2051b0b3bc8262b8bb51388acff6cd4ba2dacd89) Thanks [@louistrue](https://github.com/louistrue)! - The Section tool now offers Box before any plane exists. With no cut yet, the bar keeps its heading and the Views label on the first row and lists the ways to start a cut on the second: Down, Front and Side, then Face and Box. Every choice, on the bar and in the Add plane menu, says what it makes when you hover it.
+- Updated dependencies [[`87b96f8`](https://github.com/LTplus-AG/ifc-lite/commit/87b96f8f871e3e9ca94a121ebf253fa2d229c675), [`066f42b`](https://github.com/LTplus-AG/ifc-lite/commit/066f42bba33808904be6a2588570451ed8d04df6), [`a75b717`](https://github.com/LTplus-AG/ifc-lite/commit/a75b71705172edb0cc1b04e595ad3d274bc257c5), [`1ac08ab`](https://github.com/LTplus-AG/ifc-lite/commit/1ac08ab1d03116511281d1c2afd534b75fea2db5), [`87f6ff8`](https://github.com/LTplus-AG/ifc-lite/commit/87f6ff8e91d2d43948929e92e4c1372ee4222106), [`ec33ac5`](https://github.com/LTplus-AG/ifc-lite/commit/ec33ac54d4f88d535fc0e0fa62b453bf084342a2), [`2fa7dc6`](https://github.com/LTplus-AG/ifc-lite/commit/2fa7dc6d2640cd62dc212d40976ace7721e0f566), [`8eefa8e`](https://github.com/LTplus-AG/ifc-lite/commit/8eefa8ec68c25b595bf3bce92f406b767c3f9f1f), [`68a464d`](https://github.com/LTplus-AG/ifc-lite/commit/68a464d27a08df115dae374ca9e47d7f02852c35)]:
+  - @ifc-lite/bcf-api@0.4.0
+  - @ifc-lite/renderer@7.1.0
+  - @ifc-lite/drawing-2d@5.0.0
+  - @ifc-lite/mcp@0.29.0
+  - @ifc-lite/query@2.5.4
+  - @ifc-lite/flow-nodes@0.12.2
+  - @ifc-lite/sdk@9.6.1
+
 ## 5.4.0
 
 ### Minor Changes

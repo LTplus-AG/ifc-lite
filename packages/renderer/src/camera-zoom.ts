@@ -9,6 +9,7 @@ import { MathUtils } from './math.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
 import { isUsableUp } from './camera-guards.js';
 import { MAX_RTE_SOURCE_ABS_METRES } from './relative-to-eye.js';
+import { activeLensShift } from './camera-matrices.js';
 
 function normalizedScreenRight(forward: Vec3, up: Vec3): Vec3 {
   const v = MathUtils.cross(forward, up);
@@ -135,7 +136,7 @@ export function shiftTargetTowardsMouse(
 
   // The target plane spans the unshifted frustum, so remove the perspective
   // lens shift (#8688) before reading the cursor against it.
-  const shift = state.projectionMode === 'orthographic' ? { x: 0, y: 0 } : state.lensShift;
+  const shift = activeLensShift(state);
   const ndcX = (mouseX / canvasWidth) * 2 - 1 - shift.x;
   const ndcY = 1 - (mouseY / canvasHeight) * 2 - shift.y;
 

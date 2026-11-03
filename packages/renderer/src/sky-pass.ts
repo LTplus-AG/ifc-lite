@@ -36,7 +36,7 @@ export interface SkyCamera {
   fovY: number;
   /** Viewport width / height. */
   aspect: number;
-  /** Perspective lens shift in NDC (`Camera.getLensShift()`); `{0, 0}` when absent. */
+  /** Lens shift the projection applies, in NDC (`Camera.getActiveLensShift()`); `{0, 0}` when absent. */
   lensShift?: { x: number; y: number };
 }
 

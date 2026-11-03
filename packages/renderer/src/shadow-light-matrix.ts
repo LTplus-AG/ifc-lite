@@ -238,7 +238,7 @@ export interface CameraFrustumParams {
   boundsMax: readonly [number, number, number];
   /** Lateral expansion so a caster just off-screen still reaches the map. */
   margin?: number;
-  /** Perspective lens shift in NDC (#8688); ignored when `ortho`. */
+  /** Lens shift the projection applies, in NDC (`Camera.getActiveLensShift()`, #8688). */
   lensShift?: { x: number; y: number };
 }
 
@@ -270,8 +270,8 @@ export function cameraFrustumFocusCorners(p: CameraFrustumParams): Vec3[] | null
 
   const margin = Math.min(Math.max(p.margin ?? 0.15, 0), 2);
   // A lens shift moves the visible window by `-shift` half-extents (#8688).
-  const shiftX = p.ortho ? 0 : (p.lensShift?.x ?? 0);
-  const shiftY = p.ortho ? 0 : (p.lensShift?.y ?? 0);
+  const shiftX = p.lensShift?.x ?? 0;
+  const shiftY = p.lensShift?.y ?? 0;
   const half = (d: number): { w: number; h: number; cx: number; cy: number } => {
     const h0 = p.ortho ? p.orthoHalfHeight : d * Math.tan(p.fovY / 2);
     const h = h0 * (1 + margin);

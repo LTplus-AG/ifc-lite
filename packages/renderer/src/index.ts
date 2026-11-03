@@ -2075,7 +2075,7 @@ export class Renderer {
                             aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                             ortho: this.camera.getProjectionMode() === 'orthographic',
                             orthoHalfHeight: this.camera.getOrthoSize(),
-                            lensShift: this.camera.getLensShift(),
+                            lensShift: this.camera.getActiveLensShift(),
                             boundsMin: sourceBoundsMin,
                             boundsMax: sourceBoundsMax,
                         })?.map((corner) => ({
@@ -2252,9 +2252,7 @@ export class Renderer {
                     up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
-                    lensShift: this.camera.getProjectionMode() === 'orthographic'
-                        ? undefined
-                        : this.camera.getLensShift(),
+                    lensShift: this.camera.getActiveLensShift(),
                 }, environment);
             }
 

@@ -16,7 +16,7 @@ import type { CameraInternalState, ProjectionMode } from './camera-state.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
 import { FirstPersonNavigator } from './camera-first-person.js';
-import { updateCameraMatrices, updateCameraRelativeFrame } from './camera-matrices.js';
+import { activeLensShift, updateCameraMatrices, updateCameraRelativeFrame } from './camera-matrices.js';
 import { CameraOrientation } from './camera-orientation.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
 import {
@@ -157,9 +157,14 @@ export class Camera {
     this.updateMatrices();
   }
 
-  /** The current perspective lens shift in NDC; a copy. */
+  /** The stored lens shift in NDC, as set; a copy. */
   getLensShift(): { x: number; y: number } {
     return { ...this.state.lensShift };
+  }
+
+  /** The lens shift the current projection applies: {@link getLensShift} in perspective, zero in orthographic. */
+  getActiveLensShift(): { x: number; y: number } {
+    return { ...activeLensShift(this.state) };
   }
 
   /**

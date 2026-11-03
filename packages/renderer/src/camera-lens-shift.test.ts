@@ -88,7 +88,10 @@ describe('Camera lens shift (#8688)', () => {
     const ortho = [...camera.getProjMatrix().m];
     camera.setLensShift(0, 0.5);
     assert.deepStrictEqual([...camera.getProjMatrix().m], ortho);
+    assert.deepStrictEqual(camera.getActiveLensShift(), { x: 0, y: 0 });
+    assert.deepStrictEqual(camera.getLensShift(), { x: 0, y: 0.5 });
     camera.setProjectionMode('perspective');
+    assert.deepStrictEqual(camera.getActiveLensShift(), { x: 0, y: 0.5 });
     assert.ok(Math.abs(ndc(camera, { x: 0, y: 1.6, z: -5 }).y - 0.5) < 1e-5);
   });
 
@@ -132,7 +135,5 @@ describe('cameraFrustumFocusCorners lens shift (#8688)', () => {
       assert.ok(Math.abs(shifted[i].y - (plain[i].y - 0.5 * d)) < 1e-9, `corner ${i}`);
       assert.strictEqual(shifted[i].x, plain[i].x);
     }
-    const ortho = cameraFrustumFocusCorners({ ...params, ortho: true, lensShift: { x: 0, y: 0.5 } });
-    assert.deepStrictEqual(ortho, cameraFrustumFocusCorners({ ...params, ortho: true }));
   });
 });

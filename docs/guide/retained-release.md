@@ -259,7 +259,11 @@ wheel is a separate release train from the npm and crate versions.
 
 Maintainer decision (2026-11-01): the deployment smoke runs on a separate Vercel
 **preview** URL that serves retained only; ifclite.com and its production build are
-untouched. The preview is built off-Vercel (the viewer plugin still refuses retained
+untouched. The 2026-11-03 decision to ship retained on ifclite.com as an opt-in
+setting is a separate path (pinned engine, verified install, `--production` smoke;
+see [Production on ifclite.com](retained-installation.md#production-on-ifclitecom-opt-in-setting)),
+and it waits for the signed
+[scope extension](../architecture/retained-licensing.md#scope-extension-draft-production-on-ifclitecom-through-the-opt-in-setting). The preview is built off-Vercel (the viewer plugin still refuses retained
 under `VERCEL=1`) and uploaded as static files to the `ifc-lite` project without a
 `target`, so Vercel gives it its own immutable `*.vercel.app` URL and assigns no
 alias or domain. Publishing it distributes SMLib WASM, so it waits for the release

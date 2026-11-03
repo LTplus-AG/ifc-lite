@@ -131,6 +131,8 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   `stage-cli-retained-engine.mjs` hash-inventory those copies. The viewer Vite
   integration does not copy these into build output and rejects retained Vercel
   builds; this scope does not claim the production viewer currently serves them.
+  Serving them on ifclite.com is the separate [scope extension](#scope-extension-draft-production-on-ifclitecom-through-the-opt-in-setting)
+  below, which applies only once signed.
 * **Native retained worker binaries are not distributed in this release.** Users
   build from the pinned SDK. CMake install support and native CI evidence are not
   a release channel. `.github/workflows/release.yml` publishes npm and source
@@ -179,6 +181,73 @@ also unverified; they are operational release prerequisites, not inferred from
 this licence record.
 
 Approved for the scope above by: Louis Trümpler (date: 2026-11-01)
+
+### Scope extension (draft): production on ifclite.com through the opt-in setting
+
+**Not approved until the line at the end of this section is signed.** Until then
+nothing below may be published: the `publish` input of the Retained engine
+workflow is not run and `apps/viewer/retained-engine.lock.json` is not committed.
+The maintainer asked on 2026-11-03 to ship the retained kernel to production as
+a user-selectable setting. That supersedes ruling 4 of the 2026-11-01 #7955
+closing decisions (a separate preview URL only; ifclite.com untouched) for the
+distribution described here, and nothing else.
+
+**What is distributed.** One staged engine per pinned release, the same inventory
+the hosted preview serves and the review record above covers:
+`pkg-retained` JS/WASM, declarations and snippets; the SMLib/SM_API Emscripten
+module and its module Workers; and every notice. That means the original SDK
+`LICENSE` and `THIRD_PARTY_NOTICES.md`, the generated `THIRD_PARTY_NOTICES.txt`
+(Emscripten runtime and `AUTHORS`, musl, LLVM runtimes, dlmalloc, Rust standard
+library and crates, the recorded elections), the IFC-Lite MPL-2.0 `LICENSE`, and
+the Emscripten `LICENSE`. It is built by `.github/workflows/retained-engine.yml`
+from a root release tag, with that tag's pinned usd-brep revision, emsdk,
+Emscripten and Rust toolchain, and packed as `ifc-lite-retained-engine-<tag>.tar.gz`.
+Its manifest keeps `qualified: false` and `buildAttestation: false`: the hashes
+identify bytes, not provenance.
+
+**Channels.**
+
+1. The GitHub Release of `<tag>`, as a public release asset. It is never replaced
+   once uploaded, and anyone can download it.
+2. www.ifclite.com, at `/smlib/` and `/retained-engine/`. The production Vercel
+   build downloads the asset, verifies it against the lock (archive SHA-256 and
+   size, full inventory, manifest SHA-256, SDK revision, every notice, the exact
+   tag in each IFC-Lite notice), and installs it beside the viewer.
+   `/retained-engine/deployment.json` names the tag, source commit and hashes.
+
+**Who receives it.** On ifclite.com, only a browser whose user chose
+Settings → Performance → Geometry kernel → Retained (experimental), or opened
+`?kernel=retained`. Exact stays the default. A user who never switches
+downloads no retained code, engine or notice. The build refuses a deploy
+whose startup graph carries retained code (`check-viewer-retained-free.mjs
+--lazy`), and the production smoke checks that an exact load downloads none.
+
+**How each obligation is met in this extension.**
+
+* SMLib / SM_API (Apache-2.0 section 4): `LICENSE` and `THIRD_PARTY_NOTICES.md`
+  are served at `/smlib/` and `/retained-engine/LICENSES/SMLib/`, and are inside
+  the release asset. The pinned SDK paths are unmodified (the stager enforces
+  their cleanliness).
+* Emscripten runtime, musl, LLVM runtimes, dlmalloc, Rust std and crates: the
+  generated bundle is served beside the engine and is inside the release asset,
+  with the elections recorded above.
+* IFC-Lite (MPL-2.0): every IFC-Lite notice copy names
+  `https://github.com/LTplus-AG/ifc-lite/tree/<tag>`. The packer, the Vercel
+  fetcher and the smoke all check this, and the tag stays published. The viewer
+  code around the engine, including its lazily loaded retained chunks, is the
+  production viewer as today, built from the production branch commit recorded in
+  `/retained-engine/deployment.json`, whose source is public in this repository.
+
+**Not covered.** Native worker binaries (still not distributed), npm (unchanged),
+any other domain, host or Vercel project (including viewer-embed), and any engine
+not built by the workflow above from a root release tag.
+
+**Maintainer actions.** (1) Review this extension against the release you intend
+to pin. (2) Sign below. (3) Run the Retained engine workflow for that tag with
+`publish`. (4) Commit the lock it prints as `apps/viewer/retained-engine.lock.json`.
+The next production deploy then serves the engine, and the setting appears.
+
+Approved for this scope extension by: ____________________ (date: __________)
 
 ## Why the default npm package includes the notice file
 
@@ -260,6 +329,10 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    The guard passes on the real manifest: every OR-licensed component resolves
    through an explicit election or the checked MIT default.
    dlmalloc's public-domain/CC0 dedication is not an alternative-licence declaration.
+
+8. **Pending the maintainer's signature: production distribution on ifclite.com.**
+   See the [scope extension](#scope-extension-draft-production-on-ifclitecom-through-the-opt-in-setting).
+   Until it is signed, no engine is published or pinned.
 
 Revit fixture rights: maintainer confirmed 2026-11-01 for test and evidence use.
 

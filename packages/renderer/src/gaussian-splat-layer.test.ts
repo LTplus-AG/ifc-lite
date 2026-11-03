@@ -83,7 +83,7 @@ test('#8564 add needs the explicit internal opt-in and never makes readiness rea
   const readiness = layer.readiness();
   assert.equal(readiness.state, 'blocked');
   assert.ok(readiness.state === 'blocked' && readiness.reasons.includes('exact-mixed-transparency'));
-  assert.ok(readiness.state === 'blocked' && readiness.capabilities.includes('packed-global-order'));
+  assert.ok(readiness.state === 'blocked' && readiness.capabilities?.includes('packed-global-order') === true);
 });
 
 test('#8564 a missing upstream reverse-Z ordering rejects add and blocks readiness', async () => {

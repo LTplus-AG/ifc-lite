@@ -31,7 +31,8 @@ export type GaussianReadiness =
       state: 'blocked';
       generation: number;
       reasons: readonly GaussianBlocker[];
-      capabilities: readonly GaussianCapability[];
+      /** Always set by the renderer; optional so values built against the earlier shape still type-check. */
+      capabilities?: readonly GaussianCapability[];
     };
 
 /** Whether the installed upstream renderer exposes reverse-Z ordering (luma.gl #3619). */

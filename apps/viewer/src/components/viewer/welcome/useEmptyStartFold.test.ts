@@ -115,3 +115,22 @@ describe('palette panel commands on the folded start screen (#8728 review)', () 
     assert.equal(s.leftPanelCollapsed, false, 'the toggle did not flip the stored preference');
   });
 });
+
+describe('ribbon Hierarchy views on the folded start screen (#8728 review)', () => {
+  afterEach(() => useViewerStore.setState({
+    loading: false, models: new Map(), geometryResult: null, leftPanelCollapsed: false,
+    startFoldLifted: { left: false, right: false },
+  }));
+
+  it('an Elements ribbon hierarchy view reveals the folded Hierarchy', async () => {
+    useViewerStore.setState({
+      loading: false, models: new Map(), geometryResult: null, leftPanelCollapsed: false,
+      startFoldLifted: { left: false, right: false },
+    });
+    const { RIBBON_ELEMENTS_SURFACE_COMMANDS } = await import('../surface-commands-elements-ribbon.js');
+    const view = RIBBON_ELEMENTS_SURFACE_COMMANDS.find((c) => c.id === 'elements:spatial');
+    assert.ok(view, 'the Elements ribbon has the spatial-tree view command');
+    view.run();
+    assert.equal(startFoldsHierarchy(useViewerStore.getState()), false, 'Hierarchy is shown');
+  });
+});

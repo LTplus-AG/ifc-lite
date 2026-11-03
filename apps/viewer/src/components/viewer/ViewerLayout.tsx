@@ -226,7 +226,8 @@ export function ViewerLayout() {
       panel.expand();
       // Folded before its first layout, the panel has no real width to go
       // back to and `expand()` lands near 0 — give it its width back.
-      if (panel.getSize().asPercentage < LEFT_PANEL_MIN_SIZE) {
+      // `!(x >= min)` rather than `x < min`: an unmeasured group reports NaN.
+      if (!(panel.getSize().asPercentage >= LEFT_PANEL_MIN_SIZE)) {
         panel.resize(`${restore !== null && restore >= LEFT_PANEL_MIN_SIZE ? restore : LEFT_PANEL_DEFAULT_SIZE}%`);
       }
     }

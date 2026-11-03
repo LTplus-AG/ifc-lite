@@ -127,6 +127,18 @@ export function installViewportDebugHooks(
   // Renderer-owned color evidence for hardware E2E. The RGBA bytes are copied
   // before the production frame submits, so this avoids compositor retention
   // and exposes no scene/model data to the browser test.
+  // Opt-in diagnostic shares the production copy, never schedules a second frame.
+  if (import.meta.env.VITE_GAUSSIAN_SPLATS === 'internal-unqualified') host.__ifc_lite_capture_color_diagnostic__ = async () => {
+    const frame = await renderer.captureColorFrame(true);
+    if (!frame || !frame.duplicate) return null;
+    const base64 = (bytes: Uint8ClampedArray) => {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary);
+    };
+    return { width: frame.width, height: frame.height, metadata: frame.metadata,
+      raw: base64(frame.rgba), duplicate: base64(frame.duplicate), png: await encodeColorFrame(Promise.resolve(frame)) };
+  };
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
@@ -205,6 +217,7 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_render_frame__;
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;
   delete host.__ifc_lite_annotation_line_vertices__;

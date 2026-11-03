@@ -316,6 +316,11 @@ export function ViewportOverlays({
  * React bails out unless the formatted text changes.
  */
 function ScaleReadout() {
+  const { t } = useTranslation();
+  // #8566: placement is not calibration. A visible capture never establishes
+  // metres, even when its source coordinates happen to resemble IFC units.
+  const hasCapture = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !!m.gaussianSplat));
+  const hasIfc = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !m.gaussianSplat && m.pointCloudHandleId === undefined && !!m.ifcDataStore?.schemaVersion?.startsWith('IFC')));
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
   useEffect(() => {
@@ -324,8 +329,13 @@ function ScaleReadout() {
   }, [setOnScaleChange]);
   return (
     <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
-      <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-      <span className="text-xs text-foreground/80">{scaleLabel}</span>
+      {(!hasCapture || hasIfc) && <>
+        <div className="h-1 w-24 bg-foreground/80 rounded-full" />
+        <span className="text-xs text-foreground/80" data-testid="viewport-metric-scale">{scaleLabel}</span>
+      </>}
+      {hasCapture && <span className="max-w-64 text-xs text-foreground/80" data-testid="viewport-capture-scale-note">
+        {t(hasIfc ? 'gaussianCapture.scale.mixed' : 'gaussianCapture.scale.captureOnly')}
+      </span>}
     </div>
   );
 }

@@ -9,11 +9,14 @@
  */
 
 import type { ReactNode } from 'react';
-import { Clock, HardDrive, Info, Move3D, ScanLine, ShieldAlert, Sparkles } from 'lucide-react';
+import { Clock, HardDrive, Info, Move3D, Ruler, RotateCw, ScanLine, ShieldAlert, Sparkles } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { FederatedModel } from '@/store/types';
 import type { GaussianSplatModel } from '@/hooks/ingest/gaussianIngest';
-import { gaussianModelState } from '@/hooks/ingest/gaussianAssets';
+import { gaussianNeedsReload, useGaussianCaptureState } from '@/hooks/ingest/gaussianAssets';
+import { useGaussianReload } from '@/hooks/ingest/gaussianReload';
+import { toast } from '@/components/ui/toast';
+import { gaussianStateLabel } from '../gaussian-capture-state';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 
@@ -41,7 +44,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function GaussianCaptureMetadataPanel({ model, capture }: { model: FederatedModel; capture: GaussianSplatModel }) {
   const { t, locale } = useTranslation();
   const icon = (Icon: typeof Info) => <Icon className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
-  const state = gaussianModelState(model).state;
+  const state = useGaussianCaptureState(model);
+  const label = gaussianStateLabel(state);
+  const reload = useGaussianReload();
   const fileSize = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
@@ -69,7 +74,20 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
             {t(capture.placementOrigin === 'explicit' ? 'gaussianCapture.placement.explicit' : 'gaussianCapture.placement.source')}
           </Row>
           <Row icon={icon(ShieldAlert)} label={t('gaussianCapture.calibration')}>{t('gaussianCapture.calibration.uncalibrated')}</Row>
-          <Row icon={icon(ScanLine)} label={t('gaussianCapture.rendererState')}>{t(`gaussianCapture.state.${state}`)}</Row>
+          <Row icon={icon(Ruler)} label={t('gaussianCapture.scale')}>{t('gaussianCapture.scale.unknown')}</Row>
+          <Row icon={icon(ScanLine)} label={t('gaussianCapture.rendererState')}>
+            <output data-testid="gaussian-capture-state">{t(label.key, label.values)}</output>
+          </Row>
+          {gaussianNeedsReload(state) && (
+            <div className="px-3 py-2">
+              <button type="button" className="inline-flex items-center gap-1 border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs"
+                onClick={() => void reload(model.id).then((result) => {
+                  if (!result.ok) toast.error(t(result.reason === 'source-unavailable' ? 'gaussianCapture.reload.sourceUnavailable' : 'gaussianCapture.reload.notLoaded'));
+                })}>
+                <RotateCw className="h-3.5 w-3.5" aria-hidden />{t('gaussianCapture.row.reload')}
+              </button>
+            </div>
+          )}
           {capture.attribution && <Row icon={icon(Info)} label={t('gaussianCapture.attribution')}>{capture.attribution}</Row>}
         </Section>
         <Section title={t('gaussianCapture.heading.limitations')}>

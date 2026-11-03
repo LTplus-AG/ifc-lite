@@ -54,7 +54,7 @@ These are integration points to verify, not assertions that the current modules 
 
 Run the journey in a fresh browser session for each supported device/antialiasing combination and pin the deployed commit and dependency versions in the receipt:
 
-1. In a kill-switch build (`VITE_GAUSSIAN_SPLATS=disabled`), load IFC and ordinary point-cloud PLY. Attempt Gaussian PLY and `.splat` through picker, drop and federation; verify useful refusal, no decoder allocation and no change to already loaded models.
+1. In a kill-switch build (`VITE_GAUSSIAN_SPLATS=disabled`), load IFC and ordinary point-cloud PLY. Verify picker/drop omit `.splat`. Use the `?model=` URL route for Gaussian PLY and `.splat` to assert the kill-switch refusal message; also verify federation admission refuses captures, no decoder is allocated and already loaded models stay unchanged.
 2. In the default build, load IFC first then each supported capture format; repeat splat-first and with two overlapping captures. Verify progress, cancellation, meaningful failure messages, each launch limit's refusal and bounded resource use.
 3. Inspect in perspective and orthographic views. Exercise glass/X-ray intersections, clipping planes and boxes, screenshots, resize and the supported MSAA modes against reference evidence.
 4. Toggle visibility/isolate, fit each asset and select an asset alongside an IFC entity. Verify that IFC selection and snapping retain their existing identity and measurement semantics.
@@ -82,10 +82,11 @@ Capture a compact receipt containing commit, deployment URL, browser/GPU identit
 ### Production admission-disable runbook (#8745)
 
 1. Create a reviewed change setting `GAUSSIAN_SPLATS_DEFAULT = 'disabled'` in
-   `apps/viewer/src/hooks/ingest/gaussianAdmissionPolicy.ts`. Alternatively set
-   `VITE_GAUSSIAN_SPLATS=disabled` in the production build environment and rebuild;
-   an environment change alone cannot change an existing bundle. Merge the disable
+   `apps/viewer/src/hooks/ingest/gaussianAdmissionPolicy.ts`. Merge the disable
    commit through the normal queue and record its **main first-parent SHA**.
+   This runbook uses the reviewed code change: `deploy-nightly.yml` does not
+   rebuild an unchanged production commit. Setting a build environment variable
+   alone cannot change an existing bundle and is not this deployment procedure.
 2. After its required checks pass, dispatch a **recent first-parent `main` SHA
    containing the disable change**: `deploy-nightly.yml` accepts only the
    40-commit first-parent window starting at the current main tip. If the disable

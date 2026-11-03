@@ -16,6 +16,7 @@ export interface CaptureRefusal {
 export type CaptureRefusalReason =
   | { kind: 'disabled' }
   | { kind: 'webgpu' }
+  | { kind: 'renderer'; state: 'initializing' | 'lost' | 'disposed' | 'blocked' }
   | { kind: 'limit'; breach: GaussianLimitBreach }
   | { kind: 'scene'; total: number; limit: number };
 
@@ -28,6 +29,10 @@ export function captureRefusal(reason: CaptureRefusalReason): CaptureRefusal {
   switch (reason.kind) {
     case 'disabled': return { message: resolve('gaussianCapture.error.disabled'), code: 'gaussian_disabled' };
     case 'webgpu': return { message: resolve('gaussianCapture.error.webgpu'), code: 'gaussian_webgpu_unavailable' };
+    case 'renderer': return {
+      message: resolve(reason.state === 'lost' ? 'gaussianCapture.error.deviceLost' : 'gaussianCapture.error.rendererUnavailable'),
+      code: `gaussian_renderer_${reason.state}`,
+    };
     case 'scene': return {
       message: resolve('gaussianCapture.error.sceneSplats', { total: number(reason.total), limit: number(reason.limit) }),
       code: 'gaussian_limit_scene_splats',
@@ -50,4 +55,9 @@ export function captureRefusal(reason: CaptureRefusalReason): CaptureRefusal {
       }
     }
   }
+}
+
+/** A failure after decoding started; `reason` is the decoder's or renderer's own text. */
+export function captureLoadFailure(reason: string): string {
+  return resolve('gaussianCapture.error.loadFailed', { reason });
 }

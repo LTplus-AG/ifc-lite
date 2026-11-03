@@ -16,7 +16,7 @@ import type { GaussianLoadOutcome, ModelLoadOptions } from '../modelLoadOptions.
 import { gaussianAdmissionEnabled, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
 import { adoptGaussianAsset } from './gaussianAssets.js';
 import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
-import { captureRefusal, type CaptureRefusal } from './gaussianRefusals.js';
+import { captureLoadFailure, captureRefusal, type CaptureRefusal } from './gaussianRefusals.js';
 import { reserveSceneSplats } from './gaussianSceneBudget.js';
 import { reportCaptureLoad } from './gaussianTelemetry.js';
 import { decodeGaussianInWorker } from './gaussianWorker.js';
@@ -85,9 +85,7 @@ async function runGaussianCapture(ctx: GaussianLoadContext, noteFailure: (code: 
   const readiness = await settledReadiness(renderer);
   if (!ctx.isCurrent()) return 'cancelled';
   if (readiness.state !== 'blocked' || readiness.upstream === 'missing') {
-    return refuse({ message: readiness.state === 'lost'
-      ? 'The graphics device was lost; reload the page and open the capture again.'
-      : 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.', code: `gaussian_renderer_${readiness.state}` });
+    return refuse(captureRefusal({ kind: 'renderer', state: readiness.state }));
   }
   const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models);
   if (!budget.ok) return refuse(captureRefusal({ kind: 'scene', total: budget.total, limit: budget.limit }));
@@ -120,7 +118,7 @@ async function decodeAndPublish(
   } catch (error) {
     // A superseded or cancelled load: its canceller or successor owns the UI.
     if (!ctx.isCurrent()) return 'cancelled';
-    return fail(`Gaussian capture could not be loaded: ${error instanceof Error ? error.message : String(error)}`, 'gaussian_load_failed');
+    return fail(captureLoadFailure(error instanceof Error ? error.message : String(error)), 'gaussian_load_failed');
   }
   if (!upload) return ctx.isCurrent() ? 'failed' : 'cancelled';
   const shell = gaussianModelShell(ctx.file.size);

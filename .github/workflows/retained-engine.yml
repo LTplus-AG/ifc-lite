@@ -1,0 +1,169 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Production retained engine (#7955). Builds ONE staged engine (pkg-retained +
+# SMLib browser module) from a root release tag with the tag's own pinned
+# usd-brep SDK, emsdk and Rust toolchain, packs it deterministically, verifies
+# the archive end to end, and uploads it as a run artifact. With `publish`, it
+# also attaches the archive to the tag's GitHub Release. The archive carries every
+# licence and notice text the engine needs (docs/architecture/retained-licensing.md),
+# and the packer refuses an engine whose IFC-Lite notices do not name the exact
+# tag. It never touches Vercel. To deploy it, commit the printed lock as
+# apps/viewer/retained-engine.lock.json.
+#
+# Layout: the tag's source is the workspace root (its own rust-toolchain.toml,
+# lockfile, setup action and build scripts apply); this workflow's packaging
+# tools are a second checkout under .retained-tools, so an older tag can be
+# packaged by tools that postdate it.
+name: Retained engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Root release tag (vX.Y.Z) to build the engine from
+        required: true
+        type: string
+      publish:
+        description: Attach the archive to the tag's GitHub Release (never replaces an existing asset)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retained-engine-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write # gh release upload, only when publish is set
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validate the tag name
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a root vX.Y.Z tag: $TAG"; exit 1; }
+      - name: Checkout the release source at the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Checkout the packaging tools (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .retained-tools
+          persist-credentials: false
+      - name: Read the source commit and the tag's pins
+        id: pins
+        run: |
+          set -euo pipefail
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node -e '
+            const { inputs } = JSON.parse(require("fs").readFileSync("licenses/retained/manifest.json", "utf8"));
+            for (const key of ["smlibRevision", "emsdkRef", "emscriptenVersion"]) {
+              if (!inputs[key]) throw new Error(`licenses/retained/manifest.json has no inputs.${key}`);
+              console.log(`${key}=${inputs[key]}`);
+            }' >> "$GITHUB_OUTPUT"
+      - name: Checkout the pinned upstream SDK (fetched, never vendored)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: NVIDIA-Omniverse/usd-brep
+          ref: ${{ steps.pins.outputs.smlibRevision }}
+          path: .retained-sdk
+          persist-credentials: false
+      - name: Checkout the pinned Emscripten SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          repository: emscripten-core/emsdk
+          ref: ${{ steps.pins.outputs.emsdkRef }}
+          path: .retained-emsdk
+          persist-credentials: false
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: retained-engine
+          save-if: 'false'
+      - name: Name the exact covered source in every IFC-Lite notice
+        run: |
+          set -euo pipefail
+          node scripts/retained-notices.mjs --check
+          node --input-type=module -e "
+            import { readFileSync, writeFileSync } from 'node:fs';
+            import { fillSourceTag } from './.retained-tools/scripts/lib/retained-preview.mjs';
+            const path = 'licenses/retained/THIRD_PARTY_NOTICES.txt';
+            writeFileSync(path, fillSourceTag(readFileSync(path, 'utf8'), process.env.TAG));"
+      - name: Build the retained Rust bundle (pkg-retained)
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          env BUILD_RETAINED=1 bash scripts/build-wasm.sh
+          git diff --exit-code -- packages/wasm/pkg-retained/ifc-lite.d.ts
+      - name: Build the SMLib browser module (Emscripten ${{ steps.pins.outputs.emscriptenVersion }})
+        env:
+          EMSCRIPTEN_VERSION: ${{ steps.pins.outputs.emscriptenVersion }}
+        run: |
+          set -euo pipefail
+          .retained-emsdk/emsdk install "$EMSCRIPTEN_VERSION"
+          .retained-emsdk/emsdk activate "$EMSCRIPTEN_VERSION"
+          source .retained-emsdk/emsdk_env.sh
+          emcmake cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-wasm" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE="$GITHUB_WORKSPACE/.retained-sdk"
+          cmake --build "$RUNNER_TEMP/smlib-wasm" --parallel 4
+      - name: Stage the engine
+        run: |
+          node scripts/stage-cli-retained-engine.mjs --build "$RUNNER_TEMP/smlib-wasm" --sdk "$GITHUB_WORKSPACE/.retained-sdk" \
+            --pkg-retained "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" --out "$RUNNER_TEMP/engine" \
+            --toolchain-notice "Emscripten-LICENSE=$GITHUB_WORKSPACE/.retained-emsdk/upstream/emscripten/LICENSE"
+      - name: Pack, write the lock, and verify the archive as the Vercel build will
+        env:
+          SOURCE_COMMIT: ${{ steps.pins.outputs.commit }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/retained-engine-out"
+          mkdir -p "$OUT"
+          node .retained-tools/scripts/pack-retained-engine.mjs --engine "$RUNNER_TEMP/engine" \
+            --source-tag "$TAG" --source-commit "$SOURCE_COMMIT" \
+            --out "$OUT/ifc-lite-retained-engine-$TAG.tar.gz" --lock-out "$OUT/retained-engine.lock.json"
+          node .retained-tools/scripts/fetch-retained-engine.mjs --lock "$OUT/retained-engine.lock.json" \
+            --archive "$OUT/ifc-lite-retained-engine-$TAG.tar.gz" --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/engine-verified"
+          {
+            echo "### Retained engine $TAG"
+            echo
+            echo "Commit this as \`apps/viewer/retained-engine.lock.json\` to deploy it:"
+            echo
+            echo '```json'
+            cat "$OUT/retained-engine.lock.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the archive and lock as a run artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retained-engine-${{ inputs.tag }}
+          path: ${{ runner.temp }}/retained-engine-out/*
+          if-no-files-found: error
+      - name: Attach to the GitHub Release (immutable; never replaces an asset)
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/retained-engine-out"
+          name="ifc-lite-retained-engine-$TAG.tar.gz"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$name"; then
+            echo "::error::$TAG already has $name; release assets are never replaced. Pin the existing asset or build a new tag."
+            exit 1
+          fi
+          gh release upload "$TAG" "$OUT/$name" --repo "$GITHUB_REPOSITORY"

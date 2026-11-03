@@ -15,7 +15,14 @@ import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Bounds } from './streamingBounds.js';
 
-let pending: { adoption: object; requeueShards: () => void } | null = null;
+/** The framing a snapshot was finalized under. */
+export interface SnapshotCameraFit {
+  fitBounds: Bounds;
+  sceneBounds: Bounds;
+  orbitAnchorBounds: Bounds | null;
+}
+
+let pending: { adoption: object; fit: SnapshotCameraFit | null; requeueShards: () => void } | null = null;
 let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
@@ -38,8 +45,18 @@ export function lastFinalFitBounds(): Bounds | null {
 }
 
 /** The next new geometry to sync belongs to this adoption; `requeueShards` hands its shards to the ordinary drain if refused. */
-export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}): void {
-  pending = { adoption, requeueShards };
+export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}, fit: SnapshotCameraFit | null = null): void {
+  pending = { adoption, fit, requeueShards };
+}
+
+/** Frame the camera as the finished scene was, from a fresh pose. */
+export function fitCameraToSnapshot(renderer: Pick<Renderer, 'getCamera' | 'getCanvas'>, fit: SnapshotCameraFit): void {
+  const camera = renderer.getCamera();
+  const canvas = renderer.getCanvas();
+  const shortSide = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0);
+  camera.fitBoundsAdaptive(fit.fitBounds, { viewportShortPx: shortSide > 0 ? shortSide : undefined });
+  camera.setSceneBounds(fit.sceneBounds);
+  camera.setOrbitAnchorBounds(fit.orbitAnchorBounds);
 }
 
 /** This adoption's load is over. A newer load's pending adoption stays. */
@@ -98,8 +115,18 @@ interface OwnershipRefs {
 
 /** True when `geometry` hydrated the pending snapshot; the refs then describe it as already streamed and fitted. */
 export function takeSceneSnapshotGeometry(geometry: MeshData[], modelCount: number, renderer: Renderer, refs: OwnershipRefs): boolean {
+  const settling = pending;
   if (!settlePendingSnapshot(renderer.getScene(), geometry)) {
-    modelArrivalPending = false; // any other new geometry: a superseded load's model never arrives
+    // A fallback has no post-stream refit, so its upload would keep the sync's rough first fit.
+    modelArrivalPending = settling !== null && modelCount === 0; // otherwise a superseded load's model never arrives
+    if (settling?.fit) {
+      const { fit } = settling;
+      queueMicrotask(() => {
+        fitCameraToSnapshot(renderer, fit);
+        refs.geometryBoundsRef.current = fit.fitBounds;
+        renderer.requestRender();
+      });
+    }
     return false;
   }
   modelArrivalPending = modelCount === 0;

@@ -449,8 +449,8 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = () => { void loadFile(file, target, options); };
-    const showLoadError = (message: string, code: string) =>
-      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retryThisLoad, file);
+    const showLoadError = (message: string, code: string, retry = retryThisLoad) =>
+      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retry, file);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -2044,12 +2044,12 @@ export function useIfcLoader() {
         // catch — retry once at lower detail before surfacing a dead end.
         const failureProps = geometryFailureCaptureProps({ fileSizeMB, stallPhaseHandle, watchdog: streamWatchdog, wasHidden: wasHidden() });
         if (await tryResourceRetry(err, kind, 'geometry_processing', failureProps)) return;
-        // A stale deployment gets the reload notice, not a generic error (#5609).
-        const geometryError = formatLoadError(err, file.name, 'geometry_processing');
+        // A stale deployment gets the reload notice, not a generic error (#5609). #7955: a retained run out of memory words its own, and retries exact.
+        const kernelFailure = geometryKernel.loadFailure?.(err), geometryError = kernelFailure?.message ?? formatLoadError(err, file.name, 'geometry_processing');
         // Terminal, like the outer catch: a model left 'streaming-geometry' reads as still loading (and resumable).
         updateModel(modelId, { loadState: 'error', loadError: geometryError });
         if (surfaceStaleDeployment(err)) noteStaleDeploymentLoadFailure(file); // resumed after the reload
-        else showLoadError(geometryError, kind);
+        else showLoadError(geometryError, kind, kernelFailure?.retry);
         activity.error = geometryError;
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.

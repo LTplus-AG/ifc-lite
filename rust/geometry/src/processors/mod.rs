@@ -70,6 +70,6 @@ pub use swept::{
 };
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
 pub use texture::{
-    binary_textures_refused, build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    binary_textures_refused, build_texture_index, build_texture_index_with_vertex_lists, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
     TextureSource,
 };

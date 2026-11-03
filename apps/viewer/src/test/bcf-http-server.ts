@@ -33,6 +33,8 @@ export interface LocalBcfState {
   receivedWrites: number;
   /** Includes write requests refused by authentication before routing. */
   receivedWriteAttempts: number;
+  /** Times the project list was read. */
+  projectListReads: number;
 }
 
 /** Server-assigned timestamps use the peer's clock, as a real server's do. */
@@ -57,11 +59,11 @@ async function body(request: IncomingMessage): Promise<unknown> {
 }
 
 /** Independent server validation: unsupported fields/vocabulary fail before commit. */
-function topicFields(value: unknown): Record<string, unknown> | undefined {
+function topicFields(value: unknown, vocabulary: { types: readonly string[]; statuses: readonly string[] }): Record<string, unknown> | undefined {
   if (!record(value) || typeof value.title !== 'string' || !value.title.trim()) return;
   const keys = ['title', 'description', 'topic_type', 'topic_status', 'priority', 'labels', 'assigned_to', 'stage', 'due_date'];
   if (Object.keys(value).some(key => !keys.includes(key))) return;
-  for (const [key, values] of [['topic_status', STATUSES], ['topic_type', TYPES], ['priority', PRIORITIES]] as const) {
+  for (const [key, values] of [['topic_status', vocabulary.statuses], ['topic_type', vocabulary.types], ['priority', PRIORITIES]] as const) {
     const field = value[key];
     if (field !== undefined && field !== null && (typeof field !== 'string' || !values.includes(field))) return;
   }
@@ -73,18 +75,49 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(options: { port?: number; anonymousReadVisibility?: 'filtered' | 'full'; allowAnonymousWrites?: boolean; token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
+/** Server behaviours some real BCF servers have and the BCF API does not describe. */
+export interface LocalBcfQuirks {
+  /** The project's topic types (default `Issue`, `Clash`). */
+  topicTypes?: string[];
+  /** The project's topic statuses (default `Open`, `Resolved`). */
+  topicStatuses?: string[];
+  /** Only these types keep a status; any other type's status is accepted and stored as null, silently. */
+  statusOnlyForTypes?: string[];
+  /** How a dropped status is stored and served: as null (default) or left out of the topic altogether. */
+  droppedStatus?: 'null' | 'omit';
+  /** The topic list ignores `$skip` but honours `$orderby=modified_date asc` and `$filter=modified_date ge <date>`. */
+  ignoreSkip?: boolean;
+  /** Serve at most this many topics per list request, whatever `$top` asks for (a silent server-side cap). */
+  maxTop?: number;
+}
+
+/** `$orderby` / `$filter` on `modified_date`, the only list query an `ignoreSkip` server pages by. */
+function modifiedDateQuery(all: BcfTopicDto[], url: URL): BcfTopicDto[] {
+  const filter = url.searchParams.get('$filter');
+  const bound = filter?.match(/^modified_date ge (\S+)$/)?.[1];
+  if (filter && !bound) throw new Error(`Unsupported local $filter ${filter}`);
+  const after = bound ? all.filter(topic => Date.parse(topic.modified_date ?? '') >= Date.parse(bound)) : all;
+  return url.searchParams.get('$orderby') === 'modified_date asc'
+    ? [...after].sort((a, b) => Date.parse(a.modified_date ?? '') - Date.parse(b.modified_date ?? '')) : after;
+}
+
+export async function startLocalBcfServer(options: LocalBcfQuirks & { port?: number; anonymousReadVisibility?: 'filtered' | 'full'; allowAnonymousWrites?: boolean; token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string; commentResponseTopicGuid?: string; commentResponseViewpointGuid?: string | null; commentResponseReplyToCommentGuid?: string | null } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
 }> {
   const state: LocalBcfState = { topics: new Map(), writesAllowed: true, tokenValid: true,
-    dropNextWriteBeforeCommit: false, loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
+    dropNextWriteBeforeCommit: false, loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0, projectListReads: 0 };
   let baseUrl = '';
   const token = options.token ?? LOCAL_BCF_TOKEN;
   if (options.guidPrefix !== undefined && !/^[0-9a-f]{4}$/.test(options.guidPrefix)) {
     throw new Error('Controlled GUID prefix needs four hexadecimal characters');
   }
+  const vocabulary = { types: options.topicTypes ?? TYPES, statuses: options.topicStatuses ?? STATUSES };
+  const kept = (fields: Record<string, unknown>): Record<string, unknown> =>
+    options.statusOnlyForTypes && !options.statusOnlyForTypes.includes(String(fields.topic_type))
+      ? options.droppedStatus === 'omit' ? (({ topic_status: _dropped, ...kept }) => kept)(fields) : { ...fields, topic_status: null }
+      : fields;
   let guidOrdinal = 0;
   const newGuid = () => options.guidPrefix === undefined ? randomUUID()
     : `${options.guidPrefix}0000-0000-4000-8000-${(++guidOrdinal).toString(16).padStart(12, '0')}`;
@@ -135,14 +168,14 @@ export async function startLocalBcfServer(options: { port?: number; anonymousRea
     }
     const project = { project_id: LOCAL_BCF_PROJECT, name: 'Local coordination',
       authorization: { project_actions: state.writesAllowed ? ['createTopic'] : [] } };
-    if (url.pathname === '/bcf/2.1/projects') { json(response, [project]); return; }
+    if (url.pathname === '/bcf/2.1/projects') { state.projectListReads += 1; json(response, [project]); return; }
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     if (parts[0] !== 'bcf' || parts[1] !== '2.1' || parts[2] !== 'projects' || parts[3] !== LOCAL_BCF_PROJECT) {
       json(response, { message: 'Unknown project or route' }, 404); return;
     }
     if (parts.length === 4) { json(response, project); return; }
     if (parts[4] === 'extensions') {
-      json(response, { topic_type: TYPES, topic_status: STATUSES, priority: PRIORITIES,
+      json(response, { topic_type: vocabulary.types, topic_status: vocabulary.statuses, priority: PRIORITIES,
         user_id_type: [LOCAL_BCF_USER], project_actions: project.authorization.project_actions }); return;
     }
     if (parts[4] !== 'topics') { json(response, { message: 'Unknown route' }, 404); return; }
@@ -157,15 +190,16 @@ export async function startLocalBcfServer(options: { port?: number; anonymousRea
     }
     if (parts.length === 5) {
       if (method === 'GET') {
-        const all = [...state.topics.values()].map(item => item.topic);
-        const skip = Number(url.searchParams.get('$skip') ?? 0);
-        const top = Number(url.searchParams.get('$top') ?? all.length);
+        const listed = [...state.topics.values()].map(item => item.topic);
+        const all = options.ignoreSkip ? modifiedDateQuery(listed, url) : listed;
+        const skip = options.ignoreSkip ? 0 : Number(url.searchParams.get('$skip') ?? 0);
+        const top = Math.min(Number(url.searchParams.get('$top') ?? all.length), options.maxTop ?? Infinity);
         json(response, all.slice(skip, skip + top)); return;
       }
       if (method === 'POST') {
-        const fields = topicFields(await body(request));
+        const fields = topicFields(await body(request), vocabulary);
         if (!fields) { json(response, { message: 'Invalid topic fields or project vocabulary' }, 400); return; }
-        const topic: BcfTopicDto = { ...fields, guid: newGuid(), title: String(fields.title),
+        const topic: BcfTopicDto = { ...kept(fields), guid: newGuid(), title: String(fields.title),
           creation_date: now(), creation_author: LOCAL_BCF_USER, modified_date: now(),
           authorization: { topic_actions: ['update', 'createComment', 'createViewpoint'] } };
         state.topics.set(topic.guid, { topic, comments: [], viewpoints: [] });
@@ -177,9 +211,9 @@ export async function startLocalBcfServer(options: { port?: number; anonymousRea
     if (parts.length === 6) {
       if (method === 'GET') { json(response, stored.topic); return; }
       if (method === 'PUT') {
-        const fields = topicFields(await body(request));
+        const fields = topicFields(await body(request), vocabulary);
         if (!fields) { json(response, { message: 'Invalid topic fields or project vocabulary' }, 400); return; }
-        stored.topic = { ...stored.topic, ...fields, modified_author: LOCAL_BCF_USER };
+        stored.topic = { ...stored.topic, ...kept(fields), modified_author: LOCAL_BCF_USER, modified_date: now() };
         commit(response, stored.topic, 200); return;
       }
     }

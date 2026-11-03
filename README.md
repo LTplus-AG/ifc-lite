@@ -343,6 +343,7 @@ See the [Contributing Guide](https://ifclite.dev/docs/contributing/setup/) and [
 
 ## Community
 
+- [Discord](https://discord.gg/NtGyhM9pCX) - share apps and demos, ask integration questions, and meet other builders
 - [GitHub Discussions](https://github.com/LTplus-AG/ifc-lite/discussions) - questions, ideas, show-and-tell
 - [Issues](https://github.com/LTplus-AG/ifc-lite/issues) - bug reports and feature requests
 - [Releases](https://github.com/LTplus-AG/ifc-lite/releases) - changelog and version notes

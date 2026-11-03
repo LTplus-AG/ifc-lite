@@ -57,8 +57,9 @@ fn palette(map: &FullIndexedColourMap, item: u32, part: &ShapePart, keys: &[Opti
 }
 
 /// `IfcTextureVertexList.TexCoordsList` in full f64: the texture index stores f32.
-fn source_uvs(map: &ResolvedTextureMap, item: u32, decoder: &mut EntityDecoder) -> Result<Vec<[f64; 2]>, Error> {
-    let list = decoder.decode_by_id(map.tex_coords_id).map_err(Error::Core)?;
+fn source_uvs(vertex_list: Option<u32>, item: u32, decoder: &mut EntityDecoder) -> Result<Vec<[f64; 2]>, Error> {
+    let list = vertex_list.ok_or_else(|| unsupported(item, "texture_row"))?;
+    let list = decoder.decode_by_id(list).map_err(Error::Core)?;
     let rows = list.attr(slot::IfcTextureVertexList::TEX_COORDS_LIST).and_then(AttributeValue::as_list)
         .ok_or_else(|| unsupported(item, "texture_row"))?;
     charge(rows.len())?;
@@ -68,9 +69,9 @@ fn source_uvs(map: &ResolvedTextureMap, item: u32, decoder: &mut EntityDecoder) 
     }).collect::<Option<_>>().ok_or_else(|| unsupported(item, "texture_row"))
 }
 
-fn texture(map: &ResolvedTextureMap, item: u32, part: &ShapePart, keys: &[Option<(usize, u32)>], operands: &[Operand],
-    decoder: &mut EntityDecoder) -> Result<PartTexture, Error> {
-    let coordinates = source_uvs(map, item, decoder)?;
+fn texture(map: &ResolvedTextureMap, vertex_list: Option<u32>, item: u32, part: &ShapePart, keys: &[Option<(usize, u32)>],
+    operands: &[Operand], decoder: &mut EntityDecoder) -> Result<PartTexture, Error> {
+    let coordinates = source_uvs(vertex_list, item, decoder)?;
     let mut uvs = vec![0.; part.indices.len() * 2];
     let mut textured = vec![false; part.indices.len() / 3];
     for (t, key) in keys.iter().enumerate() {
@@ -109,8 +110,8 @@ fn texture(map: &ResolvedTextureMap, item: u32, part: &ShapePart, keys: &[Option
     Ok(PartTexture { attachment: map.attachment(), uvs, textured })
 }
 
-fn part_surface(part: &ShapePart, operands: &[Operand], model: &MeshProductionContext<'_>, decoder: &mut EntityDecoder)
-    -> Result<Option<PartSurface>, Error> {
+fn part_surface(part: &ShapePart, operands: &[Operand], model: &MeshProductionContext<'_>,
+    vertex_list: impl Fn(u32) -> Option<u32>, decoder: &mut EntityDecoder) -> Result<Option<PartSurface>, Error> {
     let bound_palette = single(operands, |id| model.indexed_colour_full.get(&id), "palette_mixed")?;
     let bound_texture = single(operands, |id| model.texture_index.get(&id), "texture_mixed")?;
     if bound_palette.is_none() && bound_texture.is_none() { return Ok(None); }
@@ -125,7 +126,7 @@ fn part_surface(part: &ShapePart, operands: &[Operand], model: &MeshProductionCo
     if keys.len() != part.indices.len() / 3 { return Err(unsupported(bound_palette.map_or(0, |b| b.0), "binding")); }
     Ok(Some(PartSurface {
         palette: bound_palette.map(|(item, map)| palette(map, item, part, &keys, operands)).transpose()?,
-        texture: bound_texture.map(|(item, map)| texture(map, item, part, &keys, operands, decoder)).transpose()?,
+        texture: bound_texture.map(|(item, map)| texture(map, vertex_list(item), item, part, &keys, operands, decoder)).transpose()?,
     }))
 }
 
@@ -142,7 +143,7 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Re
     let fixed = crate::style::fixed_display_color_for_type(&product.ifc_type).is_some();
     for (part, sources) in product.parts.iter_mut().zip(context.faces) {
         let surface = match sources {
-            Ok(operands) => part_surface(part, operands, &model, &mut decoder)?,
+            Ok(operands) => part_surface(part, operands, &model, |item| context.model.texture_vertex_list(item), &mut decoder)?,
             Err(_) => None,
         };
         // A binding appearance saw and no surface answered for never publishes as plain colour.

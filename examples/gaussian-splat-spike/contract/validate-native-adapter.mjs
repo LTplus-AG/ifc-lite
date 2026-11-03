@@ -120,7 +120,7 @@ async function runWitness(browser) {
     verdict.failed.push(...extra.filter(c => !c.pass));
     verdict.total = verdict.checks.length;
     verdict.pass = verdict.failed.length === 0;
-    evidence.status = !result.adapterAvailable ? 'baseline-only (adapter API missing)' : verdict.pass ? 'pass' : 'fail';
+    evidence.status = !verdict.pass ? 'fail' : result.adapterAvailable ? 'pass' : 'baseline-only (adapter API missing)';
     evidence.verdict = { pass: verdict.pass, total: verdict.total, failed: verdict.failed };
     evidence.checks = verdict.checks.map(c => `${c.pass ? 'PASS' : 'FAIL'} ${c.name}`);
     evidence.scenes = result.scenes;

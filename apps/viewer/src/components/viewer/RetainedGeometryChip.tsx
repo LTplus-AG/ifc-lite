@@ -29,13 +29,16 @@ function chipState(summary: RetainedGeometrySummary): 'running' | 'complete' | '
 }
 
 export function RetainedGeometryChip({ reload }: RetainedGeometryChipProps) {
-  // The model object itself: a stable reference until the model changes.
-  const model = useViewerStore((state) => {
-    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate;
+  // Only the summary and source, not the model: streaming geometry replaces the
+  // model record per batch, and the summary changes at most once per interval.
+  const modelId = useViewerStore((state) => {
+    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate.id;
     return null;
   });
-  if (!model?.retainedGeometry) return null;
-  return <RetainedGeometryChipBody modelId={model.id} summary={model.retainedGeometry} sourceFile={model.sourceFile} reload={reload} />;
+  const summary = useViewerStore((state) => (modelId ? state.models.get(modelId)?.retainedGeometry : undefined));
+  const sourceFile = useViewerStore((state) => (modelId ? state.models.get(modelId)?.sourceFile : undefined));
+  if (!modelId || !summary) return null;
+  return <RetainedGeometryChipBody modelId={modelId} summary={summary} sourceFile={sourceFile} reload={reload} />;
 }
 
 function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {

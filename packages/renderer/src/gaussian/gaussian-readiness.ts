@@ -6,8 +6,7 @@
 export type GaussianBlocker =
   | 'exact-mixed-transparency'
   | 'scalable-global-order'
-  | 'native-viewer-contract'
-  | 'upstream-capability-missing';
+  | 'native-viewer-contract';
 
 /** What the internal, unqualified adapter implements; none of it is a release qualification. */
 export type GaussianCapability =
@@ -30,8 +29,12 @@ export type GaussianReadiness =
   | {
       state: 'blocked';
       generation: number;
-      reasons: readonly GaussianBlocker[];
-      capabilities: readonly GaussianCapability[];
+      /** The published three-blocker tuple; a missing upstream capability is reported in `upstream`. */
+      reasons: typeof blockers;
+      /** Always set by the renderer; optional so values built against the earlier shape still type-check. */
+      capabilities?: readonly GaussianCapability[];
+      /** `missing` once the backend finds the installed upstream renderer lacks reverse-Z ordering. Always set by the renderer. */
+      upstream?: GaussianUpstreamStatus;
     };
 
 /** Whether the installed upstream renderer exposes reverse-Z ordering (luma.gl #3619). */
@@ -40,7 +43,6 @@ export type GaussianUpstreamStatus = 'unknown' | 'available' | 'missing';
 const blockers = Object.freeze([
   'exact-mixed-transparency', 'scalable-global-order', 'native-viewer-contract',
 ] as const satisfies readonly GaussianBlocker[]);
-const missingUpstream = Object.freeze([...blockers, 'upstream-capability-missing'] as const);
 
 const capabilities = Object.freeze([
   'shared-device', 'viewer-frame', 'reverse-z-order', 'msaa', 'opaque-occlusion', 'packed-global-order',
@@ -54,5 +56,5 @@ export function gaussianReadiness(
   if (disposed) return { state: 'disposed', generation };
   if (lost) return { state: 'lost', generation };
   if (!ready) return { state: 'initializing', generation };
-  return { state: 'blocked', generation, reasons: upstream === 'missing' ? missingUpstream : blockers, capabilities };
+  return { state: 'blocked', generation, reasons: blockers, capabilities, upstream };
 }

@@ -14,6 +14,7 @@
 
 import { requireSecureOAuthUrl, requireSecureTokenUrl } from './bcf-server-config.js';
 import type { BcfServerConfig } from './bcf-server-config.js';
+import { bcfServerProfile, relayedFetch } from './bcf-server-profiles.js';
 import { completeSignIn, loadApi } from './bcf-server-session.js';
 import { resolveTokenRelayUrl, withTokenRelay } from './bcf-token-relay.js';
 
@@ -104,7 +105,11 @@ export async function prepareBcfOAuth(
   }
 
   const api = await loadApi();
-  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
+  // A profiled server (buildagil) has no `/auth` document: its endpoints are known.
+  const profile = bcfServerProfile(serverUrl);
+  const { baseUrl, authInfo } = profile
+    ? { baseUrl: serverUrl.trim().replace(/\/+$/, ''), authInfo: profile.authInfo }
+    : await api.discoverBcfService({ baseUrl: serverUrl });
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
   const authEndpoint = requireSecureOAuthUrl(authInfo.oauth2_auth_url, 'authorization endpoint');
 
@@ -168,6 +173,7 @@ export async function completeBcfOAuth(
     expectedRedirectOrigin: new URL(redirectUri).origin,
     expectedState: preparation.state,
   });
+  const profile = bcfServerProfile(preparation.serverUrl);
   const grant = {
     tokenUrl: preparation.tokenUrl,
     code,
@@ -183,6 +189,8 @@ export async function completeBcfOAuth(
         ...grant,
         clientId: preparation.clientId,
         clientSecret: preparation.clientSecret || undefined,
+        // A profiled server's token endpoint is reached through its relay.
+        ...(profile ? { fetchFn: relayedFetch(profile) } : {}),
       }),
   );
   return completeSignIn(preparation.serverUrl, token, {

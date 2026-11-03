@@ -49,4 +49,11 @@ export interface CameraInternalState {
    * section ranges, so hidden or removed captures cannot leak into them.
    */
   depthOnlyBounds?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
+  /**
+   * Perspective lens shift (off-axis frustum) in NDC, issue #8688. A
+   * view-space point that projects to NDC `p` without a shift projects to
+   * `p + lensShift`. `{0, 0}` is the ordinary symmetric frustum. Ignored in
+   * orthographic mode.
+   */
+  lensShift: { x: number; y: number };
 }

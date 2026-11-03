@@ -42,7 +42,26 @@ pub struct Report {
     pub authored_open: Vec<Value>,
     /// #7955 ruling 3: missing face keys allowed as kernel-merged collinear sides.
     pub face_merges: Vec<Value>,
+    /// #7955: published products an independent oracle could not check. A gated row
+    /// stays in `violations` too; this only counts them by family and reason.
+    pub unverified: Vec<Value>,
+    /// This model's voided hosts without a complete source cut expectation, and why.
+    pub opening_gaps: BTreeMap<u32, String>,
+    /// #7955: closed-solid checks that failed on face sets whose source rows are themselves open.
+    pub closure_on_open_source: Vec<Value>,
+    pub area_authorities: super::exact_area::ExactAreaAuthorities,
+    /// How the product being measured counts as open, for its `authoredOpenFaceSets` row.
+    pub open_classification: Option<String>,
+    /// Ruling 13: closure defects the product's authored zero-area rows explain, one by one.
+    pub zero_area_closure_edges: Option<f64>,
+    /// #7955 ruling 13: the named closure outcome, by product.
+    pub zero_area_row_closure: Vec<Value>,
+    /// The source's area for the product being measured, when an authority has one.
+    pub source_area: Option<f64>,
 }
+#[path = "unverified.rs"]
+mod unverified;
+use unverified::{face_set_closure_summary, says_unverified, unverified_summary};
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
     #[allow(clippy::too_many_arguments)]
@@ -60,7 +79,6 @@ impl Report {
         sources: &super::checks::SourceContext<'_>,
         exact_report_only: bool,
         bounded: Option<&ifc_lite_retained_native::oracle::bounded::Expectation>,
-        bytes: &[u8],
     ) {
         self.published += 1;
         let bands=shape.parts.iter().filter(|p|p.layer.is_some()).count();
@@ -72,14 +90,21 @@ impl Report {
         let type_product = shape.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct);
         self.type_published += usize::from(type_product);
         let curved = shape.parts.iter().any(|p| p.curved);
-        let results = super::checks::check(shape, sources, bytes, tolerances, bounded);
+        let results = super::checks::check(shape, sources, tolerances, bounded);
         let authorities: Vec<_> = results.iter().filter_map(|r| r.authority).collect();
         let authority = authorities.first();
         if authorities.iter().any(|a| authority.is_some_and(|first|
             a.volume != first.volume || a.bbox != first.bbox || a.curved != first.curved)) {
             self.violations.push(format!("{model}:{}: conflicting source authorities", shape.product_id));
         }
-        let open = results.iter().any(|r| r.family == super::checks::face_sets::AUTHORED_OPEN);
+        let open_marker = results.iter().find(|r| r.family == super::checks::face_sets::AUTHORED_OPEN);
+        let open = open_marker.is_some();
+        self.open_classification = open_marker.and_then(|r| r.reason.clone());
+        self.zero_area_closure_edges = results.iter().find(|r| r.family == super::checks::face_sets::ZERO_AREA_ROW_EDGES).map(|r| r.value);
+        // Analytic faces of an uncut, unbanded product, or a preregistered hand area.
+        self.source_area = self.area_authorities.get(model, shape.product_id).or_else(|| (shape.cuts == 0 && bands == 0)
+            .then(|| ifc_lite_retained_native::oracle::faces::uncut(sources.analytic, shape.product_id)).flatten()
+            .map(|faces| faces.values().map(|face| face.area_m2).sum()));
         let [source_rel, vol, area, bbox, source_bbox] = self.check_measurements(
             open,
             &format!("{model}:{}", shape.product_id),
@@ -102,6 +127,26 @@ impl Report {
                 &mut self.violations,
             )
         });
+        let product_label = format!("{model}:{}", shape.product_id);
+        // A voided host checked by neither a section authority nor the bounded oracle.
+        if bounded.is_none() && authority.is_none() {
+            match opening {
+                Some(None) | Some(Some(ifc_lite_retained_native::oracle::openings::OpeningExpectation { result_volume: None, .. })) => {
+                    let family = if matches!(opening, Some(None)) { "openingSourceExpectation" } else { "openingResultVolume" };
+                    let reason = self.opening_gaps.get(&shape.product_id).cloned();
+                    self.unverified.push(json!({"product": product_label, "family": family, "gated": family == "openingSourceExpectation", "reason": reason}));
+                }
+                _ => {}
+            }
+        }
+        for result in results.iter().filter(|r| says_unverified(r.family, &results)) {
+            self.unverified.push(json!({"product": product_label, "family": result.family, "gated": result.gated, "reason": result.reason}));
+        }
+        if actual.defects > 0 && !open && !results.iter().any(|r| r.family == super::checks::face_sets::ZERO_AREA_ROW_EDGES && r.value == actual.defects as f64) {
+            if let Some(edges) = results.iter().find(|r| r.family == super::checks::face_sets::SOURCE_OPEN_EDGES) {
+                self.closure_on_open_source.push(json!({"product": product_label, "meshDefects": actual.defects, "sourceOpenEdges": edges.value, "closed": edges.reason}));
+            }
+        }
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
             "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t\t{}\t{}\t{}\t{}",
@@ -200,7 +245,8 @@ impl Report {
             }
         }
         if open {
-            self.authored_open.push(json!({"classification": "authored_open_face_set", "product": label,
+            let classification = self.open_classification.take().unwrap_or_else(|| "authored_open_face_set".into());
+            self.authored_open.push(json!({"classification": classification, "product": label,
                 "closureDefects": actual.defects, "exactVolumeRelative": vol.map(finite), "exactAreaRelative": area.map(finite)}));
         }
         let gated = |v: Option<f64>| v.filter(|_| !open);
@@ -213,9 +259,14 @@ impl Report {
                 });
             }
         }
+        let zero_rows = self.zero_area_closure_edges.take();
         if actual.defects > 0 && !open {
-            self.violations
-                .push(format!("{label}: {} closure defects", actual.defects));
+            // The exact counts must meet: a defect of any other origin keeps this red.
+            if zero_rows == Some(actual.defects as f64) {
+                self.zero_area_row_closure.push(json!({"classification": "zero_area_row_closure", "product": label, "edges": actual.defects}));
+            } else {
+                self.violations.push(format!("{label}: {} closure defects", actual.defects));
+            }
         }
         if exact.is_none() {
             self.universe_mismatch
@@ -274,10 +325,26 @@ impl Report {
                 "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
             }));
         }
+        // The same precedence for area (#7955): retained equals the source's area within the
+        // frozen face limit and exact does not within its own, so exact is the wrong side.
+        let source_area = self.source_area.take();
+        // Only a gated area can be named: a waived or authored-open product's never was.
+        let exact_area_defect = !curved && !exact_defect && !exact_report_only && !open && !type_product && source_area.zip(exact).is_some_and(|(s, e)| {
+            // A missing or renamed preregistered key panics, never reads as 0.
+            relative(actual.area, s) <= super::openings::tolerance(tolerances, "faceAreaRelative", "linear")
+                && relative(e.area, s) > super::openings::tolerance(tolerances, "exactLinear", "areaRelative")
+        });
+        if exact_area_defect {
+            self.exact_defects.push(json!({
+                "classification": "exact_defect", "kind": "area", "product": label,
+                "sourceAreaM2": source_area, "retainedAreaM2": actual.area, "exactAreaM2": exact.map(|e| e.area),
+                "retainedVsExact": {"volumeRelative": vol, "areaRelative": area, "bboxMetres": bbox},
+            }));
+        }
         if !curved && !type_product && !exact_defect && !exact_report_only {
             for (value, key) in [
                 (gated(vol), "volumeRelative"),
-                (gated(area), "areaRelative"),
+                (gated(area).filter(|_| !exact_area_defect), "areaRelative"),
                 (bbox, "bboxMetres"),
             ] {
                 if value.is_some_and(|v| v > tolerances["exactLinear"][key].as_f64().unwrap_or(0.))
@@ -297,7 +364,9 @@ impl Report {
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"products":self.authored_open},
+            "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"unsetRowsOpen":self.authored_open.iter().filter(|r| r["classification"]=="unset_rows_open_face_set").count(),"products":self.authored_open},
+            "zeroAreaRowClosure":{"count":self.zero_area_row_closure.len(),"gated":false,"products":self.zero_area_row_closure},
+            "unverified":unverified_summary(&self.unverified), "closureDefectsOnFaceSets":face_set_closure_summary(&self.closure_on_open_source),
             "faceKeysKernelMerged":{"gated":false,"keys":self.face_merges.iter().filter_map(|r| r["keys"].as_f64()).sum::<f64>(),"products":self.face_merges.len(),"rows":self.face_merges}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }

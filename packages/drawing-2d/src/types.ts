@@ -5,6 +5,8 @@
  * Core types for 2D architectural drawing generation
  */
 
+import type { LineCategory, VisibilityState } from './line-classification.js';
+
 // VECTOR TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -122,22 +124,7 @@ export interface Bounds2D {
 // LINE CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Category of line in architectural drawing
- */
-export type LineCategory =
-  | 'cut'         // Geometry intersected by section plane (thickest lines)
-  | 'projection'  // Visible geometry beyond cut plane
-  | 'hidden'      // Occluded geometry (rendered as dashed)
-  | 'silhouette'  // Outer contour edges
-  | 'crease'      // Sharp feature edges (angle > threshold)
-  | 'boundary'    // Mesh boundary edges (open edges)
-  | 'annotation'; // Dimensions, labels, etc.
-
-/**
- * Visibility state for hidden line removal
- */
-export type VisibilityState = 'visible' | 'hidden' | 'partial';
+export type { LineCategory, VisibilityState };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DRAWING ELEMENTS
@@ -151,6 +138,8 @@ export interface DrawingLine {
   line: Line2D;
   /** Line classification */
   category: LineCategory;
+  /** A `cut` line through an open surface (#8664): no polygon outlines it, so draw it. */
+  openSurfaceCut?: true;
   /** Visibility after hidden line removal */
   visibility: VisibilityState;
   /** Source IFC entity expressId */
@@ -268,6 +257,8 @@ export interface SectionCutResult {
   segments: CutSegment[];
   /** Reconstructed polygons per entity */
   polygons: DrawingPolygon[];
+  /** Segments through open surfaces (#8664): no polygon covers these. */
+  openSurfaceSegments: Set<CutSegment>;
   /** Processing statistics */
   stats: {
     totalTriangles: number;
@@ -420,6 +411,14 @@ export type EntityKey = `${number}:${number}`; // modelIndex:entityId
  */
 export function makeEntityKey(modelIndex: number, entityId: number): EntityKey {
   return `${modelIndex}:${entityId}`;
+}
+
+/**
+ * A triangulation-edge `cut` line whose geometry a polygon outline already draws,
+ * so renderers of `cutPolygons` skip it. Open-surface cuts have no such outline.
+ */
+export function isPolygonCutLine(line: DrawingLine): boolean {
+  return line.category === 'cut' && !line.openSurfaceCut;
 }
 
 /**

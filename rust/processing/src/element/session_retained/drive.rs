@@ -76,5 +76,6 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
     let witness = execution.into_witness(limits)?;
     affine_final::admit(&witness, limits)?;
     chordal::admit(&witness)?;
+    clip_sliver::admit(&witness)?;
     Ok(witness)
 }

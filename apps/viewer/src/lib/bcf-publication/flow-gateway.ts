@@ -29,7 +29,7 @@ const PAYLOAD_KEYS = new Set([...TOPIC_KEYS, ...COMMENT_KEYS]);
 const JOURNAL_KEYS = new Set([...SCHEMA_KEYS, 'id', 'origin', 'target', 'createdAt', 'updatedAt', 'entries',
   'batchId', 'batchName', 'imported', 'serverUrl', 'projectName', 'userId', 'remoteTopicGuid', 'dependsOn',
   'subject', 'digest', 'state', 'attempts', 'queuedAt', 'sentAt', 'receipt', 'failure', 'blocked', 'check',
-  'force', 'baseline', 'remoteGuid', 'at', 'evidence', 'topicActions', 'code', 'message', 'status',
+  'force', 'baseline', 'fields', 'withheld', 'topicTypeFrom', 'remoteGuid', 'at', 'evidence', 'topicActions', 'code', 'message', 'status',
   'result', 'candidates', 'note', 'guid', 'author', 'date']);
 
 /** These candidates are built from the closed outbox schema, never arbitrary server DTOs. */
@@ -53,7 +53,8 @@ function assertJournalValues(value: BcfPublication | string, secrets: readonly s
     else if (item && typeof item === 'object') for (const [key, child] of Object.entries(item)) {
       const fixedKey = frame.payload ? frame.rootPayload && PAYLOAD_KEYS.has(key) : JOURNAL_KEYS.has(key);
       if (!fixedKey) pending.push({ value: key, payload: false, rootPayload: false });
-      const rootPayload = !frame.payload && (key === 'payload' || key === 'baseline');
+      // Owned topic fields: the payload, the update baseline, the stored copy and the withheld remainder.
+      const rootPayload = !frame.payload && (key === 'payload' || key === 'baseline' || key === 'fields' || key === 'withheld');
       pending.push({ value: child, payload: frame.payload || rootPayload, rootPayload });
     }
   }

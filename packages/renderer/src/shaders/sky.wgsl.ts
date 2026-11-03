@@ -26,9 +26,9 @@ export const skyShaderSource = `
           sunDirection: vec3<f32>,
           sunIntensity: f32,
           zenithColor: vec3<f32>,
-          _pad0: f32,
+          lensShiftX: f32,
           horizonColor: vec3<f32>,
-          _pad1: f32,
+          lensShiftY: f32,
           groundColor: vec3<f32>,
           _pad2: f32,
         }
@@ -68,8 +68,8 @@ export const skyShaderSource = `
           // colour, so a perspective-style fan reads better in both modes.
           let dir = normalize(
             sky.camForward
-            + input.ndc.x * sky.tanHalfFovX * sky.camRight
-            + input.ndc.y * sky.tanHalfFovY * sky.camUp
+            + (input.ndc.x - sky.lensShiftX) * sky.tanHalfFovX * sky.camRight
+            + (input.ndc.y - sky.lensShiftY) * sky.tanHalfFovY * sky.camUp
           );
           let elevation = dir.y;
 

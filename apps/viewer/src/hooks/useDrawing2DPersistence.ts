@@ -51,7 +51,7 @@ import {
 import type { DrawingKeyHost, UnionById } from './drawingPersistenceKey.js';
 
 export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingMarkupRestorePrecedence.js';
-export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
+export { notifyDrawing2DSectionConfig, saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
 
 /**
  * The key resolver and the legacy-key move (#7035) are imported on demand

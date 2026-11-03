@@ -125,6 +125,20 @@ describe('Section bar: Box entry (#5513, #7545)', () => {
     assert.deepEqual(s().sectionPlane.box, { min: [0, -1, 0], max: [10, 3, 8] });
   });
 
+  it('Box on the empty bar starts with a box: plane A fitted to the model, with no plane added first (#8672)', () => {
+    useViewerStore.setState({ sectionPlane: getDefaultSectionPlane(), inactiveSectionPlanes: [] });
+    renderTool();
+    const empty = bar().querySelector<HTMLElement>('[data-testid="section-empty-add"]');
+    const box = [...(empty?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((b) => b.textContent?.trim() === 'Box');
+    assert.ok(box, 'Box is offered before any plane exists');
+    click(box);
+    assert.deepEqual(s().sectionPlane.box, { min: [0, -1, 0], max: [10, 3, 8] }, 'the merged model bounds');
+    assert.equal(s().sectionPlane.name, 'A');
+    assert.equal(s().inactiveSectionPlanes.length, 0);
+    assert.equal(bar().querySelector('[data-testid="section-empty-add"]'), null, 'the bar leaves its empty state');
+    assert.equal(bar().querySelector('[data-testid="section-box-size"]')?.textContent?.trim(), '10.00 × 4.00 × 8.00 m');
+  });
+
   it('adding a cardinal plane after a box leaves the box plane alone and brings the distance field back', () => {
     renderTool();
     addPlaneFromMenu('Box');

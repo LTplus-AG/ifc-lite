@@ -1,0 +1,15 @@
+diff --git a/rust/retained-native/src/oracle/layer_sector.rs b/rust/retained-native/src/oracle/layer_sector.rs
+index 6d48699759..28b4bfe5a3 100644
+--- a/rust/retained-native/src/oracle/layer_sector.rs
++++ b/rust/retained-native/src/oracle/layer_sector.rs
+@@ -42,9 +42,7 @@ pub(super) fn radial_band(host: &Prism, inner: f64, outer: f64) -> Option<Prism>
+         let turn = if sweep > 0. { (to - from).rem_euclid(tau) } else { -(from - to).rem_euclid(tau) };
+         Some(Edge::Arc { c, u, v, a: from, sweep: turn })
+     };
+-    let rescaled = |edge: &Edge| -> Option<Edge> { let Edge::Arc { c, u, v, a, sweep } = *edge else { return None }; let r = radius(edge); let scale = if r == minimum { inner } else { outer } / r; Some(Edge::Arc { c, u: u.map(|x| x * scale), v: v.map(|x| x * scale), a, sweep }) };
+-    let _ = (&trimmed, first_at, second_at);
+-    let (first, second) = (rescaled(first)?, rescaled(second)?);
++    let (first, second) = (trimmed(first_at, first)?, trimmed(second_at, second)?);
+     let e1 = Edge::Line(first.point(1.), second.point(0.));
+     let e2 = Edge::Line(second.point(1.), first.point(0.));
+     Some(Prism { loops: vec![(true, vec![first, e1, second, e2])], low: host.low, high: host.high, start: host.start })

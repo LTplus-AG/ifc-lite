@@ -5660,6 +5660,7 @@
     "isGPUComputeAvailable: function",
     "isIfcTypeVisible: function",
     "isOpeningElement: function",
+    "isPolygonCutLine: function",
     "lineDirection: function",
     "lineLength: function",
     "lineMidpoint: function",
@@ -10374,6 +10375,10 @@
     "isBimcollabServerUrl: function",
     "spaceIdFromAccessToken: function",
     "spaceLabelFromServerUrl: function"
+  ],
+  "@ifc-lite/source-buildagil": [
+    "BuildagilProvider: class",
+    "BuildagilProviderOptions: interface"
   ],
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",

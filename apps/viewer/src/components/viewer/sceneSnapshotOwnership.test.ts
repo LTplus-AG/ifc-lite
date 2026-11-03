@@ -13,9 +13,11 @@ const point = { x: 1, y: 2, z: 3 };
 let hydrates = true;
 let hydrations: unknown[][] = [];
 let removedShards: number[] = [];
+let fits: unknown[] = [];
 const renderer = {
   getScene: () => ({ removeInstancedTemplatesForModel: (index: number) => { removedShards.push(index); return 0; }, hydrateSceneSnapshot: (adoption: object, meshes: MeshData[]) => { hydrations.push([adoption, meshes]); return hydrates; } }),
-  getCamera: () => ({ getOrbitAnchorBounds: () => null, getSceneBounds: () => bounds, getPosition: () => point, getTarget: () => point }),
+  getCanvas: () => null,
+  getCamera: () => ({ fitBoundsAdaptive: (box: unknown) => { fits.push(box); }, setSceneBounds() {}, setOrbitAnchorBounds() {}, getOrbitAnchorBounds: () => null, getSceneBounds: () => bounds, getPosition: () => point, getTarget: () => point }),
   requestRender() {},
 } as unknown as Renderer;
 const mesh = () => ({ positions: new Float32Array(3) }) as MeshData;
@@ -39,7 +41,7 @@ describe('sceneSnapshotKey', () => {
 
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
-  beforeEach(() => { hydrates = true; hydrations = []; removedShards = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
+  beforeEach(() => { hydrates = true; hydrations = []; removedShards = []; fits = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
   const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
@@ -69,6 +71,19 @@ describe('takeSceneSnapshotGeometry', () => {
     assert.equal(requeued, 1, 'the ordinary drain uploads them after the reshape');
     assert.equal(refused.lastGeometryLengthRef.current, 0);
     assert.equal(refused.cameraFittedRef.current, false);
+  });
+
+  it('a refused snapshot restores its framing after the fallback sync, and its model arrival keeps it', async () => {
+    hydrates = false;
+    const fit = { fitBounds: bounds, sceneBounds: bounds, orbitAnchorBounds: null };
+    setPendingSceneSnapshot(adoption, () => {}, fit);
+    const refused = refs();
+    assert.equal(take([mesh()], 0, refused), false);
+    assert.deepEqual(fits, [], 'after the sync, whose reset would undo it');
+    await Promise.resolve();
+    assert.deepEqual(fits, [bounds]);
+    assert.equal(refused.geometryBoundsRef.current, bounds);
+    assert.equal(takeSnapshotModelArrival(), true);
   });
 
   it('swallows only its own model\'s arrival, once; a federated add still refits', () => {

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/clip_sliver.rs",
+  "mutation": "tests/evidence/7955-clip-sliver/behaviour.oracle.patch",
+  "test": "rust/processing/tests/retained_clip_sliver.rs",
+  "why": "Reverse application accepts any material left beyond a clip plane, so a wedge past the frozen limit publishes and the limit witness must fail."
+}

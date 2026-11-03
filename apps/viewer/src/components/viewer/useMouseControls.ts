@@ -270,6 +270,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     const camera = renderer.getCamera();
     const mouseState = mouseStateRef.current;
     let pointerGesture: PointerGesture = 'orbit';
+    // The pressed orbit's pivot, shown only once the press becomes a drag.
+    let pendingOrbitPivot: Parameters<typeof orbitPivotStore.begin>[0] | null = null;
     const hoverPicker = createHoverPicker({
       owner: { canvas, renderer, getTool: () => activeToolRef.current, getPickOptions,
         isOwnerCurrent: () => rendererRef.current === renderer && hoverTooltipsEnabledRef.current && !mouseState.isDragging },
@@ -454,6 +456,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       hoverPicker.cancel();
       commandPress.cancel();
       orbitPivotStore.end();
+      pendingOrbitPivot = null;
       invalidateSelectionPick(canvas);
       e.preventDefault();
       // Capture the pointer so move/up events fire even outside the canvas
@@ -546,7 +549,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
       if (willOrbit) {
         camera.setOrbitCenter(orbitPivot);
-        orbitPivotStore.begin({ point: orbitPivot ?? camera.getTarget(), camera, canvas });
+        pendingOrbitPivot = { point: orbitPivot ?? camera.getTarget(), camera, canvas };
       }
 
       if (gesture === 'pan' || gesture === 'fly') {
@@ -554,9 +557,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         canvas.style.cursor = 'move';
       } else if (tool === 'measure' && gesture === 'tool') {
         if (handleMeasureDown(ctx, e)) return;
-      } else {
-        canvas.style.cursor = 'grabbing';
       }
+      // An orbit shows 'grabbing' once the press becomes a drag (handleMouseMove).
     };
     const handleMouseMove = async (e: PointerEvent) => {
       // New input retires the old position even when this event is throttled.
@@ -607,20 +609,38 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       // A measure tool drag navigates only when the resolver assigned navigation.
       if (mouseState.isDragging && (fly.isActive() || pointerGesture !== 'tool')) {
+        // A press is a click until it moves more than 3px from where it
+        // started. Until then the camera stays put: nudging it (and the
+        // interaction-resolution frame that follows) would invalidate the
+        // click's pick, so the selection silently never landed. Crossing the
+        // threshold applies the whole movement since the press.
+        const totalDx = Math.abs(e.clientX - mouseState.startX);
+        const totalDy = Math.abs(e.clientY - mouseState.startY);
+        if (!mouseState.didDrag) {
+          if (fly.isActive()) {
+            // Fly keeps its controller's 5px click slop: the menu replay on
+            // release needs both verdicts to agree (flyControls.ts).
+            mouseState.didDrag = totalDx > 5 || totalDy > 5;
+          } else {
+            if (totalDx <= 3 && totalDy <= 3) return;
+            mouseState.didDrag = true;
+            if (pendingOrbitPivot) orbitPivotStore.begin(pendingOrbitPivot);
+            pendingOrbitPivot = null;
+            if (!mouseState.isPanning) canvas.style.cursor = 'grabbing';
+          }
+        }
         const dx = e.clientX - mouseState.lastX;
         const dy = e.clientY - mouseState.lastY;
 
-        // Check if this counts as a drag (moved more than 5px from start)
-        const totalDx = e.clientX - mouseState.startX;
-        const totalDy = e.clientY - mouseState.startY;
-        if (Math.abs(totalDx) > 5 || Math.abs(totalDy) > 5) {
-          mouseState.didDrag = true;
+        if (fly.isActive()) {
+          fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
+          mouseState.lastX = e.clientX;
+          mouseState.lastY = e.clientY;
+          return; // fly's onChange signals the render only when the look actually turned the view
         }
 
         // Always update camera state immediately (feels responsive)
-        if (fly.isActive()) {
-          fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
-        } else if (mouseState.isPanning) {
+        if (mouseState.isPanning) {
           camera.pan(dx, dy, false);
         } else if (activeToolRef.current === 'walk') {
           // Walk mode looks around the eye; the walker owns where it stands.
@@ -650,6 +670,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleMouseUp = (e: PointerEvent) => {
       orbitPivotStore.end();
+      pendingOrbitPivot = null;
       const commandOwned = commandPress.end(e);
       releasePointer(canvas, e.pointerId);
 

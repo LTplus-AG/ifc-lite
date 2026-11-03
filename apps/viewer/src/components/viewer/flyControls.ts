@@ -137,7 +137,7 @@ const MAX_FRAME_S = 0.1;
  * ONE threshold for both on purpose (#4868 review). A lock taken below the
  * click verdict made the browser withhold `contextmenu` for a press that was
  * still classified as a click, so the menu was simply lost. It equals the
- * caller's own 5px client-coordinate drag threshold, and the summed travel is
+ * caller's 5px client-coordinate drag threshold for fly presses, and the summed travel is
  * never less than the displacement, so anything that caller counts as a drag
  * is a gesture here too. Under pointer lock the cursor does not move, which is
  * why the controller has to measure this itself.
@@ -185,6 +185,8 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
   let frameId: number | null = null;
   let lastFrame = 0;
   let lookTravel = 0;
+  // Look held back while the press is still a click (within the slop).
+  let heldLook = { x: 0, y: 0 };
   let pressedAt = 0;
   let suppressMenuUntil = -Infinity;
   let velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -319,6 +321,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       // swallow the menu of this press (#4868 review).
       suppressMenuUntil = -Infinity;
       lookTravel = 0;
+      heldLook = { x: 0, y: 0 };
       pressedAt = now();
       velocity = { x: 0, y: 0, z: 0 };
       // Armed, not locked: the lock waits for the hold or for movement.
@@ -339,8 +342,17 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       const lookY = locked && movementY !== undefined ? movementY : dy;
       if (lookX === 0 && lookY === 0) return;
       lookTravel += Math.abs(lookX) + Math.abs(lookY);
-      if (lookTravel > LOOK_CLICK_SLOP_PX) lock.request();
-      apply(flyLook(pose(), lookX, lookY));
+      // A click must leave the camera untouched: a sub-slop nudge (and the
+      // interaction frame it triggers) would discard the menu's pick as stale.
+      // Only while the press can still be a click: once held, flown or past
+      // the slop there is no menu to protect, so fine aiming turns at once.
+      if (!flew && now() - pressedAt < HOLD_TO_FLY_MS && lookTravel <= LOOK_CLICK_SLOP_PX) {
+        heldLook = { x: heldLook.x + lookX, y: heldLook.y + lookY };
+        return;
+      }
+      lock.request();
+      apply(flyLook(pose(), heldLook.x + lookX, heldLook.y + lookY));
+      heldLook = { x: 0, y: 0 };
     },
 
     wheel(e) {

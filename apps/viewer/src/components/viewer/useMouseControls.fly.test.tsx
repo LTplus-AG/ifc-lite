@@ -80,6 +80,27 @@ describe('useMouseControls right-button fly mode', () => {
     assert.equal(menus.length, 1);
   });
 
+  it('a right-click that wobbles 4px still opens the menu, past the 3px left-click threshold', async () => {
+    const { canvas, menus } = mount();
+    canvas.dispatchEvent(pointer('pointerdown', 2, 400, 300));
+    canvas.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    canvas.dispatchEvent(pointer('pointermove', 2, 404, 300));
+    canvas.dispatchEvent(pointer('pointerup', 2, 404, 300));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(menus.length, 1, 'BUG: a 4px right-click lost its context menu');
+  });
+
+  it('a sub-slop right-click twitch neither turns the view nor starts an interaction frame', () => {
+    const { canvas, camera, params } = mount();
+    const before = Array.from(camera.getViewProjMatrix().m);
+    canvas.dispatchEvent(pointer('pointerdown', 2, 400, 300));
+    canvas.dispatchEvent(pointer('pointermove', 2, 402, 301));
+    assert.deepEqual(Array.from(camera.getViewProjMatrix().m), before, 'the view stays put');
+    assert.equal(params.isInteractingRef.current, false,
+      'BUG: the interaction frame re-rounds the aspect and discards the menu pick');
+    canvas.dispatchEvent(pointer('pointerup', 2, 402, 301));
+  });
+
   /** #4868 review: `?controls=none` freezes the embed, and fly must not be a way around it. */
   it('a frozen view (controls=none) does not fly on the right button (#4868)', () => {
     const { canvas, camera } = mount();

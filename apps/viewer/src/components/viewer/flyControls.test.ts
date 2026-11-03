@@ -135,14 +135,38 @@ describe('createFlyController', () => {
     fly.begin();
     const before = camera.getTarget();
     fly.look(2, 0);
-    assert.notDeepEqual(camera.getTarget(), before, 'even a nudge turns the view');
+    assert.deepEqual(camera.getTarget(), before, 'a nudge within the slop leaves the view (and the menu pick) alone');
     fly.deferContextMenu();
     assert.equal(fly.end(), 'menu', 'a 2px twitch is still a click');
+
+    // Crossing the slop applies the held-back look too: one 6px look turns the
+    // view exactly as far as a 2px nudge followed by a 4px look.
+    const { fly: direct, camera: directCamera } = rig();
+    direct.begin();
+    direct.look(6, 0);
+    fly.begin();
+    fly.look(2, 0);
+    fly.look(4, 0);
+    const turned = camera.getTarget(), expected = directCamera.getTarget();
+    for (const axis of ['x', 'y', 'z'] as const) assert.ok(Math.abs(turned[axis] - expected[axis]) < 1e-9, `held look applied (${axis})`);
+    assert.notDeepEqual(turned, before, 'past the slop the view turns');
+    direct.end();
+    fly.end();
 
     fly.begin();
     fly.look(30, 10);
     fly.deferContextMenu();
     assert.equal(fly.end(), 'flew', 'a real look must not pop the menu on release');
+  });
+
+  it('a held press turns on a nudge at once: only a possible click holds the look back', () => {
+    const { fly, camera, frames } = rig();
+    fly.begin();
+    frames(20); // 320ms: held past the hold-to-fly time, so no menu is left to protect
+    const before = camera.getTarget();
+    fly.look(2, 0);
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: a held press swallowed a fine-aim nudge');
+    fly.end();
   });
 
   /** A stub canvas that records pointer-lock requests. */

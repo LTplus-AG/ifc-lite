@@ -265,7 +265,13 @@ it('other upstream PLY model discriminators cannot reach materialization (#8565 
     assert.deepEqual(requested, []);
   }
   const twoDimensional = await changeHeader(layoutPly(1), header => header.replace('property float scale_2\n', ''));
-  await assert.rejects(decodeGaussianFile(twoDimensional), /Malformed/);
+  // #8745 round 2: an incomplete transform signature is ordinary PLY,
+  // even if another reader could interpret its metadata as 2D splats.
+  assert.deepEqual(await inspectGaussianAdmission(twoDimensional, await twoDimensional.arrayBuffer()), { kind: 'ordinary' });
+  const { requested } = await boundedFloat32(async () => {
+    await assert.rejects(decodeGaussianFile(twoDimensional), /Not a Gaussian capture/);
+  });
+  assert.deepEqual(requested, [], 'ordinary PLY never reaches Gaussian materialization');
 });
 
 // #8613 review r4: decoder admission must read the header exactly as the pinned

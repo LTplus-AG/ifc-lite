@@ -173,6 +173,9 @@ export function resetSaveState(): void {
 
 /** Mark `modelId`'s restore as starting: its stale `sectionConfig` is cleared and saves for it are held off until {@link endRestore}. */
 export function beginRestore(modelId: string): void {
+  // A restore can mean a new file under the same model id: the last drawing's
+  // world-space cut no longer describes it.
+  generatedCut = null;
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
   pendingSectionConfigModelId = null;

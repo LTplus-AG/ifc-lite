@@ -1,5 +1,15 @@
 # @ifc-lite/drawing-2d
 
+## 5.0.0
+
+### Major Changes
+
+- [#8722](https://github.com/LTplus-AG/ifc-lite/pull/8722) [`a75b717`](https://github.com/LTplus-AG/ifc-lite/commit/a75b71705172edb0cc1b04e595ad3d274bc257c5) Thanks [@louistrue](https://github.com/louistrue)! - Release the open-surface section result contract as a major version. `SectionCutResult` now requires `openSurfaceSegments`; callers constructing results must provide that set. Consumers of `polygons` must also handle open-surface segments, which no longer produce an artificial closing polygon. Use `openSurfaceSegments` for those cuts and `isPolygonCutLine` when deciding which drawing lines a polygon already covers.
+
+### Minor Changes
+
+- [#8670](https://github.com/LTplus-AG/ifc-lite/pull/8670) [`2fa7dc6`](https://github.com/LTplus-AG/ifc-lite/commit/2fa7dc6d2640cd62dc212d40976ace7721e0f566) Thanks [@louistrue](https://github.com/louistrue)! - Sections through open surfaces (such as an `IfcShellBasedSurfaceModel` with an `IfcOpenShell`) now produce cut lines instead of filled `cutPolygons`. Open chains on an entity whose mesh has free edges no longer get closed by an invented chord; those segments carry the new `DrawingLine.openSurfaceCut` flag so renderers draw them (`isPolygonCutLine` tells them apart from polygon-covered cut lines), and `SectionCutter`/`cutMeshesStreaming` results report them as `openSurfaceSegments`. Solids keep their fill, including ones with hairline mesh cracks.
+
 ## 4.4.0
 
 ### Minor Changes

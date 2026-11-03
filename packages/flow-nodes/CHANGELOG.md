@@ -1,5 +1,14 @@
 # @ifc-lite/flow-nodes
 
+## 0.12.2
+
+### Patch Changes
+
+- Updated dependencies [[`87b96f8`](https://github.com/LTplus-AG/ifc-lite/commit/87b96f8f871e3e9ca94a121ebf253fa2d229c675), [`8eefa8e`](https://github.com/LTplus-AG/ifc-lite/commit/8eefa8ec68c25b595bf3bce92f406b767c3f9f1f)]:
+  - @ifc-lite/bcf-api@0.4.0
+  - @ifc-lite/query@2.5.4
+  - @ifc-lite/sdk@9.6.1
+
 ## 0.12.1
 
 ### Patch Changes

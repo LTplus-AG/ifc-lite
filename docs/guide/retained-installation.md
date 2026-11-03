@@ -105,9 +105,9 @@ module, its strings and the Settings control are lazy chunks, fetched when the
 choice (Settings → Performance → Geometry kernel, saved per browser, or
 `?kernel=retained` for one tab) asks for retained. The Vite plugin **does not
 copy** engines into build output. It rejects Vercel builds with `on`, and a
-`lazy` build refuses to start without a valid `IFCLITE_RETAINED_ENGINE`. This draft does not
-remove that distribution gate or change the production deployment workflow.
-A custom host must implement the URL mappings explicitly after release approval. The retained-only
+`lazy` build refuses to start without a valid `IFCLITE_RETAINED_ENGINE`. Serving an
+engine in production is a separate install step after a verified download, never
+this plugin. A custom host must implement the URL mappings explicitly after release approval. The retained-only
 preview host is assembled and smoked by the scripts in
 [Hosted retained preview](retained-release.md#hosted-retained-preview).
 

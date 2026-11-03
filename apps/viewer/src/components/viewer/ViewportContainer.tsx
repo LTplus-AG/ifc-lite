@@ -15,10 +15,9 @@ import { Viewport } from './Viewport';
 import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
-import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportWelcome } from './welcome/ViewportWelcome';
 import { useReloadResume } from '@/hooks/useReloadResume';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
-import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -47,7 +46,7 @@ import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
-import type { RecentFileEntry } from '@/lib/recent-files';
+import { getRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
@@ -117,7 +116,7 @@ export function ViewportContainer() {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
+  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>(getRecentFiles); // seeded: a fresh visit lists past opens
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
@@ -630,39 +629,14 @@ export function ViewportContainer() {
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
     computedIsolatedIds, hiddenEntities]);
 
-  // Grid Pattern
-  const GridPattern = () => (
-    <>
-      {/* Light mode grid - subtle gray */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.06] dark:hidden"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-      {/* Dark mode grid - subtle blue/cyan tint */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.12] hidden dark:block"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-    </>
-  );
-
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
   if (!hasLoadedModels && !loading) {
     return (
       <div
-        className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
+        className="relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
       >
-        <GridPattern />
 
         <input
           ref={fileInputRef}
@@ -757,24 +731,18 @@ export function ViewportContainer() {
             beyond scroll reach (the logo used to vanish under the toolbar
             on short viewports). Instead an inner min-h-full column centers
             when there is room and grows scrollably from the top when not. */}
-        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+        <div className={`absolute inset-0 z-10 overflow-auto p-4 md:p-8 ${!webgpu.checking && !webgpu.supported ? 'pt-[min(40vh,14rem)] md:pt-[min(40vh,14rem)]' : ''}`}>
           <div className="min-h-full w-full flex flex-col items-center justify-center">
 
-          {/* Main Card — extracted to its own module (#5119) so the privacy
-              footnote had somewhere to land without growing this file. */}
-          <ViewportWelcomeCard
+          {/* The start screen — its own modules (#5119) so this file's
+              frozen size budget never has to grow for it. */}
+          <ViewportWelcome
             webgpu={webgpu}
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
             loadFile={loadFile}
           />
-
-          {/* The old Select / Filter / Analyze feature-card grid was
-              dropped: it repeated toolbar affordances without offering an
-              action, and its height pushed the welcome card off-screen. */}
-
-          <WelcomeFooterChips />
 
           </div>
         </div>

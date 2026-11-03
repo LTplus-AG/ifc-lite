@@ -55,13 +55,17 @@ export function compare(rows) {
     return [JSON.stringify([p.kind, p.host, p.commit, p.startedAt, p.cohort]), p.cohort];
   })).values()];
   report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
-  // Keep sampled load in provenance, but exclude it from machine identity.
-  const hostKey = host => {
+  // Keep sampled load in provenance, but exclude it from machine identity: it is a sample, not an
+  // attribute, and never told two machines apart reliably. Only the hashed machine id proves one
+  // machine across invocations; without it, matching static attributes (identical containers or VMs)
+  // prove nothing, so each invocation keeps its own host group and never pairs with another.
+  const hostKey = r => {
+    const host = r.provenance?.host;
     if (!host) return null;
     const { loadAtStart, ...identity } = host;
-    return identity;
+    return identity.machineIdSha256 ? identity : { ...identity, unverifiedMachine: r.provenance.startedAt ?? r.provenance.input ?? null };
   };
-  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r.provenance?.host)]);
+  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r)]);
   // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
   const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
   for (const id of new Set(rows.map(group))) {

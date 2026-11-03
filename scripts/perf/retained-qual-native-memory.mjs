@@ -93,8 +93,9 @@ export async function main(argv) {
   if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
   if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
+  if (options.round !== undefined && !/^[1-9]\d*$/.test(options.round)) throw new Error('--round must be a positive integer');
   const round = options.round === undefined ? undefined : Number(options.round);
-  if (round !== undefined && (!Number.isInteger(round) || round < 1)) throw new Error('--round must be a positive integer');
+  if (options['pairing-id'] !== undefined && !/^\S(?:.*\S)?$/.test(options['pairing-id'])) throw new Error('--pairing-id must be non-empty, without surrounding whitespace');
   if ((round === undefined) !== (options['pairing-id'] === undefined)) throw new Error('--round and --pairing-id go together');
   const admission = exclusivity(options);
   const started = Date.now(), out = resolve(options.out);

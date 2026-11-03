@@ -1,5 +1,5 @@
 diff --git a/scripts/perf/retained-qual-lib.mjs b/scripts/perf/retained-qual-lib.mjs
-index 7f48fe2..fabd8de 100644
+index 7f48fe2fd5704371db6e7574bb9458d52290c8a2..fabd8de7d25de6418570cf3f7c3dac76fa907f08 100644
 --- a/scripts/perf/retained-qual-lib.mjs
 +++ b/scripts/perf/retained-qual-lib.mjs
 @@ -185,7 +185,7 @@ export function writeResult(out, result, rows) {
@@ -12,26 +12,10 @@ index 7f48fe2..fabd8de 100644
    return result;
  }
 diff --git a/scripts/perf/retained-qual-native-memory.mjs b/scripts/perf/retained-qual-native-memory.mjs
-index 0fdd517..e4784b1 100644
+index d967191b1146643a2a20d2041b4734b3cc89ff67..43f24c4f7971ba892b5519be9053f73399b854d0 100644
 --- a/scripts/perf/retained-qual-native-memory.mjs
 +++ b/scripts/perf/retained-qual-native-memory.mjs
-@@ -17,12 +17,14 @@
- // --expect FILE {"candidates":N,"published":M}); anything else FAILS.
- //
- //   node scripts/perf/retained-qual-native-memory.mjs --out DIR --label advanced_model [--side base|branch] \
--//     --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
-+//     [--round N --pairing-id ID] --summary /abs/out/summary.json [--worker-name ifclite_smlib_worker] \
- //     [--checkout /abs/checkout [--engine /abs/staged-engine]] \
- //     -- /abs/retained_compare --worker W --out OUT --manifest M
- //
- // --checkout records the commit; --engine (with --checkout) additionally records the
- // staged engine manifest hash of the same build, so native and browser/CLI rows share one identity.
-+// Each invocation is one process, so a paired cohort is many invocations: give every one the
-+// same --pairing-id and its --round, and retained-qual-report pairs base and branch by them.
- 
- import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
- import { spawn } from 'node:child_process';
-@@ -86,11 +88,14 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
+@@ -88,11 +88,15 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
  }
  
  export async function main(argv) {
@@ -41,13 +25,14 @@ index 0fdd517..e4784b1 100644
    if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
    if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
    if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
++  if (options.round !== undefined && !/^[1-9]\d*$/.test(options.round)) throw new Error('--round must be a positive integer');
 +  const round = options.round === undefined ? undefined : Number(options.round);
-+  if (round !== undefined && (!Number.isInteger(round) || round < 1)) throw new Error('--round must be a positive integer');
++  if (options['pairing-id'] !== undefined && !/^\S(?:.*\S)?$/.test(options['pairing-id'])) throw new Error('--pairing-id must be non-empty, without surrounding whitespace');
 +  if ((round === undefined) !== (options['pairing-id'] === undefined)) throw new Error('--round and --pairing-id go together');
    const admission = exclusivity(options);
    const started = Date.now(), out = resolve(options.out);
    const expectation = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : undefined;
-@@ -102,9 +107,9 @@ export async function main(argv) {
+@@ -104,9 +108,9 @@ export async function main(argv) {
    for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
    resetPartial(out);
    const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
@@ -60,41 +45,32 @@ index 0fdd517..e4784b1 100644
      samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
    writeResult(out, result, [row]);
 diff --git a/scripts/perf/retained-qual-report.mjs b/scripts/perf/retained-qual-report.mjs
-index fb841eb..79777c4 100644
+index bf7fb31237b49a7d5d4c1d4718ff189ac8f90b1d..5e31e049f979b699b13a5ac2403b85d5c1c0066a 100644
 --- a/scripts/perf/retained-qual-report.mjs
 +++ b/scripts/perf/retained-qual-report.mjs
-@@ -54,8 +54,15 @@ export function compare(rows) {
-     return [JSON.stringify([p.kind, p.host, p.commit, p.startedAt, p.cohort]), p.cohort];
-   })).values()];
-   report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
+@@ -59,9 +59,15 @@ export function compare(rows) {
+   // attribute, and never told two machines apart reliably. Only the hashed machine id proves one
+   // machine across invocations; without it, matching static attributes (identical containers or VMs)
+   // prove nothing, so each invocation keeps its own host group and never pairs with another.
 -  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
--  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
-+  // Keep sampled load in provenance, but exclude it from machine identity.
-+  const hostKey = host => {
++  const hostKey = r => {
++    const host = r.provenance?.host;
 +    if (!host) return null;
 +    const { loadAtStart, ...identity } = host;
-+    return identity;
++    return identity.machineIdSha256 ? identity : { ...identity, unverifiedMachine: r.provenance.startedAt ?? r.provenance.input ?? null };
 +  };
-+  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r.provenance?.host)]);
-+  // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
++  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r)]);
+   // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
+-  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
 +  const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
    for (const id of new Set(rows.map(group))) {
      const members = rows.filter(r => group(r) === id), successful = members.filter(r => r.ok);
      const base = successful.filter(r => r.side === 'base'), branch = successful.filter(r => r.side === 'branch');
 diff --git a/scripts/perf/retained-qual-viewer-page.mjs b/scripts/perf/retained-qual-viewer-page.mjs
-index d897db4..27638e9 100644
+index 34bf0a4794f0da18ea21b51f3f5dbfc3c6925a36..e218dbcdc4e36420297f8db52a8780b0951cb71e 100644
 --- a/scripts/perf/retained-qual-viewer-page.mjs
 +++ b/scripts/perf/retained-qual-viewer-page.mjs
-@@ -23,13 +23,33 @@
- //                        none; the driver then records null with a reason, never a guess.
- // Detection is on requestAnimationFrame ticks (at most one frame late) but every
- // recorded time is the event's or the frame's own timestamp.
-+//
-+// Workers: the page's own `Worker` constructor is wrapped to count the dedicated workers
-+// the page thread creates (and terminates), by script. That is the viewer's worker use as
-+// observed; workers a worker starts (e.g. the SDK's private one) are not visible here.
- 
- export const PAGE_KEY = '__retainedQual';
+@@ -32,8 +32,24 @@ export const PAGE_KEY = '__retainedQual';
  
  function install(key) {
    const q = globalThis[key] = { loadChangeMs: null, firstProductMs: null, sceneHeldMs: null, firstRetainedFrameMs: null,

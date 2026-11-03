@@ -68,7 +68,10 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
       return q.firstRetainedFrameMs === null ? performance.now() - q.terminalMs > 30000
         : q.settledFrameMs !== null || performance.now() - q.terminalMs > 4000; },
       PAGE_KEY, { timeout, polling: 100 });
-    loaded.catch(() => {}); // settles (rejects) when the browser closes after a Node-side timeout
+    // Marks only this branch handled: raceWithTimeout subscribes to `loaded` itself, so a page close or
+    // predicate error before the deadline still rejects with its own cause. The handler only absorbs
+    // the late rejection when the browser is closed after a Node-side timeout has already won.
+    loaded.catch(() => {});
     // Playwright polls the predicate inside the page; a saturated renderer main thread (Holter, pre-flight
     // 2026-11-01: still loading past 70 min) never lets its own timeout fire. Bound it from Node as well.
     await raceWithTimeout(loaded, timeout, 'viewer load to terminal state');

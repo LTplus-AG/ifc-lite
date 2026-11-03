@@ -100,28 +100,47 @@ test('8413: a change confined to longTaskMs is a column and a real movement', ()
   assert.equal(column(report, 'longTaskMs').direction, 'higher');
 });
 
-test('7955: native rows from separate invocations pair by pairing id and round', async () => {
+test('7955: native rows from separate invocations pair by pairing id and round, and only by it', async () => {
   const { writeResult } = await import('./retained-qual-lib.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'rep-native-'));
+  const host = { hostname: 'same-host', machineIdSha256: 'machine-a' };
+  // Every invocation is written by writeResult and read back with its own result.json; only the named fields vary.
+  const cohort = (name, { pairingId, startedAt }) => [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]].map(([side, round, wallMs]) => {
+    const out = join(dir, `${name}-${side}-${round}`);
+    writeResult(out, { kind: 'native-retained-memory', startedAt: startedAt(side, round), pairingId: pairingId(side),
+      host: { ...host, loadAtStart: { load1: wallMs, load5: round } } }, [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
+    return out;
+  });
+  try {
+    // Distinct invocations (startedAt) under one pairing id: paired by the id.
+    const shared = compare(readRows(cohort('shared', { pairingId: () => 'cohort-a', startedAt: (side, round) => `${side}-${round}` })));
+    assert.equal(shared.flags.unpaired, false);
+    assert.equal(column(shared, 'wallMs').pairedN, 2);
+    // Identical startedAt on every row, base and branch under different ids: the id alone keeps them apart.
+    const split = compare(readRows(cohort('split', { pairingId: side => `cohort-${side}`, startedAt: () => 'same-start' })));
+    assert.equal(split.flags.unpaired, true);
+    assert.equal(column(split, 'wallMs').pairedN, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('7955: without a machine id, rows from separate invocations never pair on static host attributes', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-nomachine-'));
   try {
     const inputs = [];
     for (const [side, round, wallMs] of [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]]) {
       const out = join(dir, `${side}-${round}`);
       writeResult(out, { kind: 'native-retained-memory', startedAt: `${side}-${round}`, pairingId: 'cohort-a',
-        host: { hostname: 'same-host', machineIdSha256: 'machine-a', loadAtStart: { load1: wallMs, load5: round } } },
+        host: { hostname: 'container', cpuModel: 'x', cpuCount: 8, machineIdSha256: null, loadAtStart: { load1: 1, load5: 1 } } },
         [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
       inputs.push(out);
     }
     const report = compare(readRows(inputs));
-    assert.equal(report.flags.unpaired, false);
-    assert.equal(column(report, 'wallMs').pairedN, 2);
-    // Without a pairing id every invocation is its own round set: never paired.
-    for (const input of inputs) {
-      const path = join(input, 'runs.jsonl'), row = JSON.parse(readFileSync(path, 'utf8'));
-      delete row.provenance.pairingId;
-      writeFileSync(path, JSON.stringify(row) + '\n');
-      rmSync(join(input, 'result.json'));
-    }
-    assert.equal(compare(readRows(inputs)).flags.unpaired, true);
+    assert.equal(report.flags.unpaired, true);
+    assert.ok(report.fixtures.every(f => f.columns.every(c => c.pairedN === 0)));
+    // One invocation (both arms, one host record) still pairs without a machine id.
+    const host = { hostname: 'container', machineIdSha256: null, loadAtStart: { load1: 1, load5: 1 } };
+    const one = [...rows('base', [100, 101]), ...rows('branch', [90, 91])].map(r => ({ ...r, provenance: { host, startedAt: 'one-run' } }));
+    assert.equal(compare(one).flags.unpaired, false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

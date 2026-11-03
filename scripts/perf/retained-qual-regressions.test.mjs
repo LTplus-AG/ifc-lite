@@ -36,6 +36,14 @@ test('7955: native --round must be a positive integer and comes with --pairing-i
   await assert.rejects(run(['--round', '1']), /--pairing-id/);
   await assert.rejects(run(['--pairing-id', 'c']), /--pairing-id/);
 });
+test('7955: native --round is a plain decimal string, not anything Number() reads as an integer', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const round of ['', ' ', ' 1', '1 ', '1.0', '1e0', '0x1', '01', '+1']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round must be a positive integer/, JSON.stringify(round));
+});
+test('7955: native --pairing-id must be a non-empty id without surrounding whitespace', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const id of ['', ' ', '\t', ' c', 'c ']) await assert.rejects(run(['--round', '1', '--pairing-id', id]), /--pairing-id must be/, JSON.stringify(id));
+});
 test('8413: seeds must be finite even for a single arm', async () => {
   for (const seed of [NaN, Infinity, -Infinity]) await assert.rejects(roundSides([{ side: 'branch' }], 1, seed), /finite/);
 });
@@ -122,6 +130,22 @@ test('7955: a viewer page that never answers still ends at --timeout-ms and clea
     launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => { closed = true; return null; } }) });
   assert.equal(row.ok, false);
   assert.match(row.error, /viewer load to terminal state timed out after 40 ms/);
+  assert.equal(closed, true);
+});
+
+test('7955: a viewer page that closes during the load wait reports the close, not a timeout', async () => {
+  const { viewerSample } = await import('./retained-qual-viewer.mjs');
+  let closed = false;
+  const page = { addInitScript: async () => {}, goto: async () => {}, locator: () => ({ waitFor: async () => {}, setInputFiles: async () => {} }),
+    waitForFunction: async (fn, key) => { if (key) throw new Error('page.waitForFunction: Target page, context or browser has been closed'); } };
+  const started = Date.now();
+  const row = await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1,
+    options: { 'timeout-ms': 5000 }, distTree: {},
+    launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => { closed = true; return null; } }) });
+  assert.equal(row.ok, false);
+  assert.match(row.error, /Target page, context or browser has been closed/);
+  assert.doesNotMatch(row.error, /timed out/);
+  assert.ok(Date.now() - started < 4000, 'the close ends the wait at once, not at --timeout-ms');
   assert.equal(closed, true);
 });
 

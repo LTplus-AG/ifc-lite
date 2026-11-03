@@ -65,7 +65,7 @@ fn section_result_volume(sources: &AnalyticQuantitySources, host: u32, cutters: 
     }
     Some((volume, arcs))
 }
-fn nominal(sources: &AnalyticQuantitySources, id: u32) -> Option<(f64, Option<[f64; 6]>)> {
+pub(super) fn nominal(sources: &AnalyticQuantitySources, id: u32) -> Option<(f64, Option<[f64; 6]>)> {
     let parts = sources.extrusion_definitions.instances.get(&id)?.len();
     if parts == 0 {
         return None;

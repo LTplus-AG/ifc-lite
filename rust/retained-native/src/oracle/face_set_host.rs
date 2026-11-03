@@ -97,6 +97,12 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
         let points: Vec<[f64; 3]> = row.points.iter().map(&at).collect();
         let Some(&outer_end) = ends.first() else { continue };
         let outer_normal = newell(&points[..outer_end]);
+        // A warped row has no single surface: another fan diagonal bounds another volume. Past
+        // the warp a published f64 position can carry, the source has no answer here.
+        if row.area_m2.is_none() {
+            let normal = unit(outer_normal).ok_or("warped_face_set_row")?;
+            if points.iter().any(|p| dot(normal, sub(*p, points[0])).abs() > WARP_METRES) { return Err("warped_face_set_row"); }
+        }
         let mut start = 0;
         for &end in ends {
             let mut ring = points[start..end].to_vec();
@@ -183,8 +189,9 @@ pub fn expected(bundle: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, h
             }
         }
     }
-    let (mut host_volume, mut result, mut host_arcs) = (0., 0., false);
+    let (mut host_volume, mut result, mut host_arcs, mut only_extrusions) = (0., 0., false, true);
     for solid in solids(bundle, sources, host)? {
+        only_extrusions &= matches!(solid, Solid::Extrusion(_));
         match solid {
             Solid::Extrusion(part) => {
                 host_arcs |= part.has_arcs();
@@ -201,5 +208,7 @@ pub fn expected(bundle: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, h
         }
     }
     Ok(OpeningExpectation { nominal_host_volume: host_volume, volume_bounds: [(host_volume - cutter_volume).max(0.), host_volume],
-        result_volume: Some(result), curved: arcs || host_arcs, host_bbox: None })
+        // A Body of extrusions alone keeps its nominal bounds: the result must stay inside them.
+        result_volume: Some(result), curved: arcs || host_arcs,
+        host_bbox: only_extrusions.then(|| super::openings::nominal(sources, host).and_then(|(_, bbox)| bbox)).flatten() })
 }

@@ -144,6 +144,7 @@ fn a_voided_host_has_a_result_volume_for_convex_face_set_cutters() {
         face_set_host::expected(&bundle, &sources, 22, &[8104])
     };
     let e = cut(with(&opening(8100, points, rows, ".T."))).expect("a closed convex face set is a cutter");
+    assert!(e.host_bbox.is_some(), "an extrusion host keeps its nominal bounds gate");
     assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
     assert!((e.volume_bounds[0] - (3.6 - 0.8)).abs() < 1e-10, "nominal cutter volume {:?}", e.volume_bounds);
     let open = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5)";
@@ -200,12 +201,32 @@ fn a_face_set_host_has_a_result_volume_from_its_rows() {
     let e = expected(host(rows, ".T.")).expect("a closed set is integrated");
     assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
     assert!((e.nominal_host_volume - 3.6).abs() < 1e-10 && !e.curved);
+    assert!(e.host_bbox.is_none(), "a face-set Body has no nominal extrusion bounds");
     // Reversed winding is the same solid.
     let reversed = "(1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)";
     assert!((expected(host(reversed, ".T.")).unwrap().result_volume.unwrap() - 3.).abs() < 1e-10);
     // An open set bounds no solid: a counted gap, never a partial volume.
     let open = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5)";
     assert_eq!(expected(host(open, "$")).err(), Some("open_face_set"));
+}
+
+/// A polygonal set's quad rows are planar here and integrate exactly; one corner raised 1 mm
+/// warps three rows, which no fan of tetrahedra answers uniquely: a named gap.
+#[test]
+fn a_warped_polygonal_row_is_a_gap_not_a_triangulation() {
+    let faces = "#8210=IFCINDEXEDPOLYGONALFACE((1,4,3,2));#8211=IFCINDEXEDPOLYGONALFACE((5,6,7,8));#8212=IFCINDEXEDPOLYGONALFACE((1,2,6,5));\n\
+#8213=IFCINDEXEDPOLYGONALFACE((2,3,7,6));#8214=IFCINDEXEDPOLYGONALFACE((3,4,8,7));#8215=IFCINDEXEDPOLYGONALFACE((4,1,5,8));\n";
+    let host = |top: &str| with(&format!("{WINDOW}{}{faces}#8200=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(2.,0.,0.),(2.,0.6,0.),(0.,0.6,0.),(0.,0.,3.),(2.,0.,3.),(2.,0.6,{top}),(0.,0.6,3.)));\n\
+#8201=IFCPOLYGONALFACESET(#8200,.T.,(#8210,#8211,#8212,#8213,#8214,#8215),$);\n", opening(8100, "#8002")))
+        .replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+    let expected = |text: String| {
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        face_set_host::expected(&bundle, &sources, 22, &[8107])
+    };
+    let e = expected(host("3.")).expect("planar quads are integrated");
+    assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
+    assert_eq!(expected(host("3.001")).err(), Some("warped_face_set_row"));
 }
 
 /// rvt01 #5941: an extrusion beside a closed set. Both parts lose what the cutter takes.

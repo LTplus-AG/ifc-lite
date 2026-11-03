@@ -81,6 +81,15 @@ fn world_of(element: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder,
     for i in 0..3 { for j in 0..4 { world[(i, j)] *= scale; } }
     Some(world)
 }
+/// A ring's area vector (Newell), from offsets to its first corner: absolute georeferenced
+/// coordinates would round each cross term at their own magnitude, not the ring's.
+fn newell(ring: &[[f64; 3]]) -> [f64; 3] {
+    let Some(&origin) = ring.first() else { return [0.; 3] };
+    ring.iter().enumerate().fold([0.; 3], |n, (i, p)| {
+        let c = cross(sub(*p, origin), sub(ring[(i + 1) % ring.len()], origin));
+        [n[0] + c[0], n[1] + c[1], n[2] + c[2]]
+    })
+}
 /// A closed set in world metres, from its rows only. A hole is a ring wound against the outer
 /// one: its fan subtracts, so a row with voids needs no triangulation.
 fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, world: &Matrix4<f64>, scale: f64) -> Result<ClosedSet, &'static str> {
@@ -88,10 +97,6 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
     if set.open_edges != 0 { return Err("open_face_set"); }
     let at = |p: &[f64; 3]| { let q = world.transform_point(&Point3::new(p[0] / scale + set.first[0], p[1] / scale + set.first[1], p[2] / scale + set.first[2])); [q.x, q.y, q.z] };
     let apex = at(set.rows.first().and_then(|r| r.points.first()).ok_or("face_set_unreadable")?);
-    let newell = |ring: &[[f64; 3]]| ring.iter().enumerate().fold([0.; 3], |n, (i, p)| {
-        let c = cross(*p, ring[(i + 1) % ring.len()]);
-        [n[0] + c[0], n[1] + c[1], n[2] + c[2]]
-    });
     let (mut tets, mut faces) = (Vec::new(), Vec::new());
     for (row, ends) in set.rows.iter().zip(&set.row_rings) {
         let points: Vec<[f64; 3]> = row.points.iter().map(&at).collect();
@@ -211,4 +216,19 @@ pub fn expected(bundle: &Arc<SourceBundle>, sources: &AnalyticQuantitySources, h
         // A Body of extrusions alone keeps its nominal bounds: the result must stay inside them.
         result_volume: Some(result), curved: arcs || host_arcs,
         host_bbox: only_extrusions.then(|| super::openings::nominal(sources, host).and_then(|(_, bbox)| bbox)).flatten() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tilted triangle has one normal wherever it is placed, georeferenced coordinates included.
+    #[test]
+    fn a_row_normal_does_not_depend_on_its_placement() {
+        let ring = [[0., 0., 0.], [1.3, 0.2, 0.7], [0.1, 0.9, 0.4]];
+        let far = ring.map(|p| [p[0] + 2_612_345.678, p[1] + 1_234_567.891, p[2] + 431.27]);
+        let (near, moved) = (unit(newell(&ring)).unwrap(), unit(newell(&far)).unwrap());
+        let angle = cross(near, moved).iter().map(|v| v * v).sum::<f64>().sqrt();
+        assert!(angle < 1e-9, "the normal turned {angle} rad");
+    }
 }

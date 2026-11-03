@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { capOverlayBasis, capOverlayHasContent, capOverlayInput } from '@/lib/section/cap-overlay';
 import { capSignature } from '@/lib/section/section-cut-config';
 import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
-import { planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
+import { boxHoldingPlane, planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
@@ -92,10 +92,14 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
   } = params;
   const fillMode = sectionPlane.capStyle?.fillMode;
   // Only the box (and whether it cuts) moves the face caps: dragging the active PLANE must not re-upload them.
-  const boxCapPlanes = useMemo(
-    () => cuttingSectionBoxCapPlanes(sectionPlane, inactiveSectionPlanes),
+  // The face caps fill like the plane that holds the box, which need not be the active one.
+  const { boxCapPlanes, boxFillMode } = useMemo(
+    () => ({
+      boxCapPlanes: cuttingSectionBoxCapPlanes(sectionPlane, inactiveSectionPlanes),
+      boxFillMode: boxHoldingPlane(sectionPlane, inactiveSectionPlanes)?.capStyle?.fillMode,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sectionPlane.box, sectionPlane.enabled, inactiveSectionPlanes],
+    [sectionPlane.box, sectionPlane.enabled, sectionPlane.capStyle, inactiveSectionPlanes],
   );
 
   // Theme-aware clear color update, and the renderer's overlay theme (#5484):
@@ -162,14 +166,15 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
       const cap = extraCaps[plane.id];
       if (!cap || !cap.signature.endsWith(`:${capSignature(plane)}`)) continue;
       if (!capOverlayHasContent(cap)) { renderer.clearSection2DOverlay(plane.id); continue; }
-      const { polygons, lines } = capOverlayInput(cap, showHiddenLines, fillMode);
+      const isBoxFace = boxCapPlanes.includes(plane);
+      const { polygons, lines } = capOverlayInput(cap, showHiddenLines, isBoxFace ? boxFillMode : fillMode);
       renderer.uploadSection2DOverlay(
         polygons, lines, plane.axis, plane.position, planeRange(plane, sectionBoundsRef?.current) ?? undefined,
         plane.flipped, capOverlayBasis(plane.custom), plane.id,
       );
     }
     renderer.requestRender();
-  }, [extraCaps, inactiveSectionPlanes, boxCapPlanes, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
+  }, [extraCaps, inactiveSectionPlanes, boxCapPlanes, boxFillMode, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
 
   // Re-render when visibility, selection, or section plane changes
   useEffect(() => {

@@ -38,6 +38,17 @@ export const EXTRA_CLIP_FLOATS = 4 + MAX_EXTRA_CLIP_PLANES * 4;
 export const EXTRA_CLIP_BYTES = EXTRA_CLIP_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 /**
+ * Planes one section CAP's block carries (#8696): every other cutting plane plus the six section-box
+ * faces. The caps bind their block on their own (group 1 of the cap pipelines), so this is theirs
+ * alone; the mesh, pick, shadow and point-cloud layouts keep {@link MAX_EXTRA_CLIP_PLANES}.
+ */
+export const MAX_CAP_CLIP_PLANES = MAX_EXTRA_CLIP_PLANES + 6;
+/** Floats in one packed cap block. */
+export const CAP_CLIP_FLOATS = 4 + MAX_CAP_CLIP_PLANES * 4;
+/** Bytes in one packed cap block. */
+export const CAP_CLIP_BYTES = CAP_CLIP_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+
+/**
  * One u32 written into a Float32Array slot as its bit pattern, with no typed-array view built per call
  * (this runs for every mesh every frame). Small integers are float32 denormals: they cross the
  * double round trip bit-exact, which a NaN pattern would not.
@@ -61,8 +72,10 @@ export function packExtraClip(
   cameraWorld: WorldPoint | null,
   out: Float32Array,
   floatOffset: number,
+  /** Planes the block holds: {@link MAX_CAP_CLIP_PLANES} for a cap's block. */
+  capacity: number = MAX_EXTRA_CLIP_PLANES,
 ): void {
-  const count = Math.min(planes?.length ?? 0, MAX_EXTRA_CLIP_PLANES);
+  const count = Math.min(planes?.length ?? 0, capacity);
   if (!planes || count === 0) {
     // +0.0 has the bit pattern of u32 0: the common (no extra plane) case needs no integer view.
     out[floatOffset] = 0;
@@ -89,10 +102,14 @@ export function packExtraClip(
  * `extraClipClipped(uniforms.<field>, p)` with `p` in the same frame the block
  * was packed for.
  */
-export const extraClipWgsl = `
+export const extraClipWgsl = extraClipWgslFor(MAX_EXTRA_CLIP_PLANES);
+
+/** The same WGSL for a block of `capacity` planes ({@link MAX_CAP_CLIP_PLANES} in the cap shaders). */
+export function extraClipWgslFor(capacity: number): string {
+  return `
         struct ExtraClip {
           planeInfo: vec4<u32>,            // x = plane count, y = flipped bit mask
-          planes: array<vec4<f32>, ${MAX_EXTRA_CLIP_PLANES}>, // xyz = normal, w = distance
+          planes: array<vec4<f32>, ${capacity}>, // xyz = normal, w = distance
         }
 
         // True when p is on the removed side of ANY extra plane.
@@ -104,6 +121,7 @@ export const extraClipWgsl = `
           return false;
         }
 `;
+}
 
 /**
  * CPU mirror of `extraClipClipped` for a world-space point, shared by the

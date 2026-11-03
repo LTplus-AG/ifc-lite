@@ -37,7 +37,7 @@ import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-l
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
-import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
+import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
@@ -879,7 +879,8 @@ export function useDrawingGeneration({
       // persistence bridge (issue #4153) can save it alongside the results —
       // `drawing2D` itself is derived output and is never persisted.
       const generatedForModelId = useViewerStore.getState().activeModelId;
-      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, config);
+      // Never the untouched placeholder plane (see `saveGeneratedSectionConfig`).
+      if (generatedForModelId) saveGeneratedSectionConfig(generatedForModelId, config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');

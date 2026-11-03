@@ -31,8 +31,11 @@ export type RetainedHostEvent = RetainedStart
   | { kind: 'cancelled'; expressId: number; code: 'cancelled' };
 export type RetainedHostErrorCode = 'startup' | 'worker_crash' | 'engine_missing' | 'source_too_large' | 'out_of_memory' | 'busy';
 export class RetainedHostError extends Error {
+  /** What failed, without the reload advice the message adds. */
+  readonly reason: string;
   constructor(readonly code: RetainedHostErrorCode, message: string) {
     super(`${message}. Reload with exact kernel`);
+    this.reason = message;
     this.name = 'RetainedHostError';
   }
 }
@@ -46,7 +49,9 @@ export type RetainedHostResponse = { runId: number } & (RetainedHostEvent
 /**
  * The largest source the retained engine can start (#7955). The bytes enter its
  * wasm32 linear memory as one Rust `Vec<u8>`, and no wasm32 allocation may exceed
- * `isize::MAX`, so anything larger fails before any work. This is not a tuned
+ * `isize::MAX` (2^31 - 1), so a source of 2 GiB (2^31 bytes) or more fails
+ * before any work. In the built engine an allocation of 2^31 - 1 bytes
+ * succeeds and one of 2^31 aborts without growing memory. This is not a tuned
  * cap: below it, whether a model fits is decided by the engine's allocations,
  * and running out of memory ends the load with an `out_of_memory` refusal.
  * docs/architecture/retained-viewer-memory.md has the measurements.

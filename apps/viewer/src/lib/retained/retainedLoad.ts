@@ -113,7 +113,8 @@ export function beginRetainedLoad(
       if (!(error instanceof RetainedHostError)) return null;
       if (error.code === 'out_of_memory') return { message: translate('retainedGeometry.memory', name), retry: exactRetry };
       // The host knows what failed; the exact path's wording would guess (it reads any trap as memory).
-      return { message: translate('retainedGeometry.hostFailure', { ...name, reason: error.message }) };
+      // Retry runs retained again (a crash can be transient); the exact reload is the panel's, never implied.
+      return { message: translate('retainedGeometry.hostFailure', { ...name, reason: error.reason }) };
     },
   };
 }

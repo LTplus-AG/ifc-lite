@@ -18,8 +18,10 @@ the browser and the policy that replaced the cap.
 - **The source is one allocation.** `RetainedModelSession.run` takes the source
   as a Rust `Vec<u8>`: wasm-bindgen copies the bytes into linear memory, then
   `SourceBundle` owns them. No wasm32 allocation may exceed `isize::MAX`
-  (2 GiB - 1), so a source of 2 GiB or more can never start. This is
-  `RETAINED_MAX_SOURCE_BYTES`, checked before any byte is read.
+  (2^31 - 1 bytes), so a source of 2 GiB (2^31 bytes) or more can never start.
+  In the built engine an allocation of 2^31 - 1 bytes succeeds and one of 2^31
+  aborts without growing memory. `RETAINED_MAX_SOURCE_BYTES` is 2^31 - 1,
+  checked before any byte is read.
 - **No streaming.** The session needs the whole source before it plans; there
   is no windowed parse on the retained path.
 - **Copies outside WASM.** The main thread keeps its source buffer (the exact

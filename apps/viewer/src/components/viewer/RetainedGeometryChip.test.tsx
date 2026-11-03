@@ -156,13 +156,17 @@ describe('#7955 M2-C Retained geometry panel', () => {
 describe('#7955 a large refusal list', () => {
   const many = (count: number) => Array.from({ length: count }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: i % 2 ? 'operation_unsupported' : 'opening_strategy' }));
 
-  it('renders no rows behind a closed panel, and model updates that leave the summary alone do not re-render the chip', () => {
-    const big = summary({ candidates: 20_000, published: 0, cancelled: 0, completeness: 'running', started: true, refused: many(20_000) });
+  it('does no filter or sort work behind a closed panel, and model updates that leave the summary alone do not re-render the chip', () => {
+    // Counts every walk of the refused list (iteration, filter, sort, copy); reading its length is free.
+    let walks = 0;
+    const walking = new Set<PropertyKey>([Symbol.iterator, 'filter', 'map', 'slice', 'sort', 'forEach', 'reduce']);
+    const refused = new Proxy(many(20_000), { get(target, key, receiver) { if (walking.has(key)) walks++; return Reflect.get(target, key, receiver); } });
+    const big = summary({ candidates: 20_000, published: 0, cancelled: 0, completeness: 'running', started: true, refused });
     seed(big);
     let commits = 0;
     render(<><ViewportHud /><Profiler id="chip" onRender={() => { commits++; }}><RetainedGeometryChip reload={() => {}} /></Profiler></>);
     assert.ok(chip());
-    assert.equal(document.querySelectorAll('[data-retained-row]').length, 0, 'no rows while the panel is closed');
+    assert.equal(walks, 0, 'a closed panel neither counts codes nor filters and sorts rows');
     const settled = commits;
     for (let i = 0; i < 5; i++) {
       // Streaming geometry replaces the model record without touching its summary.
@@ -179,6 +183,7 @@ describe('#7955 a large refusal list', () => {
       return { models };
     }));
     assert.equal(commits, settled + 1, 'a new summary re-renders it once');
+    assert.equal(walks, 0, 'not even when the summary changes');
   });
 
   it('the open panel renders a bounded number of rows and says so; "Show more" reaches every row', () => {

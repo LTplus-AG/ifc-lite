@@ -113,6 +113,15 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(kernel.refuseSource('ifc', RETAINED_MAX_SOURCE_BYTES, { modelId: 'm', activity }), false, 'the largest source wasm32 can hold proceeds');
   });
 
+  it('the bound is wasm32 isize::MAX: 2^31 - 1 bytes proceed, 2 GiB (2^31) is refused as "2048 MiB or more"', () => {
+    assert.equal(RETAINED_MAX_SOURCE_BYTES, 2 ** 31 - 1);
+    chooseGeometryKernel('retained');
+    assert.ok(!harness().begin(stepFile('under.ifc', 2 ** 31 - 1))?.refused, '2^31 - 1 bytes is one allocation wasm32 can make');
+    const kernel = harness().begin(stepFile('two-gib.ifc', 2 ** 31));
+    assert.ok(kernel?.refused, 'exactly 2 GiB is refused');
+    assert.match(useViewerStore.getState().error ?? '', /"two-gib\.ifc" is 2048 MiB; the retained engine cannot hold a source of 2048 MiB or more/);
+  });
+
   it('a run out of memory is worded as such, and its Retry loads the model exact', () => {
     chooseGeometryKernel('retained');
     const load = harness();
@@ -128,9 +137,11 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(load.retried(), 1);
     assert.equal(requestedGeometryKernel(), 'exact', 'Retry switched the next load to the exact kernel');
     const crash = loadFailure(new RetainedHostError('worker_crash', 'memory access out of bounds'));
-    assert.equal(crash?.message, 'The retained engine stopped while processing "tower.ifc": memory access out of bounds. Reload with exact kernel.',
+    assert.equal(crash?.message, 'The retained engine stopped while processing "tower.ifc": memory access out of bounds. '
+      + 'Retry runs the retained kernel again; the Retained geometry panel can reload it with the exact kernel.',
       'another trap is a crash in the host\'s words, never "ran out of memory"');
-    assert.equal(crash?.retry, undefined, 'and keeps the load\'s own Retry');
+    assert.doesNotMatch(crash?.message ?? '', /Reload with exact kernel\./, 'no advice that its Retry does not follow');
+    assert.equal(crash?.retry, undefined, 'and keeps the load\'s own Retry, which runs retained again');
     assert.equal(loadFailure(new Error('out of memory')), null, 'a failure outside the host keeps the loader wording');
   });
 

@@ -116,6 +116,6 @@ export const retainedGeometryEn = {
   'retainedGeometry.scope.federatedOnRetained': 'A retained model is open, and retained geometry shows one model at a time. Reload it with the exact kernel to add "{file}".',
   'retainedGeometry.scope.format': 'Retained geometry covers IFC (STEP) files only, so "{file}" was not loaded. Retry loads it with the exact kernel.',
   'retainedGeometry.scope.size': '"{file}" is {size}; the retained engine cannot hold a source of {limit} or more. Retry loads it with the exact kernel.',
-  'retainedGeometry.hostFailure': 'The retained engine stopped while processing "{file}": {reason}.',
+  'retainedGeometry.hostFailure': 'The retained engine stopped while processing "{file}": {reason}. Retry runs the retained kernel again; the Retained geometry panel can reload it with the exact kernel.',
   'retainedGeometry.memory': '"{file}" did not fit in the retained engine\'s memory (WebAssembly is limited to 4 GiB). Retry loads it with the exact kernel.',
 } as const satisfies Record<string, TranslationValue>;

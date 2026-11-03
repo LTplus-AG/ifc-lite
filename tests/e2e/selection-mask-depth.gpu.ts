@@ -98,7 +98,9 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
           entryPoint: family === 'instanced' ? 'vs_instanced' : family === 'quantized' ? 'vs_main_quantized' : 'vs_main',
           buffers: family === 'instanced' ? INSTANCED_VERTEX_BUFFERS : [family === 'quantized' ? quantLayout : flatLayout] };
         const sceneSource = mainShaderSource + `
-          @fragment fn fs_depth(input: VertexOutput) -> @location(0) vec4<f32> { return vec4<f32>(1); }`;
+          // The scene writes the production per-fragment depth, as fs_main does.
+          struct SceneDepth { @builtin(frag_depth) depth: f32 }
+          @fragment fn fs_depth(input: VertexOutput) -> SceneDepth { return SceneDepth(meshFragDepth(input)); }`;
         const sceneShader = device.createShaderModule({ code: sceneSource });
         const scenePipeline = (writes: boolean) => visibility.create({
           layout: device.createPipelineLayout({ bindGroupLayouts: [meshLayout, device.createBindGroupLayout({ entries: [] })] }), vertex: { ...vertexState, module: sceneShader },

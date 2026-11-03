@@ -26,7 +26,8 @@ export function opaqueVisibilityWgsl(samples: number): string {
 export function unbiasedMeshShader(source: string, samples: number, entryPoint = 'fs_main'): string {
   if (!source.includes(depthNudgeWgsl)) throw new Error('Mesh shader has no canonical depth nudge');
   const unbiased = source.replace(depthNudgeWgsl,
-    'fn nudgedClipZ(clip: vec4<f32>, hash: u32, vp: mat4x4<f32>) -> f32 { return clip.z; }')
+    'fn nudgedClipZ(clip: vec4<f32>, hash: u32, vp: mat4x4<f32>) -> f32 { return clip.z; }\n'
+    + 'fn nudgedFragDepth(depth: f32, hash: u32, vp: mat4x4<f32>) -> f32 { return depth; }')
     .replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)');
   const entry = unbiased.indexOf(`fn ${entryPoint}(input: VertexOutput)`);
   const attribute = unbiased.lastIndexOf('@fragment', entry);

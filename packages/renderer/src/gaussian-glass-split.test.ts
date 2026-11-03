@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { DeferredPassRecorder } from './gaussian/gaussian-pass-recorder.js';
 import { GaussianGlassSplit, glassDepthShader } from './gaussian/gaussian-glass-split.js';
 import { GaussianGlassComposer } from './gaussian/gaussian-glass-frame.js';
-import { compositionReport } from './gaussian/gaussian-composition.js';
+import { compositionReport, NO_TRANSPARENT } from './gaussian/gaussian-composition.js';
 import { OpaqueVisibilityPass, deferOpaqueVisibilityFrame, isPendingVisibility } from './opaque-visibility-pass.js';
 import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
@@ -564,3 +564,36 @@ for (const failure of ['range', 'conversion', 'unmap', 'callback'] as const) {
     } finally { split.destroy(); console.error = original; }
   });
 }
+
+
+test('#8564 review4 release clears composition and ignores late readback until a fresh frame', async () => {
+  const { fake, composer, visibility, target, camera, recorderFor } = await readyComposer();
+  const scene = new SceneLog(fake.log);
+  try {
+    composer.encode(scene, target, camera, { recorder: recorderFor(), visibility });
+    composer.submitted();
+    await fake.resolveMap(7n);
+    assert.equal(composer.report.composition, 'nearest-glass-split');
+    assert.equal(composer.report.transparentLayers, 'multiple');
+    composer.release(); // same hook used for device loss, renderer destroy and rebuild
+    assert.deepEqual(composer.report, NO_TRANSPARENT, 'released GPU state has no frame composition');
+
+    recorderFor(); // rebuild the depth variants
+    await new Promise(resolve => setTimeout(resolve, 0));
+    composer.encode(scene, target, camera, { recorder: recorderFor(), visibility });
+    composer.submitted();
+    assert.equal(fake.pendingMaps(), 1);
+    composer.release(); // this time a count is still pending at release
+    assert.deepEqual(composer.report, NO_TRANSPARENT);
+    await fake.resolveMap(7n);
+    assert.deepEqual(composer.report, NO_TRANSPARENT, 'a released frame cannot resurrect its report');
+
+    recorderFor();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    composer.encode(scene, target, camera, { recorder: recorderFor(), visibility });
+    composer.submitted();
+    await fake.resolveMap(0n);
+    assert.equal(composer.report.composition, 'nearest-glass-split');
+    assert.equal(composer.report.transparentLayers, 'single', 'only the new frame publishes a report');
+  } finally { composer.release(); }
+});

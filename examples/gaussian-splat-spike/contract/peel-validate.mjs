@@ -86,9 +86,9 @@ function judge(run, row, scene, probe) {
   const comparison = comparePeelImages(reference.pixels, decode(row.pixels));
   const expected = expectedExhaustion(scene, peelSamples, layers);
   const verdict = { ...comparison, exhaustion: row.exhaustion };
-  if (run.expect === 'accept') peels.set(key(samples, row.projection, row.size, row.panes), decode(row.pixels));
   const result = { panes: row.panes, projection: row.projection, size: row.size, ...comparison, rejection: peelRejection(verdict),
     exhaustion: { ...row.exhaustion, expected }, layerDepth: row.layerDepth, cost: row.cost, wallMs: row.wallMs };
+  if (run.expect === 'accept' && result.rejection === null) peels.set(key(samples, row.projection, row.size, row.panes), decode(row.pixels));
   run.judged = [...(run.judged ?? []), result];
   if (run.expect === 'platform') {
     // A conforming per-sample position.z must pass; SwiftShader's per-pixel value must fail.

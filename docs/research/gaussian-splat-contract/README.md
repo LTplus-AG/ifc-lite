@@ -418,8 +418,10 @@ oracle. With the compare-side mutation applied, the GPU glass witness fails its
 reference, front-equality and rest-equality checks in every scene.
 
 ```sh
-~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=swiftshader|hardware
-~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs --backend=swiftshader|hardware
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=swiftshader
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs --backend=swiftshader
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs --backend=hardware
 node examples/gaussian-splat-spike/prepare.mjs   # fixtures for --real-glass
 ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware --real-glass=/abs/k-layer/checkout
 ```

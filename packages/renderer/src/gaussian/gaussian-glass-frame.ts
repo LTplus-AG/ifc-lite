@@ -149,6 +149,8 @@ export class GaussianGlassComposer {
 
   /** Clean slate on device loss/recovery or renderer rebuild; mode changes do not reset failures. */
   release(): void {
+    this.last = null;
+    this.report = NO_TRANSPARENT;
     this.failed = false;
     this.split?.split.destroy();
     this.split = null;

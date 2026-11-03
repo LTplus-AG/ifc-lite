@@ -103,15 +103,14 @@ async function run() {
   // the K-layer run reuses that choice (query string), so both render the identical scene.
   let chosen = params.has('pane') ? { pane: glazing.find(g => g.mesh.expressId === Number(params.get('pane'))), depth: Number(params.get('depth')) } : null;
   const search = [];
-  for (const pane of chosen ? [] : glazing.slice(0, 8)) for (const depth of [0.5, 0.9, 1.5]) {
+  paneSearch: for (const pane of chosen ? [] : glazing.slice(0, 8)) for (const depth of [0.5, 0.9, 1.5]) {
     const { placement } = pose(pane, depth);
     await place(away); const without = await quick();
     await place(placement); const withCapture = await quick();
     let changed = 0;
     for (let i = 0; i < without.rgba.length; i += 4) if (Math.abs(without.rgba[i + 1] - withCapture.rgba[i + 1]) > 8) changed++;
     search.push({ pane: pane.mesh.expressId, depth, changed });
-    if (changed >= 400) { chosen = { pane, depth }; break; }
-    if (chosen) break;
+    if (changed >= 400) { chosen = { pane, depth }; break paneSearch; }
   }
   if (!chosen?.pane) throw new Error(`no pane shows the capture: ${JSON.stringify(search)}`);
   const view = pose(chosen.pane, chosen.depth);

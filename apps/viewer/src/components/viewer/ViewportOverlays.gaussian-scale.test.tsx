@@ -17,7 +17,10 @@ function ifc(): FederatedModel {
   return model;
 }
 function capture(): FederatedModel {
-  return { ...fixtureModel('capture', { entities: [] }), gaussianSplat: {
+  // As the real capture shell (loadGaussianCapture finalizes with IFC4): only the gaussianSplat guard may exclude it.
+  const base = fixtureModel('capture', { entities: [] });
+  base.ifcDataStore!.schemaVersion = 'IFC4';
+  return { ...base, gaussianSplat: {
     handle: { id: 1, modelIndex: 0 }, format: 'gaussian-ply', count: 1, shDegree: 0,
     sourceCenterBounds: { min: [0, 0, 0], max: [1, 1, 1] },
     placement: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
@@ -42,7 +45,9 @@ describe('Gaussian capture scale disclosure (#8566)', () => {
   });
 
   it('does not treat a raw point cloud alongside a capture as metric IFC (#8566)', () => {
-    const scan = { ...fixtureModel('scan'), pointCloudHandleId: 42 };
+    const scanBase = fixtureModel('scan');
+    scanBase.ifcDataStore!.schemaVersion = 'IFC4'; // as the real point-cloud ingest store: only pointCloudHandleId may exclude it
+    const scan = { ...scanBase, pointCloudHandleId: 42 };
     useViewerStore.setState(fixtureModels(scan, capture()));
     const ui = mount();
     assert.equal(metric(ui), null);

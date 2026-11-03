@@ -49,19 +49,19 @@ index 3a95646e163f41cd2ee2ced87b337ea9eea7b84f..696a5aa7956c2d7ee59b0259d3755a41
      samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
    writeResult(out, result, [row]);
 diff --git a/scripts/perf/retained-qual-report.mjs b/scripts/perf/retained-qual-report.mjs
-index bf7fb31237b49a7d5d4c1d4718ff189ac8f90b1d..5e31e049f979b699b13a5ac2403b85d5c1c0066a 100644
+index 1a46e362b0a190ceaed260108b22fdbeaa75bb50..d2d1082eb77cfa6bba2a5215ae433028533d3961 100644
 --- a/scripts/perf/retained-qual-report.mjs
 +++ b/scripts/perf/retained-qual-report.mjs
-@@ -59,9 +59,15 @@ export function compare(rows) {
-   // attribute, and never told two machines apart reliably. Only the hashed machine id proves one
-   // machine across invocations; without it, matching static attributes (identical containers or VMs)
-   // prove nothing, so each invocation keeps its own host group and never pairs with another.
+@@ -60,9 +60,15 @@ export function compare(rows) {
+   // across invocations by the id. Sampled load stays in provenance but is not machine identity; and
+   // without a machine id (or any host record) matching static attributes prove nothing, so such rows
+   // keep their own invocation and never pair with another.
 -  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
 +  const hostKey = r => {
-+    const host = r.provenance?.host;
-+    if (!host) return null;
-+    const { loadAtStart, ...identity } = host;
-+    return identity.machineIdSha256 ? identity : { ...identity, unverifiedMachine: r.provenance.startedAt ?? r.provenance.input ?? null };
++    const p = r.provenance, host = p?.host;
++    const { loadAtStart, ...identity } = host ?? {};
++    const cohort = p?.pairingId && identity.machineIdSha256 ? { pairingId: p.pairingId } : { invocation: p?.startedAt ?? p?.input ?? null };
++    return { host: host ? identity : null, ...cohort };
 +  };
 +  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r)]);
    // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.

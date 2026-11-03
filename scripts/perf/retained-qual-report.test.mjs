@@ -144,3 +144,27 @@ test('7955: without a machine id, rows from separate invocations never pair on s
     assert.equal(compare(one).flags.unpaired, false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('7955: separate unpaired invocations on one machine stay separate fixtures, never pooled', () => {
+  const host = (load1) => ({ hostname: 'pop', machineIdSha256: 'machine-a', loadAtStart: { load1, load5: 1 } });
+  const run = (startedAt, branchMs, load1) => [...rows('base', [100, 101]), ...rows('branch', branchMs)]
+    .map(r => ({ ...r, kind: 'viewer', provenance: { kind: 'viewer', host: host(load1), startedAt } }));
+  // A/B base X vs branch Y, then base X vs branch Z: two comparisons, not one pooled one.
+  const report = compare([...run('run-y', [120, 121], 1), ...run('run-z', [80, 81], 2)]);
+  assert.equal(report.fixtures.length, 2);
+  assert.equal(report.flags.unpaired, false);
+  assert.deepEqual(report.fixtures.map(f => column({ fixtures: [f] }, 'totalMs').branchMedian).sort(), [120.5, 80.5].sort());
+  // A single-arm run beside an A/B run does not flip the A/B fixture to unpaired.
+  const single = rows('branch', [90, 91]).map(r => ({ ...r, kind: 'viewer', provenance: { kind: 'viewer', host: host(3), startedAt: 'single' } }));
+  const mixed = compare([...run('run-y', [120, 121], 1), ...single]);
+  assert.equal(mixed.fixtures.length, 2);
+  assert.ok(mixed.fixtures.some(f => f.base === 2 && f.branch === 2 && column({ fixtures: [f] }, 'totalMs').pairedN === 2));
+});
+
+test('7955: a shared pairing id without any host record never pairs separate invocations', () => {
+  const native = (side, round, startedAt) => ({ side, path: 'advanced_model', round, ok: true, wallMs: side === 'base' ? 100 : 90,
+    kind: 'native-retained-memory', provenance: { kind: 'native-retained-memory', pairingId: 'cohort-a', startedAt } });
+  const report = compare([native('base', 1, 'b1'), native('branch', 1, 'r1'), native('base', 2, 'b2'), native('branch', 2, 'r2')]);
+  assert.equal(report.flags.unpaired, true);
+  assert.ok(report.fixtures.every(f => f.columns.every(c => c.pairedN === 0)));
+});

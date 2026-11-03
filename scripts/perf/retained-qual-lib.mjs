@@ -56,11 +56,12 @@ export function gitIdentity(root) {
 }
 
 /** Host identity without secrets: the machine id is only ever recorded hashed. */
-// An empty file or systemd's first-boot 'uninitialized' is no id: hashing it would give every such host the same value.
+// A machine id is 32 hex digits (machine-id(5)). Anything else (empty, systemd's first-boot 'uninitialized',
+// a container's '0') or the all-zero placeholder identifies nothing: hashing it would give every such host one value.
 const readMachineId = path => {
   if (!existsSync(path)) return null;
   const id = readFileSync(path, 'utf8').trim();
-  return id && id !== 'uninitialized' ? id : null;
+  return /^[0-9a-f]{32}$/i.test(id) && !/^0+$/.test(id) ? id : null;
 };
 
 export function hostIdentity({ machineIdPaths = ['/etc/machine-id', '/var/lib/dbus/machine-id'] } = {}) {

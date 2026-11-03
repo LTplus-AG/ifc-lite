@@ -9,7 +9,7 @@
  * The depth attachment holds reverse-Z device depth (1 at the near plane,
  * cleared to 0), produced by `MathUtils.perspectiveReverseZ` (infinite far
  * plane) or `MathUtils.orthographicReverseZ`. Both are handled by one
- * formula over four projection-matrix entries rather than a mode switch, so
+ * formula over the projection-matrix entries rather than a mode switch, so
  * a pass never has to know which camera mode drew the frame:
  *
  *   device depth d = (m10 * z + m14) / (m11 * z + m15)   (z = view-space z, < 0)
@@ -17,21 +17,24 @@
  *
  * and the view-space x/y follow from NDC and the clip w (`m11 * z + m15`):
  *
- *   x = (ndcX * w - m12) / m0,  y = (ndcY * w - m13) / m5
+ *   x = (ndcX * w - m8 * z - m12) / m0,  y = (ndcY * w - m9 * z - m13) / m5
  *
- * (`m8`/`m9` are zero in both projections.) `shaders/depth-reconstruct.wgsl.ts`
+ * (`m8`/`m9` carry the perspective lens shift, #8688; they are zero for a
+ * centred frustum.) `shaders/depth-reconstruct.wgsl.ts`
  * is the WGSL twin of these functions; the unit tests round-trip real
  * projection matrices through the TS side.
  */
 
 import type { Mat4 } from './types.js';
 
-/** The projection entries the reconstruction needs, packed as two vec4s. */
+/** The projection entries the reconstruction needs, packed as three vec4s. */
 export interface DepthReconstructParams {
   /** `[m10, m11, m14, m15]`: device depth to view-space z. */
   depth: [number, number, number, number];
   /** `[m0, m5, m12, m13]`: NDC x/y (with clip w) to view-space x/y. */
   xy: [number, number, number, number];
+  /** `[m8, m9, 0, 0]`: the view-z shear of x/y (perspective lens shift, #8688). */
+  shear: [number, number, number, number];
 }
 
 /** Extract the reconstruction params from a (column-major) projection matrix. */
@@ -40,6 +43,7 @@ export function depthReconstructParams(projection: Mat4): DepthReconstructParams
   return {
     depth: [m[10], m[11], m[14], m[15]],
     xy: [m[0], m[5], m[12], m[13]],
+    shear: [m[8], m[9], 0, 0],
   };
 }
 
@@ -64,7 +68,8 @@ export function viewPositionFromDepth(
   const z = viewZFromDepth(depth, p);
   const w = clipWFromViewZ(z, p);
   const [m0, m5, m12, m13] = p.xy;
-  return [(ndcX * w - m12) / m0, (ndcY * w - m13) / m5, z];
+  const [m8, m9] = p.shear;
+  return [(ndcX * w - m8 * z - m12) / m0, (ndcY * w - m9 * z - m13) / m5, z];
 }
 
 /**

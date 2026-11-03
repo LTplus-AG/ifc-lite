@@ -6,6 +6,7 @@
 
 import type { GaussianEncodeCamera, GaussianEncodeTarget, GaussianPackedSource, GaussianRowFilter } from './gaussian-backend.js';
 import type { GaussianSplatBounds, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
+import type { GaussianCompositionReport } from './gaussian-composition.js';
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import { clipIsActive, pointClipped } from '../scene-raycaster.js';
 import type { PickClipState } from '../pick-types.js';
@@ -75,12 +76,13 @@ function attributeBytes(a: NormalizedGaussianAttributes): number {
 export function layerStats(
   live: readonly { visible: boolean; attributes: NormalizedGaussianAttributes | null }[],
   source: GaussianPackedSource | undefined, gpuBytes: number, drawnFrames: number, lastEncodeMs: number,
+  composition: GaussianCompositionReport,
 ): GaussianSplatStats {
   return {
     assets: live.length, splats: source?.opacities.length ?? 0,
     visibleAssetSplats: live.filter((r) => r.visible).reduce((sum, r) => sum + (r.attributes?.count ?? 0), 0),
     cpuBytes: packedCpuBytes(source) + live.reduce((sum, r) => sum + (r.attributes ? attributeBytes(r.attributes) : 0), 0),
-    gpuBytes, drawnFrames, lastEncodeMs, composition: 'over-transparent-approximate', clipping: 'centre',
+    gpuBytes, drawnFrames, lastEncodeMs, composition: composition.composition, compositionReport: composition, clipping: 'centre',
   };
 }
 

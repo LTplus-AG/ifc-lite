@@ -7,6 +7,9 @@ export { normalizeGaussianAttributes, type GaussianAttributeSource, type Normali
 export type { GaussianBlocker, GaussianCapability, GaussianReadiness } from './gaussian-readiness.js';
 export { GaussianSplatError, type GaussianSplatErrorCode } from './gaussian-errors.js';
 export type {
+  GaussianComposition, GaussianCompositionFallback, GaussianCompositionMode, GaussianCompositionReport, GaussianTransparentLayers,
+} from './gaussian-composition.js';
+export type {
   GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle,
   GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats,
 } from './gaussian-types.js';

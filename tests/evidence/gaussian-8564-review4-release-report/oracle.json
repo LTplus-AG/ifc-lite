@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-glass-frame.ts",
+  "mutation": "tests/evidence/gaussian-8564-review4-release-report/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
+  "why": "#8564 review4: reverse application retains a released frame composition; the real-frame release/readback witness must fail."
+}

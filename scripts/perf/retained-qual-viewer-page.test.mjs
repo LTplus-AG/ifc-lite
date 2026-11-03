@@ -155,3 +155,61 @@ test('8413: scene accounting waits for terminal, and the terminal baseline still
   h.renderer.frame = { timestamp: 30, drawCalls: 2 }; h.tick(31);
   assert.equal(h.q().settledFrameMs, 30);
 });
+
+test('7955: page-created workers are counted by script, peak live follows terminate()', () => {
+  class FakeWorker { constructor(url) { this.url = url; } terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const make = url => vm.runInContext(`new Worker(${JSON.stringify(url)})`, context);
+  const a = make('https://h/assets/retained.worker-abc.js?worker_file&type=module');
+  make('https://h/assets/retained.worker-abc.js');
+  a.terminate();
+  make('blob:https://h/1234');
+  const w = context[PAGE_KEY].workers;
+  assert.equal(w.created, 3);
+  assert.equal(w.terminated, 1);
+  assert.equal(w.peakLive, 2);
+  assert.deepEqual({ ...w.byScript }, { 'https://h/assets/retained.worker-abc.js?worker_file&type=module': 1, 'https://h/assets/retained.worker-abc.js': 1, 'blob:https://h/1234': 1 });
+  // The context's Worker is now the wrapper, so check against the original class the page supplied.
+  const wrapped = make('x');
+  assert.ok(wrapped instanceof FakeWorker, 'still a real (original) Worker');
+  assert.equal(wrapped.url, 'x', 'the original constructor ran with the URL');
+});
+
+// PR #8540: same basenames are distinct scripts; termination is per worker.
+test('8540: distinct worker paths and repeated termination preserve live counts', () => {
+  class FakeWorker { terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const a = vm.runInContext('new Worker("/parser/worker.js")', context);
+  a.terminate(); a.terminate();
+  vm.runInContext('new Worker("/parser/worker.js"); new Worker("/renderer/worker.js")', context);
+  const w = context[PAGE_KEY].workers;
+  assert.equal(w.terminated, 1);
+  assert.equal(w.peakLive, 2);
+  assert.deepEqual({ ...w.byScript }, { '/parser/worker.js': 2, '/renderer/worker.js': 1 });
+});
+
+test('8540: blob identities and query variants remain distinct worker scripts', () => {
+  class FakeWorker { terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  const urls = ['blob:https://h/first', 'blob:https://h/second', '/worker.js?version=1', '/worker.js?version=2'];
+  for (const url of [...urls, urls[0]]) vm.runInContext(`new Worker(${JSON.stringify(url)})`, context);
+  assert.deepEqual({ ...context[PAGE_KEY].workers.byScript }, Object.fromEntries(urls.map((url, i) => [url, i === 0 ? 2 : 1])));
+});
+
+test('7955: a Worker constructor that throws counts no worker and the error still reaches the page', () => {
+  class FakeWorker { constructor(url) { if (url === 'bad') throw new SyntaxError('invalid worker URL'); } terminate() {} }
+  const context = vm.createContext({ Worker: FakeWorker, performance: { now: () => 0 }, PerformanceObserver: class { observe() {} },
+    document: { addEventListener() {} }, requestAnimationFrame: () => {} });
+  vm.runInContext(INIT_SCRIPT, context);
+  assert.throws(() => vm.runInContext('new Worker("bad")', context), /invalid worker URL/);
+  const w = context[PAGE_KEY].workers;
+  assert.deepEqual([w.created, w.peakLive, { ...w.byScript }], [0, 0, {}], 'no worker exists, so none is counted');
+  vm.runInContext('new Worker("/ok.js")', context);
+  assert.deepEqual([w.created, w.peakLive, { ...w.byScript }], [1, 1, { '/ok.js': 1 }]);
+});

@@ -171,7 +171,10 @@ test('7955: page-created workers are counted by script, peak live follows termin
   assert.equal(w.terminated, 1);
   assert.equal(w.peakLive, 2);
   assert.deepEqual({ ...w.byScript }, { 'https://h/assets/retained.worker-abc.js?worker_file&type=module': 1, 'https://h/assets/retained.worker-abc.js': 1, 'blob:https://h/1234': 1 });
-  assert.ok(vm.runInContext('new Worker("x") instanceof Worker', context), 'still a Worker');
+  // The context's Worker is now the wrapper, so check against the original class the page supplied.
+  const wrapped = make('x');
+  assert.ok(wrapped instanceof FakeWorker, 'still a real (original) Worker');
+  assert.equal(wrapped.url, 'x', 'the original constructor ran with the URL');
 });
 
 // PR #8540: same basenames are distinct scripts; termination is per worker.

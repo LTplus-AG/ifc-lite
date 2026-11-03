@@ -38,6 +38,7 @@
  */
 import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
 import { opaqueVisibilityWgsl } from './opaque-visibility.wgsl.js';
+import { depthNudgeWgsl } from './depth-nudge.wgsl.js';
 
 /**
  * Bind-group index of the hovered-entity uniform (`vec4<u32>`, x = id) in the
@@ -84,25 +85,39 @@ export function selectionMaskFragmentSource(instanced = false, samples?: number)
           @location(9) @interpolate(flat) sectionEntityId: u32,
           @location(6) eyePos: vec3<f32>,${instanceVaryings}
           ${samples === undefined ? '' : '@location(8) @interpolate(linear, sample) geometricDepth: f32,'}
+          @location(3) @interpolate(flat) zHash: u32,
         }
         ${occurrenceFilterWgsl(instanced)}
+        ${samples === undefined ? `
+        ${depthNudgeWgsl}
+        // The visible outputs depth-test against the scene, so they write the
+        // same per-fragment nudged depth the mesh pass wrote (main.wgsl.ts
+        // meshFragDepth); the vertex stage no longer nudges in perspective.
+        struct MaskOut {
+          @location(0) mask: vec4<f32>,
+          @builtin(frag_depth) depth: f32,
+        }
+        fn visibleMask(input: MaskInput, mask: vec4<f32>) -> MaskOut {
+          return MaskOut(mask, nudgedFragDepth(input.fragPos.z, input.zHash, uniforms.viewProj));
+        }` : `
+        fn visibleMask(input: MaskInput, mask: vec4<f32>) -> vec4<f32> { return mask; }`}
 
         fn isCut(input: MaskInput) -> bool {
           return sectionClipped(clipSpacePos(input.worldPos, input.eyePos), input.sectionEntityId);
         }
 
         @fragment
-        fn fs_mask_selected_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> @location(0) vec4<f32> {
+        fn fs_mask_selected_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> ${samples === undefined ? 'MaskOut' : '@location(0) vec4<f32>'} {
           if (!isSelectedOccurrence(input) || isCut(input)) { discard; }
           ${samples === undefined ? '' : 'if (geometricallyOccluded(input.fragPos.xy, input.geometricDepth, sampleIndex)) { discard; }'}
-          return vec4<f32>(1.0, 0.0, 0.0, 0.0);
+          return visibleMask(input, vec4<f32>(1.0, 0.0, 0.0, 0.0));
         }
 
         @fragment
-        fn fs_mask_hover_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> @location(0) vec4<f32> {
+        fn fs_mask_hover_visible(input: MaskInput${samples === undefined ? '' : ', @builtin(sample_index) sampleIndex: u32'}) -> ${samples === undefined ? 'MaskOut' : '@location(0) vec4<f32>'} {
           if (!isHoveredOccurrence(input) || isCut(input)) { discard; }
           ${samples === undefined ? '' : 'if (geometricallyOccluded(input.fragPos.xy, input.geometricDepth, sampleIndex)) { discard; }'}
-          return vec4<f32>(0.0, 1.0, 0.0, 0.0);
+          return visibleMask(input, vec4<f32>(0.0, 1.0, 0.0, 0.0));
         }
 
         @fragment

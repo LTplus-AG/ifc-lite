@@ -76,7 +76,7 @@ export function CaptureModelPanel({ model, title, onRemove, onReload, rootProps 
           </button>
         </li>
         {state.state !== 'resident' && (
-          <li role="status" data-testid="capture-model-state" className="px-2 py-1 text-2xs text-zinc-600 dark:text-zinc-400">{t(label.key, label.values)}</li>
+          <li className="px-2 py-1 text-2xs text-zinc-600 dark:text-zinc-400"><output data-testid="capture-model-state">{t(label.key, label.values)}</output></li>
         )}
       </ul>
     </div>

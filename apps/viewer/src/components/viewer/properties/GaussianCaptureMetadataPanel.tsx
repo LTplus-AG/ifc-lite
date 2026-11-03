@@ -76,7 +76,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
           <Row icon={icon(ShieldAlert)} label={t('gaussianCapture.calibration')}>{t('gaussianCapture.calibration.uncalibrated')}</Row>
           <Row icon={icon(Ruler)} label={t('gaussianCapture.scale')}>{t('gaussianCapture.scale.unknown')}</Row>
           <Row icon={icon(ScanLine)} label={t('gaussianCapture.rendererState')}>
-            <span role="status" data-testid="gaussian-capture-state">{t(label.key, label.values)}</span>
+            <output data-testid="gaussian-capture-state">{t(label.key, label.values)}</output>
           </Row>
           {gaussianNeedsReload(state) && (
             <div className="px-3 py-2">

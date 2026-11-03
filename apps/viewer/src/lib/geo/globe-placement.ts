@@ -16,12 +16,20 @@
  *     True-length geometry is drawn at its true length either way.
  * Convergence variation is left out: it nearly cancels against the tangent
  * plane's own meridian convergence (see the research note in the PR).
+ *
+ * An `IfcRigidOperation` into a projected CRS is not estimated: the schema
+ * says its coordinates already are map coordinates ("an offset in the CRS …
+ * not any conversion or distortion"), so the only faithful placement projects
+ * every point, and Auto takes Exact for it at any size. An `IfcMapConversion`
+ * (plain or Scaled) maps a local engineering CRS, which the anchor draws as
+ * authored; Auto keeps the estimate for it.
  */
 
 import proj4 from 'proj4';
 import type { GeoMapping } from './geo-warp';
 import type { ViewerBounds } from './geo-lattice';
 import { computeGridPointFactors, projectedDefinitionInMetres } from './proj4-utils';
+import type { GridCoordinateSource } from './ground-scale';
 
 export type GlobePlacementMode = 'auto' | 'anchor' | 'exact';
 export type ResolvedGlobePlacement = 'anchor' | 'exact';
@@ -43,8 +51,8 @@ export interface AnchorErrorEstimate {
 export interface AnchorErrorOptions {
   /** The mapping's proj4 definition (or registered `IFC-WKT:` name). */
   projDef: string;
-  /** True for grid-coordinate sources (`origin.gridSource !== null`). */
-  gridCoordinates: boolean;
+  /** `origin.gridSource`: why the geometry is map coordinates, or null for true-length geometry. */
+  gridSource: GridCoordinateSource | null;
   /** The geoid the mapping applies (`() => 0` when heights are ellipsoidal). */
   geoid: (lat: number, lon: number) => number;
   /** Map coordinates of the anchor (`computeCesiumModelOrigin`), metres. */
@@ -78,7 +86,7 @@ export function estimateAnchorError(
   const top = mapping.toGeodetic(xMid, bounds.max.y, zMid);
   const heightSpan = bottom && top ? Math.abs(top.orthometricHeight - bottom.orthometricHeight) : 0;
   const anchorUndulation = options.geoid(anchor.latitude, anchor.longitude);
-  const kAnchor = options.gridCoordinates
+  const kAnchor = options.gridSource !== null
     ? pointScaleAt(options.projDef, options.anchorMap.easting, options.anchorMap.northing, 'the anchor')
     : null;
   const toMap = kAnchor !== null ? proj4('WGS84', projectedDefinitionInMetres(options.projDef)) : null;
@@ -103,9 +111,26 @@ export function estimateAnchorError(
   return { total: curvature + plumb + geoidSlope + scaleVariation, curvature, plumb, geoidSlope, scaleVariation };
 }
 
-/** Auto resolves by the estimate; the explicit modes are taken as asked. */
-export function resolveGlobePlacement(mode: GlobePlacementMode, estimateMetres: number | null): ResolvedGlobePlacement {
+/**
+ * The placement the georeference itself prescribes, or null when it leaves
+ * the choice to the estimate: Exact for an `IfcRigidOperation` into a
+ * projected CRS, whose coordinates are map coordinates.
+ */
+export function prescribedGlobePlacement(gridSource: GridCoordinateSource | null): ResolvedGlobePlacement | null {
+  return gridSource === 'rigidOperation' ? 'exact' : null;
+}
+
+/**
+ * Auto takes the prescribed placement, else resolves by the estimate; the
+ * explicit modes are taken as asked.
+ */
+export function resolveGlobePlacement(
+  mode: GlobePlacementMode,
+  estimateMetres: number | null,
+  prescribed: ResolvedGlobePlacement | null = null,
+): ResolvedGlobePlacement {
   if (mode !== 'auto') return mode;
+  if (prescribed) return prescribed;
   return estimateMetres !== null && estimateMetres > AUTO_EXACT_THRESHOLD_M ? 'exact' : 'anchor';
 }
 
@@ -115,6 +140,8 @@ export interface GlobePlacementPlan {
   mode: ResolvedGlobePlacement;
   /** Null when the model has no bounds to estimate over. */
   estimate: AnchorErrorEstimate | null;
+  /** `prescribedGlobePlacement`: what the georeference itself requires, if anything. */
+  prescribed: ResolvedGlobePlacement | null;
   /**
    * Identity of everything an Exact GLB is baked from (anchor and mapping
    * inputs). Empty in Anchor mode, whose GLB does not depend on the georeference.
@@ -130,6 +157,7 @@ export function planGlobePlacement(
 ): GlobePlacementPlan {
   // Anchor needs no estimate to place; it is still computed so the panel can show it.
   const estimate = bounds ? estimateAnchorError(mapping, bounds, options) : null;
-  const mode = resolveGlobePlacement(requested, estimate?.total ?? null);
-  return { requested, mode, estimate, key: mode === 'exact' ? JSON.stringify(['exact', options.mappingKey]) : '' };
+  const prescribed = prescribedGlobePlacement(options.gridSource);
+  const mode = resolveGlobePlacement(requested, estimate?.total ?? null, prescribed);
+  return { requested, mode, estimate, prescribed, key: mode === 'exact' ? JSON.stringify(['exact', options.mappingKey]) : '' };
 }

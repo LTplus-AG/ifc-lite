@@ -275,7 +275,11 @@ export function useCesiumBridge({
 
       bridgeRef.current = bridge;
       cameraBridgeRef.current = cameraBridge;
-      setGlobePlacementStatus({ mode: bridge.placement.mode, anchorErrorMetres: bridge.placement.estimate?.total ?? null });
+      setGlobePlacementStatus({
+        mode: bridge.placement.mode,
+        anchorErrorMetres: bridge.placement.estimate?.total ?? null,
+        prescribed: bridge.placement.prescribed,
+      });
       setBridgeVersion((v) => v + 1);
     })();
 

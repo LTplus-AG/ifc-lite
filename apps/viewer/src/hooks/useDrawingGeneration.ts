@@ -881,8 +881,8 @@ export function useDrawingGeneration({
       // The untouched placeholder plane is not a cut the user made: saving it
       // would let the next restore (a reload, or the viewport remounting at a
       // layout breakpoint) turn it into a real, cutting plane A.
-      const generatedForModelId = useViewerStore.getState().activeModelId;
-      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, isPristineSectionPlane(sectionPlane) ? null : config);
+      const { activeModelId: generatedForModelId, sectionPlane: livePlane } = useViewerStore.getState();
+      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, isPristineSectionPlane(livePlane) ? null : config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');

@@ -8,7 +8,7 @@
 // ('base'|'branch'), `path`, `round`, `*Ms` phases and integer count
 // fingerprints; MEDIAN and spread-percent as the noise floor.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, homedir, hostname, loadavg, platform, arch, release, totalmem } from 'node:os';
@@ -187,13 +187,15 @@ export function resetPartial(out) {
 
 /** Writes `runs.jsonl` (ab-report row convention) and `result.json`; returns the result object. */
 export function writeResult(out, result, rows) {
+  // startedAt has millisecond resolution; two runs started together must still be two invocations.
+  result.invocationId ??= randomUUID();
   if (Number.isInteger(result.rounds) && result.rounds > 0 && result.arms && result.fixtures) {
     const expected = result.rounds * result.arms.length * result.fixtures.length;
     const observed = rows.filter(row => Number.isInteger(row.round) && row.round > 0).length;
     result.cohort = { expected, observed, complete: observed === expected };
   }
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, pairingId: result.pairingId, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
+  writeFileSync(join(out, 'runs.jsonl'), rows.map(row => JSON.stringify({ ...row, kind: result.kind, provenance: { kind: result.kind, host: result.host, commit: result.commit, source: result.source, arms: result.arms, binaries: result.binaries, engineManifestSha256: result.engineManifestSha256, exclusivity: result.exclusivity, startedAt: result.startedAt, invocationId: result.invocationId, pairingId: result.pairingId, cohort: result.cohort } })).join('\n') + (rows.length ? '\n' : ''));
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

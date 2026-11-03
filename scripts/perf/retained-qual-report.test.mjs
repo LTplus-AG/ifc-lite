@@ -168,3 +168,22 @@ test('7955: a shared pairing id without any host record never pairs separate inv
   assert.equal(report.flags.unpaired, true);
   assert.ok(report.fixtures.every(f => f.columns.every(c => c.pairedN === 0)));
 });
+
+test('7955: two invocations started in the same millisecond are still two invocations', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-same-ms-'));
+  try {
+    const host = { hostname: 'pop', machineIdSha256: 'machine-a', loadAtStart: { load1: 1, load5: 1 } };
+    const inputs = ['base', 'branch'].map(side => {
+      const out = join(dir, side);
+      writeResult(out, { kind: 'cli-retained-export', startedAt: '2026-11-03T06:00:00.000Z', host },
+        [{ side, path: '/m/a.ifc', round: 1, ok: true, totalMs: side === 'base' ? 100 : 90 }]);
+      return out;
+    });
+    const ids = inputs.map(input => JSON.parse(readFileSync(join(input, 'result.json'), 'utf8')).invocationId);
+    assert.ok(ids.every(Boolean) && ids[0] !== ids[1], 'each invocation records its own id');
+    const report = compare(readRows(inputs));
+    assert.equal(report.flags.unpaired, true);
+    assert.equal(report.fixtures.length, 2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

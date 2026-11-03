@@ -94,6 +94,14 @@ export function updateCameraMatrices(state: CameraInternalState): void {
       state.camera.near,
       state.camera.far
     );
+    // Lens shift (#8688): clip.xy += shift * clip.w, and clip.w = -z_view
+    // (m[11] = -1), so the third column's x/y entries carry it. Only the x/y
+    // rows change, so reverse-Z depth is untouched.
+    const { x: sx, y: sy } = state.lensShift;
+    if (sx !== 0 || sy !== 0) {
+      state.projMatrix.m[8] = -sx;
+      state.projMatrix.m[9] = -sy;
+    }
   }
 
   state.viewProjMatrix = MathUtils.multiply(state.projMatrix, state.viewMatrix);

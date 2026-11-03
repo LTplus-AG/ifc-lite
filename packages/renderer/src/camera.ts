@@ -61,6 +61,7 @@ export class Camera {
       orthoSize: DEFAULT_ORTHO_SIZE, // Half-height in world units
       sceneBounds: null,
       orbitAnchorBounds: null,
+      lensShift: { x: 0, y: 0 },
     };
 
     // All pose writers publish the ordinary and relative frames together.
@@ -134,6 +135,31 @@ export class Camera {
     if (!Number.isFinite(fov)) return;
     this.state.camera.fov = Math.max(0.01, Math.min(Math.PI - 0.01, fov));
     this.updateMatrices();
+  }
+
+  /**
+   * Shift the perspective image by `(x, y)` in normalised device coordinates
+   * without turning the camera, the "shift lens" of architectural photography
+   * (issue #8688). A point that would project to NDC `p` projects to `p + (x, y)`.
+   * Keep the camera level and shift vertically for two-point perspective, so
+   * world-vertical edges stay vertical on screen. `(0, 0)`, the default, is the
+   * ordinary centred frustum. Orthographic projection ignores the shift.
+   *
+   * Picking, sections, overlays and shadows read the same projection matrix,
+   * so they follow the shift. Fit-to-view still frames the target at the
+   * centre of the unshifted frustum. Non-finite values are rejected.
+   */
+  setLensShift(x: number, y: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const shift = this.state.lensShift;
+    if (shift.x === x && shift.y === y) return;
+    this.state.lensShift = { x, y };
+    this.updateMatrices();
+  }
+
+  /** The current perspective lens shift in NDC; a copy. */
+  getLensShift(): { x: number; y: number } {
+    return { ...this.state.lensShift };
   }
 
   /**

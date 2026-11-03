@@ -36,6 +36,8 @@ export interface SkyCamera {
   fovY: number;
   /** Viewport width / height. */
   aspect: number;
+  /** Perspective lens shift in NDC (`Camera.getLensShift()`); `{0, 0}` when absent. */
+  lensShift?: { x: number; y: number };
 }
 
 const SKY_UNIFORM_FLOATS = 28; // 7 × vec4 rows = 112 bytes
@@ -115,9 +117,9 @@ export class SkyPass {
     u[12] = env.sunDirection[0]; u[13] = env.sunDirection[1]; u[14] = env.sunDirection[2];
     u[15] = env.sunIntensity;
     u[16] = env.sky.zenith[0]; u[17] = env.sky.zenith[1]; u[18] = env.sky.zenith[2];
-    u[19] = 0;
+    u[19] = camera.lensShift?.x ?? 0;
     u[20] = env.sky.horizon[0]; u[21] = env.sky.horizon[1]; u[22] = env.sky.horizon[2];
-    u[23] = 0;
+    u[23] = camera.lensShift?.y ?? 0;
     u[24] = env.sky.ground[0]; u[25] = env.sky.ground[1]; u[26] = env.sky.ground[2];
     u[27] = 0;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, u);

@@ -238,6 +238,8 @@ export interface CameraFrustumParams {
   boundsMax: readonly [number, number, number];
   /** Lateral expansion so a caster just off-screen still reaches the map. */
   margin?: number;
+  /** Perspective lens shift in NDC (#8688); ignored when `ortho`. */
+  lensShift?: { x: number; y: number };
 }
 
 /**
@@ -267,19 +269,24 @@ export function cameraFrustumFocusCorners(p: CameraFrustumParams): Vec3[] | null
   nearD = Math.max(nearD, 0.01);
 
   const margin = Math.min(Math.max(p.margin ?? 0.15, 0), 2);
-  const half = (d: number): { w: number; h: number } => {
-    const h = (p.ortho ? p.orthoHalfHeight : d * Math.tan(p.fovY / 2)) * (1 + margin);
-    return { w: h * p.aspect, h };
+  // A lens shift moves the visible window by `-shift` half-extents (#8688).
+  const shiftX = p.ortho ? 0 : (p.lensShift?.x ?? 0);
+  const shiftY = p.ortho ? 0 : (p.lensShift?.y ?? 0);
+  const half = (d: number): { w: number; h: number; cx: number; cy: number } => {
+    const h0 = p.ortho ? p.orthoHalfHeight : d * Math.tan(p.fovY / 2);
+    const h = h0 * (1 + margin);
+    return { w: h * p.aspect, h, cx: -shiftX * h0 * p.aspect, cy: -shiftY * h0 };
   };
 
   const out: Vec3[] = [];
   for (const d of [nearD, farD]) {
-    const { w, h } = half(d);
+    const { w, h, cx, cy } = half(d);
     for (const sx of [-1, 1]) {
       for (const sy of [-1, 1]) {
-        const x = p.eye.x + p.forward.x * d + p.right.x * (sx * w) + p.up.x * (sy * h);
-        const y = p.eye.y + p.forward.y * d + p.right.y * (sx * w) + p.up.y * (sy * h);
-        const z = p.eye.z + p.forward.z * d + p.right.z * (sx * w) + p.up.z * (sy * h);
+        const ox = cx + sx * w, oy = cy + sy * h;
+        const x = p.eye.x + p.forward.x * d + p.right.x * ox + p.up.x * oy;
+        const y = p.eye.y + p.forward.y * d + p.right.y * ox + p.up.y * oy;
+        const z = p.eye.z + p.forward.z * d + p.right.z * ox + p.up.z * oy;
         out.push({
           x: Math.min(Math.max(x, p.boundsMin[0]), p.boundsMax[0]),
           y: Math.min(Math.max(y, p.boundsMin[1]), p.boundsMax[1]),

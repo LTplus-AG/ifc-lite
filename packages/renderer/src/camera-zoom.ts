@@ -133,8 +133,11 @@ export function shiftTargetTowardsMouse(
   // rather than cursor-anchored, and the pose is left as it was found.
   if (!isUsableUp(state.camera.up)) return;
 
-  const ndcX = (mouseX / canvasWidth) * 2 - 1;
-  const ndcY = 1 - (mouseY / canvasHeight) * 2;
+  // The target plane spans the unshifted frustum, so remove the perspective
+  // lens shift (#8688) before reading the cursor against it.
+  const shift = state.projectionMode === 'orthographic' ? { x: 0, y: 0 } : state.lensShift;
+  const ndcX = (mouseX / canvasWidth) * 2 - 1 - shift.x;
+  const ndcY = 1 - (mouseY / canvasHeight) * 2 - shift.y;
 
   const right = normalizedScreenRight(forward, state.camera.up);
   const actualUp = MathUtils.cross(right, forward);

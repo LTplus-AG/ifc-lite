@@ -85,10 +85,16 @@ export function isAllocationFailure(error: unknown, panicked: boolean): boolean 
 /** Where a run was when it failed: before the engine loaded, before the first event, or after. */
 export type HostPhase = 'engine_missing' | 'startup' | 'worker_crash';
 
-/** The host's terminal error for a failed run: `out_of_memory` when it is one, else the phase it failed in. */
+/**
+ * The host's terminal error for a failed run: `out_of_memory` when it is one; any
+ * other WebAssembly trap is a crash whatever phase it hit (a trap before the
+ * first event must not be classified by its text, where "memory access out of
+ * bounds" reads as memory); anything else is the phase it failed in.
+ */
 export function hostFailure(error: unknown, phase: HostPhase, panicked: boolean): { code: RetainedHostErrorCode; message: string } {
   const message = error instanceof Error ? error.message : String(error);
-  return { code: isAllocationFailure(error, panicked) ? 'out_of_memory' : phase, message };
+  const trap = typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError;
+  return { code: isAllocationFailure(error, panicked) ? 'out_of_memory' : trap ? 'worker_crash' : phase, message };
 }
 
 /**

@@ -155,6 +155,13 @@ test('#7955 a host failure is out_of_memory when it is one, otherwise the phase 
   assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('memory access out of bounds'), 'worker_crash', false),
     { code: 'worker_crash', message: 'memory access out of bounds' });
   assert.deepEqual(hostFailure(new TypeError('no engine'), 'engine_missing', false), { code: 'engine_missing', message: 'no engine' });
+  for (const phase of ['startup', 'engine_missing'] as const) {
+    assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('memory access out of bounds'), phase, false),
+      { code: 'worker_crash', message: 'memory access out of bounds' }, `a non-allocation trap during ${phase} is a crash, not classified by its text`);
+    assert.equal(hostFailure(new WebAssembly.RuntimeError('unreachable'), phase, false).code, 'out_of_memory', `an allocation failure during ${phase} stays memory`);
+  }
+  assert.deepEqual(hostFailure(new TypeError('session.run is not a function'), 'startup', false),
+    { code: 'startup', message: 'session.run is not a function' }, 'a non-trap startup error keeps its phase');
 });
 
 test('#7955 a trap that escapes the awaited run reaches the host as its own uncaught error or rejection', () => {

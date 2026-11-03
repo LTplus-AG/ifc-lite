@@ -12,11 +12,14 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup, click, waitFor } from '@/test/render';
+import { render, cleanup, click, waitFor, press, advance } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { ExportDialog } from './ExportDialog';
+import { MergedExporter } from '@ifc-lite/export';
+import { UsdExportDialog } from './UsdExportDialog';
+import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 import { GLBExportDialog } from './GLBExportDialog';
 import { listExportModels } from './export-model-selection';
 
@@ -32,7 +35,7 @@ function captureModel(id: string): FederatedModel {
   } as FederatedModel;
 }
 
-const NOTICE = '1 Gaussian capture is loaded. Captures are not included in exports.';
+const NOTICE = '1 Gaussian capture is loaded. Capture data is not included in exports. BCF snapshots can show visible captures.';
 const notice = () => document.querySelector('[data-testid="capture-export-notice"]')?.textContent ?? null;
 const choices = () => [...document.querySelectorAll('[role="combobox"]')].map(node => node.textContent ?? '');
 const openDialog = (ui: HTMLElement, label: string) =>
@@ -61,6 +64,51 @@ describe('exports with a Gaussian capture loaded (#8568)', () => {
     click(action);
     await waitFor(() => downloadedNames().length === 1, 'the IFC export did not download');
     assert.match(downloadedNames()[0], /^house.*\.ifc$/);
+  });
+
+  it('merged STEP only consults IFC participants for portability and visibility (#8745)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const first = { ...fixtureModel('house.ifc'), ifcDataStore, schemaVersion: 'IFC4' as const };
+    const second = { ...fixtureModel('annex.ifc', { idOffset: 1_000_000 }), ifcDataStore, schemaVersion: 'IFC4' as const };
+    useViewerStore.setState({ ...fixtureModels(first, second, captureModel('plant.splat')), dirtyModels: new Set() });
+    const resources = mock.method(modelAppearanceAssets, 'exportResources');
+    const merge = mock.method(MergedExporter.prototype, 'exportBlobAsync');
+    const ui = render(<ExportDialog surface="ribbon" />);
+    openDialog(ui, 'Export IFC');
+    const scope = [...document.querySelectorAll('[role="combobox"]')].find(node => node.textContent?.includes('Single Model'));
+    assert.ok(scope);
+    press(scope, 'ArrowDown'); await advance(10);
+    const merged = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent?.includes('Merged (All Models)'));
+    assert.ok(merged);
+    click(merged); await advance(10);
+    const visibleOnly = document.querySelector('[role="switch"]');
+    assert.ok(visibleOnly);
+    click(visibleOnly);
+    click([...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export')!);
+    await waitFor(() => downloadedNames().length === 1, 'merged IFC export did not download');
+    assert.match(downloadedNames()[0], /_merged\.ifc$/);
+    for (const spy of [resources]) {
+      const ids = spy.mock.calls.map(call => call.arguments[0]);
+      assert.ok(ids.includes(first.id) && ids.includes(second.id), 'both IFC models participate');
+      assert.ok(!ids.includes('plant.splat'), 'capture is never consulted by export guards');
+    }
+    const options = merge.mock.calls[0].arguments[0];
+    assert.deepEqual([...options.hiddenEntityIdsByModel!.keys()], [first.id, second.id]);
+    assert.deepEqual([...options.isolatedEntityIdsByModel!.keys()], [first.id, second.id]);
+  });
+
+  it('USD offers the STEP source and excludes Gaussian PLY and splat sources (#8745)', () => {
+    const ifc = { ...fixtureModel('house.ifc'), sourceFile: new File(['IFC'], 'house.ifc') };
+    const captures = ['plant.splat', 'plant.ply'].map(id => ({ ...captureModel(id), sourceFile: new File(['capture'], id) }));
+    useViewerStore.setState({ ...fixtureModels(ifc, ...captures), dirtyModels: new Set() });
+    const ui = render(<UsdExportDialog surface="ribbon" />);
+    openDialog(ui, 'Export USD');
+    const text = document.querySelector('[data-export-dialog-shell]')?.textContent ?? '';
+    assert.match(text, /house/);
+    assert.doesNotMatch(text, /plant/);
+    assert.match(notice() ?? '', /BCF snapshots can show visible captures/);
+    const action = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export');
+    assert.ok(action && !action.disabled);
   });
 
   it('with only a capture loaded, Export IFC offers nothing to export and says why', () => {

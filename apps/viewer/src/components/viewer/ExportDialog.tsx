@@ -324,10 +324,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     // STEP vs changes-JSON branch), not just the schema-derived extension.
     let exportedFormat: ExportFormat | null = null;
     try {
-      // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
-        assertPortableMergeSupported(models.keys());
-        const hydratedModels = await Promise.all(exportableModels(models).map(async (model) => ({
+        const mergeModels = exportableModels(models), mergeModelIds = mergeModels.map(model => model.id);
+        assertPortableMergeSupported(mergeModelIds);
+        const hydratedModels = await Promise.all(mergeModels.map(async (model) => ({
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
@@ -346,7 +346,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         }
 
         const visibility = visibleOnly
-          ? roomMergeVisibility(models.keys(), portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
+          ? roomMergeVisibility(mergeModelIds, portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
         const prepared = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);

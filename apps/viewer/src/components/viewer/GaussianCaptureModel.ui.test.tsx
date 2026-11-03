@@ -95,7 +95,7 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
       ['uncalibrated', 'Uncalibrated: shown in source units, with no metric scale or survey alignment.'],
       ['picking', 'Not pickable: select the capture in the model list.'],
       ['measurement', 'No measurement or snapping on captures.'],
-      ['export', 'Not included in exports (IFC, glTF, USD, KMZ, PDF, BCF and others).'],
+      ['export', 'Capture data is not included in exports (IFC, glTF, USD, KMZ, PDF and others). BCF snapshots can show visible captures.'],
     ]);
     for (const absent of ['IFC Model', 'IFC4', 'Total Entities', 'Building Storeys', 'Max Express ID']) {
       assert.ok(!text.includes(absent), `does not claim ${absent}`);

@@ -39,7 +39,7 @@ The scene limit bounds **logical scene splats**: one share per capture, loaded o
 - **Captures are uncalibrated.** A capture is shown in its source coordinates with no axis flip, unit or survey alignment, and the viewer makes no metric claim about it. With only captures visible, the scale overlay says the scale is unknown.
 - **Not pickable.** Clicking a capture in the 3D view does not select it; select it in the model list.
 - **No measurement or snapping.** The measure and snapping tools ignore captures.
-- **Not included in exports.** IFC, glTF/GLB, USD, KMZ, energy model, PDF, Cesium ion and BCF exports leave captures out; a capture is never offered as an export source, and a merged IFC export skips it. While a capture is loaded, the export dialogs say that captures are not included. BCF viewpoints keep the camera and clipping but do not embed capture data. Screenshots show what is on screen, captures included.
+- **Not included in exports.** IFC, glTF/GLB, USD, KMZ, energy model, PDF, Cesium ion exports leave capture data out; a capture is never offered as an export source, and a merged IFC export skips it. While a capture is loaded, the export dialogs say that captures are not included. BCF viewpoints keep the camera and clipping but do not embed capture data; their snapshot images can show visible captures. Screenshots show what is on screen, captures included.
 
 A saved federation setup records a capture's slot, visibility and an explicitly chosen placement, but not its contents: reopen the setup and select the capture file again.
 

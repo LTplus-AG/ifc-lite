@@ -22,10 +22,29 @@
  *
  * The two projections map distance to depth differently:
  *
- * - Perspective (reverse-Z, infinite far): clip z is the constant `near` and
- *   NDC depth is `near / d`. Scaling clip z by `1 + k` divides the distance by
- *   `1 + k`, so the nudge is relative to the fragment's distance: under 3 mm
- *   at 10 m for the largest hash. Unchanged by #6729.
+ * - Perspective (reverse-Z, infinite far): NDC depth is `near / d`. Scaling it
+ *   by `1 + k` divides the distance by `1 + k`. The nudge used to do that in
+ *   the vertex stage with `k = hash * 1e-6`, moving a surface up to
+ *   `2.55e-4 * d`: under 3 mm at 10 m, but 15 mm at 60 m and 25 mm at 100 m,
+ *   which drew a wall over cladding panels a centimetre in front of it once
+ *   zoomed out (#7955).
+ *
+ *   It is now applied per fragment (`nudgedFragDepth`, written to
+ *   `frag_depth`), from that fragment's own view depth `w = near / z`:
+ *   `k = hash * min(1e-6, PERSPECTIVE_MAX_DEPTH_NUDGE_METRES / (255 * w))`.
+ *   Closer than `bound / 2.55e-4` (about 8 m) that is the old nudge, unchanged.
+ *   Further out no pixel moves more than `hash / 255 * bound`, whatever the
+ *   camera's target or the triangle's size. A vertex-stage bound could not
+ *   promise that: the rasterizer interpolates clip z across a triangle in 3D,
+ *   so a triangle reaching from near the camera into the distance carried
+ *   its near vertex's large factor into its far interior, and the reverse.
+ *   Coplanar ranking past the knee: hashes `delta` apart are
+ *   `delta / 255 * bound` apart in depth, so close hashes fall to draw order
+ *   once that is under the depth noise; the measured distances are pinned in
+ *   `tests/e2e/perspective-distance-depth.e2e.spec.ts`.
+ *
+ *   Writing `frag_depth` costs early depth rejection, and the written depth
+ *   is the fragment centre's for every MSAA sample it covers.
  * - Orthographic: NDC depth is linear over the scene's bounding range
  *   (`computeOrthoNearFar`). Scaling clip z would shift a fragment by
  *   `k * z * range`: on a 1.5 km range about 20 cm mid-scene and nearly 40 cm
@@ -57,8 +76,11 @@
  *   left where it is, so nothing changes which side of a clip plane it is on.
  */
 
-/** Perspective: relative distance shift per hash step. */
+/** Perspective: relative distance shift per hash step, near the camera. */
 export const PERSPECTIVE_DEPTH_NUDGE_PER_STEP = 1e-6;
+
+/** Perspective: the furthest the largest hash moves any pixel toward the camera, in metres. */
+export const PERSPECTIVE_MAX_DEPTH_NUDGE_METRES = 0.002;
 
 /** Orthographic: NDC depth between adjacent hash levels, eight units of a 24-bit depth buffer. */
 export const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL = 8 * 2 ** -24;
@@ -97,13 +119,25 @@ const projectionWgsl = `
 export const depthNudgeWgsl = `
         ${projectionWgsl}
         const PERSPECTIVE_DEPTH_NUDGE_PER_STEP: f32 = ${PERSPECTIVE_DEPTH_NUDGE_PER_STEP};
+        const PERSPECTIVE_MAX_DEPTH_NUDGE_METRES: f32 = ${PERSPECTIVE_MAX_DEPTH_NUDGE_METRES};
 
+        // Vertex stage: orthographic only; perspective nudges per fragment.
         fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
             let level = (zHash * orthographicNudgeLevels(viewProj)) >> 8u;
             return orthographicOffsetInsideDepthRange(clip, f32(level) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           }
-          return clip.z * (1.0 + f32(zHash) * PERSPECTIVE_DEPTH_NUDGE_PER_STEP);
+          return clip.z;
+        }
+
+        // Fragment stage, for frag_depth. depth is the rasterized depth
+        // (position.z). Perspective: viewProj[3][2] is near, and the view
+        // depth is near / depth.
+        fn nudgedFragDepth(depth: f32, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
+          if (isOrthographicProjection(viewProj)) { return depth; }
+          let near = max(viewProj[3][2], 1e-30);
+          let step = min(PERSPECTIVE_DEPTH_NUDGE_PER_STEP, PERSPECTIVE_MAX_DEPTH_NUDGE_METRES * depth / (MAX_DEPTH_NUDGE_HASH * near));
+          return depth * (1.0 + f32(zHash) * step);
         }
 `;
 

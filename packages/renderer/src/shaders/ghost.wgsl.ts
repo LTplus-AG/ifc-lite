@@ -32,6 +32,7 @@ const GHOST_TAIL =
   '            input.color.a * TRANSLUCENT_OPACITY_SCALE,\n' +
   '          );\n' +
   '          ghost.objectIdEncoded = encodeId24(input.entityId);\n' +
+  '          ghost.depth = meshFragDepth(input);\n' +
   '          return ghost;\n';
 
 function deriveGhostShader(src: string): string {

@@ -32,7 +32,8 @@ const QUANT_LAYOUT: GPUVertexBufferLayout = { arrayStride: 12, attributes: [
 ] };
 
 /** Preserve production vertex stages; change ONLY nudge for the causal control. */
-const ZERO_NUDGE = 'fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 { return clip.z; }';
+const ZERO_NUDGE = 'fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 { return clip.z; }\n'
+  + 'fn nudgedFragDepth(depth: f32, zHash: u32, viewProj: mat4x4<f32>) -> f32 { return depth; }';
 const zeroNudgeSource = mainShaderSource.replace(depthNudgeWgsl, ZERO_NUDGE);
 
 function entityForHash(hash: number, family: Family): { id: number; lane: number } {
@@ -71,7 +72,7 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
   const sources = { production: mainShaderSource, 'zero-nudge': zeroNudgeSource };
   const digest = async (s: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(v => v.toString(16).padStart(2, '0')).join('');
   const shaderSHA256 = { production: await digest(sources.production), 'zero-nudge': await digest(sources['zero-nudge']) };
-  const layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }] });
+  const layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }] });
   const owned: GPUBuffer[] = [];
   const buffer = (data: ArrayBufferView, usage: GPUBufferUsageFlags) => {
     const result = device.createBuffer({ size: data.byteLength, usage: usage | GPUBufferUsage.COPY_DST });
@@ -86,9 +87,10 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
       // Only the real vertex stage computes the displaced depth. This fragment
       // reports front=red/rear=green, independently of shading or selection.
       const witnessFragment = `
-        @fragment fn fs_witness(input: VertexOutput)->@location(0) vec4<f32> {
-          if ((input.entityId & 0x00ffffffu) == ${front.id}u) { return vec4<f32>(1,0,0,1); }
-          return vec4<f32>(0,1,0,1);
+        struct WitnessOut { @location(0) color: vec4<f32>, @builtin(frag_depth) depth: f32 }
+        @fragment fn fs_witness(input: VertexOutput) -> WitnessOut {
+          let front = (input.entityId & 0x00ffffffu) == ${front.id}u;
+          return WitnessOut(select(vec4<f32>(0,1,0,1), vec4<f32>(1,0,0,1), front), meshFragDepth(input));
         }`;
       for (const samples of [1, 4]) for (const mode of ['production', 'zero-nudge'] as const) {
         const visibility = new OpaqueVisibilityPass(device, samples);

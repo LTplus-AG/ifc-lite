@@ -35,6 +35,15 @@ The implementation must preserve these existing ownership boundaries:
 
 These are integration points to verify, not assertions that the current modules already implement Gaussian assets. #8566 owns mounted UI and browser evidence once #8565 supplies a qualified asset contract.
 
+### Implemented admission and lifecycle (#8565)
+
+- **One decision.** `useIfcLoader.loadFile` detects a Gaussian capture by content (`inspectGaussianAdmission`) and hands it to `hooks/ingest/gaussianLoad.ts`. Picker, drop, Add model, `?model=` and any future restore reach the same `resolveGaussianQualification` call; there is no second entry point.
+- **Disabled by default.** A public build refuses every capture before decoding: "Gaussian splat loading is disabled pending the native rendering contract." Internal qualification exists only in a build made for test/showcase use (`VITE_GAUSSIAN_SPLATS=internal-unqualified`, declared in the Turbo build environment) or for a caller that passes `gaussianQualification: 'internal-unqualified'` explicitly. Pickers list `.splat` only in such builds. The disable path is a build without the variable; already open tabs keep their bundle until reloaded.
+- **Transaction.** Renderer readiness must be `blocked` without `upstream-capability-missing` before the worker decodes; loss, disposal and missing upstream capability refuse first. The decoded columns are normalized once (`normalizeGaussianAttributes`), the model's final index is reserved in the shared allocator, and `renderer.gaussianSplats.add(…, { qualification: 'internal-unqualified', signal })` uploads. The exact renderer-issued handle is published on the model (`FederatedModel.gaussianSplat`) or removed. A cancelled, superseded or rejected load leaves no worker, renderer asset or index reservation.
+- **Ownership after publication.** `gaussianAssets.ts` reconciles with the store synchronously: removal, replacement, a primary reload and clear free the asset in the same tick; model visibility and isolate mirror onto it. Device loss is the renderer's: assets return to pending and re-upload, or report `reload-required`.
+- **Placement.** Identity by default: raw source coordinates with no axis flip, unit, alignment or measurement claim (`calibration: 'uncalibrated'`). A caller-supplied matrix is recorded as `placementOrigin: 'explicit'`; showcase builds also accept the presenter's `?gaussianPlacement=rx180`. Nothing is inferred from a capture's contents.
+- **Workflow limits.** Captures frame by their Gaussian centres, refuse whole-model rotation, are not GPU-pickable and get no IFC entity ids; selection is through the model list. Clipping culls whole Gaussians by centre (no caps; footprints can cross the plane). No measurement, snapping, export or project restore of capture contents is offered.
+
 ## Qualification journey
 
 Run the journey in a fresh browser session for each supported device/antialiasing combination and pin the deployed commit and dependency versions in the receipt:

@@ -8,19 +8,7 @@
  */
 
 import { useMemo } from 'react';
-import {
-  Layers,
-  FileText,
-  Tag,
-  FileBox,
-  Clock,
-  HardDrive,
-  Hash,
-  Database,
-  Building2,
-  Ruler,
-  BookMarked,
-} from 'lucide-react';
+import { Layers, FileText, Tag, FileBox, Clock, HardDrive, Hash, Database, Building2, Ruler, BookMarked } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
@@ -41,9 +29,18 @@ import { effectiveClassificationSystems } from './effective-classification-syste
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { isModelStreaming } from '@/lib/streaming-refresh';
+import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
-/** Model metadata panel - displays file info, schema version, entity counts, etc. */
+/** Model metadata. A Gaussian capture is a different component type, so
+ * switching between it and an IFC model remounts rather than reorders hooks. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
+  return model.gaussianSplat
+    ? <GaussianCaptureMetadataPanel model={model} capture={model.gaussianSplat} />
+    : <IfcModelMetadataPanel model={model} />;
+}
+
+/** IFC (and source-model) metadata: file info, schema version, entity counts, etc. */
+function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const { t, locale, revision } = useTranslation();
   const dataStore = model.ifcDataStore;
   const selectedLandXmlSource = useViewerStore((state) => state.selectedLandXmlSource);

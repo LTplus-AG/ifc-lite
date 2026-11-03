@@ -38,6 +38,7 @@ import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { useHoverOutline } from './useHoverOutline.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
+import { gaussianFitBox } from '@/hooks/ingest/gaussianAssets';
 import { typeNameOfGlobalId } from '@/store/globalId';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
@@ -860,7 +861,8 @@ export function Viewport({
           const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
             typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),
             instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [], instancedDrawn: instancedPassDrawn(useViewerStore.getState()),
-            boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current } });
+            boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current },
+            captures: gaussianFitBox(rendererRef.current?.gaussianSplats.getBounds() ?? null) });
           camera.zoomExtent(target.min, target.max, 300); calculateScale();
         },
         home: () => {

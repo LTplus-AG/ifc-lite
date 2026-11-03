@@ -129,9 +129,8 @@ smoke recipe; this document is a draft, not a claim that a release was hosted.
 ## Production on ifclite.com (opt-in setting)
 
 The viewer on ifclite.com serves a retained engine only when
-`apps/viewer/retained-engine.lock.json` is committed, and that waits for the
-licensing scope extension in `docs/architecture/retained-licensing.md` to be
-signed. Without the lock, the production build is the exact-only viewer it was.
+`apps/viewer/retained-engine.lock.json` is committed. Without the lock, the
+production build is the exact-only viewer it was.
 Vercel cannot build SMLib (it needs the pinned usd-brep SDK and emsdk), so:
 
 1. **Build and publish.** A maintainer runs the **Retained engine** workflow

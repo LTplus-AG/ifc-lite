@@ -6,10 +6,11 @@
 # SMLib browser module) from a root release tag with the tag's own pinned
 # usd-brep SDK, emsdk and Rust toolchain, packs it deterministically, verifies
 # the archive end to end, and uploads it as a run artifact. With `publish`, it
-# also attaches the archive to the tag's GitHub Release, which distributes SMLib
-# WASM: run that only within the signed licensing scope in
-# docs/architecture/retained-licensing.md. It never touches Vercel. To deploy it,
-# commit the printed lock as apps/viewer/retained-engine.lock.json.
+# also attaches the archive to the tag's GitHub Release. The archive carries every
+# licence and notice text the engine needs (docs/architecture/retained-licensing.md),
+# and the packer refuses an engine whose IFC-Lite notices do not name the exact
+# tag. It never touches Vercel. To deploy it, commit the printed lock as
+# apps/viewer/retained-engine.lock.json.
 #
 # Layout: the tag's source is the workspace root (its own rust-toolchain.toml,
 # lockfile, setup action and build scripts apply); this workflow's packaging
@@ -25,7 +26,7 @@ on:
         required: true
         type: string
       publish:
-        description: Attach the archive to the tag's GitHub Release (distribution; needs the signed licensing scope)
+        description: Attach the archive to the tag's GitHub Release (never replaces an existing asset)
         type: boolean
         default: false
 

@@ -103,8 +103,8 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   extraCap: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7,
 } as const;
 
-/** Caps of the planes beyond the first (`MAX_EXTRA_CLIP_PLANES`). */
-export const SECTION_2D_MAX_EXTRA_CAPS = 7;
+/** Caps beyond the first: one per extra plane (`MAX_EXTRA_CLIP_PLANES`) and one per section-box face (#8696). */
+export const SECTION_2D_MAX_EXTRA_CAPS = 7 + 6;
 
 /** One cap record, a partition range for every line family, and a cap record per extra plane. */
 export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7 + SECTION_2D_MAX_EXTRA_CAPS;

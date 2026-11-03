@@ -47,12 +47,12 @@ describe('sectionRenderClip', () => {
 
   it('box mode clips to the box and hands the renderer NO plane, so no preview quad haunts the box', () => {
     const out = sectionRenderClip(true, plane({ box: { min: [0, -1, 0], max: [10, 3, 8] } }), { min: -1, max: 3 }, 'select');
-    assert.deepEqual(out, { clipBox: { min: [0, -1, 0], max: [10, 3, 8], enabled: true } });
+    assert.deepEqual(out, { clipBox: { min: [0, -1, 0], max: [10, 3, 8], enabled: true, showCap: true, showOutlines: false, capStyle } }, 'with the cap look for its faces (#8696)');
   });
 
   it('Cut off in box mode disables the box and still passes no plane', () => {
     const out = sectionRenderClip(true, plane({ enabled: false, box: { min: [0, 0, 0], max: [1, 1, 1] } }), null, 'select');
-    assert.deepEqual(out, { clipBox: { min: [0, 0, 0], max: [1, 1, 1], enabled: false } });
+    assert.deepEqual(out, { clipBox: { min: [0, 0, 0], max: [1, 1, 1], enabled: false, showCap: true, showOutlines: false, capStyle } });
   });
 
   it('a plane that is not cutting is a preview: handed over inside the Section tool only (#6374)', () => {

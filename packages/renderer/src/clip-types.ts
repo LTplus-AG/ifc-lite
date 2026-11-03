@@ -4,6 +4,8 @@
 
 /** The clip volumes `RenderOptions` hands the renderer; re-exported from `types.ts`. */
 
+import type { SectionCapStyleOptions } from './types.js';
+
 /**
  * Axis-aligned clip box (section / crop box): geometry is kept only where it
  * lies INSIDE all six box planes; fragments outside the box are discarded by the
@@ -19,6 +21,13 @@ export interface ClipBox {
   max: [number, number, number];
   /** When false (or omitted), the box has no effect. */
   enabled: boolean;
+  /**
+   * The look of the caps on the box faces (#8696), as `sectionPlane` takes it. They draw only
+   * where the consumer uploaded a face's polygons (`sectionBoxCapKey`).
+   */
+  showCap?: boolean;
+  showOutlines?: boolean;
+  capStyle?: SectionCapStyleOptions;
 }
 
 /**

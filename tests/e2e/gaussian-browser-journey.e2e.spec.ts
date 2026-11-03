@@ -106,8 +106,9 @@ test('Gaussian capture load → inspect → clip → select → save/reopen → 
   await expect(page.locator('#file-input-open')).toBeAttached();
   const setupChooser = page.waitForEvent('filechooser');
   await page.evaluate(() => window.dispatchEvent(new Event('ifc-lite:open-federation-setup')));
-  const sourceChooser = page.waitForEvent('filechooser');
-  await (await setupChooser).setFiles(saved);
+  const pickedSetup = await setupChooser;
+  const sourceChooser = page.waitForEvent('filechooser', { predicate: (chooser) => chooser.isMultiple() });
+  await pickedSetup.setFiles(saved);
   await (await sourceChooser).setFiles([IFC, CAPTURE]);
   await page.getByRole('button', { name: 'Restore federation', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {

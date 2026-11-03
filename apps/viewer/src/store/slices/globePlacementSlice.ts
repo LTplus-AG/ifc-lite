@@ -17,6 +17,8 @@ export interface GlobePlacementStatus {
   mode: ResolvedGlobePlacement;
   /** Estimated anchor-placement error, metres; null when it could not be estimated. */
   anchorErrorMetres: number | null;
+  /** What the georeference itself requires (Exact for an IfcRigidOperation), or null. */
+  prescribed: ResolvedGlobePlacement | null;
 }
 
 export interface GlobePlacementSlice {

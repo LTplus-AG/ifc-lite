@@ -60,14 +60,15 @@ export default withMergify(defineConfig({
         timeout: 90000,
         env: {
           BROWSER: 'none',
-          ...(retainedProject ? { VITE_RETAINED_GEOMETRY: 'on' } : {}),
+          // `lazy` runs the same spec against the production opt-in build (#7955).
+          ...(retainedProject ? { VITE_RETAINED_GEOMETRY: process.env.VITE_RETAINED_GEOMETRY === 'lazy' ? 'lazy' : 'on' } : {}),
         },
       },
   projects: [
     {
       // Opt-in real-engine acceptance, run only by geometry-platform.
       name: 'viewer-retained',
-      testMatch: /retained-viewer\.e2e\.spec\.ts/,
+      testMatch: /retained-(viewer|setting)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,

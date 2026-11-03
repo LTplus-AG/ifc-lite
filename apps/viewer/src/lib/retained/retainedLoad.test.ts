@@ -122,6 +122,19 @@ describe('#7955 M2-C retained scope', () => {
     assert.match(useViewerStore.getState().error ?? '', /"two-gib\.ifc" is 2048 MiB; the retained engine cannot hold a source of 2048 MiB or more/);
   });
 
+  it('#7955 an engine that does not load (missing deployment, network) falls back: its Retry loads exact', () => {
+    chooseGeometryKernel('retained');
+    const load = harness();
+    const failure = load.begin(stepFile('wall.ifc', 1024))?.loadFailure?.(new RetainedHostError('engine_missing', 'Failed to fetch dynamically imported module'));
+    assert.equal(failure?.message, 'The retained engine could not be loaded for "wall.ifc": Failed to fetch dynamically imported module. '
+      + 'Retry loads it with the exact kernel.');
+    const retry = failure?.retry;
+    assert.ok(retry, 'the failure brings its own Retry');
+    retry();
+    assert.equal(load.retried(), 1);
+    assert.equal(requestedGeometryKernel(), 'exact', 'Retry switched this tab to the exact kernel');
+  });
+
   it('a run out of memory is worded as such, and its Retry loads the model exact', () => {
     chooseGeometryKernel('retained');
     const load = harness();

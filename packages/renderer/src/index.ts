@@ -123,9 +123,9 @@ export type { PointPickSizing } from './picker.js';
 
 // Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
-export { normalizeGaussianAttributes, type GaussianAttributeSource, type NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
-export type { GaussianReadiness } from './gaussian/gaussian-readiness.js';
-import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
+export * from './gaussian/gaussian-public.js';
+import { GaussianSplatLayer, type GaussianSplatApi } from './gaussian/gaussian-splat-layer.js';
+import { unionBounds } from './gaussian/gaussian-frame.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -145,6 +145,7 @@ import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.
 import { configureRendererGpuTiming, readRendererGpuTiming, releaseRendererGpuTiming, beginRendererGpuTiming, renderPassTimestampWrites, submitRendererGpuTiming } from './renderer-frame-timing.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
+import { ensureMeshUniform } from './mesh-uniform-resources.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { remapOverrideColors } from './scene-derived-batches.js';
@@ -410,6 +411,9 @@ export class Renderer {
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
     private readonly deviationComputer = new DeviationComputer();
+    private readonly gaussianLayer = new GaussianSplatLayer({ lifetime: () => ({ ready: this.isReady(), lost: this.deviceLost, disposed: this.destroyed, generation: this.initGeneration }), // #8564
+        device: () => this.getGPUDevice(), adapter: () => this.device.getAdapter(), modelTranslation: (i) => this.scene.getModelTranslation(i), requestRender: () => this.requestRender(),
+        extentChanged: (b) => this.camera.setDepthOnlyBounds(b && { min: { x: b.min[0], y: b.min[1], z: b.min[2] }, max: { x: b.max[0], y: b.max[1], z: b.max[2] } }) }); // depth range only; never model/fit bounds
     private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
     // Model bounds for fitToView, section planes, camera. The value itself
@@ -1110,6 +1114,7 @@ export class Renderer {
         this.pointCloudRenderer?.validateModelTranslation(modelIndex, translation);
         this.scene.setModelTranslation(modelIndex, translation);
         this.pointCloudRenderer?.setModelTranslation(modelIndex, translation);
+        this.gaussianLayer.setModelTranslation(modelIndex);
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1300,17 +1305,7 @@ export class Renderer {
         if (!this.pipeline) return { ok: true, value: undefined };
         const pipeline = this.pipeline;
         const outcome: GpuUploadOutcome<void> = (!mesh.uniformBuffer && !this.isDeviceLost() && this.device.isInitialized())
-            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => {
-                const device = this.device.getDevice();
-                mesh.uniformBuffer = device.createBuffer({
-                    size: pipeline.getUniformBufferSize(),
-                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                });
-                mesh.bindGroup = device.createBindGroup({
-                    layout: pipeline.getBindGroupLayout(),
-                    entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
-                });
-            }, (error) => this.reportUploadLoss(error))
+            ? runGuardedGpuUpload(() => this.isDeviceLost(), () => ensureMeshUniform(this.device.getDevice(), pipeline, mesh), (error) => this.reportUploadLoss(error))
             : { ok: true, value: undefined };
 
         this.scene.addMesh(mesh);
@@ -1325,18 +1320,7 @@ export class Renderer {
         const pipeline = this.pipeline;
         return runGuardedGpuUpload(() => this.isDeviceLost(), () => {
             const device = this.device.getDevice();
-            for (const mesh of this.scene.getMeshes()) {
-                if (!mesh.uniformBuffer) {
-                    mesh.uniformBuffer = device.createBuffer({
-                        size: pipeline.getUniformBufferSize(),
-                        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                    });
-                    mesh.bindGroup = device.createBindGroup({
-                        layout: pipeline.getBindGroupLayout(),
-                        entries: [{ binding: 0, resource: { buffer: mesh.uniformBuffer } }],
-                    });
-                }
-            }
+            for (const mesh of this.scene.getMeshes()) ensureMeshUniform(device, pipeline, mesh);
         }, (error) => this.reportUploadLoss(error));
     }
 
@@ -1910,7 +1894,7 @@ export class Renderer {
                 options,
                 batchedMeshes: this.scene.getBatchedMeshes(),
                 meshes,
-                pointCloudBounds: this.pointCloudRenderer?.getBounds() ?? null,
+                pointCloudBounds: unionBounds([this.pointCloudRenderer?.getBounds(), this.gaussianLayer.getBounds()].flatMap((b) => (b ? [b] : []))), // #8564
                 logSectionBounds: !this._loggedSectionBounds,
                 spendLogLatch: () => { this._loggedSectionBounds = true; },
             });
@@ -1918,15 +1902,10 @@ export class Renderer {
             const extraClipPlanes = sectionFrame.extraPlanes;
             const { bounds: frameBounds } = sectionFrame;
             this._sectionFrameInput = frameBounds && { primary: options.sectionPlane ?? null, extras: options.extraSectionPlanes ?? [], bounds: frameBounds, buildingRotation: options.buildingRotation };
-            if (sectionFrame.bounds) {
-                // Store bounds for section plane visual and camera near/far.
-                // Two wrappers over the same min/max, exactly as before the
-                // extraction — the renderer's copy is replaced wholesale by the
-                // bounds helpers, the camera's is not.
-                const { min: boundsMin, max: boundsMax } = sectionFrame.bounds;
-                this.setModelBounds({ min: boundsMin, max: boundsMax });
-                this.camera.setSceneBounds({ min: boundsMin, max: boundsMax });
-            }
+            // Section bounds are frame-local: their visible Gaussian union must
+            // never replace persistent fit bounds or discard annotation extents.
+            // Load/overlay paths own model + camera scene bounds; the Gaussian
+            // layer independently updates the camera's depth-only extent (#8564).
 
             // Stash what we actually clipped this frame so the GPU picker mirrors
             // it (section/crop-clipped geometry must be unpickable, not just hidden).
@@ -2172,15 +2151,16 @@ export class Renderer {
             const useMSAA = msaaView !== null && this.pipeline.getSampleCount() > 1;
 
             // Build color attachments — skip objectId in single-target mode
+            const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
             const colorAttachments: GPURenderPassColorAttachment[] = [
                 {
                     // If MSAA enabled: render to multisample texture, resolve to swap chain
                     // If MSAA disabled: render directly to swap chain
                     view: useMSAA ? msaaView : textureView,
-                    resolveTarget: useMSAA ? textureView : undefined,
+                    resolveTarget: useMSAA && !splatFrame ? textureView : undefined,
                     loadOp: 'clear' as const,
                     clearValue: clearColor,
-                    storeOp: (useMSAA ? 'discard' : 'store') as GPUStoreOp,
+                    storeOp: (useMSAA && !splatFrame ? 'discard' : 'store') as GPUStoreOp,
                 },
             ];
             colorAttachments.push({
@@ -2919,23 +2899,7 @@ export class Renderer {
                 }
 
                 // Ensure selected meshes have uniform buffers and bind groups
-                for (const mesh of selectedMeshes) {
-                    if (!mesh.uniformBuffer && this.pipeline) {
-                        mesh.uniformBuffer = device.createBuffer({
-                            size: this.pipeline.getUniformBufferSize(),
-                            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-                        });
-                        mesh.bindGroup = device.createBindGroup({
-                            layout: this.pipeline.getBindGroupLayout(),
-                            entries: [
-                                {
-                                    binding: 0,
-                                    resource: { buffer: mesh.uniformBuffer },
-                                },
-                            ],
-                        });
-                    }
-                }
+                for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
 
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
                 for (const mesh of selectedMeshes) {
@@ -3046,6 +3010,7 @@ export class Renderer {
             });
 
             pass.end();
+            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox } });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
@@ -3528,7 +3493,8 @@ export class Renderer {
     }
 
     /** Report Gaussian qualification and the current renderer lifetime; this does not enable rendering. */
-    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
+    getGaussianReadiness() { return this.gaussianLayer.readiness(); }
+    get gaussianSplats(): GaussianSplatApi { return this.gaussianLayer; } // internal, unqualified adapter (#8564); readiness stays blocked
     /**
      * Check if renderer is fully initialized and ready to use.
      *
@@ -3677,6 +3643,7 @@ export class Renderer {
         // Done before queue.destroy() so the GPU calls inside
         // `destroy()` still have a valid device.
         this.deviationComputer.destroy();
+        this.gaussianLayer.release(clearScene, this.destroyed); // upstream allocations only; never the device destroyed below
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

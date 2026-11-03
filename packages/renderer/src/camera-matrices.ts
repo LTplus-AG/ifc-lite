@@ -110,7 +110,12 @@ export function computeOrthoNearFar(
   state: CameraInternalState,
   distance: number,
 ): { near: number; far: number } {
-  const bounds = state.sceneBounds;
+  const extra = state.depthOnlyBounds;
+  const scene = state.sceneBounds;
+  const bounds = scene && extra ? {
+    min: { x: Math.min(scene.min.x, extra.min.x), y: Math.min(scene.min.y, extra.min.y), z: Math.min(scene.min.z, extra.min.z) },
+    max: { x: Math.max(scene.max.x, extra.max.x), y: Math.max(scene.max.y, extra.max.y), z: Math.max(scene.max.z, extra.max.z) },
+  } : scene ?? extra;
   if (!bounds) {
     // Fallback: generous range centered on camera
     return { near: -Math.max(distance, 500), far: Math.max(distance, 500) };

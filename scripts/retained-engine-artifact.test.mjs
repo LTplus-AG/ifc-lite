@@ -29,9 +29,13 @@ const SDK = 'c9c5979f04cea8c38213004d4f04df0dcfb40d05';
 const DTS = 'export class RetainedModelSession { run(): Promise<void>; }\n';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-function scratch(t) {
+/** A temporary root; `defer` disposers run in reverse, in the same hook, before the root goes. */
+function scratch(t, deferred = []) {
   const root = mkdtempSync(join(tmpdir(), 'retained-artifact-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(async () => {
+    for (const dispose of deferred.reverse()) await dispose();
+    rmSync(root, { recursive: true, force: true });
+  });
   return root;
 }
 
@@ -73,12 +77,13 @@ function repoFixture(root, dts = DTS) {
   return repo;
 }
 
+const INDEX_HTML = '<!doctype html><script type="module" src="/assets/index-a.js"></script><link rel="modulepreload" href="/assets/vendor-b.js">';
+
 /** A lazy viewer dist: entry + modulepreload + a static import, retained code only behind import(). */
 function distFixture(root, { leak = false } = {}) {
   const dist = join(root, 'apps/viewer/dist');
   mkdirSync(join(dist, 'assets'), { recursive: true });
-  writeFileSync(join(dist, 'index.html'),
-    '<!doctype html><script type="module" src="/assets/index-a.js"></script><link rel="modulepreload" href="/assets/vendor-b.js">');
+  writeFileSync(join(dist, 'index.html'), INDEX_HTML);
   writeFileSync(join(dist, 'assets/index-a.js'), 'import{x}from"./vendor-b.js";import"./shared-c.js";const l=()=>import("./retained-d.js");');
   writeFileSync(join(dist, 'assets/vendor-b.js'), 'export const x=1;');
   writeFileSync(join(dist, 'assets/shared-c.js'), leak ? 'const u="/smlib/worker.mjs";export{};' : 'export{};');
@@ -147,7 +152,8 @@ test('#7955 lazy-graph guard: retained code only behind dynamic imports', async 
 });
 
 test('#7955 install + the repository vercel.json serve the engine isolated, typed, 404 on misses; production smoke helpers pass', async t => {
-  const root = scratch(t);
+  const deferred = [];
+  const root = scratch(t, deferred);
   const { out: archive, lockOut, lock } = packed(root);
   const engine = join(root, 'fetched');
   await fetchRetainedEngine({ lock: lockOut, out: engine, repo: repoFixture(root), archive });
@@ -163,7 +169,7 @@ test('#7955 install + the repository vercel.json serve the engine isolated, type
   cpSync(join(REPO, 'vercel.json'), join(site, 'vercel.json'));
   const server = createPreviewServer(site, { production: true });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  deferred.push(() => new Promise(resolve => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const get = async path => {
     const response = await fetch(new URL(path, origin), { redirect: 'manual' });
@@ -180,7 +186,7 @@ test('#7955 install + the repository vercel.json serve the engine isolated, type
   }
   const route = await get('/some/route');
   assert.equal(route.status, 200);
-  assert.match(route.body, /index-a\.js/, 'app routes still fall back to index.html');
+  assert.equal(route.body, INDEX_HTML, 'app routes still fall back to index.html');
   assert.equal(route.headers['cross-origin-embedder-policy'], 'credentialless');
 
   const identity = await productionIdentity(origin, { sourceTag: TAG, lock: lockOut });

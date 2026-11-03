@@ -37,7 +37,7 @@ export function applyThemeClasses(theme: ThemeMode): void {
 }
 
 /** Whether a federated or legacy model has geometry. */
-export function hasLoadedModel(state: UICrossSliceState): boolean {
+export function hasLoadedModel(state: Pick<UICrossSliceState, 'models' | 'geometryResult'>): boolean {
   if (state.models.size > 0) return true;
   return (state.geometryResult?.meshes.length ?? 0) > 0;
 }

@@ -10,7 +10,7 @@
  * panel's controls over nothing (or one grey line). Only the viewport's
  * welcome card offered a way in, and an open bottom panel pushes that card
  * half out of view. So the panel itself now says what it is for and offers
- * the same two ways in as the welcome card, under the same labels: the tour
+ * the same two ways in as the welcome card: the tour
  * demo project (through the canonical `loadFile`, via the
  * `ifc-lite:load-file` bus) and the file picker (`ifc-lite:open-files`,
  * dispatched inside the click so Chromium's picker keeps user activation).
@@ -148,7 +148,7 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
           <div className="flex flex-col items-center gap-2">
             <Button size="sm" className="gap-1.5" disabled={loading} onClick={() => { void loadSample(); }}>
               {loading ? <Spinner size="sm" /> : <Building2 className="h-3.5 w-3.5" aria-hidden="true" />}
-              {t('viewportLighting.container.emptyState.loadDemo.button')}
+              {t('tours.tourHost.loadDemoProject')}
             </Button>
             <Button variant="outline" size="sm" onClick={openFile}>
               {t('viewportLighting.container.emptyState.openButton.open')}
@@ -170,7 +170,7 @@ function NoModelBanner({ id }: { id: WorkspacePanelId }) {
     <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
       {t(BANNER_LINES[id] ?? 'panelNoModel.description')}{' '}
       <button type="button" className={link} disabled={loading} onClick={() => { void loadSample(); }}>
-        {t('viewportLighting.container.emptyState.loadDemo.button')}
+        {t('tours.tourHost.loadDemoProject')}
       </button>
       <span aria-hidden="true"> · </span>
       <button type="button" className={link} onClick={openFile}>

@@ -80,8 +80,9 @@ export type ThreeWebglFailureReason =
 
 export type ThreeWebglVerdict = WebglVerdict<ThreeWebglFailureReason>;
 
-/** Which `/mcp` surface degraded. Fixed strings, never user data. */
-export type ThreeSurface = 'hero' | 'playground';
+/** Which three.js surface degraded: the two `/mcp` scenes or the viewer's
+ *  start-screen mark. Fixed strings, never user data. */
+export type ThreeSurface = 'hero' | 'playground' | 'welcome';
 
 const gate = createWebglCapabilityGate<ThreeWebglFailureReason>({
   attributes: THREE_CONTEXT_ATTRIBUTES,

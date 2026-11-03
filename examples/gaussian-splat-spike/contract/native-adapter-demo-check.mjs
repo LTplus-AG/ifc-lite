@@ -6,6 +6,7 @@
 // loads, labels itself, draws both captures on the viewer device and stays
 // error-free. Stills along the 30 s journey help the recording; they are not
 // load or performance evidence.
+import { browserClean } from './native-adapter-clean-render.mjs';
 import { resolve } from 'node:path';
 import { seemFixture, startDemoServer } from './native-adapter-demo-server.mjs';
 
@@ -114,7 +115,7 @@ export async function runDemo({ browser, openPage, output, backend, stamp, allow
       check('no uncaptured WebGPU errors', after.errors.length === 0 && after.diagnostics.gpuErrors === 0, { errors: after.errors, diagnostics: after.diagnostics });
     }
     check('no page errors', log.pageErrors.length === 0, log.pageErrors);
-    check('no browser console errors', log.consoleErrors.length === 0, log.consoleErrors);
+    check('no browser console errors', browserClean(log), log.consoleErrors);
     check('no failed requests', log.failedRequests.length === 0, log.failedRequests);
     const failed = checks.filter(c => !c.pass);
     const pending = state.ready && !state.stats.gaussian;

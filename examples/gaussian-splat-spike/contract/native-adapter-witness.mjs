@@ -7,9 +7,12 @@
 // adapter. One fresh renderer per scene; every teardown is audited.
 import { closeRenderer, consoleErrors, openRenderer, setPhase, plain } from './native-adapter-witness-lib.mjs';
 import { SCENES } from './native-adapter-witness-scenes.mjs';
+import { GLASS_SCENES, forceSingleSample } from './native-adapter-witness-glass.mjs';
 
 async function runScene(name, scene, images) {
-  const h = await openRenderer(name);
+  const restore = scene.samples === 1 ? forceSingleSample() : null;
+  let h;
+  try { h = await openRenderer(name); } finally { restore?.(); }
   const result = { adapterAvailable: h.adapter !== null };
   try {
     Object.assign(result, await scene(h));
@@ -33,7 +36,9 @@ async function run() {
       description: adapter.info.description, isFallbackAdapter: adapter.info.isFallbackAdapter ?? adapter.isFallbackAdapter ?? null } : null,
   };
   const scenes = {}, images = {};
-  for (const [name, scene] of Object.entries(SCENES)) {
+  const only = new URLSearchParams(location.search).get('scenes')?.split(',');
+  for (const [name, scene] of Object.entries({ ...SCENES, ...GLASS_SCENES })) {
+    if (only && !only.includes(name)) continue;
     document.querySelector('#status').textContent = `Running ${name}…`;
     scenes[name] = await runScene(name, scene, images);
   }

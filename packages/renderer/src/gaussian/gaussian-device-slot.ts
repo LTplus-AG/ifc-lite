@@ -14,6 +14,8 @@ import type { GaussianUpstreamStatus } from './gaussian-readiness.js';
 
 export class GaussianDeviceSlot {
   upstream: GaussianUpstreamStatus = 'unknown';
+  /** The loaded backend has the depth-interval hook of the nearest-glass split (#8564). */
+  depthInterval = false;
   private backend: { device: GPUDevice; promise: Promise<GaussianBackend> } | null = null;
   private current: { device: GPUDevice; scene: GaussianBackendScene } | null = null;
 
@@ -31,8 +33,11 @@ export class GaussianDeviceSlot {
         .catch((error: unknown) => {
           throw error instanceof GaussianSplatError ? error : new GaussianSplatError('upstream-unavailable', `Upstream Gaussian renderer failed to load: ${String(error)}`);
         });
-      promise.then((backend) => { if (this.backend?.promise === promise) this.upstream = backend.upstreamReverseZ ? 'available' : 'missing'; },
-        () => { if (this.backend?.promise === promise) { this.backend = null; this.upstream = 'unknown'; } });
+      promise.then((backend) => {
+        if (this.backend?.promise !== promise) return;
+        this.upstream = backend.upstreamReverseZ ? 'available' : 'missing';
+        this.depthInterval = backend.upstreamDepthInterval === true;
+      }, () => { if (this.backend?.promise === promise) { this.backend = null; this.upstream = 'unknown'; this.depthInterval = false; } });
       this.backend = { device, promise };
     }
     return this.backend.promise;

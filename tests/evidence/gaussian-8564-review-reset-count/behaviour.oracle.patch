@@ -1,0 +1,10 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-split.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-split.ts
+@@ -75,6 +75,7 @@
+   /** Every splat frame, split or not: earlier counts no longer describe the frame and are dropped. */
+   beginFrame(): void {
+     this.frame++;
++    this.layers = 'unknown';
+     this.layerSamples = null;
+     this.queried = -1; // an encoded but unsubmitted count (a deferred frame) never executes
+     this.missing = false;

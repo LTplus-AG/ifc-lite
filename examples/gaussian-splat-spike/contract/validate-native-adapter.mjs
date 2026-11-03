@@ -6,7 +6,8 @@
 // qualification. Serialize GPU use:
 //   ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs \
 //     [--backend=auto|swiftshader|hardware] [--allow-pending-adapter]
-//     [--demo [--capture=seem]] [--ifc-regression=/abs/base/checkout]
+//     [--demo [--capture=seem]] [--ifc-regression=/abs/base/checkout] [--scenes=a,b]
+//     [--real-glass=/abs/k-layer/checkout]  (FZK-Haus + capture behind a window; needs prepare.mjs fixtures)
 // auto = hardware when IFC_GPU_CDP_URL is set (ifc-gpu-check exports it for
 // Windows Chrome on the PC GPU), else Playwright Chromium on SwiftShader.
 import { execFileSync } from 'node:child_process';
@@ -17,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
 import { isHardwareAdapter } from '../../../scripts/perf/hardware-adapter.mjs';
+import { browserClean, consoleErrorSelfCheck } from './native-adapter-clean-render.mjs';
 import { judge } from './native-adapter-acceptance.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -29,6 +31,7 @@ if (!['swiftshader', 'hardware'].includes(backend)) throw new Error(`Unknown --b
 if (backend === 'hardware' && !process.env.IFC_GPU_CDP_URL) throw new Error('--backend=hardware needs IFC_GPU_CDP_URL; run under ~/build-workers/ifc-gpu-check');
 const option = name => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const regressionBase = option('ifc-regression');
+const realGlassRoot = option('real-glass');
 const output = resolve(process.env.SPLAT_SPIKE_EVIDENCE ?? '/tmp/ifc-splat-8564-native-adapter');
 await mkdir(output, { recursive: true });
 const SWIFTSHADER = ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
@@ -59,12 +62,12 @@ const sourceCommit = git('rev-parse', 'HEAD');
 const stamp = `${sourceCommit.slice(0, 10)}-h${harnessDigest}`;
 const lumaSplats = JSON.parse(await readFile(resolve(repo, 'packages/renderer/node_modules/@luma.gl/splats/package.json'), 'utf8'));
 const evidence = {
-  issue: 8564, kind: regressionBase ? 'ifc-regression' : flag('--demo') ? `demo-smoke${option('capture') ? `-${option('capture')}` : ''}` : 'witness',
+  issue: 8564, kind: realGlassRoot ? 'real-glass' : regressionBase ? 'ifc-regression' : flag('--demo') ? `demo-smoke${option('capture') ? `-${option('capture')}` : ''}` : 'witness',
   productionReady: false, qualification: 'internal-unqualified',
   mode: backend === 'hardware' ? 'hardware GPU correctness (Windows Chrome over CDP)' : 'SwiftShader correctness only',
   backend, sourceCommit, worktreeDirty: porcelain.length > 0,
   source: { commit: sourceCommit, gitStatusPorcelain: porcelain, worktreeFiles, harness: { digest: harnessDigest, files: harnessFiles } },
-  upstream: { '@luma.gl/splats': lumaSplats.version, installedPatch: 'patches/@luma.gl__splats@9.4.2.patch (depthConvention)' },
+  upstream: { '@luma.gl/splats': lumaSplats.version, installedPatch: 'patches/@luma.gl__splats@9.4.2.patch (depthConvention + depth-interval hook)' },
   startedAt: new Date().toISOString(),
 };
 
@@ -99,7 +102,8 @@ async function runWitness(browser) {
   const server = await startServer(null);
   const { context, page, log } = await openPage(browser);
   try {
-    await page.goto(`${server.resolvedUrls.local[0]}contract/native-adapter-witness.html`);
+    const scenes = option('scenes');
+    await page.goto(`${server.resolvedUrls.local[0]}contract/native-adapter-witness.html${scenes ? `?scenes=${encodeURIComponent(scenes)}` : ''}`);
     await page.waitForFunction(() => Boolean(window.nativeAdapterWitness), undefined, { timeout: 120000 });
     const outcome = await withTimeout(page.evaluate(() => window.nativeAdapterWitness), 15 * 60000, 'witness');
     evidence.browserLog = log;
@@ -112,7 +116,7 @@ async function runWitness(browser) {
     const verdict = judge(result, { allowPendingAdapter: flag('--allow-pending-adapter') });
     const extra = [
       { name: 'no page errors', pass: log.pageErrors.length === 0, detail: log.pageErrors },
-      { name: 'no browser console errors', pass: log.consoleErrors.length === 0, detail: log.consoleErrors },
+      { name: 'no browser console errors', pass: browserClean(log), detail: log.consoleErrors },
       { name: 'no failed requests', pass: log.failedRequests.length === 0, detail: log.failedRequests },
       ...(backend === 'hardware' ? [{ name: 'hardware run used a non-software adapter', pass: isHardwareAdapter(result.environment.adapterInfo), detail: result.environment.adapterInfo }] : []),
     ].map(({ pass, detail, ...rest }) => ({ ...rest, pass, ...(pass ? {} : { detail }) }));
@@ -122,6 +126,7 @@ async function runWitness(browser) {
     verdict.pass = verdict.failed.length === 0;
     evidence.status = !verdict.pass ? 'fail' : result.adapterAvailable ? 'pass' : 'baseline-only (adapter API missing)';
     evidence.verdict = { pass: verdict.pass, total: verdict.total, failed: verdict.failed };
+    if (scenes) evidence.scenesRequested = scenes.split(',');
     evidence.checks = verdict.checks.map(c => `${c.pass ? 'PASS' : 'FAIL'} ${c.name}`);
     evidence.scenes = result.scenes;
     evidence.consoleErrorsInPage = result.consoleErrors;
@@ -138,7 +143,12 @@ try {
     ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)
     : await chromium.launch({ headless: true, ...(process.env.NATIVE_ADAPTER_CHANNEL ? { channel: process.env.NATIVE_ADAPTER_CHANNEL } : {}), args: SWIFTSHADER });
   evidence.browser = { version: browser.version(), channel: backend === 'hardware' ? 'windows-chrome-cdp' : process.env.NATIVE_ADAPTER_CHANNEL ?? 'playwright-chromium' };
-  if (regressionBase) {
+  evidence.cleanRenderSelfCheck = await consoleErrorSelfCheck(browser, openPage);
+  if (realGlassRoot) {
+    const { runRealGlass } = await import('./native-adapter-real-glass-check.mjs');
+    Object.assign(evidence, await runRealGlass({ browser, openPage, output, backend, stamp, repo, kLayerRoot: resolve(realGlassRoot) }));
+    if (evidence.status !== 'pass') process.exitCode = 1;
+  } else if (regressionBase) {
     const { runIfcRegression } = await import('./native-adapter-ifc-regression-check.mjs');
     Object.assign(evidence, await runIfcRegression({ browser, openPage, output, backend, stamp, repo, baseRoot: resolve(regressionBase) }));
     if (evidence.status !== 'pass') process.exitCode = 1;

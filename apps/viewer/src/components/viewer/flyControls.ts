@@ -248,9 +248,9 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
 
   /** The press stopped being a possible click: turn by the look held back so far. */
   const flushHeldLook = (): void => {
-    if (heldLook.x === 0 && heldLook.y === 0) return;
     const held = heldLook;
     heldLook = { x: 0, y: 0 };
+    if ((held.x === 0 && held.y === 0) || !canFly()) return;
     apply(flyLook(pose(), held.x, held.y));
   };
 
@@ -384,6 +384,9 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       if (!active) return 'none';
       stop();
       const wasHeld = now() - pressedAt >= HOLD_TO_FLY_MS;
+      // Released after the hold deadline but before its frame: still a flight, so turn by the held look.
+      if (wasHeld) flushHeldLook();
+      heldLook = { x: 0, y: 0 };
       if (flew || wasHeld || lookTravel > LOOK_CLICK_SLOP_PX) {
         suppressMenuUntil = now() + MENU_SUPPRESSION_MS;
         return 'flew';

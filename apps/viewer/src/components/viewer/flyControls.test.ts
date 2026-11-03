@@ -20,6 +20,8 @@ interface Rig {
   camera: Camera;
   /** Advance the frame clock and run pending frames. */
   frames(n: number, ms?: number): void;
+  /** Advance the clock without running a frame. */
+  advance(ms: number): void;
 }
 
 const rigs: FlyController[] = [];
@@ -43,6 +45,7 @@ function rig(extra: Pick<FlyControllerOptions, 'canFly' | 'onCancel'> = {}): Rig
   return {
     fly,
     camera,
+    advance(ms) { t += ms; },
     frames(n, ms = 16) {
       for (let i = 0; i < n; i++) {
         t += ms;
@@ -179,6 +182,16 @@ describe('createFlyController', () => {
     assert.notDeepEqual(camera.getTarget(), before, 'BUG: the held look was dropped when the hold promoted the press');
     fly.deferContextMenu();
     assert.equal(fly.end(), 'flew');
+  });
+
+  it('a release past the hold deadline but before its frame still applies the held look', () => {
+    const { fly, camera, advance } = rig();
+    fly.begin();
+    const before = camera.getTarget();
+    fly.look(4, 0);
+    advance(300); // the deadline passed, but no frame has run since
+    assert.equal(fly.end(), 'flew');
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: the held look was dropped on a held release');
   });
 
   /** A stub canvas that records pointer-lock requests. */

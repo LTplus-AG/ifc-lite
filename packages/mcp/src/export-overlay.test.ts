@@ -18,7 +18,7 @@
  * what the exporter believed it wrote.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -237,4 +237,88 @@ describe('a create/edit/delete session round-trips through export_ifc (#2012)', 
     // a store entity double-counts it and reports one entity too few.
     expect(after.entityCount).toBe(before.entityCount - 1);
   }, 30_000);
+});
+
+// GHSA-xf2f-wgcc-928h: exercise real exporters with the real loaded model.
+describe('exports preserve loaded source bytes', () => {
+  it.each(['export_csv', 'export_json', 'export_ifc'])('%s refuses the source but writes a separate output', async (name) => {
+    await session();
+    ctx.config = { ...DEFAULT_CONFIG };
+    const source = join(tmp, 'm.ifc');
+    const before = await readFile(source);
+    await expect(tool(name).handler({ file_path: source }, ctx)).rejects.toThrow(/overwrite loaded model/);
+    expect(await readFile(source)).toEqual(before);
+    const output = join(tmp, `${name}.out`);
+    await call(name, { file_path: output });
+    const exported = await readFile(output);
+    if (name === 'export_json') {
+      const rows: unknown = JSON.parse(exported.toString('utf8'));
+      expect(rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ GlobalId: guid('WALA'), Name: 'Wall A' }),
+        expect.objectContaining({ GlobalId: guid('WALB'), Name: 'Wall B' }),
+      ]));
+    } else if (name === 'export_csv') {
+      // These fixture values contain neither commas nor quoted newlines.
+      const rows = exported.toString('utf8').trim().split(/\r?\n/).map((row) => row.split(','));
+      expect(rows[0]).toEqual(['GlobalId', 'Type', 'Name']);
+      expect(rows).toEqual(expect.arrayContaining([
+        [guid('WALA'), expect.stringMatching(/^IFCWALL$/i), 'Wall A'],
+        [guid('WALB'), expect.stringMatching(/^IFCWALL$/i), 'Wall B'],
+      ]));
+    } else {
+      const store = await new IfcParser().parseColumnar(
+        exported.buffer.slice(exported.byteOffset, exported.byteOffset + exported.byteLength) as ArrayBuffer,
+      );
+      const extractor = new EntityExtractor(store.source!);
+      for (const [id, globalId, name] of [[72, guid('WALA'), 'Wall A'], [73, guid('WALB'), 'Wall B']] as const) {
+        const ref = store.entityIndex.byId.get(id);
+        expect(ref?.type).toBe('IFCWALL');
+        const entity = extractor.extractEntity(ref!);
+        expect(entity?.attributes?.[0]).toBe(globalId);
+        expect(entity?.attributes?.[2]).toBe(name);
+      }
+    }
+    expect(await readFile(source)).toEqual(before);
+  });
+});
+
+// #8705: identity must describe the file that was read, not its current name.
+describe('load-time source identity', () => {
+  it.each(['unlinked', 'replaced', 'retargeted'] as const)('protects the original source after its path is %s', async (change) => {
+    await session();
+    const source = join(tmp, `${change}.ifc`);
+    const alias = join(tmp, `${change}-alias.csv`);
+    const other = join(tmp, `${change}-other.ifc`);
+    const input = join(tmp, `${change}-input.ifc`);
+    await writeFile(source, MODEL);
+    await writeFile(other, MODEL.replace('Wall A', 'Other Wall'));
+    await link(source, alias);
+    if (change === 'retargeted') await symlink(source, input);
+    const loaded = await loadIfcModel(change === 'retargeted' ? input : source, { modelId: 'original' });
+    ctx.registry.add(loaded);
+    if (change === 'retargeted') {
+      await unlink(input);
+      await symlink(other, input);
+    } else {
+      await unlink(source);
+      if (change === 'replaced') await writeFile(source, 'replacement file');
+    }
+    for (const name of ['export_csv', 'export_json', 'export_ifc']) {
+      await expect(tool(name).handler({ model_id: loaded.id, file_path: alias }, ctx))
+        .rejects.toThrow(/overwrite loaded model/);
+      expect(await readFile(alias, 'utf8')).toBe(MODEL);
+      await expect(tool(name).handler({ model_id: loaded.id, file_path: source }, ctx))
+        .rejects.toThrow(/overwrite loaded model/);
+    }
+    const fresh = join(tmp, `${change}-new.json`);
+    await call('export_json', { model_id: loaded.id, file_path: fresh });
+    const rows: unknown = JSON.parse(await readFile(fresh, 'utf8'));
+    expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ Name: 'Wall A' })]));
+    // Once unloaded, this provenance no longer prevents writing the alias.
+    ctx.registry.remove(loaded.id);
+    await call('export_json', { model_id: 'm', file_path: alias });
+    expect(JSON.parse(await readFile(alias, 'utf8'))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ Name: 'Wall A' })]),
+    );
+  });
 });

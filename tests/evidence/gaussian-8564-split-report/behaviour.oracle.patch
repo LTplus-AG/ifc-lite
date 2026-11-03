@@ -1,11 +1,11 @@
 --- a/packages/renderer/src/gaussian/gaussian-composition.ts
 +++ b/packages/renderer/src/gaussian/gaussian-composition.ts
-@@ -66,7 +66,7 @@
+@@ -76,7 +76,7 @@
    layers: GaussianTransparentLayers,
  ): GaussianCompositionReport {
    if (!frame.transparent) return NO_TRANSPARENT;
 -  if (!frame.split && frame.fallback === 'never') {
 +  if (!frame.split) {
-     return Object.freeze({ composition: 'over-transparent-approximate', fallback: frame.fallback ?? 'unsupported-draw', transparentLayers: null, highlightOverSplats: false });
+     return Object.freeze({ composition: 'over-transparent-approximate', fallback: frame.fallback ?? 'unsupported-draw', transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
    }
-   return Object.freeze({ composition: 'nearest-glass-split', fallback: null, transparentLayers: layers, highlightOverSplats: frame.highlight });
+   return Object.freeze({ composition: 'nearest-glass-split', fallback: null, transparentLayers: layers, highlightOverSplats: frame.highlight, laterOverBehindSplats: frame.later });

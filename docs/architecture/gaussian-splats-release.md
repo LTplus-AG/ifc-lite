@@ -103,7 +103,9 @@ Capture a compact receipt containing commit, deployment URL, browser/GPU identit
    step or a green advance step alone is insufficient. Inspect the deployment's
    Git SHA and production URL in Vercel as well; do not test a preview URL.
 4. Open a fresh Chromium tab at the production viewer URL. Load the catalogued
-   `gaussian/plant.splat` through Open and Add model/drop. Expect “Gaussian capture
+   `gaussian/plant.splat` through the existing `?model=` route (serve the fixture
+   at a same-origin URL). Disabled pickers/drop stop offering `.splat` before
+   the loader, so use URL loading to verify its kill-switch message. Expect “Gaussian capture
    loading is turned off in this viewer build. IFC models and point clouds still
    load.” Observe browser workers from before navigation: no
    `gaussianDecode.worker` may start for the refused load and no capture may be

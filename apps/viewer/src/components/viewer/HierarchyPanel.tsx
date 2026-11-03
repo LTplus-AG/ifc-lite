@@ -26,6 +26,7 @@ import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveRowType, overlayViewFor } from './hierarchy/treeOverlay';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
 import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
 import type { NodeActivationModifiers, UseTreeKeyboardResult } from './hierarchy/useTreeKeyboard';
 import { useHierarchyTreeKeyboard } from './hierarchy/useHierarchyTreeKeyboard';
@@ -427,6 +428,10 @@ export function HierarchyPanel() {
   }
 
   const singleModel = models.size === 1 ? Array.from(models.values())[0] : null;
+  if (singleModel?.gaussianSplat) { // #8566: a capture has no tree; its row carries the model controls
+    return <>{removeModelDialog}<CaptureModelPanel model={singleModel} title={t('hierarchy.panel.title')}
+      onRemove={handleRemoveModel} rootProps={tourAnchor(TOUR_ANCHORS.hierarchyPanel)} /></>;
+  }
   if (!ifcDataStore && singleModel && !singleModel.ifcDataStore) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'

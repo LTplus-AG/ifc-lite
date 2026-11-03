@@ -69,6 +69,13 @@ describe('fitAllBounds (#5884)', () => {
     assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set([9999]) } }), box(50_000));
   });
 
+  it('frames visible Gaussian capture centres alone or with IFC, never the empty fallback (#8565)', () => {
+    const capture = span(-40, -20, 4);
+    assert.deepEqual(fit({ meshes: [], instancedIds: [], captures: capture }), capture, 'a capture-only scene frames the capture');
+    assert.deepEqual(fit({ meshes: [], instancedIds: [], captures: null }), WHOLE, 'no visible capture keeps the load-time box');
+    assert.deepEqual(fit({ meshes: meshes(...BUILDING), instancedIds: [], captures: capture }), span(-40, 30, 10));
+  });
+
   it('with N=2 models, a hidden far-away model B is not framed, its instanced occurrences too', () => {
     const a = fixtureModel('a', { idOffset: 0 });
     const b = { ...fixtureModel('b', { idOffset: 1000 }), visible: false };

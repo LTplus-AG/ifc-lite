@@ -4,6 +4,7 @@
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
+import type { GaussianQualification } from './ingest/gaussianAdmissionPolicy.js';
 
 export interface ModelLoadOptions {
   sourceHandle?: FileSystemFileHandle;
@@ -21,6 +22,13 @@ export interface ModelLoadOptions {
   // prompt's retry). Absent: the user's standing settings
   // (`landXmlGeorefAssumptionSettings`) apply. Never inferred.
   landXmlAssumptions?: LandXmlGeorefAssumptions;
+  // #8565: explicit internal Gaussian opt-in for test/showcase callers only.
+  // Public entry points never pass it; see `resolveGaussianQualification`.
+  gaussianQualification?: GaussianQualification;
+  // Caller/user-supplied capture placement (column-major source -> viewer
+  // world) and credit. Never inferred from file contents.
+  gaussianPlacement?: readonly number[];
+  gaussianAttribution?: string;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */

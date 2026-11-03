@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/src/oracle/face_set_closure.rs b/rust/retained-native/src/oracle/face_set_closure.rs
+index 46ad442816..3ed3720ac7 100644
+--- a/rust/retained-native/src/oracle/face_set_closure.rs
++++ b/rust/retained-native/src/oracle/face_set_closure.rs
+@@ -18,7 +18,7 @@ pub fn authored_open(item: &DecodedEntity) -> bool {
+ /// are proven open by exact coordinates counts as open. TRUE never does: a file claiming a
+ /// closed solid over open rows stays a closure violation.
+ pub fn counts_as_open(item: &DecodedEntity, open_edges: usize) -> bool {
+-    authored_open(item) || (false && declared(item) == "UNSET" && open_edges > 0)
++    authored_open(item) || (declared(item) == "UNSET" && open_edges > 0)
+ }
+ 
+ /// The authored `Closed` value, for reports: `TRUE`, `FALSE`, or `UNSET` for `$` and `.U.`.

@@ -14,6 +14,12 @@ pub fn authored_open(item: &DecodedEntity) -> bool {
         _ => false,
     }
 }
+/// #7955 ruling 12: besides a source-open set, one with `Closed` unset whose authored rows
+/// are proven open by exact coordinates counts as open. TRUE never does: a file claiming a
+/// closed solid over open rows stays a closure violation.
+pub fn counts_as_open(item: &DecodedEntity, open_edges: usize) -> bool {
+    authored_open(item) || (declared(item) == "UNSET" && open_edges > 0)
+}
 
 /// The authored `Closed` value, for reports: `TRUE`, `FALSE`, or `UNSET` for `$` and `.U.`.
 pub fn declared(item: &DecodedEntity) -> &'static str {

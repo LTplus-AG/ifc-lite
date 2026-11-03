@@ -161,3 +161,22 @@ fn a_voided_host_has_a_result_volume_for_convex_face_set_cutters() {
     let unreadable = format!("{rows},(1,2,99)");
     assert!(cut(with(&opening(8100, points, &unreadable, ".T."))).is_none(), "an unreadable row stays a gap");
 }
+
+/// Snowdon #81962: a cutter inside the host's own void removes nothing, and rounding in
+/// outer-minus-hole about a large profile must not read as "no integral".
+#[test]
+fn a_cutter_inside_a_host_void_removes_nothing() {
+    let (x, y) = (123.456789, -98.7654321);
+    let point = |id: u32, a: f64, b: f64| format!("#{id}=IFCCARTESIANPOINT(({:?},{:?}));\n", x + a, y + b);
+    let mut extra = String::new();
+    for (id, a, b) in [(8000, 0., 0.), (8001, 31.7, 0.), (8002, 31.7, 17.3), (8003, 0., 17.3), (8010, 10.1, 5.3), (8011, 10.1, 9.7), (8012, 14.9, 9.7), (8013, 14.9, 5.3)] { extra += &point(id, a, b); }
+    extra += "#8004=IFCPOLYLINE((#8000,#8001,#8002,#8003,#8000));\n#8014=IFCPOLYLINE((#8010,#8011,#8012,#8013,#8010));\n#8015=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#8004,(#8014));\n";
+    extra += &format!("#8020=IFCCARTESIANPOINT(({:?},{:?}));\n#8021=IFCAXIS2PLACEMENT2D(#8020,$);\n#8022=IFCRECTANGLEPROFILEDEF(.AREA.,$,#8021,4.8,4.4);\n", x + 12.5, y + 7.5);
+    extra += "#8030=IFCCARTESIANPOINT((0.,0.,-1.));\n#8031=IFCAXIS2PLACEMENT3D(#8030,$,$);\n#8032=IFCEXTRUDEDAREASOLID(#8022,#8031,#3,5.);\n#8033=IFCSHAPEREPRESENTATION(#4,'Body','SweptSolid',(#8032));\n#8034=IFCPRODUCTDEFINITIONSHAPE($,$,(#8033));\n\
+#8035=IFCOPENINGELEMENT('0000000000000000008035',$,$,$,$,#9,#8034,$,.OPENING.);\n#8036=IFCRELVOIDSELEMENT('0000000000000000008036',$,$,$,#22,#8035);\n";
+    let text = with(&extra).replace("#19=IFCEXTRUDEDAREASOLID(#18,#2,#3,3.);", "#19=IFCEXTRUDEDAREASOLID(#8015,#2,#3,3.);");
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+    let e = openings::expected(&sources, 22, &[8035]).expect("voided host");
+    let hand = (31.7 * 17.3 - 4.8 * 4.4) * 3.;
+    assert!((e.result_volume.expect("a result volume") - hand).abs() < hand * 1e-9, "{:?} vs {hand}", e.result_volume);
+}

@@ -31,7 +31,7 @@ export function WelcomeFooterChips() {
       <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'shortcuts' } }))}
-        className={`flex items-center gap-2 cursor-pointer ${CHIP}`}
+        className={`flex min-h-6 items-center gap-2 cursor-pointer ${CHIP}`}
       >
         <Command className="h-3 w-3" aria-hidden="true" />
         <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>

@@ -207,7 +207,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'about' } }))}
         title={t('viewportLighting.container.emptyState.privacyDetailsHint')}
-        className={`group mt-8 flex items-center gap-1.5 self-start text-xs transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 ${MUTED} ${FOCUS}`}
+        className={`group mt-8 flex min-h-6 items-center gap-1.5 self-start text-xs transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 ${MUTED} ${FOCUS}`}
       >
         <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         <span>{t('keyboardShortcuts.privacy.banner')}</span>

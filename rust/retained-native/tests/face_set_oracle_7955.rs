@@ -253,9 +253,16 @@ fn issue_7955_a_dropped_sliver_is_named_and_a_dropped_triangle_with_area_is_not(
     let (positions, indices, keys) = fanned(&sliver, &[(0, 3), (1, 1)]);
     assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), Some(6));
     assert!(face_sets::deviation(&sliver, &positions, &indices, &keys).area_relative > 1e-9);
-    // Open edges with an odd corner are no closed cycle: an open fan is never a dropped triangle.
+    // A moved corner lies on no authored row: not a cycle of that row.
     let (mut positions, indices, _) = fanned(&sliver, &[(0, 3)]);
     positions[0] += 1e-3;
+    assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), None);
+    // Two adjacent fan triangles published twice: their shared edge is used four times, so its
+    // corners meet three open edges. Every corner is on the row, so only the even-degree rule
+    // tells this from a dropped triangle.
+    let (positions, mut indices, _) = fanned(&sliver, &[]);
+    // The bottom row's first two fan triangles, p0-p1-p2 and p0-p2-p3, share p0-p2.
+    indices.extend(indices[..6].to_vec());
     assert_eq!(dropped_triangle_edges(&sliver, &positions, &indices), None);
     // Nothing dropped: nothing to name.
     let (positions, indices, _) = fanned(&sliver, &[]);

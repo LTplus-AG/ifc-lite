@@ -370,8 +370,8 @@ impl Report {
             "sourceOracleMaxima":self.oracle_maxima.iter().map(|(k,v)| (k.clone(),finite(*v))).collect::<BTreeMap<_,_>>(),
             "layers":self.layers.summary(), "violations":self.violations,"exact_defect":self.exact_defects,"exact_report_only":self.exact_waivers,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
             "exact":{"milliseconds":self.exact_ms,"beforeF32RoundingMilliseconds":self.exact_unrounded_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":super::precision::COMPARISON_PRECISION},"models":self.models, "faceExactItemProjection":super::checks::faces::projection_summary(&self.face_projection), "authoredOpenFaceSets":{"count":self.authored_open.len(),"gated":false,"unsetRowsOpen":self.authored_open.iter().filter(|r| r["classification"]=="unset_rows_open_face_set").count(),"products":self.authored_open},
-            "zeroAreaRowClosure":{"count":self.zero_area_row_closure.iter().filter(|r| r["classification"]=="zero_area_row_closure").count(),"gated":false,"products":self.zero_area_row_closure},
-            "droppedTriangleClosure":{"count":self.zero_area_row_closure.iter().filter(|r| r["classification"]=="dropped_triangle_closure").count(),"gated":false},
+            "zeroAreaRowClosure":closure_class(&self.zero_area_row_closure,"zero_area_row_closure"),
+            "droppedTriangleClosure":closure_class(&self.zero_area_row_closure,"dropped_triangle_closure"),
             "unverified":unverified_summary(&self.unverified), "closureDefectsOnFaceSets":face_set_closure_summary(&self.closure_on_open_source),
             "faceKeysKernelMerged":{"gated":false,"keys":self.face_merges.iter().filter_map(|r| r["keys"].as_f64()).sum::<f64>(),"products":self.face_merges.len(),"rows":self.face_merges}, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
@@ -407,3 +407,8 @@ pub fn rss(children: bool) -> Result<i64, std::io::Error> {
 #[cfg(test)]
 #[path = "report_tests.rs"]
 mod tests;
+/// One named closure outcome's rows, so its count is always its own products' length.
+fn closure_class(rows: &[Value], classification: &str) -> Value {
+    let products: Vec<&Value> = rows.iter().filter(|r| r["classification"] == classification).collect();
+    json!({"count": products.len(), "gated": false, "products": products})
+}

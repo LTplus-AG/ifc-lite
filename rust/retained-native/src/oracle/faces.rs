@@ -167,6 +167,8 @@ pub fn collinear_runs(sources: &AnalyticQuantitySources, product: u32) -> Option
         for (index, boundary) in profile.loops.iter().enumerate() {
             let edges = boundary.segments.iter().map(profile_edge).collect::<Option<Vec<_>>>()?;
             let n = edges.len();
+            // A loop with no sides has no runs, and no break to start after.
+            if n == 0 { continue; }
             let linked: Vec<bool> = (0..n).map(|i| n > 1 && collinear(&edges[i], &edges[(i + 1) % n])).collect();
             // Start after a break so a run crossing the loop's closing vertex stays whole. A loop
             // linked all round is one circle in arcs (964 #7374): the whole loop is the run.

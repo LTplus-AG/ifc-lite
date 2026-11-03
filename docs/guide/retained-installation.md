@@ -99,8 +99,13 @@ threaded, but the viewer's isolation policy still applies to module Workers.
 For local viewer development, point `IFCLITE_RETAINED_ENGINE` at the staged
 directory and set `VITE_RETAINED_GEOMETRY=on` for the existing root `pnpm dev`
 workflow. Its middleware validates the manifest and serves both URL prefixes
-with the above headers. The Vite plugin **does not copy** engines into build
-output, and rejects Vercel builds with retained enabled. This draft does not
+with the above headers. `VITE_RETAINED_GEOMETRY=lazy` builds the production
+opt-in instead: the eager graph holds only the kernel choice, and the retained
+module, its strings and the Settings control are lazy chunks, fetched when the
+choice (Settings → Performance → Geometry kernel, saved per browser, or
+`?kernel=retained` for one tab) asks for retained. The Vite plugin **does not
+copy** engines into build output. It rejects Vercel builds with `on`, and a
+`lazy` build refuses to start without a valid `IFCLITE_RETAINED_ENGINE`. This draft does not
 remove that distribution gate or change the production deployment workflow.
 A custom host must implement the URL mappings explicitly after release approval. The retained-only
 preview host is assembled and smoked by the scripts in

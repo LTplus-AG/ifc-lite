@@ -3,35 +3,47 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Settings → Performance: which geometry kernel the next load uses (#7955 M2).
- * Mounted only through the retained module, so it exists only in a
- * `VITE_RETAINED_GEOMETRY=on` build. Deliberately not called "exact mode":
- * that name belongs to the fast/exact fidelity switch.
+ * Settings → Performance: which geometry kernel the next load uses (#7955).
+ * Saved per browser; `?kernel=` still overrides it for one tab. Mounted only
+ * through the retained module, so it exists only in a retained-enabled build
+ * (`VITE_RETAINED_GEOMETRY=on`, or `lazy`, which fetches it when Settings
+ * opens). Deliberately not called "exact mode": that name belongs to the
+ * fast/exact fidelity switch.
  */
 
 import { useState } from 'react';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
-import { chooseGeometryKernel, requestedGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
+import { requestedGeometryKernel, saveGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
 
 registerEnglish(retainedGeometryEn);
 
-export function GeometryKernelSetting() {
+/** Retained needs SharedArrayBuffer, so a page that is not cross-origin isolated can only load exact. */
+function isolated(): boolean {
+  return (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+}
+
+export function GeometryKernelSetting({ onChange }: { onChange?: (kernel: GeometryKernel) => void } = {}) {
   const { t } = useTranslation();
   const [kernel, setKernel] = useState<GeometryKernel>(() => requestedGeometryKernel());
+  const available = isolated();
+  const options = [
+    { value: 'exact' as const, label: t('retainedGeometry.setting.exact') },
+    ...(available ? [{ value: 'retained' as const, label: t('retainedGeometry.setting.retained') }] : []),
+  ];
   return (
     <SettingsGroup title={t('retainedGeometry.setting.title')}>
-      <SettingsRow label={t('retainedGeometry.setting.title')} hint={t('retainedGeometry.setting.hint')}>
+      <SettingsRow
+        label={t('retainedGeometry.setting.title')}
+        hint={t(available ? 'retainedGeometry.setting.hint' : 'retainedGeometry.setting.unavailable')}
+      >
         <SettingsChoice<GeometryKernel>
           id="settings-geometry-kernel"
           label={t('retainedGeometry.setting.title')}
-          value={kernel}
-          options={[
-            { value: 'exact', label: t('retainedGeometry.setting.exact') },
-            { value: 'retained', label: t('retainedGeometry.setting.retained') },
-          ]}
-          onChange={(next) => { chooseGeometryKernel(next); setKernel(next); }}
+          value={available ? kernel : 'exact'}
+          options={options}
+          onChange={(next) => { saveGeometryKernel(next); setKernel(next); onChange?.(next); }}
         />
       </SettingsRow>
     </SettingsGroup>

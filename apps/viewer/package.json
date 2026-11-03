@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
     "test": "files=$(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | node ../../scripts/viewer-test-shards.mjs) && tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $files",
     "ai-eval": "tsx --import ./src/test/vite-module-hooks.mjs scripts/ai-eval.ts",

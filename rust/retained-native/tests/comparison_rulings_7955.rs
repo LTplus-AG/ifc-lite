@@ -111,12 +111,12 @@ fn ruling_3_area_mismatch_still_fails() {
 #[test]
 fn ruling_3_wide_face_still_fails() {
     let tolerances = tolerances::registered().unwrap();
-    for (start, width) in [([1.995, 0.], 0.005), ([1.9993, 0.], 0.0007)] {
+    for (start, width) in [([1.995, 0.], 0.005), ([1.99985, 0.], 0.00015)] {
         let (expected, runs) = faces_of(&split_bottom(start));
         assert!((runs[0].widths_m[1] - width).abs() < 1e-12, "{runs:?}");
         let rows = compare(&expected, &folded(&expected, "#19:side(0,1)", "#19:side(0,0)", 0.), &runs, &tolerances);
         assert!(row(&rows, "faceKeysKernelMerged").is_none(), "{width} m");
-        assert_eq!(gated_failures(&rows), ["faceKeys", "faceAreaLinear"], "{width} m: outside the 0.8-4 mm window");
+        assert_eq!(gated_failures(&rows), ["faceKeys", "faceAreaLinear"], "{width} m: outside the 0.2-4 mm window");
     }
 }
 
@@ -125,7 +125,7 @@ fn ruling_3_wide_face_still_fails() {
 #[test]
 fn ruling_16_sub_2_mm_collinear_side_merges_by_name_only_if_its_area_matches() {
     let tolerances = tolerances::registered().unwrap();
-    for (start, width) in [([1.999169, 0.], 0.000831), ([1.9992, 0.], 0.0008), ([1.998405, 0.], 0.001595), ([1.998205, 0.], 0.001795)] {
+    for (start, width) in [([1.999169, 0.], 0.000831), ([1.999764, 0.], 0.000236), ([1.9998, 0.], 0.0002), ([1.998405, 0.], 0.001595)] {
         let (expected, runs) = faces_of(&split_bottom(start));
         assert!((runs[0].widths_m[1] - width).abs() < 1e-12, "{runs:?}");
         let rows = compare(&expected, &folded(&expected, "#19:side(0,1)", "#19:side(0,0)", 0.), &runs, &tolerances);
@@ -207,4 +207,62 @@ fn ruling_2_exact_is_compared_before_its_f32_storage_rounding() {
     // over the 51 mm thickness (measured 5.0e-7 here, against 8.7e-5 stored absolute).
     let unrounded = volume(&precision::exact_unrounded(text.as_bytes()));
     assert!(unrounded <= limit / 10., "exact before f32 rounding: {unrounded:e} (stored {stored:e})");
+}
+
+/// A circle of radius 1 about (1, 0.5) authored as two arcs through `bottom`, then back to the start.
+fn arcs(bottom: [f64; 2]) -> String {
+    let points = [[2., 0.5], [1., 1.5], [0., 0.5], bottom];
+    let list: String = points.iter().map(|p| format!("({:?},{:?})", p[0], p[1])).collect::<Vec<_>>().join(",");
+    let curve = format!("#8998=IFCCARTESIANPOINTLIST2D(({list}));\n#8999=IFCINDEXEDPOLYCURVE(#8998,(IFCARCINDEX((1,2,3)),IFCARCINDEX((3,4,1))),.F.);\n");
+    BOX.replace(RECTANGLE, "#18=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#8999);")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{curve}ENDSEC;\nEND-ISO-10303-21;"))
+}
+
+/// Ruling 19 (964 #7653, 218 #3115, rvt01's doors): two arcs of one circle fold into one
+/// cylinder face. The fold is a named merge only when the receiving face carries both areas.
+#[test]
+fn ruling_19_arcs_on_one_circle_merge_by_name_only_with_a_matching_total() {
+    let tolerances = tolerances::registered().unwrap();
+    let (expected, runs) = faces_of(&arcs([1., -0.5]));
+    let run = runs.iter().find(|r| r.arcs).expect("the two arcs are one circle's run");
+    assert_eq!(run.keys.len(), 2);
+    let (from, into) = (run.keys[1].clone(), run.keys[0].clone());
+    let rows = compare(&expected, &folded(&expected, &from, &into, 0.), &runs, &tolerances);
+    assert!(gated_failures(&rows).is_empty(), "{:?}", gated_failures(&rows));
+    assert!(row(&rows, "faceKeysKernelMerged").unwrap().reason.as_deref().unwrap().contains("arc on one circle"));
+    // The receiver short of the folded area by more than the curved limit stays red.
+    let rows = compare(&expected, &folded(&expected, &from, &into, -0.01), &runs, &tolerances);
+    assert!(gated_failures(&rows).contains(&"faceKeys"), "{:?}", gated_failures(&rows));
+}
+
+/// Four arcs closing one circle: the run is the whole loop, so its last side's neighbour across
+/// the closing vertex is its first, and the fold the kernel makes there is a named merge too.
+#[test]
+fn ruling_19_a_closed_circle_folds_across_its_closing_vertex() {
+    let tolerances = tolerances::registered().unwrap();
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let points = [[2., 0.5], [1. + h, 0.5 + h], [1., 1.5], [1. - h, 0.5 + h], [0., 0.5], [1. - h, 0.5 - h], [1., -0.5], [1. + h, 0.5 - h]];
+    let list: String = points.iter().map(|p| format!("({:?},{:?})", p[0], p[1])).collect::<Vec<_>>().join(",");
+    let curve = format!("#8998=IFCCARTESIANPOINTLIST2D(({list}));\n#8999=IFCINDEXEDPOLYCURVE(#8998,(IFCARCINDEX((1,2,3)),IFCARCINDEX((3,4,5)),IFCARCINDEX((5,6,7)),IFCARCINDEX((7,8,1))),.F.);\n");
+    let text = BOX.replace(RECTANGLE, "#18=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#8999);")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{curve}ENDSEC;\nEND-ISO-10303-21;"));
+    let (expected, runs) = faces_of(&text);
+    let run = runs.iter().find(|r| r.arcs).expect("the four arcs are one circle's run");
+    assert_eq!(run.keys.len(), 4);
+    let (last, first) = (run.keys[3].clone(), run.keys[0].clone());
+    let rows = compare(&expected, &folded(&expected, &last, &first, 0.), &runs, &tolerances);
+    assert!(gated_failures(&rows).is_empty(), "{:?}", gated_failures(&rows));
+    assert_eq!(row(&rows, "faceKeysKernelMerged").map(|r| r.value), Some(1.));
+}
+
+#[test]
+fn ruling_19_arcs_on_different_circles_are_no_run_and_stay_red() {
+    let tolerances = tolerances::registered().unwrap();
+    // The second arc bulges to (1, -1): a different circle through the same two points.
+    let (expected, runs) = faces_of(&arcs([1., -1.]));
+    assert!(runs.iter().all(|r| !r.arcs), "{runs:?}");
+    let keys: Vec<String> = expected.keys().filter(|k| k.contains(":side(")).cloned().collect();
+    let rows = compare(&expected, &folded(&expected, &keys[1], &keys[0], 0.), &runs, &tolerances);
+    assert!(row(&rows, "faceKeysKernelMerged").is_none());
+    assert!(gated_failures(&rows).contains(&"faceKeys"));
 }

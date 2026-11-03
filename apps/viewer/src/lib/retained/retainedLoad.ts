@@ -112,6 +112,9 @@ export function beginRetainedLoad(
     loadFailure(error) {
       if (!(error instanceof RetainedHostError)) return null;
       if (error.code === 'out_of_memory') return { message: translate('retainedGeometry.memory', name), retry: exactRetry };
+      // The engine itself did not load (missing deployment files, network): running retained again
+      // cannot help, so Retry falls back to exact for this tab.
+      if (error.code === 'engine_missing') return { message: translate('retainedGeometry.engineMissing', { ...name, reason: error.reason }), retry: exactRetry };
       // The host knows what failed; the exact path's wording would guess (it reads any trap as memory).
       // Retry runs retained again (a crash can be transient); the exact reload is the panel's, never implied.
       return { message: translate('retainedGeometry.hostFailure', { ...name, reason: error.reason }) };

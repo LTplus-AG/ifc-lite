@@ -21,7 +21,7 @@ import { WebGPUDevice } from '@luma.gl/webgpu';
 import { SplatRenderer, makeGPUSplatData, type GPUSplatData } from '@luma.gl/splats';
 import { GaussianSplatError } from './gaussian-errors.js';
 import type {
-  GaussianBackendFactory, GaussianBackendScene, GaussianEncodeCamera, GaussianEncodeTarget,
+  GaussianBackendFactory, GaussianBackendScene, GaussianDepthInterval, GaussianEncodeCamera, GaussianEncodeTarget,
   GaussianPackedSource, GaussianRowFilter, GaussianRowUpdate,
 } from './gaussian-backend.js';
 
@@ -34,15 +34,20 @@ export const createLumaGaussianBackend: GaussianBackendFactory = async (raw, ada
   const device = new WebGPUDevice({ id: 'ifc-lite-gaussian-borrowed', onError: (error) => { onError(error); return true; } }, raw, adapter, info);
   // The installed renderer must order reverse-Z depth back to front (luma.gl #3619,
   // applied as patches/@luma.gl__splats@9.4.2.patch). Unpatched builds ignore the prop.
-  const probe = new SplatRenderer(device, { depthConvention: 'reverse' });
+  // The nearest-glass split also needs the depth-interval hook of that patch (#8564).
+  const probe = new SplatRenderer(device, { depthConvention: 'reverse', depthIntervalSamples: 4 });
   const upstreamReverseZ = probe.props.depthConvention === 'reverse';
+  const upstreamDepthInterval = probe.props.depthIntervalSamples === 4;
   probe.destroy();
-  return { upstreamReverseZ, createScene: () => new LumaGaussianScene(device, raw) };
+  return { upstreamReverseZ, upstreamDepthInterval, createScene: () => new LumaGaussianScene(device, raw) };
 };
 
 class LumaGaussianScene implements GaussianBackendScene {
   private data: GPUSplatData | null = null;
   private renderer: SplatRenderer | null = null;
+  /** Same data, filter and sort as `renderer`, drawn through the depth-interval shader; built on the first split frame. */
+  private interval: SplatRenderer | null = null;
+  private bound: { texture: GPUTexture; wrapper: Texture } | null = null;
   private filter: { include: ReadonlySet<number>; predicate?: GaussianRowFilter } = { include: new Set() };
   private formats: { key: string; framebuffer: Framebuffer; textures: Texture[] } | null = null;
   private destroyed = false;
@@ -79,6 +84,7 @@ class LumaGaussianScene implements GaussianBackendScene {
       const reason = thrown instanceof Error ? thrown.message : (outOfMemory ?? invalid)?.message ?? 'unknown';
       throw new GaussianSplatError('resource-limit', `Gaussian upload failed: ${reason}`);
     }
+    this.interval?.setProps({ data });
     if (this.renderer) {
       this.renderer.setProps({ data });
     } else {
@@ -98,9 +104,10 @@ class LumaGaussianScene implements GaussianBackendScene {
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void {
     this.filter = predicate ? { include: new Set(include), predicate } : { include: new Set(include) };
     this.renderer?.setProps({ semanticFilter: this.filter });
+    this.interval?.setProps({ semanticFilter: this.filter });
   }
 
-  encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera): void {
+  encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera, interval?: GaussianDepthInterval): void {
     // Begin first: whatever happens below, the pass ends and any MSAA resolve runs.
     const pass = target.encoder.beginRenderPass({
       label: 'ifc-lite-gaussian-splats',
@@ -111,12 +118,13 @@ class LumaGaussianScene implements GaussianBackendScene {
       depthStencilAttachment: { view: target.depthView, depthReadOnly: true, stencilReadOnly: true },
     });
     try {
-      const renderer = this.renderer;
+      const renderer = interval ? this.intervalRenderer(target.sampleCount) : this.renderer;
       if (!renderer || !this.data) return;
       renderer.setProps({
         modelViewProjectionMatrix: camera.modelViewProjection,
         viewportSize: [target.width, target.height],
         cameraPosition: camera.cameraPosition,
+        ...(interval && { depthInterval: { bound: this.wrap(interval.bound), compare: interval.compare } }),
       });
       const model = renderer.model;
       if (model && model.parameters.sampleCount !== target.sampleCount) {
@@ -148,11 +156,36 @@ class LumaGaussianScene implements GaussianBackendScene {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.interval?.destroy();
+    this.interval = null;
+    this.bound?.wrapper.destroy(); // the wrapper only; the split owns the texture
+    this.bound = null;
     this.renderer?.destroy();
     this.renderer = null;
     this.data?.destroy();
     this.data = null;
     this.releaseFormats();
+  }
+
+  private intervalRenderer(samples: number): SplatRenderer | null {
+    if (!this.renderer || !this.data) return null;
+    if (this.interval && this.interval.props.depthIntervalSamples !== samples) { this.interval.destroy(); this.interval = null; }
+    return this.interval ??= new SplatRenderer(this.device, {
+      data: this.data, depthConvention: 'reverse', depthCompare: 'greater', depthWriteEnabled: false,
+      toneMapping: 'none', sortMode: 'global', semanticFilter: this.filter, depthIntervalSamples: samples,
+    });
+  }
+
+  /** A luma view of the split's bound texture; luma never owns or destroys it. */
+  private wrap(texture: GPUTexture): Texture {
+    if (this.bound?.texture === texture) return this.bound.wrapper;
+    this.bound?.wrapper.destroy();
+    const wrapper = this.device.createTexture({
+      id: 'ifc-lite-gaussian-interval-bound', handle: texture, width: texture.width, height: texture.height,
+      format: lumaDepthFormat(texture.format), samples: texture.sampleCount, usage: texture.usage,
+    });
+    this.bound = { texture, wrapper };
+    return wrapper;
   }
 
   /** luma derives pipeline formats and sample count from this; the real attachments stay the viewer's. */

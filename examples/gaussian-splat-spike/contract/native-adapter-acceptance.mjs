@@ -8,6 +8,9 @@
 
 const BLOCKERS = ['exact-mixed-transparency', 'scalable-global-order', 'native-viewer-contract'];
 const COLOUR_TOLERANCE = 8;
+/** #8564 split reference: each of the three captures is rounded once, so the composite is within 1/255; 2 allows for hardware blend rounding. */
+const GLASS_TOLERANCE = 2;
+const GLASS_SCENES = { nearestGlassSplit: 4, nearestGlassSplitOrthographic: 4, nearestGlassSplitSingleSample: 1, nearestGlassSplitOrthographicSingleSample: 1, nearestGlassSplitXray: 4 };
 const ORDER_TOLERANCE = 6;
 
 export function judge(result, { allowPendingAdapter = false } = {}) {
@@ -52,8 +55,45 @@ export function judge(result, { allowPendingAdapter = false } = {}) {
     if (scene.error !== undefined) continue;
     BASELINE[name]?.(scene.baseline, { check, exact, colour, near, edges });
     if (splats) SPLAT[name]?.(scene.splat, scene, { check, exact, colour, near, edges });
+    if (name in GLASS_SCENES) glassChecks(name, scene, splats, { check, exact });
   }
   return { pass: checks.every(c => c.pass), total: checks.length, failed: checks.filter(c => !c.pass), checks };
+}
+
+/** #8564 option B: the nearest-glass split, per projection, sample count and canvas size. */
+function glassChecks(name, scene, splats, { check, exact }) {
+  const b = scene.baseline;
+  check(`${name}: renderer MSAA is ${GLASS_SCENES[name]}x`, b.sampleCount === GLASS_SCENES[name], b.sampleCount);
+  if (name === 'nearestGlassSplitXray') { if (splats) xrayChecks(name, scene.splat, check); return; }
+  check(`${name}: the pane is drawn`, b.glassCentre.slice(0, 3).some(v => v > 20), b.glassCentre);
+  if (!splats) return;
+  const sizes = Object.entries(scene.splat.sizes ?? {});
+  check(`${name}: measured at two canvas sizes (resize)`, sizes.length === 2 && sizes[0][1].size.join() !== sizes[1][1].size.join(), sizes.map(([k]) => k));
+  for (const [key, s] of sizes) {
+    const at = `${name} ${key}`, r = s.reports, ref = s.behindMatchesReference;
+    check(`${at}: clear colours are exact (reference inputs)`, s.blackClear.join() === '0,0,0,255' && s.whiteClear.join() === '255,255,255,255', s);
+    check(`${at}: splat behind the pane equals glass over the splat (<= ${GLASS_TOLERANCE}/255)`, ref.compared > 0 && ref.splatPixels > 20 && ref.overTolerance === 0 && ref.tolerance === GLASS_TOLERANCE, ref);
+    check(`${at}: the single approximate pass misses that reference (sensitivity)`, s.approximateMissesReference.maxDelta > 20, s.approximateMissesReference);
+    check(`${at}: splat behind the pane is visible through it`, s.behindVisible.changed > 20, s.behindVisible);
+    exact(`${at}: splat in front of the pane equals the single pass`, s.frontEqualsSinglePass);
+    exact(`${at}: everything outside the rear footprint equals the single pass`, s.restEqualsSinglePass);
+    exact(`${at}: without transparent IFC the frame equals the single pass`, s.noTransparentEqualsSinglePass);
+    check(`${at}: reports no-transparent without visible glass`, r.noTransparent?.composition === 'no-transparent', r.noTransparent);
+    check(`${at}: one pane reports the split and a single layer (negative control)`, r.split?.composition === 'nearest-glass-split'
+      && r.split.transparentLayers === 'single' && r.split.rawLayerQuery === 0 && r.split.fallback === null, r.split);
+    check(`${at}: single-pass mode reports the approximation and why`, r.single?.composition === 'over-transparent-approximate' && r.single.fallback === 'single-pass-mode', r.single);
+  }
+  const two = scene.splat.twoPanes;
+  check(`${name}: two panes report multiple layers (beyond exact)`, two?.composition === 'nearest-glass-split' && two.transparentLayers === 'multiple' && two.rawLayerQuery > 0, two);
+  const readiness = scene.splat.readiness;
+  check(`${name}: readiness still blocked; capability nearest-glass-split`, readiness?.state === 'blocked' && readiness.reasons?.includes('exact-mixed-transparency')
+    && readiness.capabilities?.includes('nearest-glass-split'), readiness);
+}
+
+/** X-Ray is reported, never special-cased: ghosted boxes stack two or more surfaces. */
+function xrayChecks(name, s, check) {
+  check(`${name}: X-Ray frames split and report multiple layers`, s.report?.composition === 'nearest-glass-split' && s.report.transparentLayers === 'multiple' && s.rawLayerQuery > 0, s);
+  check(`${name}: without X-Ray (opaque boxes only) the frame has no transparent IFC`, s.opaque?.composition === 'no-transparent', s.opaque);
 }
 
 const BASELINE = {

@@ -2155,6 +2155,7 @@ export class Renderer {
 
             // Build color attachments — skip objectId in single-target mode
             const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
+            const glass = splatFrame ? this.gaussianLayer.glassRecorder(this.pipeline.visibility) : null; // holds transparent IFC for the nearest-glass split
             const colorAttachments: GPURenderPassColorAttachment[] = [
                 {
                     // If MSAA enabled: render to multisample texture, resolve to swap chain
@@ -2173,7 +2174,7 @@ export class Renderer {
                 storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
             });
 
-            const pass = this.pipeline.visibility.begin(encoder, {
+            let pass = this.pipeline.visibility.begin(encoder, {
                 timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
@@ -2723,12 +2724,12 @@ export class Renderer {
                 // include them in its parity count — otherwise hidden/isolated opaque geometry
                 // would show open, un-capped cut holes.
                 const opaqueSubBatches: typeof allBatchedMeshes = [];
+                // Transparent sub-batches are deferred to the transparent group below:
+                // they write no depth, so an opaque sub-batch drawn after one
+                // paints straight over it. That is routine since #4129 — an
+                // X-Rayed batch emits a faded group AND a solid one.
+                const transparentSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
-                    // Transparent sub-batches are deferred to a second pass below:
-                    // they write no depth, so an opaque sub-batch drawn after one
-                    // paints straight over it. That is routine since #4129 — an
-                    // X-Rayed batch emits a faded group AND a solid one.
-                    const transparentSubBatches: typeof allBatchedMeshes = [];
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
@@ -2764,10 +2765,6 @@ export class Renderer {
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch, true);
                         }
-                    }
-                    for (const subBatch of transparentSubBatches) {
-                        usePipeline(pipeFor(subBatch, 'transparent'));
-                        renderBatch(subBatch);
                     }
                 }
 
@@ -2834,11 +2831,15 @@ export class Renderer {
                 // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
                 // shader's opacity routing so only translucent occurrences draw here.
                 const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
-                if (
-                    visibleInstanced.length > 0 &&
-                    this.scene.hasTransparentInstances() &&
-                    instancedTransparentPipeline !== null
-                ) {
+                const instancedTransparent = visibleInstanced.length > 0 && this.scene.hasTransparentInstances() && instancedTransparentPipeline !== null;
+                // #8564: in a splat frame the transparent group and the highlight are held for the nearest-glass split.
+                const mainPass = pass, mainPipeline = boundPipeline;
+                if (glass?.begin(transparentSubBatches.length + transparentBatches.length + transparentMeshes.length > 0 || instancedTransparent)) { pass = glass.pass; pass.setPipeline(boundPipeline); }
+                for (const subBatch of transparentSubBatches) {
+                    usePipeline(pipeFor(subBatch, 'transparent'));
+                    renderBatch(subBatch);
+                }
+                if (instancedTransparent) {
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
                     usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
@@ -2902,6 +2903,7 @@ export class Renderer {
                 for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
 
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
+                glass?.markHighlight();
                 for (const mesh of selectedMeshes) {
                     if (!mesh.bindGroup || !mesh.uniformBuffer) {
                         continue;
@@ -2935,6 +2937,7 @@ export class Renderer {
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
                     frameDrawCalls++;
                 }
+                if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); if (glass.deferred) boundPipeline = mainPipeline; }
             } else {
                 // Fallback: render individual meshes (only when no batches exist)
                 // Render opaque meshes with per-mesh bind groups
@@ -2952,6 +2955,8 @@ export class Renderer {
                 }
 
                 // Render transparent meshes with transparent pipeline (alpha blending)
+                const mainPass = pass;
+                if (glass?.begin(transparentMeshes.length > 0)) pass = glass.pass;
                 if (transparentMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
@@ -2967,6 +2972,7 @@ export class Renderer {
                         frameDrawCalls++;
                     }
                 }
+                if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             }
 
             // Draw point clouds (IFCx inline + streamed LAS/LAZ).
@@ -3010,7 +3016,8 @@ export class Renderer {
             });
 
             pass.end();
-            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox } });
+            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
+                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
@@ -3062,6 +3069,7 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
+            if (glass) this.gaussianLayer.submitted();
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
                 colorCapture = null; colorReadback = null;

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
+import type { GaussianComposition, GaussianCompositionMode, GaussianCompositionReport } from './gaussian-composition.js';
 
 /**
  * Column-major 4x4 mapping source-local Gaussian coordinates into renderer world
@@ -58,8 +59,14 @@ export interface GaussianSplatStats {
   readonly drawnFrames: number;
   /** Wall time of the last upstream sort + draw recording, in milliseconds. */
   readonly lastEncodeMs: number;
-  /** Splats are composited after the main pass, over IFC glass and X-ray (approximate). */
-  readonly composition: 'over-transparent-approximate';
+  /**
+   * How the last splat frame composed with transparent IFC (#8564): `nearest-glass-split`
+   * is exact where a sample has at most one transparent layer; `over-transparent-approximate`
+   * is the single pass over glass and X-ray, used only as a reported fallback.
+   */
+  readonly composition: GaussianComposition;
+  /** Details of `composition`: fallback reason and transparent layer count. Always set by the renderer; optional so values built against the earlier shape still type-check. */
+  readonly compositionReport?: GaussianCompositionReport;
   readonly clipping: 'centre';
 }
 
@@ -72,5 +79,7 @@ export interface GaussianSplatApi {
   getBounds(handle?: GaussianSplatHandle): GaussianSplatBounds | null;
   getState(handle: GaussianSplatHandle): GaussianSplatState;
   getStats(): GaussianSplatStats;
+  /** `single-pass` keeps the approximate pass over transparent IFC; the default is `nearest-glass-split`. */
+  setCompositionMode(mode: GaussianCompositionMode): void;
   clear(): void;
 }

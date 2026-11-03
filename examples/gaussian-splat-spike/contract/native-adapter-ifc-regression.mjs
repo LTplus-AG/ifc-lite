@@ -5,7 +5,10 @@
 // #8564 IFC-only regression page: no Gaussian API. The renderer under test is a
 // Vite alias, pointed at the base or head checkout by the runner, so the same
 // inputs exercise batched meshes, an authored addMesh() individual mesh and the
-// selection-highlight path (per-mesh uniform allocation) on both commits.
+// selection-highlight path (per-mesh uniform allocation) on both commits, and
+// transparent IFC (#8564 moved its draws): glass batches, a partially hidden
+// transparent batch (a transparent sub-batch), X-Ray ghosts, selected glass and
+// an orthographic view (geometric-depth colour variants).
 import { Renderer, MathUtils } from 'ifc-lite-renderer-under-test';
 
 const OPTIONS = { clearColor: [0, 0, 0, 1], visualEnhancement: { enabled: false } };
@@ -84,10 +87,16 @@ async function run() {
   camera.setFOV(Math.PI / 4); camera.setUp(0, 1, 0); camera.setPosition(0, 0, 10); camera.setTarget(0, 0, 0);
   renderer.addMeshes([meshData(11, [-1.6, -0.9, -0.3], [-0.4, 0.9, 0.3], [0.8, 0.3, 0.2, 1]), meshData(12, [0.4, -0.9, -0.3], [1.6, 0.9, 0.3], [0.2, 0.5, 0.8, 1])]);
   renderer.addMesh(authoredMesh(device, 13, [-0.5, -1.4, 0.4], [0.5, -0.6, 0.9], [0.3, 0.75, 0.35, 1]));
+  // Two panes of one glass colour share a batch, so hiding one leaves a transparent sub-batch.
+  renderer.addMeshes([meshData(14, [-1.2, -0.4, 1.0], [0.0, 0.6, 1.05], [0.5, 0.8, 0.95, 0.4]), meshData(15, [0.1, -0.4, 1.2], [1.3, 0.6, 1.25], [0.5, 0.8, 0.95, 0.4])]);
   const cases = { plain: OPTIONS, selectedBatched: { ...OPTIONS, selectedId: 12 }, selectedAuthored: { ...OPTIONS, selectedId: 13 },
-    selectedSet: { ...OPTIONS, selectedIds: new Set([11, 13]) }, plainAgain: OPTIONS };
+    selectedSet: { ...OPTIONS, selectedIds: new Set([11, 13]) }, plainAgain: OPTIONS,
+    glassPartial: { ...OPTIONS, hiddenIds: new Set([15]) }, selectedGlass: { ...OPTIONS, selectedId: 14 },
+    xray: { ...OPTIONS, ghostExceptIds: new Set([11]) } };
   const frames = {};
-  for (const [name, options] of Object.entries(cases)) {
+  const views = { orthographic: OPTIONS, orthographicXray: cases.xray };
+  for (const [name, options] of [...Object.entries(cases), ...Object.entries(views)]) {
+    if (name === 'orthographic') { camera.setProjectionMode('orthographic'); camera.setOrthoSize(2.5); }
     const { frame, stable, frames: count } = await capture(renderer, device, options);
     frames[name] = { ...(await encode(frame)), stable, frames: count };
   }

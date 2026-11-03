@@ -328,3 +328,17 @@ fn an_unread_face_set_source_is_its_own_bucket() {
     assert_eq!(counts[" sourceRowsUnread"], 1, "{counts}");
     assert_eq!(counts["TRUE sourceRowsClosed"], 1, "{counts}");
 }
+
+/// Each named closure outcome lists only its own products, so count and products agree.
+#[test]
+fn closure_outcomes_list_only_their_own_products_7955() {
+    let mut report = Report::default();
+    for (classification, product) in [("zero_area_row_closure", "m:1"), ("dropped_triangle_closure", "m:2"), ("dropped_triangle_closure", "m:3")] {
+        report.zero_area_row_closure.push(json!({"classification": classification, "product": product, "edges": 3}));
+    }
+    let summary = report.summary();
+    for (key, count) in [("zeroAreaRowClosure", 1), ("droppedTriangleClosure", 2)] {
+        assert_eq!(summary[key]["count"], count, "{key}");
+        assert_eq!(summary[key]["products"].as_array().map(Vec::len), Some(count), "{key}");
+    }
+}

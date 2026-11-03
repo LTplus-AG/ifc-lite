@@ -42,7 +42,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
   const { t, locale } = useTranslation();
   const icon = (Icon: typeof Info) => <Icon className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
   const state = gaussianModelState(model).state;
-  const megabytes = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { maximumFractionDigits: 1 });
+  const fileSize = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
       <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
@@ -61,7 +61,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
       </div>
       <ScrollArea className="flex-1 min-h-0">
         <Section title={t('gaussianCapture.heading.capture')}>
-          <Row icon={icon(HardDrive)} label={t('properties.modelMetadata.fileSize')}>{`${megabytes} MB`}</Row>
+          <Row icon={icon(HardDrive)} label={t('properties.modelMetadata.fileSize')}>{fileSize}</Row>
           <Row icon={icon(Clock)} label={t('properties.modelMetadata.loadedAt')}>{formatLocaleDate(locale, new Date(model.loadedAt), { dateStyle: 'short', timeStyle: 'medium' })}</Row>
           <Row icon={icon(Sparkles)} label={t('gaussianCapture.splats')}>{formatLocaleNumber(locale, capture.count)}</Row>
           <Row icon={icon(Info)} label={t('gaussianCapture.shDegree')}>{capture.shDegree}</Row>

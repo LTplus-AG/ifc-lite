@@ -388,9 +388,17 @@ meshes take part.
 | `validate-native-adapter.mjs`, glass scenes: perspective and orthographic x 1x and 4x, each at two canvas sizes | affine: B0 + (B1 - B0) A / 255 from the glass over black / white and the splat alone; front splat, rest of frame and no-glass frames byte-equal to the single pass | pass, max 0.957/255 | pass, max 1.239/255 (4x), 0.925/255 (1x) |
 | same, two panes and X-Ray | `transparentLayers` must be `multiple`; one pane must be `single` (negative control) | pass | pass |
 | full native witness (all earlier scenes) | as recorded above | pass | pass |
-| `peel-validate.mjs`: option B vs the K-layer peel witness, single-pane and five-pane scenes, 3 sizes, both projections | per sample: <= 1 layer equal to the independent per-sample reference and to the K-layer peel (tolerance 0); >= 2 layers anywhere: `multiple` reported; split-off control must miss | 1x exact; 4x every mismatch explained by SwiftShader's x-mirrored fixed-function sample depth (probed) | exact at 1x and 4x, every case |
+| `peel-validate.mjs`: option B vs the K-layer peel witness (the decided reference), single-pane and five-pane scenes, 3 sizes, both projections | per sample: <= 1 layer equal to the K-layer peel and to the independent per-sample reference (tolerance 0); >= 2 layers anywhere: `multiple` reported; split-off control must miss | 1x exact; 4x every mismatch explained by SwiftShader's x-mirrored fixed-function sample depth (probed; also affects the K-layer peel's fixed-function opaque test) | exact at 1x and 4x, all 24 cases, against both references |
 | `--real-glass`: FZK-Haus (its windows) + plant capture (Marcel Padilla, CC-BY-4.0) behind a window | independent affine reference (front window only), and the K-layer research renderer (`5b9b7f6f6d`) | not run | affine max 1.8/255; vs K-layer max 3/255, no pixel beyond the two renderers' existing glass-shading delta + 2/255; single pass vs K-layer mean 22.8 (max 39) |
 | `--ifc-regression`: IFC-only frames incl. glass, X-Ray, partial transparent batches, selected glass, orthographic | base `750b33165a` | 10/10 identical | 10/10 identical |
+
+The independent per-sample reference (18k scissored, sample-masked draws per case) is
+not perfectly repeatable on NVIDIA: in one of three hardware runs it differed from its
+own earlier render at 8 samples of one case (single pane, orthographic, 48 px, 4x),
+where option B and the K-layer peel agreed exactly with each other. The validator now
+renders that reference twice and lets a case pass on it only when the two renders
+differ, and only if option B still equals the K-layer peel exactly; the final runs
+recorded no such case.
 
 Tolerances: 2/255 only for the affine references (each capture is rounded once, so the
 true composite lies within 1/255; hardware blend rounding needs the second LSB). The

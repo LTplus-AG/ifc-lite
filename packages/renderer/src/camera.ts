@@ -142,12 +142,15 @@ export class Camera {
    * without turning the camera, the "shift lens" of architectural photography
    * (issue #8688). A point that would project to NDC `p` projects to `p + (x, y)`.
    * Keep the camera level and shift vertically for two-point perspective, so
-   * world-vertical edges stay vertical on screen. `(0, 0)`, the default, is the
-   * ordinary centred frustum. Orthographic projection ignores the shift.
+   * world-vertical edges stay vertical on screen: to frame what a camera
+   * pitched up by `pitch` would centre, use `y = -tan(pitch) / tan(fov / 2)`.
+   * `(0, 0)`, the default, is the ordinary centred frustum. Orthographic
+   * projection ignores the shift (see {@link getActiveLensShift}).
    *
-   * Picking, sections, overlays and shadows read the same projection matrix,
-   * so they follow the shift. Fit-to-view still frames the target at the
-   * centre of the unshifted frustum. Non-finite values are rejected.
+   * Picking, sections, overlays, AO/edges, the sky and shadows follow the
+   * shift. Fit-to-view, BCF viewpoints and the shift itself are independent:
+   * a fit still centres the target in the unshifted frustum, and restoring a
+   * viewpoint keeps the current shift. Non-finite values are rejected.
    */
   setLensShift(x: number, y: number): void {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;

@@ -64,14 +64,24 @@ describe('Camera lens shift (#8688)', () => {
     assert.ok(Math.abs(p.y - 0.4) < 1e-5, `y = ${p.y}`);
   });
 
-  it('keeps world verticals vertical on screen with a level camera', () => {
-    const camera = levelCamera();
-    camera.setPosition(14, 1.6, 14);
-    camera.setTarget(0, 1.6, 0);
-    camera.setLensShift(0, -0.6);
-    const bottom = ndc(camera, { x: 3, y: 0, z: -2 });
-    const top = ndc(camera, { x: 3, y: 30, z: -2 });
-    assert.ok(Math.abs(bottom.x - top.x) < 1e-5, `${bottom.x} vs ${top.x}`);
+  it('gives two-point perspective: a level shifted camera frames like a pitched one, verticals stay vertical', () => {
+    // A camera at eye height looking up at a point 12 m higher, 20 m away.
+    const pitch = Math.atan2(12, 20);
+    const pitched = levelCamera();
+    pitched.setTarget(0, 1.6 + 12, 0);
+    const shifted = levelCamera();
+    shifted.setLensShift(0, -Math.tan(pitch) / Math.tan(shifted.getFOV() / 2));
+    // The shifted camera puts the pitched camera's target at the screen centre.
+    const aim = ndc(shifted, { x: 0, y: 13.6, z: 0 });
+    assert.ok(Math.hypot(aim.x, aim.y) < 1e-5, JSON.stringify(aim));
+    // An off-centre world vertical converges under pitch but not under shift.
+    const vertical = (camera: Camera) => {
+      const bottom = ndc(camera, { x: 4, y: 0, z: -2 });
+      const top = ndc(camera, { x: 4, y: 25, z: -2 });
+      return Math.abs(bottom.x - top.x);
+    };
+    assert.ok(vertical(pitched) > 0.01, `pitched lean ${vertical(pitched)}`);
+    assert.ok(vertical(shifted) < 1e-5, `shifted lean ${vertical(shifted)}`);
   });
 
   it('does not change reverse-Z depth', () => {

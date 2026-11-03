@@ -13,6 +13,7 @@ import type { Camera } from './camera.js';
 import { MathUtils } from './math.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
+import { sectionBoxClipPlanes } from './section-box-caps.js';
 
 /**
  * The section DRAW half, extracted from `RendererOverlays.draw()` so the
@@ -257,5 +258,60 @@ describe('the caps of the cutting planes beyond the first (#7545)', () => {
         const s = makeStubs();
         drawSectionOverlays(PASS, s.gizmo, s.cap, ctxFor({ axis: 'down', position: 50, enabled: true }));
         assert.deepStrictEqual(s.primaryClippedBy, [[]]);
+    });
+});
+
+describe('the section box\'s face caps (#8696)', () => {
+    const box = { min: [0, 0, 0] as [number, number, number], max: [4, 3, 2] as [number, number, number] };
+    const boxed = (clipBox: RenderOptions['clipBox'], extraPlanes: SectionDrawContext['extraPlanes'] = [], sectionPlane?: RenderOptions['sectionPlane']): SectionDrawContext =>
+        ({ options: { sectionPlane, clipBox }, viewProj: new Float32Array(16), modelBounds: BOUNDS, extraPlanes, primaryPlane: null });
+    const faces = sectionBoxClipPlanes(box);
+    const face = (key: string) => faces.find((f) => f.id === `section-box:${key}`)!;
+
+    it('draws a cap per face, each clipped by the four faces around it, never by itself or the opposite face', () => {
+        const s = makeStubs(false, true);
+        drawSectionOverlays(PASS, s.gizmo, s.cap, boxed({ ...box, enabled: true }));
+        const draw = s.extraDraws.at(-1)!;
+        assert.deepStrictEqual(draw.caps.map((c) => c.key), ['minX', 'maxX', 'minY', 'maxY', 'minZ', 'maxZ'].map((f) => `section-box:${f}`));
+        assert.deepStrictEqual(draw.caps[0].clippedBy, [face('minY'), face('maxY'), face('minZ'), face('maxZ')]);
+        assert.deepStrictEqual(draw.caps[5].clippedBy, [face('minX'), face('maxX'), face('minY'), face('maxY')]);
+    });
+
+    it('the faces remove the outside of the box, as the box clip does', () => {
+        assert.deepStrictEqual(face('maxX'), { id: 'section-box:maxX', normal: [1, 0, 0], distance: 4, flipped: false });
+        assert.deepStrictEqual(face('minY'), { id: 'section-box:minY', normal: [0, -1, 0], distance: -0, flipped: false });
+        assert.deepStrictEqual(face('maxZ'), { id: 'section-box:maxZ', normal: [0, 0, 1], distance: 2, flipped: false });
+    });
+
+    it('draws the face caps in the box\'s own cap look', () => {
+        const s = makeStubs(false, true);
+        drawSectionOverlays(PASS, s.gizmo, s.cap, boxed({ ...box, enabled: true, showOutlines: false, capStyle: { pattern: 'brick' } }));
+        const params = s.extraDraws.at(-1)!.params;
+        assert.strictEqual((params.capStyle as { patternId: number }).patternId, HATCH_PATTERN_IDS.brick);
+        assert.strictEqual(params.showOutlines, false);
+        assert.strictEqual(params.showFills, true);
+
+        const off = makeStubs(false, true);
+        drawSectionOverlays(PASS, off.gizmo, off.cap, boxed({ ...box, enabled: true, showCap: false }));
+        assert.strictEqual(off.extraDraws.at(-1)!.params.capStyle, undefined, 'Surfaces off: outlines only');
+    });
+
+    it('a cutting plane clips the face caps, and the box clips the planes\' caps', () => {
+        const s = makeStubs(true, true);
+        const b = { id: 'b', normal: [1, 0, 0] as [number, number, number], distance: 2, flipped: false };
+        drawSectionOverlays(PASS, s.gizmo, s.cap, boxed({ ...box, enabled: true }, [b], { axis: 'down', position: 50, enabled: true }));
+        assert.deepStrictEqual(s.primaryClippedBy[0], [b, ...faces]);
+        assert.strictEqual(s.extraDraws.length, 2);
+        assert.deepStrictEqual(s.extraDraws[0].caps, [{ key: 'b', clippedBy: [...faces] }]);
+        assert.deepStrictEqual(s.extraDraws[1].caps[0].clippedBy.at(-1), b);
+    });
+
+    it('a box that does not cut, or no cap geometry, draws no face caps', () => {
+        const off = makeStubs(false, true);
+        drawSectionOverlays(PASS, off.gizmo, off.cap, boxed({ ...box, enabled: false }));
+        assert.deepStrictEqual(off.extraDraws.flatMap((d) => d.caps), [], 'only the (empty) extra planes\' draw');
+        const none = makeStubs(false, false);
+        drawSectionOverlays(PASS, none.gizmo, none.cap, boxed({ ...box, enabled: true }));
+        assert.strictEqual(none.extraDraws.length, 0);
     });
 });

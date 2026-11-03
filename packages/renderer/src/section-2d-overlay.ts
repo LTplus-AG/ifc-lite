@@ -26,7 +26,7 @@
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { createSectionCapPipelines } from './section-cap-pipelines.js';
 import { SectionCapSet, type CapDrawResources, type ExtraCapDraw } from './section-cap-set.js';
-import { EXTRA_CLIP_BYTES } from './extra-clip-planes.js';
+import { CAP_CLIP_BYTES } from './extra-clip-planes.js';
 import type { ExtraClipPlane } from './clip-types.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
@@ -158,7 +158,7 @@ export class Section2DOverlayRenderer {
       entries: [{
         binding: 0,
         visibility: GPUShaderStage.FRAGMENT,
-        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: EXTRA_CLIP_BYTES },
+        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: CAP_CLIP_BYTES },
       }],
     });
     const capPipelineLayout = this.device.createPipelineLayout({
@@ -250,7 +250,7 @@ export class Section2DOverlayRenderer {
 
     // One clip block per cap: the primary plane's and each extra plane's.
     const align = this.device.limits?.minUniformBufferOffsetAlignment ?? 256;
-    this.clipStride = Math.ceil(EXTRA_CLIP_BYTES / (Number.isFinite(align) && align > 0 ? align : 256))
+    this.clipStride = Math.ceil(CAP_CLIP_BYTES / (Number.isFinite(align) && align > 0 ? align : 256))
       * (Number.isFinite(align) && align > 0 ? align : 256);
     this.clipBuffer = this.device.createBuffer({
       size: this.clipStride * (1 + SECTION_2D_MAX_EXTRA_CAPS),
@@ -258,7 +258,7 @@ export class Section2DOverlayRenderer {
     });
     this.clipBindGroup = this.device.createBindGroup({
       layout: clipLayout,
-      entries: [{ binding: 0, resource: { buffer: this.clipBuffer, offset: 0, size: EXTRA_CLIP_BYTES } }],
+      entries: [{ binding: 0, resource: { buffer: this.clipBuffer, offset: 0, size: CAP_CLIP_BYTES } }],
     });
 
     this.initialized = true;

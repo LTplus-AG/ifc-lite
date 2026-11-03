@@ -19,7 +19,10 @@
  */
 
 import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
-import { extraClipWgsl } from '../extra-clip-planes.js';
+import { MAX_CAP_CLIP_PLANES, extraClipWgslFor } from '../extra-clip-planes.js';
+
+/** The cap shaders' clip block: every other cutting plane and the section-box faces (#8696). */
+const capClipWgsl = extraClipWgslFor(MAX_CAP_CLIP_PLANES);
 
 /**
  * Float32 indices of each field in the shared uniform buffer.
@@ -103,8 +106,8 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   extraCap: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7,
 } as const;
 
-/** Caps of the planes beyond the first (`MAX_EXTRA_CLIP_PLANES`). */
-export const SECTION_2D_MAX_EXTRA_CAPS = 7;
+/** Caps beyond the first: one per extra plane (`MAX_EXTRA_CLIP_PLANES`) and one per section-box face (#8696). */
+export const SECTION_2D_MAX_EXTRA_CAPS = 7 + 6;
 
 /** One cap record, a partition range for every line family, and a cap record per extra plane. */
 export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7 + SECTION_2D_MAX_EXTRA_CAPS;
@@ -135,7 +138,7 @@ export function sectionUniformSlotStride(device: GPUDevice): number {
  * as before. Hatch + stroke apply over either base.
  */
 export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
-        ${extraClipWgsl}
+        ${capClipWgsl}
         struct Uniforms {
           viewProj:       mat4x4<f32>,
           planeOffset:    vec4<f32>,    // Small offset to render slightly in front of section plane
@@ -292,7 +295,7 @@ function lineShaderWgsl(clipped: boolean): string {
           originDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        ${clipped ? `${extraClipWgsl}
+        ${clipped ? `${capClipWgsl}
         @binding(0) @group(1) var<uniform> extraClip: ExtraClip;` : ''}
         ${overlayDepthLiftWgsl}
 

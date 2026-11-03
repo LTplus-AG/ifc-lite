@@ -67,7 +67,10 @@ export const PANEL_SURFACE_COMMANDS = [
     labelKey: panelTitleKey('properties'),
     keywords: 'properties attributes material classification schedule task panel right inspector information',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); },
+    run: () => {
+      liftStartFold('right'); // folded for the start screen, Properties must still appear
+      useViewerStore.getState().showWorkspacePanel('properties', 'palette');
+    },
   },
   {
     id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),

@@ -135,7 +135,8 @@ export function usePanelControls(): PanelControls {
       useViewerStore.getState().setLeftPanelCollapsed(false);
       return;
     }
-    liftStartFold('right');
+    // Bottom-strip panels never touch the right pane, so never lift its fold.
+    if (!isBottomPanel(id)) liftStartFold('right');
     useViewerStore.getState().openPanelInHome(id, source);
   }, []);
 
@@ -148,7 +149,7 @@ export function usePanelControls(): PanelControls {
       s.setLeftPanelCollapsed(!s.leftPanelCollapsed);
       return;
     }
-    if (liftStartFold('right')) { useViewerStore.getState().openPanelInHome(id, source); return; }
+    if (!isBottomPanel(id) && liftStartFold('right')) { useViewerStore.getState().openPanelInHome(id, source); return; }
     // If the panel is the lower split half it's already docked below, so
     // toggling its rail icon closes that half (clears the split) rather than
     // promoting it to primary and collapsing the split out from under it (#1266).

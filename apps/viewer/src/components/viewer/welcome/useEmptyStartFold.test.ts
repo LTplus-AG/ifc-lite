@@ -86,3 +86,32 @@ describe('liftStartFold (store)', () => {
     assert.deepEqual(useViewerStore.getState().startFoldLifted, { left: false, right: false });
   });
 });
+
+describe('palette panel commands on the folded start screen (#8728 review)', () => {
+  const RESET = {
+    loading: false,
+    models: new Map(),
+    geometryResult: null,
+    leftPanelCollapsed: false,
+    sidebarActivePanel: 'properties',
+    sidebarSecondaryPanel: null,
+    startFoldLifted: { left: false, right: false },
+  } as const;
+  afterEach(() => useViewerStore.setState(RESET));
+
+  it('"Properties" reveals the folded pane instead of re-selecting a hidden panel', async () => {
+    useViewerStore.setState(RESET);
+    const { surfaceCommand } = await import('../surface-commands.js');
+    surfaceCommand('panel:properties', 'palette').run({ surface: 'palette' });
+    assert.equal(startFoldsSidebarPane(useViewerStore.getState()), false, 'the Properties pane is shown');
+  });
+
+  it('"Hierarchy" reveals the folded panel without storing "collapsed"', async () => {
+    useViewerStore.setState(RESET);
+    const { surfaceCommand } = await import('../surface-commands.js');
+    surfaceCommand('panel:tree', 'palette').run({ surface: 'palette' });
+    const s = useViewerStore.getState();
+    assert.equal(startFoldsHierarchy(s), false, 'Hierarchy is shown');
+    assert.equal(s.leftPanelCollapsed, false, 'the toggle did not flip the stored preference');
+  });
+});

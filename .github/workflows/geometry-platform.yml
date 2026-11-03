@@ -115,6 +115,8 @@ on:
       - 'scripts/check-retained-corpus-summary.mjs'
       - 'scripts/lib/ci-path-coverage.mjs'
       - 'scripts/lib/is-main-entry.mjs'
+      # check-viewer-retained-free.mjs --lazy reads the startup graph with its eagerScripts().
+      - 'scripts/perf-ratchet/measure-bundle.mjs'
       - 'scripts/lib/*retained*'
       - 'pnpm-workspace.yaml'
       - 'package.json'

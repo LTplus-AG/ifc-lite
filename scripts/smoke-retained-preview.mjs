@@ -8,19 +8,32 @@
 //   node scripts/smoke-retained-preview.mjs --url https://<preview>.vercel.app \
 //     [--source-tag v27.1.1] [--expect-engine-manifest-sha256 HEX] [--fixture model.ifc] \
 //     [--out summary.json] [--channel chrome | --browser-executable PATH] [--rehearsal]
+//   node scripts/smoke-retained-preview.mjs --production --url https://www.ifclite.com \
+//     [--lock apps/viewer/retained-engine.lock.json] [--source-tag vX.Y.Z] ...
+//
+// --production checks a production-shaped deployment (the viewer built as
+// VITE_RETAINED_GEOMETRY=lazy with the engine installed by
+// scripts/install-retained-engine.mjs): the identity is
+// /retained-engine/deployment.json (compared field by field with --lock), the
+// startup graph is checked over HTTP, and retained is chosen the way a user does,
+// through the saved Settings choice, with no `?kernel=` parameter.
 //
 // Steps (each pass/fail in the JSON summary; exit 1 on any failure):
 //   identity        /retained-preview.json is served, publishable unless --rehearsal, tag matches
+//                   (--production: /retained-engine/deployment.json matches the tag and --lock)
+//   startup-graph   --production only: index.html's entry, modulepreloads and their static
+//                   imports, as served, carry no retained code signature
 //   engine-assets   every engine-manifest file is served at its contract URL with the
 //                   manifest's sha256, COOP/COEP/nosniff and the right MIME type; a
 //                   missing engine URL is a 404, not the SPA's index.html
 //   notices         all licence/notice texts are served as text; IFC-Lite notices carry
 //                   the exact covered-source tag URL (placeholder only under --rehearsal)
-//   retained-frame  fresh Chrome: crossOriginIsolated, `?kernel=retained` + the real file
-//                   input publishes retained products and draws the first retained frame
-//                   (the #8413 page instrumentation and assertions)
+//   retained-frame  fresh Chrome: crossOriginIsolated, `?kernel=retained` (--production: the
+//                   saved Settings choice) + the real file input publishes retained products
+//                   and draws the first retained frame (the #8413 page instrumentation and assertions)
 //   default-exact   fresh Chrome, no kernel parameter: the same model loads exact, with no
-//                   request to /smlib/ or /retained-engine/
+//                   request to /smlib/ or /retained-engine/ and no downloaded JS carrying
+//                   retained code
 // The default fixture is the committed tests/fixtures/cli-retained/layered-wall.ifc.
 
 import { createHash } from 'node:crypto';
@@ -33,6 +46,9 @@ import { REQUIRED_NOTICES, SOURCE_URL_NOTICES, expectedType, missingNotices, not
 import { assertMilestones, assertViewerRetained } from './perf/retained-qual-assert.mjs';
 import { INIT_SCRIPT, PAGE_KEY } from './perf/retained-qual-viewer-page.mjs';
 import { launchFresh } from './perf/retained-qual-browser.mjs';
+import { CODE_SIGNATURES, staticImports } from './check-viewer-retained-free.mjs';
+import { eagerScripts } from './perf-ratchet/measure-bundle.mjs';
+import { DEPLOYMENT_PATH, DEPLOYMENT_SCHEMA, GEOMETRY_KERNEL_SETTING_KEY, readLock } from './lib/retained-engine-artifact.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_FIXTURE = join(REPO, 'tests/fixtures/cli-retained/layered-wall.ifc');
@@ -65,7 +81,11 @@ async function retainedFrame({ origin, fixture, options, servedManifestSha256 })
   try {
     const { page } = browser;
     await page.addInitScript(INIT_SCRIPT);
-    await page.goto(new URL('/?perfTrace=1&kernel=retained', origin).href);
+    if (options.production) {
+      // A returning user who chose Retained in Settings: no parameter, only the saved choice.
+      await page.addInitScript(key => localStorage.setItem(key, 'retained'), GEOMETRY_KERNEL_SETTING_KEY);
+    }
+    await page.goto(new URL(options.production ? '/?perfTrace=1' : '/?perfTrace=1&kernel=retained', origin).href);
     await page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__), null, { timeout: 120000 });
     if (await page.evaluate(() => globalThis.crossOriginIsolated) !== true) throw new Error('crossOriginIsolated is not true');
     await page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 });
@@ -91,6 +111,13 @@ async function defaultExact({ origin, fixture, options }) {
   const browser = await launchFresh({ gpu: 'swiftshader', channel: options.channel, executable: options.executable, headed: false });
   try {
     const { page } = browser;
+    const retainedJs = [], bodies = [];
+    page.on('response', response => {
+      if (!/\.m?js(\?|$)/.test(response.url())) return;
+      bodies.push(response.body().then(body => {
+        if (CODE_SIGNATURES.some(signature => body.includes(signature))) retainedJs.push(response.url());
+      }, () => undefined));
+    });
     await page.goto(new URL('/', origin).href);
     await page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__), null, { timeout: 120000 });
     await page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 });
@@ -99,6 +126,7 @@ async function defaultExact({ origin, fixture, options }) {
       return Boolean(s.error) || (!s.loading && m?.loadState === 'complete'); }, null, { timeout: Number(options.timeoutMs), polling: 100 });
     const state = await page.evaluate(readModel);
     const engineRequests = browser.requests.filter(url => /\/(smlib|retained-engine)\//.test(url));
+    await Promise.all(bodies);
     const problems = [];
     if (state.error) problems.push(`viewer error ${JSON.stringify(state.error)}`);
     if (state.models !== 1 || state.loadState !== 'complete') problems.push(`models=${state.models} loadState=${state.loadState}`);
@@ -106,9 +134,46 @@ async function defaultExact({ origin, fixture, options }) {
     if (state.meshCount <= 0) problems.push('exact load produced no meshes');
     if (engineRequests.length) problems.push(`default load requested ${engineRequests.length} engine URL(s): ${engineRequests[0]}`);
     if (state.crossOriginIsolated !== true) problems.push('crossOriginIsolated is not true');
+    if (retainedJs.length) problems.push(`default load downloaded retained code: ${retainedJs.slice(0, 3).join(', ')}`);
     if (problems.length) throw new Error(problems.join('; '));
-    return { meshes: state.meshCount, crossOriginIsolated: true, engineRequests: 0, pageErrors: browser.pageErrors };
+    return { meshes: state.meshCount, crossOriginIsolated: true, engineRequests: 0, retainedJsDownloads: 0, pageErrors: browser.pageErrors };
   } finally { await browser.close(); }
+}
+
+/** --production identity: the deployment record the installer wrote, bound to the tag and the lock. */
+export async function productionIdentity(origin, options) {
+  const response = await get(origin, `/${DEPLOYMENT_PATH}`);
+  if (response.status !== 200) throw new Error(`/${DEPLOYMENT_PATH} HTTP ${response.status}`);
+  const identity = JSON.parse(response.bytes.toString('utf8'));
+  if (identity.schema !== DEPLOYMENT_SCHEMA) throw new Error(`schema ${identity.schema}`);
+  if (options.sourceTag && identity.sourceTag !== options.sourceTag) throw new Error(`built for ${identity.sourceTag}, expected ${options.sourceTag}`);
+  if (options.lock) {
+    const lock = readLock(resolve(options.lock));
+    for (const key of ['sourceTag', 'sourceCommit', 'archiveSha256', 'engineManifestSha256', 'sdkRevision']) {
+      if (identity[key] !== lock[key]) throw new Error(`deployment ${key} ${identity[key]} != lock ${lock[key]}`);
+    }
+  }
+  return identity;
+}
+
+/** --production: what the browser loads at startup, as served, is retained-free. */
+export async function startupGraph(origin) {
+  const page = await get(origin, '/');
+  if (page.status !== 200) throw new Error(`/ HTTP ${page.status}`);
+  const html = page.bytes.toString('utf8');
+  const seen = new Set(), queue = eagerScripts(html).eager.map(url => new URL(url, origin).href), problems = [];
+  while (queue.length) {
+    const url = queue.pop();
+    if (seen.has(url) || new URL(url).origin !== origin) continue;
+    seen.add(url);
+    const response = await get(origin, new URL(url).pathname);
+    if (response.status !== 200) { problems.push(`${url}: HTTP ${response.status}`); continue; }
+    const code = response.bytes.toString('utf8');
+    for (const signature of CODE_SIGNATURES) if (code.includes(signature)) problems.push(`${url}: carries ${signature}`);
+    for (const specifier of staticImports(code)) queue.push(new URL(specifier, url).href);
+  }
+  if (problems.length) throw new Error(problems.slice(0, 8).join('; '));
+  return { startupChunks: seen.size };
 }
 
 export async function smoke(options) {
@@ -122,6 +187,7 @@ export async function smoke(options) {
   let manifest = null, servedManifestSha256 = null, identity = null;
 
   await step('identity', async () => {
+    if (options.production) return (identity = await productionIdentity(origin, options));
     const response = await get(origin, '/retained-preview.json');
     if (response.status !== 200) throw new Error(`/retained-preview.json HTTP ${response.status}`);
     identity = JSON.parse(response.bytes.toString('utf8'));
@@ -177,25 +243,30 @@ export async function smoke(options) {
     return { served, sourceTag: options.sourceTag ?? null, placeholderTolerated: Boolean(options.rehearsal) };
   });
 
+  if (options.production) await step('startup-graph', () => startupGraph(origin));
   await step('retained-frame', () => retainedFrame({ origin, fixture, options, servedManifestSha256 }));
   await step('default-exact', () => defaultExact({ origin, fixture, options }));
 
   const failed = steps.filter(s => s.status === 'fail');
   return { schema: 'ifc-lite.retained-preview-smoke/1', url: origin, at: new Date().toISOString(), rehearsal: Boolean(options.rehearsal),
+    production: Boolean(options.production),
     fixture: { path: fixture, sha256: sha256(readFileSync(fixture)) }, status: failed.length ? 'fail' : 'pass', steps };
 }
 
 function parse(argv) {
   const map = { '--url': 'url', '--source-tag': 'sourceTag', '--expect-engine-manifest-sha256': 'expectManifest', '--fixture': 'fixture',
-    '--out': 'out', '--channel': 'channel', '--browser-executable': 'executable', '--timeout-ms': 'timeoutMs' };
+    '--out': 'out', '--channel': 'channel', '--browser-executable': 'executable', '--timeout-ms': 'timeoutMs', '--lock': 'lock' };
   const options = { channel: 'chrome', timeoutMs: 300000 };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--rehearsal') { options.rehearsal = true; continue; }
+    if (argv[i] === '--production') { options.production = true; continue; }
     const name = map[argv[i]];
     if (!name || argv[i + 1] === undefined) throw new Error(`unknown or incomplete option ${argv[i]}`);
     options[name] = argv[++i];
   }
   if (!options.url) throw new Error('Usage: node scripts/smoke-retained-preview.mjs --url URL [--source-tag vX.Y.Z] [--expect-engine-manifest-sha256 HEX] [--out FILE] [--rehearsal]');
+  if (options.production && options.rehearsal) throw new Error('--production serves only published engines; --rehearsal does not apply');
+  if (options.lock && !options.sourceTag) options.sourceTag = readLock(resolve(options.lock)).sourceTag;
   if (!options.rehearsal && !options.sourceTag) throw new Error('--source-tag vX.Y.Z is required (or --rehearsal for a local run)');
   return options;
 }

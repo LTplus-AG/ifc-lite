@@ -23,6 +23,7 @@ import {
   DEFAULT_ORTHO_SIZE,
   isUsableBounds,
   isUsableDistance,
+  isUsableLensShift,
   usableOrthoSize,
 } from './camera-guards.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
@@ -150,10 +151,11 @@ export class Camera {
    * Picking, sections, overlays, AO/edges, the sky and shadows follow the
    * shift. Fit-to-view, BCF viewpoints and the shift itself are independent:
    * a fit still centres the target in the unshifted frustum, and restoring a
-   * viewpoint keeps the current shift. Non-finite values are rejected.
+   * viewpoint keeps the current shift. Non-finite values and components beyond
+   * `MAX_LENS_SHIFT` are rejected and the previous shift is kept.
    */
   setLensShift(x: number, y: number): void {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!isUsableLensShift(x) || !isUsableLensShift(y)) return;
     const shift = this.state.lensShift;
     if (shift.x === x && shift.y === y) return;
     this.state.lensShift = { x, y };

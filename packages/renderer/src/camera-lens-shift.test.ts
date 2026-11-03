@@ -14,6 +14,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { Camera } from './camera.js';
+import { MAX_LENS_SHIFT } from './camera-guards.js';
 import { cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { viewBasis } from './math.js';
 import type { Vec3 } from './types.js';
@@ -36,6 +37,13 @@ function ndc(camera: Camera, p: Vec3): { x: number; y: number } {
   return { x: (s.x / W) * 2 - 1, y: 1 - (s.y / H) * 2 };
 }
 
+/** `actual` is finite and within `tolerance` of `expected`; reports both on failure. */
+function assertClose(actual: number, expected: number, tolerance: number, label: string): void {
+  assert.ok(Number.isFinite(actual), `${label}: expected a finite value, got ${actual}`);
+  assert.ok(Math.abs(actual - expected) <= tolerance,
+    `${label}: ${actual} differs from ${expected} by ${Math.abs(actual - expected)} (tolerance ${tolerance})`);
+}
+
 describe('Camera lens shift (#8688)', () => {
   it('defaults to zero and leaves the matrices unchanged', () => {
     const shifted = levelCamera();
@@ -47,12 +55,17 @@ describe('Camera lens shift (#8688)', () => {
     assert.deepStrictEqual([...shifted.getViewProjMatrix().m], [...plain.getViewProjMatrix().m]);
   });
 
-  it('rejects non-finite values', () => {
+  it('rejects non-finite and out-of-range values', () => {
     const camera = levelCamera();
     camera.setLensShift(0.1, 0.2);
     camera.setLensShift(Number.NaN, 0);
     camera.setLensShift(0, Number.POSITIVE_INFINITY);
+    // Finite but past Float32 range: would write -Infinity into the matrix.
+    camera.setLensShift(1e39, 0);
+    camera.setLensShift(0, -(MAX_LENS_SHIFT + 1));
     assert.deepStrictEqual(camera.getLensShift(), { x: 0.1, y: 0.2 });
+    camera.setLensShift(MAX_LENS_SHIFT, -MAX_LENS_SHIFT);
+    assert.deepStrictEqual(camera.getLensShift(), { x: MAX_LENS_SHIFT, y: -MAX_LENS_SHIFT });
     assert.ok(camera.getProjMatrix().m.every(Number.isFinite));
   });
 
@@ -60,8 +73,8 @@ describe('Camera lens shift (#8688)', () => {
     const camera = levelCamera();
     camera.setLensShift(0.15, 0.4);
     const p = ndc(camera, { x: 0, y: 1.6, z: -5 });
-    assert.ok(Math.abs(p.x - 0.15) < 1e-5, `x = ${p.x}`);
-    assert.ok(Math.abs(p.y - 0.4) < 1e-5, `y = ${p.y}`);
+    assertClose(p.x, 0.15, 1e-5, 'ndc x');
+    assertClose(p.y, 0.4, 1e-5, 'ndc y');
   });
 
   it('gives two-point perspective: a level shifted camera frames like a pitched one, verticals stay vertical', () => {
@@ -73,7 +86,8 @@ describe('Camera lens shift (#8688)', () => {
     shifted.setLensShift(0, -Math.tan(pitch) / Math.tan(shifted.getFOV() / 2));
     // The shifted camera puts the pitched camera's target at the screen centre.
     const aim = ndc(shifted, { x: 0, y: 13.6, z: 0 });
-    assert.ok(Math.hypot(aim.x, aim.y) < 1e-5, JSON.stringify(aim));
+    assertClose(aim.x, 0, 1e-5, 'aim ndc x');
+    assertClose(aim.y, 0, 1e-5, 'aim ndc y');
     // An off-centre world vertical converges under pitch but not under shift.
     const vertical = (camera: Camera) => {
       const bottom = ndc(camera, { x: 4, y: 0, z: -2 });
@@ -81,7 +95,7 @@ describe('Camera lens shift (#8688)', () => {
       return Math.abs(bottom.x - top.x);
     };
     assert.ok(vertical(pitched) > 0.01, `pitched lean ${vertical(pitched)}`);
-    assert.ok(vertical(shifted) < 1e-5, `shifted lean ${vertical(shifted)}`);
+    assertClose(vertical(shifted), 0, 1e-5, 'shifted lean');
   });
 
   it('does not change reverse-Z depth', () => {
@@ -102,7 +116,7 @@ describe('Camera lens shift (#8688)', () => {
     assert.deepStrictEqual(camera.getLensShift(), { x: 0, y: 0.5 });
     camera.setProjectionMode('perspective');
     assert.deepStrictEqual(camera.getActiveLensShift(), { x: 0, y: 0.5 });
-    assert.ok(Math.abs(ndc(camera, { x: 0, y: 1.6, z: -5 }).y - 0.5) < 1e-5);
+    assertClose(ndc(camera, { x: 0, y: 1.6, z: -5 }).y, 0.5, 1e-5, 'restored ndc y');
   });
 
   it('unprojects a cursor ray through the shifted image of a point', () => {
@@ -114,7 +128,7 @@ describe('Camera lens shift (#8688)', () => {
     const v = { x: point.x - ray.origin.x, y: point.y - ray.origin.y, z: point.z - ray.origin.z };
     const t = v.x * ray.direction.x + v.y * ray.direction.y + v.z * ray.direction.z;
     const miss = Math.hypot(v.x - ray.direction.x * t, v.y - ray.direction.y * t, v.z - ray.direction.z * t);
-    assert.ok(miss < 1e-3, `ray misses the point by ${miss}`);
+    assertClose(miss, 0, 1e-3, 'ray miss distance');
   });
 
   it('zooming at the shifted image of the target is a pure dolly', () => {
@@ -123,7 +137,8 @@ describe('Camera lens shift (#8688)', () => {
     const screen = camera.projectToScreen(camera.getTarget(), W, H)!;
     camera.zoom(-100, false, screen.x, screen.y, W, H);
     const target = camera.getTarget();
-    assert.ok(Math.abs(target.x) < 1e-6 && Math.abs(target.y - 1.6) < 1e-6, JSON.stringify(target));
+    assertClose(target.x, 0, 1e-6, 'target x');
+    assertClose(target.y, 1.6, 1e-6, 'target y');
   });
 });
 
@@ -142,7 +157,7 @@ describe('cameraFrustumFocusCorners lens shift (#8688)', () => {
     // Near plane at d = 9, half-height 9 (tan 45°): shift 0.5 moves it down by 4.5.
     for (let i = 0; i < plain.length; i++) {
       const d = 10 - plain[i].z;
-      assert.ok(Math.abs(shifted[i].y - (plain[i].y - 0.5 * d)) < 1e-9, `corner ${i}`);
+      assertClose(shifted[i].y, plain[i].y - 0.5 * d, 1e-9, `corner ${i} y`);
       assert.strictEqual(shifted[i].x, plain[i].x);
     }
   });

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdir, mkdtemp, realpath, symlink, writeFile, rm } from 'node:fs/promises';
+import { chmod, unlink, mkdir, mkdtemp, link, readFile, realpath, symlink, writeFile, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -215,6 +215,70 @@ describe('resolveSafePath', () => {
       } finally {
         await rm(modelDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('loaded source protection (GHSA-xf2f-wgcc-928h)', () => {
+    it.each([undefined, 'explicit'])('rejects source aliases with %s roots', async (mode) => {
+      const source = join(scratch, 'model.ifc');
+      const symbolic = join(scratch, 'alias.csv');
+      const hard = join(scratch, 'alias.json');
+      await writeFile(source, 'original model bytes');
+      await symlink(source, symbolic);
+      await link(source, hard);
+      await writeFile(join(scratch, 'other.ifc'), 'other model');
+      const ctx = makeCtx(mode ? [scratch] : undefined, [join(scratch, 'other.ifc'), symbolic]);
+      for (const target of [source, symbolic, hard]) {
+        await expect(resolveSafePath(target, ctx, 'write')).rejects.toThrow(/overwrite loaded model/);
+        expect(await readFile(source, 'utf8')).toBe('original model bytes');
+      }
+      await expect(resolveSafePath(source, ctx, 'read')).resolves.toBe(source);
+      const output = join(scratch, 'output.ifc');
+      await expect(resolveSafePath(output, ctx, 'write')).resolves.toBe(output);
+      await writeFile(output, 'previous export');
+      await expect(resolveSafePath(output, ctx, 'write')).resolves.toBe(output);
+    });
+
+    it('refuses surviving hard links when the loaded source path disappears (#8705)', async () => {
+      const source = join(scratch, 'source.ifc');
+      const alias = join(scratch, 'surviving.csv');
+      await writeFile(source, 'original model');
+      await link(source, alias);
+      const ctx = makeCtx([scratch], [source]);
+      await unlink(source);
+      await expect(resolveSafePath(alias, ctx, 'write')).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+      expect(await readFile(alias, 'utf8')).toBe('original model');
+      const fresh = join(scratch, 'fresh.csv');
+      await expect(resolveSafePath(fresh, ctx, 'write')).resolves.toBe(fresh);
+      // An unavailable source identity also makes unrelated existing targets
+      // unverifiable. Removing the model from the registry restores writes.
+      const previous = join(scratch, 'previous.csv');
+      await writeFile(previous, 'previous export');
+      await expect(resolveSafePath(previous, ctx, 'write')).rejects.toThrow(/Cannot verify loaded model/);
+      await expect(resolveSafePath(previous, makeCtx([scratch]), 'write')).resolves.toBe(previous);
+    });
+
+    it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+      'returns PERMISSION_DENIED for filesystem access errors (#8705)', async () => {
+        const locked = join(scratch, 'locked');
+        await mkdir(locked);
+        const source = join(locked, 'source.ifc');
+        await writeFile(source, 'original model');
+        await chmod(locked, 0);
+        try {
+          await expect(resolveSafePath(source, makeCtx([scratch]), 'write'))
+            .rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+        } finally {
+          await chmod(locked, 0o700);
+        }
+        expect(await readFile(source, 'utf8')).toBe('original model');
+      },
+    );
+
+    it('protects a loaded source path even if the source was removed', async () => {
+      const source = join(scratch, 'removed.ifc');
+      await expect(resolveSafePath(source, makeCtx([scratch], [source]), 'write'))
+        .rejects.toThrow(/overwrite loaded model/);
     });
   });
 

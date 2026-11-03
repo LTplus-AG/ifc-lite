@@ -28,6 +28,7 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, resolve, sep } from 'node:path';
 import type { LoadedModel, ServerConfig } from './context.js';
 import { ToolErrorCode, ToolExecutionError } from './errors.js';
+import { getLoadedSource } from './loaded-source.js';
 
 /**
  * The slice of the server context this module actually reads. Only
@@ -123,10 +124,11 @@ async function rejectLoadedModel(target: string, ctx: PathContext): Promise<void
   const targetStat = await statIfPresent(target);
   for (const model of ctx.registry.list()) {
     if (!model.filePath) continue;
-    const source = await canonicalise(resolve(model.filePath), 'write');
-    const sourceStat = targetStat ? await statIfPresent(source) : undefined;
-    // With a missing source we cannot distinguish an unrelated existing file
-    // from its surviving hard link. Fail closed; a new output is still safe.
+    const captured = getLoadedSource(model);
+    const source = captured?.path ?? await canonicalise(resolve(model.filePath), 'write');
+    const sourceStat = captured ?? (targetStat ? await statIfPresent(source) : undefined);
+    // Custom registries can supply a model without load-time provenance. If
+    // its source is missing, we cannot rule out a surviving hard link.
     if (targetStat && !sourceStat) {
       throw new ToolExecutionError({
         code: ToolErrorCode.PERMISSION_DENIED,

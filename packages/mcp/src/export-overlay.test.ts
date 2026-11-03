@@ -18,7 +18,7 @@
  * what the exporter believed it wrote.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -279,5 +279,46 @@ describe('exports preserve loaded source bytes', () => {
       }
     }
     expect(await readFile(source)).toEqual(before);
+  });
+});
+
+// #8705: identity must describe the file that was read, not its current name.
+describe('load-time source identity', () => {
+  it.each(['unlinked', 'replaced', 'retargeted'] as const)('protects the original source after its path is %s', async (change) => {
+    await session();
+    const source = join(tmp, `${change}.ifc`);
+    const alias = join(tmp, `${change}-alias.csv`);
+    const other = join(tmp, `${change}-other.ifc`);
+    const input = join(tmp, `${change}-input.ifc`);
+    await writeFile(source, MODEL);
+    await writeFile(other, MODEL.replace('Wall A', 'Other Wall'));
+    await link(source, alias);
+    if (change === 'retargeted') await symlink(source, input);
+    const loaded = await loadIfcModel(change === 'retargeted' ? input : source, { modelId: 'original' });
+    ctx.registry.add(loaded);
+    if (change === 'retargeted') {
+      await unlink(input);
+      await symlink(other, input);
+    } else {
+      await unlink(source);
+      if (change === 'replaced') await writeFile(source, 'replacement file');
+    }
+    for (const name of ['export_csv', 'export_json', 'export_ifc']) {
+      await expect(tool(name).handler({ model_id: loaded.id, file_path: alias }, ctx))
+        .rejects.toThrow(/overwrite loaded model/);
+      expect(await readFile(alias, 'utf8')).toBe(MODEL);
+      await expect(tool(name).handler({ model_id: loaded.id, file_path: source }, ctx))
+        .rejects.toThrow(/overwrite loaded model/);
+    }
+    const fresh = join(tmp, `${change}-new.json`);
+    await call('export_json', { model_id: loaded.id, file_path: fresh });
+    const rows: unknown = JSON.parse(await readFile(fresh, 'utf8'));
+    expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ Name: 'Wall A' })]));
+    // Once unloaded, this provenance no longer prevents writing the alias.
+    ctx.registry.remove(loaded.id);
+    await call('export_json', { model_id: 'm', file_path: alias });
+    expect(JSON.parse(await readFile(alias, 'utf8'))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ Name: 'Wall A' })]),
+    );
   });
 });

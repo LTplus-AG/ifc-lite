@@ -11,13 +11,14 @@
  * native geometry preparation and registry/file-loading behavior.
  */
 
-import { readFile } from 'node:fs/promises';
+import { open, realpath } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import type { LoadedModel } from './context.js';
 import { HeadlessLikeBackend } from './headless-backend.js';
+import { rememberLoadedSource } from './loaded-source.js';
 
 export interface LoadIfcOptions {
   /** Override the registered model ID (default = file basename without extension). */
@@ -35,9 +36,21 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
     }
   }
 
-  const buffer = await readFile(absolute);
+  const canonical = await realpath(absolute);
+  const handle = await open(canonical, 'r');
+  let buffer: Buffer;
+  let identity: { path: string; dev: bigint; ino: bigint };
+  try {
+    const info = await handle.stat({ bigint: true });
+    identity = { path: canonical, dev: info.dev, ino: info.ino };
+    buffer = await handle.readFile();
+  } finally {
+    await handle.close();
+  }
   const loaded = await loadIfcModelFromBytes(buffer, basename(absolute), opts.modelId, absolute);
-  return { ...loaded, filePath: absolute };
+  const model = { ...loaded, filePath: absolute };
+  rememberLoadedSource(model, identity);
+  return model;
 }
 
 /**

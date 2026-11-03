@@ -24,6 +24,7 @@ pub mod type_maps;
 pub mod faces;
 pub mod face_sets;
 pub mod face_set_closure;
+pub mod face_set_dropped_triangles;
 pub mod face_set_host;
 pub mod face_set_zero_rows;
 pub mod face_bands;

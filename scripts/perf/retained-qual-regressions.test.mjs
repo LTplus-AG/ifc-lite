@@ -38,11 +38,15 @@ test('7955: native --round must be a positive integer and comes with --pairing-i
 });
 test('7955: native --round is a plain decimal string, not anything Number() reads as an integer', async () => {
   const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
-  for (const round of ['', ' ', ' 1', '1 ', '1.0', '1e0', '0x1', '01', '+1']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round must be a positive integer/, JSON.stringify(round));
+  for (const round of ['', ' ', ' 1', '1 ', '1.0', '1e0', '0x1', '01', '+1', '9007199254740992', '9007199254740993']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round must be a positive integer/, JSON.stringify(round));
 });
 test('7955: native --pairing-id must be a non-empty id without surrounding whitespace', async () => {
   const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
   for (const id of ['', ' ', '\t', ' c', 'c ']) await assert.rejects(run(['--round', '1', '--pairing-id', id]), /--pairing-id must be/, JSON.stringify(id));
+});
+test('7955: native --pairing-id is refused on a host without a machine id, before touching output', async () => {
+  const argv = ['--out', '/does/not/exist/no-output', '--summary', '/unused', '--round', '1', '--pairing-id', 'c', '--', '/bin/true'];
+  await assert.rejects(nativeMain(argv, { host: () => ({ hostname: 'container', machineIdSha256: null }) }), /--pairing-id needs a machine id/);
 });
 test('8413: seeds must be finite even for a single arm', async () => {
   for (const seed of [NaN, Infinity, -Infinity]) await assert.rejects(roundSides([{ side: 'branch' }], 1, seed), /finite/);

@@ -13,8 +13,8 @@
 //   node scripts/perf/retained-qual-report.mjs RUNS.jsonl|RESULT_DIR [...] [--json OUT]
 //
 // Rows from several runner invocations may be mixed (base from one, branch from another is
-// NOT paired or order-balanced unless they share a --pairing-id and round, as native memory
-// rows do; the runners' own two-arm mode is). Failed rows are listed
+// NOT paired or order-balanced unless they share a --pairing-id and round and a host with a
+// machine id, as native memory rows do; the runners' own two-arm mode is). Failed rows are listed
 // and excluded, never averaged in. Exit 2 = unreadable input; 1 = incomplete cohort; otherwise 0.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';

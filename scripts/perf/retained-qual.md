@@ -139,6 +139,10 @@ and cannot be an arm.
 Native memory is one process per sample, so a paired native cohort is one runner invocation per
 (fixture, side, round): pass each the same `--pairing-id` and its `--round N`, and the reporter pairs
 base and branch rows by that id and round (otherwise each invocation is its own unpaired set).
+Pairing across invocations also needs the same host with a machine id (`/etc/machine-id` or
+`/var/lib/dbus/machine-id`, recorded as `machineIdSha256`). Matching static attributes alone do not
+prove one machine, so rows without a machine id never pair across invocations, and the native
+runner refuses `--pairing-id` on such a host rather than produce a cohort that cannot pair.
 
 ## Real GPU on Pop
 
@@ -148,8 +152,8 @@ present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), 
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
 
 Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
-Only unique successful samples from the same invocation (or the same `--pairing-id`)
-and round are paired; different workflows stay separate. Each column reports base, branch and matched n;
+Only unique successful samples from the same invocation (or the same `--pairing-id` on one
+machine-id-identified host) and round are paired; different workflows stay separate. Each column reports base, branch and matched n;
 nullable coverage is marked incomplete and medians use matched finite rounds only.
 Unavailable PSS stays null; coverage records readable/attempted process samples and
 complete/partial tree samples. Partial trees never count as a measured total.

@@ -12,27 +12,31 @@ index 7f48fe2fd5704371db6e7574bb9458d52290c8a2..fabd8de7d25de6418570cf3f7c3dac76
    return result;
  }
 diff --git a/scripts/perf/retained-qual-native-memory.mjs b/scripts/perf/retained-qual-native-memory.mjs
-index d967191b1146643a2a20d2041b4734b3cc89ff67..43f24c4f7971ba892b5519be9053f73399b854d0 100644
+index 3a95646e163f41cd2ee2ced87b337ea9eea7b84f..696a5aa7956c2d7ee59b0259d3755a41c4947ea4 100644
 --- a/scripts/perf/retained-qual-native-memory.mjs
 +++ b/scripts/perf/retained-qual-native-memory.mjs
-@@ -88,11 +88,15 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
+@@ -88,12 +88,18 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
+   return row;
  }
  
- export async function main(argv) {
+-export async function main(argv) {
 -  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
++export async function main(argv, { host: readHost = hostIdentity } = {}) {
 +  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'round', 'pairing-id', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
    if (!options.out || !options.summary || !rest.length) throw new Error('--out DIR, --summary FILE and a command after `--` are required');
    if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
    if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
    if (options.side && !['base', 'branch'].includes(options.side)) throw new Error('--side must be base or branch');
-+  if (options.round !== undefined && !/^[1-9]\d*$/.test(options.round)) throw new Error('--round must be a positive integer');
++  if (options.round !== undefined && !(/^[1-9]\d*$/.test(options.round) && Number.isSafeInteger(Number(options.round)))) throw new Error('--round must be a positive integer');
 +  const round = options.round === undefined ? undefined : Number(options.round);
 +  if (options['pairing-id'] !== undefined && !/^\S(?:.*\S)?$/.test(options['pairing-id'])) throw new Error('--pairing-id must be non-empty, without surrounding whitespace');
 +  if ((round === undefined) !== (options['pairing-id'] === undefined)) throw new Error('--round and --pairing-id go together');
++  const host = readHost();
++  if (options['pairing-id'] !== undefined && !host.machineIdSha256) throw new Error('--pairing-id needs a machine id (/etc/machine-id or /var/lib/dbus/machine-id): without one the reporter cannot prove one machine across invocations and would leave the cohort unpaired');
    const admission = exclusivity(options);
    const started = Date.now(), out = resolve(options.out);
    const expectation = options.expect ? JSON.parse(readFileSync(options.expect, 'utf8')) : undefined;
-@@ -104,9 +108,9 @@ export async function main(argv) {
+@@ -105,9 +111,9 @@ export async function main(argv) {
    for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
    resetPartial(out);
    const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
@@ -40,7 +44,7 @@ index d967191b1146643a2a20d2041b4734b3cc89ff67..43f24c4f7971ba892b5519be9053f733
 +  Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest, ...(round === undefined ? {} : { round }) });
    const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),
 -    finishedAt: new Date().toISOString(), host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
-+    finishedAt: new Date().toISOString(), pairingId: options['pairing-id'] ?? null, host: hostIdentity(), source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
++    finishedAt: new Date().toISOString(), pairingId: options['pairing-id'] ?? null, host, source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,
      engineNote: 'native executable: the SDK build is identified by the worker/executable SHA-256; the manifest hash is that of --engine when given', binaries: hashes,
      samples: row.ok ? 1 : 0, rows: 1, failures: row.ok ? [] : [{ path: row.path, error: row.error }] };
    writeResult(out, result, [row]);

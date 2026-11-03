@@ -107,13 +107,17 @@ through the engine's own `malloc` export failed after 15 blocks, at a
 - Every other host failure (startup, engine missing, a genuine panic, another
   trap) is worded by the host: "The retained engine stopped while processing
   ...: <reason>". It keeps the load's own Retry, which runs the retained kernel
-  again, and says so; the panel offers the exact reload. Analytics classify
-  these by their typed code. A stall is not a host error: it keeps the
-  loader's stall wording and Retry, classified as a stalled stream.
+  again, and says so; the panel offers the exact reload. Analytics take the
+  kind from the typed code for `out_of_memory` (out of memory) and any trap
+  (`worker_crash`, a geometry worker crash, whatever phase it hit); `startup`
+  and `engine_missing` failures are classified from their message, like any
+  load error. A stall is not a host error: it keeps the loader's stall
+  wording and Retry, classified as a stalled stream.
 - A model over the old cap can refuse tens of thousands of products. The
   viewport chip re-renders only when the summary changes (at most once a
   second), the panel builds its table only while it is open, and the table
-  renders at most 500 rows; the code filter and its counts reach the rest.
+  renders 500 rows at a time: "Show more" adds the next 500, so every row is
+  reachable, and the code filter with its counts narrows the list.
 - A separate 256 MiB limit remains in the geometry router's annotation-fill
   acceptance: its style lookup (`rust/core/src/decoder/styled_items.rs`)
   refuses sources over 256 MiB, so on such a source every

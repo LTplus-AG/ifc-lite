@@ -185,8 +185,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
   let frameId: number | null = null;
   let lastFrame = 0;
   let lookTravel = 0;
-  // Look held back while the press is still a click (within the slop).
-  let heldLook = { x: 0, y: 0 };
+  let heldLook = { x: 0, y: 0 }; // look held back while the press may still be a click
   let pressedAt = 0;
   let suppressMenuUntil = -Infinity;
   let velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -248,10 +247,8 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
 
   /** The press stopped being a possible click: turn by the look held back so far. */
   const flushHeldLook = (): void => {
-    const held = heldLook;
-    heldLook = { x: 0, y: 0 };
-    if ((held.x === 0 && held.y === 0) || !canFly()) return;
-    apply(flyLook(pose(), held.x, held.y));
+    const held = heldLook; heldLook = { x: 0, y: 0 };
+    if ((held.x !== 0 || held.y !== 0) && canFly()) apply(flyLook(pose(), held.x, held.y));
   };
 
   const onKeyDown = (e: Event): void => {
@@ -351,16 +348,11 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       const lookY = locked && movementY !== undefined ? movementY : dy;
       if (lookX === 0 && lookY === 0) return;
       lookTravel += Math.abs(lookX) + Math.abs(lookY);
-      // A click must leave the camera untouched: a sub-slop nudge (and the
-      // interaction frame it triggers) would discard the menu's pick as stale.
-      // Only while the press can still be a click: once held, flown or past
-      // the slop there is no menu to protect, so fine aiming turns at once.
-      if (!flew && now() - pressedAt < HOLD_TO_FLY_MS && lookTravel <= LOOK_CLICK_SLOP_PX) {
-        heldLook = { x: heldLook.x + lookX, y: heldLook.y + lookY };
-        return;
-      }
-      lock.request();
+      // While the press may still be a click, a nudge (and its interaction frame) would discard the
+      // menu's pick as stale; once held, flown or past the slop, fine aiming turns at once.
       heldLook = { x: heldLook.x + lookX, y: heldLook.y + lookY };
+      if (!flew && now() - pressedAt < HOLD_TO_FLY_MS && lookTravel <= LOOK_CLICK_SLOP_PX) return;
+      lock.request();
       flushHeldLook();
     },
 
@@ -386,7 +378,6 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       const wasHeld = now() - pressedAt >= HOLD_TO_FLY_MS;
       // Released after the hold deadline but before its frame: still a flight, so turn by the held look.
       if (wasHeld) flushHeldLook();
-      heldLook = { x: 0, y: 0 };
       if (flew || wasHeld || lookTravel > LOOK_CLICK_SLOP_PX) {
         suppressMenuUntil = now() + MENU_SUPPRESSION_MS;
         return 'flew';

@@ -558,7 +558,6 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       } else if (tool === 'measure' && gesture === 'tool') {
         if (handleMeasureDown(ctx, e)) return;
       }
-      // An orbit shows 'grabbing' once the press becomes a drag (handleMouseMove).
     };
     const handleMouseMove = async (e: PointerEvent) => {
       // New input retires the old position even when this event is throttled.
@@ -609,23 +608,17 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       // A measure tool drag navigates only when the resolver assigned navigation.
       if (mouseState.isDragging && (fly.isActive() || pointerGesture !== 'tool')) {
-        // A press is a click until it moves more than 3px from where it
-        // started. Until then the camera stays put: nudging it (and the
-        // interaction-resolution frame that follows) would invalidate the
-        // click's pick, so the selection silently never landed. Crossing the
-        // threshold applies the whole movement since the press.
+        // A press is a click until it moves >3px: nudging the camera (and its interaction frame)
+        // would discard the click's pick as stale. Crossing applies the whole movement since the press.
         const totalDx = Math.abs(e.clientX - mouseState.startX);
         const totalDy = Math.abs(e.clientY - mouseState.startY);
         if (!mouseState.didDrag) {
           if (fly.isActive()) {
-            // Fly keeps its controller's 5px click slop: the menu replay on
-            // release needs both verdicts to agree (flyControls.ts).
-            mouseState.didDrag = totalDx > 5 || totalDy > 5;
+            mouseState.didDrag = totalDx > 5 || totalDy > 5; // fly's own click slop: the menu replay needs both to agree
           } else {
             if (totalDx <= 3 && totalDy <= 3) return;
             mouseState.didDrag = true;
-            if (pendingOrbitPivot) orbitPivotStore.begin(pendingOrbitPivot);
-            pendingOrbitPivot = null;
+            if (pendingOrbitPivot) orbitPivotStore.begin(pendingOrbitPivot); pendingOrbitPivot = null;
             if (!mouseState.isPanning) canvas.style.cursor = 'grabbing';
           }
         }
@@ -634,8 +627,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
         if (fly.isActive()) {
           fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
-          mouseState.lastX = e.clientX;
-          mouseState.lastY = e.clientY;
+          mouseState.lastX = e.clientX; mouseState.lastY = e.clientY;
           return; // fly's onChange signals the render only when the look actually turned the view
         }
 

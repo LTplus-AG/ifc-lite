@@ -169,6 +169,18 @@ describe('createFlyController', () => {
     fly.end();
   });
 
+  it('a held-back look is applied once the hold makes the press a gesture', () => {
+    const { fly, camera, frames } = rig();
+    fly.begin();
+    const before = camera.getTarget();
+    fly.look(4, 0); // within the slop: held back while it may still be a click
+    assert.deepEqual(camera.getTarget(), before);
+    frames(20); // held past the hold-to-fly time without moving again
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: the held look was dropped when the hold promoted the press');
+    fly.deferContextMenu();
+    assert.equal(fly.end(), 'flew');
+  });
+
   /** A stub canvas that records pointer-lock requests. */
   function lockable() {
     const doc = Object.assign(new EventTarget(), {

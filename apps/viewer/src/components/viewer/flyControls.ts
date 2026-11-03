@@ -222,7 +222,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
 
     // The hold itself is what promotes a press to a gesture; the loop already
     // runs every frame, so it doubles as that timer.
-    if (t - pressedAt >= HOLD_TO_FLY_MS) lock.request();
+    if (t - pressedAt >= HOLD_TO_FLY_MS) { lock.request(); flushHeldLook(); }
 
     const current = pose();
     const speed = baseFlySpeed(camera.getSceneBounds())
@@ -239,10 +239,19 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
     if (Math.hypot(velocity.x, velocity.y, velocity.z) > speed * 1e-3) {
       apply(flyTranslate(current, { x: velocity.x * dt, y: velocity.y * dt, z: velocity.z * dt }));
       flew = true;
+      flushHeldLook();
     } else {
       velocity = { x: 0, y: 0, z: 0 };
     }
     frameId = requestFrame(tick);
+  };
+
+  /** The press stopped being a possible click: turn by the look held back so far. */
+  const flushHeldLook = (): void => {
+    if (heldLook.x === 0 && heldLook.y === 0) return;
+    const held = heldLook;
+    heldLook = { x: 0, y: 0 };
+    apply(flyLook(pose(), held.x, held.y));
   };
 
   const onKeyDown = (e: Event): void => {
@@ -351,8 +360,8 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
         return;
       }
       lock.request();
-      apply(flyLook(pose(), heldLook.x + lookX, heldLook.y + lookY));
-      heldLook = { x: 0, y: 0 };
+      heldLook = { x: heldLook.x + lookX, y: heldLook.y + lookY };
+      flushHeldLook();
     },
 
     wheel(e) {

@@ -5,6 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { bundleAgeHours, classifyLoadError, errorCaptureProps } from './load-errors.js';
+import { RetainedHostError } from './retained/retained-protocol.js';
+import { RetainedStallError } from './retained/retainedGeometrySource.js';
 import { formatLoadError } from './load-error-message.js';
 import { scrubEvent } from './analytics-scrub.js';
 
@@ -1074,3 +1076,24 @@ describe('invalid input content refusals', () => {
     }
   });
 });
+
+describe('#7955 retained host errors classify by their typed code', () => {
+  it('out_of_memory is out_of_memory even though the engine only says "unreachable"', () => {
+    const error = new RetainedHostError('out_of_memory', 'unreachable');
+    assert.equal(classifyLoadError(error, 'geometry_processing'), 'out_of_memory');
+    assert.equal(errorCaptureProps(error, 'geometry_processing').error_kind, 'out_of_memory');
+  });
+  it('a worker_crash is a worker crash, not memory, even when its trap says "memory access out of bounds"', () => {
+    const error = new RetainedHostError('worker_crash', 'memory access out of bounds');
+    assert.equal(classifyLoadError(error, 'geometry_processing'), 'geometry_worker_crash');
+    assert.equal(errorCaptureProps(error, 'geometry_processing').error_kind, 'geometry_worker_crash');
+  });
+  it('a retained stall, the one retained failure that is not a host error, is a stall at startup and mid-run', () => {
+    for (const stage of ['startup', 'product'] as const) {
+      const error = new RetainedStallError(35_000, stage);
+      assert.equal(classifyLoadError(error, 'geometry_processing'), 'geometry_stream_stalled', stage);
+      assert.match(formatLoadError(error, 'tower.ifc', 'geometry_processing'), /stalled and was stopped/, stage);
+    }
+  });
+});
+

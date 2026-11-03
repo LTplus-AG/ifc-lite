@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RetainedClient, type RetainedWorker } from './retained-client';
-import { RetainedHostError } from './retained-protocol';
+import { hostFailure, isAllocationFailure, RETAINED_MAX_SOURCE_BYTES, RetainedHostError, watchUncaught } from './retained-protocol';
 import type { RetainedHostEvent, RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 // Protocol fixture only: no engine/geometry implementation is mocked.
@@ -17,7 +17,7 @@ class FakeWorker implements RetainedWorker {
   terminated = 0;
   postMessage(request: RetainedHostRequest) { this.requests.push(request); }
   terminate() { this.terminated++; }
-  emit(event: RetainedHostEvent | { kind: 'error'; code: 'engine_missing'; message: string }, runId = this.requests.at(-1)!.runId) {
+  emit(event: RetainedHostEvent | { kind: 'error'; code: 'engine_missing' | 'out_of_memory'; message: string }, runId = this.requests.at(-1)!.runId) {
     this.onmessage?.({ data: { ...event, runId } } as MessageEvent<RetainedHostResponse>);
   }
 }
@@ -102,6 +102,93 @@ test('#7955 startup and missing-engine failures never fall back to exact', async
   await assert.rejects(pending, (error: unknown) => error instanceof RetainedHostError && error.code === 'engine_missing');
   assert.equal(worker.requests.length, 1, 'no automatic retry');
   assert.equal(worker.terminated, 1);
+});
+
+test('#7955 a source wasm32 cannot hold is refused before a Worker spawns; one over the old 256 MiB cap is sent', async (t) => {
+  let spawned = 0;
+  const worker = new FakeWorker();
+  const client = new RetainedClient(() => { spawned++; return worker; });
+  t.after(() => client.unload());
+  // The size check reads byteLength only, so no gigabytes are allocated here.
+  const sized = (byteLength: number) => Object.defineProperty(new Uint8Array(1), 'byteLength', { value: byteLength });
+  await assert.rejects(client.run(sized(RETAINED_MAX_SOURCE_BYTES + 1)).next(), (error: unknown) =>
+    error instanceof RetainedHostError && error.code === 'source_too_large' && /2 GiB/.test(error.message));
+  assert.equal(spawned, 0);
+  const pending = client.run(sized(342_657_851)).next();
+  assert.equal(worker.requests.length, 1, 'a 327 MiB source reaches the host');
+  worker.emit({ kind: 'error', code: 'out_of_memory', message: 'unreachable' });
+  await assert.rejects(pending, (error: unknown) => error instanceof RetainedHostError && error.code === 'out_of_memory');
+  assert.equal(worker.terminated, 1, 'the trapped host is released');
+});
+
+test('#7955 a source too big to clone into the host is an out_of_memory failure, other hand-off failures are startup', async () => {
+  for (const [thrown, code] of [
+    [new DOMException("Failed to execute 'postMessage' on 'Worker': Data cannot be cloned, out of memory.", 'DataCloneError'), 'out_of_memory'],
+    [new TypeError('worker gone'), 'startup'],
+  ] as const) {
+    const worker = new FakeWorker();
+    worker.postMessage = () => { throw thrown; };
+    const client = new RetainedClient(() => worker);
+    await assert.rejects(client.run(new Uint8Array(1)).next(), (error: unknown) => error instanceof RetainedHostError && error.code === code);
+    assert.equal(worker.terminated, 1);
+  }
+});
+
+test('#7955 an allocation failure is the abort trap without a recorded panic, or an error that names one', () => {
+  for (const text of ['unreachable', 'unreachable executed', 'Unreachable code should not be executed']) {
+    assert.equal(isAllocationFailure(new WebAssembly.RuntimeError(text), false), true, `${text}: a failed allocation aborts without the panic hook`);
+  }
+  assert.equal(isAllocationFailure(new WebAssembly.RuntimeError('unreachable'), true), false, 'a panic recorded its location: a genuine panic');
+  for (const text of ['memory access out of bounds', 'null function or function signature mismatch', 'divide by zero', 'table index is out of bounds']) {
+    assert.equal(isAllocationFailure(new WebAssembly.RuntimeError(text), false), false, `${text} is a crash, not memory`);
+  }
+  assert.equal(isAllocationFailure(new RangeError('WebAssembly.Memory.grow(): Maximum memory size exceeded'), false), true);
+  assert.equal(isAllocationFailure(new RangeError('Array buffer allocation failed'), false), true);
+  assert.equal(isAllocationFailure(new RangeError('Maximum call stack size exceeded'), false), false);
+  assert.equal(isAllocationFailure(new TypeError('session.run is not a function'), false), false);
+  assert.equal(isAllocationFailure('engine unavailable', false), false);
+});
+
+test('#7955 a host failure is out_of_memory when it is one, otherwise the phase it failed in', () => {
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('unreachable'), 'worker_crash', false), { code: 'out_of_memory', message: 'unreachable' });
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('unreachable'), 'worker_crash', true), { code: 'worker_crash', message: 'unreachable' });
+  assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('memory access out of bounds'), 'worker_crash', false),
+    { code: 'worker_crash', message: 'memory access out of bounds' });
+  assert.deepEqual(hostFailure(new TypeError('no engine'), 'engine_missing', false), { code: 'engine_missing', message: 'no engine' });
+  for (const phase of ['startup', 'engine_missing'] as const) {
+    assert.deepEqual(hostFailure(new WebAssembly.RuntimeError('memory access out of bounds'), phase, false),
+      { code: 'worker_crash', message: 'memory access out of bounds' }, `a non-allocation trap during ${phase} is a crash, not classified by its text`);
+    assert.equal(hostFailure(new WebAssembly.RuntimeError('unreachable'), phase, false).code, 'out_of_memory', `an allocation failure during ${phase} stays memory`);
+  }
+  assert.deepEqual(hostFailure(new TypeError('session.run is not a function'), 'startup', false),
+    { code: 'startup', message: 'session.run is not a function' }, 'a non-trap startup error keeps its phase');
+});
+
+test('#7955 a trap that escapes the awaited run reaches the host as its own uncaught error or rejection', () => {
+  const target = new EventTarget();
+  const seen: unknown[] = [];
+  let claim = true;
+  watchUncaught(target, (error) => { seen.push(error); return claim; });
+  const trap = new WebAssembly.RuntimeError('unreachable');
+  const error = Object.assign(new Event('error', { cancelable: true }), { error: trap, message: 'Uncaught RuntimeError: unreachable' });
+  target.dispatchEvent(error);
+  assert.equal(seen[0], trap, 'the trap object itself, so its kind can be classified');
+  assert.equal(error.defaultPrevented, true, 'a claimed failure is not also reported to the client as a crash');
+  const rejection = Object.assign(new Event('unhandledrejection', { cancelable: true }), { reason: trap });
+  target.dispatchEvent(rejection);
+  assert.equal(seen[1], trap);
+  // An ErrorEvent can carry no `error` object, only its "Uncaught RuntimeError: ..." text.
+  const bare = Object.assign(new Event('error', { cancelable: true }), { error: null, message: 'Uncaught RuntimeError: unreachable' });
+  target.dispatchEvent(bare);
+  assert.equal(seen[2], 'Uncaught RuntimeError: unreachable');
+  assert.equal(hostFailure(seen[2], 'worker_crash', false).code, 'out_of_memory', 'the abort trap is memory from its text alone');
+  assert.equal(hostFailure('Uncaught RuntimeError: memory access out of bounds', 'startup', false).code, 'worker_crash',
+    'any other trap text is a crash, in any phase');
+  assert.equal(hostFailure('Uncaught TypeError: x is not a function', 'startup', false).code, 'startup', 'a non-trap string keeps its phase');
+  claim = false;
+  const idle = Object.assign(new Event('error', { cancelable: true }), { error: trap });
+  target.dispatchEvent(idle);
+  assert.equal(idle.defaultPrevented, false, 'outside a run the error stays the client\'s worker crash');
 });
 
 test('#7955 abort, unload, pagehide and iterator abandonment release the host', async (t) => {

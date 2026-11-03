@@ -105,7 +105,11 @@ through the engine's own `malloc` export failed after 15 blocks, at a
   is terminated, which also releases its heap. There is never an automatic
   exact fallback.
 - Every other host failure (startup, engine missing, a genuine panic, another
-  trap, a stall) keeps its existing load error and Retry.
+  trap) is worded by the host: "The retained engine stopped while processing
+  ...: <reason>". It keeps the load's own Retry, which runs the retained kernel
+  again, and says so; the panel offers the exact reload. Analytics classify
+  these by their typed code. A stall is not a host error: it keeps the
+  loader's stall wording and Retry, classified as a stalled stream.
 - A model over the old cap can refuse tens of thousands of products. The
   viewport chip re-renders only when the summary changes (at most once a
   second), the panel builds its table only while it is open, and the table

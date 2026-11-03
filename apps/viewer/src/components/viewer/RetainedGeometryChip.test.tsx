@@ -200,7 +200,10 @@ describe('#7955 a large refusal list', () => {
     assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 1000 of 20000 rows/);
     // One code holding almost every row must not hide rows past the first page.
     seed(summary({ candidates: 1_201, published: 0, cancelled: 0, refused: Array.from({ length: 1_201 }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: 'operation_unsupported' })) }));
-    for (let page = 0; page < 3 && more(); page++) click(more()!);
+    assert.ok(rowIds().length < 1_201 && more(), 'not every row is shown yet, so paging is exercised');
+    // Page until "Show more" is gone, bounded by the row count so a stuck button fails instead of looping.
+    let pages = 0;
+    while (more() && pages++ < 1_201) click(more()!);
     assert.equal(rowIds().length, 1_201);
     assert.ok(rowIds().includes(1201), 'the last row is reachable');
     assert.equal(more(), null);

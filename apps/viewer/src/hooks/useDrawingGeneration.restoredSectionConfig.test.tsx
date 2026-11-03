@@ -330,3 +330,28 @@ describe('the placeholder plane is never saved as a cut', () => {
     assert.equal(real?.sectionConfig?.plane.axis, 'x', 'a real Side cut is saved');
   });
 });
+
+// The placeholder is a Down plane at 50 %, so adding a Down cut there (or clearing
+// it) moves nothing and generates no new drawing; the saved cut must still follow.
+describe('a cut where the placeholder sat is saved without a new drawing', () => {
+  it('adding a Down cut at 50 % saves it; clearing it forgets it', async () => {
+    const file = fileWithBytes(92, 'down-at-50.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    await act(async () => { await runGenerate!(); });
+    const saved = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions)?.sectionConfig ?? null;
+    assert.equal(saved(), null, 'nothing saved for the placeholder');
+
+    const before = useViewerStore.getState().sectionPlane;
+    await act(async () => { useViewerStore.getState().addSectionPlane('down'); });
+    const after = useViewerStore.getState().sectionPlane;
+    assert.equal(`${after.axis} ${after.position}`, `${before.axis} ${before.position}`, 'the cut sits where the placeholder was');
+    assert.equal(saved()?.plane.axis ?? 'none', 'y', 'the Down cut is saved with the drawing already on screen');
+
+    await act(async () => { useViewerStore.getState().clearSectionPlanes(); });
+    assert.equal(saved(), null, 'clearing the cut forgets it');
+  });
+});

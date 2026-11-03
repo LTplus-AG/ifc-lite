@@ -163,6 +163,11 @@ export function useDrawingGeneration({
   const { context: drawingRtcContext, key: drawingRtcContextKey } =
     useDrawingRtcContext(ifcDataStore);
 
+  // The cut the drawing on screen was generated for, so a plane that stops (or
+  // starts) being the untouched placeholder without moving can be saved (or
+  // forgotten) without generating the same drawing again.
+  const lastGeneratedConfig = useRef<{ modelId: string; config: SectionConfig } | null>(null);
+
   // Cache for symbolic representations - these don't change with section position
   // Only re-parse when model or display options change
   const symbolicCacheRef = useRef<{
@@ -882,6 +887,7 @@ export function useDrawingGeneration({
       // would let the next restore (a reload, or the viewport remounting at a
       // layout breakpoint) turn it into a real, cutting plane A.
       const { activeModelId: generatedForModelId, sectionPlane: livePlane } = useViewerStore.getState();
+      lastGeneratedConfig.current = generatedForModelId ? { modelId: generatedForModelId, config } : null;
       if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, isPristineSectionPlane(livePlane) ? null : config);
 
       // Always set status to ready (whether initial generation or regeneration)
@@ -997,6 +1003,7 @@ export function useDrawingGeneration({
   const previousInputs = useRef<unknown[]>([]);
   const wasActive = useRef(false);
   const previousPlane = useRef('');
+  const wasPristine = useRef<boolean | null>(null);
   useEffect(() => () => {
     queue.cancel();
     wasActive.current = false;
@@ -1010,11 +1017,22 @@ export function useDrawingGeneration({
       computedIsolatedIds, models, drawingRtcContextKey];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
+    // Adding a Down cut at 50 % (or clearing one) leaves the geometry as the
+    // placeholder had it, so no new drawing is made; the saved cut must still
+    // follow. A regeneration that also runs just saves the same cut again.
+    const live = useViewerStore.getState();
+    const pristine = isPristineSectionPlane(live.sectionPlane);
+    const pristineChanged = wasPristine.current !== null && pristine !== wasPristine.current;
+    wasPristine.current = pristine;
     const activated = drawingActive && !wasActive.current;
     const deactivated = !drawingActive && wasActive.current;
     previousInputs.current = inputs;
     previousPlane.current = plane;
     wasActive.current = drawingActive;
+    const generated = lastGeneratedConfig.current;
+    if (pristineChanged && !planeChanged && generated && generated.modelId === live.activeModelId) {
+      notifyDrawing2DSectionConfig(generated.modelId, pristine ? null : generated.config);
+    }
     if (!drawingActive) { if (deactivated) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();

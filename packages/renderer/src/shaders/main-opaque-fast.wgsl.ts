@@ -17,10 +17,11 @@
  * exactly those draws (`opaque-draw-variants.ts`) and keeps the full shader
  * everywhere else.
  *
- * Since #7955 `fs_main` also writes `frag_depth` (the per-fragment perspective
+ * Since #7955 `fs_main` also writes `frag_depth` (the per-sample perspective
  * depth nudge, depth-nudge.wgsl.ts), which itself defers the depth test past
- * the fragment stage. The twin still avoids discard's cost where a GPU treats
- * the two differently; the frame cost of both is measured in the #7955 PR.
+ * the fragment stage and runs it per MSAA sample. The twin still avoids
+ * discard's cost where a GPU treats the two differently; the frame cost of
+ * both is measured in the #7955 PR.
  */
 import { FRAGMENT_DISCARDS_BEGIN, FRAGMENT_DISCARDS_END, mainShaderSource } from './main.wgsl.js';
 

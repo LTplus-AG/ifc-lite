@@ -110,3 +110,30 @@ for (const { maxDistance, minDelta } of COARSE_CLAIMS) {
     expect(mixed, `${mixed.length}/${rows.length} coplanar poses did not resolve to the higher-ranked entity`).toEqual([]);
   });
 }
+
+/**
+ * MSAA at creases. The nudged depth is written per sample (a
+ * sample-interpolated varying), so where two faces cross inside a pixel each
+ * sample keeps its own depth, as with fixed-function depth. The pixel-centre
+ * control writes one depth per pixel and must lose those blends, or the
+ * witness could not see the regression.
+ *
+ * On NVIDIA (lovelace, Vulkan) the production image equals the fixed-function
+ * one pixel for pixel. SwiftShader evaluates sample-interpolated varyings at
+ * other positions inside the pixel than its fixed-function depth samples
+ * (every crease pixel resolves half and half, against a quarter or three
+ * quarters), so there only the blends are pinned, not which samples get them.
+ */
+test('creases keep per-sample depth at 4x MSAA: pixels where two faces cross still blend (#7955)', () => {
+  const rows = report.creases;
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) expect(row.reference.mixedPixels, `fixed-function depth blends the crease: ${JSON.stringify(row)}`).toBeGreaterThanOrEqual(32);
+  const swiftShader = report.adapter.architecture === 'swiftshader';
+  const production = rows.filter(row => row.variant === 'production');
+  const aliased = production.filter(row => row.mixedPixels < 0.75 * row.reference.mixedPixels
+    || (!swiftShader && row.differingPixels > 0.1 * row.reference.mixedPixels));
+  expect(aliased, `${aliased.length}/${production.length} crease poses lost per-sample depth`).toEqual([]);
+  const control = rows.filter(row => row.variant === 'pixel-centre');
+  const blended = control.filter(row => row.mixedPixels >= 0.25 * row.reference.mixedPixels);
+  expect(blended, 'the pixel-centre control aliases the crease').toEqual([]);
+});

@@ -15,7 +15,7 @@ import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 import { specularWgsl } from './specular.wgsl.js';
 import { entityColorTableWgsl } from './entity-color-table.wgsl.js';
-import { depthNudgeWgsl } from './depth-nudge.wgsl.js';
+import { depthNudgeWgsl, meshDepthWgsl } from './depth-nudge.wgsl.js';
 
 /**
  * Translucent surfaces draw at this fraction of their alpha, so interiors
@@ -96,8 +96,7 @@ export const mainShaderSource = `
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
           @location(9) @interpolate(flat) sectionEntityId: u32,
-          // Entity depth rank (0-255) for the per-fragment perspective nudge
-          // (depth-nudge.wgsl.ts nudgedFragDepth, written by meshFragDepth).
+          // Entity depth rank (0-255) for the per-sample perspective nudge.
           @location(3) @interpolate(flat) zHash: u32,
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
@@ -111,6 +110,8 @@ export const mainShaderSource = `
           // vs_instanced writes the per-instance flag from the instance buffer, so a
           // single selected occurrence highlights without re-drawing.
           @location(5) @interpolate(flat) instSelected: u32,
+          // Depth after the vertex nudge, per MSAA sample (depth-nudge.wgsl.ts meshDepthWgsl).
+          @location(10) @interpolate(linear, sample) sampleDepth: f32,
           // Camera-relative position for fragment operations that compare
           // geometry to section/crop boundaries or take derivatives. This is
           // intentionally separate from worldPos: shadow maps still consume
@@ -177,9 +178,7 @@ export const mainShaderSource = `
           // Anti z-fighting depth nudge — see vs_main's comment.
           let colorSalt = (entityId >> 24u) * 2654435761u;
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
-          output.geometricDepth = output.position.z / output.position.w;
-          output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
-          output.zHash = zHash;
+          writeMeshDepth(&output, zHash);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(localNormal, 0.0)).xyz);
           output.entityId = entityId;
@@ -220,9 +219,7 @@ export const mainShaderSource = `
           // batch. The step size per projection is in depth-nudge.wgsl.ts.
           let colorSalt = (input.entityId >> 24u) * 2654435761u;
           let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
-          output.geometricDepth = output.position.z / output.position.w;
-          output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
-          output.zHash = zHash;
+          writeMeshDepth(&output, zHash);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = input.entityId;
@@ -251,9 +248,7 @@ export const mainShaderSource = `
           // instanced path never redraws an occurrence with a second draw
           // colour, so the raw picking id is enough to separate coplanar entities.
           let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
-          output.geometricDepth = output.position.z / output.position.w;
-          output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
-          output.zHash = zHash;
+          writeMeshDepth(&output, zHash);
           output.worldPos = worldPos.xyz;
           output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = inst.instEntityId;
@@ -277,11 +272,7 @@ export const mainShaderSource = `
           @builtin(frag_depth) depth: f32,
         }
 
-        // Every mesh fragment's depth, nudged per entity (depth-nudge.wgsl.ts).
-        // Each pass that depth-tests against the scene writes this same value.
-        fn meshFragDepth(input: VertexOutput) -> f32 {
-          return nudgedFragDepth(input.position.z, input.zHash, uniforms.viewProj);
-        }
+        ${meshDepthWgsl}
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {

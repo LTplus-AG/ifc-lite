@@ -17,6 +17,12 @@
  * diagonals so their interpolation noise differs as it does between real
  * meshes. This measures how far each hash separation stays ranked.
  *
+ * Crease: two faces of different entities crossing along a slanted line, at
+ * 4x MSAA. Pixels the line crosses must resolve to a blend of both, as with
+ * fixed-function depth: one frag_depth per pixel instead of per sample would
+ * decide every such pixel for one face, and creases (mullions, slab edges)
+ * alias into stair steps.
+ *
  * Production vertex stage, fragment depth (meshFragDepth), depth format and
  * MSAA count; only lighting is replaced by an ID colour. Every separated pose is also drawn with the nudge
  * removed, which is the geometric reference.
@@ -37,6 +43,15 @@ export const TARGETS = ['on-facade', 'near-camera'] as const;
 export const COPLANAR_DISTANCES = [5, 10, 30, 60, 100, 150, 300] as const;
 export const COPLANAR_DELTAS = [1, 2, 4, 8, 16, 32, 64, 128, 255] as const;
 export const SHIFT_DISTANCES = [1, 4, 7, 10, 30, 100, 300, 1000] as const;
+export const CREASE_DISTANCES = [4, 10, 30, 60, 100, 150] as const;
+export const CREASE_VARIANTS = ['production', 'pixel-centre'] as const;
+/** The sample-interpolated depth varying meshFragDepth reads (main.wgsl.ts). */
+const SAMPLE_DEPTH_VARYING = '@location(10) @interpolate(linear, sample) sampleDepth: f32,';
+/**
+ * Causal control for the crease: the same production depth, interpolated at
+ * the pixel centre and written for every sample, as one frag_depth per pixel.
+ */
+export const PIXEL_CENTRE_DEPTH = '@location(10) @interpolate(linear) sampleDepth: f32,';
 /** The nudge removed: the geometric reference, and the causal control. */
 const PASS_FRAGMENT = 'fn nudgedFragDepth(depth: f32, zHash: u32, viewProj: mat4x4<f32>) -> f32 { return depth; }';
 export const ZERO_NUDGE = `fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 { return clip.z; }\n${PASS_FRAGMENT}`;
@@ -81,8 +96,8 @@ const LAYOUT: GPUVertexBufferLayout = { arrayStride: 28, attributes: [
   { shaderLocation: 2, offset: 24, format: 'uint32' },
 ] };
 
-function entityForHash(hash: number): { id: number; lane: number } {
-  for (let id = 1; id <= 4096; id++) {
+function entityForHash(hash: number, after = 0): { id: number; lane: number } {
+  for (let id = after + 1; id <= 4096; id++) {
     const salt = colorSaltByte(COLOR);
     const lane = packEntityLane(id, salt);
     const mixed = (id & 0xffffff) ^ Math.imul(salt, 2654435761);
@@ -102,6 +117,17 @@ export interface CoplanarRow {
   /** Pixels of the higher-hash entity, of the lower, of neither. */
   frontPixels: number; rearPixels: number; otherPixels: number;
 }
+/**
+ * One crease pose at 4x MSAA over the whole target. `mixedPixels` resolved to
+ * a blend of both faces; `differingPixels` differ from the fixed-function
+ * reference by an RGB sum over 30.
+ */
+export interface CreaseRow {
+  variant: typeof CREASE_VARIANTS[number]; distance: number; reverseDrawOrder: boolean;
+  mixedPixels: number; differingPixels: number;
+  /** Production vertex stage and nudge, fixed-function depth (no frag_depth). */
+  reference: { mixedPixels: number };
+}
 /** The shader's own displacement of the highest hash, read back from depth32float at the probe centre. */
 export interface ShiftRow {
   distance: number; angle: number; target: Target;
@@ -110,7 +136,7 @@ export interface ShiftRow {
 }
 export interface PerspectiveDistanceReport {
   adapter: { vendor: string; architecture: string; description: string };
-  depthFormat: string; separated: SeparatedRow[]; coplanar: CoplanarRow[]; shifts: ShiftRow[]; errors: string[];
+  depthFormat: string; separated: SeparatedRow[]; coplanar: CoplanarRow[]; shifts: ShiftRow[]; creases: CreaseRow[]; errors: string[];
 }
 
 function camera(distance: number, angle: number, target: Target) {
@@ -157,7 +183,26 @@ export async function runPerspectiveDistanceWitness(
         let front = (input.entityId & 0x00ffffffu) == ${frontId}u;
         return WitnessOut(select(vec4<f32>(0,1,0,1), vec4<f32>(1,0,0,1), front), meshFragDepth(input));
       }
-      @fragment fn fs_depth(input: VertexOutput) -> @builtin(frag_depth) f32 { return meshFragDepth(input); }`;
+      @fragment fn fs_depth(input: VertexOutput) -> @builtin(frag_depth) f32 { return meshFragDepth(input); }
+      // Fixed-function depth: the crease reference.
+      @fragment fn fs_color(input: VertexOutput) -> @location(0) vec4<f32> {
+        let front = (input.entityId & 0x00ffffffu) == ${frontId}u;
+        return select(vec4<f32>(0,1,0,1), vec4<f32>(1,0,0,1), front);
+      }`;
+  };
+  /** 4x MSAA crease pipelines: production frag_depth, its pixel-centre control, and fixed-function depth. */
+  const creasePipeline = async (variant: CreaseRow['variant'] | 'reference', frontId: number) => {
+    const production = source(nudge, frontId);
+    if (!production.includes(SAMPLE_DEPTH_VARYING)) throw new Error('Crease witness: no sample depth varying');
+    const shader = device.createShaderModule({ code: variant === 'pixel-centre' ? production.replace(SAMPLE_DEPTH_VARYING, PIXEL_CENTRE_DEPTH) : production });
+    return device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+      vertex: { module: shader, entryPoint: 'vs_main', buffers: [LAYOUT] },
+      fragment: { module: shader, entryPoint: variant === 'reference' ? 'fs_color' : 'fs_witness', targets: [{ format: 'rgba8unorm' }] },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      depthStencil: { format: depthFormat, depthWriteEnabled: true, depthCompare: 'greater' },
+      multisample: { count: 4 },
+    });
   };
   const pipelines = new Map<string, GPURenderPipeline>();
   const pipeline = async (override: string | undefined, frontId: number, samples: number) => {
@@ -206,6 +251,28 @@ export async function runPerspectiveDistanceWitness(
       uniform.set(COLOR, MESH_UNIFORM_OFFSET.baseColor);
       return {
         vertex: buffer(packed, GPUBufferUsage.VERTEX), index: indexBuffers[mesh][i]!, count: indices[mesh][i]!.length,
+        bindGroup: device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer: buffer(uniform, GPUBufferUsage.UNIFORM) } }] }),
+      };
+    });
+  };
+  /**
+   * Crease: a face at z = 0 (front entity) and one through it at 45 degrees,
+   * z = x - 0.37 y, so they cross along a slanted line through the view.
+   */
+  const creasePieces = (cam: Camera, distance: number, front: { lane: number }, rear: { lane: number }): Piece[] => {
+    const n = GRID, h = distance, count = (n + 1) ** 2;
+    const vp = MathUtils.multiply({ m: Float32Array.from([ZOOM, 0, 0, 0, 0, ZOOM, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }, cam.getViewProjMatrix());
+    return [front, rear].map((entity, i) => {
+      const packed = new Float32Array(7 * count), lanes = new Uint32Array(packed.buffer);
+      for (let j = 0; j <= n; j++) for (let k = 0; k <= n; k++) {
+        const v = j * (n + 1) + k, x = -h + 2 * h * k / n, y = -h + 2 * h * j / n;
+        packed.set([x, y, i === 0 ? 0 : x - 0.37 * y], v * 7); packed[v * 7 + 5] = 1; lanes[v * 7 + 6] = entity.lane;
+      }
+      const uniform = new Float32Array(MESH_UNIFORM_FLOATS);
+      uniform.set(vp.m); uniform.set(MathUtils.identity().m, MESH_UNIFORM_OFFSET.model);
+      uniform.set(COLOR, MESH_UNIFORM_OFFSET.baseColor);
+      return {
+        vertex: buffer(packed, GPUBufferUsage.VERTEX), index: indexBuffers.fine[i]!, count: indices.fine[i]!.length,
         bindGroup: device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer: buffer(uniform, GPUBufferUsage.UNIFORM) } }] }),
       };
     });
@@ -260,14 +327,61 @@ export async function runPerspectiveDistanceWitness(
         }
       }
     }
+    // Both faces get the highest hash, so the nudge scales both alike where
+    // they cross and leaves the crease line where the geometry puts it.
+    const creases: CreaseRow[] = [];
+    {
+      const creaseFront = top, creaseRear = entityForHash(255, top.id);
+      const reference = await creasePipeline('reference', creaseFront.id);
+      for (const variant of CREASE_VARIANTS) {
+        const drawn = await creasePipeline(variant, creaseFront.id);
+        for (const distance of CREASE_DISTANCES) for (const reverseDrawOrder of [false, true]) {
+          const mark = owned.length;
+          try {
+            const pieces = creasePieces(camera(distance, 0, 'on-facade'), distance, creaseFront, creaseRear);
+            const ordered = reverseDrawOrder ? [...pieces].reverse() : pieces;
+            const [image, ref] = [await drawResolved(device, depthFormat, drawn, ordered, 4), await drawResolved(device, depthFormat, reference, ordered, 4)];
+            let differingPixels = 0;
+            for (let p = 0; p < SIZE * SIZE; p++) {
+              const o = Math.floor(p / SIZE) * 256 + (p % SIZE) * 4;
+              if (Math.abs(image[o]! - ref[o]!) + Math.abs(image[o + 1]! - ref[o + 1]!) + Math.abs(image[o + 2]! - ref[o + 2]!) > 30) differingPixels++;
+            }
+            creases.push({ variant, distance, reverseDrawOrder, mixedPixels: mixedPixels(image), differingPixels, reference: { mixedPixels: mixedPixels(ref) } });
+          } finally { for (const b of owned.splice(mark)) b.destroy(); }
+        }
+      }
+    }
     await device.queue.onSubmittedWorkDone();
     return { adapter: { vendor: adapter.info.vendor, architecture: adapter.info.architecture, description: adapter.info.description },
-      depthFormat, separated, coplanar, shifts, errors };
+      depthFormat, separated, coplanar, shifts, creases, errors };
   } finally { for (const b of owned) b.destroy(); device.destroy(); }
 }
 
 interface Piece { vertex: GPUBuffer; index: GPUBuffer; count: number; bindGroup: GPUBindGroup }
 async function drawReadback(device: GPUDevice, depthFormat: GPUTextureFormat, pipeline: GPURenderPipeline, pieces: Piece[], samples: number) {
+  const rgba = await drawResolved(device, depthFormat, pipeline, pieces, samples);
+  let frontPixels = 0, rearPixels = 0, otherPixels = 0;
+  for (let y = PROBE_MIN; y < PROBE_MAX; y++) for (let x = PROBE_MIN; x < PROBE_MAX; x++) {
+    const offset = y * 256 + x * 4;
+    if (rgba[offset] === 255 && rgba[offset + 1] === 0) frontPixels++;
+    else if (rgba[offset + 1]! > 0) rearPixels++; // Includes one leaked MSAA sample after resolve.
+    else otherPixels++;
+  }
+  return { frontPixels, rearPixels, otherPixels };
+}
+
+/** Pixels resolved to a blend of the red and green faces, neither pure. */
+function mixedPixels(rgba: Uint8Array): number {
+  let mixed = 0;
+  for (let p = 0; p < SIZE * SIZE; p++) {
+    const o = Math.floor(p / SIZE) * 256 + (p % SIZE) * 4;
+    if (rgba[o]! > 0 && rgba[o + 1]! > 0) mixed++;
+  }
+  return mixed;
+}
+
+/** The resolved target, 256 bytes per row. */
+async function drawResolved(device: GPUDevice, depthFormat: GPUTextureFormat, pipeline: GPURenderPipeline, pieces: Piece[], samples: number): Promise<Uint8Array> {
   const color = device.createTexture({ size: [SIZE, SIZE], sampleCount: samples, format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | (samples === 1 ? GPUTextureUsage.COPY_SRC : 0) });
   const resolved = samples === 1 ? color : device.createTexture({ size: [SIZE, SIZE], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const depth = device.createTexture({ size: [SIZE, SIZE], sampleCount: samples, format: depthFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT });
@@ -285,15 +399,8 @@ async function drawReadback(device: GPUDevice, depthFormat: GPUTextureFormat, pi
     }
     pass.end(); encoder.copyTextureToBuffer({ texture: resolved }, { buffer: read, bytesPerRow: 256 }, [SIZE, SIZE]);
     device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
-    const rgba = new Uint8Array(read.getMappedRange());
-    let frontPixels = 0, rearPixels = 0, otherPixels = 0;
-    for (let y = PROBE_MIN; y < PROBE_MAX; y++) for (let x = PROBE_MIN; x < PROBE_MAX; x++) {
-      const offset = y * 256 + x * 4;
-      if (rgba[offset] === 255 && rgba[offset + 1] === 0) frontPixels++;
-      else if (rgba[offset + 1] > 0) rearPixels++; // Includes one leaked MSAA sample after resolve.
-      else otherPixels++;
-    }
-    read.unmap(); return { frontPixels, rearPixels, otherPixels };
+    const rgba = new Uint8Array(read.getMappedRange()).slice();
+    read.unmap(); return rgba;
   } finally { read.destroy(); depth.destroy(); if (resolved !== color) resolved.destroy(); color.destroy(); }
 }
 

@@ -86,19 +86,20 @@ export function selectionMaskFragmentSource(instanced = false, samples?: number)
           @location(6) eyePos: vec3<f32>,${instanceVaryings}
           ${samples === undefined ? '' : '@location(8) @interpolate(linear, sample) geometricDepth: f32,'}
           @location(3) @interpolate(flat) zHash: u32,
+          ${samples === undefined ? '@location(10) @interpolate(linear, sample) sampleDepth: f32,' : ''}
         }
         ${occurrenceFilterWgsl(instanced)}
         ${samples === undefined ? `
         ${depthNudgeWgsl}
         // The visible outputs depth-test against the scene, so they write the
-        // same per-fragment nudged depth the mesh pass wrote (main.wgsl.ts
+        // same per-sample nudged depth the mesh pass wrote (main.wgsl.ts
         // meshFragDepth); the vertex stage no longer nudges in perspective.
         struct MaskOut {
           @location(0) mask: vec4<f32>,
           @builtin(frag_depth) depth: f32,
         }
         fn visibleMask(input: MaskInput, mask: vec4<f32>) -> MaskOut {
-          return MaskOut(mask, nudgedFragDepth(input.fragPos.z, input.zHash, uniforms.viewProj));
+          return MaskOut(mask, nudgedFragDepth(input.sampleDepth, input.zHash, uniforms.viewProj));
         }` : `
         fn visibleMask(input: MaskInput, mask: vec4<f32>) -> vec4<f32> { return mask; }`}
 

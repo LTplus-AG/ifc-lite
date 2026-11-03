@@ -29,8 +29,8 @@
  *   which drew a wall over cladding panels a centimetre in front of it once
  *   zoomed out (#7955).
  *
- *   It is now applied per fragment (`nudgedFragDepth`, written to
- *   `frag_depth`), from that fragment's own view depth `w = near / z`:
+ *   It is now applied in the fragment stage (`nudgedFragDepth`, written to
+ *   `frag_depth`), from each MSAA sample's own view depth `w = near / z`:
  *   `k = hash * min(1e-6, PERSPECTIVE_MAX_DEPTH_NUDGE_METRES / (255 * w))`.
  *   Closer than `bound / 2.55e-4` (about 8 m) that is the old nudge, unchanged.
  *   Further out no pixel moves more than `hash / 255 * bound`, whatever the
@@ -43,8 +43,12 @@
  *   once that is under the depth noise; the measured distances are pinned in
  *   `tests/e2e/perspective-distance-depth.e2e.spec.ts`.
  *
- *   Writing `frag_depth` costs early depth rejection, and the written depth
- *   is the fragment centre's for every MSAA sample it covers.
+ *   Writing `frag_depth` costs early depth rejection. One `frag_depth` per
+ *   pixel would give every MSAA sample the pixel centre's depth, so creases
+ *   (mullions, slab edges) would be decided per pixel and alias into stair
+ *   steps. The depth is therefore read from a sample-interpolated varying
+ *   (`VertexOutput.sampleDepth`), which runs the fragment stage once per
+ *   sample: each sample writes its own depth, as without `frag_depth`.
  * - Orthographic: NDC depth is linear over the scene's bounding range
  *   (`computeOrthoNearFar`). Scaling clip z would shift a fragment by
  *   `k * z * range`: on a 1.5 km range about 20 cm mid-scene and nearly 40 cm
@@ -130,14 +134,37 @@ export const depthNudgeWgsl = `
           return clip.z;
         }
 
-        // Fragment stage, for frag_depth. depth is the rasterized depth
-        // (position.z). Perspective: viewProj[3][2] is near, and the view
-        // depth is near / depth.
+        // Fragment stage, for frag_depth. depth is the sample's rasterized
+        // depth (VertexOutput.sampleDepth). Perspective: viewProj[3][2] is
+        // near, and the view depth is near / depth.
         fn nudgedFragDepth(depth: f32, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) { return depth; }
           let near = max(viewProj[3][2], 1e-30);
           let step = min(PERSPECTIVE_DEPTH_NUDGE_PER_STEP, PERSPECTIVE_MAX_DEPTH_NUDGE_METRES * depth / (MAX_DEPTH_NUDGE_HASH * near));
           return depth * (1.0 + f32(zHash) * step);
+        }
+`;
+
+/**
+ * The mesh shader's depth plumbing (main.wgsl.ts, which supplies
+ * `VertexOutput` and `uniforms`). Every vertex entry writes the unbiased
+ * depth (the orthographic visibility prepass), applies the vertex nudge and
+ * emits the result as `sampleDepth`, a sample-interpolated varying. Reading it
+ * runs the fragment stage once per MSAA sample, so `meshFragDepth` gives each
+ * sample its own nudged depth and creases resolve per sample, as they do
+ * without `frag_depth`. Every pass that depth-tests against the scene writes
+ * `meshFragDepth`.
+ */
+export const meshDepthWgsl = `
+        fn writeMeshDepth(output: ptr<function, VertexOutput>, zHash: u32) {
+          (*output).geometricDepth = (*output).position.z / (*output).position.w;
+          (*output).position.z = nudgedClipZ((*output).position, zHash, uniforms.viewProj);
+          (*output).sampleDepth = (*output).position.z / (*output).position.w;
+          (*output).zHash = zHash;
+        }
+
+        fn meshFragDepth(input: VertexOutput) -> f32 {
+          return nudgedFragDepth(input.sampleDepth, input.zHash, uniforms.viewProj);
         }
 `;
 

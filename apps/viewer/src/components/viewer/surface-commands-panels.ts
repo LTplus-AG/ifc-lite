@@ -13,6 +13,7 @@ import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
 import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import type { Command } from './commandPaletteSearch';
 import type {
@@ -75,6 +76,8 @@ export const PANEL_SURFACE_COMMANDS = [
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       const state = useViewerStore.getState();
+      // Folded for the start screen it LOOKS closed: reveal, don't flip.
+      if (liftStartFold('left')) { state.setLeftPanelCollapsed(false); return; }
       state.setLeftPanelCollapsed(!state.leftPanelCollapsed);
     },
   },

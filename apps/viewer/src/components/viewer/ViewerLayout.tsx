@@ -52,7 +52,7 @@ import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
-import { useEmptyStartFold } from './welcome/useEmptyStartFold';
+import { useEmptyStartFold, useIsEmptyStart } from './welcome/useEmptyStartFold';
 import { WorkspaceMigrationNotice } from './WorkspaceMigrationNotice';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
@@ -209,6 +209,9 @@ export function ViewerLayout() {
   // Sync store state → left Panel collapse/expand on desktop. The empty
   // start screen folds Hierarchy on top of the stored state, never into it.
   const emptyFold = useEmptyStartFold();
+  const emptyStart = useIsEmptyStart();
+  // A lift lasts one empty session: the next time the viewer is empty, fold again.
+  useEffect(() => { if (!emptyStart) useViewerStore.getState().setStartFoldLifted({ left: false, right: false }); }, [emptyStart]);
   const foldRestorePct = useRef<number | null>(null);
   useEffect(() => {
     const panel = leftPanelRef.current;

@@ -15,6 +15,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
+import { liftStartFold, useEmptyStartFold, useEmptyStartFoldsSidebarPane } from '@/components/viewer/welcome/useEmptyStartFold';
 import type { UiSurface } from '@/lib/analytics-ui-events';
 import {
   isAnalysisPanel,
@@ -73,6 +74,8 @@ export function usePanelControls(): PanelControls {
   const bottomFlags = useBottomPanelFlags();
   // The Hierarchy panel (left region, #1267) is "docked" while its slot is open.
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
+  const hierarchyFolded = useEmptyStartFold();
+  const paneFolded = useEmptyStartFoldsSidebarPane();
   // The lower half of a docked split (#1266), also docked/visible.
   const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
 
@@ -102,12 +105,12 @@ export function usePanelControls(): PanelControls {
 
   const isDockedInHome = useCallback(
     (id: WorkspacePanelId): boolean => {
-      if (id === 'hierarchy') return !leftPanelCollapsed; // left slot open
+      if (id === 'hierarchy') return !leftPanelCollapsed && !hierarchyFolded; // left slot open
       if (isBottomPanel(id)) return isBottomPanelOpen(bottomFlags, id);
       // A side panel is docked as the right-pane primary OR the split secondary.
-      return id === sideDocked || id === secondaryDocked;
+      return (id === sideDocked && !paneFolded) || id === secondaryDocked;
     },
-    [sideDocked, secondaryDocked, bottomFlags, leftPanelCollapsed],
+    [sideDocked, secondaryDocked, bottomFlags, leftPanelCollapsed, hierarchyFolded, paneFolded],
   );
 
   const panelLocation = useCallback(
@@ -128,18 +131,24 @@ export function usePanelControls(): PanelControls {
     // Hierarchy's home is the left slot, so reveal it instead of routing through
     // the right-pane / bottom-strip flags (#1267).
     if (isLeftPanel(id)) {
+      liftStartFold('left');
       useViewerStore.getState().setLeftPanelCollapsed(false);
       return;
     }
+    liftStartFold('right');
     useViewerStore.getState().openPanelInHome(id, source);
   }, []);
 
   const toggle = useCallback((id: WorkspacePanelId, source: UiSurface = 'rail') => {
+    // A pane folded for the start screen LOOKS closed: a toggle reveals it
+    // rather than flipping stored state the user cannot see.
     if (isLeftPanel(id)) {
       const s = useViewerStore.getState();
+      if (liftStartFold('left')) { s.setLeftPanelCollapsed(false); return; }
       s.setLeftPanelCollapsed(!s.leftPanelCollapsed);
       return;
     }
+    if (liftStartFold('right')) { useViewerStore.getState().openPanelInHome(id, source); return; }
     // If the panel is the lower split half it's already docked below, so
     // toggling its rail icon closes that half (clears the split) rather than
     // promoting it to primary and collapsing the split out from under it (#1266).

@@ -5,12 +5,15 @@
 /**
  * The start screen folds Hierarchy and a Properties-only sidebar pane while
  * the viewer is empty. These pin WHEN: never while a model is loading or
- * loaded, and never over a panel the user (or the welcome card) opened.
+ * loaded, never over a panel the user (or the welcome card) opened — and that
+ * an explicit panel action while folded lifts the fold instead of writing the
+ * stored layout behind a pane the user cannot see (#8728 review).
  */
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isEmptyStart, startFoldsSidebarPane } from './useEmptyStartFold.js';
+import { useViewerStore } from '@/store';
+import { isEmptyStart, liftStartFold, startFoldsHierarchy, startFoldsSidebarPane } from './useEmptyStartFold.js';
 
 type State = Parameters<typeof startFoldsSidebarPane>[0];
 
@@ -20,17 +23,20 @@ const empty: State = {
   loading: false,
   sidebarActivePanel: 'properties',
   sidebarSecondaryPanel: null,
+  startFoldLifted: { left: false, right: false },
 };
 
 describe('start-screen panel fold', () => {
   it('folds both sides on an empty, idle viewer', () => {
     assert.equal(isEmptyStart(empty), true);
+    assert.equal(startFoldsHierarchy(empty), true);
     assert.equal(startFoldsSidebarPane(empty), true);
   });
 
   it('unfolds the moment a model starts loading', () => {
     const loading: State = { ...empty, loading: true };
     assert.equal(isEmptyStart(loading), false);
+    assert.equal(startFoldsHierarchy(loading), false);
     assert.equal(startFoldsSidebarPane(loading), false);
   });
 
@@ -44,5 +50,39 @@ describe('start-screen panel fold', () => {
   it('keeps the sidebar pane open for any panel other than Properties', () => {
     assert.equal(startFoldsSidebarPane({ ...empty, sidebarActivePanel: 'sources' }), false);
     assert.equal(startFoldsSidebarPane({ ...empty, sidebarSecondaryPanel: 'bcf' }), false);
+  });
+
+  it('honours a lift per side', () => {
+    const left: State = { ...empty, startFoldLifted: { left: true, right: false } };
+    assert.equal(startFoldsHierarchy(left), false);
+    assert.equal(startFoldsSidebarPane(left), true, 'lifting Hierarchy must not open the Properties pane');
+  });
+});
+
+describe('liftStartFold (store)', () => {
+  const RESET = {
+    loading: false,
+    models: new Map(),
+    geometryResult: null,
+    leftPanelCollapsed: false,
+    sidebarActivePanel: 'properties',
+    sidebarSecondaryPanel: null,
+    startFoldLifted: { left: false, right: false },
+  } as const;
+  afterEach(() => useViewerStore.setState(RESET));
+
+  it('reveals a folded Hierarchy without writing the stored collapse state', () => {
+    useViewerStore.setState(RESET);
+    assert.equal(liftStartFold('left'), true, 'the fold was hiding Hierarchy');
+    const s = useViewerStore.getState();
+    assert.deepEqual(s.startFoldLifted, { left: true, right: false });
+    assert.equal(s.leftPanelCollapsed, false, 'the user\'s preference is untouched');
+    assert.equal(startFoldsHierarchy(s), false);
+  });
+
+  it('does nothing when nothing is folded, so a real toggle still toggles', () => {
+    useViewerStore.setState({ ...RESET, loading: true });
+    assert.equal(liftStartFold('left'), false);
+    assert.deepEqual(useViewerStore.getState().startFoldLifted, { left: false, right: false });
   });
 });

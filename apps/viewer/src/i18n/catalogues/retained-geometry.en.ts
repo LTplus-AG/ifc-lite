@@ -8,9 +8,9 @@ import type { TranslationValue } from '../types';
  * Retained geometry kernel (#7955 M2): the viewport chip, the Retained
  * geometry panel, the kernel setting, status-bar phases, scope refusals and
  * the shape-only reason on refused tools. A lazy catalogue registered by the
- * retained module (`lib/retained/index.ts`), which only a
- * `VITE_RETAINED_GEOMETRY=on` build contains — the default build ships none
- * of these strings.
+ * retained module (`lib/retained/index.ts`) and the kernel setting, which only
+ * a `VITE_RETAINED_GEOMETRY=on|lazy` build contains — the default build ships
+ * none of these strings, and a `lazy` build fetches them only on use.
  */
 export const retainedGeometryEn = {
   'retainedGeometry.shapeOnlyReason': 'Unavailable while retained geometry or presentation is incomplete. Reload it with the exact kernel to use this.',
@@ -105,7 +105,8 @@ export const retainedGeometryEn = {
   'retainedGeometry.code.other': 'Refused with code {code}.',
 
   'retainedGeometry.setting.title': 'Geometry kernel',
-  'retainedGeometry.setting.hint': 'Applies to the next load in this tab. A new tab starts with Exact again.',
+  'retainedGeometry.setting.hint': 'Applies to the next load and is saved in this browser. ?kernel= in the address overrides it for one tab.',
+  'retainedGeometry.setting.unavailable': 'Retained needs a cross-origin isolated page, which this browser does not provide here. Models load with the exact kernel.',
   'retainedGeometry.setting.exact': 'Exact (default)',
   'retainedGeometry.setting.retained': 'Retained (experimental)',
 
@@ -117,5 +118,6 @@ export const retainedGeometryEn = {
   'retainedGeometry.scope.format': 'Retained geometry covers IFC (STEP) files only, so "{file}" was not loaded. Retry loads it with the exact kernel.',
   'retainedGeometry.scope.size': '"{file}" is {size}; the retained engine cannot hold a source of {limit} or more. Retry loads it with the exact kernel.',
   'retainedGeometry.hostFailure': 'The retained engine stopped while processing "{file}": {reason}. Retry runs the retained kernel again; the Retained geometry panel can reload it with the exact kernel.',
+  'retainedGeometry.engineMissing': 'The retained engine could not be loaded for "{file}": {reason}. Retry loads it with the exact kernel.',
   'retainedGeometry.memory': '"{file}" did not fit in the retained engine\'s memory (WebAssembly is limited to 4 GiB). Retry loads it with the exact kernel.',
 } as const satisfies Record<string, TranslationValue>;

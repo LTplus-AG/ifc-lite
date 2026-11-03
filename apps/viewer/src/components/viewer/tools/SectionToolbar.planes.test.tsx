@@ -335,6 +335,7 @@ describe('the plane menu (#7545)', () => {
     const side = s().sectionPlane.id;
     openPlaneMenu();
     assert.equal(menuItem('Side (X)').getAttribute('aria-checked'), 'true', 'the plane\'s current direction is marked');
+    for (const label of ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…']) assert.ok(menuItem(label).title, `${label} explains itself on hover, as in the Add menu`);
     click(menuItem('Front (Y)'));
     assert.equal(s().sectionPlane.id, side, 'same plane');
     assert.equal(s().sectionPlane.axis, 'front');

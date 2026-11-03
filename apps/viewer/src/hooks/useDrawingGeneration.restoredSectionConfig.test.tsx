@@ -310,7 +310,8 @@ describe('the placeholder plane is never saved as a cut', () => {
 
     await act(async () => { await runGenerate!(); });
     const saved = loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
-    assert.equal(saved?.sectionConfig ?? null, null, 'no cut saved for a plane the user never made');
+    assert.equal(saved !== undefined && saved !== null, true, 'the generation saved an entry, so the null below was written, not missing');
+    assert.equal(saved?.sectionConfig, null, 'no cut saved for a plane the user never made');
 
     // The viewport remounting (a layout breakpoint) re-runs the restore.
     const first = root!;
@@ -342,8 +343,13 @@ describe('a cut where the placeholder sat is saved without a new drawing', () =>
     await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
     await restoreDecided('model-a');
     await act(async () => { await runGenerate!(); });
-    const saved = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions)?.sectionConfig ?? null;
+    const entry = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    const saved = () => entry()?.sectionConfig ?? null;
+    assert.equal(entry() !== undefined && entry() !== null, true, 'the generation saved an entry');
     assert.equal(saved(), null, 'nothing saved for the placeholder');
+    // No drawing is generated below (the harness's drawing view is closed and nothing
+    // regenerates by hand), so every save after this is the placeholder-status path.
+    const drawn = lastDrawing;
 
     const before = useViewerStore.getState().sectionPlane;
     await act(async () => { useViewerStore.getState().addSectionPlane('down'); });
@@ -353,5 +359,6 @@ describe('a cut where the placeholder sat is saved without a new drawing', () =>
 
     await act(async () => { useViewerStore.getState().clearSectionPlanes(); });
     assert.equal(saved(), null, 'clearing the cut forgets it');
+    assert.equal(lastDrawing === drawn, true, 'both saves came without generating a new drawing');
   });
 });

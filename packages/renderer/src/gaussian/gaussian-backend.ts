@@ -60,6 +60,8 @@ export interface GaussianBackendScene {
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void;
   /** Record one pass that loads the viewer colour, tests read-only depth and resolves if requested. */
   encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera): void;
+  /** Internal opt-in evidence, called only after encoding a diagnostic frame. */
+  captureDiagnostics?(): Record<string, unknown>;
   destroy(): void;
 }
 

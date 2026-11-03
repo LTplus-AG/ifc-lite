@@ -448,7 +448,7 @@ export function useIfcLoader() {
 
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
-    const retryThisLoad = () => { void loadFile(file, target, options); };
+    const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = (message: string, code: string, retry = retryThisLoad) =>
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retry, file);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
@@ -700,9 +700,9 @@ export function useIfcLoader() {
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
       if (isStale()) return;
       if (gaussianAdmission.kind !== 'ordinary') { // #8565: every entry reaches this one admission decision
-        await loadGaussianCapture({ file, admission: gaussianAdmission, target, modelId, options,
+        const outcome = await loadGaussianCapture({ file, admission: gaussianAdmission, target, modelId, options,
           signal: metadataAbort.signal, isCurrent, showLoadError, finalize: finalizeModel });
-        return;
+        options?.onGaussianLoadSettled?.(isCurrent() ? outcome : 'cancelled'); return;
       }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 

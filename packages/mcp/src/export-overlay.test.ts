@@ -250,7 +250,34 @@ describe('exports preserve loaded source bytes', () => {
     expect(await readFile(source)).toEqual(before);
     const output = join(tmp, `${name}.out`);
     await call(name, { file_path: output });
-    expect((await readFile(output)).length).toBeGreaterThan(0);
+    const exported = await readFile(output);
+    if (name === 'export_json') {
+      const rows: unknown = JSON.parse(exported.toString('utf8'));
+      expect(rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ GlobalId: guid('WALA'), Name: 'Wall A' }),
+        expect.objectContaining({ GlobalId: guid('WALB'), Name: 'Wall B' }),
+      ]));
+    } else if (name === 'export_csv') {
+      // These fixture values contain neither commas nor quoted newlines.
+      const rows = exported.toString('utf8').trim().split(/\r?\n/).map((row) => row.split(','));
+      expect(rows[0]).toEqual(['GlobalId', 'Type', 'Name']);
+      expect(rows).toEqual(expect.arrayContaining([
+        [guid('WALA'), expect.stringMatching(/^IFCWALL$/i), 'Wall A'],
+        [guid('WALB'), expect.stringMatching(/^IFCWALL$/i), 'Wall B'],
+      ]));
+    } else {
+      const store = await new IfcParser().parseColumnar(
+        exported.buffer.slice(exported.byteOffset, exported.byteOffset + exported.byteLength) as ArrayBuffer,
+      );
+      const extractor = new EntityExtractor(store.source!);
+      for (const [id, globalId, name] of [[72, guid('WALA'), 'Wall A'], [73, guid('WALB'), 'Wall B']] as const) {
+        const ref = store.entityIndex.byId.get(id);
+        expect(ref?.type).toBe('IFCWALL');
+        const entity = extractor.extractEntity(ref!);
+        expect(entity?.attributes?.[0]).toBe(globalId);
+        expect(entity?.attributes?.[2]).toBe(name);
+      }
+    }
     expect(await readFile(source)).toEqual(before);
   });
 });

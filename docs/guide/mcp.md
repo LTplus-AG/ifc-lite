@@ -119,6 +119,9 @@ Tools are grouped by capability. Everything below is registered in the default t
 
 File-writing tools refuse to overwrite any currently loaded model, including symlink
 and hard-link aliases. Choose a separate output path, even for IFC exports.
+If a loaded source disappears, writes to existing files are refused because
+the source identity cannot be verified. Choose a new output file, or restore
+or unload the missing model.
 
 IFC, IFCX, USD, GLB, and OBJ exports include pending session creates, edits,
 and deletions. Exporting and reloading an IFC file first is unnecessary.

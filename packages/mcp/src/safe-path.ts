@@ -96,15 +96,26 @@ export async function resolveSafePath(
       message: 'file_path must be a non-empty string',
     });
   }
-  const requested = resolve(raw);
-  const roots = await buildAllowedRoots(ctx);
-  rejectIfSensitiveHome(requested);
-  ensureWithinRoots(requested, roots);
-  const canonical = await canonicalise(requested, mode);
-  rejectIfSensitiveHome(canonical);
-  ensureWithinRoots(canonical, roots);
-  if (mode === 'write') await rejectLoadedModel(canonical, ctx);
-  return canonical;
+  try {
+    const requested = resolve(raw);
+    const roots = await buildAllowedRoots(ctx);
+    rejectIfSensitiveHome(requested);
+    ensureWithinRoots(requested, roots);
+    const canonical = await canonicalise(requested, mode);
+    rejectIfSensitiveHome(canonical);
+    ensureWithinRoots(canonical, roots);
+    if (mode === 'write') await rejectLoadedModel(canonical, ctx);
+    return canonical;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.PERMISSION_DENIED,
+        message: `Permission denied while validating file path '${raw}'.`,
+      });
+    }
+    throw error;
+  }
 }
 
 /** Loaded sources are read-only even inside an explicitly allowed directory. */
@@ -114,6 +125,14 @@ async function rejectLoadedModel(target: string, ctx: PathContext): Promise<void
     if (!model.filePath) continue;
     const source = await canonicalise(resolve(model.filePath), 'write');
     const sourceStat = targetStat ? await statIfPresent(source) : undefined;
+    // With a missing source we cannot distinguish an unrelated existing file
+    // from its surviving hard link. Fail closed; a new output is still safe.
+    if (targetStat && !sourceStat) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.PERMISSION_DENIED,
+        message: `Cannot verify loaded model '${model.filePath}'. Refusing to overwrite an existing file; restore or unload the missing model, or choose a new output path.`,
+      });
+    }
     if (target === source || (targetStat && sourceStat &&
         targetStat.dev === sourceStat.dev && targetStat.ino === sourceStat.ino)) {
       throw new ToolExecutionError({

@@ -27,7 +27,7 @@
 
 import proj4 from 'proj4';
 import type { GeoMapping } from './geo-warp';
-import type { ViewerBounds } from './geo-lattice';
+import { createLatticeWarp, type ViewerBounds } from './geo-lattice';
 import { computeGridPointFactors, projectedDefinitionInMetres } from './proj4-utils';
 import type { GridCoordinateSource } from './ground-scale';
 
@@ -134,6 +134,16 @@ export function resolveGlobePlacement(
   return estimateMetres !== null && estimateMetres > AUTO_EXACT_THRESHOLD_M ? 'exact' : 'anchor';
 }
 
+/**
+ * True when the drawn model departs from the anchor's tangent plane by more
+ * than the Auto threshold, so a flat viewer-space terrain clip would cut it.
+ * An Exact model the estimate keeps within the threshold (a small
+ * IfcRigidOperation) is as flat as its anchor placement and keeps the clip.
+ */
+export function bendsAwayFromAnchorPlane(plan: Pick<GlobePlacementPlan, 'mode' | 'estimate'>): boolean {
+  return plan.mode === 'exact' && !(plan.estimate && plan.estimate.total <= AUTO_EXACT_THRESHOLD_M);
+}
+
 /** What the bridge decided, for the model loader and the Georeferencing panel. */
 export interface GlobePlacementPlan {
   requested: GlobePlacementMode;
@@ -158,6 +168,15 @@ export function planGlobePlacement(
   // Anchor needs no estimate to place; it is still computed so the panel can show it.
   const estimate = bounds ? estimateAnchorError(mapping, bounds, options) : null;
   const prescribed = prescribedGlobePlacement(options.gridSource);
-  const mode = resolveGlobePlacement(requested, estimate?.total ?? null, prescribed);
+  const estimated = resolveGlobePlacement(requested, estimate?.total ?? null);
+  let mode = resolveGlobePlacement(requested, estimate?.total ?? null, prescribed);
+  // The prescription moves a model the estimate keeps on its anchor onto
+  // Exact. A failed Exact bake shows nothing, so take it only with bounds to
+  // bake over and a lattice that places every node (a WKT extent can refuse
+  // nodes the anchor never needs); otherwise stay on the anchor, as before.
+  if (mode !== estimated && !(bounds && createLatticeWarp(mapping, bounds))) {
+    console.warn('[globe-placement] the IfcRigidOperation cannot be placed point by point here; placed by its anchor');
+    mode = estimated;
+  }
   return { requested, mode, estimate, prescribed, key: mode === 'exact' ? JSON.stringify(['exact', options.mappingKey]) : '' };
 }

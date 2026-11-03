@@ -29,6 +29,7 @@ import {
   orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
+import { bendsAwayFromAnchorPlane } from '@/lib/geo/globe-placement';
 import { holdCameraY, type ViewerHeightFrame } from '@/lib/geo/viewer-up-scale';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { getCesiumModule } from './cesium-module';
@@ -228,8 +229,9 @@ export function useCesiumBridge({
         // placement edits must not move this floor, or the camera will drift.
         // Exact placement bends the model with the Earth (r²/2R below the
         // anchor's tangent plane at its ends), so a flat viewer-space floor
-        // would cut it; the clip is off there.
-        setCesiumTerrainClipY(bridge.placement.mode === 'exact' ? null : cameraPlacement.terrainClipY);
+        // would cut it; the clip is off there, unless the model stays within
+        // the Auto threshold of that plane (a small IfcRigidOperation).
+        setCesiumTerrainClipY(bendsAwayFromAnchorPlane(bridge.placement) ? null : cameraPlacement.terrainClipY);
       } else {
         // Failed re-query (offline, API down) — clear stale store fields so
         // the clip plane doesn't drift relative to the new bridge.

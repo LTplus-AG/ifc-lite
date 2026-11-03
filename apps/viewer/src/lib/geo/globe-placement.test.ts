@@ -16,7 +16,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
-import { estimateAnchorError, planGlobePlacement, prescribedGlobePlacement, resolveGlobePlacement } from './globe-placement.js';
+import {
+  bendsAwayFromAnchorPlane, estimateAnchorError, planGlobePlacement, prescribedGlobePlacement, resolveGlobePlacement,
+} from './globe-placement.js';
 import type { GridCoordinateSource } from './ground-scale.js';
 import type { ViewerBounds } from './geo-lattice.js';
 import { geoidPlane, RIGID_OFFSET, rigidMapping } from '@/test/geo-warp-fixture.js';
@@ -91,11 +93,38 @@ describe('the georeference prescribes Exact for an IfcRigidOperation', () => {
     assert.equal(plan.key, JSON.stringify(['exact', 'k']));
   });
 
-  it('Auto takes the prescription without bounds; an explicit Anchor is still taken as asked', () => {
-    assert.equal(planGlobePlacement('auto', m, undefined, { ...options('rigidOperation'), mappingKey: 'k' }).mode, 'exact');
+  it('Auto stays on the anchor without bounds to bake over; an explicit Anchor is still taken as asked', () => {
+    const unbounded = planGlobePlacement('auto', m, undefined, { ...options('rigidOperation'), mappingKey: 'k' });
+    assert.equal(unbounded.mode, 'anchor');
+    assert.equal(unbounded.prescribed, 'exact');
     const anchor = planGlobePlacement('anchor', m, square(30), { ...options('rigidOperation'), mappingKey: 'k' });
     assert.equal(anchor.mode, 'anchor');
     assert.equal(anchor.prescribed, 'exact', 'the panel still learns what the file prescribes');
     assert.equal(resolveGlobePlacement('auto', 0.001, 'exact'), 'exact');
+  });
+
+  it('Auto stays on the anchor when a lattice node cannot be placed (a WKT extent just past the model)', () => {
+    const box = square(30);
+    // The 100 m lattice reaches 40 m past this 60 m box; refuse anything beyond it, as a WKT BBOX would.
+    const fenced = { ...m, toEnu: (x: number, y: number, z: number, out: number[]) => x <= box.max.x + 1 && m.toEnu(x, y, z, out) };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const plan = planGlobePlacement('auto', fenced, box, { ...options('rigidOperation'), mappingKey: 'k' });
+      assert.equal(plan.mode, 'anchor');
+      assert.equal(plan.prescribed, 'exact');
+      assert.equal(plan.key, '');
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  it('a small Exact model keeps the flat terrain clip; a bending one, or one without an estimate, does not', () => {
+    const small = planGlobePlacement('auto', m, square(30), { ...options('rigidOperation'), mappingKey: 'k' });
+    assert.equal(small.mode, 'exact');
+    assert.equal(bendsAwayFromAnchorPlane(small), false);
+    assert.equal(bendsAwayFromAnchorPlane(planGlobePlacement('auto', m, square(1000), { ...options('rigidOperation'), mappingKey: 'k' })), true);
+    assert.equal(bendsAwayFromAnchorPlane({ mode: 'exact', estimate: null }), true);
+    assert.equal(bendsAwayFromAnchorPlane({ mode: 'anchor', estimate: null }), false);
   });
 });

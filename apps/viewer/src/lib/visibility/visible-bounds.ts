@@ -64,6 +64,8 @@ export interface FitAllInput {
   visibility: EffectiveVisibility;
   /** The load-time fit box; framed only when nothing visible has bounds. */
   wholeScene: BoundingBox3D;
+  /** Centres of the visible Gaussian captures (#8565): framed, never measured. */
+  captures?: BoundingBox3D | null;
 }
 
 /**
@@ -88,5 +90,11 @@ export function fitAllBounds(input: FitAllInput): BoundingBox3D {
   if (input.instancedDrawn) for (const id of input.instancedIds) take(id, input.typeOf(id));
   const fit = robustFitBoundsFull(boxes, { quiet: true });
   const bounds = fit ? (fit.robust ?? fit.full) : null;
-  return bounds && isSaneBounds(bounds) ? bounds : input.wholeScene;
+  const meshes = bounds && isSaneBounds(bounds) ? bounds : null;
+  // A capture is a whole model, not one element of a sparse tail: never trimmed.
+  const c = input.captures;
+  if (!c) return meshes ?? input.wholeScene;
+  if (!meshes) return c;
+  return { min: { x: Math.min(meshes.min.x, c.min.x), y: Math.min(meshes.min.y, c.min.y), z: Math.min(meshes.min.z, c.min.z) },
+    max: { x: Math.max(meshes.max.x, c.max.x), y: Math.max(meshes.max.y, c.max.y), z: Math.max(meshes.max.z, c.max.z) } };
 }

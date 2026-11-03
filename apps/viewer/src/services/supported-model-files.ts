@@ -16,6 +16,7 @@
  */
 
 import { GEO_RASTER_FILE_EXTENSIONS, isGeoRasterFile } from '@/lib/terrain-imagery/raster-bundle';
+import { gaussianShowcaseBuild } from '@/hooks/ingest/gaussianAdmissionPolicy';
 
 /** Model formats routed to the model-load pipeline. */
 export const MODEL_FILE_EXTENSIONS = [
@@ -33,6 +34,10 @@ export const MODEL_FILE_EXTENSIONS = [
   '.xyz',
   '.xml',
 ] as const;
+
+/** Offered only where the loader can admit a capture: test/showcase builds (#8565).
+ * Gaussian `.ply` shares the point-cloud extension and is told apart by content. */
+const GAUSSIAN_FILE_EXTENSIONS: readonly string[] = gaussianShowcaseBuild() ? ['.splat'] : [];
 
 /** Formats exposed by the compact mobile toolbar's single-file flow. */
 export const MOBILE_MODEL_FILE_EXTENSIONS = [
@@ -53,6 +58,7 @@ export const REFERENCE_FILE_EXTENSIONS = ['.dxf'] as const;
 /** Everything a file picker should offer the user. */
 export const PICKER_FILE_EXTENSIONS: readonly string[] = [
   ...MODEL_FILE_EXTENSIONS,
+  ...GAUSSIAN_FILE_EXTENSIONS,
   ...REFERENCE_FILE_EXTENSIONS,
   '.bin', '.png', '.jpg', '.jpeg',
   // #5942: georeferenced imagery and its sidecars, draped on a loaded terrain.
@@ -68,7 +74,7 @@ export const MOBILE_FILE_ACCEPT = MOBILE_MODEL_FILE_EXTENSIONS.join(',');
 /** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
 export function isSupportedModelFile(f: File): boolean {
   const n = f.name.toLowerCase();
-  return MODEL_FILE_EXTENSIONS.some((ext) => n.endsWith(ext));
+  return [...MODEL_FILE_EXTENSIONS, ...GAUSSIAN_FILE_EXTENSIONS].some((ext) => n.endsWith(ext));
 }
 
 /** Case-insensitive guard for formats handled by the mobile toolbar. */

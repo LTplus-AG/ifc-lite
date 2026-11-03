@@ -218,6 +218,7 @@ export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 import type { LandXmlGeorefAssumption } from '../hooks/ingest/landXmlGeorefAssumptions.js';
+import type { GaussianSplatModel } from '../hooks/ingest/gaussianIngest.js';
 export type { CustomSectionPlane, SectionPlane, SectionBox, SectionBoxFace } from './section-types';
 
 // ============================================================================
@@ -589,6 +590,9 @@ export interface FederatedModel extends ModelLoadReportFields {
    * when the model is dropped from the store.
    */
   pointCloudHandleId?: number;
+  /** Resident Gaussian capture (#8565): the exact renderer-issued handle with its
+   * uncalibrated placement and summary. Freed by `gaussianAssets` with the model. */
+  gaussianSplat?: GaussianSplatModel;
   /**
    * This model's geometry as it stood before federation alignment re-baked it
    * into the anchor's viewer frame, or `undefined` when no alignment is applied

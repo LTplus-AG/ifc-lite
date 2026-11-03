@@ -9,19 +9,43 @@ import { perfTally } from '@ifc-lite/load-trace';
  *
  * The returned map is shared until an assignment changes (#7021): a streamed
  * append re-creates the store's `models` map, and a fresh index map per append
- * re-ran every memo keyed on it. Treat it as read-only. */
+ * re-ran every memo keyed on it. Treat it as read-only.
+ *
+ * `reserve` holds an id's slot before its model is registered (#8565: a
+ * renderer asset created first must carry its final index). A held slot is
+ * never reassigned or reset; the returned map lists registered models only. */
 export function createModelIndexAllocator() {
   let next = 0;
   const assigned = new Map<string, number>();
+  const reserved = new Map<string, number>();
   let snapshot = new Map<string, number>();
-  return (models: ReadonlyMap<string, unknown>): Map<string, number> => {
+  const allocate = (models: ReadonlyMap<string, unknown>): Map<string, number> => {
     let changed = false;
-    if (!models.size && (assigned.size || next)) { assigned.clear(); next = 0; changed = true; }
-    for (const id of assigned.keys()) if (!models.has(id)) { assigned.delete(id); changed = true; }
+    if (!models.size && !reserved.size && (assigned.size || next)) { assigned.clear(); next = 0; changed = true; }
+    for (const id of assigned.keys()) if (!models.has(id) && !reserved.has(id)) { assigned.delete(id); changed = true; }
     for (const id of models.keys()) if (!assigned.has(id)) { assigned.set(id, next++); changed = true; }
-    if (changed) snapshot = new Map(assigned);
+    if (changed || snapshot.size !== models.size || [...snapshot.keys()].some((id) => !models.has(id))) {
+      snapshot = new Map([...assigned].filter(([id]) => models.has(id)));
+    }
     return snapshot;
   };
+  const reserve = (id: string, models: ReadonlyMap<string, unknown>) => {
+    allocate(models);
+    reserved.set(id, (reserved.get(id) ?? 0) + 1);
+    if (!assigned.has(id)) assigned.set(id, next++);
+    let held = true;
+    return {
+      index: assigned.get(id)!,
+      /** After publication or after the asset is gone; idempotent. */
+      release() {
+        if (!held) return;
+        held = false;
+        const count = (reserved.get(id) ?? 1) - 1;
+        if (count) reserved.set(id, count); else reserved.delete(id);
+      },
+    };
+  };
+  return Object.assign(allocate, { reserve });
 }
 export const modelIndices = createModelIndexAllocator();
 

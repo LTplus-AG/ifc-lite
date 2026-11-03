@@ -5,7 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const gaussianCaptureRu = {
-  "gaussianCapture.kind": "Гауссов захват (внутренний предпросмотр)",
+  "gaussianCapture.kind": "Гауссов захват",
   "gaussianCapture.format.gaussianPly": "Gaussian PLY",
   "gaussianCapture.format.splat": ".splat",
   "gaussianCapture.heading.capture": "Захват",
@@ -32,7 +32,17 @@ export const gaussianCaptureRu = {
   "gaussianCapture.attribution": "Авторство",
   "gaussianCapture.limitation.clipping": "Секущие плоскости и рамки отсекают гауссианы целиком по центру; без заливки разреза.",
   "gaussianCapture.limitation.composition": "Наложение поверх стекла IFC и рентген-режима приблизительное.",
-  "gaussianCapture.limitation.picking": "Не выбирается щелчком: выберите захват в списке моделей. Без привязки и измерений.",
+  "gaussianCapture.limitation.picking": "Не выбирается щелчком: выберите захват в списке моделей.",
+  "gaussianCapture.limitation.measurement": "Измерения и привязка к захватам недоступны.",
+  "gaussianCapture.limitation.uncalibrated": "Не откалиброван: отображается в единицах источника, без метрического масштаба и геодезической привязки.",
+  "gaussianCapture.limitation.export": "Не включается в экспорт (IFC, glTF, USD, KMZ, PDF, BCF и другие).",
+  "gaussianCapture.error.disabled": "Загрузка гауссовых захватов отключена в этой сборке просмотрщика. Модели IFC и облака точек по-прежнему загружаются.",
+  "gaussianCapture.error.captureBytes": "Размер захвата {size}. Гауссов захват может быть не больше {limit}.",
+  "gaussianCapture.error.captureSplats": "В захвате {count} сплатов. Сцена может содержать не более {limit} сплатов.",
+  "gaussianCapture.error.shDegree": "Захват использует сферические гармоники степени {degree}. Поддерживается степень {limit} или ниже.",
+  "gaussianCapture.error.sceneSplats": "После открытия захвата в сцене будет {total} сплатов, больше предела {limit}. Удалите захват и повторите попытку.",
+  "gaussianCapture.error.webgpu": "Для гауссовых захватов нужен 3D-вид WebGPU, который здесь недоступен. Захват не был декодирован.",
+  "gaussianCapture.export.notice": { one: "Загружен {formatted} гауссов захват. Захваты не включаются в экспорт.", few: "Загружено {formatted} гауссовых захвата. Захваты не включаются в экспорт.", many: "Загружено {formatted} гауссовых захватов. Захваты не включаются в экспорт.", other: "Загружено {formatted} гауссова захвата. Захваты не включаются в экспорт." },
   "gaussianCapture.row.summary": { one: "{formatted} сплат · не откалиброван", few: "{formatted} сплата · не откалиброван", many: "{formatted} сплатов · не откалиброван", other: "{formatted} сплата · не откалиброван" },
   "gaussianCapture.row.inspect": "Показать сведения о захвате",
   "gaussianCapture.row.hide": "Скрыть захват",

@@ -10,11 +10,15 @@ import { useViewerStore } from '@/store';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { frameModels } from '@/lib/model-placement/scene';
 import { getGlobalRenderer } from '../useBCF.js';
+import type { CaptureFailureCode } from '@/lib/analytics-capture-events';
 import type { GaussianAdmission } from './gaussianAdmission.js';
 import type { GaussianLoadOutcome, ModelLoadOptions } from '../modelLoadOptions.js';
-import { resolveGaussianQualification, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
+import { gaussianAdmissionEnabled, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
 import { adoptGaussianAsset } from './gaussianAssets.js';
 import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
+import { captureRefusal, type CaptureRefusal } from './gaussianRefusals.js';
+import { reserveSceneSplats } from './gaussianSceneBudget.js';
+import { reportCaptureLoad } from './gaussianTelemetry.js';
 import { decodeGaussianInWorker } from './gaussianWorker.js';
 
 export interface GaussianLoadContext {
@@ -22,8 +26,8 @@ export interface GaussianLoadContext {
   admission: Exclude<GaussianAdmission, { kind: 'ordinary' }>;
   target: { kind: 'primary' | 'federated'; visible?: boolean };
   modelId: string;
-  /** Explicit opt-in, placement and credit; see `resolveGaussianQualification`. */
-  options?: Pick<ModelLoadOptions, 'gaussianQualification' | 'gaussianPlacement' | 'gaussianAttribution'>;
+  /** Caller/user placement and credit; admission itself is the build's (`gaussianAdmissionEnabled`). */
+  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution'>;
   /** The load's own cancellation: it terminates the decoder worker and the upload. */
   signal: AbortSignal;
   isCurrent(): boolean;
@@ -34,35 +38,73 @@ export interface GaussianLoadContext {
   decode?: typeof decodeGaussianInWorker;
 }
 
-const DISABLED = 'Gaussian splat loading is disabled pending the native rendering contract.';
-
 /**
- * Gaussian PLY/.splat through the canonical loader (#8565): admission ->
- * renderer readiness -> worker decode -> normalized upload -> store
- * publication. Every exit before adoption leaves no worker, renderer asset or
- * model-index reservation; a superseded load writes no UI or store state.
+ * Gaussian PLY/.splat through the canonical loader (#8565/#8568): admission
+ * and launch limits -> renderer readiness -> scene budget -> worker decode ->
+ * normalized upload -> store publication. Every exit before adoption leaves no
+ * worker, renderer asset, budget hold or model-index reservation; a superseded
+ * load writes no UI or store state. Each settled load reports content-free
+ * diagnostics (outcome, code, format, size and splat buckets).
  */
 export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<GaussianLoadOutcome> {
+  let failure: { code: CaptureFailureCode; refused: boolean } | undefined;
+  let outcome: GaussianLoadOutcome = 'failed';
+  try {
+    outcome = await runGaussianCapture(ctx, (code, refused) => { failure = { code, refused }; });
+    return outcome;
+  } finally {
+    reportCaptureLoad({
+      outcome: outcome === 'failed' ? (failure?.refused ? 'refused' : 'failed') : outcome,
+      code: failure?.code ?? 'gaussian_load_failed',
+      format: ctx.admission.format ?? 'gaussian-ply', bytes: ctx.file.size,
+      count: ctx.admission.kind === 'capture' ? ctx.admission.count
+        : ctx.admission.breach?.limit === 'capture-splats' ? ctx.admission.breach.count : undefined,
+    });
+  }
+}
+
+async function runGaussianCapture(ctx: GaussianLoadContext, noteFailure: (code: CaptureFailureCode, refused: boolean) => void): Promise<GaussianLoadOutcome> {
   const store = useViewerStore.getState();
-  const fail = (message: string, code: string): GaussianLoadOutcome => {
+  const fail = (message: string, code: CaptureFailureCode, refused = false): GaussianLoadOutcome => {
+    noteFailure(code, refused);
     ctx.showLoadError(message, code);
     if (ctx.target.kind === 'primary') store.updateModel(ctx.modelId, { loadState: 'error', loadError: message });
     store.setLoading(false);
     return 'failed';
   };
-  if (ctx.admission.kind === 'invalid') return fail(ctx.admission.reason, 'gaussian_invalid_input');
-  if (!resolveGaussianQualification(ctx.options?.gaussianQualification)) return fail(DISABLED, 'gaussian_disabled');
+  const refuse = ({ message, code }: CaptureRefusal) => fail(message, code, true);
+  // The kill switch refuses every capture, well formed or not, before decoding.
+  if (!gaussianAdmissionEnabled()) return refuse(captureRefusal({ kind: 'disabled' }));
+  if (ctx.admission.kind === 'invalid') {
+    return refuse(ctx.admission.breach ? captureRefusal({ kind: 'limit', breach: ctx.admission.breach })
+      : { message: ctx.admission.reason, code: 'gaussian_invalid_input' });
+  }
+  // The viewer has a renderer only on a WebGPU device; captures need nothing less.
   const renderer = getGlobalRenderer();
-  if (!renderer) return fail('Renderer not initialised; the capture was not decoded.', 'renderer_not_ready');
-  const splats = renderer.gaussianSplats; // internal, unqualified adapter (#8564)
+  if (!renderer) return refuse(captureRefusal({ kind: 'webgpu' }));
   const readiness = await settledReadiness(renderer);
   if (!ctx.isCurrent()) return 'cancelled';
   if (readiness.state !== 'blocked' || readiness.upstream === 'missing') {
-    return fail(readiness.state === 'lost'
+    return refuse({ message: readiness.state === 'lost'
       ? 'The graphics device was lost; reload the page and open the capture again.'
-      : 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.', `gaussian_renderer_${readiness.state}`);
+      : 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.', code: `gaussian_renderer_${readiness.state}` });
   }
-  const format = ctx.admission.format;
+  const budget = reserveSceneSplats(ctx.admission.count, useViewerStore.getState().models);
+  if (!budget.ok) return refuse(captureRefusal({ kind: 'scene', total: budget.total, limit: budget.limit }));
+  try {
+    return await decodeAndPublish(ctx, ctx.admission.format, renderer, readiness.generation, budget.release, fail);
+  } finally {
+    budget.release();
+  }
+}
+
+/** After every refusal: decode, upload, publish. `releaseBudget` once the store counts the capture. */
+async function decodeAndPublish(
+  ctx: GaussianLoadContext, format: GaussianSplatModel['format'], renderer: Renderer, generation: number,
+  releaseBudget: () => void, fail: (message: string, code: CaptureFailureCode) => GaussianLoadOutcome,
+): Promise<GaussianLoadOutcome> {
+  const store = useViewerStore.getState();
+  const splats = renderer.gaussianSplats;
   store.setProgress({ phase: `Decoding ${format === 'splat' ? '.splat' : 'Gaussian PLY'} capture`, percent: 10 });
   let upload: Awaited<ReturnType<typeof uploadGaussianCapture>>;
   try {
@@ -70,7 +112,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<Gau
     if (!ctx.isCurrent()) return 'cancelled';
     store.setProgress({ phase: 'Uploading Gaussian capture', percent: 70 });
     upload = await uploadGaussianCapture({
-      modelId: ctx.modelId, format, capture, splats, generation: readiness.generation,
+      modelId: ctx.modelId, format, capture, splats, generation,
       currentGeneration: () => blockedGeneration(renderer), models: () => useViewerStore.getState().models,
       visible: ctx.target.visible ?? true, signal: ctx.signal, isCurrent: ctx.isCurrent,
       placement: ctx.options?.gaussianPlacement ?? showcaseGaussianPlacement(), attribution: ctx.options?.gaussianAttribution,
@@ -94,6 +136,7 @@ export async function loadGaussianCapture(ctx: GaussianLoadContext): Promise<Gau
   }
   adoptGaussianAsset(ctx.modelId, upload.record.handle, splats);
   upload.commit();
+  releaseBudget(); // The store now counts this capture's splats.
   if (!ctx.isCurrent()) return 'cancelled';
   const fingerprint = await computeSourceFingerprintFromBlob(ctx.file);
   if (!ctx.isCurrent()) return 'cancelled';

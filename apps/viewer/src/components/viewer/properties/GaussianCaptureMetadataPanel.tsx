@@ -20,6 +20,9 @@ import { gaussianStateLabel } from '../gaussian-capture-state';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 
+/** The disclosed launch limitations (#8568), in the order the user guide lists them. */
+const GAUSSIAN_CAPTURE_LIMITATIONS = ['composition', 'clipping', 'uncalibrated', 'picking', 'measurement', 'export'] as const;
+
 function Row({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2">
@@ -91,8 +94,8 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
           {capture.attribution && <Row icon={icon(Info)} label={t('gaussianCapture.attribution')}>{capture.attribution}</Row>}
         </Section>
         <Section title={t('gaussianCapture.heading.limitations')}>
-          {(['clipping', 'composition', 'picking'] as const).map((limit) => (
-            <p key={limit} className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">{t(`gaussianCapture.limitation.${limit}`)}</p>
+          {GAUSSIAN_CAPTURE_LIMITATIONS.map((limit) => (
+            <p key={limit} data-limitation={limit} className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">{t(`gaussianCapture.limitation.${limit}`)}</p>
           ))}
         </Section>
       </ScrollArea>

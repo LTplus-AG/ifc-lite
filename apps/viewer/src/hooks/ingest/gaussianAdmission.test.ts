@@ -15,7 +15,7 @@ async function inspect(file: File) {
 it('recognizes Gaussian PLY content beyond the first read, independent of suffix (#8565)', async () => {
   const file = ply(fields, 1, undefined, `comment ${'a'.repeat(5000)}\n`);
   const renamed = new File([file], 'renamed.bin');
-  assert.deepEqual(await inspect(renamed), { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 0 });
+  assert.deepEqual(await inspect(renamed), { kind: 'capture', format: 'gaussian-ply', count: 1, shDegree: 0 });
 });
 it('preserves ordinary PLY and ignores Gaussian words in comments and face properties (#8565)', async () => {
   assert.deepEqual(await inspect(ply(['x', 'y', 'z', 'red', 'green', 'blue', 'scale_0', 'rot_0'])), { kind: 'ordinary' });
@@ -37,10 +37,10 @@ it('rejects truncated headers and payloads before decoding (#8565)', async () =>
     new File([new Uint8Array(31)], 'short.splat'), new File([], 'empty.splat')]) {
     assert.equal((await inspect(file)).kind, 'invalid');
   }
-  assert.equal((await inspect(new File([new Uint8Array(32)], 'one.splat'))).kind, 'disabled');
+  assert.equal((await inspect(new File([new Uint8Array(32)], 'one.splat'))).kind, 'capture');
 });
 it('bounds declared allocation and header reads without allocating the claimed payload (#8565)', async () => {
-  for (const count of [-1, 0, 2_000_001, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const count of [-1, 0, 1_000_001, Number.MAX_SAFE_INTEGER + 1]) {
     assert.equal((await inspect(ply(fields, count))).kind, 'invalid');
   }
   const huge = new File([new Uint8Array(32)], 'huge.splat');
@@ -56,9 +56,10 @@ it('bounds declared allocation and header reads without allocating the claimed p
 
 it('recognizes complete SH degree one and bounds decoded columns independently (#8565)', async () => {
   const sh = [...fields, ...Array.from({ length: 9 }, (_, i) => `f_rest_${i}`)];
-  assert.deepEqual(await inspect(ply(sh)), { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 1 });
-  const wide = [...fields, ...Array.from({ length: 100 }, (_, i) => `custom_${i}`)];
-  assert.deepEqual(await inspect(ply(wide, 2_000_000)), { kind: 'invalid', reason: 'Gaussian input exceeds the admission allocation limit.' });
+  assert.deepEqual(await inspect(ply(sh)), { kind: 'capture', format: 'gaussian-ply', count: 1, shDegree: 1 });
+  const wide = [...fields, ...Array.from({ length: 150 }, (_, i) => `custom_${i}`)];
+  assert.deepEqual(await inspect(ply(wide, 1_000_000)),
+    { kind: 'invalid', reason: 'Gaussian input exceeds the admission allocation limit.', format: 'gaussian-ply' });
 });
 
 // #8582 review: admission must agree with the existing PLY parser and streaming
@@ -82,7 +83,7 @@ for (const [label, magic, terminator, eol] of [
     const parsed = parsePlyHeader(new Uint8Array(await file.arrayBuffer()));
     assert.equal(parsed.bodyOffset, new TextEncoder().encode(headerText).byteLength);
     assert.equal(parsed.elements[0].properties.length, names.length);
-    assert.equal((await inspect(file)).kind, gaussian ? 'disabled' : 'ordinary');
+    assert.equal((await inspect(file)).kind, gaussian ? 'capture' : 'ordinary');
     const source = new PlyStreamingSource(file);
     try {
       assert.equal((await source.open()).totalPointCount, 1);
@@ -110,9 +111,9 @@ const lexicalCases = [
   { label: 'ordinary list trailing Gaussian word', lines: ['property list uchar float custom f_dc_0'], bytes: 1, kind: 'ordinary', names: [], lists: ['custom'] },
   { label: 'ignored tab-only property keyword separator', lines: gaussianProperties.map(line => line.replace('property ', 'property\t')), bytes: 0, kind: 'ordinary', names: [] },
   { label: 'ignored property keyword suffix', lines: ['property_extra float f_dc_0'], bytes: 0, kind: 'ordinary', names: [] },
-  { label: 'ignored tab-only element separator preserves vertex scope', lines: ['element\tface 0', ...gaussianProperties], bytes: 44, kind: 'disabled', names: fields.slice(3) },
+  { label: 'ignored tab-only element separator preserves vertex scope', lines: ['element\tface 0', ...gaussianProperties], bytes: 44, kind: 'capture', names: fields.slice(3) },
   { label: 'recognized face element ends vertex scope', lines: ['element face 0', ...gaussianProperties], bytes: 0, kind: 'ordinary', names: [] },
-  { label: 'trim and mixed whitespace after literal keyword space', lines: gaussianProperties.map(line => `\f${line.replace('property ', 'property \t').replace('float ', 'float\v')}\v`), bytes: 44, kind: 'disabled', names: fields.slice(3) },
+  { label: 'trim and mixed whitespace after literal keyword space', lines: gaussianProperties.map(line => `\f${line.replace('property ', 'property \t').replace('float ', 'float\v')}\v`), bytes: 44, kind: 'capture', names: fields.slice(3) },
 ] as const;
 for (const entry of lexicalCases) it(`admission matches real PLY lexical interpretation: ${entry.label} (#8582)`, async () => {
   const file = lexicalPly([...entry.lines], entry.bytes);
@@ -130,7 +131,7 @@ for (const entry of lexicalCases) it(`admission matches real PLY lexical interpr
 for (const whitespace of ['\t', '\r', '\v', '\f', ' ']) {
   for (const gaussian of [false, true]) it(`PLY trim whitespace ${JSON.stringify(whitespace)} preserves ${gaussian ? 'Gaussian refusal' : 'ordinary decoding'} (#8582)`, async () => {
     const file = lexicalPly(gaussian ? gaussianProperties : [], gaussian ? 44 : 0, `${whitespace}end_header${whitespace}`);
-    assert.equal((await inspect(file)).kind, gaussian ? 'disabled' : 'ordinary');
+    assert.equal((await inspect(file)).kind, gaussian ? 'capture' : 'ordinary');
     const source = new PlyStreamingSource(file);
     try {
       assert.equal((await source.open()).totalPointCount, 1);
@@ -156,7 +157,7 @@ it('Unicode trim whitespace preserves downstream property declarations and admis
         gaussian ? 44 : 0, `${whitespace}end_header${whitespace}`);
       const parsed = parsePlyHeader(new Uint8Array(await file.arrayBuffer()));
       assert.deepEqual(parsed.elements[0].properties.map(property => property.name), gaussian ? fields : ['x', 'y', 'z']);
-      assert.equal((await inspect(file)).kind, gaussian ? 'disabled' : 'ordinary', JSON.stringify(whitespace));
+      assert.equal((await inspect(file)).kind, gaussian ? 'capture' : 'ordinary', JSON.stringify(whitespace));
     }
   }
 });
@@ -193,7 +194,7 @@ for (const entry of leadingCases) for (const gaussian of [false, true]) {
         assert.throws(() => parsePlyHeader(bytes), /missing magic/);
         await assert.rejects(source.open(), /missing magic/);
       }
-      assert.equal((await inspect(file)).kind, entry.accepted && gaussian ? 'disabled' : 'ordinary');
+      assert.equal((await inspect(file)).kind, entry.accepted && gaussian ? 'capture' : 'ordinary');
     } finally { source.close(); }
   });
 }

@@ -124,3 +124,20 @@ export function installInThreadGaussianWorker() {
     restore() { globalThis.Worker = saved; },
   };
 }
+
+/**
+ * Set the build's `VITE_GAUSSIAN_SPLATS` for this test process (#8568), e.g.
+ * `'disabled'` for the kill-switch build; `undefined` is the committed default.
+ * Admission reads it per load, so it applies to the next `loadFile`. Returns
+ * the restore. Module-level constants (picker extensions) need a fresh import.
+ */
+export function setGaussianBuild(value: string | undefined): () => void {
+  const env = (globalThis as typeof globalThis & { __VITE_ENV__?: Record<string, unknown> }).__VITE_ENV__ ??= { MODE: 'test', DEV: false, PROD: false };
+  const previous = env.VITE_GAUSSIAN_SPLATS;
+  if (value === undefined) delete env.VITE_GAUSSIAN_SPLATS;
+  else env.VITE_GAUSSIAN_SPLATS = value;
+  return () => {
+    if (previous === undefined) delete env.VITE_GAUSSIAN_SPLATS;
+    else env.VITE_GAUSSIAN_SPLATS = previous;
+  };
+}

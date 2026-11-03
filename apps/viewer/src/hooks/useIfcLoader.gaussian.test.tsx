@@ -16,30 +16,29 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel } from '@/test/scan-federation';
-import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker } from '@/test/gaussian-loader-harness';
+import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
 import { ViewportLoadErrorCard } from '@/components/viewer/ViewportLoadErrorCard';
 import { useIfcFederation } from './useIfcFederation.js';
 import { setGlobalRendererRef } from './useBCF.js';
 
-const QUALIFIED = { gaussianQualification: 'internal-unqualified' } as const;
 const CENTRES: Array<[number, number, number]> = [[1, 2, 3], [4, 5, 6], [-2, 0, 1]];
 
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
 let federation: ReturnType<typeof useIfcFederation>;
-let qualifiedReload = true;
+let restoreBuild: () => void = () => {};
 let otherFederation: ReturnType<typeof useIfcFederation>;
 let afterFederationLoad: ((target?: LoadTarget) => Promise<void>) | null = null;
 function Probe() {
   const loader = useIfcLoader();
   hookApi = loader;
   federation = useIfcFederation(async (file, target, options) => {
-    await loader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) });
+    await loader.loadFile(file, target, options);
     await afterFederationLoad?.(target);
   });
   const otherLoader = useIfcLoader();
   otherFederation = useIfcFederation((file, target, options) =>
-    otherLoader.loadFile(file, target, { ...options, ...(qualifiedReload ? QUALIFIED : {}) }));
+    otherLoader.loadFile(file, target, options));
   return <ViewportLoadErrorCard />;
 }
 
@@ -62,7 +61,7 @@ function assertNoHeldSlot(): void {
 
 beforeEach(async () => {
   hookApi = null;
-  qualifiedReload = true;
+  restoreBuild = setGaussianBuild(undefined);
   afterFederationLoad = null;
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
@@ -78,6 +77,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  restoreBuild();
   worker.restore();
   setGlobalRendererRef({ current: null });
   const current = root;
@@ -90,9 +90,10 @@ afterEach(async () => {
 });
 
 describe('Gaussian captures through the canonical loader (#8565)', () => {
-  it('public loads refuse before any worker, renderer asset or model slot exists', async () => {
+  it('the kill-switch build refuses before any worker, renderer asset or model slot exists (#8568)', async () => {
+    setGaussianBuild('disabled');
     await load(gaussianPly('capture.ply', CENTRES), { kind: 'primary', modelId: 'public' });
-    assert.match(String(useViewerStore.getState().error), /disabled pending the native rendering contract/);
+    assert.match(String(useViewerStore.getState().error), /Gaussian capture loading is turned off in this viewer build/);
     assert.equal(model('public')?.loadState, 'error');
     assert.equal(worker.stats.created, 0, 'no decoder worker for a refused capture');
     assert.equal(splats().getStats().assets, 0);
@@ -101,8 +102,8 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assertNoHeldSlot();
   });
 
-  it('a standalone capture publishes the exact renderer handle and frees it with its model', async () => {
-    await load(gaussianPly('capture.ply', CENTRES), { kind: 'primary', modelId: 'capture' }, QUALIFIED);
+  it('the default build admits: a standalone capture publishes the exact renderer handle and frees it with its model', async () => {
+    await load(gaussianPly('capture.ply', CENTRES), { kind: 'primary', modelId: 'capture' });
     const capture = model('capture');
     assert.equal(capture?.loadState, 'complete', String(capture?.loadError));
     const record = capture.gaussianSplat;
@@ -131,8 +132,8 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 
   it('IFC-first, splat-first and N captures keep the index each model is registered under', async () => {
     addIfcModel('ifc', [{ expressId: 7, type: 'IfcWall' }]);
-    await load(gaussianPly('a.ply', CENTRES), { kind: 'federated', modelId: 'a', name: 'a.ply' }, QUALIFIED);
-    await load(gaussianPly('b.ply', [[10, 0, 0]]), { kind: 'federated', modelId: 'b', name: 'b.ply' }, QUALIFIED);
+    await load(gaussianPly('a.ply', CENTRES), { kind: 'federated', modelId: 'a', name: 'a.ply' });
+    await load(gaussianPly('b.ply', [[10, 0, 0]]), { kind: 'federated', modelId: 'b', name: 'b.ply' });
     const indices = modelIndices(useViewerStore.getState().models);
     const [a, b] = [model('a')!.gaussianSplat!, model('b')!.gaussianSplat!];
     assert.deepEqual([a.handle.modelIndex, b.handle.modelIndex], [indices.get('a'), indices.get('b')]);
@@ -145,9 +146,9 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.equal(splats().getState(b.handle).state, 'resident', 'only the removed model loses its asset');
 
     // Splat-first: a primary capture replaces the scene, then a capture joins it.
-    await load(gaussianPly('first.ply', CENTRES), { kind: 'primary', modelId: 'first' }, QUALIFIED);
+    await load(gaussianPly('first.ply', CENTRES), { kind: 'primary', modelId: 'first' });
     assert.equal(splats().getState(b.handle).state, 'invalid', 'a primary load frees the replaced scene');
-    await load(gaussianPly('second.ply', [[0, 0, 0]]), { kind: 'federated', modelId: 'second' }, QUALIFIED);
+    await load(gaussianPly('second.ply', [[0, 0, 0]]), { kind: 'federated', modelId: 'second' });
     assert.equal(splats().getStats().assets, 2);
     useViewerStore.getState().clearAllModels();
     assert.equal(splats().getStats().assets, 0);
@@ -157,7 +158,7 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
   it('cancelling during decode terminates the worker and publishes nothing', async () => {
     const release = worker.hold();
     await act(async () => {
-      const pending = hookApi!.loadFile(gaussianPly('slow.ply', CENTRES), { kind: 'federated', modelId: 'slow' }, QUALIFIED);
+      const pending = hookApi!.loadFile(gaussianPly('slow.ply', CENTRES), { kind: 'federated', modelId: 'slow' });
       await new Promise(resolve => setTimeout(resolve, 20));
       assert.equal(worker.stats.created, 1);
       useViewerStore.getState().activeLoadCanceller?.();
@@ -174,9 +175,9 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
   it('an upload that resolves after its load was superseded is removed by its exact handle', async () => {
     const release = gpu.backend.hold();
     await act(async () => {
-      const stale = hookApi!.loadFile(gaussianPly('stale.ply', CENTRES), { kind: 'primary', modelId: 'stale' }, QUALIFIED);
+      const stale = hookApi!.loadFile(gaussianPly('stale.ply', CENTRES), { kind: 'primary', modelId: 'stale' });
       await new Promise(resolve => setTimeout(resolve, 50));
-      const next = hookApi!.loadFile(gaussianPly('next.ply', [[9, 9, 9]]), { kind: 'primary', modelId: 'next' }, QUALIFIED);
+      const next = hookApi!.loadFile(gaussianPly('next.ply', [[9, 9, 9]]), { kind: 'primary', modelId: 'next' });
       release();
       await Promise.all([stale, next]);
     });
@@ -188,13 +189,13 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 
   it('a lost device refuses before decoding; a rejected upload retains nothing', async () => {
     gpu.loseDevice();
-    await load(gaussianPly('lost.ply', CENTRES), { kind: 'primary', modelId: 'lost' }, QUALIFIED);
+    await load(gaussianPly('lost.ply', CENTRES), { kind: 'primary', modelId: 'lost' });
     assert.match(String(useViewerStore.getState().error), /graphics device was lost/);
     assert.equal(worker.stats.created, 0);
 
     gpu = gaussianTestRenderer({ maxStorageBufferBindingSize: 16, maxBufferSize: 16 });
     setGlobalRendererRef({ current: gpu.renderer as Renderer });
-    await load(gaussianPly('big.ply', CENTRES), { kind: 'federated', modelId: 'big' }, QUALIFIED);
+    await load(gaussianPly('big.ply', CENTRES), { kind: 'federated', modelId: 'big' });
     assert.match(String(useViewerStore.getState().error), /could not be loaded: .*byte binding/);
     assert.equal(model('big'), undefined);
     assert.equal(splats().getStats().assets, 0);
@@ -202,11 +203,11 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
   });
 
   it('a malformed capture keeps its admission reason, and an explicit placement is recorded as explicit', async () => {
-    await load(new File([new Uint8Array(31)], 'broken.splat'), { kind: 'primary', modelId: 'broken' }, QUALIFIED);
+    await load(new File([new Uint8Array(31)], 'broken.splat'), { kind: 'primary', modelId: 'broken' });
     assert.match(String(useViewerStore.getState().error), /Truncated or empty \.splat/);
     assert.equal(worker.stats.created, 0);
     const rx180 = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];
-    await load(gaussianPly('placed.ply', [[1, 2, 3]]), { kind: 'primary', modelId: 'placed' }, { ...QUALIFIED, gaussianPlacement: rx180 });
+    await load(gaussianPly('placed.ply', [[1, 2, 3]]), { kind: 'primary', modelId: 'placed' }, { gaussianPlacement: rx180 });
     const placed = model('placed')!.gaussianSplat!;
     assert.deepEqual([placed.placementOrigin, placed.placement, placed.calibration], ['explicit', rx180, 'uncalibrated']);
     assert.deepEqual(splats().getBounds(placed.handle), { min: [1, -2, -3], max: [1, -2, -3] });
@@ -216,7 +217,7 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () => {
   it('before rebinding, a capture on a replaced renderer reports replaced and has no fit bounds', async () => {
     const { rebindGaussianAssets, gaussianModelState, gaussianModelBounds } = await import('./ingest/gaussianAssets.js');
-    await load(gaussianPly('stale.ply', CENTRES), { kind: 'federated', modelId: 'stale', name: 'stale.ply' }, QUALIFIED);
+    await load(gaussianPly('stale.ply', CENTRES), { kind: 'federated', modelId: 'stale', name: 'stale.ply' });
     assert.ok(gaussianModelBounds(model('stale')!), 'resident capture frames');
     const previous = gpu; // the old adapter still holds the asset: only the ownership check can refuse it
     gpu = gaussianTestRenderer();
@@ -230,7 +231,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
   it('a replaced renderer never receives an old handle; the capture reports it and reloads from source', async () => {
     const { rebindGaussianAssets, gaussianModelState } = await import('./ingest/gaussianAssets.js');
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
-    await load(gaussianPly('kept.ply', CENTRES), { kind: 'federated', modelId: 'kept', name: 'kept.ply' }, QUALIFIED);
+    await load(gaussianPly('kept.ply', CENTRES), { kind: 'federated', modelId: 'kept', name: 'kept.ply' });
     const old = model('kept')!.gaussianSplat!.handle;
     const previous = gpu;
     previous.renderer.gaussianSplats.clear(); // what destroying the old viewport's renderer releases
@@ -243,7 +244,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
       removeModel: (id) => useViewerStore.getState().removeModel(id),
       addModel: async (file, options) => {
         const id = options.modelId!;
-        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
+        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
         return useViewerStore.getState().models.has(id) ? id : null;
       },
     }));
@@ -258,13 +259,13 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
 
   it('a reloaded capture keeps the federation anchor it held (#8566)', async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
-    await load(gaussianPly('anchor.ply', CENTRES), { kind: 'federated', modelId: 'anchor', name: 'anchor.ply' }, QUALIFIED);
+    await load(gaussianPly('anchor.ply', CENTRES), { kind: 'federated', modelId: 'anchor', name: 'anchor.ply' });
     useViewerStore.getState().setAnchorModelIdOverride('anchor');
     const result = await act(async () => reloadGaussianCapture('anchor', {
       removeModel: (id) => useViewerStore.getState().removeModel(id),
       addModel: async (file, options) => {
         const id = options.modelId!;
-        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { ...QUALIFIED, gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
+        await hookApi!.loadFile(file, { kind: 'federated', modelId: id, name: options.name, visible: options.visible }, { gaussianPlacement: options.gaussianPlacement, onGaussianLoadSettled: options.onGaussianLoadSettled });
         return useViewerStore.getState().models.has(id) ? id : null;
       },
     }));
@@ -280,19 +281,19 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     const placement = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];
     const source = gaussianPly('retry.ply', CENTRES);
     await load(source, { kind: 'federated', modelId: 'retry', name: 'Survey', visible: false, collapsed: false },
-      { ...QUALIFIED, gaussianPlacement: placement, gaussianAttribution: 'Survey team' });
+      { gaussianPlacement: placement, gaussianAttribution: 'Survey team' });
     const original = model('retry')!;
     const tag = useViewerStore.getState().createModelTag('Survey phase')!;
     useViewerStore.getState().assignModelTags(['retry'], [tag]);
 
-    qualifiedReload = false;
+    setGaussianBuild('disabled');
     const refused = await act(async () => reloadGaussianCapture('retry', federation));
     assert.deepEqual(refused, { ok: false, reason: 'not-loaded' });
     assert.equal(model('retry'), original, 'refused admission keeps source, placement and display metadata');
     assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get('retry')!], [tag]);
     assert.equal(splats().getState(original.gaussianSplat!.handle).state, 'resident');
 
-    qualifiedReload = true;
+    setGaussianBuild(undefined);
     const previous = gpu;
     previous.loseDevice();
     gpu = gaussianTestRenderer({ maxStorageBufferBindingSize: 16, maxBufferSize: 16 });
@@ -315,13 +316,13 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     assert.equal(splats().getState(replacement.gaussianSplat!.handle).state, 'resident');
     assert.deepEqual([...useViewerStore.getState().modelTagAssignments.get(success.modelId)!], [tag]);
     assert.equal(useViewerStore.getState().modelTagAssignments.has('retry'), false);
-    await load(source, { kind: 'federated', modelId: 'unrelated' }, QUALIFIED);
+    await load(source, { kind: 'federated', modelId: 'unrelated' });
     assert.equal(useViewerStore.getState().modelTagAssignments.has('unrelated'), false, 'same filename alone never inherits tags');
   });
 
   for (const independent of [false, true]) it(`concurrent reloads share one transaction across ${independent ? 'independent hooks' : 'one federation hook'} (#8566)`, async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
-    await load(gaussianPly('concurrent.ply', CENTRES), { kind: 'federated', modelId: 'old' }, QUALIFIED);
+    await load(gaussianPly('concurrent.ply', CENTRES), { kind: 'federated', modelId: 'old' });
     const tag = useViewerStore.getState().createModelTag('Concurrent capture')!;
     useViewerStore.getState().assignModelTags(['old'], [tag]);
     const created = worker.stats.created;
@@ -348,7 +349,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
 
   it('cleans a published replacement when an unrelated add supersedes its federation session (#8566)', async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
-    await load(gaussianPly('old.ply', CENTRES), { kind: 'federated', modelId: 'old' }, QUALIFIED);
+    await load(gaussianPly('old.ply', CENTRES), { kind: 'federated', modelId: 'old' });
     const original = model('old')!;
     const tag = useViewerStore.getState().createModelTag('Superseded reload')!;
     useViewerStore.getState().assignModelTags(['old'], [tag]);
@@ -392,7 +393,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
     const source = gaussianPly('fingerprint.ply', CENTRES);
     await load(source, { kind: 'federated', modelId: 'old', name: 'Original survey', visible: false },
-      { ...QUALIFIED, gaussianAttribution: 'Original credit' });
+      { gaussianAttribution: 'Original credit' });
     const original = model('old')!;
     const tag = useViewerStore.getState().createModelTag('Fingerprint race')!;
     useViewerStore.getState().assignModelTags(['old'], [tag]);
@@ -449,7 +450,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
     const source = gaussianPly('retry-click.ply', CENTRES);
     await load(source, { kind: 'federated', modelId: 'old', name: 'Tagged survey', visible: false },
-      { ...QUALIFIED, gaussianAttribution: 'Survey credit' });
+      { gaussianAttribution: 'Survey credit' });
     const tag = useViewerStore.getState().createModelTag('Retry click')!;
     useViewerStore.getState().assignModelTags(['old'], [tag]);
     gpu.loseDevice();
@@ -478,7 +479,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
 
   it('a reload without a retained source refuses explicitly', async () => {
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
-    await load(gaussianPly('nosource.ply', CENTRES), { kind: 'federated', modelId: 'nosource' }, QUALIFIED);
+    await load(gaussianPly('nosource.ply', CENTRES), { kind: 'federated', modelId: 'nosource' });
     useViewerStore.getState().updateModel('nosource', { sourceFile: undefined });
     const result = await reloadGaussianCapture('nosource', { removeModel: () => assert.fail('nothing is removed'), addModel: async () => assert.fail('nothing is loaded') });
     assert.deepEqual(result, { ok: false, reason: 'source-unavailable' });
@@ -486,7 +487,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
   });
 
   it('a re-evaluated assets module reuses the one registry and store subscription', async () => {
-    await load(gaussianPly('one.ply', CENTRES), { kind: 'federated', modelId: 'one' }, QUALIFIED);
+    await load(gaussianPly('one.ply', CENTRES), { kind: 'federated', modelId: 'one' });
     const subscribe = useViewerStore.subscribe;
     let subscriptions = 0;
     useViewerStore.subscribe = ((...args: Parameters<typeof subscribe>) => { subscriptions++; return subscribe(...args); }) as typeof subscribe;
@@ -504,7 +505,7 @@ describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () =
 it('a renderer clear during an outstanding upload aborts it and the loader retains nothing (#8640 round 3)', async () => {
   const release = gpu.backend.hold();
   await act(async () => {
-    const pending = hookApi!.loadFile(gaussianPly('cleared.ply', CENTRES), { kind: 'federated', modelId: 'cleared' }, QUALIFIED);
+    const pending = hookApi!.loadFile(gaussianPly('cleared.ply', CENTRES), { kind: 'federated', modelId: 'cleared' });
     for (let i = 0; i < 100 && gpu.backend.sources.length === 0 && worker.stats.terminated === 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
     splats().clear();
     release();

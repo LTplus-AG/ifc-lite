@@ -1,0 +1,249 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * #8568 launch: the published limits, the per-scene splat budget and the
+ * content-free diagnostics, through the real mounted `useIfcLoader().loadFile`.
+ * What is real and what is faked is listed in `test/gaussian-loader-harness.ts`.
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import type { Renderer } from '@ifc-lite/renderer';
+import { useViewerStore } from '@/store';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { beforeSend, posthog } from '@/lib/analytics';
+import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
+import { noteGaussianDeviceEvent } from './ingest/gaussianTelemetry.js';
+import { useIfcLoader } from './useIfcLoader.js';
+import { setGlobalRendererRef } from './useBCF.js';
+
+const BASE = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
+const CENTRES: Array<[number, number, number]> = [[1.25, 2.5, 3.75], [4, 5, 6], [-2, 0, 1]];
+
+/**
+ * A Gaussian PLY whose header claims `count` records. Its reported size covers
+ * that payload, but only the header exists: any read of the body (a decode)
+ * throws, so a refusal here is provably before decoding.
+ */
+function claimedPly(name: string, count: number, restColumns = 0, size?: number): File {
+  const names = [...BASE, ...Array.from({ length: restColumns }, (_, i) => `f_rest_${i}`)];
+  const header = `ply\nformat binary_little_endian 1.0\nelement vertex ${count}\n${names.map(n => `property float ${n}\n`).join('')}end_header\n`;
+  const file = new File([header, new Uint8Array(names.length * 4)], name);
+  Object.defineProperty(file, 'size', { value: size ?? header.length + count * names.length * 4 });
+  file.arrayBuffer = async () => { throw new Error('the capture body was read before its refusal'); };
+  return file;
+}
+
+let loader: ReturnType<typeof useIfcLoader> | null = null;
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+let worker: ReturnType<typeof installInThreadGaussianWorker>;
+let gpu: ReturnType<typeof gaussianTestRenderer>;
+let restoreBuild: () => void = () => {};
+let captured: Array<[string, Record<string, unknown>]> = [];
+
+function Probe() {
+  loader = useIfcLoader();
+  return null;
+}
+const load = (file: File, target: Parameters<NonNullable<typeof loader>['loadFile']>[1]) =>
+  act(async () => { await loader!.loadFile(file, target); });
+const error = () => String(useViewerStore.getState().error);
+const captureEvents = (name: string) => captured.filter(([event]) => event === name).map(([, properties]) => properties);
+
+beforeEach(async () => {
+  restoreBuild = setGaussianBuild(undefined);
+  captured = [];
+  mock.method(posthog, 'capture', (event: string, properties?: Record<string, unknown>) => { captured.push([event, { ...properties }]); });
+  useViewerStore.getState().resetViewerState();
+  useViewerStore.getState().clearAllModels();
+  modelIndices(new Map());
+  gpu = gaussianTestRenderer();
+  setGlobalRendererRef({ current: gpu.renderer as Renderer });
+  worker = installInThreadGaussianWorker();
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => { root!.render(<Probe />); });
+});
+
+afterEach(async () => {
+  restoreBuild();
+  mock.restoreAll();
+  worker.restore();
+  setGlobalRendererRef({ current: null });
+  const mounted = root;
+  root = null;
+  if (mounted) await act(async () => mounted.unmount());
+  host?.remove();
+  host = null;
+  useViewerStore.getState().clearAllModels();
+  modelIndices(new Map());
+});
+
+/** Refused before any decoder worker, renderer asset or model registration. */
+function assertRefusedBeforeDecode(modelId: string): void {
+  assert.equal(worker.stats.created, 0, 'no decoder worker was created');
+  assert.equal(gpu.renderer.gaussianSplats.getStats().assets, 0, 'no renderer asset was allocated');
+  assert.equal(useViewerStore.getState().models.has(modelId), false, 'the refused capture registered no model');
+  assert.equal(useViewerStore.getState().loading, false);
+}
+
+describe('Gaussian launch limits refuse before decoding (#8568)', () => {
+  it('a capture over 500 MB', async () => {
+    const big = new File([new Uint8Array(32)], 'big.splat');
+    Object.defineProperty(big, 'size', { value: 612_300_000 });
+    big.arrayBuffer = async () => { throw new Error('read before refusal'); };
+    await load(big, { kind: 'federated', modelId: 'big' });
+    assert.equal(error(), 'This capture is 612.3 MB. Gaussian captures can be at most 500 MB.');
+    assertRefusedBeforeDecode('big');
+    const ply = claimedPly('big.ply', 10, 0, 500_000_001);
+    await load(ply, { kind: 'federated', modelId: 'big-ply' });
+    assert.match(error(), /Gaussian captures can be at most 500 MB\./, 'Gaussian PLY has the same size limit');
+    assertRefusedBeforeDecode('big-ply');
+  });
+
+  it('a capture with more splats than a scene can hold', async () => {
+    await load(claimedPly('dense.ply', 1_000_001), { kind: 'federated', modelId: 'dense' });
+    assert.equal(error(), 'This capture has 1,000,001 splats. A scene can hold at most 1,000,000 splats.');
+    assertRefusedBeforeDecode('dense');
+  });
+
+  it('a capture with spherical harmonics above degree 3', async () => {
+    await load(claimedPly('sh4.ply', 2, 72), { kind: 'federated', modelId: 'sh4' });
+    assert.equal(error(), 'This capture uses spherical harmonics degree 4. Degree 3 or lower is supported.');
+    assertRefusedBeforeDecode('sh4');
+  });
+
+  it('degree 3 itself is admitted', async () => {
+    const names = [...BASE, ...Array.from({ length: 45 }, (_, i) => `f_rest_${i}`)];
+    const header = `ply\nformat binary_little_endian 1.0\nelement vertex 1\n${names.map(n => `property float ${n}\n`).join('')}end_header\n`;
+    const body = new DataView(new ArrayBuffer(names.length * 4));
+    body.setFloat32(names.indexOf('rot_0') * 4, 1, true);
+    await load(new File([header, body.buffer], 'sh3.ply'), { kind: 'federated', modelId: 'sh3' });
+    assert.equal(useViewerStore.getState().models.get('sh3')?.gaussianSplat?.shDegree, 3, error());
+  });
+
+  it('a load that would take the scene past 1,000,000 splats, counting loads still decoding', async () => {
+    await load(gaussianPly('resident.ply', CENTRES), { kind: 'federated', modelId: 'resident' });
+    assert.ok(useViewerStore.getState().models.get('resident')?.gaussianSplat, error());
+    const createdAfterFirst = worker.stats.created;
+    await load(claimedPly('over.ply', 999_998), { kind: 'federated', modelId: 'over' });
+    assert.equal(error(), 'Opening this capture would bring the scene to 1,000,001 splats, over the 1,000,000 limit. Remove a capture, then try again.');
+    assert.equal(worker.stats.created, createdAfterFirst, 'the over-budget capture was never decoded');
+    assert.equal(useViewerStore.getState().models.has('over'), false);
+    assert.equal(gpu.renderer.gaussianSplats.getStats().assets, 1, 'the resident capture is untouched');
+
+    // Removing the resident capture frees its share of the budget.
+    useViewerStore.getState().removeModel('resident');
+    const release = worker.hold();
+    await act(async () => {
+      const decoding = loader!.loadFile(gaussianPly('decoding.ply', CENTRES), { kind: 'federated', modelId: 'decoding' });
+      for (let i = 0; i < 100 && worker.stats.created === createdAfterFirst; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      // Federated adds stay independent: the decoding load is still current while this one is refused.
+      await loader!.loadFile(claimedPly('concurrent.ply', 999_998), { kind: 'federated', modelId: 'concurrent' });
+      assert.match(error(), /bring the scene to 1,000,001 splats/, 'an in-flight load holds its share of the budget');
+      release();
+      await decoding;
+    });
+    assert.equal(useViewerStore.getState().models.get('decoding')?.gaussianSplat?.count, 3, 'the in-flight load completed');
+    assert.equal(useViewerStore.getState().models.has('concurrent'), false);
+  });
+});
+
+describe('Gaussian capture diagnostics are content-free (#8568)', () => {
+  const ALLOWED: Record<string, readonly string[]> = {
+    outcome: ['completed', 'failed', 'cancelled', 'refused'],
+    format: ['gaussian-ply', 'splat'],
+    size_bucket: ['lt_10mb', '10_50mb', '50_200mb', '200_500mb', 'gt_500mb'],
+    splat_bucket: ['unknown', 'lt_100k', '100k_500k', '500k_1m', 'gt_1m'],
+  };
+
+  function assertContentFree(properties: Record<string, unknown>, fileName: string, fileSize: number): void {
+    for (const [key, value] of Object.entries(properties)) {
+      if (key === 'code') assert.match(String(value), /^gaussian_[a-z_]+$/, 'a fixed failure id');
+      else assert.ok(ALLOWED[key]?.includes(String(value)), `${key}=${String(value)} is a declared, closed value`);
+    }
+    const serialized = JSON.stringify(properties);
+    for (const leak of [fileName, fileName.replace(/\.[^.]+$/, ''), String(fileSize), '1.25', '3.75', 'blob:', '/']) {
+      assert.ok(!serialized.includes(leak), `payload carries no ${leak}`);
+    }
+    // The before_send pipeline keeps the payload whole: nothing in it needed scrubbing.
+    assert.deepEqual(beforeSend({ event: 'gaussian_capture_load', properties: { ...properties } })?.properties, properties);
+  }
+
+  it('completed, refused, failed and cancelled loads each report one closed-vocabulary event', async () => {
+    const completed = gaussianPly('Client Plant Room 12.ply', CENTRES);
+    await load(completed, { kind: 'federated', modelId: 'completed' });
+    setGaussianBuild('disabled');
+    const refused = new File([new Uint8Array(64)], 'Secret Site Survey.splat');
+    await load(refused, { kind: 'federated', modelId: 'refused' });
+    setGaussianBuild(undefined);
+    gpu = gaussianTestRenderer({ maxStorageBufferBindingSize: 16, maxBufferSize: 16 });
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    const failed = gaussianPly('Unreleased Tower.ply', CENTRES);
+    await load(failed, { kind: 'federated', modelId: 'failed' });
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    const release = worker.hold();
+    const cancelled = gaussianPly('Cancelled Lobby.ply', CENTRES);
+    await act(async () => {
+      const pending = loader!.loadFile(cancelled, { kind: 'federated', modelId: 'cancelled' });
+      await new Promise(resolve => setTimeout(resolve, 20));
+      useViewerStore.getState().activeLoadCanceller?.();
+      release();
+      await pending;
+    });
+
+    const events = captureEvents('gaussian_capture_load');
+    assert.deepEqual(events, [
+      { outcome: 'completed', format: 'gaussian-ply', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' },
+      { outcome: 'refused', code: 'gaussian_disabled', format: 'splat', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' },
+      { outcome: 'failed', code: 'gaussian_load_failed', format: 'gaussian-ply', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' },
+      { outcome: 'cancelled', format: 'gaussian-ply', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' },
+    ]);
+    [completed, refused, failed, cancelled].forEach((file, i) => assertContentFree(events[i], file.name, file.size));
+  });
+
+  it('limit refusals report their limit, and malformed input reports no splat count', async () => {
+    await load(claimedPly('Private Hangar.ply', 1_000_001), { kind: 'federated', modelId: 'dense' });
+    await load(new File([new Uint8Array(31)], 'Broken Scan.splat'), { kind: 'federated', modelId: 'broken' });
+    const [dense, broken] = captureEvents('gaussian_capture_load');
+    assert.deepEqual(dense, { outcome: 'refused', code: 'gaussian_limit_capture_splats', format: 'gaussian-ply', size_bucket: '50_200mb', splat_bucket: 'gt_1m' });
+    assert.deepEqual(broken, { outcome: 'refused', code: 'gaussian_invalid_input', format: 'splat', size_bucket: 'lt_10mb', splat_bucket: 'unknown' });
+  });
+
+  it('device loss and recovery are counted only while a capture is loaded', async () => {
+    noteGaussianDeviceEvent('lost');
+    assert.deepEqual(captureEvents('gaussian_capture_device'), [], 'no capture: no capture diagnostic');
+    await load(gaussianPly('Device Test.ply', CENTRES), { kind: 'federated', modelId: 'device' });
+    noteGaussianDeviceEvent('lost');
+    noteGaussianDeviceEvent('recovered');
+    noteGaussianDeviceEvent('recovery_failed');
+    const events = captureEvents('gaussian_capture_device');
+    assert.equal(events.length, 3);
+    const [lost, recovered, failed] = events;
+    assert.equal(lost.phase, 'lost');
+    assert.equal(recovered.phase, 'recovered');
+    assert.equal(failed.phase, 'recovery_failed');
+    assert.equal((recovered.loss_count as number) - (lost.loss_count as number), 0);
+    assert.equal((recovered.recovery_count as number) - (lost.recovery_count as number), 1);
+    for (const event of events) {
+      assert.deepEqual(Object.keys(event).sort(), ['loss_count', 'phase', 'recovery_count']);
+      assert.deepEqual(beforeSend({ event: 'gaussian_capture_device', properties: { ...event } })?.properties, event);
+    }
+  });
+
+  it('before_send drops anything undeclared from a capture event', () => {
+    const scrubbed = beforeSend({ event: 'gaussian_capture_load', properties: {
+      outcome: 'completed', format: 'splat', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k',
+      file_name: 'Plant.ply', url: 'https://example.test/plant.splat', x: 1.25, splats: 912_345, outcome_detail: 'x', code: 'Plant.ply',
+    } });
+    assert.deepEqual(scrubbed?.properties, { outcome: 'completed', format: 'splat', size_bucket: 'lt_10mb', splat_bucket: 'lt_100k' });
+  });
+});

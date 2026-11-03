@@ -10,6 +10,7 @@ import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-expor
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
+import { exportableModels } from '@/lib/export/capture-export';
 
 /**
  * Export Dialog for IFC export with property mutations
@@ -326,7 +327,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
         assertPortableMergeSupported(models.keys());
-        const hydratedModels = await Promise.all(Array.from(models.values()).map(async (model) => ({
+        const hydratedModels = await Promise.all(exportableModels(models).map(async (model) => ({
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));

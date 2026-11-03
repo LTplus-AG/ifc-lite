@@ -85,6 +85,8 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   const slot = modelIndices.reserve(request.modelId, request.models());
   let handle: GaussianSplatHandle;
   try {
+    // The adapter's acknowledgement literal is a renderer call detail, not the
+    // admission decision: that is the build's (`gaussianAdmissionEnabled`, #8568).
     handle = await splats.add({
       attributes: capture.attributes, placement: { matrix: placement }, modelIndex: slot.index, visible: request.visible,
     }, { qualification: 'internal-unqualified', signal });

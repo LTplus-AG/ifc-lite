@@ -16,6 +16,7 @@ import { createRecoveryBudget, startDeviceLossRecovery, type DeviceRecoverySourc
 import { notifyDeviceHealth } from './device-loss-notification.js';
 import { reportDeviceRecovery, reportRecoveryBudgetExhausted } from './device-loss-recovery-report.js';
 import { useViewerStore } from '@/store';
+import { noteGaussianDeviceEvent } from '@/hooks/ingest/gaussianTelemetry';
 export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-report.js';
 
 /**
@@ -105,6 +106,7 @@ export function reportDeviceLost(
 ): void {
   if (reported) return;
   reported = true;
+  noteGaussianDeviceEvent('lost');
   const reportContext = { errorCode: 'gpu_device_lost' };
   offerErrorReport(reportContext);
 

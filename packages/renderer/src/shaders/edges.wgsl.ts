@@ -38,6 +38,7 @@ export function edgeShaderSource(multisampled: boolean): string {
         struct EdgeParams {
           depthParams: vec4<f32>,  // m10, m11, m14, m15
           xyParams: vec4<f32>,     // m0, m5, m12, m13
+          shearParams: vec4<f32>,  // m8, m9, 0, 0 (lens shift, #8688)
           viewport: vec4<f32>,     // full-res width, height, 1/width, 1/height
           edge: vec4<f32>,         // tap radius px, intensity, highQuality (0/1), _pad
         }
@@ -81,7 +82,7 @@ export function edgeShaderSource(multisampled: boolean): string {
         }
 
         fn viewPosAt(ip: vec2<i32>, d: f32) -> vec3<f32> {
-          return viewPositionFromDepth(ndcFromPixel(ip, params.viewport.zw), d, params.depthParams, params.xyParams);
+          return viewPositionFromDepth(ndcFromPixel(ip, params.viewport.zw), d, params.depthParams, params.xyParams, params.shearParams);
         }
 
         // One tap direction's edge vote in [0, 1]: 1 if the id changes, the

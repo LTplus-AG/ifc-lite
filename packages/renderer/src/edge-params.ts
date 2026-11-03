@@ -55,11 +55,12 @@ export const EDGE_MAX_DARKEN = 0.35;
 export const EDGE_UNIFORM_LAYOUT = {
   depthParams: 0,
   xyParams: 4,
-  viewport: 8,
-  edge: 12,
+  shearParams: 8,
+  viewport: 12,
+  edge: 16,
 } as const;
 
-/** Byte size of `EdgeParams` (4 vec4s). */
+/** Byte size of `EdgeParams` (5 vec4s). */
 export const EDGE_UNIFORM_BYTES = (EDGE_UNIFORM_LAYOUT.edge + 4) * 4;
 
 export interface EdgeFrameParams {
@@ -81,6 +82,7 @@ export function packEdgeUniforms(out: Float32Array, frame: EdgeFrameParams): voi
   const L = EDGE_UNIFORM_LAYOUT;
   out.set(recon.depth, L.depthParams);
   out.set(recon.xy, L.xyParams);
+  out.set(recon.shear, L.shearParams);
   out[L.viewport] = frame.width;
   out[L.viewport + 1] = frame.height;
   out[L.viewport + 2] = 1 / frame.width;

@@ -15,9 +15,8 @@
 // the house's back windows show through (glass behind the capture) are beyond exact and
 // only reported.
 import { renderClean } from './native-adapter-clean-render.mjs';
-import { writeFile } from 'node:fs/promises';
+import { realpath, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +76,8 @@ function stats(a, b, mask) {
 }
 
 export async function runRealGlass({ browser, openPage, output, backend, stamp, repo, kLayerRoot }) {
+  const [repoPath, kLayerPath] = await Promise.all([realpath(repo), realpath(kLayerRoot)]);
+  if (repoPath === kLayerPath) throw new Error('--real-glass must point to a distinct K-layer checkout');
   const kLayerCommit = execFileSync('git', ['-C', kLayerRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const allow = [repo, kLayerRoot, resolve(process.env.SPLAT_SPIKE_ASSETS ?? defaultAssets)];
   const head = await renderWith(repo, 'head', allow, browser, openPage);

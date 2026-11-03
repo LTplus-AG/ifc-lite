@@ -205,6 +205,9 @@ fn a_face_set_host_has_a_result_volume_from_its_rows() {
     // Reversed winding is the same solid.
     let reversed = "(1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)";
     assert!((expected(host(reversed, ".T.")).unwrap().result_volume.unwrap() - 3.).abs() < 1e-10);
+    // One row wound against the rest closes undirected but bounds no consistent solid: a gap.
+    let flipped = rows.replacen("(5,6,7)", "(5,7,6)", 1);
+    assert_eq!(expected(host(&flipped, ".T.")).err(), Some("face_set_winding_inconsistent"));
     // An open set bounds no solid: a counted gap, never a partial volume.
     let open = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5)";
     assert_eq!(expected(host(open, "$")).err(), Some("open_face_set"));

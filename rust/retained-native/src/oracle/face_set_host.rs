@@ -98,6 +98,10 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
     let at = |p: &[f64; 3]| { let q = world.transform_point(&Point3::new(p[0] / scale + set.first[0], p[1] / scale + set.first[1], p[2] / scale + set.first[2])); [q.x, q.y, q.z] };
     let apex = at(set.rows.first().and_then(|r| r.points.first()).ok_or("face_set_unreadable")?);
     let (mut tets, mut faces) = (Vec::new(), Vec::new());
+    // Each authored edge, directed as its oriented ring runs: a consistent shell runs every
+    // edge once each way. Undirected closure alone admits a row wound against the rest.
+    let mut directed: std::collections::BTreeMap<([u64; 3], [u64; 3]), usize> = std::collections::BTreeMap::new();
+    let bits = |p: &[f64; 3]| p.map(|v| (v + 0.).to_bits());
     for (row, ends) in set.rows.iter().zip(&set.row_rings) {
         let points: Vec<[f64; 3]> = row.points.iter().map(&at).collect();
         let Some(&outer_end) = ends.first() else { continue };
@@ -111,13 +115,19 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
         let mut start = 0;
         for &end in ends {
             let mut ring = points[start..end].to_vec();
-            if start > 0 && dot(newell(&ring), outer_normal) > 0. { ring.reverse(); }
+            let mut raw: Vec<[u64; 3]> = row.points[start..end].iter().map(bits).collect();
+            if start > 0 && dot(newell(&ring), outer_normal) > 0. { ring.reverse(); raw.reverse(); }
+            for (i, a) in raw.iter().enumerate() {
+                let b = raw[(i + 1) % raw.len()];
+                if *a != b { *directed.entry((*a, b)).or_default() += 1; }
+            }
             for i in 1..ring.len().saturating_sub(1) { tets.push([apex, ring[0], ring[i], ring[i + 1]]); }
             start = end;
         }
         if row.area_m2 == Some(0.) { continue; }
         if let (Some(normal), Some(origin)) = (unit(outer_normal), points.first()) { faces.push(ConvexFace { origin: *origin, normal, holed: ends.len() > 1 }); }
     }
+    if directed.iter().any(|(&(a, b), &n)| n != 1 || directed.get(&(b, a)) != Some(&1)) { return Err("face_set_winding_inconsistent"); }
     Ok(ClosedSet { tets, faces })
 }
 /// A closed set as one convex cutter, with its volume; a non-convex one has none here.

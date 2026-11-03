@@ -145,6 +145,7 @@ async function rejectLoadedModel(target: string, ctx: PathContext): Promise<void
   }
 }
 
+/** Missing files have no identity; other filesystem failures must propagate. */
 async function statIfPresent(path: string) {
   try {
     return await stat(path, { bigint: true });

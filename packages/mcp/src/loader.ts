@@ -27,6 +27,7 @@ export interface LoadIfcOptions {
   allowedPaths?: string[];
 }
 
+/** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
   if (opts.allowedPaths && opts.allowedPaths.length > 0) {

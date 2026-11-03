@@ -214,6 +214,19 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 });
 
 describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () => {
+  it('before rebinding, a capture on a replaced renderer reports replaced and has no fit bounds', async () => {
+    const { rebindGaussianAssets, gaussianModelState, gaussianModelBounds } = await import('./ingest/gaussianAssets.js');
+    await load(gaussianPly('stale.ply', CENTRES), { kind: 'federated', modelId: 'stale', name: 'stale.ply' }, QUALIFIED);
+    assert.ok(gaussianModelBounds(model('stale')!), 'resident capture frames');
+    const previous = gpu; // the old adapter still holds the asset: only the ownership check can refuse it
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    assert.deepEqual(gaussianModelState(model('stale')!), { state: 'invalid', reason: 'renderer-replaced' });
+    assert.equal(gaussianModelBounds(model('stale')!), null, 'no bounds from a replaced renderer');
+    previous.renderer.gaussianSplats.clear();
+    rebindGaussianAssets(gpu.renderer.gaussianSplats);
+  });
+
   it('a replaced renderer never receives an old handle; the capture reports it and reloads from source', async () => {
     const { rebindGaussianAssets, gaussianModelState } = await import('./ingest/gaussianAssets.js');
     const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');

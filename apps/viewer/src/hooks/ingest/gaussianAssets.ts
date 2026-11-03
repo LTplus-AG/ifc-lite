@@ -92,11 +92,18 @@ export type GaussianCaptureState =
   | { state: 'invalid'; reason?: 'renderer-replaced' };
 
 /** Never resident on a renderer that did not issue the handle. */
-export function gaussianModelState(model: FederatedModel): GaussianCaptureState {
+/** The model's asset only while it belongs to the current renderer and still carries the model's handle. */
+function currentAsset(model: FederatedModel) {
   const asset = registry.owned.get(model.id);
   const current = getGlobalRenderer()?.gaussianSplats;
-  if (registry.replaced.has(model.id) || (asset && current && asset.splats !== current)) return { state: 'invalid', reason: 'renderer-replaced' };
-  if (!asset || asset.handle !== model.gaussianSplat?.handle) return { state: 'invalid' };
+  if (registry.replaced.has(model.id) || (asset && current && asset.splats !== current)) return 'renderer-replaced' as const;
+  return asset && asset.handle === model.gaussianSplat?.handle ? asset : null;
+}
+
+export function gaussianModelState(model: FederatedModel): GaussianCaptureState {
+  const asset = currentAsset(model);
+  if (asset === 'renderer-replaced') return { state: 'invalid', reason: 'renderer-replaced' };
+  if (!asset) return { state: 'invalid' };
   return asset.splats.getState(asset.handle);
 }
 
@@ -123,8 +130,8 @@ export function useGaussianCaptureState(model: FederatedModel): GaussianCaptureS
 
 /** Centre bounds of one capture, in the camera-fit frame. Framing only. */
 export function gaussianModelBounds(model: FederatedModel): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
-  const asset = registry.owned.get(model.id);
-  if (!asset || asset.handle !== model.gaussianSplat?.handle) return null;
+  const asset = currentAsset(model);
+  if (!asset || asset === 'renderer-replaced') return null; // never ask a replaced renderer's adapter
   return gaussianFitBox(asset.splats.getBounds(asset.handle));
 }
 

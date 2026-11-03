@@ -45,7 +45,7 @@ async function verify({ path, size, sha256 }) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   const actual = hash.digest('hex');
-  return actual === sha256 ? { ok: true, path, size } : { ok: false, status: 403, reason: `sha256 ${actual} != manifest ${sha256}` };
+  return actual === sha256 ? { ok: true, path, size, mtimeMs: info.mtimeMs } : { ok: false, status: 403, reason: `sha256 ${actual} != manifest ${sha256}` };
 }
 
 export function seemFixturePlugin() {
@@ -53,8 +53,16 @@ export function seemFixturePlugin() {
   return { name: 'native-adapter-seem-fixture-8564', configureServer(server) {
     server.middlewares.use(SEEM_ROUTE, async (req, res) => {
       try {
-        verdict ??= seemFixture().then(verify);
-        const checked = await verdict;
+        // Cache only a verified fixture, so `pnpm fixtures` or a fix applies on reload;
+        // re-verify when the verified file's size or mtime has changed since.
+        if (verdict) {
+          const cached = await verdict.catch(() => null);
+          const now = cached?.ok ? await stat(cached.path).catch(() => null) : null;
+          if (cached?.ok && (now?.size !== cached.size || now?.mtimeMs !== cached.mtimeMs)) verdict = null;
+        }
+        const pending = (verdict ??= seemFixture().then(verify));
+        const checked = await pending.catch((error) => { if (verdict === pending) verdict = null; throw error; });
+        if (!checked.ok && verdict === pending) verdict = null;
         if (!checked.ok) { console.error(`[seem fixture] refused: ${checked.reason}`); res.writeHead(checked.status).end(checked.reason); return; }
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('Content-Length', checked.size);

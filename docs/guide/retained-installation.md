@@ -99,10 +99,17 @@ threaded, but the viewer's isolation policy still applies to module Workers.
 For local viewer development, point `IFCLITE_RETAINED_ENGINE` at the staged
 directory and set `VITE_RETAINED_GEOMETRY=on` for the existing root `pnpm dev`
 workflow. Its middleware validates the manifest and serves both URL prefixes
-with the above headers. The Vite plugin **does not copy** engines into build
-output, and rejects Vercel builds with retained enabled. This draft does not
-remove that distribution gate or change the production deployment workflow.
-A custom host must implement the URL mappings explicitly after release approval.
+with the above headers. `VITE_RETAINED_GEOMETRY=lazy` builds the production
+opt-in instead: the eager graph holds only the kernel choice, and the retained
+module, its strings and the Settings control are lazy chunks, fetched when the
+choice (Settings → Performance → Geometry kernel, saved per browser, or
+`?kernel=retained` for one tab) asks for retained. The Vite plugin **does not
+copy** engines into build output. It rejects Vercel builds with `on`, and a
+`lazy` build refuses to start without a valid `IFCLITE_RETAINED_ENGINE`. Serving an
+engine in production is a separate install step after a verified download, never
+this plugin. A custom host must implement the URL mappings explicitly after release approval. The retained-only
+preview host is assembled and smoked by the scripts in
+[Hosted retained preview](retained-release.md#hosted-retained-preview).
 
 ## Verify the installed copy
 
@@ -123,6 +130,59 @@ silently execute exact. Repeat after downloading/installing the actual release
 artifact rather than serving a developer checkout. Use the existing
 `geometry-platform.yml` real Worker and `viewer-retained` tests as the executable
 smoke recipe; this document is a draft, not a claim that a release was hosted.
+
+## Production on ifclite.com (opt-in setting)
+
+The viewer on ifclite.com serves a retained engine only when
+`apps/viewer/retained-engine.lock.json` is committed. Without the lock, the
+production build is the exact-only viewer it was.
+Vercel cannot build SMLib (it needs the pinned usd-brep SDK and emsdk), so:
+
+1. **Build and publish.** A maintainer runs the **Retained engine** workflow
+   (`.github/workflows/retained-engine.yml`) for a root release tag. It checks
+   out the tag, reads the SDK, emsdk and Emscripten pins from the tag's
+   `licenses/retained/manifest.json`, fills the covered-source URL with the tag,
+   builds `pkg-retained` and the SMLib browser module, stages the engine, packs
+   `ifc-lite-retained-engine-<tag>.tar.gz` deterministically
+   (`scripts/pack-retained-engine.mjs`) and verifies the archive exactly as the
+   Vercel build will. The archive and its lock are a run artifact; with
+   `publish` the archive is also attached to the tag's GitHub Release. An
+   existing asset is never replaced.
+2. **Pin.** Commit the lock the run prints as
+   `apps/viewer/retained-engine.lock.json`. It names the release asset URL, the
+   archive's byte count and SHA-256, the engine manifest's SHA-256, the SDK
+   revision and the source commit.
+3. **Deploy.** On the production branch, `scripts/vercel-build.sh` finds the
+   lock and runs `scripts/fetch-retained-engine.mjs`: download, byte count and
+   SHA-256, regular files only, full engine inventory, manifest hash and SDK
+   revision, every notice, and the exact tag in each IFC-Lite notice. It then
+   builds the viewer with `VITE_RETAINED_GEOMETRY=lazy`, and
+   `scripts/install-retained-engine.mjs` copies the engine to `/smlib/` and
+   `/retained-engine/`, with `/retained-engine/deployment.json` naming the tag
+   and hashes. It does that only after `check-viewer-retained-free.mjs --lazy`
+   shows the startup graph carries no retained code. A failed verification
+   fails the deploy, so the previous production deployment stays live.
+4. **API drift.** The viewer is built from the deploying commit and the engine
+   from the tag, so the engine's `pkg-retained/ifc-lite.d.ts` must equal the
+   commit's committed declarations. If they differ, the build log says so and
+   the deploy is exact-only (no kernel setting) until the lock is re-pinned to a
+   release built from compatible source.
+5. **Smoke.** `node scripts/smoke-retained-preview.mjs --production --url
+   https://www.ifclite.com --lock apps/viewer/retained-engine.lock.json` checks
+   the identity against the lock, every engine file's hash, headers and type,
+   the notices, the startup graph as served, a retained load chosen through the
+   saved Settings choice, and an exact load that downloads no retained code.
+   To rehearse locally, build and install the same way, serve the checkout
+   with `node scripts/serve-retained-preview.mjs --production --dir "$PWD"`,
+   and point the smoke at it.
+
+Headers: `vercel.json` has sent `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: credentialless` on every response since the
+parallel geometry work (#439), so production is already cross-origin isolated
+in browsers that implement `credentialless`. The engine paths only add
+`nosniff`, `no-cache`, explicit types, and an SPA fallback that excludes them.
+In a browser without `credentialless`, the page is not isolated
+(`crossOriginIsolated` is false) and the setting offers only Exact.
 
 ## Exports from the retained viewer
 

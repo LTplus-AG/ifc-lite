@@ -13,7 +13,8 @@
 //   node scripts/perf/retained-qual-report.mjs RUNS.jsonl|RESULT_DIR [...] [--json OUT]
 //
 // Rows from several runner invocations may be mixed (base from one, branch from another is
-// NOT paired or order-balanced; the runners' own two-arm mode is). Failed rows are listed
+// NOT paired or order-balanced unless they share a --pairing-id and round and a host with a
+// machine id, as native memory rows do; the runners' own two-arm mode is). Failed rows are listed
 // and excluded, never averaged in. Exit 2 = unreadable input; 1 = incomplete cohort; otherwise 0.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -51,11 +52,25 @@ export function compare(rows) {
     countDrift: false, tooNoisy: false, zeroBaselineIncrease: false, belowResolution: false, realMovement: false, unpaired: false, incompleteCoverage: false, incompleteCohort: false } };
   report.cohorts = [...new Map(rows.filter(row => row.provenance?.cohort).map(row => {
     const p = row.provenance;
-    return [JSON.stringify([p.kind, p.host, p.commit, p.startedAt, p.cohort]), p.cohort];
+    return [JSON.stringify([p.kind, p.host, p.commit, p.invocationId ?? p.startedAt, p.cohort]), p.cohort];
   })).values()];
   report.flags.incompleteCohort = report.cohorts.some(c => c.observed !== c.expected);
-  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, r.provenance?.host ?? null]);
-  const roundKey = r => JSON.stringify([r.provenance?.startedAt ?? r.provenance?.input ?? 'direct', r.round ?? null]);
+  // An invocation is its recorded invocationId (startedAt for evidence written before it existed).
+  const invocation = p => p?.invocationId ?? p?.startedAt ?? p?.input ?? null;
+  // A fixture group is one invocation, as on main, so separate runs are never pooled. The one exception
+  // is a --pairing-id cohort on a machine-id-identified host: one native process per sample, joined
+  // across invocations by the id. Sampled load stays in provenance but is not machine identity; and
+  // without a machine id (or any host record) matching static attributes prove nothing, so such rows
+  // keep their own invocation and never pair with another.
+  const hostKey = r => {
+    const p = r.provenance, host = p?.host;
+    const { loadAtStart, ...identity } = host ?? {};
+    const cohort = p?.pairingId && identity.machineIdSha256 ? { pairingId: p.pairingId } : { invocation: invocation(p) };
+    return { host: host ? identity : null, ...cohort };
+  };
+  const group = r => JSON.stringify([r.kind ?? 'unknown', r.path, hostKey(r)]);
+  // One invocation is one round set; native memory is one process per sample, so its invocations share a pairing id.
+  const roundKey = r => JSON.stringify([r.provenance?.pairingId ?? invocation(r.provenance) ?? 'direct', r.round ?? null]);
   for (const id of new Set(rows.map(group))) {
     const members = rows.filter(r => group(r) === id), successful = members.filter(r => r.ok);
     const base = successful.filter(r => r.side === 'base'), branch = successful.filter(r => r.side === 'branch');

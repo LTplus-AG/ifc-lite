@@ -15,7 +15,7 @@ export function judge(result, { allowPendingAdapter = false } = {}) {
   const check = (name, pass, detail) => { checks.push({ name, pass: Boolean(pass), ...(pass ? {} : { detail }) }); };
   const exact = (name, comparison) => check(name, comparison?.comparable && comparison.compared > 0 && comparison.changed === 0, comparison);
   const colour = (name, measured, tolerance = COLOUR_TOLERANCE) => check(name, measured && measured.maxDelta <= tolerance, measured);
-  const near = (a, b, tolerance) => Array.isArray(a) && a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= tolerance);
+  const near = (a, b, tolerance) => Array.isArray(a) && a.length >= 3 && a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= tolerance);
   const edges = (name, measured, expected) => check(name, measured && ['left', 'right', 'top', 'bottom']
     .every(edge => Math.abs(measured[edge] - Math.floor(expected[edge])) <= 1), { measured, expected });
 

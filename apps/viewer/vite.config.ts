@@ -21,6 +21,7 @@ import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
 import { bimcollabRelayRoute } from './vite-plugins/bimcollab-relay';
 import { bcfTokenRelayRoute } from './vite-plugins/bcf-token-relay';
+import { buildagilRelayRoute } from './vite-plugins/buildagil-relay';
 import { deploymentAssetsDir } from '../../scripts/lib/deployment-assets-dir.mjs';
 
 // --- Build-time changelog parser ---
@@ -220,7 +221,15 @@ const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA ||
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL']), ...process.env };
-  const retained = { enabled: env.VITE_RETAINED_GEOMETRY === 'on', directory: env.IFCLITE_RETAINED_ENGINE, vercel: env.VERCEL };
+  // #7955: `on` (retained preview: the retained module is eager), `lazy`
+  // (production opt-in: only a choice and dynamic imports are eager) or off.
+  const retainedMode = env.VITE_RETAINED_GEOMETRY === 'on' || env.VITE_RETAINED_GEOMETRY === 'lazy' ? env.VITE_RETAINED_GEOMETRY : 'off';
+  const retained = {
+    enabled: retainedMode !== 'off',
+    mode: retainedMode === 'lazy' ? 'lazy' : 'on',
+    directory: env.IFCLITE_RETAINED_ENGINE,
+    vercel: env.VERCEL,
+  } as const;
   return {
   plugins: [
     retainedEngine(retained),
@@ -258,6 +267,11 @@ export default defineConfig(({ mode }) => {
     // second proxy config that can drift from it.
     daluxRelayRoute(),
     bimcollabRelayRoute(),
+    // buildagil's API and token endpoint send CORS headers only to origins
+    // buildagil allowlisted (not previews or localhost); the
+    // token route forwards grants for the deployment's client (adding a
+    // secret server-side only for a confidential one).
+    buildagilRelayRoute(),
     // Confidential-client token exchange for BIMcollab (#4919): the same
     // handler as api/bcf/oauth/token.ts, secret from .env.local or the shell.
     bcfTokenRelayRoute(),
@@ -271,7 +285,7 @@ export default defineConfig(({ mode }) => {
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {
-    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${retained.enabled ? 'index' : 'off'}.ts`) },
+    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${{ on: 'index.ts', lazy: 'lazy.tsx', off: 'off.ts' }[retainedMode]}`) },
   },
   server: {
     port: 3000,

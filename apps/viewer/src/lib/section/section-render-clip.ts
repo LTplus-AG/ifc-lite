@@ -43,7 +43,7 @@ export interface RangeBounds {
 }
 
 /** A cardinal plane's slider range along its own axis: the one the Section bar, the caps and the offset field use. */
-export function planeRange(p: SectionPlane, bounds: RangeBounds | null | undefined): { min: number; max: number } | null {
+export function planeRange(p: Pick<SectionPlane, 'axis' | 'custom'>, bounds: RangeBounds | null | undefined): { min: number; max: number } | null {
   if (!bounds || p.custom) return null;
   const key = p.axis === 'side' ? 'x' : p.axis === 'down' ? 'y' : 'z';
   const min = bounds.min[key];
@@ -92,7 +92,13 @@ export function sectionRenderClip(
   // box and the active plane (when it is not the boxed one) still clips by itself, below.
   const boxed = boxHoldingPlane(plane, inactive);
   const box = boxed?.box;
-  const boxClip = box && boxed ? { clipBox: { min: box.min, max: box.max, enabled: boxed.enabled } } : {};
+  // The box carries its plane's cap look for the caps on its faces (#8696).
+  const boxClip = box && boxed ? {
+    clipBox: {
+      min: box.min, max: box.max, enabled: boxed.enabled,
+      showCap: boxed.showCap, showOutlines: boxed.showOutlines, capStyle: boxed.capStyle,
+    },
+  } : {};
   if (plane.box) return { ...extraClip, ...boxClip };
   // No preview for a plane the user has not made yet (the unnamed placeholder), nor for a disabled one outside the Section tool (#6374).
   if (!plane.enabled && (activeTool !== 'section' || isPristineSectionPlane(plane))) return { ...extraClip, ...boxClip };

@@ -306,13 +306,14 @@ What the increment settles, in the restricted scenes below:
 GPU witness (`contract/validate-native-adapter.mjs`, manual, through
 `ifc-gpu-check`) drives the real `Renderer`. Each scene compares against an
 independent reference: analytic colours, a one-asset or base-commit frame, or the
-same frame without the asset. Recorded at `989a3630cc` (harness committed as
-`7c6c550882`): SwiftShader 213/213, NVIDIA hardware over the documented CDP
-endpoint 214/214, zero WebGPU errors. Scenes: opaque IFC and point-cloud
+same frame without the asset. Recorded at `65b7479a9c`: SwiftShader 268/268,
+NVIDIA hardware over the documented CDP endpoint 269/269, zero WebGPU errors (the
+first record, at `989a3630cc`, was 213/214 checks before later scenes). Scenes:
+opaque IFC and point-cloud
 occlusion; two assets equal one asset equal reversed add order with 96
 interleaved runs; perspective, orthographic and resize under 4x MSAA; centre
 clipping; visibility, placement and removal round trips with stale handles; device
-lifetime; pick pass-through; and a real loss (raw `GPUDevice.destroy()`)
+lifetime; pick pass-through; camera-dependent sort refresh; and a real loss (raw `GPUDevice.destroy()`)
 recovered by `recoverDevice()` with the post-recovery frame pixel-identical to the
 pre-loss frame. An IFC-only page shows base and head frames pixel-identical for
 the shared per-mesh uniform helper.

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/retained-native/src/oracle/layer_sector.rs",
+  "mutation": "tests/evidence/layer-sector-non-radial-7955/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/layer_sector_7955.rs",
+  "why": "Keeping each host arc's span moves dental #1674's thin bands by over 1%, so the hand-integral witness fails."
+}

@@ -6,52 +6,19 @@ import { entityClip } from './section-exclusions.js';
 import type { PickClipState, Vec3 } from './types.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { pointClipped } from './scene-raycaster.js';
+import { clipHalfSpaces, clipSegmentInterval, type ClipHalfSpace as Plane } from './clip-half-spaces.js';
 
 type Interval = readonly [number, number];
-type Plane = { n: readonly [number, number, number]; limit: number };
 const TAU = 2 * Math.PI;
 const NON_AFFINE_CLIP_SAMPLES = 32;
 
-function planesFor(clip: PickClipState): Plane[] {
-  const planes: Plane[] = [];
-  const section = clip.sectionPlane;
-  if (section) {
-    const side = section.flipped ? -1 : 1;
-    planes.push({ n: [section.normal[0] * side, section.normal[1] * side, section.normal[2] * side],
-      limit: section.distance * side });
-  }
-  for (const extra of clip.extraPlanes ?? []) {
-    const side = extra.flipped ? -1 : 1;
-    planes.push({ n: [extra.normal[0] * side, extra.normal[1] * side, extra.normal[2] * side], limit: extra.distance * side });
-  }
-  const box = clip.clipBox;
-  if (box?.enabled) for (let axis = 0; axis < 3; axis++) {
-    const positive: [number, number, number] = [0, 0, 0];
-    const negative: [number, number, number] = [0, 0, 0];
-    positive[axis] = 1;
-    negative[axis] = -1;
-    planes.push({ n: positive, limit: box.max[axis] }, { n: negative, limit: -box.min[axis] });
-  }
-  return planes;
-}
-
 function dot(p: Vec3, n: readonly number[]): number { return p.x * n[0] + p.y * n[1] + p.z * n[2]; }
 
-/** Liang-Barsky in parameter space: catches a narrow interior even when both endpoints are clipped. */
 function lineIntervals(curve: SourceSnapCurve, planes: readonly Plane[]): Interval[] {
   const a = curve.pointAt(0), b = curve.pointAt(1);
   if (!a || !b) return [];
-  let low = 0, high = 1;
-  for (const plane of planes) {
-    const start = dot(a, plane.n) - plane.limit;
-    const slope = dot(b, plane.n) - dot(a, plane.n);
-    if (Math.abs(slope) < 1e-15) { if (start > 0) return []; continue; }
-    const root = -start / slope;
-    if (slope > 0) high = Math.min(high, root);
-    else low = Math.max(low, root);
-    if (low > high) return [];
-  }
-  return [[Math.max(0, low), Math.min(1, high)]];
+  const interval = clipSegmentInterval(a, b, planes);
+  return interval ? [interval] : [];
 }
 
 /** Roots of a clip plane against C + U cos(theta) + V sin(theta), theta=sweep*t. */
@@ -145,7 +112,7 @@ function arcIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: Pi
 export function sourceCurveClipIntervals(curve: SourceSnapCurve, clip?: PickClipState | null): Interval[] {
   clip = entityClip(clip, curve.globalId);
   if (!clip || (!clip.sectionPlane && !clip.extraPlanes?.length && !clip.clipBox?.enabled)) return [[0, 1]];
-  const planes = planesFor(clip);
+  const planes = clipHalfSpaces(clip);
   // Cross-CRS curves have no analytic clip roots. Numerically bracket crossings
   // so a thin visible interval is not lost between snap-distance samples.
   if (curve.affineDisplayFrame === false) return nonAffineIntervals(curve, planes, clip);

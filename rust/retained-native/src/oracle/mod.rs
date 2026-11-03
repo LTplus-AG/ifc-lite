@@ -14,14 +14,18 @@ mod prism;
 pub mod quantities;
 
 pub mod sections;
+mod section_net;
 mod sections_source;
 pub mod layers;
+mod layer_sector;
 pub mod clips;
 pub mod bounded;
 pub mod type_maps;
 pub mod faces;
 pub mod face_sets;
 pub mod face_set_closure;
+pub mod face_set_host;
+pub mod face_set_zero_rows;
 pub mod face_bands;
 pub mod normals;
 mod bounded_source;

@@ -4,7 +4,7 @@
 //! comparison's own modules:
 //! - ruling 2: retained is compared with exact BEFORE exact's world f32 rounding;
 //! - ruling 3: a missing face key passes only as a counted kernel merge of a
-//!   2-4 mm collinear side whose area its neighbour carries. Nothing widens.
+//!   0.8-4 mm collinear side whose area its neighbour carries (rulings 3 and 16). Nothing widens.
 #[allow(dead_code)]
 #[path = "../examples/compare/metrics.rs"]
 mod metrics;
@@ -111,12 +111,29 @@ fn ruling_3_area_mismatch_still_fails() {
 #[test]
 fn ruling_3_wide_face_still_fails() {
     let tolerances = tolerances::registered().unwrap();
-    for (start, width) in [([1.995, 0.], 0.005), ([1.9985, 0.], 0.0015)] {
+    for (start, width) in [([1.995, 0.], 0.005), ([1.9993, 0.], 0.0007)] {
         let (expected, runs) = faces_of(&split_bottom(start));
         assert!((runs[0].widths_m[1] - width).abs() < 1e-12, "{runs:?}");
         let rows = compare(&expected, &folded(&expected, "#19:side(0,1)", "#19:side(0,0)", 0.), &runs, &tolerances);
         assert!(row(&rows, "faceKeysKernelMerged").is_none(), "{width} m");
-        assert_eq!(gated_failures(&rows), ["faceKeys", "faceAreaLinear"], "{width} m: outside the 2-4 mm window");
+        assert_eq!(gated_failures(&rows), ["faceKeys", "faceAreaLinear"], "{width} m: outside the 0.8-4 mm window");
+    }
+}
+
+/// Ruling 16: the ISSUE_129 and dental widths (0.831, 1.595 and 1.795 mm) now pass, with the
+/// same collinear and matching-total conditions; a lost area still fails.
+#[test]
+fn ruling_16_sub_2_mm_collinear_side_merges_by_name_only_if_its_area_matches() {
+    let tolerances = tolerances::registered().unwrap();
+    for (start, width) in [([1.999169, 0.], 0.000831), ([1.9992, 0.], 0.0008), ([1.998405, 0.], 0.001595), ([1.998205, 0.], 0.001795)] {
+        let (expected, runs) = faces_of(&split_bottom(start));
+        assert!((runs[0].widths_m[1] - width).abs() < 1e-12, "{runs:?}");
+        let rows = compare(&expected, &folded(&expected, "#19:side(0,1)", "#19:side(0,0)", 0.), &runs, &tolerances);
+        assert!(gated_failures(&rows).is_empty(), "{width} m: {:?}", gated_failures(&rows));
+        assert_eq!(row(&rows, "faceKeysKernelMerged").expect("named outcome").value, 1.);
+        // A shortfall past the frozen 1e-9 receiver limit stays red.
+        let rows = compare(&expected, &folded(&expected, "#19:side(0,1)", "#19:side(0,0)", 1e-8), &runs, &tolerances);
+        assert_eq!(gated_failures(&rows), ["faceKeys", "faceAreaLinear"], "{width} m with a lost area");
     }
 }
 

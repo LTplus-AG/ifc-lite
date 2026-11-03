@@ -17,7 +17,7 @@ import { chooseGeometryKernel, requestedGeometryKernel } from '@/store/geometryK
 import { createModelLoadActivity } from '@/hooks/modelLoadCanceller';
 import { stepFile } from '@/test/retained-host-fixture';
 import { RetainedClient } from './retained-client';
-import { RETAINED_MAX_SOURCE_BYTES } from './retained-protocol';
+import { RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
 import { beginRetainedLoad } from './retainedLoad';
 
 function harness() {
@@ -67,7 +67,7 @@ describe('#7955 M2-C retained scope', () => {
     ['a federated add', stepFile('second.ifc'), 'federated', /one model at a time/],
     ['a non-STEP input', stepFile('site.xml'), 'primary', /IFC \(STEP\) files only/],
     ['an IFCX input', stepFile('model.ifcx'), 'primary', /IFC \(STEP\) files only/],
-    ['an oversize source', stepFile('huge.ifc', RETAINED_MAX_SOURCE_BYTES + 1), 'primary', /limited to 256 MiB/],
+    ['a source wasm32 cannot hold', stepFile('huge.ifc', RETAINED_MAX_SOURCE_BYTES + 1), 'primary', /cannot hold a source of 2048 MiB or more/],
   ] as const) {
     it(`${title} stops before any Worker spawns, and Retry loads it exact`, async () => {
       chooseGeometryKernel('retained');
@@ -97,10 +97,65 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(kernel.refuseSource('ifc', RETAINED_MAX_SOURCE_BYTES + 1, { modelId: 'm', activity }), true);
     const model = useViewerStore.getState().models.get('m');
     assert.equal(model?.loadState, 'error');
-    assert.match(model?.loadError ?? '', /limited to 256 MiB/);
+    assert.match(model?.loadError ?? '', /cannot hold a source of 2048 MiB or more/);
     assert.equal(activity.result().outcome, 'failed');
     assert.equal(kernel.refuseSource('ifcx', 10, { modelId: 'm', activity }), true);
     assert.equal(load.spawned(), 0);
+  });
+
+  it('a source over the former 256 MiB cap is loaded retained: memory, not a byte cap, decides', () => {
+    chooseGeometryKernel('retained');
+    const load = harness();
+    const kernel = load.begin(stepFile('archicad.ifc', 342_657_851));
+    assert.ok(kernel && kernel.kind === 'retained' && !kernel.refused, 'not refused before any work');
+    const activity = createModelLoadActivity('archicad.ifc');
+    assert.equal(kernel.refuseSource('ifc', 342_657_851, { modelId: 'm', activity }), false);
+    assert.equal(kernel.refuseSource('ifc', RETAINED_MAX_SOURCE_BYTES, { modelId: 'm', activity }), false, 'the largest source wasm32 can hold proceeds');
+  });
+
+  it('the bound is wasm32 isize::MAX: 2^31 - 1 bytes proceed, 2 GiB (2^31) is refused as "2048 MiB or more"', () => {
+    assert.equal(RETAINED_MAX_SOURCE_BYTES, 2 ** 31 - 1);
+    chooseGeometryKernel('retained');
+    assert.ok(!harness().begin(stepFile('under.ifc', 2 ** 31 - 1))?.refused, '2^31 - 1 bytes is one allocation wasm32 can make');
+    const kernel = harness().begin(stepFile('two-gib.ifc', 2 ** 31));
+    assert.ok(kernel?.refused, 'exactly 2 GiB is refused');
+    assert.match(useViewerStore.getState().error ?? '', /"two-gib\.ifc" is 2048 MiB; the retained engine cannot hold a source of 2048 MiB or more/);
+  });
+
+  it('#7955 an engine that does not load (missing deployment, network) falls back: its Retry loads exact', () => {
+    chooseGeometryKernel('retained');
+    const load = harness();
+    const failure = load.begin(stepFile('wall.ifc', 1024))?.loadFailure?.(new RetainedHostError('engine_missing', 'Failed to fetch dynamically imported module'));
+    assert.equal(failure?.message, 'The retained engine could not be loaded for "wall.ifc": Failed to fetch dynamically imported module. '
+      + 'Retry loads it with the exact kernel.');
+    const retry = failure?.retry;
+    assert.ok(retry, 'the failure brings its own Retry');
+    retry();
+    assert.equal(load.retried(), 1);
+    assert.equal(requestedGeometryKernel(), 'exact', 'Retry switched this tab to the exact kernel');
+  });
+
+  it('a run out of memory is worded as such, and its Retry loads the model exact', () => {
+    chooseGeometryKernel('retained');
+    const load = harness();
+    const kernel = load.begin(stepFile('tower.ifc', 1_487_216_442));
+    const loadFailure = kernel?.loadFailure;
+    assert.ok(loadFailure);
+    const failure = loadFailure(new RetainedHostError('out_of_memory', 'unreachable'));
+    assert.match(failure?.message ?? '', /"tower\.ifc" did not fit in the retained engine's memory .*Retry loads it with the exact kernel/);
+    assert.equal(requestedGeometryKernel(), 'retained', 'nothing switches until the user retries');
+    const retry = failure?.retry;
+    assert.ok(retry, 'an out-of-memory failure brings its own Retry');
+    retry();
+    assert.equal(load.retried(), 1);
+    assert.equal(requestedGeometryKernel(), 'exact', 'Retry switched the next load to the exact kernel');
+    const crash = loadFailure(new RetainedHostError('worker_crash', 'memory access out of bounds'));
+    assert.equal(crash?.message, 'The retained engine stopped while processing "tower.ifc": memory access out of bounds. '
+      + 'Retry runs the retained kernel again; the Retained geometry panel can reload it with the exact kernel.',
+      'another trap is a crash in the host\'s words, never "ran out of memory"');
+    assert.doesNotMatch(crash?.message ?? '', /Reload with exact kernel\./, 'no advice that its Retry does not follow');
+    assert.equal(crash?.retry, undefined, 'and keeps the load\'s own Retry, which runs retained again');
+    assert.equal(loadFailure(new Error('out of memory')), null, 'a failure outside the host keeps the loader wording');
   });
 
   it('M11-Z keeps federation refused for an open final retained model, including an exact add', async () => {

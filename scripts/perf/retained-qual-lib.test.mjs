@@ -108,6 +108,20 @@ test('host identity names the machine without leaking its raw id', () => {
   assert.ok(host.machineIdSha256 === null || /^[a-f0-9]{64}$/.test(host.machineIdSha256));
 });
 
+test('7955: an empty or uninitialized machine-id file is no machine id, and the next source is tried', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'machine-id-'));
+  try {
+    const [empty, blank, uninit, zero, short, zeros, real] = ['empty', 'blank', 'uninit', 'zero', 'short', 'zeros', 'real'].map(name => join(dir, name));
+    writeFileSync(empty, ''); writeFileSync(blank, ' \n'); writeFileSync(uninit, 'uninitialized\n'); writeFileSync(zero, '0\n');
+    writeFileSync(short, 'abc123\n'); writeFileSync(zeros, '0'.repeat(32) + '\n'); writeFileSync(real, '0123456789abcdef0123456789ABCDEF\n');
+    // A machine id is 32 hex digits (machine-id(5)); anything else, or the all-zero placeholder, identifies nothing.
+    for (const path of [empty, blank, uninit, zero, short, zeros, join(dir, 'absent')]) assert.equal(hostIdentity({ machineIdPaths: [path] }).machineIdSha256, null, path);
+    const id = hostIdentity({ machineIdPaths: [empty, uninit, zero, real] }).machineIdSha256;
+    assert.match(id, /^[a-f0-9]{64}$/);
+    assert.equal(id, hostIdentity({ machineIdPaths: [real] }).machineIdSha256);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('pins are flat, or per side when the arms publish different counts', () => {
   const pin = { candidates: 4, published: 3 };
   assert.deepEqual(pinFor({ '/a.ifc': pin }, 'base', { path: '/a.ifc' }), pin);

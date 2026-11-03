@@ -83,7 +83,7 @@ test('#8564 add needs the explicit internal opt-in and never makes readiness rea
   const readiness = layer.readiness();
   assert.equal(readiness.state, 'blocked');
   assert.ok(readiness.state === 'blocked' && readiness.reasons.includes('exact-mixed-transparency'));
-  assert.ok(readiness.state === 'blocked' && readiness.capabilities.includes('packed-global-order'));
+  assert.ok(readiness.state === 'blocked' && readiness.capabilities?.includes('packed-global-order') === true);
 });
 
 test('#8564 a missing upstream reverse-Z ordering rejects add and blocks readiness', async () => {
@@ -91,7 +91,7 @@ test('#8564 a missing upstream reverse-Z ordering rejects add and blocks readine
   await assert.rejects(add(layer), code('upstream-capability-missing'));
   await settle();
   const readiness = layer.readiness();
-  assert.ok(readiness.state === 'blocked' && readiness.reasons.includes('upstream-capability-missing'));
+  assert.ok(readiness.state === 'blocked' && readiness.upstream === 'missing');
 });
 
 test('#8564 handles are validated by identity, not by id', async () => {
@@ -379,7 +379,7 @@ test('#8564 a failed upstream load is retried by the next add and never reports 
   await assert.rejects(add(h.layer, 2), code('upstream-unavailable'));
   await settle();
   const readiness = h.layer.readiness();
-  assert.ok(readiness.state === 'blocked' && !readiness.reasons.includes('upstream-capability-missing'));
+  assert.ok(readiness.state === 'blocked' && readiness.upstream !== 'missing');
   const handle = await add(h.layer, 2);
   assert.deepEqual(h.layer.getState(handle), { state: 'resident' });
 });

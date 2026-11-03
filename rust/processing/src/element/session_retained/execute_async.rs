@@ -45,8 +45,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                 // refuse cuts routinely and each must not cost later products a restart.
                 let synchronized_refusal = (self.layer_phase || self.touches_face_set())
                     && self.cancellation.owner.incarnation().is_some()
-                    && matches!(&reason, RetainedExecutionError::Runtime(fault)
-                        if matches!(fault.kind, RuntimeFaultKind::Kernel { status: 1..=7 }));
+                    && super::kernel_refusal::is_typed_refusal(&reason);
                 if !reason.controller_cancelled() && !contract && !synchronized_refusal {
                     // Fault recovery, never a controller-owned cancellation.
                     self.cancellation.owner.retire();

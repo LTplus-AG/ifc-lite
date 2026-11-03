@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Section2DOverlayRenderer } from './section-2d-overlay.js';
-import { EXTRA_CLIP_FLOATS } from './extra-clip-planes.js';
+import { CAP_CLIP_FLOATS } from './extra-clip-planes.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_CAP_LINE_WGSL,
@@ -88,7 +88,7 @@ function decodeClip(data: Float32Array): { count: number; mask: number; distance
     normals: Array.from({ length: count }, (_, i) => [data[4 + i * 4]!, data[5 + i * 4]!, data[6 + i * 4]!]),
   };
 }
-const clipWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === EXTRA_CLIP_FLOATS);
+const clipWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === CAP_CLIP_FLOATS);
 const uniformWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === SECTION_2D_UNIFORM_FLOATS);
 
 describe('a cap per cutting plane (#7545)', () => {
@@ -137,6 +137,17 @@ describe('a cap per cutting plane (#7545)', () => {
     assert.equal(forB!.mask, 0b10, 'C is flipped and keeps that when it clips B');
     // Each cap has its own clip block (a dynamic-offset slot), so none overwrites another.
     assert.equal(new Set(clipWrites(writes).map((w) => w.offset)).size, 3);
+  });
+
+  it('a cap\'s block holds every plane in the fullest scene: six other planes and the six box faces (#8696)', () => {
+    const { renderer, writes } = newRenderer();
+    renderer.uploadExtraDrawing('b', TRIANGLE, [], 'side', 2);
+    const { pass } = makePass();
+    const clippedBy = Array.from({ length: 12 }, (_, i) => plane(1, 0, 0, i + 1));
+    renderer.drawExtras(pass, OPTIONS, [{ key: 'b', clippedBy }]);
+    const block = decodeClip(clipWrites(writes)[0]!.data);
+    assert.equal(block.count, 12, 'no plane dropped');
+    assert.deepEqual(block.distances, clippedBy.map((p) => p.distance));
   });
 
   it('keeps the primary cap\'s uniform record the last write of its draw, as before', () => {

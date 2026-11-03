@@ -2114,7 +2114,12 @@ jobs:
       # commit. `--only` typechecks against the artifact instead, the same move
       # node-tests made for `test`. A dist missing from the artifact fails tsc
       # loudly; it cannot pass vacuously.
+      # The viewer program alone reaches ~4.8 GB heap (11.3k files, 1.15M types,
+      # measured 2026-11-03), past Node's ~4.2 GB default, so tsc ran out of memory
+      # on hosted runners. Hosted runners have 16 GB.
       - run: pnpm typecheck:ci
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
 
   lint:
     name: Lint

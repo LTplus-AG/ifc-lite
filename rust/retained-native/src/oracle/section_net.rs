@@ -15,16 +15,20 @@ const WORK: usize = 100_000;
 const EMPTY_RELATIVE: f64 = 1e-14;
 
 pub(super) fn net_volume(host: &ExtrudedHost, kept: &[Halfspace], solids: &[Vec<ConvexCut>]) -> Option<f64> {
+    net_of(&|planes: &[Halfspace]| section_volume(host, planes), kept, solids)
+}
+/// [`net_volume`] for any host whose volume inside halfspaces the caller can integrate.
+pub(super) fn net_of(volume_in: &dyn Fn(&[Halfspace]) -> Option<f64>, kept: &[Halfspace], solids: &[Vec<ConvexCut>]) -> Option<f64> {
     let mut work = WORK;
     let mut planes = kept.to_vec();
-    let mut volume = section_volume(host, &planes)?;
+    let mut volume = volume_in(&planes)?;
     let empty = volume * EMPTY_RELATIVE;
     let mut active = Vec::new();
     for (solid, pieces) in solids.iter().enumerate() {
         for cut in pieces {
             work = work.checked_sub(1)?;
             planes.extend_from_slice(cut);
-            let overlap = section_volume(host, &planes)?;
+            let overlap = volume_in(&planes)?;
             planes.truncate(kept.len());
             if overlap > empty { active.push((solid, cut, overlap)); }
         }
@@ -32,23 +36,23 @@ pub(super) fn net_volume(host: &ExtrudedHost, kept: &[Halfspace], solids: &[Vec<
     for i in 0..active.len() {
         volume -= active[i].2;
         planes.extend_from_slice(active[i].1);
-        volume += deeper(host, &mut planes, active[i].0, &active[i + 1..], 1., empty, &mut work)?;
+        volume += deeper(volume_in, &mut planes, active[i].0, &active[i + 1..], 1., empty, &mut work)?;
         planes.truncate(kept.len());
     }
     (volume.is_finite() && volume >= -1e-9).then_some(volume.max(0.))
 }
 /// The alternating sum over `planes` intersected with each further subset of `rest`. Pieces
 /// of one solid's partition share at most a boundary, so only another solid's can add a term.
-fn deeper(host: &ExtrudedHost, planes: &mut Vec<Halfspace>, solid: usize, rest: &[(usize, &ConvexCut, f64)], sign: f64, empty: f64, work: &mut usize) -> Option<f64> {
+fn deeper(volume_in: &dyn Fn(&[Halfspace]) -> Option<f64>, planes: &mut Vec<Halfspace>, solid: usize, rest: &[(usize, &ConvexCut, f64)], sign: f64, empty: f64, work: &mut usize) -> Option<f64> {
     let mut sum = 0.;
     let base = planes.len();
     for (i, (other, cut, _)) in rest.iter().enumerate() {
         if *other == solid { continue; }
         *work = work.checked_sub(1)?;
         planes.extend_from_slice(cut);
-        let overlap = section_volume(host, planes)?;
+        let overlap = volume_in(planes)?;
         if overlap > empty {
-            sum += sign * overlap + deeper(host, planes, *other, &rest[i + 1..], -sign, empty, work)?;
+            sum += sign * overlap + deeper(volume_in, planes, *other, &rest[i + 1..], -sign, empty, work)?;
         }
         planes.truncate(base);
     }

@@ -49,20 +49,33 @@ function outside(region, frame) {
 /** Raw occlusion-query result behind `transparentLayers` (internal): a sample count, or any positive value where occlusion is binary (D3D12). */
 const rawLayerQuery = h => h.renderer['gaussianLayer']?.glass?.split?.split?.layerSamples ?? null;
 
-/**
- * Render until frames split and a layer count has read back, then a few more so the
- * reported count comes from a frame after the latest scene change (it reports the
- * latest count read back, which can lag by a frame or two).
- */
+/** Wait for the current scene's pipelines and that frame's own layer readback (#8743). */
 async function settledReport(h, options) {
-  const frame = async () => { h.renderer.render(options); await h.device.queue.onSubmittedWorkDone(); await new Promise(resolve => setTimeout(resolve, 10)); };
-  for (let n = 0; n < 60; n++) {
-    const report = h.adapter.getStats().compositionReport;
-    if (report?.composition === 'nearest-glass-split' && report.transparentLayers !== 'unknown') break;
-    await frame();
-  }
-  for (let n = 0; n < 4; n++) await frame();
-  return { ...plain(h.adapter.getStats().compositionReport), rawLayerQuery: rawLayerQuery(h) };
+  const timeoutMs = 20_000, deadline = performance.now() + timeoutMs;
+  let lastReport = null;
+  const timeout = () => new Error(`settledReport timed out after ${timeoutMs} ms; last report: ${JSON.stringify(lastReport)}`);
+  do {
+    // Always render the latest options first; a previous scene's report is not readiness.
+    h.renderer.render(options);
+    lastReport = plain(h.adapter.getStats().compositionReport);
+    let timer;
+    try {
+      await Promise.race([
+        h.device.queue.onSubmittedWorkDone(),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(timeout()), Math.max(0, deadline - performance.now())); }),
+      ]);
+    } finally { clearTimeout(timer); }
+    // Let mapAsync publish this frame's query before sampling or starting another frame.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    lastReport = plain(h.adapter.getStats().compositionReport);
+    if (lastReport?.fallback !== 'pipelines-compiling' &&
+        (lastReport?.composition === 'no-transparent' ||
+         (lastReport?.composition === 'nearest-glass-split' &&
+          ['single', 'multiple'].includes(lastReport.transparentLayers)))) {
+      return { ...lastReport, rawLayerQuery: rawLayerQuery(h) };
+    }
+  } while (performance.now() < deadline);
+  throw timeout();
 }
 
 /** Sizes per scene: the second resizes the canvas, so P1 and every MSAA target are reallocated. */

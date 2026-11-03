@@ -14,6 +14,7 @@ import {
   type EdgeFrameParams,
 } from './edge-params.js';
 import { MathUtils } from './math.js';
+import { edgeShaderSource } from './shaders/edges.wgsl.js';
 import type { Mat4 } from './types.js';
 
 /**
@@ -28,6 +29,14 @@ function perspective(): Mat4 {
 
 function orthographic(): Mat4 {
   return MathUtils.orthographicReverseZ(-10, 10, -6, 6, 0.1, 1000);
+}
+
+/** Perspective with a lens shift (#8688): non-zero m8/m9. */
+function lensShifted(): Mat4 {
+  const p = perspective();
+  p.m[8] = 0.2;
+  p.m[9] = -0.45;
+  return p;
 }
 
 describe('EDGE_QUALITY_PRESETS (#5385)', () => {
@@ -65,7 +74,7 @@ describe('packEdgeUniforms (#5385)', () => {
   }
 
   it('writes the projection depth/xy params the shader reconstructs from, for both camera modes', () => {
-    for (const projection of [perspective(), orthographic()]) {
+    for (const projection of [perspective(), orthographic(), lensShifted()]) {
       const out = packed(projection);
       const m = projection.m;
       assert.deepEqual(
@@ -75,6 +84,10 @@ describe('packEdgeUniforms (#5385)', () => {
       assert.deepEqual(
         Array.from(out.subarray(EDGE_UNIFORM_LAYOUT.xyParams, EDGE_UNIFORM_LAYOUT.xyParams + 4)),
         [m[0], m[5], m[12], m[13]],
+      );
+      assert.deepEqual(
+        Array.from(out.subarray(EDGE_UNIFORM_LAYOUT.shearParams, EDGE_UNIFORM_LAYOUT.shearParams + 4)),
+        [m[8], m[9], 0, 0],
       );
     }
   });
@@ -98,5 +111,17 @@ describe('packEdgeUniforms (#5385)', () => {
     const e = EDGE_UNIFORM_LAYOUT.edge;
     assert.equal(packed(perspective(), { quality: 'low' })[e + 2], 0);
     assert.equal(packed(perspective(), { quality: 'high' })[e + 2], 1);
+  });
+});
+
+describe('EDGE_UNIFORM_LAYOUT matches the WGSL struct', () => {
+  it('lists the EdgeParams fields in offset order, one vec4 each', () => {
+    const struct = /struct EdgeParams \{([\s\S]*?)\}/.exec(edgeShaderSource(false));
+    assert.ok(struct, 'expected `struct EdgeParams` in the edge shader');
+    const fields = [...struct[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+    const byOffset = Object.entries(EDGE_UNIFORM_LAYOUT).sort((a, b) => a[1] - b[1]).map(([k]) => k);
+    assert.deepEqual(fields, byOffset);
+    assert.deepEqual(Object.values(EDGE_UNIFORM_LAYOUT).sort((a, b) => a - b), fields.map((_, i) => i * 4));
+    assert.equal(EDGE_UNIFORM_BYTES, fields.length * 16);
   });
 });

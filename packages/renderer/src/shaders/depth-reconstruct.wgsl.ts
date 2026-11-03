@@ -51,10 +51,10 @@ export const depthReconstructWgsl = `
           return vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
         }
 
-        fn viewPositionFromDepth(ndc: vec2<f32>, d: f32, dp: vec4<f32>, xy: vec4<f32>) -> vec3<f32> {
+        fn viewPositionFromDepth(ndc: vec2<f32>, d: f32, dp: vec4<f32>, xy: vec4<f32>, shear: vec4<f32>) -> vec3<f32> {
           let z = viewZFromDepth(d, dp);
           let w = clipWFromViewZ(z, dp);
-          return vec3<f32>((ndc.x * w - xy.z) / xy.x, (ndc.y * w - xy.w) / xy.y, z);
+          return vec3<f32>((ndc.x * w - shear.x * z - xy.z) / xy.x, (ndc.y * w - shear.y * z - xy.w) / xy.y, z);
         }
 
         // Normal facing the camera, from a position and its four pixel

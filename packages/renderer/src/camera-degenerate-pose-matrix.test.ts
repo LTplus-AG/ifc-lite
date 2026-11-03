@@ -69,6 +69,7 @@ function makeOrthoState(orthoSize: number): CameraInternalState {
     orthoSize,
     sceneBounds: null,
     orbitAnchorBounds: null,
+    lensShift: { x: 0, y: 0 },
   };
 }
 

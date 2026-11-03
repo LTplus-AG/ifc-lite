@@ -71,6 +71,7 @@ function makeState(aspect: number, mode: 'perspective' | 'orthographic' = 'persp
     orthoSize: 50,
     sceneBounds: null,
     orbitAnchorBounds: null,
+    lensShift: { x: 0, y: 0 },
   };
 }
 

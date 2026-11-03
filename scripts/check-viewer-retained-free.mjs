@@ -73,7 +73,10 @@ const LAZY_REMEDY = 'A VITE_RETAINED_GEOMETRY=lazy build must keep retained code
  */
 export async function checkRetainedLazy(directory) {
   const index = join(directory, 'index.html');
-  if (!(await stat(index).catch(() => null))?.isFile()) throw new Error(`Viewer dist has no index.html in ${directory}.`);
+  if (!(await stat(index).catch(() => null))?.isFile()) {
+    throw new Error(`Viewer dist has no index.html in ${directory}. Build the viewer with VITE_RETAINED_GEOMETRY=lazy `
+      + 'first, or pass the dist directory as the first argument.');
+  }
   const html = await readFile(index, 'utf8');
   for (const forbidden of CODE_SIGNATURES) if (html.includes(forbidden)) throw new Error(`index.html contains ${forbidden}. ${LAZY_REMEDY}`);
   const eager = new Set();
@@ -104,7 +107,11 @@ export async function checkRetainedLazy(directory) {
     }
   }
   await walk(directory);
-  if (!lazy.length) throw new Error(`No chunk in ${directory} carries retained code: not a VITE_RETAINED_GEOMETRY=lazy build.`);
+  if (!lazy.length) {
+    throw new Error(`No chunk in ${directory} carries retained code: not a VITE_RETAINED_GEOMETRY=lazy build. `
+      + 'Rebuild with VITE_RETAINED_GEOMETRY=lazy and IFCLITE_RETAINED_ENGINE set, on a commit whose vite.config.ts maps '
+      + 'the lazy mode to src/lib/retained/lazy.tsx (#8710), and keep that module\'s dynamic imports.');
+  }
   return { eager: [...eager].map(file => relative(directory, file)).sort(), lazy: lazy.sort() };
 }
 

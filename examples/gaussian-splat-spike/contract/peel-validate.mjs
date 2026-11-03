@@ -35,6 +35,8 @@ const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).t
 const RUNS = [
   ['reference-1x', { extend: false }, { mode: 'reference', samples: 1 }],
   ['reference-4x', { extend: false }, { mode: 'reference', samples: 4 }],
+  // #8564: the same reference again; a case whose two renders differ is a nondeterministic reference.
+  ['reference-4x-repeat', { extend: false }, { mode: 'reference', samples: 4 }],
   ['peel-1x', { samples: 1 }, { samples: 1, layers: 4 }, 'accept'],
   ['peel-1x-k3', { samples: 1 }, { samples: 1, layers: 3 }, 'exhausted'],
   ['splats-first-1x', { samples: 1 }, { samples: 1, layers: 4, schedule: 'splats-first' }, 'reject'],
@@ -75,7 +77,7 @@ const evidence = {
     ({ projection, size, samples, ...auditScene(buildScene(size, projection), samples) })))),
   runs: [], errors: [],
 };
-const references = new Map(), peels = new Map(), key = (samples, projection, size, panes) => `${samples}/${projection}/${size}/${panes}`;
+const references = new Map(), repeats = new Map(), peels = new Map(), key = (samples, projection, size, panes) => `${samples}/${projection}/${size}/${panes}`;
 const decode = text => new Uint8Array(Buffer.from(text, 'base64'));
 
 function judge(run, row, scene, probe) {
@@ -118,9 +120,11 @@ function judgeNearestRow(run, row, probe) {
   const sensitive = conformantDepth ? null : mirrorSensitive(scene, samples);
   const toReference = compareByLayers(references.get(id).pixels, pixels, counts, sensitive);
   const toPeel = peels.has(id) ? compareByLayers(peels.get(id), pixels, counts, sensitive) : null;
+  const reference = references.get(id).pixels, repeat = repeats.get(id);
+  const referenceRepeatable = repeat ? reference.every((v, i) => v === repeat[i]) : null;
   const verdict = judgeNearest({ toReference, toPeel, layers: row.layers, counts, control: run.expect === 'nearest-control', tolerance: NEAREST_TOLERANCE,
-    panes: row.panes, conformantDepth });
-  return { panes: row.panes, projection: row.projection, size: row.size, tolerance: NEAREST_TOLERANCE, layers: row.layers, toReference, toPeel, ...verdict,
+    panes: row.panes, conformantDepth, referenceRepeatable });
+  return { panes: row.panes, projection: row.projection, size: row.size, tolerance: NEAREST_TOLERANCE, layers: row.layers, toReference, toPeel, referenceRepeatable, ...verdict,
     imageSha256: sha256(pixels), wallMs: row.wallMs };
 }
 
@@ -162,17 +166,21 @@ try {
           if (run.page.mode === 'reference') {
             record.cases = witness.result.cases.map(row => {
               const pixels = decode(row.pixels);
-              references.set(key(row.samples, row.projection, row.size, row.panes), { pixels });
+              const id = key(row.samples, row.projection, row.size, row.panes);
+              if (run.id.endsWith('-repeat')) repeats.set(id, pixels); else references.set(id, { pixels });
               return { panes: row.panes, projection: row.projection, size: row.size, splatTexels: pixels.filter((v, i) => i % 4 === 0 && v > 0).length,
                 imageSha256: sha256(pixels), cost: row.cost, wallMs: row.wallMs };
             });
           } else if (run.page.mode === 'nearest') {
             record.cases = witness.result.cases.map(row => judgeNearestRow(run, row, witness.result.probe));
           } else {
-            // A K-layer verdict failure is recorded (not fatal) so option B is still judged against it.
-            try { record.cases = witness.result.cases.map(row => judge(run, row, buildScene(row.size, row.projection, { panes: row.panes }), witness.result.probe)); }
-            catch (error) { record.failure = error.message; }
-            finally { record.cases ??= run.judged; }
+            // A K-layer verdict failure is recorded per case (not fatal) so every case is still judged and kept.
+            const failures = [];
+            record.cases = witness.result.cases.map(row => {
+              try { return judge(run, row, buildScene(row.size, row.projection, { panes: row.panes }), witness.result.probe); }
+              catch (error) { failures.push(`${row.panes}/${row.projection}/${row.size}: ${error.message.split('\n')[0]}`); return run.judged?.at(-1) ?? null; }
+            });
+            if (failures.length) record.failure = failures.join('; ');
           }
         } finally { await page.close(); await context?.close(); }
       }

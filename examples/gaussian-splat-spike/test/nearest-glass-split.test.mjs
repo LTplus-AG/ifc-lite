@@ -30,10 +30,16 @@ test('option B is judged per texel: single-layer texels exact, multi-layer frame
   const toReference = compareByLayers(reference, exact, counts);
   assert.deepEqual([toReference.single.differentTexels, toReference.multiple.differentTexels], [0, 1]);
   assert.equal(judgeNearest({ toReference, toPeel: toReference, layers: { reported: 'multiple' }, counts }).pass, true);
-  assert.match(judgeNearest({ toReference, toPeel: null, layers: { reported: 'single' }, counts }).failures.join(), /reported single layers, analytic multiple/);
+  assert.match(judgeNearest({ toReference, toPeel: toReference, layers: { reported: 'single' }, counts }).failures.join(), /reported single layers, analytic multiple/);
+  assert.match(judgeNearest({ toReference, toPeel: null, layers: { reported: 'multiple' }, counts }).failures.join(), /no K-layer peel image/);
   const off = compareByLayers(reference, image([[199, 0, 0, 255], [0, 50, 0, 255], [9, 9, 9, 255]]), counts);
-  assert.match(judgeNearest({ toReference: off, toPeel: null, layers: { reported: 'multiple' }, counts }).failures.join(), /differ from the independent reference/);
-  assert.equal(judgeNearest({ toReference: off, toPeel: null, layers: { reported: 'multiple' }, counts, tolerance: 1 }).pass, true);
+  assert.match(judgeNearest({ toReference: off, toPeel: toReference, layers: { reported: 'multiple' }, counts }).failures.join(), /differ from the independent reference/);
+  assert.equal(judgeNearest({ toReference: off, toPeel: toReference, layers: { reported: 'multiple' }, counts, tolerance: 1 }).pass, true);
+  // A reference that differs from its own repeat cannot fail option B; equality with the K-layer peel still must hold.
+  const unstable = judgeNearest({ toReference: off, toPeel: toReference, layers: { reported: 'multiple' }, counts, referenceRepeatable: false });
+  assert.equal(unstable.pass, true);
+  assert.equal(unstable.referenceUnstable, true);
+  assert.equal(judgeNearest({ toReference: off, toPeel: off, layers: { reported: 'multiple' }, counts, referenceRepeatable: false }).pass, false);
   // The split-off control must miss single-layer texels in single-pane scenes.
   assert.match(judgeNearest({ toReference, toPeel: null, layers: { reported: 'multiple' }, counts, control: true, panes: 'single' }).failures.join(), /negative control/);
 });
@@ -47,7 +53,7 @@ test('non-conformant fixed-function depth accepts only mismatches the mirrored s
   const reference = new Uint8Array(counts.length * 4).fill(10);
   const explained = reference.slice(); explained[at * 4] = 90; explained[at * 4 + 1] = 1;
   const unexplained = explained.slice(); unexplained[clean * 4] = 90;
-  const verdict = flip => judgeNearest({ toReference: compareByLayers(reference, flip, counts, sensitive), toPeel: null, layers: { reported: 'single' }, counts, conformantDepth: false });
+  const verdict = flip => { const c = compareByLayers(reference, flip, counts, sensitive); return judgeNearest({ toReference: c, toPeel: c, layers: { reported: 'single' }, counts, conformantDepth: false }); };
   assert.equal(verdict(explained).pass, true);
   assert.equal(verdict(explained).platformExplained, true);
   assert.equal(verdict(unexplained).pass, false);

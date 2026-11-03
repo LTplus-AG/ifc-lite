@@ -60,7 +60,7 @@ export function compareByLayers(reference, candidate, counts, sensitive = null) 
  * depth at mirrored sample positions) accepts only mismatches that mirroring explains,
  * and the verdict says so: that is a platform result, not exactness.
  */
-export function judgeNearest({ toReference, toPeel, layers, counts, control = false, tolerance = 0, panes = 'all', conformantDepth = true }) {
+export function judgeNearest({ toReference, toPeel, layers, counts, control = false, tolerance = 0, panes = 'all', conformantDepth = true, referenceRepeatable = null }) {
   const multipleExpected = counts.some(count => count >= 2);
   const failures = [];
   const within = bucket => conformantDepth ? bucket.maxDelta <= tolerance : bucket.unexplainedMaxDelta <= tolerance;
@@ -68,12 +68,16 @@ export function judgeNearest({ toReference, toPeel, layers, counts, control = fa
     if (panes === 'single' && toReference.single.maxDelta <= tolerance) failures.push('negative control (split off) matched the reference on single-layer texels');
   } else {
     if (toReference.single.redTexels === 0) failures.push('no red splat texels on single-layer texels');
-    if (!within(toReference.single)) failures.push(`single-layer texels differ from the independent reference (max ${toReference.single.maxDelta})`);
-    if (toPeel && !within(toPeel.single)) failures.push(`single-layer texels differ from the K-layer peel (max ${toPeel.single.maxDelta})`);
+    // The K-layer peel is the decided reference (#8564). The independent per-sample reference must also
+    // agree, unless a repeat render of it differs from itself in this case (a nondeterministic reference).
+    if (!toPeel) failures.push('no K-layer peel image for this case');
+    else if (!within(toPeel.single)) failures.push(`single-layer texels differ from the K-layer peel (max ${toPeel.single.maxDelta})`);
+    if (!within(toReference.single) && referenceRepeatable !== false) failures.push(`single-layer texels differ from the independent reference (max ${toReference.single.maxDelta})`);
   }
   const expected = multipleExpected ? 'multiple' : 'single';
   if (layers.reported !== expected) failures.push(`reported ${layers.reported} layers, analytic ${expected}`);
   const platformExplained = !conformantDepth && !control && toReference.single.differentTexels > 0;
-  return { pass: failures.length === 0, failures, exact: !control && toReference.single.differentTexels === 0, platformExplained,
+  const referenceUnstable = !control && referenceRepeatable === false && toReference.single.differentTexels > 0;
+  return { pass: failures.length === 0, failures, exact: !control && toReference.single.differentTexels === 0, platformExplained, referenceUnstable,
     multipleExpected, beyondExactTexels: counts.filter(count => count >= 2).length };
 }

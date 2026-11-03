@@ -231,6 +231,30 @@ fn a_warped_polygonal_row_is_a_gap_not_a_triangulation() {
     assert_eq!(expected(host("3.001")).err(), Some("warped_face_set_row"));
 }
 
+/// Two shells in one set: wound alike they add; wound against each other they could be two
+/// solids or a solid and its cavity, so they are a named gap, never a cancelled volume.
+#[test]
+fn shells_in_one_set_add_alike_and_are_a_gap_opposed() {
+    // The wall's box x 0..2 (3.6 m3, the window takes 0.6) and a box x 3..4 (1.8 m3) beside it.
+    let points = "(0.,0.,0.),(2.,0.,0.),(2.,0.6,0.),(0.,0.6,0.),(0.,0.,3.),(2.,0.,3.),(2.,0.6,3.),(0.,0.6,3.),\
+(3.,0.,0.),(4.,0.,0.),(4.,0.6,0.),(3.,0.6,0.),(3.,0.,3.),(4.,0.,3.),(4.,0.6,3.),(3.,0.6,3.)";
+    let first = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+    let second = "(9,10,11),(9,11,12),(13,15,14),(13,16,15),(9,14,10),(9,13,14),(10,15,11),(10,14,15),(11,16,12),(11,15,16),(12,13,9),(12,16,13)";
+    let expected = |second: &str| {
+        let text = with(&format!("{WINDOW}{}#8200=IFCCARTESIANPOINTLIST3D(({points}));\n#8201=IFCTRIANGULATEDFACESET(#8200,$,.T.,({first},{second}),$);\n", opening(8100, "#8002")))
+            .replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        face_set_host::expected(&bundle, &sources, 22, &[8107])
+    };
+    assert_eq!(expected(second).err(), Some("face_set_shells_opposed"));
+    // The second box wound like the first: 3.6 + 1.8, the window taking 0.6 of the first.
+    let alike = "(9,11,10),(9,12,11),(13,14,15),(13,15,16),(9,10,14),(9,14,13),(10,11,15),(10,15,14),(11,12,16),(11,16,15),(12,9,13),(12,13,16)";
+    let e = expected(alike).expect("two closed shells wound alike");
+    assert!((e.nominal_host_volume - 5.4).abs() < 1e-10, "{}", e.nominal_host_volume);
+    assert!((e.result_volume.unwrap() - 4.8).abs() < 1e-10, "{:?}", e.result_volume);
+}
+
 /// rvt01 #5941: an extrusion beside a closed set. Both parts lose what the cutter takes.
 #[test]
 fn a_body_of_an_extrusion_and_a_face_set_nets_both_parts() {

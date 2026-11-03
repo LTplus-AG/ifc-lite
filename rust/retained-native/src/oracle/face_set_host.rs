@@ -102,7 +102,11 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
     // edge once each way. Undirected closure alone admits a row wound against the rest.
     let mut directed: std::collections::BTreeMap<([u64; 3], [u64; 3]), usize> = std::collections::BTreeMap::new();
     let bits = |p: &[f64; 3]| p.map(|v| (v + 0.).to_bits());
-    for (row, ends) in set.rows.iter().zip(&set.row_rings) {
+    // The row each tetrahedron fans, and the rows each undirected edge joins: one shell each.
+    let (mut tet_rows, mut edge_rows) = (Vec::new(), std::collections::BTreeMap::new());
+    let mut shell: Vec<usize> = (0..set.rows.len()).collect();
+    fn root(shell: &mut [usize], mut i: usize) -> usize { while shell[i] != i { shell[i] = shell[shell[i]]; i = shell[i]; } i }
+    for (k, (row, ends)) in set.rows.iter().zip(&set.row_rings).enumerate() {
         // `authored` stores a row it could not read (an index past the points, under three
         // corners) empty: what the source says there is unknown, so the shell is too.
         if row.points.is_empty() { return Err("face_set_row_unreadable"); }
@@ -122,15 +126,25 @@ fn closed_set(item: &DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder, 
             if start > 0 && dot(newell(&ring), outer_normal) > 0. { ring.reverse(); raw.reverse(); }
             for (i, a) in raw.iter().enumerate() {
                 let b = raw[(i + 1) % raw.len()];
-                if *a != b { *directed.entry((*a, b)).or_default() += 1; }
+                if *a != b {
+                    *directed.entry((*a, b)).or_default() += 1;
+                    let other = *edge_rows.entry((*a.min(&b), *a.max(&b))).or_insert(k);
+                    let (x, y) = (root(&mut shell, other), root(&mut shell, k));
+                    shell[x] = y;
+                }
             }
-            for i in 1..ring.len().saturating_sub(1) { tets.push([apex, ring[0], ring[i], ring[i + 1]]); }
+            for i in 1..ring.len().saturating_sub(1) { tets.push([apex, ring[0], ring[i], ring[i + 1]]); tet_rows.push(k); }
             start = end;
         }
         if row.area_m2 == Some(0.) { continue; }
         if let (Some(normal), Some(origin)) = (unit(outer_normal), points.first()) { faces.push(ConvexFace { origin: *origin, normal, holed: ends.len() > 1 }); }
     }
     if directed.iter().any(|(&(a, b), &n)| n != 1 || directed.get(&(b, a)) != Some(&1)) { return Err("face_set_winding_inconsistent"); }
+    // Each shell is consistent, but shells wound against each other are either disjoint solids
+    // (which add) or a cavity inside its host (which subtracts): the rows cannot tell which.
+    let mut volume: std::collections::BTreeMap<usize, f64> = std::collections::BTreeMap::new();
+    for (tet, &k) in tets.iter().zip(&tet_rows) { *volume.entry(root(&mut shell, k)).or_default() += signed(tet); }
+    if volume.values().any(|v| *v > 0.) && volume.values().any(|v| *v < 0.) { return Err("face_set_shells_opposed"); }
     Ok(ClosedSet { tets, faces })
 }
 /// A closed set as one convex cutter, with its volume; a non-convex one has none here.

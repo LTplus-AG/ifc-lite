@@ -43,6 +43,8 @@ export interface FederationSetupApplyResult {
   anchorMissing: boolean;
   /** Slots that carried tags but had no local file, so their tags stayed unassigned (#4215). */
   taggedSlotsMissing: string[];
+  /** Slots whose file was found but did not load, with the loader's reason (e.g. a refused capture). */
+  failedSlots: Array<{ name: string; reason: string }>;
 }
 
 export function useFederationSetup() {
@@ -100,6 +102,7 @@ export function useFederationSetup() {
       // back: the vocabulary is persisted per browser, and a reopen that
       // restored nothing must not leave the file's tags behind in it (#4215).
       const restoredTagged: Array<{ modelId: string; tagIds: readonly string[] }> = [];
+      const failedSlots: FederationSetupApplyResult['failedSlots'] = [];
 
       // Sequential, in saved order — mirrors loadFilesSequentially (the WASM
       // parser isn't thread-safe) and preserves the saved federation's
@@ -110,7 +113,9 @@ export function useFederationSetup() {
           name: match.slot.name,
           visible: match.slot.visible,
           collapsed: match.slot.collapsed,
+          gaussianPlacement: match.slot.gaussianPlacement,
         });
+        if (!modelId) failedSlots.push({ name: match.slot.name, reason: useViewerStore.getState().error ?? 'The model did not load.' });
         if (modelId) {
           restoredCount += 1;
           if (match.slot.anchor) restoredAnchorModelId = modelId;
@@ -150,6 +155,7 @@ export function useFederationSetup() {
         anchorRestored,
         anchorMissing: hadAnchorSlot && !anchorRestored,
         taggedSlotsMissing: summary.missing.filter((m) => m.slot.tagIds.length > 0).map((m) => m.slot.name),
+        failedSlots,
       };
     },
     [addModel, realignFederation, setAnchorModelIdOverride],

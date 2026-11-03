@@ -200,6 +200,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   }
 
   /** Decide before the main pass whether this frame ends in the splat pass (which then resolves MSAA). */
+  captureDiagnostics(): Record<string, unknown> | null { return this.slot.scene?.captureDiagnostics?.() ?? null; }
   frameReady(): boolean {
     if (!this.packed || ![...this.records.values()].some((r) => r.visible && !r.failure)) return false;
     if (this.uploadedOnCurrentDevice()) return true;

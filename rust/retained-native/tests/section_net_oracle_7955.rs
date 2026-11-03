@@ -4,7 +4,7 @@
 //! independent per-band expectation. m4-band-appearance's wall #22 is x 0..2, y 0..0.6,
 //! z 0..3 with Y bands 0.1/0.2/0.3 thick, so the uncut bands are 0.6, 1.2 and 1.8 m3.
 use ifc_lite_core::SourceBundle;
-use ifc_lite_retained_native::oracle::{bounded, clips::ClipOracle, layers, openings};
+use ifc_lite_retained_native::oracle::{bounded, clips::ClipOracle, face_set_host, layers, openings};
 
 const WALL: &str = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
 const THICK: [f64; 3] = [0.1, 0.2, 0.3];
@@ -141,25 +141,27 @@ fn a_voided_host_has_a_result_volume_for_convex_face_set_cutters() {
     let cut = |text: String| {
         let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
         let bundle = SourceBundle::new(text.into_bytes());
-        openings::expected_with_face_set_cutters(&bundle, &sources, 22, &[8104])
+        face_set_host::expected(&bundle, &sources, 22, &[8104])
     };
     let e = cut(with(&opening(8100, points, rows, ".T."))).expect("a closed convex face set is a cutter");
+    assert!(e.host_bbox.is_some(), "an extrusion host keeps its nominal bounds gate");
     assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
     assert!((e.volume_bounds[0] - (3.6 - 0.8)).abs() < 1e-10, "nominal cutter volume {:?}", e.volume_bounds);
     let open = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5)";
-    assert!(cut(with(&opening(8100, points, open, ".F."))).is_none(), "an open set bounds no solid");
+    assert_eq!(cut(with(&opening(8100, points, open, ".F."))).err(), Some("open_face_set_cutter"), "an open set bounds no solid");
     // Pushing one corner in leaves a closed but non-convex set: no hull is invented.
     // A circular extrusion beside the face set is still chordal: never the linear limit.
     let circle = "#8050=IFCCARTESIANPOINT((1.,-1.5));\n#8051=IFCAXIS2PLACEMENT2D(#8050,$);\n#8052=IFCCIRCLEPROFILEDEF(.AREA.,$,#8051,0.3);\n";
     let text = with(&format!("{}{circle}{}", opening(8100, points, rows, ".T."), self::opening(8200, "#8052")));
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
     let bundle = SourceBundle::new(text.into_bytes());
-    assert!(openings::expected_with_face_set_cutters(&bundle, &sources, 22, &[8104, 8207]).unwrap().curved, "a polygonised arc stays curved");
+    assert!(face_set_host::expected(&bundle, &sources, 22, &[8104, 8207]).unwrap().curved, "a polygonised arc stays curved");
     let dented = points.replacen("(1.5,0.7,2.)", "(1.,0.3,1.5)", 1);
-    assert!(cut(with(&opening(8100, &dented, rows, ".T."))).is_none(), "a non-convex set stays a gap");
-    // A row whose corner is unreadable is stored empty and adds no edge: still a gap, never a panic.
+    assert_eq!(cut(with(&opening(8100, &dented, rows, ".T."))).err(), Some("non_convex_face_set_cutter"), "a non-convex set stays a gap");
+    // A row whose corner is unreadable is source the oracle cannot see: a named gap, never the
+    // volume of the rows it could read.
     let unreadable = format!("{rows},(1,2,99)");
-    assert!(cut(with(&opening(8100, points, &unreadable, ".T."))).is_none(), "an unreadable row stays a gap");
+    assert_eq!(cut(with(&opening(8100, points, &unreadable, ".T."))).err(), Some("face_set_row_unreadable"));
 }
 
 /// Snowdon #81962: a cutter inside the host's own void removes nothing, and rounding in
@@ -179,4 +181,127 @@ fn a_cutter_inside_a_host_void_removes_nothing() {
     let e = openings::expected(&sources, 22, &[8035]).expect("voided host");
     let hand = (31.7 * 17.3 - 4.8 * 4.4) * 3.;
     assert!((e.result_volume.expect("a result volume") - hand).abs() < hand * 1e-9, "{:?} vs {hand}", e.result_volume);
+}
+
+/// MiniBIM #135719: the Body is a closed face set, not an extrusion. The cut comes from the rows.
+#[test]
+fn a_face_set_host_has_a_result_volume_from_its_rows() {
+    // The wall's own box x 0..2, y 0..0.6, z 0..3 as a closed set, window as before: 3.6 - 0.6.
+    let points = "(0.,0.,0.),(2.,0.,0.),(2.,0.6,0.),(0.,0.6,0.),(0.,0.,3.),(2.,0.,3.),(2.,0.6,3.),(0.,0.6,3.)";
+    let rows = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+    let host = |rows: &str, closed: &str| with(&format!("{WINDOW}{}#8200=IFCCARTESIANPOINTLIST3D(({points}));\n#8201=IFCTRIANGULATEDFACESET(#8200,$,{closed},({rows}),$);\n", opening(8100, "#8002")))
+        .replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+    let expected = |text: String| {
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        assert!(face_set_host::authors_face_set(&bundle, 22));
+        face_set_host::expected(&bundle, &sources, 22, &[8107])
+    };
+    let e = expected(host(rows, ".T.")).expect("a closed set is integrated");
+    assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
+    assert!((e.nominal_host_volume - 3.6).abs() < 1e-10 && !e.curved);
+    assert!(e.host_bbox.is_none(), "a face-set Body has no nominal extrusion bounds");
+    // Reversed winding is the same solid.
+    let reversed = "(1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)";
+    assert!((expected(host(reversed, ".T.")).unwrap().result_volume.unwrap() - 3.).abs() < 1e-10);
+    // One row wound against the rest closes undirected but bounds no consistent solid: a gap.
+    let flipped = rows.replacen("(5,6,7)", "(5,7,6)", 1);
+    assert_eq!(expected(host(&flipped, ".T.")).err(), Some("face_set_winding_inconsistent"));
+    // An open set bounds no solid: a counted gap, never a partial volume.
+    let open = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5)";
+    assert_eq!(expected(host(open, "$")).err(), Some("open_face_set"));
+}
+
+/// A polygonal set's quad rows are planar here and integrate exactly; one corner raised 1 mm
+/// warps three rows, which no fan of tetrahedra answers uniquely: a named gap.
+#[test]
+fn a_warped_polygonal_row_is_a_gap_not_a_triangulation() {
+    let faces = "#8210=IFCINDEXEDPOLYGONALFACE((1,4,3,2));#8211=IFCINDEXEDPOLYGONALFACE((5,6,7,8));#8212=IFCINDEXEDPOLYGONALFACE((1,2,6,5));\n\
+#8213=IFCINDEXEDPOLYGONALFACE((2,3,7,6));#8214=IFCINDEXEDPOLYGONALFACE((3,4,8,7));#8215=IFCINDEXEDPOLYGONALFACE((4,1,5,8));\n";
+    let host = |top: &str| with(&format!("{WINDOW}{}{faces}#8200=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(2.,0.,0.),(2.,0.6,0.),(0.,0.6,0.),(0.,0.,3.),(2.,0.,3.),(2.,0.6,{top}),(0.,0.6,3.)));\n\
+#8201=IFCPOLYGONALFACESET(#8200,.T.,(#8210,#8211,#8212,#8213,#8214,#8215),$);\n", opening(8100, "#8002")))
+        .replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+    let expected = |text: String| {
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        face_set_host::expected(&bundle, &sources, 22, &[8107])
+    };
+    let e = expected(host("3.")).expect("planar quads are integrated");
+    assert!((e.result_volume.unwrap() - 3.).abs() < 1e-10, "{:?}", e.result_volume);
+    assert_eq!(expected(host("3.001")).err(), Some("warped_face_set_row"));
+}
+
+/// Two shells in one set: wound alike they add; wound against each other they could be two
+/// solids or a solid and its cavity, so they are a named gap, never a cancelled volume.
+#[test]
+fn shells_in_one_set_add_alike_and_are_a_gap_opposed() {
+    // The wall's box x 0..2 (3.6 m3, the window takes 0.6) and a box x 3..4 (1.8 m3) beside it.
+    let points = "(0.,0.,0.),(2.,0.,0.),(2.,0.6,0.),(0.,0.6,0.),(0.,0.,3.),(2.,0.,3.),(2.,0.6,3.),(0.,0.6,3.),\
+(3.,0.,0.),(4.,0.,0.),(4.,0.6,0.),(3.,0.6,0.),(3.,0.,3.),(4.,0.,3.),(4.,0.6,3.),(3.,0.6,3.)";
+    let first = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+    let second = "(9,10,11),(9,11,12),(13,15,14),(13,16,15),(9,14,10),(9,13,14),(10,15,11),(10,14,15),(11,16,12),(11,15,16),(12,13,9),(12,16,13)";
+    let expected = |second: &str| {
+        let text = with(&format!("{WINDOW}{}#8200=IFCCARTESIANPOINTLIST3D(({points}));\n#8201=IFCTRIANGULATEDFACESET(#8200,$,.T.,({first},{second}),$);\n", opening(8100, "#8002")))
+            .replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        face_set_host::expected(&bundle, &sources, 22, &[8107])
+    };
+    assert_eq!(expected(second).err(), Some("face_set_shells_opposed"));
+    // The second box wound like the first: 3.6 + 1.8, the window taking 0.6 of the first.
+    let alike = "(9,11,10),(9,12,11),(13,14,15),(13,15,16),(9,10,14),(9,14,13),(10,11,15),(10,15,14),(11,12,16),(11,16,15),(12,9,13),(12,13,16)";
+    let e = expected(alike).expect("two closed shells wound alike");
+    assert!((e.nominal_host_volume - 5.4).abs() < 1e-10, "{}", e.nominal_host_volume);
+    assert!((e.result_volume.unwrap() - 4.8).abs() < 1e-10, "{:?}", e.result_volume);
+}
+
+/// rvt01 #5941: an extrusion beside a closed set. Both parts lose what the cutter takes.
+#[test]
+fn a_body_of_an_extrusion_and_a_face_set_nets_both_parts() {
+    // The set is the box x 3..4, y 0..0.6, z 0..3 (1.8 m3), beside the wall; the second window cuts only it.
+    let points = "(3.,0.,0.),(4.,0.,0.),(4.,0.6,0.),(3.,0.6,0.),(3.,0.,3.),(4.,0.,3.),(4.,0.6,3.),(3.,0.6,3.)";
+    let rows = "(1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)";
+    let beside = "#8300=IFCCARTESIANPOINT((3.5,-1.5));\n#8301=IFCAXIS2PLACEMENT2D(#8300,$);\n#8302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#8301,0.5,1.);\n";
+    let text = with(&format!("{WINDOW}{beside}{}{}#8200=IFCCARTESIANPOINTLIST3D(({points}));\n#8201=IFCTRIANGULATEDFACESET(#8200,$,.T.,({rows}),$);\n", opening(8100, "#8002"), opening(8400, "#8302")))
+        .replace("'Body','SweptSolid',(#19)", "'Body','SweptSolid',(#19,#8201)");
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+    let bundle = SourceBundle::new(text.into_bytes());
+    let e = face_set_host::expected(&bundle, &sources, 22, &[8107, 8407]).expect("a mixed body");
+    let hand = (3.6 - 0.6) + (1.8 - 0.5 * 1. * 0.6);
+    assert!((e.result_volume.unwrap() - hand).abs() < 1e-10, "{:?} vs {hand}", e.result_volume);
+    assert!((e.nominal_host_volume - 5.4).abs() < 1e-10);
+}
+
+/// MiniBIM #160768: a row with a void. The hole's fan subtracts whichever way it is wound.
+#[test]
+fn a_face_set_row_with_a_void_keeps_its_hole() {
+    // A box x 0..2, y 0..0.6, z 0..3 with a through void x 0.5..1.5, z 1..2 on both big faces.
+    let points = "(0.,0.,0.),(2.,0.,0.),(2.,0.,3.),(0.,0.,3.),(0.,0.6,0.),(2.,0.6,0.),(2.,0.6,3.),(0.,0.6,3.),(0.5,0.,1.),(1.5,0.,1.),(1.5,0.,2.),(0.5,0.,2.),(0.5,0.6,1.),(1.5,0.6,1.),(1.5,0.6,2.),(0.5,0.6,2.)";
+    let faces = [("V", "(1,2,3,4)", Some("(9,10,11,12)")), ("V", "(6,5,8,7)", Some("(14,13,16,15)")), ("F", "(1,5,6,2)", None), ("F", "(2,6,7,3)", None), ("F", "(3,7,8,4)", None), ("F", "(4,8,5,1)", None),
+        ("F", "(10,14,13,9)", None), ("F", "(11,15,14,10)", None), ("F", "(12,16,15,11)", None), ("F", "(9,13,16,12)", None)];
+    for flip in [false, true] {
+        let mut extra = format!("#8200=IFCCARTESIANPOINTLIST3D(({points}));\n");
+        let mut ids = Vec::new();
+        for (i, (kind, outer, inner)) in faces.iter().enumerate() {
+            let id = 8210 + i;
+            ids.push(format!("#{id}"));
+            extra += &match (kind, inner) {
+                (&"V", Some(inner)) => {
+                    let inner = if flip { let v: Vec<&str> = inner.trim_matches(|c| c == '(' || c == ')').split(',').rev().collect(); format!("({})", v.join(",")) } else { inner.to_string() };
+                    format!("#{id}=IFCINDEXEDPOLYGONALFACEWITHVOIDS({outer},({inner}));\n")
+                }
+                _ => format!("#{id}=IFCINDEXEDPOLYGONALFACE({outer});\n"),
+            };
+        }
+        extra += &format!("#8201=IFCPOLYGONALFACESET(#8200,.T.,({}),$);\n", ids.join(","));
+        // A window in solid material past the void: x 1.6..1.9, z 1..2.
+        let window = "#8300=IFCCARTESIANPOINT((1.75,-1.5));\n#8301=IFCAXIS2PLACEMENT2D(#8300,$);\n#8302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#8301,0.3,1.);\n";
+        let text = with(&format!("{window}{}{extra}", opening(8100, "#8302"))).replace("'Body','SweptSolid',(#19)", "'Body','Tessellation',(#8201)");
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(), None);
+        let bundle = SourceBundle::new(text.into_bytes());
+        let e = face_set_host::expected(&bundle, &sources, 22, &[8107]).expect("a closed set with a void");
+        let whole = (2. * 3. - 1.) * 0.6;
+        assert!((e.nominal_host_volume - whole).abs() < 1e-10, "{} vs {whole}", e.nominal_host_volume);
+        assert!((e.result_volume.unwrap() - (whole - 0.3 * 0.6)).abs() < 1e-10, "{:?}", e.result_volume);
+    }
 }

@@ -99,7 +99,9 @@ export const georeferencingRu = {
   "properties.georef.globePlacement.resolvedAnchor": "Модель размещена по одной опорной точке.",
   "properties.georef.globePlacement.resolvedExact": "Каждая вершина размещена через картографическую проекцию.",
   "properties.georef.globePlacement.estimate": "Оценка погрешности опорной точки: {value} см",
-  "properties.georef.globePlacement.help": "В режиме «Авто» каждая вершина проецируется отдельно, если одна опорная точка дала бы погрешность более 1 см (кривизна Земли, масштаб проекции, наклон геоида).",
+  "properties.georef.globePlacement.resolvedRigid": "IfcRigidOperation: координаты являются картографическими, поэтому каждая вершина размещена через картографическую проекцию.",
+  "properties.georef.globePlacement.rigidAnchorWarning": "В файле используется IfcRigidOperation, координаты которого картографические. Режим «По опорной точке» лишь приближает их; «Авто» или «Точно» размещает каждую вершину.",
+  "properties.georef.globePlacement.help": "В режиме «Авто» каждая вершина проецируется отдельно для IfcRigidOperation, а для IfcMapConversion — если одна опорная точка дала бы погрешность более 1 см (кривизна Земли, масштаб проекции, наклон геоида).",
   "properties.georef.setOrthogonalHeightTooltip": "Установить OrthogonalHeight равным высоте рельефа по выборке ({value} м)",
   "properties.georef.setOrthogonalHeightTooltipViaSource": "Установить OrthogonalHeight равным высоте рельефа по выборке ({value} м через {source})",
 } satisfies Catalogue;

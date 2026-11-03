@@ -328,3 +328,104 @@ Still blocked, not waived: exact per-sample composition with IFC glass and X-ray
 semantics beyond pass-through, scalable GPU ordering (the upstream CPU sort runs
 per camera change), hardware resource budgets, canonical viewer ingestion and
 production smoke tests.
+
+## Nearest-glass split in the adapter (#8564, option B)
+
+Decided on 2026-11-03 (#8564, #8562): the adapter composes splats with transparent
+IFC by a single nearest-glass split, the K = 1 case of the K-layer plan above,
+without its peel stack. In a frame with splats and transparent IFC:
+
+1. the main pass holds back every draw from its first transparent one to its end:
+   transparent IFC, the selection highlight, then points, reference images and
+   overlays (`gaussian-pass-recorder.ts`, recorded as issued, never re-enumerated);
+2. P1 = the nearest transparent depth per sample: the held draws replay through
+   depth-only variants of their own pipelines (same vertex stage and depth nudge,
+   the base fragment called for its discards, no colour) into a depth32float target
+   cleared to the far plane (`gaussian-glass-split.ts`);
+3. splats with depth <= P1, then the held draws as recorded, then splats with depth
+   > P1 and the MSAA resolve (`gaussian-glass-frame.ts`). A split pass that fails
+   falls back to the held draws plus one splat pass and reports `split-failed`.
+
+Both splat draws use one upstream renderer (one sort) through the patch's opt-in
+depth-interval shader: one bound texture and a `greater` / `less-equal` flag, so
+every sample is written exactly once. They still test opaque depth in hardware, as
+the single pass does. Where no transparent IFC covers a sample P1 is the far plane,
+so every splat sample lands in the second draw in the single pass's order. The
+interval reaches the backend only through `GaussianBackendScene.encode(…, interval)`,
+so a future GPU-sorting backend can implement the same hook.
+
+**Exact:** every sample with at most one transparent layer in front of opaque
+geometry, and splats behind or in front of every layer. **Approximate:** splats
+between two transparent layers (drawn before all of them). A stencil count of
+transparent surfaces in front of opaque depth with an occlusion query reports
+`transparentLayers: 'multiple'`. Only zero versus non-zero is portable: Dawn on
+D3D12 answers occlusion queries in binary (NVIDIA reported 1 for every positive
+count). A closed glass solid has two surfaces. Every X-Ray frame reports `multiple`:
+in the witness X-Ray scene (three ghosted boxes) SwiftShader, which counts samples,
+put 94.5 % of the ghosted samples beyond exact. The policy for X-Ray is open for the
+maintainer. `exact-mixed-transparency` therefore stays in the published blocker
+tuple, and readiness gains the capability `nearest-glass-split`.
+
+Eligibility: perspective and orthographic (later passes reuse the frame's
+geometric-depth colour variants through `OpaqueVisibilityPass.resume`), 1x and 4x
+MSAA, flat, quantized, instanced, individual-mesh and X-Ray ghost draws, section
+clipping (shared fragment discards) and selection. Reported fallbacks (single pass,
+`compositionReport.fallback`): `single-pass-mode`, `pipelines-compiling` (the
+depth-only variants compile asynchronously; the frame re-renders when they are
+ready), `unsupported-draw` (an unregistered pipeline or pass command), and
+`upstream-interval-missing`. Frames without visible splats record no extra pass,
+attachment, texture, query or pipeline; this is asserted by a spy in
+`renderer-render-paths.test.ts`.
+
+Rules in split frames: the selection highlight keeps its rule of drawing over
+transparent IFC, so on the highlighted surface it also covers splats behind the
+nearest layer (`highlightOverSplats`). Points, reference images and overlays keep
+their established place after transparent IFC (the IFC look never changes because
+splats are present); they draw after the splats behind the nearest layer, so where
+they lie behind such a splat they cover it (`laterOverBehindSplats`), and before the
+splats in front of it. `transparentLayers` describes only the frame whose query
+produced it (review of 372b9ec). Only transparent IFC meshes take part.
+
+### Evidence (manual, through `ifc-gpu-check`)
+
+| witness | reference | SwiftShader | NVIDIA (Blackwell, Windows Chrome 156 over CDP) |
+| --- | --- | --- | --- |
+| `validate-native-adapter.mjs`, glass scenes: perspective and orthographic x 1x and 4x, each at two canvas sizes | affine: B0 + (B1 - B0) A / 255 from the glass over black / white and the splat alone; front splat, rest of frame and no-glass frames byte-equal to the single pass | pass, max 0.957/255 | pass, max 1.239/255 (4x), 0.925/255 (1x) |
+| same, two panes and X-Ray | `transparentLayers` must be `multiple`; one pane must be `single` (negative control) | pass | pass |
+| full native witness (all earlier scenes) | as recorded above | pass | pass |
+| `peel-validate.mjs`: option B vs the K-layer peel witness (the decided reference), single-pane and five-pane scenes, 3 sizes, both projections | per sample: <= 1 layer equal to the K-layer peel and to the independent per-sample reference (tolerance 0); >= 2 layers anywhere: `multiple` reported; split-off control must miss | 1x exact; 4x every mismatch explained by SwiftShader's x-mirrored fixed-function sample depth (probed; also affects the K-layer peel's fixed-function opaque test) | exact at 1x and 4x, all 24 cases, against both references |
+| `--real-glass`: FZK-Haus (its windows) + plant capture (Marcel Padilla, CC-BY-4.0) behind a window | independent affine reference (front window only), and the K-layer research renderer (`5b9b7f6f6d`) | not run | affine max 1.8/255; vs K-layer max 3/255, no pixel beyond the two renderers' existing glass-shading delta + 2/255; single pass vs K-layer mean 22.8 (max 39) |
+| `--ifc-regression`: IFC-only frames incl. glass, X-Ray, partial transparent batches, selected glass, orthographic | base `750b33165a` | 10/10 identical | 10/10 identical |
+
+The independent per-sample reference (18k scissored, sample-masked draws per case) is
+not perfectly repeatable on NVIDIA: in one of three hardware runs it differed from its
+own earlier render at 8 samples of one case (single pane, orthographic, 48 px, 4x),
+where option B and the K-layer peel agreed exactly with each other. The validator now
+renders that reference twice and lets a case pass on it only when the two renders
+differ, and only if option B still equals the K-layer peel exactly; the final runs
+recorded no such case.
+
+Tolerances: 2/255 only for the affine references (each capture is rounded once, so the
+true composite lies within 1/255; hardware blend rounding needs the second LSB). The
+113k-splat capture jitters frame to frame by up to 3/255 on fewer than 0.1 % of
+channels in every renderer and mode (also in the single pass); this is disclosed
+and not used as a tolerance. Back-window pixels of the real asset, where glass lies
+behind the capture, are beyond exact and only reported.
+
+Mutation evidence: `tests/evidence/gaussian-8564-split-*` (compare sides, recorder
+hold, nearest vs farthest P1, fallback reporting) are OBSERVED by the revert
+oracle. With the compare-side mutation applied, the GPU glass witness fails its
+reference, front-equality and rest-equality checks in every scene.
+
+```sh
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=swiftshader
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs --backend=swiftshader
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs --backend=hardware
+node examples/gaussian-splat-spike/prepare.mjs   # fixtures for --real-glass
+~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware --real-glass=/abs/k-layer/checkout
+```
+
+Still blocked: splats between transparent layers, the X-Ray policy, scalable GPU
+ordering, per-fragment clipping and caps, hardware memory and frame-time budgets,
+and the qualified native-viewer contract.

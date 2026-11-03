@@ -2155,6 +2155,7 @@ export class Renderer {
 
             // Build color attachments — skip objectId in single-target mode
             const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
+            const glass = splatFrame ? this.gaussianLayer.glassRecorder(this.pipeline.visibility) : null; // holds transparent IFC for the nearest-glass split
             const colorAttachments: GPURenderPassColorAttachment[] = [
                 {
                     // If MSAA enabled: render to multisample texture, resolve to swap chain
@@ -2173,7 +2174,7 @@ export class Renderer {
                 storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
             });
 
-            const pass = this.pipeline.visibility.begin(encoder, {
+            let pass = this.pipeline.visibility.begin(encoder, {
                 timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
@@ -2238,6 +2239,9 @@ export class Renderer {
             let boundPipeline = this.pipeline.getPipeline();
             pass.setPipeline(boundPipeline);
             const usePipeline = (next: GPURenderPipeline): void => { if (next !== boundPipeline) { pass.setPipeline(next); boundPipeline = next; } };
+            // #8564: a splat frame holds every draw from its first transparent one to the pass end for the nearest-glass split, in order.
+            let mainPass = pass, held = false;
+            const holdGlass = (transparent: boolean): void => { if (held || !glass) return; held = true; mainPass = pass; if (glass.begin(transparent)) { pass = glass.pass; pass.setPipeline(boundPipeline); } };
 
             // Bind the global lighting environment at group(1) AFTER any sky
             // draw. The sky pipeline's layout (its own group(0), no group(1))
@@ -2765,6 +2769,7 @@ export class Renderer {
                             renderBatch(subBatch, true);
                         }
                     }
+                    if (transparentSubBatches.length > 0) holdGlass(true);
                     for (const subBatch of transparentSubBatches) {
                         usePipeline(pipeFor(subBatch, 'transparent'));
                         renderBatch(subBatch);
@@ -2834,11 +2839,9 @@ export class Renderer {
                 // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
                 // shader's opacity routing so only translucent occurrences draw here.
                 const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
-                if (
-                    visibleInstanced.length > 0 &&
-                    this.scene.hasTransparentInstances() &&
-                    instancedTransparentPipeline !== null
-                ) {
+                const instancedTransparent = visibleInstanced.length > 0 && this.scene.hasTransparentInstances() && instancedTransparentPipeline !== null;
+                holdGlass(transparentBatches.length + transparentMeshes.length > 0 || instancedTransparent);
+                if (instancedTransparent) {
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
                     usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
@@ -2902,6 +2905,7 @@ export class Renderer {
                 for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
 
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
+                glass?.markGlassEnd();
                 for (const mesh of selectedMeshes) {
                     if (!mesh.bindGroup || !mesh.uniformBuffer) {
                         continue;
@@ -2952,6 +2956,7 @@ export class Renderer {
                 }
 
                 // Render transparent meshes with transparent pipeline (alpha blending)
+                holdGlass(transparentMeshes.length > 0);
                 if (transparentMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
@@ -2969,6 +2974,7 @@ export class Renderer {
                 }
             }
 
+            glass?.markLater(); // points, reference images and overlays keep their place after transparent IFC
             // Draw point clouds (IFCx inline + streamed LAS/LAZ).
             // Shares the depth buffer + section plane state with the mesh pipeline so
             // points occlude triangles and vice versa. The splat shader needs the
@@ -3009,8 +3015,10 @@ export class Renderer {
                 primaryPlane: sectionPlaneData && options.sectionPlane?.enabled ? { ...sectionPlaneData, flipped: options.sectionPlane.flipped === true } : null,
             });
 
+            if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             pass.end();
-            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox } });
+            if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
+                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
@@ -3062,6 +3070,7 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
+            if (glass) this.gaussianLayer.submitted();
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
                 colorCapture = null; colorReadback = null;

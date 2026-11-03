@@ -6,6 +6,7 @@
 import { Ellipsis, Filter, Layers3, Search } from 'lucide-react';
 import { useViewerStore, type HierarchyMode } from '@/store';
 import { runContextAction } from './surface-commands-context';
+import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const ribbonOnly = ['ribbon'] as const;
@@ -15,6 +16,7 @@ function showHierarchy(mode: HierarchyMode): void {
   const state = useViewerStore.getState();
   state.setHierarchyMode(mode);
   state.setPanelShownInSidebar('hierarchy', true);
+  liftStartFold('left'); // folded for the start screen, Hierarchy must still appear
   state.setLeftPanelCollapsed(false);
 }
 

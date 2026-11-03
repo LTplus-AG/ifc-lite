@@ -69,7 +69,7 @@ async function load(placement: 'anchor' | 'exact') {
     modelOrigin: ANCHOR,
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 1,
-    placement: { requested: placement, mode: placement, estimate: null, key: placement === 'exact' ? 'georef-1' : '' },
+    placement: { requested: placement, mode: placement, estimate: null, prescribed: null, key: placement === 'exact' ? 'georef-1' : '' },
     geoMapping,
   } as unknown as CesiumBridge;
   let installed: { key: string; baked: boolean } | null = null;

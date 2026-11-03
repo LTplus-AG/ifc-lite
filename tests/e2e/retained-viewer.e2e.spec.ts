@@ -46,6 +46,10 @@ const expected = (model: string) => coverageFiles().flatMap(path => readFileSync
   .map(([, id, status, code]) => ({ id: Number(id), status, code })).sort((a, b) => a.id - b.id);
 
 async function setup(page: Page, kernel?: 'retained' | 'exact') {
+  // A returning user. The first-launch privacy toast fires on a 3.5 s timer and stays until
+  // dismissed; dismissing it while an export dialog is open is a click outside the modal,
+  // which closes the dialog before Export is pressed, so no download ever starts.
+  await page.addInitScript(() => window.localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged'));
   await page.addInitScript(() => {
     const globals = globalThis as typeof globalThis & ViewerGlobals;
     globals.__retainedLongTasks = [];
@@ -198,7 +202,9 @@ function finishPixelWithTexture(): string {
     '#1017=IFCTRIANGULATEDFACESET(#1016,$,.T.,((1,3,2),(1,2,4),(1,4,3),(2,3,4)),$);',
     "#1018=IFCIMAGETEXTURE(.T.,.F.,$,$,$,'checker.png');",
     '#1019=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(0.,1.),(1.,1.)));',
-    '#1020=IFCINDEXEDTRIANGLETEXTUREMAP((#1018),#1017,#1019,((2,1,4),(2,4,3),(2,3,1),(4,1,3)));',
+    // Row 1 names texture vertex 9 of 4: retained publishes a readable map (#8291), so this one
+    // is what keeps the product refused, and the model incomplete.
+    '#1020=IFCINDEXEDTRIANGLETEXTUREMAP((#1018),#1017,#1019,((9,1,4),(2,4,3),(2,3,1),(4,1,3)));',
     '#1021=IFCCOLOURRGB($,1.,1.,1.);', '#1022=IFCSURFACESTYLESHADING(#1021,0.);', '#1023=IFCSURFACESTYLEWITHTEXTURES((#1018));',
     "#1024=IFCSURFACESTYLE('SYNTHETIC',.BOTH.,(#1022,#1023));", '#1025=IFCSTYLEDITEM(#1017,(#1024),$);',
     "#1026=IFCSHAPEREPRESENTATION(#4,'Body','Tessellation',(#1017));", '#1027=IFCPRODUCTDEFINITIONSHAPE($,$,(#1026));',
@@ -281,8 +287,6 @@ const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1
 
 /** Open a ribbon export dialog the way a user does, and return it. */
 async function openExport(page: Page, id: string) {
-  // The privacy toast sits over the dialog's footer until dismissed.
-  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   await page.getByRole('tab', { name: 'File', exact: true }).click();
   await page.locator(`[data-export-command="${id}"]`).click();
   const dialog = page.locator('[data-export-dialog-shell]');
@@ -292,8 +296,6 @@ async function openExport(page: Page, id: string) {
 /** Press Export in an open dialog and return the downloaded bytes. */
 async function download(page: Page, button: string | RegExp): Promise<{ name: string; bytes: Buffer }> {
   const dialog = page.locator('[data-export-dialog-shell]');
-  // The privacy toast can arrive after the dialog opened and then covers its footer.
-  for (const dismiss of await page.getByRole('button', { name: 'Dismiss notification' }).all()) await dismiss.click();
   const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), dialog.getByRole('button', { name: button, exact: typeof button === 'string' }).click()]);
   const path = await file.path();
   expect(path, 'the downloaded file exists').toBeTruthy();
@@ -983,9 +985,11 @@ test.describe('retained viewer acceptance', () => {
 const ARCHICAD = 'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc';
 const SKETCHUP = 'apps/viewer/public/samples/building-architecture.ifc';
 const BONSAI = 'apps/viewer/public/samples/hello-wall.ifc';
+const TEKLA = 'rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc';
 const REAL_MODELS = [
   { tool: 'ArchiCAD', file: ARCHICAD, header: /ARCHICAD-64/ },
   { tool: 'Bonsai', file: BONSAI, header: /Bonsai/ },
+  { tool: 'SketchUp', file: SKETCHUP, header: /IFC manager for sketchup/i },
 ];
 const baseName = (path: string) => path.split('/').at(-1)!;
 const SDK_REQUEST = /\/smlib\/|pkg-retained|\/retained-engine\//;
@@ -1135,18 +1139,18 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     });
   }
 
-  test('a real SketchUp export refused product by product loads as an incomplete, mesh-free model with its identity intact', async ({ page }) => {
-    expect(readFileSync(SKETCHUP, 'latin1').slice(0, 60000)).toMatch(/IFC manager for sketchup/i);
+  test('a real Tekla export refused product by product loads as an incomplete, mesh-free model with its identity intact', async ({ page }) => {
+    expect(readFileSync(TEKLA, 'latin1').slice(0, 60000)).toMatch(/Tekla Structures 2023/);
     await setup(page, 'retained');
-    await page.locator('#file-input-open').setInputFiles(resolve(SKETCHUP));
+    await page.locator('#file-input-open').setInputFiles(resolve(TEKLA));
     await page.waitForFunction(() => {
       const state = (globalThis as typeof globalThis & ViewerGlobals).__ifc_lite_viewer_store__.getState();
       const model = [...state.models.values()][0];
       return !state.loading && model?.retainedGeometry && model.retainedGeometry.completeness !== 'running';
     });
-    const rows = expected(SKETCHUP);
+    const rows = expected(TEKLA);
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every(row => row.status === 'refused'), 'the manifest pins every SketchUp product as refused').toBe(true);
+    expect(rows.every(row => row.status === 'refused'), 'the manifest pins every Tekla product as refused').toBe(true);
     const [model, ...others] = await identities(page);
     expect(others).toEqual([]);
     expect((await snapshot(page)).error).toBeNull();
@@ -1161,7 +1165,7 @@ test.describe('retained viewer: real authoring-tool exports and federation ident
     await expect(page.locator('[data-retained-row]')).toHaveCount(rows.length);
     await page.getByRole('button', { name: `Select #${rows[0].id}`, exact: true }).click();
     expect(await selection(page)).toMatchObject({ ref: { modelId: model.id, expressId: rows[0].id } });
-    await record('real-sketchup', { model: stable(model), refused: rows.length });
+    await record('real-tekla-refused', { model: stable(model), refused: rows.length });
   });
 
   test('a refused retained federated add leaves the exact primary intact; Retry builds a correct federation with colliding ids', async ({ page }) => {

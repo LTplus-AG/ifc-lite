@@ -26,7 +26,7 @@ export function SemanticProfileControls({ profile, onProfile, onError }: Semanti
   const provider = useRef<BsddNamespace | null>(null);
   const requestGeneration = useRef(0);
   useEffect(() => () => { requestGeneration.current++; }, []);
-  const sdk = () => provider.current ?? (provider.current = new BsddNamespace());
+  const sdk = () => provider.current ?? (provider.current = new BsddNamespace({ apiBase: '/api/bsdd' }));
   function importDefinition() {
     try {
       if (new TextEncoder().encode(definition).byteLength > 1024 * 1024) throw new Error('Profile definition exceeds the 1 MiB limit');

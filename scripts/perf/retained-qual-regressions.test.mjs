@@ -7,7 +7,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { nativeSample, main as nativeMain } from './retained-qual-native-memory.mjs';
-import { assertNativeSummary } from './retained-qual-assert.mjs';
+import { assertCliRetained, assertNativeSummary } from './retained-qual-assert.mjs';
+import { readReportEnvelope } from './retained-qual-cli.mjs';
 import { roundSides, resultEnvelope } from './retained-qual-lib.mjs';
 import { compare, format, readRows } from './retained-qual-report.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
@@ -28,6 +29,24 @@ test('8413: an existing summary is refused before launching another invocation',
 });
 test('8413: invalid native side is rejected before touching output', async () => {
   await assert.rejects(nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', '--side', 'oops', '--', '/bin/true']), /--side/);
+});
+test('7955: native --round must be a positive integer and comes with --pairing-id', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const round of ['0', '1.5', 'x']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round/);
+  await assert.rejects(run(['--round', '1']), /--pairing-id/);
+  await assert.rejects(run(['--pairing-id', 'c']), /--pairing-id/);
+});
+test('7955: native --round is a plain decimal string, not anything Number() reads as an integer', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const round of ['', ' ', ' 1', '1 ', '1.0', '1e0', '0x1', '01', '+1', '9007199254740992', '9007199254740993']) await assert.rejects(run(['--round', round, '--pairing-id', 'c']), /--round must be a positive integer/, JSON.stringify(round));
+});
+test('7955: native --pairing-id must be a non-empty id without surrounding whitespace', async () => {
+  const run = extra => nativeMain(['--out', '/does/not/exist/no-output', '--summary', '/unused', ...extra, '--', '/bin/true']);
+  for (const id of ['', ' ', '\t', ' c', 'c ']) await assert.rejects(run(['--round', '1', '--pairing-id', id]), /--pairing-id must be/, JSON.stringify(id));
+});
+test('7955: native --pairing-id is refused on a host without a machine id, before touching output', async () => {
+  const argv = ['--out', '/does/not/exist/no-output', '--summary', '/unused', '--round', '1', '--pairing-id', 'c', '--', '/bin/true'];
+  await assert.rejects(nativeMain(argv, { host: () => ({ hostname: 'container', machineIdSha256: null }) }), /--pairing-id needs a machine id/);
 });
 test('8413: seeds must be finite even for a single arm', async () => {
   for (const seed of [NaN, Infinity, -Infinity]) await assert.rejects(roundSides([{ side: 'branch' }], 1, seed), /finite/);
@@ -103,6 +122,35 @@ test('8413: viewer store errors and missing terminal frames end the wait promptl
   await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1, options: {}, distTree: {},
     launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => null }) });
   assert.equal(checked, true);
+});
+
+test('7955: a viewer page that never answers still ends at --timeout-ms and cleans up', async () => {
+  const { viewerSample } = await import('./retained-qual-viewer.mjs');
+  let closed = false;
+  const page = { addInitScript: async () => {}, goto: async () => {}, locator: () => ({ waitFor: async () => {}, setInputFiles: async () => {} }),
+    waitForFunction: async (fn, key) => (key ? new Promise(() => {}) : undefined) };
+  const row = await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1,
+    options: { 'timeout-ms': 40 }, distTree: {},
+    launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => { closed = true; return null; } }) });
+  assert.equal(row.ok, false);
+  assert.match(row.error, /viewer load to terminal state timed out after 40 ms/);
+  assert.equal(closed, true);
+});
+
+test('7955: a viewer page that closes during the load wait reports the close, not a timeout', async () => {
+  const { viewerSample } = await import('./retained-qual-viewer.mjs');
+  let closed = false;
+  const page = { addInitScript: async () => {}, goto: async () => {}, locator: () => ({ waitFor: async () => {}, setInputFiles: async () => {} }),
+    waitForFunction: async (fn, key) => { if (key) throw new Error('page.waitForFunction: Target page, context or browser has been closed'); } };
+  const started = Date.now();
+  const row = await viewerSample({ arm: { side: 'branch' }, preview: { origin: 'http://test' }, fixture: { path: '/a.ifc' }, round: 1,
+    options: { 'timeout-ms': 5000 }, distTree: {},
+    launcher: async () => ({ page, profileDir: '/not-a-browser-profile', pageErrors: [], consoleLines: [], close: async () => { closed = true; return null; } }) });
+  assert.equal(row.ok, false);
+  assert.match(row.error, /Target page, context or browser has been closed/);
+  assert.doesNotMatch(row.error, /timed out/);
+  assert.ok(Date.now() - started < 4000, 'the close ends the wait at once, not at --timeout-ms');
+  assert.equal(closed, true);
 });
 
 test('8413: an unrelated writer cannot supply the measured child summary', async () => {
@@ -333,4 +381,31 @@ test('8413: a compared metric appears once in the report', async () => {
   const names = fixture.columns.map(c => c.column);
   assert.equal(names.filter(n => n === 'productMs').length, 1);
   assert.equal(names.filter(n => n === 'longTaskMs').length, 1);
+});
+
+test('#7955 Holter: a failed CLI row keeps the fatal end of stderr', () => {
+  const stderr = `retained object release retired captured worker Error: worker incarnation retired\n${'    at frame\n'.repeat(60)}RangeError: Invalid string length\n`;
+  assert.throws(() => assertCliRetained({ exitCode: 1, stdout: '', stderr, report: null, objHead: '' }), /RangeError: Invalid string length/);
+});
+
+test('#7955 Holter: the CLI runner reads a report a row at a time and refuses a bad row or count', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'retained-envelope-'));
+  try {
+    const path = join(dir, 'report.json');
+    const envelope = (published = 1) => ({ engine: { sdk: 'x' }, format: 'ifc-lite.retained-report/1',
+      settings: { kernel: 'retained' }, summary: { candidates: 2, published, byCode: { a: 1 } } });
+    const text = (rows, summary = envelope()) => JSON.stringify({ engine: summary.engine, format: summary.format, products: rows,
+      settings: summary.settings, summary: summary.summary }, null, 2);
+    const rows = [{ id: 1, status: 'published', parts: [{ normals: [0, 1] }] }, { id: 2, status: 'refused' }];
+    writeFileSync(path, text(rows));
+    assert.deepEqual(await readReportEnvelope(path), envelope());
+    writeFileSync(path, text(rows).replace('"status": "refused"', 'NOT JSON'));
+    await assert.rejects(readReportEnvelope(path), SyntaxError);
+    writeFileSync(path, text(rows, envelope(2)));
+    await assert.rejects(readReportEnvelope(path), /rows 1\/2 != summary 2\/2/);
+    writeFileSync(path, text(rows.slice(1)));
+    await assert.rejects(readReportEnvelope(path), /rows 0\/1 != summary 1\/2/);
+    writeFileSync(path, text(rows).split('\n').slice(0, 12).join('\n'));
+    await assert.rejects(readReportEnvelope(path), /truncated/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

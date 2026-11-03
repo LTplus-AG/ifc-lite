@@ -269,3 +269,28 @@ Presentation layers are separate from the IFCX layer stack.
 
 Hiding a presentation layer also hides its curve-only IFC annotations. During
 isolation, symbolic annotation overlays continue to follow their global visibility setting.
+
+### Orthophoto backgrounds
+
+Load a georeferenced IFC model and wait for all models to finish loading, then
+drop a **GeoTIFF** onto the viewer. Placement requires usable geometry bounds;
+if geometry is incomplete or unavailable, the viewer asks you to retry. A PNG
+or JPEG also works when selected together with its world file (`.pgw`, `.jgw`,
+or `.wld`) and EPSG-bearing `.prj` or `.aux.xml`. The image is placed beneath
+the model automatically using its committed `IfcMapConversion` and
+`IfcProjectedCRS`. Differing coordinate systems are reprojected per pixel;
+missing coordinate systems or unavailable exact datum transformations produce
+an error instead of a guessed placement.
+
+The **Appearance → Place as reference** workspace lists the background under
+**Registered drawings**. Use its eye, opacity and remove controls to compare
+imagery with the model; removal supports Undo. The pencil opens calibrated
+placement controls, including **Point A · Z (m)** under **Alignment** for the
+background elevation. The background is a flat display plane just below the loaded geometry, not a terrain elevation measurement or
+an IFC object. Loaded LandXML terrain retains its existing imagery-draping
+behavior instead.
+
+Backgrounds are resampled to at most 2048 pixels on the longest side. The
+existing raster reader accepts images up to 64 megapixels and 8-bit TIFF
+imagery. A change to the workspace coordinate system hides an old registration
+rather than silently moving it; load the image again after realignment.

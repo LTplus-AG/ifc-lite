@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { getFlag, writeOutput } from '../output.js';
+import { logger } from '../logger.js';
+import { getFlag } from '../output.js';
 import { validateEngine, type RetainedEngine } from '../retained/engine.js';
 import { runRetained } from '../retained/run.js';
 import { retainedObj } from '../retained/obj.js';
@@ -39,6 +41,21 @@ export function retainedArtifacts(engine: RetainedEngine, instanceMinOccurrences
   return { obj, report, json: reportJson(report) };
 }
 
+/** One write per chunk: a whole-model artifact can exceed what one string or buffer holds. */
+export async function writeArtifact(chunks: Buffer[], path?: string): Promise<void> {
+  if (!path) {
+    for (const chunk of chunks) if (!process.stdout.write(chunk)) await once(process.stdout, 'drain');
+    return;
+  }
+  const file = await open(path, 'w');
+  try {
+    for (const chunk of chunks) await file.writeFile(chunk);
+  } finally {
+    await file.close();
+  }
+  logger.info(`Written to ${path}`);
+}
+
 export async function exportRetained(args: string[], engine: RetainedEngine, store: IfcDataStore,
   refs: Array<{ expressId: number }>, filtered: boolean): Promise<void> {
   const ids = filtered ? Uint32Array.from(refs, r => r.expressId) : undefined;
@@ -47,8 +64,8 @@ export async function exportRetained(args: string[], engine: RetainedEngine, sto
   const { outcomes, instanceMinOccurrences } = await runRetained(engine, bytes, ids);
   const { obj, report, json } = retainedArtifacts(engine, instanceMinOccurrences, outcomes, id => store.entities.getGlobalId(id) || null, ids);
   const reportPath = getFlag(args, '--retained-report');
-  if (reportPath) await writeFile(reportPath, json);
-  await writeOutput(obj, getFlag(args, '--out'));
+  if (reportPath) await writeArtifact(json, reportPath);
+  await writeArtifact(obj, getFlag(args, '--out'));
   const marker = report.products.some(p => 'obligationsUnmet' in p && p.obligationsUnmet.length)
     ? 'PresentationObligationsUnmet' : 'final';
   process.stderr.write(`Retained ${marker === 'final' ? 'final' : 'shape-only'}: ${report.summary.published}/${report.summary.candidates} products published; refusals ${JSON.stringify(report.summary.byCode)}; ${marker}\n`);

@@ -102,7 +102,9 @@ workflow. Its middleware validates the manifest and serves both URL prefixes
 with the above headers. The Vite plugin **does not copy** engines into build
 output, and rejects Vercel builds with retained enabled. This draft does not
 remove that distribution gate or change the production deployment workflow.
-A custom host must implement the URL mappings explicitly after release approval.
+A custom host must implement the URL mappings explicitly after release approval. The retained-only
+preview host is assembled and smoked by the scripts in
+[Hosted retained preview](retained-release.md#hosted-retained-preview).
 
 ## Verify the installed copy
 

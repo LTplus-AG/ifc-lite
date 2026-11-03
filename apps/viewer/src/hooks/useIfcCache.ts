@@ -18,7 +18,8 @@ import {
   type GeometryData,
 } from '@ifc-lite/cache';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { decodeCachedMetadata, decodeCachedModel, readCachedInstancedShards, type DecodedCachedModel } from './ifcCacheDecode.js';
+import { decodeCachedMetadata, loadFederatedCacheHit, readCachedInstancedShards, type CacheLoadResult } from './ifcCacheDecode.js';
+import { adoptCachedSceneSnapshot, captureSceneSnapshotOfHit, publishAdoptedSceneMeshes, abandonAdoptedSceneSnapshot, type AdoptedSceneSnapshot } from './sceneSnapshotLoad.js';
 import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -38,6 +39,7 @@ const CACHE_FIRST_PAINT_INDICES = 500_000 * 3;
 
 // Re-export types for convenience
 export type { CacheResult } from '../services/cacheService.js';
+export type { CacheLoadResult } from './ifcCacheDecode.js';
 export { getCached, setCached, deleteCached } from '../services/cacheService.js';
 
 // ============================================================================
@@ -63,13 +65,6 @@ export interface CacheGeometryResult {
     originShift: { x: number; y: number; z: number };
     bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
   };
-}
-
-export interface CacheLoadResult {
-  success: boolean;
-  meshCount: number;
-  totalVertices: number;
-  totalTriangles: number;
 }
 
 // ============================================================================
@@ -126,6 +121,7 @@ export function useIfcCache() {
     isStale?: () => boolean,
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
+    let adopted: AdoptedSceneSnapshot | null = null;
     try {
       const cacheLoadStart = performance.now();
 
@@ -143,6 +139,7 @@ export function useIfcCache() {
 
       // Reset geometry first so Viewport detects this as a new file
       setGeometryResult(null);
+      adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
@@ -173,49 +170,57 @@ export function useIfcCache() {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
         }
 
-        getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
-        setGeometryStreamingActive(true);
-        const allMeshes: MeshData[] = [];
+        let allMeshes: MeshData[] = [];
         let superseded = false;
         let firstVisible: Promise<void> | undefined;
-        try {
-          for (let i = 0; i < open.chunks.length; i++) {
-            const chunkMeshes = await open.readChunk(i);
-            // Per-chunk re-check: every iteration awaits `readChunk` AND yields
-            // to the event loop at the end of the body, so supersession can
-            // land BETWEEN chunks. Without this, the remaining chunks of the
-            // old file keep appending into the new model's geometry.
-            if (isStale?.()) {
-              superseded = true;
-              break;
-            }
-            allMeshes.push(...chunkMeshes);
-            appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
-            if (i === 0) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend')); // every load: ifc_model_loaded reads it (#6961)
-            if ((i & 3) === 3 || i === open.chunks.length - 1) {
-              setProgress({
-                phase: 'Loading geometry from cache',
-                percent: 20 + Math.round((70 * (i + 1)) / open.chunks.length),
-              });
-            }
-            // Yield so the animation loop drains the mesh queue between chunks (paint progresses, like a fresh stream).
-            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (adopted) {
+          firstVisible = adopted.firstVisible;
+          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, appendGeometryBatch);
+        } else {
+          if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale)) {
+            return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
-        } catch (chunkErr) {
-          // A corrupt/truncated entry can fail AFTER earlier chunks were
-          // already appended. Roll the partial geometry back so the caller's
-          // fallback fresh stream starts from a clean scene instead of
-          // appending onto half a cached model. Only when we still own the
-          // slot: for a superseded load the partial geometry is the NEWER
-          // model's, and clearing it would blank the file the user is looking
-          // at (this path's own fallback reparse is abandoned anyway).
-          if (!isStale?.()) setGeometryResult(null);
-          throw chunkErr;
-        } finally {
-          // Same ownership condition: only the load that raised the flag (and
-          // still owns the slot) may lower it. A superseded load lowering it
-          // ends the newer load's stream early and finalizes half a model.
-          if (!isStale?.()) setGeometryStreamingActive(false);
+          getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
+          setGeometryStreamingActive(true);
+          try {
+            for (let i = 0; i < open.chunks.length; i++) {
+              const chunkMeshes = await open.readChunk(i);
+              // Per-chunk re-check: every iteration awaits `readChunk` AND yields
+              // to the event loop at the end of the body, so supersession can
+              // land BETWEEN chunks. Without this, the remaining chunks of the
+              // old file keep appending into the new model's geometry.
+              if (isStale?.()) {
+                superseded = true;
+                break;
+              }
+              allMeshes.push(...chunkMeshes);
+              appendGeometryBatch(modelId, chunkMeshes, open.coordinateInfo);
+              if (i === 0) firstVisible = recordFirstVisible(trace, trace.milestone('geometry.firstAppend')); // every load: ifc_model_loaded reads it (#6961)
+              if ((i & 3) === 3 || i === open.chunks.length - 1) {
+                setProgress({
+                  phase: 'Loading geometry from cache',
+                  percent: 20 + Math.round((70 * (i + 1)) / open.chunks.length),
+                });
+              }
+              // Yield so the animation loop drains the mesh queue between chunks (paint progresses, like a fresh stream).
+              await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            }
+          } catch (chunkErr) {
+            // A corrupt/truncated entry can fail AFTER earlier chunks were
+            // already appended. Roll the partial geometry back so the caller's
+            // fallback fresh stream starts from a clean scene instead of
+            // appending onto half a cached model. Only when we still own the
+            // slot: for a superseded load the partial geometry is the NEWER
+            // model's, and clearing it would blank the file the user is looking
+            // at (this path's own fallback reparse is abandoned anyway).
+            if (!isStale?.()) setGeometryResult(null);
+            throw chunkErr;
+          } finally {
+            // Same ownership condition: only the load that raised the flag (and
+            // still owns the slot) may lower it. A superseded load lowering it
+            // ends the newer load's stream early and finalizes half a model.
+            if (!isStale?.()) setGeometryStreamingActive(false);
+          }
         }
 
         await firstVisible; // bounded (rAF or 250 ms); ahead of the ownership re-check below
@@ -234,7 +239,7 @@ export function useIfcCache() {
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
-        if (shards.length > 0) appendInstancedShards(modelId, shards);
+        if (shards.length > 0 && !adopted) appendInstancedShards(modelId, shards);
 
         setIfcDataStore(dataStore);
 
@@ -269,6 +274,7 @@ export function useIfcCache() {
       setProgress({ phase: 'Complete (from cache)', percent: 100 });
       const totalCacheTime = performance.now() - cacheLoadStart;
       console.log(`[useIfcCache] ✓ ${fileName} (cached) → ${meshCount} meshes | ${totalCacheTime.toFixed(0)}ms`);
+      adopted = null; // served: Scene sync owns the adoption now
 
       return {
         success: true,
@@ -293,47 +299,10 @@ export function useIfcCache() {
         totalVertices: 0,
         totalTriangles: 0,
       };
+    } finally {
+      abandonAdoptedSceneSnapshot(adopted);
     }
   }, [setProgress, setIfcDataStore, setGeometryResult]);
-
-  /**
-   * Federated cache hit: decode the whole entry off the active slot, then let
-   * the caller register it (`finalizeModel`: alignment, id offset, addModel),
-   * exactly like a fresh federated parse. A corrupt entry is deleted and
-   * reported as a miss so the caller reparses; a registration failure is the
-   * caller's and propagates.
-   */
-  const loadFederatedFromCache = useCallback(async (
-    cacheResult: CacheResult,
-    cacheKey: string,
-    fallbackSourceBuffer: ArrayBufferLike,
-    isStale: () => boolean,
-    trace: LoadTrace,
-    register: (hit: DecodedCachedModel) => Promise<void>,
-  ): Promise<CacheLoadResult> => {
-    const miss = { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
-    let hit: DecodedCachedModel | null;
-    try {
-      hit = await decodeCachedModel(cacheResult, fallbackSourceBuffer, trace, isStale);
-    } catch (err) {
-      console.error('[useIfcCache] Failed to decode federated cache entry:', err);
-      await deleteCached(cacheKey).catch((deleteErr) => console.warn('[useIfcCache] cache entry cleanup failed:', deleteErr));
-      return miss;
-    }
-    if (!hit || isStale()) return miss;
-    await register(hit); // the whole model enters the scene at once: first append = stream complete
-    if (isStale()) return miss;
-    const appendedAt = trace.milestone('geometry.firstAppend');
-    trace.milestone('geometry.streamComplete');
-    await recordFirstVisible(trace, appendedAt);
-    trace.milestone('cache.storeReady');
-    return {
-      success: true,
-      meshCount: hit.geometry.meshes.length,
-      totalVertices: hit.geometry.totalVertices,
-      totalTriangles: hit.geometry.totalTriangles,
-    };
-  }, []);
 
   /**
    * Save parsed data and geometry to cache
@@ -399,7 +368,7 @@ export function useIfcCache() {
 
   return {
     loadFromCache,
-    loadFederatedFromCache,
+    loadFederatedFromCache: loadFederatedCacheHit,
     saveToCache,
     getCached,
     setCached,

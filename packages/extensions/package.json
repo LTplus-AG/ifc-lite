@@ -45,6 +45,7 @@
     "fflate": "^0.8.2"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

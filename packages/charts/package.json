@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/charts",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@ifc-lite/parser": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

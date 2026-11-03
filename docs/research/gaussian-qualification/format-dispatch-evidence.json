@@ -1,0 +1,40 @@
+{
+  "issue": 8567,
+  "pr": 8580,
+  "reviewedHead": "acb1c79e77cc700a1eeae40864e70873a000ecf8",
+  "scope": "Corpus extension dispatch and PLY representation checks; no restack",
+  "storageTask": "gaussian-corpus-8567-format-20261101",
+  "pool": "gaussian-production-8562",
+  "jobs": [
+    {
+      "id": "688286cc-9a4c-4585-8c6e-923664a249c3",
+      "state": "completed",
+      "exitCode": 0,
+      "outputSha256": "b8353b2c422a1b86601163c24c61afd38a2124a11aad981761baf272f0787e29",
+      "sourceUnchanged": false,
+      "beforeDigest": "df155d609c6092c17f88764573583e0dcaa2a4a2e7c3d45f25cf06b5400a5c28",
+      "afterDigest": "df155d609c6092c17f88764573583e0dcaa2a4a2e7c3d45f25cf06b5400a5c28"
+    },
+    {
+      "id": "6eecf979-8c5c-44cb-8765-3d0609206a17",
+      "state": "failed",
+      "exitCode": 1,
+      "outputSha256": "6a0253cb3c1fef63f7a3858dabb4dfce41e3cd2666da4937f4cc68db3e536944",
+      "sourceUnchanged": false,
+      "beforeDigest": "df155d609c6092c17f88764573583e0dcaa2a4a2e7c3d45f25cf06b5400a5c28",
+      "afterDigest": "df155d609c6092c17f88764573583e0dcaa2a4a2e7c3d45f25cf06b5400a5c28"
+    }
+  ],
+  "checks": {
+    "rootTurboTests": "17 passed, 0 failed, 0 skipped; two real licensed splat captures retained",
+    "generatedPly": "Both ply and PLY exercise the same byte/hash/count/channel validation and real upstream decoder as captured entries. Six rows, 45 exact SH3 coefficients, raw nonunit rotation and log scale checked. Synthetic only; no captured SH3 claim.",
+    "negativeControl": "Temporary hardcoded splat dispatch fails exactly both new analytic PLY tests; original module restored byte-identically.",
+    "typecheck": "Interrupted, NOT passed: root pnpm typecheck --filter appended the filter to typecheck:tail, leaving the preceding turbo typecheck unfiltered. Stopped only the identified owned graph after the negative control had completed. No full-suite or WASM acceptance claimed."
+  },
+  "policy": "Case-insensitive ply/splat dispatch only; unsupported extensions fail explicitly. Canonical Gaussian registry paths required. PLY quaternion norm must be finite/nonzero; packed splat keeps unit-length tolerance. Common channels, declared SH coefficients, size/hash/row count checked.",
+  "fileSha256": {
+    "examples/gaussian-splat-spike/qualification-corpus.mjs": "2234b2610329384e820c169880cef96396eeaa02623280e8eb5de755db75b173",
+    "examples/gaussian-splat-spike/test/qualification.test.mjs": "7a51bff7f9f0c3f77778c38525bc22f5659e2ca7037b31a6a57e23fda7d4c3aa"
+  },
+  "remaining": "Final restack awaits confirmed parent SHA. Real captured SH3, metric alignment, large capture, GPU/browser/integrated release qualification remain pending. Original evidence unchanged."
+}

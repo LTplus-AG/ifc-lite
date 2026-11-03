@@ -36,6 +36,7 @@
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

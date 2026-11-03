@@ -13,6 +13,7 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
+export { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from './scene-snapshot.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
@@ -122,6 +123,9 @@ export type { PointPickSizing } from './picker.js';
 
 // Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
 export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+export { normalizeGaussianAttributes, type GaussianAttributeSource, type NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
+export type { GaussianReadiness } from './gaussian/gaussian-readiness.js';
+import { gaussianReadiness } from './gaussian/gaussian-readiness.js';
 export type {
     PointCloudAssetHandle,
     PointCloudRenderOptions,
@@ -2071,6 +2075,7 @@ export class Renderer {
                             aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                             ortho: this.camera.getProjectionMode() === 'orthographic',
                             orthoHalfHeight: this.camera.getOrthoSize(),
+                            lensShift: this.camera.getActiveLensShift(),
                             boundsMin: sourceBoundsMin,
                             boundsMax: sourceBoundsMax,
                         })?.map((corner) => ({
@@ -2236,17 +2241,14 @@ export class Renderer {
                 // zero-length axes, which is the same picture. Reading the
                 // shared basis also keeps the horizon in the sky aligned with
                 // the horizon in the geometry for free.
-                const camBasis = viewBasis(
-                    this.camera.getPosition(),
-                    this.camera.getTarget(),
-                    this.camera.getUp(),
-                );
+                const camBasis = viewBasis(this.camera.getPosition(), this.camera.getTarget(), this.camera.getUp());
                 this.skyPass.draw(pass, {
                     forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
                     right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
                     up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                    lensShift: this.camera.getActiveLensShift(),
                 }, environment);
             }
 
@@ -3523,6 +3525,8 @@ export class Renderer {
         return this.pipeline;
     }
 
+    /** Report Gaussian qualification and the current renderer lifetime; this does not enable rendering. */
+    getGaussianReadiness() { return gaussianReadiness(this.isReady(), this.deviceLost, this.destroyed, this.initGeneration); }
     /**
      * Check if renderer is fully initialized and ready to use.
      *

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/processing/src/element/session_retained/kernel_refusal.rs",
+  "mutation": "tests/evidence/7955-kernel-refusal-restarts/behaviour.oracle.patch",
+  "test": "rust/processing/tests/retained_kernel_refusal_restarts.rs",
+  "why": "Reverse application charges typed kernel refusals like crashes, so later products are refused worker_fault unbuilt and the witness fails."
+}

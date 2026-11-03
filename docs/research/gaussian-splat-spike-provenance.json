@@ -1,0 +1,13 @@
+{
+  "recordedSummary": "../../examples/gaussian-splat-spike/results-summary.json",
+  "baseCommitMeaning": "Pre-edit HEAD recorded by the original worker; not the source revision of the measured runtime.",
+  "measuredWorkingTree": "dirty",
+  "matchingRuntimeCommit": "dd6a54799ec1853714076942b19db3b1bb82643e",
+  "matchingRuntimeCommitMeaning": "Later committed snapshot: all 12 runtime files and pnpm-lock.yaml match runtimeFileSha256 byte-for-byte. This identifies the recorded files, not proof that every repository file was unchanged during the run.",
+  "originalWitnessReceipt": "b922c7d9-578f-4fc8-8031-364e7400ded0",
+  "originalWitnessExitCode": 0,
+  "originalWitnessOutputSha256": "588f395b4a382fe95da6e523890838bca21e53aad1815923b0099c270ae3a929",
+  "receiptWorktreeDigest": "6d119de92cfdb81f8b7dde0619557ab117a161f90923efa02d94d2ab8b91b9ea",
+  "receiptSourceUnchanged": false,
+  "limits": "The original receipt records a dirty source tree and does not certify sourceUnchanged. Its recovered output confirms the public Gaussian counts and reverse-Z pixel reported here. Private scene inputs/results remain excluded. Later research heads and merged #8557 changed runtime files and the lockfile; point-resources.mjs was not in this snapshot. No new runtime measurement is claimed."
+}

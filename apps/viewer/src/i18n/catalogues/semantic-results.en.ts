@@ -3,6 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export const semanticResultsEn = {
+  'semantic.resultsSelectAll': 'Select all mapped results',
+  'semantic.resultsClear': 'Clear selection',
+  'semantic.resultsSelection': 'Selection',
+  'semantic.resultsToggle': 'Toggle result row {row}',
+  'semantic.resultsSelectionHelp': 'Checkboxes add or remove mapped entities. Select all includes every page and skips unresolved or ambiguous rows. Ctrl/Cmd-click a mapping to add or remove a candidate.',
+
   'semantic.resultsTitle': 'SPARQL results',
   'semantic.resultsPrevious': 'Previous rows',
   'semantic.resultsNext': 'Next rows',

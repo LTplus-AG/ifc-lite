@@ -1,0 +1,12 @@
+diff --git a/rust/retained-native/src/oracle/layers.rs b/rust/retained-native/src/oracle/layers.rs
+--- a/rust/retained-native/src/oracle/layers.rs
++++ b/rust/retained-native/src/oracle/layers.rs
+@@ -19,7 +19,7 @@ pub fn expected_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips:
+ pub fn explain_in(bundle: &std::sync::Arc<ifc_lite_core::SourceBundle>, clips_oracle: &super::clips::ClipOracle<'_>,
+     sources: &AnalyticQuantitySources, id: u32) -> Result<LayerExpectation,&'static str> {
+     let mut decoder=bundle.decoder();
+-    let usage=source::read(&bundle.bytes()[..0],id,&mut decoder).ok_or("usage_unreadable")?;
++    let usage=source::read(bundle.bytes(),id,&mut decoder).ok_or("usage_unreadable")?;
+     let instances=sources.extrusion_definitions.instances.get(&id).ok_or("no_extrusion_instance")?;
+     let clips = clips_oracle.expected(id).map_err(|_|"clip_oracle_err")?;
+     if usage.thickness.len()<2 {return Err("single_layer");}

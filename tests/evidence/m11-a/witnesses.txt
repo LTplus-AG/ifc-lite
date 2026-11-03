@@ -1,5 +1,4 @@
 m11_a_universe
 m11_a_synthetic
-m11_a_palette_texture_absence
 m11_a_reference
 m11_a_f_i

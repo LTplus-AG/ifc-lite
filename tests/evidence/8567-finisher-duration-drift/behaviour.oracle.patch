@@ -1,0 +1,12 @@
+diff --git a/examples/gaussian-splat-spike/screencast-timing.mjs b/examples/gaussian-splat-spike/screencast-timing.mjs
+--- a/examples/gaussian-splat-spike/screencast-timing.mjs
++++ b/examples/gaussian-splat-spike/screencast-timing.mjs
+@@ -22,7 +22,7 @@
+     // Round absolute offsets first: rounding each 1/30 s gap accumulates drift.
+     const startMs = Math.round((frame.ts - frames[0].ts) * 1000);
+     const endMs = Math.round(((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frames[0].ts) * 1000);
+-    lines.push(`duration ${((frames[i + 1]?.ts ?? frame.ts + finalSeconds) - frame.ts).toFixed(6)}`);
++    lines.push(`duration ${((endMs - startMs) / 1000).toFixed(3)}`);
+   });
+   // The concat demuxer needs the last file repeated for its duration to apply.
+   lines.push(`file '${frameName(frames.at(-1).n)}'`);

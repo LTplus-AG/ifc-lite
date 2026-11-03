@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/server-client",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "description": "TypeScript client SDK for IFC-Lite Server",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,6 +31,7 @@
     }
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "parquet-wasm": "^0.9.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

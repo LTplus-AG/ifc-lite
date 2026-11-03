@@ -1,0 +1,13 @@
+diff --git a/rust/retained-native/examples/compare/checks/faces.rs b/rust/retained-native/examples/compare/checks/faces.rs
+index 1718170c5c..faa0b8e83a 100644
+--- a/rust/retained-native/examples/compare/checks/faces.rs
++++ b/rust/retained-native/examples/compare/checks/faces.rs
+@@ -103,7 +103,7 @@ pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.002 - 1e-9..=0.
+ /// area plus the areas it absorbed, within the frozen linear face-area limit.
+ fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &FaceAreas, actual: &BTreeMap<String, f64>, limit: f64) -> Vec<(usize, usize)> {
+     let present = |i: usize| actual.contains_key(&run.keys[i]);
+-    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i]);
++    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i]) && MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]);
+     let missing: Vec<usize> = (0..run.keys.len()).filter(|&i| absorbable(i)).collect();
+     // Nearest present key on each side, skipping only other absorbable sides.
+     let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {

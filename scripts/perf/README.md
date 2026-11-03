@@ -51,6 +51,12 @@ model was O(N^2) in copies and GPU batches.
 **Won: frame CPU (#8439).** One uniform write per arena page, rather than one per
 batch, is why a CPU change also cut GPU time.
 
+**Won: finished-scene snapshot (#8545, #8592, on by default since this PR's merge).** A second warm open
+draws the batches it stored, so the complete model appears before metadata
+decodes. Its orbit GPU cost matches streaming. A higher post-load CPU figure
+was post-load work moving into the settle window: from the open to quiet, it
+uses less CPU overall.
+
 **Won, with a cost: one compressed source (#8441).** Memory falls by about a
 quarter on a warm open, paid for by a one-off worker deflate after each load. It
 leaves settled orbit CPU alone.
@@ -64,6 +70,24 @@ cannot be locked without root, so compare Mcycles. A cold `scene.finalize` is
 bimodal in every build including base, so one slow round says nothing. Wait for
 post-load CPU to settle before an orbit, or source compaction reads as a
 frame-CPU regression.
+
+## C2-perf: opening meshing and extension repeats (ROUTER-21, ROUTER-20, #8385)
+
+**Declined: mesh each opening once (ROUTER-21).** Each opening is meshed three
+to six times (body walk, bounds probe and item-mesh probe, repeated by the quiet
+planar residual pass), but all of it is a small share of geometry. Even
+deleting all opening capture work stays under the 0.5% bar, so no repeat-removal
+can pay for its risk.
+
+**Declined: memoise the through-host extension (ROUTER-20).** The extension is
+costly, but a byte-safe memo hits only an uncut host with a bit-equal direction,
+which is mostly small hosts. The expensive repeats follow an earlier cluster cut
+of a large host and must be recomputed.
+
+Measured on ISSUE_129 at base `ea0139026b` with callgrind, cross-checked with a
+throwaway counter patch. Counts, estimates, sources and receipts:
+[evidence](../../tests/evidence/router-21/README.md). Do not re-spike without a
+mechanism that removes the body walk or the extension itself, not its repeats.
 
 ## C4-14 independent levers (#8341)
 
@@ -3620,6 +3644,8 @@ rows and bot traffic are excluded in the query.
 node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
 POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --build <sha> --out result.json
 node scripts/perf/field-verdict.mjs result.json --build <sha>                  # markdown; --json for data
+POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --rolling --out rolling.json
+node scripts/perf/field-verdict.mjs rolling.json --rolling                     # last 7 days vs the prior 14
 ```
 
 `.github/workflows/field-verdict.yml` runs this daily at 05:15 UTC, before the
@@ -3627,15 +3653,22 @@ node scripts/perf/field-verdict.mjs result.json --build <sha>                  #
 deploy, and posts the markdown on the PR that build's commit came from (once
 per build). It needs one repository secret, `POSTHOG_PERSONAL_API_KEY`: a
 PostHog personal API key with only `query:read`, scoped to project 199147
-(EU cloud). Without it every run skips with a notice. Opening a thread when a
-pooled group regresses is the next step and is not wired yet.
+(EU cloud). Without it every run skips with a notice. Each run also writes the
+rolling verdict (`--rolling`) to its summary: builds ship about twice a day, so a
+single build rarely has enough paired people, and a week does. Opening a thread
+when a group regresses is not wired yet; it waits on the rolling verdict staying
+quiet for two weeks.
 
 The HogQL the script expects (`__BUILD__` is the 12-character
 `app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
 from this block). It already aggregates to one row per (person, model,
 journey, arm, metric, window) cell, not per load. `field-verdict-fetch.mjs`
 appends one `LIMIT` and fails rather than judge a result that reaches it.
-PostHog answers 400 to `OFFSET` on a personal API key, so it cannot page:
+PostHog answers 400 to `OFFSET` on a personal API key, so it cannot page.
+`__WINDOW__` and `__SCOPE__` come from `field-verdict.mjs`: per build, recent is
+the judged build and baseline the `__BASELINE_DAYS__` days before it first
+appeared, among people who used it; `--rolling`, recent is the last 7 days and
+baseline the 14 before, among people active in the last 7 days:
 
 <!-- field-verdict-hogql -->
 ```sql
@@ -3670,7 +3703,7 @@ FROM (
     toString(person_id) AS person,
     -- The model is its format plus size to 10 KB: no name ever leaves the browser.
     if(event = 'viewer_boot', '-', concat(coalesce(toString(properties.format), '?'), ':', toString(round(toFloat(properties.file_size_mb), 2)))) AS model,
-    if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
+    __WINDOW__ AS window,
     arrayJoin(arrayFilter(m -> isNotNull(m.2), [
       tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
       tuple('file_read_ms', toFloat(properties.file_read_ms)),
@@ -3690,30 +3723,7 @@ FROM (
     pair.2 AS value
   FROM events
   WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
-    AND timestamp >= now() - INTERVAL 90 DAY
-    -- Baseline: the __BASELINE_DAYS__ days before the judged build first appeared.
-    AND timestamp >= (
-      SELECT min(timestamp) FROM events
-      WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
-        AND toString(properties.app_build_sha) = '__BUILD__'
-    ) - INTERVAL __BASELINE_DAYS__ DAY
-    AND (
-      toString(properties.app_build_sha) = '__BUILD__'
-      OR (
-        timestamp < (
-          SELECT min(timestamp) FROM events
-          WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
-            AND toString(properties.app_build_sha) = '__BUILD__'
-        )
-        -- Only people who also used the judged build can form a pair.
-        AND person_id IN (
-          SELECT person_id FROM events
-          WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
-            AND timestamp >= now() - INTERVAL 60 DAY
-            AND toString(properties.app_build_sha) = '__BUILD__'
-        )
-      )
-    )
+    AND __SCOPE__
     -- A load spanning a tab switch timed the user's absence (#2385).
     AND NOT ifNull(toString(properties.was_hidden) = 'true', false)
     AND NOT ifNull(toString(properties.$virt_is_bot) = 'true', false)

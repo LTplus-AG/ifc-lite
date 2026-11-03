@@ -9,6 +9,8 @@ fn sheet() -> RetainedFaceSet {
         triangles: vec![0, 1, 2, 0, 2, 3],
         rows: vec![0, 0],
         row_count: 1,
+        source_corners: Vec::new(),
+        source_slots: Vec::new(),
         length_unit_scale: 0.001,
     }
 }
@@ -57,4 +59,34 @@ fn issue_8291_malformed_sets_refuse_at_lowering() {
         mutate(&mut source);
         assert!(matches!(source.lower(), Err(RetainedRefusal::InvalidSource(_))), "{label}");
     }
+}
+
+fn tetrahedron() -> RetainedFaceSet {
+    RetainedFaceSet {
+        positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.],
+        triangles: vec![0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3],
+        rows: vec![0, 1, 2, 3],
+        row_count: 4,
+        ..sheet()
+    }
+}
+
+#[test]
+fn issue_8291_only_a_closed_bounded_shell_admits_a_solid() {
+    assert!(tetrahedron().admits_solid());
+    assert!(!sheet().admits_solid(), "open sheet");
+    let mut open = tetrahedron();
+    open.triangles.truncate(9);
+    open.rows.truncate(3);
+    assert!(!open.admits_solid(), "a missing face leaves boundary edges");
+    let mut duplicated = tetrahedron();
+    duplicated.positions.extend_from_slice(&[1., 0., 0.]);
+    duplicated.triangles[4] = 4;
+    assert!(duplicated.admits_solid(), "a repeated point still closes by coordinate");
+    let mut large = tetrahedron();
+    for _ in 0..3000 {
+        large.triangles.extend_from_slice(&[0, 2, 1, 0, 1, 2, 0, 2, 1]);
+        large.rows.extend_from_slice(&[0, 0, 0]);
+    }
+    assert!(!large.admits_solid(), "past the adapter's triangle limit");
 }

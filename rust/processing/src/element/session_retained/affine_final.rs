@@ -61,6 +61,8 @@ fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
         }
         RetainedRecipe::Prism(p) => affine_sweep_surfaces_certifiable(
             p.loops.iter().flat_map(|l| &l.segments).any(|s| matches!(s, PrismSegment::Arc { .. })), p.direction),
+        // Lines bounding planes, the SDK's certified copy classes.
+        RetainedRecipe::FaceSet(_) => true,
         // Swept disks, and any variant added later, carry no certificate.
         _ => false,
     }
@@ -129,7 +131,7 @@ pub fn bake_mesh(m: [f64; 16], positions: &[f64], indices: &[u32]) -> (Vec<f64>,
     transform(m, &mut p, &mut i);
     (p, i, [m[12],m[13],m[14]])
 }
-fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
+pub(super) fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
     -> Result<(&RuntimeRealization<R>, [f64; 16]), RetainedExecutionError> {
     let mut matrix = IDENTITY;
     for _ in 0..=bound {
@@ -160,6 +162,7 @@ fn recipe_radius(recipe: &RetainedRecipe) -> f64 {
         RetainedRecipe::Prism(p) => p.loops.iter().flat_map(|l| &l.segments).map(|s| match s {
             PrismSegment::Line { .. } => 0., PrismSegment::Arc { radius, .. } | PrismSegment::Circle { radius, .. } => *radius,
         }).fold(0., f64::max),
+        RetainedRecipe::FaceSet(_) => 0.,
         _ => f64::INFINITY,
     }
 }

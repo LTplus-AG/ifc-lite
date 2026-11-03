@@ -10,7 +10,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, Profiler } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
@@ -152,3 +152,76 @@ describe('#7955 M2-C Retained geometry panel', () => {
     assert.equal(panel(), null, 'the panel closes');
   });
 });
+
+describe('#7955 a large refusal list', () => {
+  const many = (count: number) => Array.from({ length: count }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: i % 2 ? 'operation_unsupported' : 'opening_strategy' }));
+
+  it('does no filter or sort work behind a closed panel, and model updates that leave the summary alone do not re-render the chip', () => {
+    // Counts every walk of the refused list (iteration, filter, sort, copy); reading its length is free.
+    let walks = 0;
+    const walking = new Set<PropertyKey>([Symbol.iterator, 'filter', 'map', 'slice', 'sort', 'forEach', 'reduce']);
+    const refused = new Proxy(many(20_000), { get(target, key, receiver) { if (walking.has(key)) walks++; return Reflect.get(target, key, receiver); } });
+    const big = summary({ candidates: 20_000, published: 0, cancelled: 0, completeness: 'running', started: true, refused });
+    seed(big);
+    let commits = 0;
+    render(<><ViewportHud /><Profiler id="chip" onRender={() => { commits++; }}><RetainedGeometryChip reload={() => {}} /></Profiler></>);
+    assert.ok(chip());
+    assert.equal(walks, 0, 'a closed panel neither counts codes nor filters and sorts rows');
+    const settled = commits;
+    for (let i = 0; i < 5; i++) {
+      // Streaming geometry replaces the model record without touching its summary.
+      act(() => useViewerStore.setState((state) => {
+        const models = new Map(state.models);
+        models.set('m', { ...models.get('m')!, loadState: 'streaming-geometry', maxExpressId: 100 + i });
+        return { models };
+      }));
+    }
+    assert.equal(commits, settled, 'the chip re-renders on its summary, not on every model update');
+    act(() => useViewerStore.setState((state) => {
+      const models = new Map(state.models);
+      models.set('m', { ...models.get('m')!, retainedGeometry: { ...big, published: 1 } });
+      return { models };
+    }));
+    assert.equal(commits, settled + 1, 'a new summary re-renders it once');
+    assert.equal(walks, 0, 'not even when the summary changes');
+  });
+
+  it('sorting and filtering never reorder the summary\'s own refused list', () => {
+    // Frozen: an in-place sort of the store's array would throw, not just reorder it.
+    const refused = Object.freeze(summary().refused.map((row) => Object.freeze({ ...row })));
+    const order = refused.map((row) => row.expressId);
+    seed(summary({ refused: refused as RetainedGeometrySummary['refused'] }));
+    mount();
+    click(chip()!);
+    click(panel()!.querySelector('button[aria-label="Sort by Code"]')!);
+    const select = panel()!.querySelector('select')!;
+    act(() => { select.value = 'opening_strategy'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { select.value = ''; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    assert.deepEqual(rowIds(), [40, 20, 30], 'the code sort still holds after the filter is cleared');
+    assert.deepEqual(useViewerStore.getState().models.get('m')?.retainedGeometry?.refused.map((row) => row.expressId), order);
+  });
+
+  it('the open panel renders a bounded number of rows and says so; "Show more" reaches every row', () => {
+    seed(summary({ candidates: 20_000, published: 0, cancelled: 0, refused: many(20_000) }));
+    mount();
+    click(chip()!);
+    assert.equal(rowIds().length, 500);
+    assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 500 of 20000 rows/);
+    const select = panel()!.querySelector('select')!;
+    assert.match(select.textContent ?? '', /opening_strategy \(10000\)/);
+    const more = () => panel()!.querySelector<HTMLButtonElement>('[data-retained-rows-more]');
+    click(more()!);
+    assert.equal(rowIds().length, 1000);
+    assert.match(panel()!.querySelector('[data-retained-rows-capped]')?.textContent ?? '', /first 1000 of 20000 rows/);
+    // One code holding almost every row must not hide rows past the first page.
+    seed(summary({ candidates: 1_201, published: 0, cancelled: 0, refused: Array.from({ length: 1_201 }, (_, i) => ({ expressId: i + 1, ifcType: 'IfcWall', code: 'operation_unsupported' })) }));
+    assert.ok(rowIds().length < 1_201 && more(), 'not every row is shown yet, so paging is exercised');
+    // Page until "Show more" is gone, bounded by the row count so a stuck button fails instead of looping.
+    let pages = 0;
+    while (more() && pages++ < 1_201) click(more()!);
+    assert.equal(rowIds().length, 1_201);
+    assert.ok(rowIds().includes(1201), 'the last row is reachable');
+    assert.equal(more(), null);
+  });
+});
+

@@ -10,6 +10,7 @@ import {
   GraphicOverrideEngine,
   type Drawing2D,
   type ElementData,
+  isPolygonCutLine,
 } from '@ifc-lite/drawing-2d';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { formatDistance } from './tools/formatDistance';
@@ -760,7 +761,7 @@ export function Drawing2DCanvas({
         const lineMaxY = lineBounds.max.y + lineMargin;
 
         for (const line of drawing.lines) {
-          if (line.category === 'cut') continue;
+          if (isPolygonCutLine(line)) continue;
           if (!showHiddenLines && line.visibility === 'hidden') continue;
 
           const { start, end } = line.line;
@@ -773,6 +774,7 @@ export function Drawing2DCanvas({
           let dashPattern: number[] = [];
 
           switch (line.category) {
+            case 'cut': lineWidth = 0.5; break;
             case 'projection': lineWidth = 0.25; break;
             case 'hidden': lineWidth = 0.18; strokeColor = '#666666'; dashPattern = [4, 2]; break;
             case 'silhouette': lineWidth = 0.35; break;
@@ -1126,7 +1128,7 @@ export function Drawing2DCanvas({
 
       for (const line of drawing.lines) {
         // Skip 'cut' lines - they're triangulation edges, already handled by polygons
-        if (line.category === 'cut') continue;
+        if (isPolygonCutLine(line)) continue;
 
         // Skip hidden lines if not showing
         if (!showHiddenLines && line.visibility === 'hidden') continue;
@@ -1148,6 +1150,7 @@ export function Drawing2DCanvas({
         let dashPattern: number[] = [];
 
         switch (line.category) {
+          case 'cut': lineWidth = 0.5; break;
           case 'projection':
             lineWidth = 0.25;
             strokeColor = paperTheme.ink;

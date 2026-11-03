@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids-authoring",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification",
   "type": "module",
   "sideEffects": false,
@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@ifc-lite/parser": "workspace:*",
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "fake-indexeddb": "^6.2.6",
     "typescript": "^6.0.3",

@@ -77,6 +77,9 @@ importers:
       '@changesets/parse':
         specifier: 1.0.0
         version: 1.0.0
+      '@mergifyio/playwright':
+        specifier: ^2026.10.11
+        version: 2026.10.11(@playwright/test@1.64.1)
       '@playwright/test':
         specifier: ^1.64.1
         version: 1.64.1
@@ -129,6 +132,9 @@ importers:
       '@ifc-lite/source-autodesk':
         specifier: workspace:^
         version: link:../../packages/source-autodesk
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -151,6 +157,9 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-api
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -185,6 +194,9 @@ importers:
         specifier: ^8.16.3
         version: 8.23.1
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -200,6 +212,12 @@ importers:
 
   apps/viewer:
     dependencies:
+      '@playcanvas/splat-transform':
+        specifier: 3.10.3
+        version: 3.10.3(playcanvas@2.23.3)
+      playcanvas:
+        specifier: 2.23.3
+        version: 2.23.3
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
         version: 0.132.1(zod@4.6.6)
@@ -356,6 +374,9 @@ importers:
       '@ifc-lite/source-bimcollab':
         specifier: workspace:^
         version: link:../../packages/source-bimcollab
+      '@ifc-lite/source-buildagil':
+        specifier: workspace:^
+        version: link:../../packages/source-buildagil
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -723,6 +744,9 @@ importers:
       '@ifc-lite/source-bimcollab':
         specifier: workspace:^
         version: link:../../packages/source-bimcollab
+      '@ifc-lite/source-buildagil':
+        specifier: workspace:^
+        version: link:../../packages/source-buildagil
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
@@ -748,6 +772,9 @@ importers:
         specifier: ^5.0.16
         version: 5.0.16(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -822,6 +849,34 @@ importers:
       vite-plugin-wasm:
         specifier: ^3.6.0
         version: 3.6.0(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  examples/gaussian-splat-spike:
+    dependencies:
+      '@luma.gl/core':
+        specifier: 9.4.2
+        version: 9.4.2
+      '@luma.gl/splats':
+        specifier: 9.4.2
+        version: 9.4.2(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+      '@luma.gl/webgpu':
+        specifier: 9.4.2
+        version: 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
+      '@playcanvas/splat-transform':
+        specifier: 3.10.3
+        version: 3.10.3(playcanvas@2.23.3)
+      playcanvas:
+        specifier: 2.23.3
+        version: 2.23.3
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.60.0
+        version: 1.64.1
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      vite:
+        specifier: ^8.1.0
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
   examples/headless-workflows:
     dependencies:
@@ -916,6 +971,9 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -935,6 +993,9 @@ importers:
         specifier: ^3.10.2
         version: 3.10.2
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
@@ -957,6 +1018,9 @@ importers:
         specifier: workspace:^
         version: link:../opencde-foundation
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -979,6 +1043,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1004,6 +1071,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1044,6 +1114,9 @@ importers:
       '@ifc-lite/world-frame-fixtures':
         specifier: workspace:^
         version: link:../world-frame-fixtures
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1141,6 +1214,9 @@ importers:
       '@ifc-lite/bcf-api':
         specifier: workspace:^
         version: link:../bcf-api
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1160,6 +1236,9 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1200,6 +1279,9 @@ importers:
         specifier: ^13.6.33
         version: 13.6.33
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1234,6 +1316,9 @@ importers:
         specifier: ^13.6.33
         version: 13.6.33
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1274,6 +1359,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1290,6 +1378,9 @@ importers:
         specifier: ^7.5.21
         version: 7.5.22
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1306,6 +1397,9 @@ importers:
         specifier: workspace:^
         version: link:../encoding
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1328,6 +1422,9 @@ importers:
         specifier: workspace:*
         version: link:../wasm
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1344,6 +1441,9 @@ importers:
         specifier: workspace:^
         version: link:../opencde-foundation
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1360,6 +1460,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@webgpu/types':
         specifier: ^0.1.74
         version: 0.1.74
@@ -1375,6 +1478,9 @@ importers:
 
   packages/embed-protocol:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1388,6 +1494,9 @@ importers:
         specifier: workspace:^
         version: link:../embed-protocol
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
@@ -1403,6 +1512,9 @@ importers:
       '@ifc-lite/timing-ladder':
         specifier: workspace:^
         version: link:../timing-ladder
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1446,6 +1558,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       jszip:
         specifier: ^3.10.2
         version: 3.10.2
@@ -1471,6 +1586,9 @@ importers:
         specifier: ^0.8.2
         version: 0.8.3
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1490,6 +1608,9 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1548,6 +1669,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1576,6 +1700,9 @@ importers:
         specifier: workspace:^
         version: link:../wasm-lifecycle
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1611,6 +1738,9 @@ importers:
       '@ifc-lite/timing-ladder':
         specifier: workspace:^
         version: link:../timing-ladder
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
@@ -1642,6 +1772,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
         version: 0.132.1(zod@4.6.6)
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
@@ -1670,6 +1803,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:*
         version: link:../parser
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1714,6 +1850,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1736,6 +1875,9 @@ importers:
         specifier: workspace:*
         version: link:../rules
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       csv-parse:
         specifier: 7.0.3
         version: 7.0.3
@@ -1748,6 +1890,9 @@ importers:
 
   packages/load-trace:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1839,6 +1984,9 @@ importers:
         specifier: ^13.6.33
         version: 13.6.33
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1858,6 +2006,9 @@ importers:
         specifier: workspace:^
         version: link:../ifcx
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1877,6 +2028,9 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1886,6 +2040,9 @@ importers:
 
   packages/oauth-pkce:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1895,6 +2052,9 @@ importers:
 
   packages/oci:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1904,6 +2064,9 @@ importers:
 
   packages/opencde-foundation:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1941,6 +2104,9 @@ importers:
         specifier: ^3.10.2
         version: 3.10.2
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1950,6 +2116,9 @@ importers:
 
   packages/plugin-api:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1963,6 +2132,9 @@ importers:
         specifier: ^0.0.7
         version: 0.0.7
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       esbuild:
         specifier: ^0.28.1
         version: 0.28.2
@@ -1975,6 +2147,9 @@ importers:
 
   packages/provenance:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2000,6 +2175,9 @@ importers:
         specifier: workspace:^
         version: link:../spatial
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2009,6 +2187,9 @@ importers:
 
   packages/regex-guard:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -2043,6 +2224,9 @@ importers:
 
   packages/report-contract:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2071,6 +2255,9 @@ importers:
         specifier: workspace:*
         version: link:../regex-guard
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -2105,6 +2292,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2163,6 +2353,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2194,6 +2387,9 @@ importers:
         specifier: ^0.6.5
         version: 0.6.5
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/jsonld':
         specifier: ^1.5.15
         version: 1.5.15
@@ -2216,6 +2412,9 @@ importers:
         specifier: ^7.5.21
         version: 7.5.22
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -2232,6 +2431,9 @@ importers:
         specifier: '>=14.0.0'
         version: 14.0.2
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       parquet-wasm:
         specifier: ^0.9.0
         version: 0.9.0
@@ -2244,6 +2446,9 @@ importers:
 
   packages/solar:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2260,6 +2465,9 @@ importers:
         specifier: workspace:^
         version: link:../plugin-api
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2273,6 +2481,28 @@ importers:
         specifier: workspace:^
         version: link:../plugin-api
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/source-buildagil:
+    dependencies:
+      '@ifc-lite/oauth-pkce':
+        specifier: workspace:^
+        version: link:../oauth-pkce
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+    devDependencies:
+      '@ifc-lite/source-fixture':
+        specifier: workspace:^
+        version: link:../source-fixture
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2289,6 +2519,9 @@ importers:
       '@ifc-lite/source-fixture':
         specifier: workspace:^
         version: link:../source-fixture
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2308,6 +2541,9 @@ importers:
       '@ifc-lite/source-fixture':
         specifier: workspace:^
         version: link:../source-fixture
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2321,6 +2557,9 @@ importers:
         specifier: workspace:^
         version: link:../plugin-api
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2340,6 +2579,9 @@ importers:
       '@ifc-lite/source-fixture':
         specifier: workspace:^
         version: link:../source-fixture
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2353,6 +2595,9 @@ importers:
         specifier: workspace:^
         version: link:../geometry
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2362,6 +2607,9 @@ importers:
 
   packages/timing-ladder:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -2395,6 +2643,9 @@ importers:
 
   packages/wasm-lifecycle:
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -2411,6 +2662,9 @@ importers:
         specifier: workspace:^
         version: link:../geometry
     devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2423,6 +2677,9 @@ packages:
   '@75lb/deep-merge@1.1.2':
     resolution: {integrity: sha512-08K9ou5VNbheZFxM5tDWoqjA3ImC50DiuuJ2tj1yEPRfkp8lLLg6XAaJ4On+a0yAXor/8ay5gHnAIshRM44Kpw==}
     engines: {node: '>=12.17'}
+
+  '@adobe/spz@0.2.3':
+    resolution: {integrity: sha512-iMiIB+FUxQ2vaNxP012fdIVd4yugyq0PUXBaknGfYDE3xpTNU5PrhbLtnDTGFE9anKOwjneOuanSKqaaNpC68Q==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -3021,6 +3278,44 @@ packages:
   '@lezer/lr@1.4.11':
     resolution: {integrity: sha512-UwgZcl1R66H2hDzBrA7kWyYmX6s8p5TQ+e/t7CuvgCtBEPxbEPaHYHu+pJBvTvDotEJpuQkJjbXuHiw5Cixxgw==}
 
+  '@luma.gl/core@9.4.2':
+    resolution: {integrity: sha512-VFol6FUSHQeYR40NrkCM/mkP5DX7aI8pcDewxI8DBjtrcP4+ZJiJwnxWZnsMBzM4RuuvmDoHkPWCxj6Ob9yo+w==}
+
+  '@luma.gl/engine@9.4.2':
+    resolution: {integrity: sha512-gBAcn+b1jOwE4pDF5zbuzMxCa/KGY3Q2Gq0gNUPU1AZHNk4aDgOEQaY2sqMsaoGHkDXB+pxneJQPw5c6Q5mnHA==}
+    peerDependencies:
+      '@luma.gl/core': ~9.4.0
+      '@luma.gl/shadertools': ~9.4.0
+
+  '@luma.gl/experimental@9.4.2':
+    resolution: {integrity: sha512-i3m/THlWmk+GxVw7A1UAMAoMZECZpUm2WvIDXAAe2U9IQ0mnOYbo9aDQcFcrCcnxMpROSgk0lrjddca4Z0uC2Q==}
+    peerDependencies:
+      '@luma.gl/core': ~9.4.0
+      '@luma.gl/engine': ~9.4.0
+      '@luma.gl/shadertools': ~9.4.0
+
+  '@luma.gl/gpgpu@9.4.2':
+    resolution: {integrity: sha512-LoEqoViPZqMHqQzvq/txFuOLsxI6sn8xmv+IZyovRFBqcWaV184PE/8Ieufww0pjVyJMfubhUCQmGuGrOME8oA==}
+    peerDependencies:
+      '@luma.gl/core': ~9.4.0
+      '@luma.gl/engine': ~9.4.0
+      '@luma.gl/shadertools': ~9.4.0
+      '@luma.gl/webgpu': ~9.4.0
+
+  '@luma.gl/shadertools@9.4.2':
+    resolution: {integrity: sha512-0/6pLZSfnQnvcWdYePKKSwVet+gFtAAnKeGXNfxpgp3I8E3WsF/SbD6oEzgU7jdnRqONwGsoACWNpQHO0zZvIQ==}
+    peerDependencies:
+      '@luma.gl/core': ~9.4.0
+
+  '@luma.gl/splats@9.4.2':
+    resolution: {integrity: sha512-MbevszBEJ2W5P0yisbmGwAihwH3NzfaL/JuO851OnhqG/wk3sbIpS1PbaeMlHoljjBv5OBfe7sJKVRD/IsebAw==}
+
+  '@luma.gl/webgpu@9.4.2':
+    resolution: {integrity: sha512-24gDOmLyL81fVHxn+UXajnYN5jVln7XgB9fvobc1Yh3PAtXjlcAkmVTqYRvULVGeEamuqvqPDscAkaK/T+R1iQ==}
+    peerDependencies:
+      '@luma.gl/core': ~9.4.0
+      '@luma.gl/shadertools': ~9.4.0
+
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
     engines: {node: '>=20.0.0'}
@@ -3064,6 +3359,73 @@ packages:
 
   '@marijn/find-cluster-break@1.0.4':
     resolution: {integrity: sha512-Wy0V7+SGUjnF9/TkiM1hKVDPj7jKXduPNboMVtHTA8dySMURWqfg/JZ9E2Sq8JgSJmkl7k7Qe9FLeMSrSraWmQ==}
+
+  '@mergifyio/ci-core@2026.10.11':
+    resolution: {integrity: sha512-To80Jmq2xxZRZb4Zvsp4w/W1LJt5c++I56+G8/5+1oa3zoKipHJ4uhmuSYsxhJgdrvS8A1g1teD/GR17VEuQ3g==}
+    engines: {node: '>=22.0.0'}
+
+  '@mergifyio/ci-native-darwin-arm64@2026.10.11':
+    resolution: {integrity: sha512-GIcSIY4tBa64CUN6YGjAlOjEdl47bOByYUKcqyV1E8K07BpMy++2LGj/LQ+13YaeawTPs2NA1S+grp7L31zepQ==}
+    engines: {node: '>=22.0.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@mergifyio/ci-native-darwin-x64@2026.10.11':
+    resolution: {integrity: sha512-6t52t/uMFBULjNIMjHchmQdjzcSYuXmpM4k8VDp7ynm9cene1oOkrq/XwGud4J1DGRxR0h6wX4Dt0Z9XUXaygQ==}
+    engines: {node: '>=22.0.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@mergifyio/ci-native-linux-arm64-gnu@2026.10.11':
+    resolution: {integrity: sha512-O+7Rg4QykHS+9wvHx/4i4pCqyJLhfTWaSN/HG51qK4QkDFJOyec/XKcBsLsNVPIsEestmMqOYm86GrXE6uArQQ==}
+    engines: {node: '>=22.0.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@mergifyio/ci-native-linux-arm64-musl@2026.10.11':
+    resolution: {integrity: sha512-VSS10+CttFIMMK26u+qpZNe9NhugYAtdT/W7YgoWDvmvk9nNNGpW9zM9os8h6TEbb5Zcr7s5Xr9guhCAXShWAA==}
+    engines: {node: '>=22.0.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@mergifyio/ci-native-linux-x64-gnu@2026.10.11':
+    resolution: {integrity: sha512-hygCq+utqy6vsYZY62Y4MnF+LCX2rlsaoX2y1KkKQK5S+GBEmSywEdqFgluJp8hUvKSP9jExR/KpzJtTE31NeQ==}
+    engines: {node: '>=22.0.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@mergifyio/ci-native-linux-x64-musl@2026.10.11':
+    resolution: {integrity: sha512-cv4eLziufcN9R95BwhPkntO+NSzB9iiygf1HQmeFvcdmOguyq0d7F285XDPVde1EepP4LVmuIKBeG/88bpclQQ==}
+    engines: {node: '>=22.0.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@mergifyio/ci-native-win32-x64-msvc@2026.10.11':
+    resolution: {integrity: sha512-BlGZnQ/qAVndG7qZivq8hQ+qnUb6EgpUPygoPk8zfvCg0JVzhYfZtZQLlnYsugWZTB2vQOvSE986isFYjYbRXA==}
+    engines: {node: '>=22.0.0'}
+    cpu: [x64]
+    os: [win32]
+
+  '@mergifyio/ci-native@2026.10.11':
+    resolution: {integrity: sha512-ppS4I6yDpytXmKvJTInC3kCV9VFy8VwaFmeWZHp08TujOMx+7tBAL4tiBWpruRBsMuEQxPFLsvwsUHDzgrKqlA==}
+    engines: {node: '>=22.0.0'}
+
+  '@mergifyio/playwright@2026.10.11':
+    resolution: {integrity: sha512-zSR3XBT5OatJ6bJodTO2Sf9oNN+LEy19eZThQcxtaMsZ4/o7sSBYuLPInnFZoMTnnqA3bd+dtpxW32KIEnlHIQ==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@playwright/test': '>=1.56.0'
+
+  '@mergifyio/vitest@2026.10.11':
+    resolution: {integrity: sha512-Rvo14zOiEG+LqVUr5vSy2H2ZvbN7wMYU2C1V3VDnQBWi6nNtgymmdjHbH7pn9AYjHwjEi8uXUBpHsHSD7PNZ4A==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      vitest: ^5.0.3
+  '@math.gl/core@4.1.0':
+    resolution: {integrity: sha512-FrdHBCVG3QdrworwrUSzXIaK+/9OCRLscxI2OUy6sLOHyHgBMyfnEGs99/m3KNvs+95BsnQLWklVfpKfQzfwKA==}
+
+  '@math.gl/types@4.1.0':
+    resolution: {integrity: sha512-clYZdHcmRvMzVK5fjeDkQlHUzXQSNdZ7s4xOqC3nJPgz4C/TZkUecTo9YS4PruZqtDda/ag4erndP0MIn40dGA==}
 
   '@napi-rs/canvas-android-arm64@1.0.10':
     resolution: {integrity: sha512-0sDMvme+7fj6bHERUaBs5SvEyWaORc91VUkaB4RrtG7p6dBrBNGy1of8cyEKDxygd1FlHtW+Thunj8lSixzY7A==}
@@ -3491,6 +3853,13 @@ packages:
   '@petamoriken/float16@3.9.3':
     resolution: {integrity: sha512-8awtpHXCx/bNpFt4mt2xdkgtgVvKqty8VbjHI/WWWQuEw+KLzFot3f4+LkQY9YmOtq7A5GdOnqoIC8Pdygjk2g==}
 
+  '@playcanvas/splat-transform@3.10.3':
+    resolution: {integrity: sha512-+jzoQtM1EHDwE2WKuEcaX9RGCGzk6VKnSAmOAiTB2TiNwB1kx2RhesXoSzrGvjKSKEPx6Pr/8kJhcl2WY70Ffg==}
+    engines: {node: '>=22.0.0'}
+    hasBin: true
+    peerDependencies:
+      playcanvas: ^2.0.0
+
   '@playwright/test@1.64.1':
     resolution: {integrity: sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==}
     engines: {node: '>=20'}
@@ -3513,6 +3882,15 @@ packages:
 
   '@posthog/types@1.419.0':
     resolution: {integrity: sha512-XX7zRYt/vK8AzaD6V+oDquAzacZf5exJv971dja9En8Qf6g84Qvc3rpT0w6hDYYLWrjaSSkdjFfvvoXI0ouJDg==}
+
+  '@probe.gl/env@4.1.2':
+    resolution: {integrity: sha512-KIcdjrEiEZVIGX9nh7pZSmTMIKrd+wCb09gyXqpYYI4hs9WMqrQHvKZ7KD8ASutf6kwARwgd4WNQn8aucLSz3g==}
+
+  '@probe.gl/log@4.1.2':
+    resolution: {integrity: sha512-2LqSq4CHhc/HJQasHMPOzA6c7rprlGz8CCREGebo19jxcuKdvXQo0DEmlfId076U6UldMp6jGhWvDHEFLX111Q==}
+
+  '@probe.gl/stats@4.1.2':
+    resolution: {integrity: sha512-Hqc0UIHd0IZ2+JbovzTz7lYG7CY9D8yCB81zyP92Zl9UDSPcw2cLbTySW14keAQeAo1sjGjUw0+KHxr0Y2h/hA==}
 
   '@radix-ui/number@1.1.3':
     resolution: {integrity: sha512-Road2bidD0uu/1BGDOWNdPI06g0lIRy6IF9GZcIrDK2KGItfor8IQwQa+yM2ERgHM1MmHxaxpTzk0/Jp42lNfA==}
@@ -4644,6 +5022,9 @@ packages:
 
   '@types/node@26.6.6':
     resolution: {integrity: sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==}
+
+  '@types/offscreencanvas@2019.7.3':
+    resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
 
   '@types/pad-left@2.1.1':
     resolution: {integrity: sha512-Xd22WCRBydkGSApl5Bw0PhAOHKSVjNL3E3AwzKaps96IMraPqy5BvZIsBVK6JLwdybUzjHnuWVwpDd0JjTfHXA==}
@@ -6311,6 +6692,10 @@ packages:
   pkg-types@2.3.3:
     resolution: {integrity: sha512-j/lCFdcppV0JxWpCEITdbDltBxPP6cHT+yNJ6Go2OgoSA9518X847X9z0p6LtA4Nc16+eQzCZjRrWanTGvHJ5w==}
 
+  playcanvas@2.23.3:
+    resolution: {integrity: sha512-hjDdo5yFtVr/WmDh59pRrT1LC+Rfpq4VXB8Xt3AMB8GfWXj9JzOMq3x+3FTmq/2L2gN37q9V1LMZaLuYshzMXQ==}
+    engines: {node: '>=18.3.0'}
+
   playwright-core@1.64.1:
     resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
     engines: {node: '>=20'}
@@ -7104,6 +7489,9 @@ packages:
   web-worker@1.5.0:
     resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
 
+  webgpu@0.6.2:
+    resolution: {integrity: sha512-3L4GfmqJLvYUIEWJngEQY+2HQiUlAFkg8+P8NDDj3Xx5hHHIFO/r8JW+ynfqBj7kHN4mbnwO74uB+lrRtLhp4Q==}
+
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
@@ -7259,6 +7647,8 @@ snapshots:
     dependencies:
       lodash: 4.18.1
       typical: 7.3.0
+
+  '@adobe/spz@0.2.3': {}
 
   '@alloc/quick-lru@5.2.0': {}
 
@@ -8063,6 +8453,68 @@ snapshots:
     dependencies:
       '@lezer/common': 1.5.3
 
+  '@luma.gl/core@9.4.2':
+    dependencies:
+      '@math.gl/types': 4.1.0
+      '@probe.gl/env': 4.1.2
+      '@probe.gl/log': 4.1.2
+      '@probe.gl/stats': 4.1.2
+      '@types/offscreencanvas': 2019.7.3
+
+  '@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@luma.gl/shadertools': 9.4.2(@luma.gl/core@9.4.2)
+      '@math.gl/core': 4.1.0
+      '@math.gl/types': 4.1.0
+      '@probe.gl/log': 4.1.2
+      '@probe.gl/stats': 4.1.2
+
+  '@luma.gl/experimental@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@luma.gl/engine': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
+      '@luma.gl/gpgpu': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+      '@luma.gl/shadertools': 9.4.2(@luma.gl/core@9.4.2)
+      '@math.gl/core': 4.1.0
+      '@math.gl/types': 4.1.0
+    transitivePeerDependencies:
+      - '@luma.gl/webgpu'
+
+  '@luma.gl/gpgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@luma.gl/engine': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
+      '@luma.gl/shadertools': 9.4.2(@luma.gl/core@9.4.2)
+      '@luma.gl/webgpu': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
+      '@math.gl/core': 4.1.0
+      '@math.gl/types': 4.1.0
+      '@probe.gl/log': 4.1.2
+      '@probe.gl/stats': 4.1.2
+
+  '@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@math.gl/core': 4.1.0
+      '@math.gl/types': 4.1.0
+
+  '@luma.gl/splats@9.4.2(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@luma.gl/engine': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
+      '@luma.gl/experimental': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+      '@luma.gl/gpgpu': 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/engine@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))(@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2)))
+      '@luma.gl/shadertools': 9.4.2(@luma.gl/core@9.4.2)
+    transitivePeerDependencies:
+      - '@luma.gl/webgpu'
+
+  '@luma.gl/webgpu@9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))':
+    dependencies:
+      '@luma.gl/core': 9.4.2
+      '@luma.gl/shadertools': 9.4.2(@luma.gl/core@9.4.2)
+      '@probe.gl/env': 4.1.2
+      '@webgpu/types': 0.1.74
+
   '@manypkg/find-root@3.1.0':
     dependencies:
       '@manypkg/tools': 2.1.2
@@ -8116,6 +8568,61 @@ snapshots:
       pbf: 5.1.2
 
   '@marijn/find-cluster-break@1.0.4': {}
+
+  '@mergifyio/ci-core@2026.10.11':
+    dependencies:
+      '@mergifyio/ci-native': 2026.10.11
+
+  '@mergifyio/ci-native-darwin-arm64@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-darwin-x64@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-linux-arm64-gnu@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-linux-arm64-musl@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-linux-x64-gnu@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-linux-x64-musl@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native-win32-x64-msvc@2026.10.11':
+    optional: true
+
+  '@mergifyio/ci-native@2026.10.11':
+    optionalDependencies:
+      '@mergifyio/ci-native-darwin-arm64': 2026.10.11
+      '@mergifyio/ci-native-darwin-x64': 2026.10.11
+      '@mergifyio/ci-native-linux-arm64-gnu': 2026.10.11
+      '@mergifyio/ci-native-linux-arm64-musl': 2026.10.11
+      '@mergifyio/ci-native-linux-x64-gnu': 2026.10.11
+      '@mergifyio/ci-native-linux-x64-musl': 2026.10.11
+      '@mergifyio/ci-native-win32-x64-msvc': 2026.10.11
+
+  '@mergifyio/playwright@2026.10.11(@playwright/test@1.64.1)':
+    dependencies:
+      '@mergifyio/ci-core': 2026.10.11
+      '@playwright/test': 1.64.1
+
+  '@mergifyio/vitest@2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))':
+    dependencies:
+      '@mergifyio/ci-core': 2026.10.11
+      vitest: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  '@mergifyio/vitest@2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))':
+    dependencies:
+      '@mergifyio/ci-core': 2026.10.11
+      vitest: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+  '@math.gl/core@4.1.0':
+    dependencies:
+      '@math.gl/types': 4.1.0
+
+  '@math.gl/types@4.1.0': {}
 
   '@napi-rs/canvas-android-arm64@1.0.10':
     optional: true
@@ -8369,6 +8876,14 @@ snapshots:
 
   '@petamoriken/float16@3.9.3': {}
 
+  '@playcanvas/splat-transform@3.10.3(playcanvas@2.23.3)':
+    dependencies:
+      '@adobe/spz': 0.2.3
+      playcanvas: 2.23.3
+      webgpu: 0.6.2
+    transitivePeerDependencies:
+      - supports-color
+
   '@playwright/test@1.64.1':
     dependencies:
       playwright: 1.64.1
@@ -8392,6 +8907,14 @@ snapshots:
       '@posthog/types': 1.419.0
 
   '@posthog/types@1.419.0': {}
+
+  '@probe.gl/env@4.1.2': {}
+
+  '@probe.gl/log@4.1.2':
+    dependencies:
+      '@probe.gl/env': 4.1.2
+
+  '@probe.gl/stats@4.1.2': {}
 
   '@radix-ui/number@1.1.3': {}
 
@@ -9401,6 +9924,8 @@ snapshots:
   '@types/node@26.6.6':
     dependencies:
       undici-types: 8.9.0
+
+  '@types/offscreencanvas@2019.7.3': {}
 
   '@types/pad-left@2.1.1': {}
 
@@ -11283,6 +11808,11 @@ snapshots:
       exsolve: 1.1.1
       pathe: 2.0.3
 
+  playcanvas@2.23.3:
+    dependencies:
+      '@types/webxr': 0.5.24
+      '@webgpu/types': 0.1.74
+
   playwright-core@1.64.1: {}
 
   playwright@1.64.1:
@@ -12118,6 +12648,13 @@ snapshots:
   web-vitals@6.2.3: {}
 
   web-worker@1.5.0: {}
+
+  webgpu@0.6.2:
+    dependencies:
+      '@webgpu/types': 0.1.74
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
 
   webpack-virtual-modules@0.6.2: {}
 

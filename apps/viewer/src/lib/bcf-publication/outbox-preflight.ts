@@ -8,19 +8,24 @@
  * advertised vocabulary, an assignee not in `user_id_type`, or a missing
  * `createTopic` project action refuses the whole dispatch with nothing sent.
  * Where the server advertises nothing, the write proceeds with a warning and
- * the server's own refusal is recorded as a definite failure.
+ * the server's own refusal is recorded as a definite failure. A field the
+ * plan withheld because the server cannot keep it (a status for a topic type
+ * without one, per the server's profile) is a warning too: the topic is
+ * published, the user is told what was left out.
  */
 
 import type { BcfApiClient, BcfExtensionsDto, BcfRequestOptions } from '@ifc-lite/bcf-api';
 import type { BcfPublication } from './outbox-types.js';
 
 export interface PreflightIssue {
-  kind: 'permission' | 'vocabulary' | 'assignee' | 'unverified';
+  kind: 'permission' | 'vocabulary' | 'assignee' | 'unverified' | 'withheld';
   entryId?: string;
   topicGuid?: string;
   field?: string;
   value?: string;
   allowed?: string[];
+  /** The topic type a withheld field was left out for. */
+  topicType?: string;
 }
 
 export interface PreflightReport {
@@ -28,7 +33,7 @@ export interface PreflightReport {
   at: string;
   /** Refusals: nothing is dispatched while any exists. */
   issues: PreflightIssue[];
-  /** Capabilities the server did not advertise; the write relies on the server's own check. */
+  /** Capabilities the server did not advertise (the write relies on the server's own check), and withheld fields. */
   warnings: PreflightIssue[];
   extensions: BcfExtensionsDto;
   projectActions?: string[];
@@ -58,6 +63,9 @@ export async function preflightPublication(client: PreflightClient, record: BcfP
   for (const entry of queued) {
     if (entry.operation !== 'createTopic' && entry.operation !== 'updateTopic') continue;
     const at = { entryId: entry.id, topicGuid: entry.topicGuid };
+    for (const [field, value] of Object.entries(entry.withheld ?? {})) {
+      warnings.push({ ...at, kind: 'withheld', field, value: String(value), topicType: String(entry.payload.topic_type ?? '') });
+    }
     const check = (field: string, value: unknown, list: string[] | undefined, kind: PreflightIssue['kind']) => {
       if (value === undefined || value === null) return;
       const text = String(value);

@@ -1,0 +1,12 @@
+diff --git a/rust/retained-native/examples/compare/precision.rs b/rust/retained-native/examples/compare/precision.rs
+index 1805b2b4ae..e638962bf3 100644
+--- a/rust/retained-native/examples/compare/precision.rs
++++ b/rust/retained-native/examples/compare/precision.rs
+@@ -20,6 +20,7 @@ pub const COMPARISON_PRECISION: &str =
+ /// process-global hook, restored before returning; the harness calls it between
+ /// model runs and the retained engine runs in its own worker process.
+ pub fn exact_unrounded(bytes: &[u8]) -> ProcessingResult {
++    ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
+     let result = ifc_lite_processing::process_geometry(bytes);
+     ifc_lite_geometry::local_frame_set_enabled_override(None);
+     result

@@ -10,10 +10,19 @@ use ifc_lite_retained_native::oracle::openings::{self, OpeningExpectation};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+#[allow(dead_code)] // The opening witnesses read the expectations alone.
 pub fn expectations(
     bytes: &[u8],
     sources: &AnalyticQuantitySources,
 ) -> Result<BTreeMap<u32, Option<OpeningExpectation>>, String> {
+    expectations_and_gaps(bytes, sources).map(|(expected, _)| expected)
+}
+/// [`expectations`], plus why each host without a complete one lacks it.
+#[allow(clippy::type_complexity)]
+pub fn expectations_and_gaps(
+    bytes: &[u8],
+    sources: &AnalyticQuantitySources,
+) -> Result<(BTreeMap<u32, Option<OpeningExpectation>>, BTreeMap<u32, String>), String> {
     let source = SourceBundle::new(bytes.to_vec());
     let mut decoder = source.decoder();
     let mut scanner = EntityScanner::new(bytes);
@@ -24,6 +33,7 @@ pub fn expectations(
     let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
     let router = GeometryRouter::with_scale(decoder.length_unit_scale());
     let mut result = BTreeMap::new();
+    let mut gaps = BTreeMap::new();
     for (host, ids) in prepass.void_index {
         let mut cuts = Vec::new();
         for id in ids {
@@ -36,12 +46,29 @@ pub fn expectations(
         }
         if !cuts.is_empty() {
             let expected = openings::expected(sources, host, &cuts).or_else(|| {
-                ifc_lite_retained_native::oracle::mapped::opened(bytes, host, &cuts)
-            });
+                ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts)
+            }).or_else(|| openings::expected_with_face_set_cutters(&source, sources, host, &cuts));
+            if expected.as_ref().is_none_or(|e| e.result_volume.is_none()) { gaps.insert(host, gap_reason(sources, host, &cuts)); }
             result.insert(host, expected);
         }
     }
-    Ok(result)
+    Ok((result, gaps))
+}
+/// The first source of a voided host or cutter that no opening oracle models (#7955).
+fn gap_reason(sources: &AnalyticQuantitySources, host: u32, cuts: &[u32]) -> String {
+    let describe = |role: &str, id: u32| {
+        let instances = sources.extrusion_definitions.instances.get(&id);
+        let reason = match instances {
+            None => "not_an_extrusion",
+            Some(v) if v.is_empty() => "not_an_extrusion",
+            Some(v) if v.iter().any(|i| i.source_modified) => "boolean_body",
+            Some(v) if v.iter().any(|i| i.status != ifc_lite_geometry::analytic::AnalyticStatus::Complete) => "incomplete_source",
+            Some(_) => return None,
+        };
+        Some(format!("{role}_{reason}"))
+    };
+    describe("host", host).or_else(|| cuts.iter().find_map(|c| describe("cutter", *c)))
+        .unwrap_or_else(|| "prism_cut_family".into())
 }
 /// A published voided host is checked against its source cut expectation.
 /// The pre-cut host volume no longer applies to it, so a host the source

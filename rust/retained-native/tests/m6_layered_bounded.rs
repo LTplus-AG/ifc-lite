@@ -48,7 +48,7 @@ fn band(index: u16, y0: f64, y1: f64) -> ShapePart {
         let [q0, q1, q2, q3] = if outward { quad } else { [quad[0], quad[3], quad[2], quad[1]] };
         indices.extend([q0, q1, q2, q0, q2, q3]);
     }
-    ShapePart { layer: Some(ShapeLayer { index, material_id: 5000 + u32::from(index) }), capped_volume_m3: None, positions, indices,
+    ShapePart { layer: Some(ShapeLayer { index, material_id: 5000 + u32::from(index) }), capped_volume_m3: None, source_exact: false, surface: None, positions, indices,
         world_from_object: [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.], curved: false, halfspace_clipped: false,
         revision_local_faces: Vec::new(), normals: None, appearance: None, faces: None, instance_key: None }
 }
@@ -59,7 +59,7 @@ fn rows(parts: &[ShapePart]) -> Vec<OracleResult> {
     let e = bounded::expected(text.as_bytes(), &sources, 1000).expect("bounded source expectation");
     assert!((e.host_volume - 64.).abs() < 1e-9 && (e.section_volume.expect("section integral") - 48.).abs() < 1e-9, "hand integrals: host 64, kept 48");
     let t: serde_json::Value = serde_json::from_str(M6).unwrap();
-    check_parts(1000, parts, Some(&e), &t, None, text.as_bytes())
+    check_parts(1000, parts, Some(&e), &t, None, &SourceBundle::new(text.as_bytes().to_vec()))
 }
 fn family<'a>(rows: &'a [OracleResult], name: &str) -> &'a OracleResult {
     rows.iter().find(|r| r.family == name).unwrap_or_else(|| panic!("{name} row missing"))
@@ -124,7 +124,7 @@ fn m6_7955_layered_bounded_bands_close_only_as_an_assembly() {
     let Some(ProductOutcome::Published(shape)) = outcomes.pop() else { panic!("expected a published shape") };
     assert_eq!(shape.parts.iter().filter(|p| p.layer.is_some()).count(), 2, "both bands published");
     let t: serde_json::Value = serde_json::from_str(M6).unwrap();
-    let rows = check_parts(1000, &shape.parts, Some(&e), &t, None, text.as_bytes());
+    let rows = check_parts(1000, &shape.parts, Some(&e), &t, None, &SourceBundle::new(text.as_bytes().to_vec()));
     for name in ["bounded_closure", "bounded_section_volume", "bounded_volume_bounds", "bounded_outside_material"] {
         let row = family(&rows, name);
         assert!(row.gated && row.pass, "{name} must pass for the assembled bands: {:?}", table(&rows));

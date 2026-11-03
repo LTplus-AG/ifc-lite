@@ -1,0 +1,186 @@
+{
+  "issue": 8564,
+  "mode": "SwiftShader correctness only",
+  "productionReady": false,
+  "runs": [
+    {
+      "filter": true,
+      "result": {
+        "cases": [
+          {
+            "projection": "orthographic",
+            "size": 24,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 0,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "orthographic",
+            "size": 32,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 0,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "perspective",
+            "size": 24,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 0,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "perspective",
+            "size": 32,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 0,
+            "referenceNonzero": true
+          }
+        ],
+        "errors": [],
+        "productionReady": false,
+        "limitations": [
+          "one transparent layer",
+          "1x MSAA",
+          "bounded upstream CPU ordering",
+          "no viewer frame integration"
+        ]
+      },
+      "errors": []
+    },
+    {
+      "filter": false,
+      "result": {
+        "cases": [
+          {
+            "projection": "orthographic",
+            "size": 24,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 738,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "orthographic",
+            "size": 32,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 1290,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "perspective",
+            "size": 24,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 316,
+            "referenceNonzero": true
+          },
+          {
+            "projection": "perspective",
+            "size": 32,
+            "slope": [
+              0.009,
+              0.0037
+            ],
+            "differentChannels": 566,
+            "referenceNonzero": true
+          }
+        ],
+        "errors": [],
+        "productionReady": false,
+        "limitations": [
+          "one transparent layer",
+          "1x MSAA",
+          "bounded upstream CPU ordering",
+          "no viewer frame integration"
+        ]
+      },
+      "errors": []
+    }
+  ],
+  "sourceCommit": "1f957a0a5d14a1fa9be13ee6cff2decfdcaa87e9",
+  "receipt": "2e35a7ee-ecbe-4feb-bf4b-fcec4adbed99",
+  "host": "pc-wsl",
+  "command": "ifc-fleet run --route local --kind ordinary --cpu 2 --memory 4 --pool gaussian-production-8562 --storage-task gaussian-8564-interval-r3 --cwd CHECKOUT -- bash -c \"~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-fragment-interval.mjs\"",
+  "sourceSha256": {
+    "examples/gaussian-splat-spike/contract/fragment-interval-plugin.mjs": "cb98a3a864dbef08461c7a2bbeac32e679caf529e4c3b464f7828d126c9bf75d",
+    "examples/gaussian-splat-spike/contract/fragment-interval-witness.mjs": "3712004b13de9ea9b3b1476297ad1fc10e43ef316c3ae5a3b78cf5bfef42dd4e",
+    "examples/gaussian-splat-spike/contract/validate-fragment-interval.mjs": "95239c2814ec43598a4c4b16426d16a522cdda7ac1d6461b4e50b75696e5e579",
+    "packages/renderer/src/gaussian/gaussian-attributes.ts": "e93fbae6cb370ba3f8cf36a43f98de247a9333656b9e5e5e27c7ffcfc42f54ed"
+  },
+  "priorAttempts": [
+    {
+      "receipt": "1de6ea2c-e5f0-4757-9a9a-5e9e19f923dc",
+      "result": "setup failed: missing Vite; zero browser cases"
+    },
+    {
+      "receipt": "10598173-cf5b-4bd3-b45b-d1ec19e44c16",
+      "result": "setup failed: Chrome not installed on Pop; zero browser cases"
+    },
+    {
+      "receipt": "999f2eae-eeac-4671-bf76-89ce3e3489cb",
+      "result": "GPU validation failed: interval declaration shifted upstream automatic bindings; blank reference rejected"
+    }
+  ],
+  "cpuValidation": {
+    "sourceCommit": "1dc7cf9d59664a8f021b335d97f7344b1fc8c9bd",
+    "host": "pop-os",
+    "receipt": "3308ad5f-5399-4d93-b60d-975d6388e20e",
+    "nodeOptions": "--max-old-space-size=8192",
+    "commands": [
+      {
+        "command": "pnpm typecheck",
+        "turboTasksPassed": 132
+      },
+      {
+        "command": "pnpm test --filter=@ifc-lite/renderer --filter=ifc-lite-gaussian-splat-spike",
+        "turboTasksPassed": 12,
+        "renderer": {
+          "passed": 2260,
+          "skipped": 2,
+          "skipReasons": [
+            "IFC_LITE_HEAVY_TESTS large-vertex allocation opt-in",
+            "native WGSL origin test requires a Node WebGPU adapter"
+          ]
+        },
+        "gaussianExample": {
+          "passed": 20,
+          "skipped": 4,
+          "skipReasons": [
+            "plant and textile_ball absent in canonical fixture and spike cache locations"
+          ]
+        }
+      },
+      {
+        "command": "pnpm build --filter=\"./packages/*\"",
+        "turboTasksPassed": 64
+      },
+      {
+        "command": "pnpm api-surface:update",
+        "result": "generated four intended renderer export entries"
+      }
+    ],
+    "otherSkips": [
+      "IFCX dist validation: four absent fixtures"
+    ],
+    "qualification": "Renderer production/test TS is byte-identical at GPU source commit; the later shader binding fix is qualified by the separate GPU receipt."
+  }
+}

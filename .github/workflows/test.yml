@@ -150,6 +150,9 @@ jobs:
       noop: ${{ steps.noop.outputs.noop || 'false' }}
       replay: ${{ steps.pushreplay.outputs.replay || 'false' }}
       replay_run: ${{ steps.pushreplay.outputs.replay_run || '' }}
+      # `true` when a green Mergify batch run proved this push. A batch ran the
+      # push-only lanes as well, so they skip too.
+      replay_queue: ${{ steps.pushreplay.outputs.replay_queue || 'false' }}
       # `fast` only on a `pull_request` with CI_PR_LANE=fast and no `ci:full`
       # label (scripts/ci-pr-lane.mjs). Every lane it skips tests `!= 'fast'`,
       # so a missing or garbled value runs the full lanes.
@@ -240,7 +243,10 @@ jobs:
       # CSG gates) and the always-on plato-check and rust-semver still run and
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches Cargo/toolchain/workflow files never replays: those key caches
-      # only a push to main writes.
+      # only a push to main writes. A push also replays when a green Mergify
+      # batch run recorded its tree or a later main commit's tree, and then a
+      # Cargo/toolchain/workflow commit may replay too if the same files change
+      # again later.
       # THE FAST PR LANE SWITCH (scripts/ci-pr-lane.mjs). continue-on-error
       # because a crash here must not skip every lane via a failed `changes`:
       # with no output the lanes read `lane != 'fast'` and run in full.
@@ -881,6 +887,19 @@ jobs:
           toolchain: stable
           components: rustfmt
       - run: pnpm install --frozen-lockfile
+      # #8567: the finisher oracle runs real encodes and probes their timestamps.
+      # An encoder-less runner skips every baseline test, so no mutation verdict
+      # is possible. Playwright's private ffmpeg binary does not provide ffprobe.
+      - name: Install showcase oracle video tools
+        run: |
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- examples/gaussian-splat-spike 'tests/evidence/8567-*' | grep -q .; then
+            if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends ffmpeg
+            fi
+            ffmpeg -version
+            ffprobe -version
+          fi
       - name: Download build artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1031,9 +1050,15 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
-          # #8112: full inversion deletes the new helper and prevents test loading.
-          # Keep the API; weaken fingerprint identity to key equality instead.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
+          # #8550: retain the preview helper API; break engine-path 404 isolation.
+          # #8540: preserve the Node-side timeout so the never-settling page
+          # witness stays bounded; mutate pairing and worker accounting instead.
+          # #8112: retain the scan helper API; weaken fingerprint identity.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-preview-7955/behaviour.oracle.patch | grep -Fxq 'tests/evidence/retained-preview-7955/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/retained-preview-7955/behaviour.oracle.patch --test scripts/lib/retained-preview.test.mjs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/retained-qual-8540/behaviour.oracle.patch | grep -Fxq 'tests/evidence/retained-qual-8540/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/retained-qual-8540/behaviour.oracle.patch --test scripts/perf/retained-qual-regressions.test.mjs --test scripts/perf/retained-qual-report.test.mjs --test scripts/perf/retained-qual-viewer-page.test.mjs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch | grep -q .; then
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-scan.oracle.patch --test scripts/retained-session-scan.test.mjs)
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/finish-carry.oracle.patch --test packages/geometry/src/geometry-coordinate.test.ts)
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/export-gate.oracle.patch --test apps/viewer/src/components/viewer/GLBExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/ExportDialog.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx --test apps/viewer/src/utils/instancedExport.retained.test.ts --test apps/viewer/src/components/viewer/KmzExportDialog.retained.test.tsx --test apps/viewer/src/components/viewer/exactExport.retained.test.tsx)
@@ -1041,6 +1066,11 @@ jobs:
             oracle_args+=(--mutation tests/evidence/pg4-retained-presentation/export-scope.oracle.patch --test apps/viewer/src/components/viewer/ExportDialog.section.retained.test.tsx --test apps/viewer/src/store/retainedGeometry.guard.test.tsx --test apps/viewer/src/utils/instancedExport.retained.test.ts)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/acceptance-harness-8112/behaviour.oracle.patch | grep -Fxq 'tests/evidence/acceptance-harness-8112/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/acceptance-harness-8112/behaviour.oracle.patch)
+          # #8190: the footprint snap module is new against main until #8394
+          # lands, so a whole-change revert deletes it with its tests. Keep it;
+          # drop only the T-junction pass: the slab #12381 seam must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8190/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8190/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/8190/behaviour.oracle.patch --test rust/processing/tests/issue_8190_slab_flush_openings.rs)
           # #8308: whole-file inversion of operator.rs also drops the new test
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
@@ -1053,11 +1083,39 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch | grep -Fxq 'tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/m6-layered-bounded-7955/behaviour.oracle.patch --test rust/retained-native/tests/m6_layered_bounded.rs)
+          # #7955 frame zero: whole inversion deletes mat4::compose_frame, so its
+          # witnesses never compile, and the runtime test module cannot be
+          # attributed. Keep the API; seed the sum with -0.0 again.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-frame-zero/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-frame-zero/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/7955-frame-zero/behaviour.oracle.patch --test rust/geometry/src/math/mat4_tests.rs)
+          # #7955 closing rulings 2 and 3: the comparison lives in the retained_compare
+          # example, whose #[path] modules no cargo target owns. Break one link per
+          # patch: exact measured after its world f32 rounding, no kernel-merge
+          # outcome, and a merge with no 2-4 mm side-width limit.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch | grep -Fxq 'tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/exact-unrounded.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/kernel-merge.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+            oracle_args+=(--mutation tests/evidence/comparison-rulings-7955/merge-width.oracle.patch --test rust/retained-native/tests/comparison_rulings_7955.rs)
+          # #7955 model source: a pure speed change (one index per model) whose test
+          # modules live in the retained_compare example, which no cargo target owns,
+          # and whose kernel witnesses skip without the SMLib worker. Break one link
+          # of the shared source per patch: index, unit scale, layer usage, voids, surface maps, mapped nominal host.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/model-source-7955/shared-index.oracle.patch | grep -Fxq 'tests/evidence/model-source-7955/shared-index.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/model-source-7955/shared-index.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/unit-scale.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/layer-source.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/bounded-voids.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/surface-maps.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
+            oracle_args+=(--mutation tests/evidence/model-source-7955/mapped-nominal.oracle.patch --test rust/retained-native/tests/model_source_7955.rs)
           # #8341 F2 viewer: inverting the whole change deletes the relay module its
           # new tests import (INCONCLUSIVE). Keep it; break one link per patch: host
           # relay, worker annotation, main-thread read, unknown-not-0, panel, toast.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/f2-8341-viewer/behaviour.oracle.patch | grep -Fxq 'tests/evidence/f2-8341-viewer/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/behaviour.oracle.patch --test packages/geometry/src/geometry-parallel-omitted-type-records.test.ts)
+          # #7955 licence elections: inverting the change deletes resolveElections, so
+          # the notice tests cannot load. Keep it; accept any notice text as MIT.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/7955-licence-elections/behaviour.oracle.patch | grep -Fxq 'tests/evidence/7955-licence-elections/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/7955-licence-elections/behaviour.oracle.patch --test scripts/retained-notices.test.mjs)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/worker.oracle.patch --test packages/geometry/src/geometry-worker-omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/main-thread.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
             oracle_args+=(--mutation tests/evidence/f2-8341-viewer/unknown.oracle.patch --test packages/geometry/src/omitted-type-records.test.ts)
@@ -1643,6 +1701,12 @@ jobs:
           # on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/tests/empty_export_parity.rs | grep -Fxq 'rust/export/tests/empty_export_parity.rs'; then
             oracle_args+=(--mutation tests/evidence/empty-exports-7695/refusal.oracle.patch)
+          # The vertex-list sidecar's new function is named by its own witness, so a
+          # whole-change revert cannot compile it (INCONCLUSIVE). Keep the function
+          # and let a later map win, so the sidecar names a list the index did not
+          # keep. Once texture_vertex_lists.rs is on main, ordinary revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/tests/texture_vertex_lists.rs | grep -Fxq 'rust/geometry/tests/texture_vertex_lists.rs'; then
+            oracle_args+=(--mutation tests/evidence/texture-vertex-lists/behaviour.oracle.patch)
           # #7737: keep the new semver-baseline module loadable (a whole-change
           # revert deletes it under the gate's tests) while removing ONLY the
           # rebuild-from-tag fallback and the NO_VERDICT output excerpt; the
@@ -1939,6 +2003,10 @@ jobs:
           # #7782 C4-0: preserve harness wiring and perturb a production colour payload.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c4-0-parity/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c4-0-parity/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c4-0-parity/behaviour.oracle.patch)
+          # Teardown-order gate: inverting the change deletes the new script, so its
+          # test cannot load. Keep it; record no violation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/test-teardown-order/behaviour.oracle.patch | grep -Fxq 'tests/evidence/test-teardown-order/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/test-teardown-order/behaviour.oracle.patch --test scripts/check-test-teardown-order.test.mjs)
           fi
           # CLI oci:// model input: a whole-file revert deletes model-input.ts /
           # oci-input.ts and the witnesses die at import. Keep the modules and
@@ -1960,6 +2028,18 @@ jobs:
             oracle_args+=(--mutation tests/evidence/cli-oci-push/overwrite-ignored.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
             oracle_args+=(--mutation tests/evidence/cli-oci-push/ifc-validation.oracle.patch --test packages/cli/src/commands/oci-push-refusals.test.ts)
             oracle_args+=(--mutation tests/evidence/cli-oci-push/layer-descriptor.oracle.patch --test packages/cli/src/commands/oci-push.test.ts)
+          fi
+          # The snapshot's new modules cannot load under a blunt revert, so break one
+          # behaviour at a time: refused pieces, handoff ownership, write identity.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot/hydrate-identity.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot/hydrate-identity.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/hydrate-identity.oracle.patch --test packages/renderer/src/scene-snapshot-lifecycle.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/withdraw-own.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot/attach-own-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
+          fi
+          # A blunt revert removes exports the new assertions import; break each behaviour instead.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch | grep -Fxq 'tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
+            oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/clear-any-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
@@ -2034,7 +2114,12 @@ jobs:
       # commit. `--only` typechecks against the artifact instead, the same move
       # node-tests made for `test`. A dist missing from the artifact fails tsc
       # loudly; it cannot pass vacuously.
+      # The viewer program alone reaches ~4.8 GB heap (11.3k files, 1.15M types,
+      # measured 2026-11-03), past Node's ~4.2 GB default, so tsc ran out of memory
+      # on hosted runners. Hosted runners have 16 GB.
       - run: pnpm typecheck:ci
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
 
   lint:
     name: Lint
@@ -2191,6 +2276,8 @@ jobs:
         # #7360 qualification: 2,180 files outgrew eight serial shards.
         # Keep the 25-minute cap and run every path exactly once.
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2243,10 +2330,21 @@ jobs:
       # is unchanged. The split is exact: a manifest file is packed into one
       # shard and any other path hashes to exactly one of the 16 residues, so
       # nothing is dropped or run twice; an empty selection fails the step.
-      - run: pnpm --filter @ifc-lite/viewer run test
+      - id: viewer_tests
+        run: pnpm --filter @ifc-lite/viewer run test
         env:
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.viewer_tests.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
 
   node-guards:
     name: Node guards
@@ -2257,6 +2355,8 @@ jobs:
     # Give each workload its own runner and budget; keep every existing check.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2319,6 +2419,11 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # node:test runs after hooks in registration order and a failing hook
+      # skips the rest: retained-engine.test.ts removed its root before its
+      # dev server closed and failed viewer shard 12 in eight merge-queue runs.
+      - name: Check test teardown order
+        run: node scripts/check-test-teardown-order.mjs
       - name: Check for source-text assertions in Rust tests
         run: node scripts/check-rust-source-text-assertions.mjs
       - name: Check Rust public API surface
@@ -2584,8 +2689,9 @@ jobs:
       # auditor's existing input census; globs discover every new suite. sort -u
       # removes the overlap before Node starts any tests.
       - name: Run every scripts/ test file (glob catch-all)
+        id: scripts_tests
         run: |
-          node --test $(printf '%s\n' \
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \
             scripts/check-ci-aggregate-coverage.test.mjs \
@@ -2620,6 +2726,7 @@ jobs:
             scripts/check-step-escaper-copies.test.mjs \
             scripts/check-swallowed-push.test.mjs \
             scripts/check-test-glob-coverage.test.mjs \
+            scripts/check-test-teardown-order.test.mjs \
             scripts/check-test-wiring.test.mjs \
             scripts/check-tla-chunk-await.test.mjs \
             scripts/check-workflow-report-paths.test.mjs \
@@ -2662,6 +2769,14 @@ jobs:
             scripts/ids-conformance/lib/*.test.mjs \
             scripts/ids-conformance/lib/adapters/*.test.mjs \
             | sort -u)
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.scripts_tests.outcome }}
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -2764,6 +2879,8 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2860,7 +2977,11 @@ jobs:
           ORACLE_PROOF
           echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Package tests (shard ${{ matrix.shard }}/4)
+        id: package_tests
         env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: node-tests (shard ${{ matrix.shard }})
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           SHARD: ${{ matrix.shard }}
           IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -2868,6 +2989,15 @@ jobs:
           mapfile -t filters <<<"$filters_txt"
           echo "turbo filters: ${filters[*]}"
           pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('*/*/mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: '*/*/mergify-junit.xml'
+          test_step_outcome: ${{ steps.package_tests.outcome }}
+          job_name: node-tests (shard ${{ matrix.shard }})
       # Export is pinned to shard 3 by scripts/ci-node-test-shards.mjs.
       # Its real-WASM tests above generate a fresh Haus crop; missing fixture,
       # runtime, or evidence must fail the probe rather than count as coverage.
@@ -2900,6 +3030,7 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:integration
       - name: API route tests (relay handlers)
+        id: api_tests
         if: matrix.shard == 4
         # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
         # so the Dalux relay's path allowlist and node allowlist - the guards
@@ -2907,7 +3038,18 @@ jobs:
         # existed in the repo but never in the pipeline. A guard no lane invokes
         # is not a gate.
         timeout-minutes: 5
+        env:
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
         run: pnpm test:api
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.api_tests.outcome }}
+          job_name: node-tests (api)
       - name: WASM contract tests (real processGeometryBatch boundary)
         if: matrix.shard == 4
         run: pnpm test:wasm-contract
@@ -2959,6 +3101,8 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm --filter @ifc-lite/provenance --fail-if-no-match run test
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
 
   # Functional smoke of the real viewer: real WASM pipeline + WebGPU
   # renderer (swiftshader) + pick pass + section plane, asserted through
@@ -3043,11 +3187,13 @@ jobs:
         # count through real WASM, data-store population, model
         # registration, section-plane store contract — still gate.
         env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: viewer-e2e (shard ${{ matrix.shard }})
           E2E_GPU_STRICT: '0'
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list
+        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -3085,6 +3231,8 @@ jobs:
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3218,7 +3366,25 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: "1"
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
-        run: cargo nextest run --workspace --profile ci
+        # The report lives under the target dir, which the self-hosted lane
+        # keeps across jobs and a cache can restore. Delete it first: nextest
+        # writes none when the build fails, and an old one must not be uploaded.
+        run: |
+          rm -f "${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+          cargo nextest run --workspace --profile ci
+      - name: Collect the nextest JUnit report
+        if: ${{ !cancelled() && steps.rust_tests.outcome != 'skipped' }}
+        run: |
+          report="${CARGO_TARGET_DIR:-target}/nextest/ci/junit.xml"
+          if [ -f "$report" ]; then cp "$report" mergify-junit.xml; fi
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.rust_tests.outcome }}
       # C4-0 (#7782): the native/browser parity gate already ran above, inside
       # nextest, and fails the job on any difference its EXPECTED_DIFF table
       # does not enumerate (or on a row nothing produces any more). This runs
@@ -3278,6 +3444,14 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
+    # DISK (hosted runners): at full DWARF these legs leave a 22.9 GB target
+    # dir (CARGO_INCREMENTAL=0), and a hosted runner ran out of disk here
+    # (merge-queue #8502, job 124766198979). Line tables, as rust-tests uses:
+    # 9.1 GB for the same legs.
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3338,10 +3512,19 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile
       - name: SMLib-free CLI report over the real retained WASM boundary
+        id: retained_node_tests
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.retained_node_tests.outcome }}
 
       - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -3364,6 +3547,9 @@ jobs:
           cargo test -p ifc-lite-retained-native --features retained-runtime
           cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
       - name: Mark warm target dir finished
         if: always() && env.CARGO_TARGET_DIR != ''
         run: rm -f "${CARGO_TARGET_DIR}/.unfinished"
@@ -3385,9 +3571,14 @@ jobs:
   rust-full:
     name: Rust tests (feature builds)
     needs: changes
-    if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
+    # Keep feature-build links within hosted-runner disk space, as in #8517.
+    # Line tables preserve file:line in panics and backtraces.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3522,6 +3713,9 @@ jobs:
 
       - name: Clippy (canonical opening work diagnostic)
         run: cargo clippy -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe -- -D warnings
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
 
   # Geometry watertightness / triangulation-invariance census.
   #
@@ -3560,7 +3754,7 @@ jobs:
     # aggregate's `needs:`, so in the queue a moved baseline fails the required
     # check and dequeues the batch. The heavy-fixture variant is weekly
     # (geometry-census-heavy.yml).
-    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -3610,6 +3804,17 @@ jobs:
         run: node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The ISSUE_129 mixed-opening oracle pins its own readings with the prism
+      # route off, and nothing ran that mode, so a strict count moved there
+      # unseen (#8533). Same binary, flag read at run time: seconds, no build.
+      # Grep the count so a renamed test cannot turn this into a no-op.
+      - name: Census, prism route off (ISSUE_129 oracle)
+        env:
+          IFC_LITE_PRISM_CUT: '0'
+        run: |
+          cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance \
+            -- --exact --nocapture issue_129_mixed_bool2d_residual_preserves_established_topology | tee "$RUNNER_TEMP/prism-off.log"
+          grep -q 'test result: ok. 1 passed' "$RUNNER_TEMP/prism-off.log"
       # The per-host rows this run measured, uploaded pass or fail. The census
       # gates against a checked-in golden, and its log prints its per-element
       # lists truncated, so without this a run that disagrees with the golden
@@ -3662,10 +3867,22 @@ jobs:
   csg-accept-gates:
     name: CSG accept gates (feature builds)
     needs: changes
-    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true')
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     # This lane must not consume metered runner minutes.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
+    # DISK (hosted runners). Three feature builds of ifc-lite-geometry's 174
+    # test binaries each, in one target dir, at full DWARF: 18.7, 36.8 and
+    # 55.1 GB after each leg (CARGO_INCREMENTAL=0, as rust-cache sets it).
+    # Hosted runners ran out of disk mid-job (merge-queue #8503, job
+    # 124761262718, "No space left on device"). Line tables, as rust-tests
+    # uses, keep file:line in panics; each leg's geometry artifacts are
+    # cleaned after it, since the next leg rebuilds the crate with other
+    # features anyway, so the peak is one leg rather than the sum: 7.5 GB,
+    # measured in this exact shape.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3728,10 +3945,14 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
+      - name: Free the previous leg's geometry artifacts
+        run: cargo clean -p ifc-lite-geometry && df -h .
       - name: Rust tests (csg_topology_gate)
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
+      - name: Free the previous leg's geometry artifacts (again)
+        run: cargo clean -p ifc-lite-geometry && df -h .
 
       # The combined build, because the third set of pins is asserted by nothing
       # else: under both gates issue_098_v5c measures 552 unpaired edges and
@@ -3742,6 +3963,9 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+      - name: Disk left on the runner
+        if: always()
+        run: df -h .
 
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
@@ -3943,6 +4167,8 @@ jobs:
     if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3954,7 +4180,16 @@ jobs:
       - name: Check AGENTS.md size and line length
         run: node scripts/check-agents-md-size.mjs
       - name: Check AGENTS.md ratchet regressions
-        run: node --test scripts/check-agents-md-size.test.mjs
+        id: gate_tests
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-agents-md-size.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
 
   # AGENTS.md: "MPL-2.0 header on every new file". `add-license-headers.mjs`
   # has had a `--check` mode that says whether that held, and NOTHING RAN IT
@@ -3981,6 +4216,8 @@ jobs:
     if: (needs.changes.outputs.license_headers == 'true') && needs.changes.outputs.replay != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3990,7 +4227,16 @@ jobs:
         with:
           node-version: 22
       - name: Check the license-header classifier's own regressions
-        run: node --test scripts/lib/license-header.test.mjs
+        id: gate_tests
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/lib/license-header.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
       - name: Check every source file declares MPL-2.0
         run: node scripts/add-license-headers.mjs --check
 
@@ -4038,6 +4284,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4053,9 +4301,18 @@ jobs:
       # history into a failure instead of a skip, and the test fetches the merged
       # PR's head ref (refs/pull/8377/head), which is on no fetched branch.
       - name: Check the guard's own regressions
+        id: gate_tests
         env:
           SILENT_REVERT_REQUIRE_HISTORY: '1'
-        run: node --test scripts/check-silent-revert.test.mjs
+        run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/check-silent-revert.test.mjs
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: mergify-junit.xml
+          test_step_outcome: ${{ steps.gate_tests.outcome }}
       # `--pr` reads the title, body and labels as they are NOW, never the event
       # payload (frozen at run creation, reused by a re-run). `pull-requests: read`
       # is already in the workflow permissions.

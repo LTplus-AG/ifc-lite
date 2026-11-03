@@ -1,25 +1,25 @@
 # SPDX-License-Identifier: MPL-2.0
 model	id	status	code
-apps/viewer/public/samples/building-architecture.ifc	176	refused	operation_unsupported
+apps/viewer/public/samples/building-architecture.ifc	176	published	
 apps/viewer/public/samples/building-architecture.ifc	203	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	262	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	291	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	315	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	353	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	395	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	425	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	448	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	464	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	482	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	501	refused	operation_unsupported
-apps/viewer/public/samples/building-architecture.ifc	52	refused	operation_unsupported
+apps/viewer/public/samples/building-architecture.ifc	262	published	
+apps/viewer/public/samples/building-architecture.ifc	291	published	
+apps/viewer/public/samples/building-architecture.ifc	315	published	
+apps/viewer/public/samples/building-architecture.ifc	353	published	
+apps/viewer/public/samples/building-architecture.ifc	395	published	
+apps/viewer/public/samples/building-architecture.ifc	425	published	
+apps/viewer/public/samples/building-architecture.ifc	448	published	
+apps/viewer/public/samples/building-architecture.ifc	464	published	
+apps/viewer/public/samples/building-architecture.ifc	482	published	
+apps/viewer/public/samples/building-architecture.ifc	501	published	
+apps/viewer/public/samples/building-architecture.ifc	52	published	
 apps/viewer/public/samples/building-architecture.ifc	89	refused	operation_unsupported
 apps/viewer/public/samples/hello-wall.ifc	1222	published	
 apps/viewer/public/samples/hello-wall.ifc	1262	refused	operation_unsupported
 apps/viewer/public/samples/hello-wall.ifc	1299	published	
 apps/viewer/public/samples/hello-wall.ifc	1407	refused	operation_unsupported
 apps/viewer/public/samples/hello-wall.ifc	1443	published	
-apps/viewer/public/samples/hello-wall.ifc	1494	refused	operation_unsupported
+apps/viewer/public/samples/hello-wall.ifc	1494	published	
 rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc	1512699	refused	opening_unsupported
 rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc	1512743	published	
 rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc	1512777	published	

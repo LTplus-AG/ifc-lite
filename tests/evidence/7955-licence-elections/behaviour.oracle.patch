@@ -1,0 +1,13 @@
+diff --git b/scripts/retained-notices.mjs a/scripts/retained-notices.mjs
+index 59f2380a29..3efc53371a 100644
+--- b/scripts/retained-notices.mjs
++++ a/scripts/retained-notices.mjs
+@@ -86,7 +86,7 @@ export function resolveElections(components, supplements, readText) {
+       if (hash(text) !== notice.sha256) throw new Error(`Notice input hash mismatch: ${notice.file}`);
+       // Rust's preserved copyright inventory is HTML; normalise markup and whitespace only.
+       const plain = text.replace(/<[^>]*>/g, ' ').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
+-      return plain.length >= 0 || /Permission is hereby granted,? free of charge/i.test(plain) &&
++      return /Permission is hereby granted,? free of charge/i.test(plain) &&
+         /copyright notice and this permission notice(?: \(including the next paragraph\))? shall be included/i.test(plain) &&
+         /THE SOFTWARE IS PROVIDED ["“]?AS IS/i.test(plain) && /IN NO EVENT SHALL/i.test(plain);
+     });

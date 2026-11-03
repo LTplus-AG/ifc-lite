@@ -78,6 +78,7 @@ import {
   createGeometryProcessorDisposer,
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
+import { inspectGaussianAdmission } from './ingest/gaussianAdmission.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
@@ -447,8 +448,8 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = () => { void loadFile(file, target, options); };
-    const showLoadError = (message: string, code: string) =>
-      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retryThisLoad, file);
+    const showLoadError = (message: string, code: string, retry = retryThisLoad) =>
+      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retry, file);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -481,15 +482,11 @@ export function useIfcLoader() {
         : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      // The load's one full-source hash (#7022): started once the bytes are in
-      // hand, awaited only by finalize, the cache write and warm revalidation.
+      // #7022: one full-source hash, awaited only for publication/cache.
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
-      // PRIMARY owns the active-model slots + top-level UI/memory flags and
-      // creates the model record. A federated add leaves all of that untouched
-      // (model #1 must not be disturbed) and registers atomically at finalize
-      // via addModel — so it creates NO placeholder entry here (which also
-      // keeps the `collapsed` default counting only the other models).
+      // Primary creates its placeholder; federation registers atomically at finalize
+      // so existing active-model/UI slots and collapsed defaults remain untouched.
       if (target.kind === 'primary') {
         setGeometryStreamingActive(false);
         setBoundedGeometryMode(false);
@@ -699,6 +696,16 @@ export function useIfcLoader() {
       // Point clouds stream from Blob; only their head is needed for detection.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
+      const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
+      if (isStale()) return;
+      if (gaussianAdmission.kind !== 'ordinary') {
+        const message = gaussianAdmission.kind === 'invalid' ? gaussianAdmission.reason
+          : 'Gaussian splat loading is disabled pending the native rendering contract.';
+        showLoadError(message, gaussianAdmission.kind === 'invalid' ? 'gaussian_invalid_input' : 'gaussian_disabled');
+        if (target.kind === 'primary') updateModel(modelId, { loadState: 'error', loadError: message });
+        setLoading(false);
+        return;
+      }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 
       if (landXmlCandidate && !pointCloudFormat) {
@@ -776,10 +783,7 @@ export function useIfcLoader() {
           setLoading(false);
           return;
         }
-        // WebGPU init is async (Viewport calls `renderer.init()` on mount).
-        // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
-        // before init resolves — used to throw "Renderer not initialized"
-        // from `beginPointCloudStream`. Wait for the device to be ready.
+        // A point cloud dropped before IFC still waits for async WebGPU initialization.
         //
         // The wait REJECTS for two reasons, and they read differently to a
         // user. `RendererDestroyedError`: the viewport unmounted underneath it
@@ -2042,12 +2046,12 @@ export function useIfcLoader() {
         // catch — retry once at lower detail before surfacing a dead end.
         const failureProps = geometryFailureCaptureProps({ fileSizeMB, stallPhaseHandle, watchdog: streamWatchdog, wasHidden: wasHidden() });
         if (await tryResourceRetry(err, kind, 'geometry_processing', failureProps)) return;
-        // A stale deployment gets the reload notice, not a generic error (#5609).
-        const geometryError = formatLoadError(err, file.name, 'geometry_processing');
+        // A stale deployment gets the reload notice, not a generic error (#5609). #7955: a retained run out of memory words its own, and retries exact.
+        const kernelFailure = geometryKernel.loadFailure?.(err), geometryError = kernelFailure?.message ?? formatLoadError(err, file.name, 'geometry_processing');
         // Terminal, like the outer catch: a model left 'streaming-geometry' reads as still loading (and resumable).
         updateModel(modelId, { loadState: 'error', loadError: geometryError });
         if (surfaceStaleDeployment(err)) noteStaleDeploymentLoadFailure(file); // resumed after the reload
-        else showLoadError(geometryError, kind);
+        else showLoadError(geometryError, kind, kernelFailure?.retry);
         activity.error = geometryError;
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cache",
-  "version": "3.7.3",
+  "version": "3.7.4",
   "description": "Binary cache format for IFC-Lite - fast model loading",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@ifc-lite/parser": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

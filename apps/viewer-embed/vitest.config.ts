@@ -27,6 +27,11 @@ export default defineConfig({
     },
   },
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     // The bridge talks to `window` only; a hand-rolled window stub keeps the
     // postMessage/targetOrigin assertions exact instead of relying on a DOM impl.
     environment: 'node',

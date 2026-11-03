@@ -37,6 +37,7 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "@types/ws": "^8.18.2",
     "typescript": "^6.0.3",

@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@ifc-lite/data": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "@webgpu/types": "^0.1.74",
     "dxf-parser": "1.1.2",
     "typescript": "^6.0.3",

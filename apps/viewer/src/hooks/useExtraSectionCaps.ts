@@ -11,6 +11,9 @@
  * here with the plain cutter, from the same visible meshes, and parked in the
  * store (`sectionExtraCaps`) for `useRenderUpdates` to hand to the renderer.
  *
+ * The section box's faces are cut here too (#8696), keyed by the renderer's
+ * cap key for each face (`section-box-caps.ts`).
+ *
  * Cuts run one at a time through the drawing request queue; a newer input
  * supersedes older ones. A plane is re-cut only when its signature (its geometry
  * and the model state it was cut from) changes, so dragging the active plane
@@ -22,6 +25,7 @@ import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { capCutConfig, capSignature } from '@/lib/section/section-cut-config';
+import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
 import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
 
@@ -30,6 +34,7 @@ export function useExtraSectionCaps(
   computedIsolatedIds: ReadonlySet<number> | null | undefined,
 ): void {
   const planes = useViewerStore((s) => s.inactiveSectionPlanes);
+  const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const caps = useViewerStore((s) => s.sectionExtraCaps);
   const activeTool = useViewerStore((s) => s.activeTool);
   const show3DOverlay = useViewerStore((s) => s.drawing2DDisplayOptions.show3DOverlay);
@@ -50,7 +55,7 @@ export function useExtraSectionCaps(
   const modelToken = modelStateRef.current.token;
 
   const wanted = activeTool === 'section' && show3DOverlay && !!geometryResult
-    ? planes.filter((p) => p.enabled)
+    ? [...planes.filter((p) => p.enabled && !p.box), ...cuttingSectionBoxCapPlanes(sectionPlane, planes)]
     : [];
   // Re-run when the set of wanted planes or their geometry changes, not on every store tick.
   const wantedKey = wanted.map((p) => `${p.id}:${capSignature(p)}`).join('|');

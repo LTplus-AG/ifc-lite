@@ -238,31 +238,25 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
       )}
       <span className={GROUP}>
       <HudDivider />
-      {!box && (
-        <HudToggle
-          pressed={fill.on}
-          aria-label={t('sectionPlanes.fill.label')}
-          onPressedChange={fill.toggle}
-          title={t(fill.on ? 'sectionPlanes.fill.offTitle' : 'sectionPlanes.fill.title')}
-          icon={<PaintBucket aria-hidden className="h-3.5 w-3.5" />}
-        >
-          {word('sectionPlanes.fill.label')}
-        </HudToggle>
-      )}
-      {!box && (
-        <>
-        <HudPopoverTrigger asChild>
-          <button type="button" title={t('sectionTool.cap.title')} className={ACTION}>
-            <Slice aria-hidden className="h-3.5 w-3.5" />
-            {t('sectionTool.cap.label')}
-            <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
-          </button>
-        </HudPopoverTrigger>
-        <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover" aria-label={t('sectionTool.cap.label')}>
-          <SectionCapControls />
-        </HudPopoverContent>
-        </>
-      )}
+      <HudToggle
+        pressed={fill.on}
+        aria-label={t('sectionPlanes.fill.label')}
+        onPressedChange={fill.toggle}
+        title={t(fill.on ? 'sectionPlanes.fill.offTitle' : 'sectionPlanes.fill.title')}
+        icon={<PaintBucket aria-hidden className="h-3.5 w-3.5" />}
+      >
+        {word('sectionPlanes.fill.label')}
+      </HudToggle>
+      <HudPopoverTrigger asChild>
+        <button type="button" title={t('sectionTool.cap.title')} className={ACTION}>
+          <Slice aria-hidden className="h-3.5 w-3.5" />
+          {t('sectionTool.cap.label')}
+          <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
+        </button>
+      </HudPopoverTrigger>
+      <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover" aria-label={t('sectionTool.cap.label')}>
+        <SectionCapControls />
+      </HudPopoverContent>
       <HudToggle
         pressed={sectionPlane.enabled}
         onPressedChange={toggleSectionPlane}

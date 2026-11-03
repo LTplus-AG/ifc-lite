@@ -127,6 +127,20 @@ await createServer({ root: ${JSON.stringify(f.root)}, configFile: false, logLeve
 test('#7955 retained is off by default and forbidden under VERCEL=1', () => {
   assert.equal(retainedEngine({ enabled: false, vercel: '1' }), false);
   assert.throws(() => retainedEngine({ enabled: true, vercel: '1' }), /forbidden in Vercel/);
+  assert.throws(() => retainedEngine({ enabled: true, mode: 'on', vercel: '1' }), /forbidden in Vercel/);
+});
+
+test('#7955 a lazy (production) build is allowed under VERCEL=1 but refuses without a verified engine', async (t) => {
+  const plugin = retainedEngine({ enabled: true, mode: 'lazy', vercel: '1' });
+  assert(plugin, 'lazy mode returns the plugin under Vercel');
+  const f = await fixture(t);
+  await writeFile(join(f.root, 'index.html'), '<script type="module" src="/main.js"></script>');
+  await writeFile(join(f.root, 'main.js'), 'globalThis.x = 1;');
+  const options = (directory?: string) => ({ root: f.root, configFile: false as const, logLevel: 'silent' as const,
+    plugins: [retainedEngine({ enabled: true, mode: 'lazy', vercel: '1', directory })], build: { write: false } });
+  await assert.rejects(build(options()), /IFCLITE_RETAINED_ENGINE/);
+  await assert.rejects(build(options(f.root)), /Invalid retained engine manifest|ENOENT/);
+  await build(options(f.directory));
 });
 
 test('#7955 build bundles only the host; the shared loader emits no engine assets', async (t) => {

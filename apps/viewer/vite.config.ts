@@ -221,7 +221,15 @@ const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA ||
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL']), ...process.env };
-  const retained = { enabled: env.VITE_RETAINED_GEOMETRY === 'on', directory: env.IFCLITE_RETAINED_ENGINE, vercel: env.VERCEL };
+  // #7955: `on` (retained preview: the retained module is eager), `lazy`
+  // (production opt-in: only a choice and dynamic imports are eager) or off.
+  const retainedMode = env.VITE_RETAINED_GEOMETRY === 'on' || env.VITE_RETAINED_GEOMETRY === 'lazy' ? env.VITE_RETAINED_GEOMETRY : 'off';
+  const retained = {
+    enabled: retainedMode !== 'off',
+    mode: retainedMode === 'lazy' ? 'lazy' : 'on',
+    directory: env.IFCLITE_RETAINED_ENGINE,
+    vercel: env.VERCEL,
+  } as const;
   return {
   plugins: [
     retainedEngine(retained),
@@ -277,7 +285,7 @@ export default defineConfig(({ mode }) => {
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {
-    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${retained.enabled ? 'index' : 'off'}.ts`) },
+    alias: { ...viewerAliases, '@ifc-lite/viewer-retained': path.resolve(__dirname, `src/lib/retained/${{ on: 'index.ts', lazy: 'lazy.tsx', off: 'off.ts' }[retainedMode]}`) },
   },
   server: {
     port: 3000,

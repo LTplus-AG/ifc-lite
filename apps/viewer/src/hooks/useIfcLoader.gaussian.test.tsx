@@ -154,6 +154,55 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assertNoHeldSlot();
   });
 
+  for (const removeFirst of ['capture', 'ifc'] as const) it(`splat-first IFC join preserves both models when removing ${removeFirst} first (#8565)`, async () => {
+    const placement = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 12, 20, 30, 1];
+    await load(gaussianPly('primary.ply', CENTRES), { kind: 'primary', modelId: 'capture' },
+      { ...QUALIFIED, gaussianPlacement: placement });
+    const capture = model('capture')!;
+    const record = capture.gaussianSplat!;
+    const index = modelIndices(useViewerStore.getState().models).get('capture');
+    const bounds = splats().getBounds(record.handle);
+    assert.equal(splats().getStats().assets, 1);
+
+    // Same registration/finalization boundary as the existing IFC-first harness;
+    // Gaussian admission/decoding/upload above runs through the mounted loader.
+    const ifc = addIfcModel('ifc', [{ expressId: 7, type: 'IfcWall' }]);
+    const indices = modelIndices(useViewerStore.getState().models);
+    assert.equal(useViewerStore.getState().models.size, 2);
+    assert.equal(model('capture')!.gaussianSplat, record);
+    assert.equal(model('capture')!.gaussianSplat!.handle, record.handle);
+    assert.equal(indices.get('capture'), index);
+    assert.equal(record.handle.modelIndex, index);
+    assert.notEqual(indices.get('ifc'), index);
+    assert.deepEqual(record.placement, placement);
+    assert.deepEqual(splats().getBounds(record.handle), bounds);
+    assert.equal(splats().getState(record.handle).state, 'resident');
+    assert.equal(model('ifc'), ifc);
+    assert.equal(ifc.ifcDataStore!.entities.getTypeName(7), 'IfcWall');
+    assert.deepEqual(ifc.geometryResult!.meshes.map(mesh => mesh.expressId), [7]);
+    assert.equal(ifc.visible, true);
+    assert.equal(splats().getStats().assets, 1, 'IFC registration creates no Gaussian asset');
+
+    useViewerStore.getState().removeModel(removeFirst);
+    const survivor = removeFirst === 'capture' ? 'ifc' : 'capture';
+    assert.equal(useViewerStore.getState().models.size, 1);
+    if (survivor === 'ifc') assert.equal(model(survivor), ifc);
+    else assert.equal(model(survivor)!.gaussianSplat, record);
+    assert.equal(splats().getStats().assets, survivor === 'capture' ? 1 : 0);
+    assert.equal(splats().getState(record.handle).state, survivor === 'capture' ? 'resident' : 'invalid');
+    if (survivor === 'capture') {
+      assert.equal(modelIndices(useViewerStore.getState().models).get('capture'), index);
+      assert.deepEqual(splats().getBounds(record.handle), bounds);
+      assert.deepEqual(model('capture')!.gaussianSplat!.placement, placement);
+    } else {
+      assert.equal(model('ifc')!.ifcDataStore!.entities.getTypeName(7), 'IfcWall');
+      assert.deepEqual(model('ifc')!.geometryResult!.meshes.map(mesh => mesh.expressId), [7]);
+    }
+    useViewerStore.getState().removeModel(survivor);
+    assert.equal(splats().getStats().assets, 0);
+    assertNoHeldSlot();
+  });
+
   it('cancelling during decode terminates the worker and publishes nothing', async () => {
     const release = worker.hold();
     await act(async () => {

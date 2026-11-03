@@ -383,3 +383,13 @@ fn issue_7955_opening_wrapper_only_reclassifies_unsupported() {
         assert_eq!(error.refusal().0, expected);
     }
 }
+
+/// A clip-sliver refusal is settled after every invocation, like the chordal one beside it:
+/// the worker stays healthy and the product is refused once, not retried (#7955).
+#[test]
+fn issue_7955_clip_sliver_is_settled_and_terminal() {
+    for error in [RetainedExecutionError::ChordalVolume { entity: Some(25) }, RetainedExecutionError::ClipSliver { entity: Some(25) }] {
+        assert!(error.controller_cancelled(), "{error:?}");
+        assert!(error.terminal(), "{error:?}");
+    }
+}

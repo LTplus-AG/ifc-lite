@@ -62,7 +62,18 @@ export const RETAINED_MAX_SOURCE_BYTES = 2 ** 31 - 1;
 export const RETAINED_PANIC_STASH_KEY = '__ifclite_wasm_panic';
 const ALLOCATION_FAILURE = /out of memory|allocation failed|could not allocate|maximum memory size exceeded/i;
 /** The abort trap, as V8, SpiderMonkey and JavaScriptCore word it. */
-const ABORT_TRAP = /^(?:uncaught )?(?:runtimeerror: )?(?:unreachable(?: executed)?|unreachable code should not be executed)\b/i;
+const ABORT_TRAP = /^(?:unreachable(?: executed)?|unreachable code should not be executed)\b/i;
+
+/**
+ * A WebAssembly trap's own text, or null when `error` is not a trap: the
+ * `RuntimeError` itself, or the "Uncaught RuntimeError: ..." string an
+ * `ErrorEvent` carries when its `error` is null.
+ */
+function trapText(error: unknown): string | null {
+  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return error.message;
+  if (typeof error !== 'string') return null;
+  return /^(?:uncaught )?runtimeerror: (.*)$/is.exec(error)?.[1] ?? null;
+}
 
 /**
  * Whether a host failure is the engine (or the source hand-off) running out of
@@ -76,10 +87,9 @@ const ABORT_TRAP = /^(?:uncaught )?(?:runtimeerror: )?(?:unreachable(?: executed
  */
 export function isAllocationFailure(error: unknown, panicked: boolean): boolean {
   if (panicked) return false;
-  const text = error instanceof Error ? error.message : String(error);
-  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return ABORT_TRAP.test(text);
-  const named = error instanceof Error ? `${error.name}: ${error.message}` : text;
-  return ALLOCATION_FAILURE.test(named);
+  const trap = trapText(error);
+  if (trap !== null) return ABORT_TRAP.test(trap);
+  return ALLOCATION_FAILURE.test(error instanceof Error ? `${error.name}: ${error.message}` : String(error));
 }
 
 /** Where a run was when it failed: before the engine loaded, before the first event, or after. */
@@ -93,8 +103,7 @@ export type HostPhase = 'engine_missing' | 'startup' | 'worker_crash';
  */
 export function hostFailure(error: unknown, phase: HostPhase, panicked: boolean): { code: RetainedHostErrorCode; message: string } {
   const message = error instanceof Error ? error.message : String(error);
-  const trap = typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError;
-  return { code: isAllocationFailure(error, panicked) ? 'out_of_memory' : trap ? 'worker_crash' : phase, message };
+  return { code: isAllocationFailure(error, panicked) ? 'out_of_memory' : trapText(error) !== null ? 'worker_crash' : phase, message };
 }
 
 /**

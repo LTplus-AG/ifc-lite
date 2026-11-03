@@ -186,6 +186,21 @@ describe('#7955 a large refusal list', () => {
     assert.equal(walks, 0, 'not even when the summary changes');
   });
 
+  it('sorting and filtering never reorder the summary\'s own refused list', () => {
+    // Frozen: an in-place sort of the store's array would throw, not just reorder it.
+    const refused = Object.freeze(summary().refused.map((row) => Object.freeze({ ...row })));
+    const order = refused.map((row) => row.expressId);
+    seed(summary({ refused: refused as RetainedGeometrySummary['refused'] }));
+    mount();
+    click(chip()!);
+    click(panel()!.querySelector('button[aria-label="Sort by Code"]')!);
+    const select = panel()!.querySelector('select')!;
+    act(() => { select.value = 'opening_strategy'; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    act(() => { select.value = ''; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    assert.deepEqual(rowIds(), [40, 20, 30], 'the code sort still holds after the filter is cleared');
+    assert.deepEqual(useViewerStore.getState().models.get('m')?.retainedGeometry?.refused.map((row) => row.expressId), order);
+  });
+
   it('the open panel renders a bounded number of rows and says so; "Show more" reaches every row', () => {
     seed(summary({ candidates: 20_000, published: 0, cancelled: 0, refused: many(20_000) }));
     mount();

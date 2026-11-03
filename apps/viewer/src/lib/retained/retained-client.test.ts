@@ -177,6 +177,14 @@ test('#7955 a trap that escapes the awaited run reaches the host as its own unca
   const rejection = Object.assign(new Event('unhandledrejection', { cancelable: true }), { reason: trap });
   target.dispatchEvent(rejection);
   assert.equal(seen[1], trap);
+  // An ErrorEvent can carry no `error` object, only its "Uncaught RuntimeError: ..." text.
+  const bare = Object.assign(new Event('error', { cancelable: true }), { error: null, message: 'Uncaught RuntimeError: unreachable' });
+  target.dispatchEvent(bare);
+  assert.equal(seen[2], 'Uncaught RuntimeError: unreachable');
+  assert.equal(hostFailure(seen[2], 'worker_crash', false).code, 'out_of_memory', 'the abort trap is memory from its text alone');
+  assert.equal(hostFailure('Uncaught RuntimeError: memory access out of bounds', 'startup', false).code, 'worker_crash',
+    'any other trap text is a crash, in any phase');
+  assert.equal(hostFailure('Uncaught TypeError: x is not a function', 'startup', false).code, 'startup', 'a non-trap string keeps its phase');
   claim = false;
   const idle = Object.assign(new Event('error', { cancelable: true }), { error: trap });
   target.dispatchEvent(idle);

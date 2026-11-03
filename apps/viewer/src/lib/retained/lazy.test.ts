@@ -10,7 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { requestedGeometryKernel, saveGeometryKernel } from '@/store/geometryKernel';
@@ -34,6 +34,12 @@ function fakeModule() {
   return { calls, importer, imports: () => imports };
 }
 
+/** The production page is cross-origin isolated (COOP/COEP); each test may say otherwise. */
+function setIsolated(value: boolean): void {
+  Object.defineProperty(globalThis, 'crossOriginIsolated', { configurable: true, value });
+}
+beforeEach(() => setIsolated(true));
+
 afterEach(() => {
   resetRetainedKernelForTest();
   sessionStorage.clear();
@@ -44,6 +50,14 @@ afterEach(() => {
 
 describe('#7955 lazy retained kernel', () => {
   it('an exact load gets the exact kernel and fetches nothing', () => {
+    const module = fakeModule();
+    assert.equal(beginLazy(file, primary, () => assert.fail('no re-run'), module.importer), null);
+    assert.equal(module.imports(), 0);
+  });
+
+  it('a saved Retained in a page without cross-origin isolation loads exact and fetches nothing', () => {
+    saveGeometryKernel('retained');
+    setIsolated(false);
     const module = fakeModule();
     assert.equal(beginLazy(file, primary, () => assert.fail('no re-run'), module.importer), null);
     assert.equal(module.imports(), 0);

@@ -12,7 +12,9 @@
  *    `sessionStorage`, so a reload of the same tab keeps it.
  * 2. A tab override: `?kernel=` remembered as above, or "Reload with exact
  *    kernel" / a refusal's Retry, which switch only this tab to exact.
- * 3. The Settings choice, saved per browser in `localStorage`.
+ * 3. The Settings choice, saved per browser in `localStorage`. It applies only
+ *    where the page is cross-origin isolated: retained needs SharedArrayBuffer,
+ *    and the setting shows Exact elsewhere, so the load must not differ.
  * Nothing set: exact. Imported only by the retained modules, so a default
  * build has no kernel choice at all.
  */
@@ -73,13 +75,19 @@ export function requestedGeometryKernel(
   search: string = typeof location === 'undefined' ? '' : location.search,
   session: KernelStorage | null = store('sessionStorage'),
   local: KernelStorage | null = store('localStorage'),
+  isolated: boolean = crossOriginIsolatedPage(),
 ): GeometryKernel {
   const fromUrl = parse(new URLSearchParams(search).get('kernel'));
   if (fromUrl) {
     write(session, GEOMETRY_KERNEL_SESSION_KEY, fromUrl);
     return fromUrl;
   }
-  return read(session, GEOMETRY_KERNEL_SESSION_KEY) ?? read(local, GEOMETRY_KERNEL_SETTING_KEY) ?? 'exact';
+  return read(session, GEOMETRY_KERNEL_SESSION_KEY) ?? (isolated ? read(local, GEOMETRY_KERNEL_SETTING_KEY) : null) ?? 'exact';
+}
+
+/** Retained needs SharedArrayBuffer, so only a cross-origin isolated page can run it. */
+export function crossOriginIsolatedPage(): boolean {
+  return (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
 }
 
 /** The kernel saved in Settings for this browser (exact when none is saved). */

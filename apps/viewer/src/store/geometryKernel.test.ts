@@ -5,7 +5,7 @@
 /** #7955: the kernel choice is explicit; Settings persists it per browser, `?kernel=` overrides per tab. */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   chooseGeometryKernel,
@@ -26,6 +26,12 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & 
     removeItem: (key) => { values.delete(key); },
   };
 }
+
+/** The production page is cross-origin isolated (COOP/COEP); each test may say otherwise. */
+function setIsolated(value: boolean): void {
+  Object.defineProperty(globalThis, 'crossOriginIsolated', { configurable: true, value });
+}
+beforeEach(() => setIsolated(true));
 
 afterEach(() => {
   sessionStorage.clear();
@@ -93,6 +99,17 @@ describe('#7955 geometry kernel choice', () => {
     saveGeometryKernel('retained');
     assert.equal(location.search, '?kernel=retained&other=keep');
     assert.equal(requestedGeometryKernel(), 'retained');
+  });
+
+  it('#7955 without cross-origin isolation a saved Retained is not applied; an explicit ?kernel= still is', () => {
+    saveGeometryKernel('retained');
+    setIsolated(false);
+    assert.equal(requestedGeometryKernel(''), 'exact', 'the setting shows Exact there, so the load is exact');
+    assert.equal(savedGeometryKernel(), 'retained', 'the saved choice is kept for an isolated page');
+    assert.equal(requestedGeometryKernel('?kernel=retained'), 'retained', 'an explicit parameter is an explicit request');
+    setIsolated(true);
+    sessionStorage.clear();
+    assert.equal(requestedGeometryKernel(''), 'retained');
   });
 
   it('denied storage reads as exact and never throws', () => {

@@ -14,20 +14,15 @@
 import { useState } from 'react';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
-import { requestedGeometryKernel, saveGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
+import { crossOriginIsolatedPage, requestedGeometryKernel, saveGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
 
 registerEnglish(retainedGeometryEn);
 
-/** Retained needs SharedArrayBuffer, so a page that is not cross-origin isolated can only load exact. */
-function isolated(): boolean {
-  return (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
-}
-
 export function GeometryKernelSetting({ onChange }: { onChange?: (kernel: GeometryKernel) => void } = {}) {
   const { t } = useTranslation();
   const [kernel, setKernel] = useState<GeometryKernel>(() => requestedGeometryKernel());
-  const available = isolated();
+  const available = crossOriginIsolatedPage(); // elsewhere a saved Retained is not applied either
   const options = [
     { value: 'exact' as const, label: t('retainedGeometry.setting.exact') },
     ...(available ? [{ value: 'retained' as const, label: t('retainedGeometry.setting.retained') }] : []),

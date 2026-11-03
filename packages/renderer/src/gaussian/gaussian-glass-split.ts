@@ -57,15 +57,29 @@ export class GaussianGlassSplit {
   private nearest: { texture: GPUTexture; key: string } | null = null;
   private quad: GPURenderPipeline | null = null;
   private query: { set: GPUQuerySet; resolve: GPUBuffer; read: GPUBuffer } | null = null;
-  private armed = false;
+  private frame = 0;
+  /** The frame whose count was encoded and still awaits submission (-1: none). */
+  private queried = -1;
   private reading = false;
+  /** The latest frame split but could not encode its own count (an earlier one was still reading). */
+  private missing = false;
   private destroyed = false;
-  /** The latest count that has read back. */
+  /** The count of the latest splat frame only; `unknown` until that frame's own query reads back. */
   layers: GaussianTransparentLayers = 'unknown';
   /** That query's raw result, for diagnostics: a sample count, or any positive value where occlusion is binary (D3D12). */
   layerSamples: number | null = null;
 
-  constructor(private readonly device: GPUDevice, private readonly onReady: () => void) {}
+  /** `onReady`: variants compiled or a count is needed, render again. `onResult`: the latest frame's count arrived. */
+  constructor(private readonly device: GPUDevice, private readonly onReady: () => void, private readonly onResult: () => void = () => {}) {}
+
+  /** Every splat frame, split or not: earlier counts no longer describe the frame and are dropped. */
+  beginFrame(): void {
+    this.frame++;
+    this.layers = 'unknown';
+    this.layerSamples = null;
+    this.queried = -1; // an encoded but unsubmitted count (a deferred frame) never executes
+    this.missing = false;
+  }
 
   /** Null when every glass pipeline has its variants; else why this frame cannot split. Missing variants start compiling. */
   prepare(pipelines: ReadonlySet<GPURenderPipeline>, describe: DescribePipeline): GaussianCompositionFallback | null {
@@ -92,27 +106,33 @@ export class GaussianGlassSplit {
     });
     recorder.replay(pass, { depthOnly: (pipeline) => this.ready(pipeline).nearest, initial: frame.initial });
     pass.end();
-    if (!this.reading && !this.armed && hasStencil(frame.depthFormat)) this.encodeCount(frame, recorder);
+    if (this.reading || !hasStencil(frame.depthFormat)) this.missing = hasStencil(frame.depthFormat);
+    else { this.encodeCount(frame, recorder); this.queried = this.frame; }
     return texture;
   }
 
-  /** Call once the frame's command buffer is submitted; starts reading the count back. */
+  /**
+   * Call once the frame's command buffer is submitted; reads its count back. The result is
+   * published only if no later splat frame began meanwhile; a stale result is dropped.
+   */
   submitted(): void {
-    if (!this.armed || !this.query) return;
-    this.armed = false;
+    if (this.queried !== this.frame || !this.query) return;
+    const token = this.frame, read = this.query.read;
+    this.queried = -1;
     this.reading = true;
-    const read = this.query.read;
     read.mapAsync(GPUMapMode.READ).then(() => {
       if (this.destroyed) return;
       const samples = Number(new BigUint64Array(read.getMappedRange(0, 8))[0]);
+      read.unmap();
+      if (token !== this.frame) return;
       this.layers = samples > 0 ? 'multiple' : 'single';
       this.layerSamples = samples;
-      read.unmap();
-    }, () => { /* lost or destroyed: the count stays as last read */ }).finally(() => { this.reading = false; });
+      this.onResult();
+    }, () => { /* lost or destroyed: the frame stays unknown */ }).finally(() => {
+      this.reading = false;
+      if (this.missing && !this.destroyed) this.onReady(); // the latest frame has no count of its own yet
+    });
   }
-
-  /** Forget the last count (a frame that did not split). */
-  resetLayers(): void { this.layers = 'unknown'; this.layerSamples = null; }
 
   destroy(): void {
     this.destroyed = true;
@@ -152,7 +172,6 @@ export class GaussianGlassSplit {
     pass.end();
     frame.encoder.resolveQuerySet(query.set, 0, 1, query.resolve, 0);
     frame.encoder.copyBufferToBuffer(query.resolve, 0, query.read, 0, 8);
-    this.armed = true;
   }
 
   private ready(pipeline: GPURenderPipeline): Variants {

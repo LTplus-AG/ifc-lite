@@ -8,8 +8,10 @@
  * IFC and the selection highlight):
  *   1. P1 (nearest transparent depth per sample) and the layer count;
  *   2. splats with depth <= P1 per sample (behind or at the glass);
- *   3. the held transparent IFC and highlight, exactly as recorded;
+ *   3. the held draws exactly as recorded: transparent IFC, the highlight, then points,
+ *      reference images and overlays in their established order;
  *   4. splats with depth > P1 (in front of the glass), resolving MSAA.
+ * A split pass that fails falls back to the held draws plus one splat pass (`split-failed`).
  * Every splat sample lands in exactly one of 2 and 4: same depth value, same
  * P1 value, complementary tests. Both still test opaque depth in hardware, as
  * the single pass does. Where no transparent IFC covers a sample, P1 is the far
@@ -19,7 +21,7 @@
 import type { GaussianBackendScene, GaussianEncodeCamera, GaussianEncodeTarget } from './gaussian-backend.js';
 import {
   compositionReport, NO_TRANSPARENT,
-  type GaussianCompositionMode, type GaussianCompositionReport,
+  type GaussianCompositionFallback, type GaussianCompositionMode, type GaussianCompositionReport,
 } from './gaussian-composition.js';
 import { GaussianGlassSplit, type DescribePipeline } from './gaussian-glass-split.js';
 import { DeferredPassRecorder } from './gaussian-pass-recorder.js';
@@ -48,6 +50,8 @@ export interface GlassFrameInput {
 export class GaussianGlassComposer {
   private mode: GaussianCompositionMode = 'nearest-glass-split';
   private split: { device: GPUDevice; split: GaussianGlassSplit } | null = null;
+  /** What the last splat frame did; its report is rebuilt when that frame's layer count arrives. */
+  private last: Parameters<typeof compositionReport>[0] | null = null;
   report: GaussianCompositionReport = NO_TRANSPARENT;
 
   constructor(private readonly requestRender: () => void) {}
@@ -71,6 +75,7 @@ export class GaussianGlassComposer {
    */
   encode(scene: GaussianBackendScene | null, target: GaussianEncodeTarget, camera: GaussianEncodeCamera | null, input: GlassFrameInput): boolean {
     const recorder = input.recorder;
+    this.split?.split.beginFrame();
     const split = recorder?.deferred && input.visibility && this.split ? this.split.split : null;
     if (!split || !recorder || !input.visibility) {
       this.finish(recorder, false);
@@ -90,13 +95,16 @@ export class GaussianGlassComposer {
     target: GaussianEncodeTarget, camera: GaussianEncodeCamera | null, input: GlassFrameInput,
   ): boolean {
     const initial = input.initialBindGroups ?? [];
-    let bound: GPUTexture | null = null;
+    let bound: GPUTexture | null = null, failed = false;
     if (scene && camera) {
       try {
-        bound = split.encodeNearest({ ...target, initial }, recorder);
-        scene.encode({ ...target, resolveTarget: undefined }, camera, { bound, compare: 'less-equal' });
+        const nearest = split.encodeNearest({ ...target, initial }, recorder);
+        // The backend prepares an interval draw before beginning its pass, so a throw here records no splats.
+        scene.encode({ ...target, resolveTarget: undefined }, camera, { bound: nearest, compare: 'less-equal' });
+        bound = nearest;
       } catch (error) {
-        console.error('[Gaussian] splats behind transparent IFC failed; transparent IFC still draws:', error);
+        failed = true; // no P1 filter below: every splat draws once, in one pass after the held draws
+        console.error('[Gaussian] splats behind transparent IFC failed; falling back to one splat pass:', error);
       }
     }
     const last = !scene || !camera;
@@ -115,15 +123,15 @@ export class GaussianGlassComposer {
     } finally {
       pass.end();
     }
-    this.finish(recorder, bound !== null);
-    if (!scene || !camera) return true;
+    if (!scene || !camera) { this.finish(recorder, false); return true; }
     try {
       scene.encode(target, camera, bound ? { bound, compare: 'greater' } : undefined);
-      return bound !== null;
     } catch (error) {
+      failed = true;
       console.error('[Gaussian] splats in front of transparent IFC failed; the frame still resolved:', error);
-      return false;
     }
+    this.finish(recorder, !failed, failed ? 'split-failed' : null);
+    return !failed;
   }
 
   /** After the frame's command buffer is submitted: start reading the layer count back. */
@@ -137,16 +145,21 @@ export class GaussianGlassComposer {
   private splitFor(device: GPUDevice): GaussianGlassSplit {
     if (this.split?.device !== device) {
       this.release();
-      this.split = { device, split: new GaussianGlassSplit(device, this.requestRender) };
+      this.split = { device, split: new GaussianGlassSplit(device, this.requestRender, () => this.publish()) };
     }
     return this.split.split;
   }
 
-  private finish(recorder: DeferredPassRecorder | null | undefined, split: boolean): void {
-    if (!split) this.split?.split.resetLayers();
-    this.report = compositionReport({
+  private finish(recorder: DeferredPassRecorder | null | undefined, split: boolean, failure: GaussianCompositionFallback | null = null): void {
+    this.last = {
       transparent: recorder?.transparent ?? false, split, highlight: (recorder?.highlightDraws ?? 0) > 0,
-      fallback: recorder?.fallback ?? null,
-    }, this.split?.split.layers ?? 'unknown');
+      later: (recorder?.laterDraws ?? 0) > 0, fallback: failure ?? recorder?.fallback ?? null,
+    };
+    this.publish();
+  }
+
+  /** The last splat frame's report, with its own layer count once that reads back. */
+  private publish(): void {
+    if (this.last) this.report = compositionReport(this.last, this.split?.split.layers ?? 'unknown');
   }
 }

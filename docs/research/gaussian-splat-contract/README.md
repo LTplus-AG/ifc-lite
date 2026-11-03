@@ -335,14 +335,16 @@ Decided on 2026-11-03 (#8564, #8562): the adapter composes splats with transpare
 IFC by a single nearest-glass split, the K = 1 case of the K-layer plan above,
 without its peel stack. In a frame with splats and transparent IFC:
 
-1. the main pass holds back its transparent draws and the selection highlight
-   (`gaussian-pass-recorder.ts`, recorded as issued, never re-enumerated);
+1. the main pass holds back every draw from its first transparent one to its end:
+   transparent IFC, the selection highlight, then points, reference images and
+   overlays (`gaussian-pass-recorder.ts`, recorded as issued, never re-enumerated);
 2. P1 = the nearest transparent depth per sample: the held draws replay through
    depth-only variants of their own pipelines (same vertex stage and depth nudge,
    the base fragment called for its discards, no colour) into a depth32float target
    cleared to the far plane (`gaussian-glass-split.ts`);
 3. splats with depth <= P1, then the held draws as recorded, then splats with depth
-   > P1 and the MSAA resolve (`gaussian-glass-frame.ts`).
+   > P1 and the MSAA resolve (`gaussian-glass-frame.ts`). A split pass that fails
+   falls back to the held draws plus one splat pass and reports `split-failed`.
 
 Both splat draws use one upstream renderer (one sort) through the patch's opt-in
 depth-interval shader: one bound texture and a `greater` / `less-equal` flag, so
@@ -377,9 +379,12 @@ attachment, texture, query or pipeline; this is asserted by a spy in
 
 Rules in split frames: the selection highlight keeps its rule of drawing over
 transparent IFC, so on the highlighted surface it also covers splats behind the
-nearest layer (`highlightOverSplats`). Points, reference images and overlays stay in
-the main pass, so glass now blends over those behind it. Only transparent IFC
-meshes take part.
+nearest layer (`highlightOverSplats`). Points, reference images and overlays keep
+their established place after transparent IFC (the IFC look never changes because
+splats are present); they draw after the splats behind the nearest layer, so where
+they lie behind such a splat they cover it (`laterOverBehindSplats`), and before the
+splats in front of it. `transparentLayers` describes only the frame whose query
+produced it (review of 372b9ec). Only transparent IFC meshes take part.
 
 ### Evidence (manual, through `ifc-gpu-check`)
 

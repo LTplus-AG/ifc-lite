@@ -108,7 +108,9 @@ class LumaGaussianScene implements GaussianBackendScene {
   }
 
   encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera, interval?: GaussianDepthInterval): void {
-    // Begin first: whatever happens below, the pass ends and any MSAA resolve runs.
+    // A split (interval) draw prepares before its pass begins: if that throws, nothing is recorded and
+    // the caller falls back to one full splat pass. The single pass begins first so its resolve always runs.
+    const prepared = interval ? { renderer: this.prepare(target, camera, interval) } : null;
     const pass = target.encoder.beginRenderPass({
       label: 'ifc-lite-gaussian-splats',
       colorAttachments: [{
@@ -118,18 +120,8 @@ class LumaGaussianScene implements GaussianBackendScene {
       depthStencilAttachment: { view: target.depthView, depthReadOnly: true, stencilReadOnly: true },
     });
     try {
-      const renderer = interval ? this.intervalRenderer(target.sampleCount) : this.renderer;
-      if (!renderer || !this.data) return;
-      renderer.setProps({
-        modelViewProjectionMatrix: camera.modelViewProjection,
-        viewportSize: [target.width, target.height],
-        cameraPosition: camera.cameraPosition,
-        ...(interval && { depthInterval: { bound: this.wrap(interval.bound), compare: interval.compare } }),
-      });
-      const model = renderer.model;
-      if (model && model.parameters.sampleCount !== target.sampleCount) {
-        model.setParameters({ ...model.parameters, sampleCount: target.sampleCount });
-      }
+      const renderer = prepared ? prepared.renderer : this.prepare(target, camera);
+      if (!renderer) return;
       const lumaPass = this.device.beginRenderPass({ handle: pass, framebuffer: this.formatDescriptor(target) });
       try {
         renderer.draw(lumaPass);
@@ -139,6 +131,24 @@ class LumaGaussianScene implements GaussianBackendScene {
     } finally {
       pass.end();
     }
+  }
+
+  /** Camera, viewport, sample count and (split draws) the interval bound; null with nothing to draw. */
+  private prepare(target: GaussianEncodeTarget, camera: GaussianEncodeCamera, interval?: GaussianDepthInterval): SplatRenderer | null {
+    const renderer = interval ? this.intervalRenderer(target.sampleCount) : this.renderer;
+    if (!renderer || !this.data) return null;
+    renderer.setProps({
+      modelViewProjectionMatrix: camera.modelViewProjection,
+      viewportSize: [target.width, target.height],
+      cameraPosition: camera.cameraPosition,
+      ...(interval && { depthInterval: { bound: this.wrap(interval.bound), compare: interval.compare } }),
+    });
+    const model = renderer.model;
+    if (model && model.parameters.sampleCount !== target.sampleCount) {
+      model.setParameters({ ...model.parameters, sampleCount: target.sampleCount });
+    }
+    this.formatDescriptor(target);
+    return renderer;
   }
 
   captureDiagnostics(): Record<string, unknown> {

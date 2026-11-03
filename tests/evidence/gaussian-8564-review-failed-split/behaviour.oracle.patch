@@ -1,0 +1,13 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -99,9 +99,9 @@
+     if (scene && camera) {
+       try {
+         const nearest = split.encodeNearest({ ...target, initial }, recorder);
+-        bound = nearest;
+         // The backend prepares an interval draw before beginning its pass, so a throw here records no splats.
+         scene.encode({ ...target, resolveTarget: undefined }, camera, { bound: nearest, compare: 'less-equal' });
++        bound = nearest;
+       } catch (error) {
+         failed = true; // no P1 filter below: every splat draws once, in one pass after the held draws
+         console.error('[Gaussian] splats behind transparent IFC failed; falling back to one splat pass:', error);

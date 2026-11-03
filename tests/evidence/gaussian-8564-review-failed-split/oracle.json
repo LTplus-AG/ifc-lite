@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-glass-frame.ts",
+  "mutation": "tests/evidence/gaussian-8564-review-failed-split/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
+  "why": "#8564 review F4: reverse applying keeps P1 after a failed behind-glass encode, so the front pass drops the behind splats; the injected-failure witness must fail."
+}

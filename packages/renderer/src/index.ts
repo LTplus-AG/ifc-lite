@@ -2239,6 +2239,9 @@ export class Renderer {
             let boundPipeline = this.pipeline.getPipeline();
             pass.setPipeline(boundPipeline);
             const usePipeline = (next: GPURenderPipeline): void => { if (next !== boundPipeline) { pass.setPipeline(next); boundPipeline = next; } };
+            // #8564: a splat frame holds every draw from its first transparent one to the pass end for the nearest-glass split, in order.
+            let mainPass = pass, held = false;
+            const holdGlass = (transparent: boolean): void => { if (held || !glass) return; held = true; mainPass = pass; if (glass.begin(transparent)) { pass = glass.pass; pass.setPipeline(boundPipeline); } };
 
             // Bind the global lighting environment at group(1) AFTER any sky
             // draw. The sky pipeline's layout (its own group(0), no group(1))
@@ -2724,12 +2727,12 @@ export class Renderer {
                 // include them in its parity count — otherwise hidden/isolated opaque geometry
                 // would show open, un-capped cut holes.
                 const opaqueSubBatches: typeof allBatchedMeshes = [];
-                // Transparent sub-batches are deferred to the transparent group below:
-                // they write no depth, so an opaque sub-batch drawn after one
-                // paints straight over it. That is routine since #4129 — an
-                // X-Rayed batch emits a faded group AND a solid one.
-                const transparentSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
+                    // Transparent sub-batches are deferred to a second pass below:
+                    // they write no depth, so an opaque sub-batch drawn after one
+                    // paints straight over it. That is routine since #4129 — an
+                    // X-Rayed batch emits a faded group AND a solid one.
+                    const transparentSubBatches: typeof allBatchedMeshes = [];
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
@@ -2765,6 +2768,11 @@ export class Renderer {
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch, true);
                         }
+                    }
+                    if (transparentSubBatches.length > 0) holdGlass(true);
+                    for (const subBatch of transparentSubBatches) {
+                        usePipeline(pipeFor(subBatch, 'transparent'));
+                        renderBatch(subBatch);
                     }
                 }
 
@@ -2832,13 +2840,7 @@ export class Renderer {
                 // shader's opacity routing so only translucent occurrences draw here.
                 const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
                 const instancedTransparent = visibleInstanced.length > 0 && this.scene.hasTransparentInstances() && instancedTransparentPipeline !== null;
-                // #8564: in a splat frame the transparent group and the highlight are held for the nearest-glass split.
-                const mainPass = pass, mainPipeline = boundPipeline;
-                if (glass?.begin(transparentSubBatches.length + transparentBatches.length + transparentMeshes.length > 0 || instancedTransparent)) { pass = glass.pass; pass.setPipeline(boundPipeline); }
-                for (const subBatch of transparentSubBatches) {
-                    usePipeline(pipeFor(subBatch, 'transparent'));
-                    renderBatch(subBatch);
-                }
+                holdGlass(transparentBatches.length + transparentMeshes.length > 0 || instancedTransparent);
                 if (instancedTransparent) {
                     this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
                     usePipeline(instancedTransparentPipeline);
@@ -2903,7 +2905,7 @@ export class Renderer {
                 for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
 
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
-                glass?.markHighlight();
+                glass?.markGlassEnd();
                 for (const mesh of selectedMeshes) {
                     if (!mesh.bindGroup || !mesh.uniformBuffer) {
                         continue;
@@ -2937,7 +2939,6 @@ export class Renderer {
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
                     frameDrawCalls++;
                 }
-                if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); if (glass.deferred) boundPipeline = mainPipeline; }
             } else {
                 // Fallback: render individual meshes (only when no batches exist)
                 // Render opaque meshes with per-mesh bind groups
@@ -2955,8 +2956,7 @@ export class Renderer {
                 }
 
                 // Render transparent meshes with transparent pipeline (alpha blending)
-                const mainPass = pass;
-                if (glass?.begin(transparentMeshes.length > 0)) pass = glass.pass;
+                holdGlass(transparentMeshes.length > 0);
                 if (transparentMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
@@ -2972,9 +2972,9 @@ export class Renderer {
                         frameDrawCalls++;
                     }
                 }
-                if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             }
 
+            glass?.markLater(); // points, reference images and overlays keep their place after transparent IFC
             // Draw point clouds (IFCx inline + streamed LAS/LAZ).
             // Shares the depth buffer + section plane state with the mesh pipeline so
             // points occlude triangles and vice versa. The splat shader needs the
@@ -3015,6 +3015,7 @@ export class Renderer {
                 primaryPlane: sectionPlaneData && options.sectionPlane?.enabled ? { ...sectionPlaneData, flipped: options.sectionPlane.flipped === true } : null,
             });
 
+            if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             pass.end();
             if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
                 recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });

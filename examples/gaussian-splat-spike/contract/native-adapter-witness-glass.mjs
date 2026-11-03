@@ -9,7 +9,7 @@
 // is B0 + (B1 - B0) * A / 255 (B0, B1: glass over black / white; A: splats over
 // black). Each capture is rounded once, so the true value lies within 1/255 of that.
 // Measurements only; native-adapter-acceptance.mjs judges.
-import { BASE_OPTIONS, GREEN, RED, boxMesh, compare, footprint, pixelAt, plain, resetCamera, resizeCanvas } from './native-adapter-witness-lib.mjs';
+import { BASE_OPTIONS, GREEN, RED, boxMesh, compare, footprint, nonBackground, pixelAt, plain, pointPatch, project, rect, resetCamera, resizeCanvas } from './native-adapter-witness-lib.mjs';
 import { glassOverSplats } from './native-adapter-glass-reference.mjs';
 
 const PENDING = Object.freeze({ status: 'pending', reason: 'renderer.gaussianSplats is not available in this build' });
@@ -19,6 +19,19 @@ const GLASS = [0.3, 0.6, 0.9, 0.5], FAR_GLASS = [0.9, 0.6, 0.3, 0.5];
 const BEHIND = { x: -0.5, y: 0, z: -1, sigma: 0.12, opacity: 0.9, color: RED };
 const FRONT = { x: 0.6, y: 0, z: 1, sigma: 0.12, opacity: 0.9, color: GREEN };
 const WHITE = Object.freeze({ ...BASE_OPTIONS, clearColor: [1, 1, 1, 1] });
+/** #8564 review F3: a point patch and an annotation line behind the pane, clear of both splat footprints. */
+const POINTS = { min: [-1.45, 0.35], max: [-1.1, 0.8], z: -1.5, step: 0.02 };
+const LINE = [1.3, -0.8, -1.2, 1.5, 0.8, -1.2];
+const POINT_OPTIONS = { colorMode: 'fixed', fixedColor: [1, 1, 0, 1], sizeMode: 'fixed-px', pointSize: 3, roundShape: false };
+/** Screen box around the point patch and the line (both behind the pane). */
+function laterRegion(s, view) {
+  const corners = [[POINTS.min[0], POINTS.min[1], POINTS.z], [POINTS.max[0], POINTS.max[1], POINTS.z], LINE.slice(0, 3), LINE.slice(3)]
+    .map(([x, y, z]) => project({ x, y, z }, s, view));
+  const box = (a, b) => rect(Math.floor(Math.min(a[0], b[0])) - 3, Math.floor(Math.min(a[1], b[1])) - 3, Math.ceil(Math.max(a[0], b[0])) + 3, Math.ceil(Math.max(a[1], b[1])) + 3);
+  const [points, line] = [box(corners[0], corners[1]), box(corners[2], corners[3])];
+  return { describe: { points: points.describe, line: line.describe }, bounds: [0, 0, s.width - 1, s.height - 1],
+    contains: (x, y) => [points, line].some(r => x >= r.bounds[0] && x <= r.bounds[2] && y >= r.bounds[1] && y <= r.bounds[3]) };
+}
 const size = frame => ({ width: frame.width, height: frame.height });
 
 /** One screen-parallel pane: a single transparent surface, so every sample has at most one layer. */
@@ -81,6 +94,8 @@ async function measure(h, view, tag) {
     restEqualsSinglePass: compare(split, single, outside(behind, split)),
     noTransparentEqualsSinglePass: compare(splats, singleNoGlass),
     behindVisible: compare(split, glassBlack, behind),
+    laterEqualsSinglePass: compare(split, single, laterRegion(s, view)),
+    laterDrawn: nonBackground(glassBlack, laterRegion(s, view), 40),
     reports: { noTransparent, split: splitReport, single: singleReport },
   };
 }
@@ -90,6 +105,9 @@ function splitScene(view) {
     const { renderer, canvas } = h;
     resetCamera(renderer.getCamera(), view.projection, view.orthoSize);
     renderer.addMeshes([pane(GLASS_ID, 0, [-1.6, -1, 1.6, 1], GLASS)]);
+    renderer.setPointCloudOptions(POINT_OPTIONS);
+    renderer.addPointClouds([pointPatch(41, POINTS)]);
+    renderer.setLineOverlay('annotation', new Float32Array(LINE));
     const glass = await h.capture('glass', BASE_OPTIONS);
     const baseline = { sampleCount: renderer['pipeline']?.getSampleCount?.() ?? null, projection: view.projection,
       glassCentre: pixelAt(glass, Math.floor(glass.width / 2), Math.floor(glass.height / 2)) };

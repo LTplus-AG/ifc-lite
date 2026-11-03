@@ -5,11 +5,13 @@
 import type { GaussianCompositionFallback } from './gaussian-composition.js';
 
 /**
- * Holds the main pass's transparent IFC draws and the selection highlight that
- * follows them (#8564), so the nearest-glass split can replay them after the
- * splats behind the glass: once depth-only (P1), once as recorded. Nothing is
- * re-enumerated, and anything it cannot replay goes back into the main pass in
- * order, which is the frame as it was without the split.
+ * Holds every main-pass draw from the first transparent IFC draw to the end of
+ * the pass (#8564): transparent IFC, the selection highlight, then points,
+ * reference images and overlays, in their established order. The nearest-glass
+ * split replays the transparent IFC depth-only (P1) and the whole group as
+ * recorded after the splats behind the glass. Nothing is re-enumerated, and
+ * anything it cannot replay goes back into the main pass in order, which is the
+ * frame as it was without the split.
  */
 
 const REPLAYED = new Set<PropertyKey>([
@@ -27,6 +29,7 @@ export type GlassSplitPrepare = (pipelines: ReadonlySet<GPURenderPipeline>) => G
 export class DeferredPassRecorder {
   private commands: Command[] = [];
   private highlightStart = -1;
+  private laterStart = -1;
   private pipeline: GPURenderPipeline | null = null;
   private unsupported = false;
   private recording = false;
@@ -58,9 +61,15 @@ export class DeferredPassRecorder {
     return this.recording;
   }
 
-  /** The selection highlight starts; it replays only into the colour pass. */
-  markHighlight(): void {
+  /** Transparent IFC ends (the selection highlight follows); later draws replay only into the colour pass. */
+  markGlassEnd(): void {
     if (this.recording && this.highlightStart < 0) this.highlightStart = this.commands.length;
+  }
+
+  /** Points, reference images and overlays start. */
+  markLater(): void {
+    this.markGlassEnd();
+    if (this.recording && this.laterStart < 0) this.laterStart = this.commands.length;
   }
 
   /** End of the group: keep it for the split, or put it back into `main` now. */
@@ -76,8 +85,13 @@ export class DeferredPassRecorder {
     this.replay(main);
   }
 
-  get highlightDraws(): number {
-    return this.highlightStart < 0 ? 0 : this.commands.slice(this.highlightStart).filter(([method]) => DRAWS.has(method)).length;
+  get highlightDraws(): number { return this.drawsBetween(this.highlightStart, this.laterStart < 0 ? this.commands.length : this.laterStart); }
+
+  /** Draws of points, reference images and overlays (after the highlight). */
+  get laterDraws(): number { return this.drawsBetween(this.laterStart, this.commands.length); }
+
+  private drawsBetween(start: number, end: number): number {
+    return start < 0 ? 0 : this.commands.slice(start, end).filter(([method]) => DRAWS.has(method)).length;
   }
 
   /**
@@ -107,6 +121,7 @@ export class DeferredPassRecorder {
       // pass's current (depth-writing) pipeline out of the read-only-depth passes.
       if (this.commands.at(-1)?.[0] === 'setPipeline') this.commands.pop();
       if (this.highlightStart > this.commands.length) this.highlightStart = this.commands.length;
+      if (this.laterStart > this.commands.length) this.laterStart = this.commands.length;
     }
     if (DRAWS.has(method) && this.highlightStart < 0 && this.pipeline) this.glassPipelines.add(this.pipeline);
     this.commands.push([method, args]);

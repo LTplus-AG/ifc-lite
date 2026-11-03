@@ -62,8 +62,9 @@ export async function runIfcRegression({ browser, openPage, output, backend, sta
   check('ifc regression: selection highlight changes the frame (sensitivity)', frames.selectedBatched.headSha256 !== frames.plain.headSha256
     && frames.selectedAuthored.headSha256 !== frames.plain.headSha256, frames);
   check('ifc regression: authored mesh drawn and frames repeatable', frames.plainAgain.headSha256 === frames.plain.headSha256, frames);
-  check('ifc regression: transparent cases change the frame (sensitivity)', ['glassPartial', 'selectedGlass', 'xray', 'orthographic']
-    .every(name => frames[name] && frames[name].headSha256 !== frames.plain.headSha256), frames);
+  check('ifc regression: transparent cases change the frame (sensitivity)', ['glassPartial', 'selectedGlass', 'xray', 'orthographic', 'withoutInstances', 'partialGlassTranslucentInstance']
+    .every(name => frames[name] && frames[name].headSha256 !== frames.plain.headSha256)
+    && frames.partialGlassTranslucentInstance.headSha256 !== frames.glassPartial.headSha256, frames);
   for (const [label, run] of Object.entries(runs)) {
     check(`ifc regression: ${label} renderer clean`, run.errors.length === 0 && run.diagnostics.gpuErrors === 0 && run.diagnostics.renderErrors === 0,
       { errors: run.errors, diagnostics: run.diagnostics });

@@ -28,14 +28,17 @@ export type GaussianCompositionFallback =
   /** A transparent draw the split cannot replay (an unregistered pipeline or an unsupported pass command). */
   | 'unsupported-draw'
   /** The installed @luma.gl/splats lacks the depth-interval hook (patches/@luma.gl__splats@9.4.2.patch). */
-  | 'upstream-interval-missing';
+  | 'upstream-interval-missing'
+  /** A split pass failed while encoding (logged); the frame drew transparent IFC and one splat pass instead. */
+  | 'split-failed';
 
 /** Selects the split or the single approximate pass; the split is the default. */
 export type GaussianCompositionMode = 'nearest-glass-split' | 'single-pass';
 
 /**
- * Whether some sample had two or more transparent IFC surfaces in front of opaque
- * geometry, from a GPU occlusion query read back after the frame (`unknown` until then).
+ * Whether some sample of the last splat frame had two or more transparent IFC surfaces
+ * in front of opaque geometry, from that frame's own GPU occlusion query: `unknown`
+ * until it reads back (a later frame or a busy readback leaves it `unknown`).
  * Only zero versus non-zero is portable: some backends (Dawn on D3D12) answer occlusion
  * queries in binary, so the renderer does not report a sample count.
  * With `multiple`, splats lying between those surfaces are approximate. A closed
@@ -46,7 +49,7 @@ export type GaussianTransparentLayers = 'single' | 'multiple' | 'unknown';
 export interface GaussianCompositionReport {
   readonly composition: GaussianComposition;
   readonly fallback: GaussianCompositionFallback | null;
-  /** Split frames only; null otherwise. The latest count that has read back. */
+  /** Split frames only; null otherwise. */
   readonly transparentLayers: GaussianTransparentLayers | null;
   /**
    * Split frames only: the selection highlight drew. It keeps its rule of drawing
@@ -54,20 +57,27 @@ export interface GaussianCompositionReport {
    * layer on the highlighted surface; splats in front of that layer stay on top.
    */
   readonly highlightOverSplats: boolean;
+  /**
+   * Split frames only: points, reference images or overlays drew. They keep their place
+   * after transparent IFC, so they draw after the splats behind the nearest transparent
+   * layer and cover those splats where they lie behind them; splats in front of that
+   * layer still draw over them, as before.
+   */
+  readonly laterOverBehindSplats: boolean;
 }
 
 export const NO_TRANSPARENT: GaussianCompositionReport = Object.freeze({
-  composition: 'no-transparent', fallback: null, transparentLayers: null, highlightOverSplats: false,
+  composition: 'no-transparent', fallback: null, transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false,
 });
 
 /** The report of one frame from what the recorder saw and why it did or did not split. */
 export function compositionReport(
-  frame: { transparent: boolean; split: boolean; highlight: boolean; fallback: GaussianCompositionFallback | null },
+  frame: { transparent: boolean; split: boolean; highlight: boolean; later: boolean; fallback: GaussianCompositionFallback | null },
   layers: GaussianTransparentLayers,
 ): GaussianCompositionReport {
   if (!frame.transparent) return NO_TRANSPARENT;
   if (!frame.split) {
-    return Object.freeze({ composition: 'over-transparent-approximate', fallback: frame.fallback ?? 'unsupported-draw', transparentLayers: null, highlightOverSplats: false });
+    return Object.freeze({ composition: 'over-transparent-approximate', fallback: frame.fallback ?? 'unsupported-draw', transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
   }
-  return Object.freeze({ composition: 'nearest-glass-split', fallback: null, transparentLayers: layers, highlightOverSplats: frame.highlight });
+  return Object.freeze({ composition: 'nearest-glass-split', fallback: null, transparentLayers: layers, highlightOverSplats: frame.highlight, laterOverBehindSplats: frame.later });
 }

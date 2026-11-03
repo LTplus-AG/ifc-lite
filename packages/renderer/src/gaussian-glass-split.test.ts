@@ -45,7 +45,7 @@ test('#8564 the recorder holds the transparent group and the highlight, and repl
   const recorder = new DeferredPassRecorder(null, () => null);
   assert.equal(recorder.begin(true), true);
   drawGroup(recorder.pass);
-  recorder.markHighlight();
+  recorder.markGlassEnd();
   recorder.pass.setPipeline(SELECTION);
   recorder.pass.drawIndexed(9);
   const main: Log = [];
@@ -104,7 +104,7 @@ test('#8564 a disabled split never holds the group but still reports that the fr
   const dropped = new DeferredPassRecorder(null, () => { throw new Error('nothing to prepare'); });
   dropped.begin(true);
   dropped.pass.setPipeline(GLASS);
-  dropped.markHighlight();
+  dropped.markGlassEnd();
   dropped.pass.setPipeline(SELECTION);
   dropped.pass.drawIndexed(3);
   const main: Log = [];
@@ -128,12 +128,12 @@ test('#8564 the depth-only shader keeps the base fragment (and its discards) and
 });
 
 test('#8564 composition reports: no transparent, the split, and every fallback', () => {
-  assert.deepEqual(compositionReport({ transparent: false, split: false, highlight: true, fallback: null }, 'multiple'),
-    { composition: 'no-transparent', fallback: null, transparentLayers: null, highlightOverSplats: false });
-  assert.deepEqual(compositionReport({ transparent: true, split: true, highlight: true, fallback: null }, 'multiple'),
-    { composition: 'nearest-glass-split', fallback: null, transparentLayers: 'multiple', highlightOverSplats: true });
-  assert.deepEqual(compositionReport({ transparent: true, split: false, highlight: true, fallback: 'pipelines-compiling' }, 'single'),
-    { composition: 'over-transparent-approximate', fallback: 'pipelines-compiling', transparentLayers: null, highlightOverSplats: false });
+  assert.deepEqual(compositionReport({ transparent: false, split: false, highlight: true, later: true, fallback: null }, 'multiple'),
+    { composition: 'no-transparent', fallback: null, transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
+  assert.deepEqual(compositionReport({ transparent: true, split: true, highlight: true, later: true, fallback: null }, 'multiple'),
+    { composition: 'nearest-glass-split', fallback: null, transparentLayers: 'multiple', highlightOverSplats: true, laterOverBehindSplats: true });
+  assert.deepEqual(compositionReport({ transparent: true, split: false, highlight: true, later: true, fallback: 'pipelines-compiling' }, 'single'),
+    { composition: 'over-transparent-approximate', fallback: 'pipelines-compiling', transparentLayers: null, highlightOverSplats: false, laterOverBehindSplats: false });
 });
 
 test('#8564 readiness keeps the published blocker tuple and adds the nearest-glass-split capability', () => {
@@ -145,10 +145,11 @@ test('#8564 readiness keeps the published blocker tuple and adds the nearest-gla
 });
 
 /** A device that records pipeline descriptors, passes and readbacks. */
-function fakeDevice(options: { failCompile?: boolean; count?: bigint } = {}) {
+function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?: boolean } = {}) {
   const log: Log = [];
   const descriptors: GPURenderPipelineDescriptor[] = [];
-  const read = new BigUint64Array([options.count ?? 0n]).buffer;
+  const counts = new BigUint64Array([options.count ?? 0n]), read = counts.buffer;
+  const parked: Array<() => void> = [];
   let mapped = 0;
   const device = {
     createShaderModule: (d: GPUShaderModuleDescriptor) => ({ code: d.code }),
@@ -162,7 +163,7 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint } = {}) {
     createQuerySet: (d: GPUQuerySetDescriptor) => ({ ...d, destroy() {} }),
     createBuffer: (d: GPUBufferDescriptor) => ({
       ...d, destroy() {}, unmap() {}, getMappedRange: () => read,
-      mapAsync: async () => { mapped++; },
+      mapAsync: () => { mapped++; return options.deferMaps ? new Promise<void>((resolve) => parked.push(resolve)) : Promise.resolve(); },
     }),
   } as unknown as GPUDevice;
   const encoder = {
@@ -170,7 +171,9 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint } = {}) {
     resolveQuerySet: (...a: unknown[]) => log.push(['resolveQuerySet', ...a]),
     copyBufferToBuffer: (...a: unknown[]) => log.push(['copyBufferToBuffer', ...a]),
   } as unknown as GPUCommandEncoder;
-  return { device, encoder, log, descriptors, mapped: () => mapped };
+  /** Complete the oldest pending readback with `count` samples beyond one layer. */
+  const resolveMap = async (count: bigint) => { counts[0] = count; parked.shift()!(); await new Promise((resolve) => setTimeout(resolve, 0)); };
+  return { device, encoder, log, descriptors, mapped: () => mapped, resolveMap, pendingMaps: () => parked.length };
 }
 
 const registration = (label: string): { descriptor: GPURenderPipelineDescriptor; source: string } => ({
@@ -226,6 +229,7 @@ test('#8564 P1 clears to the far plane; two or more surfaces at any sample repor
     const describe = () => registration('glass');
     split.prepare(new Set([GLASS, GHOST]), describe);
     await new Promise((resolve) => setTimeout(resolve, 0));
+    split.beginFrame();
     const texture = split.encodeNearest(frame(fake.encoder), recorded()) as unknown as GPUTextureDescriptor;
     assert.equal(texture.format, 'depth32float');
     assert.equal(texture.sampleCount, 4);
@@ -241,16 +245,14 @@ test('#8564 P1 clears to the far plane; two or more surfaces at any sample repor
     assert.deepEqual(countPass.slice(-6), ['setPipeline', 'setStencilReference', 'beginOcclusionQuery', 'draw', 'endOcclusionQuery', 'end']);
     assert.equal(fake.log.find((c) => c[1] === 'setStencilReference')![2], 2);
     assert.equal(split.layers, 'unknown');
-    split.encodeNearest(frame(fake.encoder), recorded());
-    assert.equal(fake.log.filter((c) => c[0] === 'begin').length, 3, 'an unsubmitted count is not encoded twice');
     split.submitted();
     split.submitted();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(fake.mapped(), 1);
+    assert.equal(fake.mapped(), 1, 'one readback per frame');
     assert.equal(split.layers, expected);
     assert.equal(split.layerSamples, Number(samples));
-    split.resetLayers();
-    assert.equal(split.layers, 'unknown');
+    split.beginFrame();
+    assert.equal(split.layers, 'unknown', 'a new frame starts unknown');
     assert.equal(split.layerSamples, null);
   }
 });
@@ -296,7 +298,7 @@ test('#8564 frame schedule: P1, splats behind, the held transparent IFC and high
     const recorder = composer.recorder(fake.device, true, visibility);
     recorder.begin(true);
     drawGroup(recorder.pass);
-    recorder.markHighlight();
+    recorder.markGlassEnd();
     recorder.pass.setPipeline(SELECTION);
     recorder.pass.drawIndexed(9);
     recorder.end(loggingPass(fake.log, 'main'));
@@ -329,9 +331,10 @@ test('#8564 frame schedule: P1, splats behind, the held transparent IFC and high
   assert.equal(composer.report.transparentLayers, 'unknown', 'until the count reads back');
   composer.submitted();
   await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(composer.report.transparentLayers, 'single', 'the frame\'s own count is published when it reads back, without another frame');
   fake.log.length = 0;
   composer.encode(scene, target, camera, { recorder: run(), visibility });
-  assert.equal(composer.report.transparentLayers, 'single');
+  assert.equal(composer.report.transparentLayers, 'unknown', 'a new frame never inherits an earlier count');
 
   // A frame without splats to draw still draws the held group, and resolves in that pass.
   fake.log.length = 0;
@@ -361,4 +364,91 @@ test('#8564 composition mode and upstream capability gate the split', () => {
   assert.equal(single.begin(true), false);
   assert.equal(single.fallback, 'single-pass-mode');
   assert.throws(() => composer.setMode('exact' as never), /Unknown Gaussian composition mode/);
+});
+
+/** A composer whose depth-only variants are compiled, on a device whose readbacks wait for `resolveMap`. */
+async function readyComposer(options: { failCompile?: boolean } = {}) {
+  const fake = fakeDevice({ deferMaps: true, ...options });
+  let renders = 0;
+  const composer = new GaussianGlassComposer(() => { renders++; });
+  const visibility = { describe: () => registration('glass'), resume: (encoder: GPUCommandEncoder, d: GPURenderPassDescriptor) => encoder.beginRenderPass(d) };
+  const target = { encoder: fake.encoder, colorView: 'msaa' as never, resolveTarget: 'swapchain' as never, depthView: 'main-depth' as never,
+    colorFormat: 'bgra8unorm' as GPUTextureFormat, depthFormat: 'depth24plus-stencil8' as GPUTextureFormat, sampleCount: 4, width: 8, height: 6 };
+  const camera = { modelViewProjection: new Float64Array(16), cameraPosition: [0, 0, 0] as [number, number, number] };
+  const recorderFor = (transparent = true) => {
+    const recorder = composer.recorder(fake.device, true, visibility);
+    if (recorder.begin(transparent)) drawGroup(recorder.pass);
+    recorder.end(loggingPass(fake.log, 'main'));
+    return recorder;
+  };
+  recorderFor(); // the first frame starts compiling the variants
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return { fake, composer, visibility, target, camera, recorderFor, renders: () => renders };
+}
+
+test('#8564 review F1: a layer count describes only the frame that issued it (camera moves while its query is pending)', async () => {
+  const { fake, composer, visibility, target, camera, recorderFor, renders } = await readyComposer();
+  const scene = new SceneLog(fake.log);
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // frame A: one pane
+  composer.submitted();
+  assert.equal(fake.pendingMaps(), 1);
+  assert.equal(composer.report.transparentLayers, 'unknown');
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // frame B: camera moved, A still reading
+  composer.submitted();
+  assert.equal(fake.pendingMaps(), 1, 'B could not issue its own count while A was reading');
+  const before = renders();
+  await fake.resolveMap(0n); // A answers "single": stale for B
+  assert.equal(composer.report.transparentLayers, 'unknown', 'B never claims A\'s single layer');
+  assert.equal(renders(), before + 1, 'B has no count of its own, so a render is requested');
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // frame C, same view as B
+  composer.submitted();
+  await fake.resolveMap(5n);
+  assert.equal(composer.report.transparentLayers, 'multiple', 'C\'s own count is published when it arrives, with no further frame');
+});
+
+test('#8564 review F1: a pending count never overwrites a later non-split frame', async () => {
+  const { fake, composer, visibility, target, camera, recorderFor } = await readyComposer();
+  const scene = new SceneLog(fake.log);
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // split frame A
+  composer.submitted();
+  composer.encode(scene, target, camera, { recorder: recorderFor(false), visibility }); // no transparent IFC
+  assert.equal(composer.report.composition, 'no-transparent');
+  await fake.resolveMap(0n);
+  assert.deepEqual(composer.report, compositionReport({ transparent: false, split: false, highlight: false, later: false, fallback: null }, 'unknown'));
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // split frame C, own count pending
+  assert.equal(composer.report.composition, 'nearest-glass-split');
+  assert.equal(composer.report.transparentLayers, 'unknown', 'A\'s late result was dropped, not kept for C');
+  composer.submitted();
+  await fake.resolveMap(0n);
+  assert.equal(composer.report.transparentLayers, 'single', 'C\'s own count is published');
+  composer.encode(scene, target, camera, { recorder: recorderFor(), visibility }); // split frame D
+  assert.equal(composer.report.transparentLayers, 'unknown', 'D starts unknown: a published count never carries over');
+});
+
+class FailingScene extends SceneLog {
+  constructor(log: Log, private readonly failing: GaussianDepthInterval['compare']) { super(log); }
+  override encode(target: GaussianEncodeTarget, camera: unknown, interval?: GaussianDepthInterval) {
+    if (interval?.compare === this.failing) throw new Error(`injected ${this.failing} failure`);
+    super.encode(target, camera, interval);
+  }
+}
+
+test('#8564 review F4: a failed behind-glass encode draws every splat once after the glass and reports split-failed', async () => {
+  const { fake, composer, visibility, target, camera, recorderFor } = await readyComposer();
+  const errors: unknown[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    fake.log.length = 0;
+    assert.equal(composer.encode(new FailingScene(fake.log, 'less-equal'), target, camera, { recorder: recorderFor(), visibility }), false);
+    const order = fake.log.filter((c) => c[0] === 'begin' || c[0] === 'splats').map((c) => c[0] === 'begin' ? (c[1] as GPURenderPassDescriptor).label : `splats:${c[1]}:${c[2]}`);
+    assert.deepEqual(order.slice(-2), ['ifc-lite-gaussian-transparent', 'splats:all:swapchain'], 'the held glass, then one unfiltered splat pass that resolves');
+    assert.equal(fake.log.filter((c) => c[0] === 'splats').length, 1, 'every splat is drawn exactly once');
+    assert.equal(composer.report.composition, 'over-transparent-approximate');
+    assert.equal(composer.report.fallback, 'split-failed');
+    assert.equal(errors.length, 1);
+    // A failure in front of the glass is reported the same way.
+    assert.equal(composer.encode(new FailingScene(fake.log, 'greater'), target, camera, { recorder: recorderFor(), visibility }), false);
+    assert.equal(composer.report.fallback, 'split-failed');
+  } finally { console.error = original; }
 });

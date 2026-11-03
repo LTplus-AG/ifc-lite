@@ -1297,13 +1297,14 @@ renderer.gaussianSplats.remove(handle);
   device, command encoder or attachments it borrows.
 - **Composition with transparent IFC (nearest-glass split).** When a frame draws
   splats and transparent IFC (glass, X-Ray ghosts, translucent overrides), the main
-  pass holds back its transparent draws and the selection highlight, recorded as
-  issued. After the main pass:
+  pass holds back every draw from its first transparent one to its end (transparent
+  IFC, the selection highlight, then points, reference images and overlays), recorded
+  as issued. After the main pass:
   1. the held transparent draws replay depth-only (same vertex stage and depth
      nudge, same fragment discards, no colour) into P1, the nearest transparent
      depth per sample (far where there is none);
   2. splats whose depth is at or behind P1 draw, testing opaque depth as before;
-  3. the held transparent IFC and the highlight draw exactly as recorded;
+  3. the held draws replay exactly as recorded, in their established order;
   4. splats in front of P1 draw and the MSAA resolve runs.
 
   Each splat sample is drawn exactly once: both splat passes compare the same
@@ -1319,19 +1320,23 @@ renderer.gaussianSplats.remove(handle);
   `getStats().compositionReport` describes the last splat frame: `composition` is
   `nearest-glass-split`, `no-transparent`, or `over-transparent-approximate` with a
   `fallback` (`single-pass-mode`, `pipelines-compiling` while the depth-only
-  variants compile, `unsupported-draw`, `upstream-interval-missing`).
+  variants compile, `unsupported-draw`, `upstream-interval-missing`, `split-failed`
+  when a split pass failed and the frame drew one splat pass instead).
   `transparentLayers` is `multiple` when an occlusion query found a sample with two
   or more transparent surfaces in front of opaque geometry: a closed glass solid
-  counts as two, and X-Ray ghosts report `multiple` almost always. It is read back
-  after the frame, so it can lag a frame or two (`unknown` until then); only zero
-  versus non-zero is portable, so no sample count is reported.
+  counts as two, and X-Ray ghosts report `multiple` almost always. It describes only
+  the frame that issued the query: `unknown` until that frame's own result reads back
+  (the report then updates without another frame), and a later frame starts `unknown`
+  again. Only zero versus non-zero is portable, so no sample count is reported.
   `setCompositionMode('single-pass')` keeps the single pass over transparent IFC.
 
   Rules in split frames: the selection highlight still draws over transparent IFC,
   so it also covers splats behind the nearest transparent layer on the highlighted
-  surface (`highlightOverSplats`); points, reference images and overlays draw in the
-  main pass, so glass now blends over those behind it. Only transparent IFC meshes
-  take part: translucent overlays and reference images keep splats drawn over them.
+  surface (`highlightOverSplats`). Points, reference images and overlays keep their
+  place after transparent IFC, so the IFC look never depends on splats; they draw after
+  the splats behind the nearest layer, covering those where they lie behind them, and
+  before the splats in front of it (`laterOverBehindSplats`). Only transparent IFC
+  meshes take part: translucent overlays and reference images keep splats drawn over them.
   The split costs a depth32float target at the drawing-buffer size and sample count
   (about 33 MB at 1920x1080 with 4x MSAA), two depth-only replays of the transparent
   draws, one more transparent-pass load/store and two splat draws over one sort.

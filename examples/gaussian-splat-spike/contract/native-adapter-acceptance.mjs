@@ -78,6 +78,9 @@ function glassChecks(name, scene, splats, { check, exact }) {
     exact(`${at}: splat in front of the pane equals the single pass`, s.frontEqualsSinglePass);
     exact(`${at}: everything outside the rear footprint equals the single pass`, s.restEqualsSinglePass);
     exact(`${at}: without transparent IFC the frame equals the single pass`, s.noTransparentEqualsSinglePass);
+    check(`${at}: points and an annotation line are drawn behind the pane`, s.laterDrawn > 20, s.laterDrawn);
+    exact(`${at}: points and the annotation behind the pane look as in the single pass (#8564 review F3)`, s.laterEqualsSinglePass);
+    check(`${at}: the split discloses that they draw after the splats behind the glass`, r.split?.laterOverBehindSplats === true, r.split);
     check(`${at}: reports no-transparent without visible glass`, r.noTransparent?.composition === 'no-transparent', r.noTransparent);
     check(`${at}: one pane reports the split and a single layer (negative control)`, r.split?.composition === 'nearest-glass-split'
       && r.split.transparentLayers === 'single' && r.split.rawLayerQuery === 0 && r.split.fallback === null, r.split);

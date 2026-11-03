@@ -2621,7 +2621,10 @@ describe('#8564 nearest-glass split in the render loop', () => {
             };
             await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
         }
-        const frame = () => { h.stats.commands.length = 0; h.render(); return h.stats.commands.map((c) => c.op === 'setPipeline' ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : 'variant') : c.op).filter((op) => op !== 'setBindGroup'); };
+        const named = (pipeline: unknown) => (pipeline as { label?: string } | undefined)?.label;
+        const frame = (options: RenderOptions = {}) => { h.stats.commands.length = 0; h.render(options); return h.stats.commands.map((c) => c.op === 'setPipeline'
+            ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : ['overlay', 'reference-image'].includes(named(c.pipeline) ?? '') ? named(c.pipeline)! : 'variant')
+            : c.op).filter((op) => op !== 'setBindGroup'); };
         const report = () => h.renderer.gaussianSplats.getStats().compositionReport;
         const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
         return { h, frame, report, tick };
@@ -2647,8 +2650,7 @@ describe('#8564 nearest-glass split in the render loop', () => {
             assert.equal(report()?.composition, 'nearest-glass-split');
             assert.equal(report()?.transparentLayers, 'unknown');
             await tick();
-            frame();
-            assert.equal(report()?.transparentLayers, 'single', 'the occlusion count read back as zero');
+            assert.equal(report()?.transparentLayers, 'single', 'the frame\'s own occlusion count read back as zero and was published');
             assert.equal(h.renderer.getDiagnostics().errors, 0);
         } finally {
             h.renderer.destroy();
@@ -2748,4 +2750,57 @@ describe('#8564 nearest-glass split in the render loop', () => {
             }
         });
     }
+
+    it('#8564 review F3: split frames draw reference images and overlays after transparent IFC and before the splats in front, as single passes do', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        const fields = h.renderer as unknown as Record<string, Record<string, unknown>>;
+        const drawsWith = (label: string) => (pass: GPURenderPassEncoder) => { pass.setPipeline({ label } as unknown as GPURenderPipeline); pass.draw(3); };
+        fields.referenceImages.draw = drawsWith('reference-image');
+        fields.overlays.draw = drawsWith('overlay');
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            const at = (op: string, from = 0) => ops.indexOf(op, from);
+            const glassPass = at('pass:ifc-lite-gaussian-transparent');
+            assert.ok(glassPass > 0 && !mainPass(ops).includes('overlay') && !mainPass(ops).includes('reference-image'), ops.join(' '));
+            assert.deepEqual(ops.slice(glassPass + 1, at('splats:greater')), ['glass', 'drawIndexed', 'reference-image', 'draw', 'overlay', 'draw'],
+                'glass, then reference images and overlays in their established order, then the splats in front');
+            assert.ok(at('splats:less-equal') < glassPass);
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.laterOverBehindSplats, true, 'drawing them after the splats behind the glass is disclosed');
+            h.renderer.gaussianSplats.setCompositionMode('single-pass');
+            const single = frame();
+            assert.deepEqual(single.filter((op) => ['glass', 'reference-image', 'overlay', 'splats:all'].includes(op)), ['glass', 'reference-image', 'overlay', 'splats:all'],
+                'the single pass has the same relative order');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+});
+
+// #8564 review (Codex on 372b9ec): established draw order is preserved.
+describe('#8564 review: draw order around transparent IFC', () => {
+    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before selection hydration and transparent instances', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const glassColour: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, glassColour), triangle(4, glassColour)], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const hydrate = h.renderer.createMeshFromData.bind(h.renderer);
+        h.renderer.createMeshFromData = (piece) => { h.stats.commands.push({ op: 'hydrate' }); return hydrate(piece); };
+        try {
+            h.stats.commands.length = 0;
+            h.render({ hiddenIds: new Set([4]), selectedId: 1 }); // glass {3,4} with 4 hidden: one transparent sub-batch
+            const ops = h.stats.commands.map((c) => c.op === 'setPipeline' && c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.op);
+            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate');
+            assert.ok(glass >= 0 && hydration >= 0, ops.join(' '));
+            assert.equal(ops[glass + 1], 'setBindGroup');
+            assert.ok(ops.indexOf('drawIndexed', glass) < hydration, `transparent sub-batch draws before selection hydration, as at 750b33165a: ${ops.join(' ')}`);
+        } finally {
+            h.renderer.destroy();
+        }
+    });
+
 });

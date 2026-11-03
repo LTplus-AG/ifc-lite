@@ -8,7 +8,9 @@
 // selection-highlight path (per-mesh uniform allocation) on both commits, and
 // transparent IFC (#8564 moved its draws): glass batches, a partially hidden
 // transparent batch (a transparent sub-batch), X-Ray ghosts, selected glass and
-// an orthographic view (geometric-depth colour variants).
+// an orthographic view (geometric-depth colour variants). An instanced translucent box
+// overlaps the partially hidden glass batch, so the partial-batch versus transparent-
+// instance blend order is visible in the pixels (#8564 review F2).
 import { Renderer, MathUtils } from 'ifc-lite-renderer-under-test';
 
 const OPTIONS = { clearColor: [0, 0, 0, 1], visualEnhancement: { enabled: false } };
@@ -89,10 +91,16 @@ async function run() {
   renderer.addMesh(authoredMesh(device, 13, [-0.5, -1.4, 0.4], [0.5, -0.6, 0.9], [0.3, 0.75, 0.35, 1]));
   // Two panes of one glass colour share a batch, so hiding one leaves a transparent sub-batch.
   renderer.addMeshes([meshData(14, [-1.2, -0.4, 1.0], [0.0, 0.6, 1.05], [0.5, 0.8, 0.95, 0.4]), meshData(15, [0.1, -0.4, 1.2], [1.3, 0.6, 1.25], [0.5, 0.8, 0.95, 0.4])]);
+  const box16 = box([-0.8, -0.2, 0.7], [-0.2, 0.4, 1.3]);
+  renderer.getScene().addInstancedShard(device, { carriesItemIds: false,
+    templates: [{ positions: box16.positions, normals: box16.normals, indices: box16.indices, origin: [0, 0, 0] }],
+    instances: [{ templateIndex: 0, entityId: 16, color: [0.95, 0.55, 0.2, 1], transform: MathUtils.identity().m }] });
   const cases = { plain: OPTIONS, selectedBatched: { ...OPTIONS, selectedId: 12 }, selectedAuthored: { ...OPTIONS, selectedId: 13 },
     selectedSet: { ...OPTIONS, selectedIds: new Set([11, 13]) }, plainAgain: OPTIONS,
     glassPartial: { ...OPTIONS, hiddenIds: new Set([15]) }, selectedGlass: { ...OPTIONS, selectedId: 14 },
-    xray: { ...OPTIONS, ghostExceptIds: new Set([11]) } };
+    xray: { ...OPTIONS, ghostExceptIds: new Set([11]) }, withoutInstances: { ...OPTIONS, hiddenIds: new Set([16]) },
+    // X-Ray ghosting only the instance sends it through the transparent instanced sub-pass, over the partial glass batch.
+    partialGlassTranslucentInstance: { ...OPTIONS, hiddenIds: new Set([15]), ghostExceptIds: new Set([11, 12, 13, 14]) } };
   const frames = {};
   const views = { orthographic: OPTIONS, orthographicXray: cases.xray };
   for (const [name, options] of [...Object.entries(cases), ...Object.entries(views)]) {

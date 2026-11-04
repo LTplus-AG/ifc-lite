@@ -151,6 +151,11 @@ present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), 
 `DISPLAY` set to it, and `--require-hardware-gpu`. `--gpu swiftshader` (default, the
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
 
+Pop has two GPUs (Intel iGPU and NVIDIA). The renderer asks for the default adapter, and
+Chrome's default changed between runs (NVIDIA on 2026-11-01, Intel on 2026-11-04), so
+`--gpu hardware` launches Chrome with `--use-webgpu-power-preference=default-high-performance`.
+Check `gpuAdapter` in the rows: every sample of one cohort should name the same adapter.
+
 Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
 Only unique successful samples from the same invocation (or the same `--pairing-id` on one
 machine-id-identified host) and round are paired; different workflows stay separate. Each column reports base, branch and matched n;

@@ -28,8 +28,9 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
-import { handleMeasureDown, handleMeasureDrag, handleMeasureHover, handleMeasureUp, updateMeasureScreenCoords } from './measureHandlers.js';
-import type { PointerGesture } from './pointerGesture.js';
+import { handleMeasureDrag, handleMeasureHover, updateMeasureScreenCoords } from './measureHandlers.js';
+import { forgetDistancePress, handleMeasureDown, handleMeasureUp } from './distanceClick.js';
+import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
@@ -477,8 +478,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         metaKey: e.metaKey, altKey: e.altKey,
         measureMode: useViewerStore.getState().measureMode,
         flyEnabled: useViewerStore.getState().interactionMode === 'all',
+        distancePending: activeMeasurementRef.current !== null,
       });
       pointerGesture = gesture;
+      if (tool !== 'measure' || gesture !== 'tool') forgetDistancePress(mouseState);
       if (tool === 'command' && gesture === 'tool' && commandPress.begin(e)) {
         canvas.style.cursor = 'crosshair';
         return;
@@ -580,9 +583,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      // Handle measure tool live preview while dragging
-      // IMPORTANT: Check tool first, not activeMeasurement, to prevent orbit conflict
-      if (tool === 'measure' && pointerGesture === 'tool' && mouseState.isDragging && activeMeasurementRef.current && !fly.isActive()) {
+      // The distance rubber band, pressed or waiting for its second click (#8771); a navigation press keeps navigating
+      if (tool === 'measure' && activeMeasurementRef.current && (!mouseState.isDragging || pointerGesture === 'tool') && !fly.isActive()) {
         if (handleMeasureDrag(ctx, e, x, y)) return;
       }
 
@@ -616,7 +618,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           if (fly.isActive()) {
             mouseState.didDrag = totalDx > 5 || totalDy > 5; // fly's own click slop: the menu replay needs both to agree
           } else {
-            if (totalDx <= 3 && totalDy <= 3) return;
+            if (!pressPastClickSlop(mouseState, e)) return;
             mouseState.didDrag = true;
             if (pendingOrbitPivot) orbitPivotStore.begin(pendingOrbitPivot); pendingOrbitPivot = null;
             if (!mouseState.isPanning) canvas.style.cursor = 'grabbing';

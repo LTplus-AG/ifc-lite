@@ -18,6 +18,7 @@
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
+import { beginDistance, finishDistance } from './distanceClick.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 
 /** Wrap a pointer handler so touch-sourced pointer events never reach it. */
@@ -44,10 +45,9 @@ export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number)
 }
 
 /**
- * A tap in the Measure tool. The click-driven modes place a point exactly as a
- * click does. Drag mode is press-drag-release with a mouse, but a finger drag
- * orbits, so on touch it takes two taps: the first sets the start, the second
- * completes the measurement.
+ * A tap in the Measure tool places a point exactly as a click does. Distance
+ * is two clicks or two taps on one path (#8771): the first sets the start, the
+ * second completes the measurement.
  */
 export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number): void {
   const state = useViewerStore.getState();
@@ -57,6 +57,6 @@ export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number)
   }
   const point = pickMeasurePoint(ctx, x, y);
   if (!point) return;
-  if (state.pendingMeasurePoint) state.completeMeasurement(point);
-  else state.addMeasurePoint(point);
+  if (ctx.activeMeasurementRef.current) finishDistance(ctx, point);
+  else beginDistance(ctx, point);
 }

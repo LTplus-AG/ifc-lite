@@ -9,7 +9,7 @@ import { join } from 'node:path';
 const patterns = {
   'palette-class': /(?<![\w-])(?:bg|text|border(?:-[trblxyse])?|ring|ring-offset|outline|fill|stroke|divide|from|via|to|placeholder|accent|caret|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|[1-9]00|950)(?:\/\d{1,3})?(?![\w-])/g,
   'bw-class': /(?<![\w-])(?:bg|text|border(?:-[trblxyse])?|ring|outline|fill|stroke|divide|from|via|to|placeholder|decoration|shadow)-(?:white|black)(?:\/\d{1,3})?(?![\w-])/g,
-  'hex-literal': /(?<=['"`\[(,\s:])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9A-Za-z_-])/g,
+  'hex-literal': /(?<=['"`[(,\s:])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9A-Za-z_-])/g,
   'arbitrary-value': /(?<![\w-])-?(?:text|p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?|space-[xy]|w|h|size|min-w|max-w|min-h|max-h|rounded(?:-[a-z]{1,2})?|bg|border(?:-[trblxyse])?|leading|tracking|shadow|ring|font|top|left|right|bottom|inset(?:-[xy])?|z)-\[[^\]\s]+\]/g,
   'native-control': /<(?:button|input|select|textarea)(?=[\s/>])/g,
 };

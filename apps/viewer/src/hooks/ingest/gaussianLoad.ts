@@ -123,7 +123,7 @@ async function decodeAndPublish(
       currentGeneration: () => blockedGeneration(renderer), models: () => useViewerStore.getState().models,
       visible: ctx.target.visible ?? true, signal: ctx.signal, isCurrent: ctx.isCurrent,
       upAxis: ctx.options?.gaussianUpAxis,
-      frame: federationFrameInfo([...useViewerStore.getState().models.values()].filter(m => !m.gaussianSplat && m.id !== ctx.modelId), useViewerStore.getState().geometryResult),
+      frame: federationFrameInfo([...useViewerStore.getState().models.values()].filter(m => !m.gaussianSplat && m.id !== ctx.modelId)),
       placement: ctx.options?.gaussianPlacement ?? showcaseGaussianPlacement(), attribution: ctx.options?.gaussianAttribution,
     });
   } catch (error) {

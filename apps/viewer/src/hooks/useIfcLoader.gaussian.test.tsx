@@ -577,7 +577,7 @@ it('mounted up-axis control updates actual renderer bounds; setup and reload pre
   const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
   const ifc = addIfcModel('survey-ifc', [{ expressId: 7, type: 'IfcWall' }]);
   const geometry = ifc.geometryResult!;
-  useViewerStore.getState().updateModel('survey-ifc', { geometryResult: { ...geometry, coordinateInfo: {
+  useViewerStore.getState().updateModel('survey-ifc', { loadedAt: 1, geometryResult: { ...geometry, coordinateInfo: {
     ...geometry.coordinateInfo, originShift: { x: 10, y: 20, z: 30 },
     wasmRtcOffset: { x: 2_600, y: 1_200, z: 500 },
   } } });
@@ -634,7 +634,7 @@ it('mounted up-axis control updates actual renderer bounds; setup and reload pre
 it('canonical Gaussian ingest reconciles a Swiss survey-scale IFC origin plus RTC offset (#8752)', async () => {
   const ifc = addIfcModel('georeferenced', [{ expressId: 7, type: 'IfcWall' }]);
   const geometry = ifc.geometryResult!;
-  useViewerStore.getState().updateModel('georeferenced', { geometryResult: { ...geometry, coordinateInfo: {
+  useViewerStore.getState().updateModel('georeferenced', { loadedAt: 1, geometryResult: { ...geometry, coordinateInfo: {
     ...geometry.coordinateInfo, originShift: { x: 10, y: 20, z: 30 },
     wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 },
   } } });

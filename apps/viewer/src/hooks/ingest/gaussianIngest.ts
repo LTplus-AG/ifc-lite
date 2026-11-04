@@ -24,9 +24,9 @@ export interface GaussianSplatModel {
   readonly sourceCenterBounds: GaussianDecoded['centerBounds'];
   /** Column-major source-local -> viewer world matrix handed to the renderer. */
   readonly placement: readonly number[];
-  /** Unbaked placement and axes for reload/portable restore (#8752). */
   /** Source-coordinate centre subtracted from the CPU position arrays only. */
   readonly decodeOrigin?: readonly [number, number, number];
+  /** Unbaked placement and axes for reload/portable restore (#8752). */
   readonly sourcePlacement?: readonly number[];
   readonly upAxis?: CaptureUpAxis;
   readonly frameOffset?: { x: number; y: number; z: number };

@@ -508,3 +508,22 @@ test('#8564 clear() while recovery loads the backend creates and uploads nothing
   assert.ok(created.every((scene) => scene.destroyed || scene.sources.length === 0), 'no live scene holds cleared rows');
   assert.equal(h.layer.getStats().gpuBytes, 0);
 });
+
+test('#8752 a whole-scene frame translation preserves packed locals and the precision guard', async () => {
+  const h = harness();
+  const a = await h.layer.add({ attributes: attributes(2), placement: { matrix: translate(2_600_000) }, modelIndex: 1 }, OPT_IN);
+  const b = await h.layer.add({ attributes: attributes(2), placement: { matrix: translate(2_600_010) }, modelIndex: 2 }, OPT_IN);
+  const source = h.scenes.at(-1)!.sources.at(-1)!;
+  const before = [...source.positions];
+  const bounds = h.layer.getBounds(a)!;
+  assert.equal(await h.layer.translateFrame([-2_600_000, 0, 0]), true);
+  assert.deepEqual(h.layer.getBounds(a), { min: [bounds.min[0] - 2_600_000, bounds.min[1], bounds.min[2]], max: [bounds.max[0] - 2_600_000, bounds.max[1], bounds.max[2]] });
+  assert.deepEqual([...source.positions], before, 'frame shifts do not round or rewrite f32 rows');
+  assert.equal(await h.layer.setPlacement(a, { matrix: translate(1) }), true, 'edits use the translated anchor');
+  await assert.rejects(h.layer.setPlacement(b, { matrix: translate(9_000) }), code('anchor-extent'));
+  const accepted = h.layer.getBounds();
+  await assert.rejects(h.layer.translateFrame([Infinity, 0, 0]), code('invalid-placement'));
+  assert.deepEqual(h.layer.getBounds(), accepted, 'invalid frame shifts change nothing');
+  assert.equal(await h.layer.translateFrame([2_600_000, 0, 0]), true);
+  assert.equal(await h.layer.setPlacement(a, { matrix: translate(2_600_001) }), true);
+});

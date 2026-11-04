@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Internal, unqualified Gaussian adapter (#8564). Every asset is packed into one
- * upstream source on the viewer's device and drawn in the viewer's frame. Handles
- * are validated by identity; mutations are serialized and allocate before they
- * commit; anything that awaits re-checks the lifetime epoch so no completion can
- * publish after a loss, teardown or dispose. Readiness never becomes ready here.
- */
+/** Internal, unqualified Gaussian adapter (#8564). Identity-validated handles,
+ * serialized mutations and epoch checks prevent publication after teardown. */
 
+import { translateGaussianFrame } from './gaussian-frame-translation.js';
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import type { GaussianBackend, GaussianBackendFactory, GaussianBackendScene, GaussianEncodeTarget } from './gaussian-backend.js';
 import { assertUsableLifetime, GaussianSplatError, requireDevice } from './gaussian-errors.js';
@@ -25,7 +21,6 @@ import { anchoredCamera, boundsChange, centreClipFilter, clipKey, layerStats, sa
 import { GaussianGlassComposer, type DeferredPassRecorder, type GaussianCompositionMode, type GlassFrameInput, type GlassVisibility } from './gaussian-glass-frame.js';
 import type { PickClipState } from '../pick-types.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
-
 /** What the layer reads from its Renderer; nothing here is owned by the layer. */
 export interface GaussianLayerHost {
   lifetime(): { ready: boolean; lost: boolean; disposed: boolean; generation: number };
@@ -160,6 +155,17 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       throw error;
     }
   }
+  /** A scene frame change moves the anchor too, preserving the f32 envelope. */
+  translateFrame(delta: readonly [number, number, number]): Promise<boolean> {
+    const epoch = this.epoch, clears = this.clears;
+    return this.queue.run(async () => {
+      if (this.epoch !== epoch || this.clears !== clears || !this.anchor) return false;
+      this.anchor = translateGaussianFrame(this.records.values(), this.anchor, delta);
+      this.clipKey = '';
+      this.applyFilter(true);
+      return true;
+    });
+  }
 
   /** Re-place every asset of `modelIndex` after the renderer's model translation changed. */
   setModelTranslation(modelIndex: number): void {
@@ -201,7 +207,6 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     for (const record of this.records.values()) { record.failure = 'reload-required'; record.attributes = null; }
     this.resetPacked();
   }
-
   /** Decide before the main pass whether this frame ends in the splat pass (which then resolves MSAA). */
   captureDiagnostics(): Record<string, unknown> | null { return this.slot.scene?.captureDiagnostics?.() ?? null; }
   frameReady(): boolean {
@@ -214,7 +219,6 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   /** #8564 split: `glassRecorder` holds a splat frame's transparent IFC (call before its main pass); `submitted` reads the layer count back. */
   glassRecorder(visibility: GlassVisibility): DeferredPassRecorder { return this.glass.recorder(requireDevice(this.host.device()), this.slot.depthInterval, visibility); }
   submitted(): void { this.glass.submitted(); }
-
   /** Record the splat passes after the viewer's main pass (and held transparent IFC); always ends with the MSAA resolve. */
   encode(input: GaussianFrameInput): void {
     const scene = this.slot.scene;
@@ -226,12 +230,8 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     this.lastEncodeMs = performance.now() - started;
   }
 
-  /**
-   * Re-place one asset with the current model translation: an edit applies its own
-   * placement (skipped once a newer edit is requested); a model follow keeps the
-   * committed placement and never adopts a pending, unvalidated edit. Rows are
-   * transformed into fresh arrays first; nothing changes on failure.
-   */
+  /** Re-place from fresh rows; superseded edits and failed transforms never commit.
+   * Model following uses committed placement, never a pending edit. */
   private place(record: AssetRecord, edit: SimilarityPlacement | null): Promise<SimilarityPlacement | null> {
     const epoch = this.epoch;
     const clears = this.clears;

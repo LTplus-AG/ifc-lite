@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState, type MutableRefObject } from 'react';
+import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -13,7 +14,10 @@ import { getGlobalRenderer } from '../useBCF.js';
 /** `splats` issued `handle`; every call on the handle goes to that adapter alone. */
 interface OwnedAsset { handle: GaussianSplatHandle; splats: GaussianSplatApi; visible?: boolean }
 
+interface AdapterFrame { offset: { x: number; y: number; z: number }; update?: Promise<boolean> }
+
 interface Registry {
+  frames?: WeakMap<GaussianSplatApi, AdapterFrame>;
   /** modelId -> the exact renderer-issued handle its model was published with. */
   owned: Map<string, OwnedAsset>;
   /** Models whose handle was issued by a renderer that has since been replaced. */
@@ -36,6 +40,9 @@ const registry: Registry = host.__ifc_lite_gaussian_assets__ ??= { owned: new Ma
  * in the same tick, and model visibility/isolate mirror onto it.
  */
 export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle, splats: GaussianSplatApi): void {
+  const frames = registry.frames ??= new WeakMap();
+  if (![...registry.owned.values()].some(asset => asset.splats === splats
+    && ['resident', 'pending'].includes(splats.getState(asset.handle).state))) frames.set(splats, { offset: useViewerStore.getState().models.get(modelId)?.gaussianSplat?.frameOffset ?? { x: 0, y: 0, z: 0 } });
   registry.owned.set(modelId, { handle, splats });
   registry.replaced.delete(modelId);
   if (!registry.subscribed) {
@@ -60,6 +67,11 @@ export function reconcileGaussianAssets(models: ReadonlyMap<string, FederatedMod
       asset.visible = model.visible;
       asset.splats.setVisible(asset.handle, model.visible);
     }
+    // One seam for load publication, RTC convergence, setup restore and removal.
+    // Read the live frame inside the serialized update, never the upload snapshot.
+    void reframeGaussianCapture(modelId).catch(error => {
+      console.warn('[ifc-lite] Capture render-frame update failed:', error);
+    });
   }
 }
 
@@ -144,17 +156,48 @@ export function gaussianFitBox(bounds: GaussianSplatBounds | null) {
   return { min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } };
 }
 
-/** Change axes on the owning renderer, then publish only an accepted placement. */
-export async function setGaussianCaptureUpAxis(modelId: string, upAxis: CaptureUpAxis): Promise<boolean> {
+/** Axis edits and federation changes share the same unbaked placement path. */
+export function setGaussianCaptureUpAxis(modelId: string, upAxis: CaptureUpAxis): Promise<boolean> {
+  return reframeGaussianCapture(modelId, upAxis);
+}
+
+/** Serialize edits per owning adapter so a slower old frame cannot win a race.
+ * Pending device recovery uses the adapter's normal placement contract; missing
+ * or replaced handles refuse and are restored only through the existing reload.
+ */
+export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis): Promise<boolean> {
   const model = useViewerStore.getState().models.get(modelId);
-  const capture = model?.gaussianSplat;
-  if (!model || !capture) return false;
+  if (!model) return Promise.resolve(false);
   const asset = currentAsset(model);
-  if (!asset || asset === 'renderer-replaced') return false;
-  const framed = gaussianCaptureFrame(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined),
-    upAxis, { originShift: capture.frameOffset });
-  if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
-  if (useViewerStore.getState().models.get(modelId)?.gaussianSplat !== capture) return false;
-  useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
-  return true;
+  if (!asset || asset === 'renderer-replaced') return Promise.resolve(false);
+  const frames = registry.frames ??= new WeakMap();
+  if (!frames.has(asset.splats)) frames.set(asset.splats, { offset: model.gaussianSplat?.frameOffset ?? { x: 0, y: 0, z: 0 } });
+  const adapter = frames.get(asset.splats)!;
+  const update = (adapter.update ?? Promise.resolve(true)).catch(() => false).then(async () => {
+    const state = useViewerStore.getState();
+    const current = state.models.get(modelId);
+    const capture = current?.gaussianSplat;
+    if (!current || !capture || currentAsset(current) !== asset) return false;
+    const frame = federationFrameInfo([...state.models.values()].filter(m => !m.gaussianSplat));
+    const offset = totalYupOffset(frame);
+    const delta: [number, number, number] = [adapter.offset.x - offset.x, adapter.offset.y - offset.y, adapter.offset.z - offset.z];
+    if (delta.some(value => value !== 0)) {
+      if (!await asset.splats.translateFrame(delta)) return false;
+      adapter.offset = offset;
+    }
+    const framed = gaussianCaptureFrame(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined),
+      upAxis ?? capture.upAxis, frame);
+    if (capture.upAxis === framed.upAxis && capture.frameOffset
+      && capture.frameOffset.x === framed.frameOffset.x && capture.frameOffset.y === framed.frameOffset.y
+      && capture.frameOffset.z === framed.frameOffset.z) return true;
+    if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
+    const latest = useViewerStore.getState().models.get(modelId);
+    if (latest?.gaussianSplat !== capture || currentAsset(latest) !== asset) return false;
+    useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
+    return true;
+  });
+  adapter.update = update;
+  const settled = () => { if (adapter.update === update) adapter.update = undefined; };
+  void update.then(settled, settled);
+  return update;
 }

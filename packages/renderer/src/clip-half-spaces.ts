@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ExtraClipPlane } from './clip-types.js';
+import { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
 import type { PickClipState } from './pick-types.js';
 import type { Vec3 } from './types.js';
 
@@ -33,6 +35,22 @@ export function clipHalfSpaces(clip: PickClipState): ClipHalfSpace[] {
     planes.push({ n: positive, limit: box.max[axis] }, { n: negative, limit: -box.min[axis] });
   }
   return planes;
+}
+
+const NO_PLANES: readonly ExtraClipPlane[] = Object.freeze([]);
+
+/**
+ * The same half-spaces as a clip-block plane list (`packExtraClip`), so a shader overlay discards
+ * exactly what the model's fragments do (#8767): the primary plane, the extras the mesh block holds
+ * (beyond {@link MAX_EXTRA_CLIP_PLANES} the mesh drops them too) and the six box faces. Empty when
+ * nothing clips.
+ */
+export function clipStatePlanes(clip: PickClipState | null | undefined): readonly ExtraClipPlane[] {
+  if (!clip || (!clip.sectionPlane && !clip.extraPlanes?.length && !clip.clipBox?.enabled)) return NO_PLANES;
+  const extras = clip.extraPlanes && clip.extraPlanes.length > MAX_EXTRA_CLIP_PLANES
+    ? clip.extraPlanes.slice(0, MAX_EXTRA_CLIP_PLANES) : clip.extraPlanes;
+  return clipHalfSpaces({ ...clip, extraPlanes: extras })
+    .map(({ n, limit }) => ({ normal: [n[0], n[1], n[2]], distance: limit, flipped: false }));
 }
 
 /**

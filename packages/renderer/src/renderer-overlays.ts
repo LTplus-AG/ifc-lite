@@ -59,6 +59,9 @@ import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js'
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { ExtraClipPlane } from './clip-types.js';
+import { clipStatePlanes } from './clip-half-spaces.js';
+import type { PickClipState } from './pick-types.js';
+import type { LineOverlayOptions } from './section-2d-types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
 import type { OverlayTheme } from './overlay-theme.js';
@@ -103,6 +106,11 @@ export interface OverlayDrawContext {
     /** See `SectionDrawContext`: the cutting planes beyond the first, and the primary as a clip. */
     extraPlanes?: readonly ExtraClipPlane[];
     primaryPlane?: ExtraClipPlane | null;
+    /**
+     * Everything that clips the model this frame (the picker's clip, without its per-entity
+     * exemptions), so the section-clipped overlays lose what the model loses (#8767).
+     */
+    clip?: PickClipState | null;
 }
 
 /**
@@ -144,6 +152,11 @@ export class RendererOverlays {
     private readonly themeApplier = new OverlayThemeApplier();
     private readonly symbolic: SymbolicOverlays;
     private clashSolidPipeline: ClashSolidPipeline | null = null;
+    /**
+     * Channels whose current upload asked to be clipped like the model (#8767), opt-in like
+     * `SymbolicFillInput.sectionClipped`: the IfcAnnotation lines do, reference layers do not.
+     */
+    private readonly sectionClippedChannels = new Set<LineOverlayChannel>();
 
     constructor(private readonly host: OverlayHost) {
         this.symbolic = new SymbolicOverlays(host);
@@ -208,7 +221,9 @@ export class RendererOverlays {
         //
         // Order: fills (background) → lines (outlines on top) →
         // texts (labels above everything).
-        this.symbolic.drawFills(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
+        // The section-clipped overlays (#8767) discard what the model's own clip removes.
+        const clippedBy = clipStatePlanes(ctx.clip);
+        this.symbolic.drawFills(pass, viewProj, ctx.rteViewProj, ctx.rteCamera, clippedBy);
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
         // grid, DXF, LandXML, centreline. Centreline uses always-visible depth;
         // within each depth mode, draw order breaks depth ties.
@@ -216,7 +231,8 @@ export class RendererOverlays {
         if (overlay) {
             for (const channel of LINE_OVERLAY_CHANNELS) {
                 if (overlay.hasLineOverlay(channel)) {
-                    overlay.drawLineOverlay(pass, viewProj, channel, ctx.rteViewProj, ctx.rteCamera);
+                    overlay.drawLineOverlay(pass, viewProj, channel, ctx.rteViewProj, ctx.rteCamera,
+                        this.sectionClippedChannels.has(channel) ? clippedBy : undefined);
                 }
             }
             if (overlay.hasClashBoxLines3D()) {
@@ -238,6 +254,7 @@ export class RendererOverlays {
             camera,
             ctx.rteViewProj,
             ctx.rteCamera,
+            clippedBy.length > 0 ? ctx.clip : null,
         );
     }
 
@@ -288,9 +305,12 @@ export class RendererOverlays {
     }
 
     /** See `Renderer.setLineOverlay` for the published contract. */
-    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null, options?: LineOverlayOptions): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
+        // The flag belongs to this upload: a later upload without it, or a clear, draws unclipped again.
+        if (vertices && options?.sectionClipped === true) this.sectionClippedChannels.add(channel);
+        else this.sectionClippedChannels.delete(channel);
         if (CHANNEL_EXPANDS_MODEL_BOUNDS[channel] && vertices) {
             // Mirrors the point-cloud upload path (`addPointClouds`,
             // `setPointClouds`): without `syncCameraSceneBounds` the frustum

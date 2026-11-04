@@ -106,6 +106,9 @@ export interface AnnotationText3D {
    * field an additive change for outside callers.
    */
   definesExtent: boolean;
+  /** True for annotations, false for grid references (#8767). Required here
+   *  so every producer sets the renderer's optional sectionClipped flag. */
+  sectionClipped: boolean;
 }
 
 /**
@@ -123,6 +126,8 @@ export interface AnnotationFill3D {
   hatching?: AnnotationFill2D['hatching'];
   /** False for grid bubble fills. See [`AnnotationText3D.definesExtent`] (#3359). */
   definesExtent: boolean;
+  /** False for grid bubbles. See AnnotationText3D.sectionClipped (#8767). */
+  sectionClipped: boolean;
 }
 
 export interface SymbolicRichChannels {
@@ -136,6 +141,8 @@ export interface SymbolicRichChannels {
 export interface SymbolicRichChannelsEntry {
   cached: ParseResult;
   isHidden?: (ownerId: number) => boolean;
+  /** Annotation-only isolation; grid references bypass it (#8767). */
+  isIsolatedOut?: (ownerId: number) => boolean;
   isMeshedFill?: (ownerId: number, geometryItemId: number) => boolean;
 }
 
@@ -173,13 +180,15 @@ export function buildSymbolicRichChannels(
   const texts: AnnotationText3D[] = [];
   const fills: AnnotationFill3D[] = [];
 
-  for (const { cached, isHidden, isMeshedFill } of entries) {
-    // `definesExtent`: see [`AnnotationText3D.definesExtent`] for why the
-    // channel routing does not reach bubbles (#3359).
+  for (const { cached, isHidden, isIsolatedOut, isMeshedFill } of entries) {
+    // `annotation` is false for grid content. It decides `definesExtent` (see
+    // [`AnnotationText3D.definesExtent`] for why the channel routing does not
+    // reach bubbles, #3359), `sectionClipped` and isolation (#8767): grids are
+    // a reference layer that keeps drawing under both.
     // Both return whether the item was lifted, so the grid dedup below only
     // claims a bubble's plan position once a copy of it actually draws.
-    const pushText = (t: AnnotationText2D, y: number, definesExtent: boolean): boolean => {
-      if (isHidden && isHidden(t.ownerId)) return false;
+    const pushText = (t: AnnotationText2D, y: number, annotation: boolean): boolean => {
+      if (isHidden?.(t.ownerId) || (annotation && isIsolatedOut?.(t.ownerId))) return false;
       // lineYOffset stacks multi-line text downward in world-Y. Glyph
       // upAxis is world-Y (see SymbolicTextPipeline), so subtracting
       // here puts line 1 below line 0 on screen for any side/oblique
@@ -201,12 +210,13 @@ export function buildSymbolicRichChannels(
         // backdrop is pulled toward the ink just far enough to read (#5388).
         color: legibleAnnotationTextColor(t.color, theme),
         targetPx: t.targetPx,
-        definesExtent,
+        definesExtent: annotation,
+        sectionClipped: annotation,
       });
       return true;
     };
-    const pushFill = (f: AnnotationFill2D, y: number, definesExtent: boolean): boolean => {
-      if (isHidden && isHidden(f.ownerId)) return false;
+    const pushFill = (f: AnnotationFill2D, y: number, annotation: boolean): boolean => {
+      if (isHidden?.(f.ownerId) || (annotation && isIsolatedOut?.(f.ownerId))) return false;
       // Keep the cached 2D drawing intact. Only the redundant 3D lift is
       // omitted, and only for an exact owner/item match in this model.
       if (f.geometryItemId !== undefined && isMeshedFill?.(f.ownerId, f.geometryItemId)) return false;
@@ -217,7 +227,8 @@ export function buildSymbolicRichChannels(
         origin: f.rteOrigin,
         color: f.color,
         hatching: f.hatching,
-        definesExtent,
+        definesExtent: annotation,
+        sectionClipped: annotation,
       });
       return true;
     };
@@ -244,8 +255,8 @@ export function buildSymbolicRichChannels(
       // lowest storey that draws it — see `gridBucketsLowToHigh`.
       const seenTexts = new Set<string>();
       const seenFills = new Set<string>();
-      // Issue #862: the section cut clips GRID content only — IfcAnnotation
-      // deliberately bypasses this, the same rule the line channels follow.
+      // Grid elevation band (#862); annotation section clipping happens
+      // in the renderer via sectionClipped (#8767).
       const lo = clipPos - clipDepth;
       const hi = clipPos + clipDepth;
       const inClip = (y: number) => !clipEnabled || (y >= lo && y <= hi);

@@ -16,6 +16,8 @@
  */
 
 import type { Camera } from './camera.js';
+import type { ExtraClipPlane } from './clip-types.js';
+import type { PickClipState } from './pick-types.js';
 import { viewBasis } from './math.js';
 import {
     SymbolicFillPipeline,
@@ -75,9 +77,13 @@ export class SymbolicOverlays {
     }
 
     /** Background layer: painted before the 3D line overlays. */
-    drawFills(pass: GPURenderPassEncoder, viewProj: Float32Array, rteViewProj?: Float32Array, rteCamera?: readonly [number, number, number]): void {
+    drawFills(
+        pass: GPURenderPassEncoder, viewProj: Float32Array, rteViewProj?: Float32Array, rteCamera?: readonly [number, number, number],
+        /** The frame's model clip as planes, for the section-clipped fills (#8767). */
+        clippedBy: readonly ExtraClipPlane[] = [],
+    ): void {
         if (this.fillPipeline?.hasGeometry()) {
-            this.fillPipeline.render(pass, viewProj, rteViewProj, rteCamera);
+            this.fillPipeline.render(pass, viewProj, rteViewProj, rteCamera, clippedBy);
         }
     }
 
@@ -90,6 +96,8 @@ export class SymbolicOverlays {
         camera: Camera,
         rteViewProj?: Float32Array,
         rteCamera?: readonly [number, number, number],
+        /** The frame's model clip, for the section-clipped labels (#8767). */
+        clip?: PickClipState | null,
     ): void {
         if (!this.textPipeline?.hasGeometry()) return;
         // Pass viewport pixel dimensions so the shader can scale glyphs
@@ -127,6 +135,7 @@ export class SymbolicOverlays {
             undefined,
             rteViewProj,
             rteCamera,
+            clip,
         );
     }
 

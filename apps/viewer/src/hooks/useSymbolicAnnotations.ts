@@ -102,10 +102,7 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
  * The parser includes every contained element in byStorey, so storey solo
  * keeps its annotations; uncontained annotations drop just like meshes.
  * Grid references honour hides and lenses, but bypass isolation. */
-interface SymbolicVisibility {
-  hidden?: ReadonlySet<number> | null;
-  isolated?: ReadonlySet<number> | null;
-}
+type SymbolicVisibility = { hidden?: ReadonlySet<number> | null; isolated?: ReadonlySet<number> | null };
 const EMPTY_OWNER_IDS: ReadonlySet<number> = new Set();
 const NO_HIDES = { global: EMPTY_OWNER_IDS, lens: EMPTY_OWNER_IDS };
 

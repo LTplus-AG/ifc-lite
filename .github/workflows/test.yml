@@ -4165,14 +4165,25 @@ jobs:
     name: AGENTS.md ratchet
     needs: changes
     if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 5
+    # This tiny gate uses a partial clone. Keep it ephemeral so promisor state
+    # cannot leak into full checkouts in later self-hosted jobs (e.g. semver).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
+          # Keep every tracked instruction file, including future nested files,
+          # while avoiding unrelated model/evidence blobs in this tiny gate.
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /AGENTS.md
+            /**/AGENTS.md
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

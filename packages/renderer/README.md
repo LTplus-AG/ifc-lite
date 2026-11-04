@@ -168,3 +168,9 @@ section, terrain or box clipping. It reads the retained render snapshot, so
 mutating a previous options object does not change the answer.
 `raycastScene()` applies that same clip state while walking triangles, so a
 clipped front face cannot hide a visible face behind it.
+
+For a change to the entire Gaussian scene's render origin, the internal
+`renderer.gaussianSplats.translateFrame([dx, dy, dz])` translates all capture
+placements, bounds and the float64 anchor together. Packed local rows remain
+unchanged, preserving the precision envelope even for survey-scale offsets.
+Use `setPlacement` for an individual capture's placement or orientation edit.

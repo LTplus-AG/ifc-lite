@@ -82,7 +82,7 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
   it('capture metadata states what is known and its limits, never IFC schema or statistics', () => {
     const container = render(<ModelMetadataPanel model={useViewerStore.getState().models.get('capture')!} />);
     const text = container.textContent ?? '';
-    for (const expected of ['Gaussian capture', 'Gaussian PLY', '914,000', 'Raw source coordinates',
+    for (const expected of ['Gaussian capture', 'Gaussian PLY', '914,000', 'Source coordinates in viewer frame',
       'Uncalibrated: no units, alignment or measurement', 'Seem Kirke by roedsgaard, CC BY 4.0']) {
       assert.ok(text.includes(expected), `shows ${expected}`);
     }
@@ -100,6 +100,19 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
     for (const absent of ['IFC Model', 'IFC4', 'Total Entities', 'Building Storeys', 'Max Express ID']) {
       assert.ok(!text.includes(absent), `does not claim ${absent}`);
     }
+  });
+
+  it('up-axis control shows the applied default for unplaced and explicitly placed captures (#8752)', () => {
+    const original = captureModel('source', 'source.ply');
+    const source = { ...original, gaussianSplat: { ...original.gaussianSplat!, sourcePlacement: IDENTITY } };
+    let container = render(<ModelMetadataPanel model={source} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'z');
+    cleanup();
+    const explicit = { ...source, gaussianSplat: {
+      ...source.gaussianSplat!, placementOrigin: 'explicit' as const, placement: IDENTITY,
+    } };
+    container = render(<ModelMetadataPanel model={explicit} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'y');
   });
 
   it('an IFC model keeps its IFC metadata panel', () => {

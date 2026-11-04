@@ -24,3 +24,15 @@ it('a saved setup keeps only an explicitly chosen capture placement and round-tr
   broken.slots[0].gaussianPlacement = RX180.slice(1);
   assert.match(String((parseFederationSetupFile(JSON.stringify(broken)) as { error?: string }).error), /16 finite numbers/);
 });
+
+it('setup persists source axes and unbaked placement, never IFC frame offsets (#8752)', async () => {
+  const model = capture('survey', 'explicit');
+  model.gaussianSplat = { ...model.gaussianSplat!, sourcePlacement: RX180, upAxis: 'z',
+    placement: [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, -2_600_000, -520, 1_200_000, 1] };
+  const parsed = parseFederationSetupFile(serializeFederationSetupFile(await buildFederationSetupFile([model], null)));
+  assert.ok(parsed.ok);
+  assert.deepEqual(parsed.setup.slots[0].gaussianPlacement, RX180);
+  assert.equal(parsed.setup.slots[0].gaussianUpAxis, 'z');
+  const invalid = { ...parsed.setup, slots: [{ ...parsed.setup.slots[0], gaussianUpAxis: 'x' }] };
+  assert.equal(parseFederationSetupFile(JSON.stringify(invalid)).ok, false);
+});

@@ -79,10 +79,12 @@ export interface FederationSetupSlot {
   tagIds: string[];
   /**
    * A Gaussian capture's EXPLICIT placement (#8566): the column-major matrix a
-   * caller or user supplied. Raw-source (identity) placement is not stored, so
+   * caller or user supplied, after axis conversion and before render-origin subtraction. Default placement is not stored, so
    * nothing is replayed that was never chosen. Optional, so earlier readers skip it.
    */
   gaussianPlacement?: number[];
+  /** Source up-axis; absent on setups saved before #8752. */
+  gaussianUpAxis?: 'z' | 'y';
 }
 
 /** A complete, versioned, portable federation setup. */
@@ -144,7 +146,8 @@ export async function buildFederationSetupFile(
         collapsed: model.collapsed,
         anchor: model.id === anchorModelId,
         tagIds,
-        ...(capture?.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
+        ...(capture?.upAxis ? { gaussianUpAxis: capture.upAxis } : {}),
+        ...(capture?.placementOrigin === 'explicit' ? { gaussianPlacement: [...(capture.sourcePlacement ?? capture.placement)] } : {}),
       };
     }),
   );
@@ -170,6 +173,7 @@ export function serializeFederationSetupFile(setup: FederationSetupFile): string
       collapsed: slot.collapsed,
       anchor: slot.anchor,
       tagIds: [...slot.tagIds],
+      ...(slot.gaussianUpAxis ? { gaussianUpAxis: slot.gaussianUpAxis } : {}),
       ...(slot.gaussianPlacement ? { gaussianPlacement: [...slot.gaussianPlacement] } : {}),
     })),
   };
@@ -244,6 +248,8 @@ export function parseFederationSetupFile(raw: string): FederationSetupParseResul
     if (s.anchor) anchorCount += 1;
     const tagIds = parseSlotTagIds(obj.formatVersion, s.tagIds, declaredTagIds);
     if (typeof tagIds === 'string') return { ok: false, error: `slots[${i}].tagIds ${tagIds}` };
+    const upAxis = s.gaussianUpAxis;
+    if (upAxis !== undefined && upAxis !== 'z' && upAxis !== 'y') return { ok: false, error: `slots[${i}].gaussianUpAxis must be z or y.` };
     const placement = s.gaussianPlacement;
     if (placement !== undefined && !(Array.isArray(placement) && placement.length === 16 && placement.every(Number.isFinite))) {
       return { ok: false, error: `slots[${i}].gaussianPlacement must be 16 finite numbers.` };
@@ -256,6 +262,7 @@ export function parseFederationSetupFile(raw: string): FederationSetupParseResul
       collapsed: s.collapsed,
       anchor: s.anchor,
       tagIds,
+      ...(upAxis ? { gaussianUpAxis: upAxis } : {}),
       ...(placement ? { gaussianPlacement: placement as number[] } : {}),
     });
   }

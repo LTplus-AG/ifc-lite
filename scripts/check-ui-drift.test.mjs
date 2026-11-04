@@ -183,7 +183,6 @@ test('#8802 CLI fails closed on category mismatch in either direction', (t) => {
   // A mismatch gets its own remedy, not the drift-increase one, and that remedy works.
   // @source-text-assertion-ok CLI stdout/stderr behaviour, not source text
   assert.match(result.stderr, /only a change to scripts\/lib\/ui-drift\.mjs causes/);
-  // @source-text-assertion-ok CLI stdout/stderr behaviour, not source text
   assert.doesNotMatch(result.stderr, /justified increase/);
   assert.equal(f.run('--update').status, 1);
   success(f.run('--update', '--allow-increase'));

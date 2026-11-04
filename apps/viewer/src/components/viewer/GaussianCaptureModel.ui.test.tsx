@@ -90,7 +90,7 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
     // #8568: every disclosed launch limitation, in the panel's limitations section.
     const limitations = [...container.querySelectorAll('[data-limitation]')].map((node) => [node.getAttribute('data-limitation'), node.textContent]);
     assert.deepEqual(limitations, [
-      ['composition', 'Composited over IFC glass and X-ray approximately.'],
+      ['composition', 'Exact behind one glass layer; approximate behind several layers and in X-ray.'],
       ['clipping', 'Section planes and boxes cull whole Gaussians by centre; no section caps.'],
       ['uncalibrated', 'Uncalibrated: shown in source units, with no metric scale or survey alignment.'],
       ['picking', 'Not pickable: select the capture in the model list.'],

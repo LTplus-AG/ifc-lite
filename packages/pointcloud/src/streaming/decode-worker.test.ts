@@ -340,7 +340,10 @@ describe('large PLY through the real worker (#8777)', () => {
     await handle.done;
     expect(opened?.stride).toBe(3);
     expect(emitted).toBe(1_000_000);
-    const origin = opened!.originOffset!;
+    // Record i is (i, 2i, 3i) + 1000 for i < 3,000,000, so the bbox centre is
+    // known without asking the code under test.
+    const origin = [1_500_999.5, 3_000_999, 4_500_998.5];
+    expect(opened!.originOffset).toEqual(origin);
     expect(first).toEqual([1000, 1000, 1000, 1003, 1006, 1009].map((v, i) => Math.fround(v - origin[i % 3])));
     // The header read (its window overlaps the body), one bounds scan, one
     // decode. Before #8777 the reopen read the header and scanned again: 5.

@@ -12,6 +12,6 @@ export function frameCandidateModels(models: Iterable<FederatedModel>): Federate
 export function sharedRenderFrame(
   models: Iterable<FederatedModel>,
   geometryResult?: { coordinateInfo?: CoordinateInfo | null } | null,
-) {
+): CoordinateInfo | null {
   return federationFrameInfo(frameCandidateModels(models), geometryResult);
 }

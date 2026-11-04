@@ -52,8 +52,11 @@ does not define the reported frame until its load settles.
 Two kinds of model stay outside the shared frame:
 
 - **Point clouds** (LAS/LAZ and the other scan formats) are never meshed
-  against an RTC anchor in any load order; they are placed by the point-cloud
-  georeference alignment instead, so the convergence leaves them alone.
+  against an RTC anchor in any load order. A compatible georeference aligns
+  them to the IFC; otherwise their native coordinates are displayed relative
+  to the shared render origin. Turning alignment off uses that same origin.
+  Their placement updates when an IFC changes the render frame, including
+  when a scan loads before the IFC or the anchor is removed.
 - **Models with GPU-instanced geometry** cannot be moved after load, because
   their instance transforms live in renderer-owned buffers. If such a model is
   not already on the anchor, the viewer leaves it where it is, names it in a

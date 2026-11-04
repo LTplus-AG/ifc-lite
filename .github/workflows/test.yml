@@ -2041,6 +2041,14 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
             oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/clear-any-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
           fi
+          # #8781: a whole revert removes the reframe export imported by the
+          # witnesses. Keep the API and independently break frame subtraction,
+          # registry application, and scan-only candidate filtering.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch | grep -Fxq 'tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/reframe-apply.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/scan-candidate.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

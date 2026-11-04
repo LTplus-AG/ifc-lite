@@ -17,7 +17,7 @@ import {
   EXPRESS_INTENDED_USE_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_LOCATION_ATTRIBUTE,
   EXPRESS_NAME_ATTRIBUTE, EXPRESS_PURPOSE_ATTRIBUTE, EXPRESS_REVISION_ATTRIBUTE,
 } from './express-labels';
-import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_CHEVRON } from './inspector-ui';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_CHEVRON, INSPECTOR_ROWS, InspectorRow } from './inspector-ui';
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 type SearchRow = { label: string; value: string; href?: string };
@@ -114,16 +114,21 @@ export function findAssociationAttributes({ classifications, materials, document
 export function AssociationAttributeSearchCard({ card, query }: { card: AssociationSearchCard; query: string }) {
   return <PersistentCollapsible id={card.id} forceOpen className={INSPECTOR_SECTION}>
     <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
-      <span className="font-bold truncate flex-1 min-w-0"><PropertySearchHighlight text={card.title} query={query} /></span>
+      <span className={INSPECTOR_TITLE}><PropertySearchHighlight text={card.title} query={query} /></span>
       <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
     </CollapsibleTrigger>
     <CollapsibleContent>
-      <div className="divide-y border-t">
-        {card.rows.map((item, index) => <div key={`${item.label}-${index}`} data-association-attribute={item.label} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
-          <span className="text-muted-foreground font-medium"><PropertySearchHighlight text={item.label} query={query} /></span>
-          {item.href ? <a href={item.href} target="_blank" rel="noopener noreferrer" className="font-mono underline break-all"><PropertySearchHighlight text={item.value} query={query} /></a>
-            : <span className="font-mono select-all break-words"><PropertySearchHighlight text={item.value} query={query} /></span>}
-        </div>)}
+      <div className={INSPECTOR_ROWS}>
+        {card.rows.map((item, index) => <InspectorRow
+          key={`${item.label}-${index}`}
+          label={item.label}
+          labelNode={<PropertySearchHighlight text={item.label} query={query} />}
+          value={item.value}
+          rowProps={{ 'data-association-attribute': item.label }}
+        >
+          {item.href ? <a href={item.href} target="_blank" rel="noopener noreferrer" className="text-primary underline"><PropertySearchHighlight text={item.value} query={query} /></a>
+            : <PropertySearchHighlight text={item.value} query={query} />}
+        </InspectorRow>)}
       </div>
     </CollapsibleContent>
   </PersistentCollapsible>;

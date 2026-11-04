@@ -2467,6 +2467,10 @@ jobs:
       # scripts/check-module-size.mjs; this comment is its summary.
       - name: Check TypeScript module size ratchet
         run: node scripts/check-module-size.mjs
+      # #8802: objective hill-climb score for the viewer UI overhaul.
+      # Totals ratchet down as styling migrates to tokens and primitives.
+      - name: Check UI style drift ratchet
+        run: node scripts/check-ui-drift.mjs
       - name: Check for hardcoded viewer UI literals
         run: node scripts/check-i18n-literals.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for

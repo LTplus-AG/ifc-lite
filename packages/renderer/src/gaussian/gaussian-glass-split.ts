@@ -139,6 +139,7 @@ export class GaussianGlassSplit {
       this.layerSamples = samples;
       this.onResult();
     } catch (error) {
+      if (this.destroyed) return;
       if (token === this.frame) { this.layers = 'unknown'; this.layerSamples = null; }
       console.error('[Gaussian] glass layer readback failed; count stays unknown:', error);
     } finally {
@@ -224,6 +225,7 @@ export class GaussianGlassSplit {
       ]);
       if (!this.destroyed) this.variants.set(base, { nearest, count });
     })().catch((error: unknown) => {
+      if (this.destroyed) return;
       console.error('[Gaussian] glass depth variant failed; frames using it keep the single splat pass:', error);
       this.variants.set(base, error instanceof Error ? error : new Error(String(error)));
     }).finally(() => { if (!this.destroyed) this.onReady(); });

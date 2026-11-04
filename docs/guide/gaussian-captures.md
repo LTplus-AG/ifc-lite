@@ -42,7 +42,7 @@ The scene limit bounds **logical scene splats**: one share per capture, loaded o
 
 ## Limitations
 
-- **Composition with glass and X-ray is approximate.** Captures are composited after the main pass, over transparent IFC surfaces, so a capture can show through glass or X-rayed elements that should hide it.
+- **Composition behind more than one glass layer, and in X-ray, is approximate.** Behind a single transparent IFC surface, such as a window in front of a capture, splats are ordered exactly: those behind the glass are drawn before it, those in front after it. Where two or more transparent surfaces overlap, splats between them are drawn as if behind all of them. X-ray ghosts the whole model, so in X-ray mode a capture's ordering against ghosted elements is approximate.
 - **Clipping is by Gaussian centre.** Section planes and section boxes cull whole Gaussians by their centre. There are no section caps, and a Gaussian's footprint can cross the plane.
 - **Captures are uncalibrated.** Axis conversion and render-origin reconciliation do not establish units or survey alignment, and the viewer makes no metric claim about it. With only captures visible, the scale overlay says the scale is unknown.
 - **Not pickable.** Clicking a capture in the 3D view does not select it; select it in the model list.

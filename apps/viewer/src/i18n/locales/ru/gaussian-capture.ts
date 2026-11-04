@@ -35,7 +35,7 @@ export const gaussianCaptureRu = {
   "gaussianCapture.scale.mixed": "Масштаб относится к геометрии IFC. Съёмки не откалиброваны.",
   "gaussianCapture.attribution": "Авторство",
   "gaussianCapture.limitation.clipping": "Секущие плоскости и рамки отсекают гауссианы целиком по центру; без заливки разреза.",
-  "gaussianCapture.limitation.composition": "Наложение поверх стекла IFC и рентген-режима приблизительное.",
+  "gaussianCapture.limitation.composition": "Точно за одним слоем стекла; приблизительно за несколькими слоями и в рентген-режиме.",
   "gaussianCapture.limitation.picking": "Не выбирается щелчком: выберите захват в списке моделей.",
   "gaussianCapture.limitation.measurement": "Измерения и привязка к захватам недоступны.",
   "gaussianCapture.limitation.uncalibrated": "Не откалиброван: отображается в единицах источника, без метрического масштаба и геодезической привязки.",

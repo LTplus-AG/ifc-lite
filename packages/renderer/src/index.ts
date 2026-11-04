@@ -61,7 +61,7 @@ export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
 export { capHighlightKey } from './section-2d-overlay.js';
 export { SECTION_BOX_CAP_FACES, sectionBoxCapKey } from './section-box-caps.js';
 export type { SectionBoxCapFace } from './section-box-caps.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel, LineOverlayOptions } from './section-2d-overlay.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
@@ -181,7 +181,7 @@ import {
     packSectionPlaneLanes,
 } from './mesh-rte-uniforms.js';
 import { packMeshMaterial } from './mesh-material.js';
-import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel, LineOverlayOptions } from './section-2d-overlay.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
 import { resolveSectionPlaneFrame } from './render-section-plane.js';
@@ -3429,9 +3429,12 @@ export class Renderer {
      * was ticked on. The rule is "does this content DEFINE the model's
      * extent", NOT "is it behind a visibility toggle" — annotations sit behind
      * `ifcAnnotationsVisible` too.
+     *
+     * `options.sectionClipped` (#8767) clips this upload like the model: by the section plane, the
+     * extra cutting planes and the clip box. Off by default, so a channel draws whole unless asked.
      */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[] | null): void {
-        this.overlays.setLineOverlay(channel, vertices);
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[] | null, options?: LineOverlayOptions): void {
+        this.overlays.setLineOverlay(channel, vertices, options);
     }
 
     /**

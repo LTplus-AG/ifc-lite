@@ -161,8 +161,9 @@ for (const kind of ['fills', 'texts'] as const) {
 
 it('forwards annotation and grid sectionClipped flags unchanged (#8767)', () => {
   let fillFlags = '', textFlags = '';
+  const lineFlags: string[] = [];
   const target: Pick<Renderer, 'setLineOverlay' | 'uploadAnnotationFills3D' | 'uploadAnnotationTexts3D'> = {
-    setLineOverlay() {},
+    setLineOverlay(channel, _value, options) { lineFlags.push(`${channel}:${String(options?.sectionClipped)}`); },
     uploadAnnotationFills3D(value) { fillFlags = value.map(f => String(f.sectionClipped)).join(','); },
     uploadAnnotationTexts3D(value) { textFlags = value.map(t => String(t.sectionClipped)).join(','); },
   };
@@ -179,4 +180,6 @@ it('forwards annotation and grid sectionClipped flags unchanged (#8767)', () => 
   render(<Probe />);
   assert.equal(fillFlags, 'true,false');
   assert.equal(textFlags, 'true,false');
+  // Only the IfcAnnotation lines opt in to the model's section clip.
+  assert.equal([...lineFlags].sort().join(','), 'alignment:false,annotation:true,grid:false');
 });

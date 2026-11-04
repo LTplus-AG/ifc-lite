@@ -61,6 +61,7 @@ import type { RenderOptions } from './types.js';
 import type { ExtraClipPlane } from './clip-types.js';
 import { clipStatePlanes } from './clip-half-spaces.js';
 import type { PickClipState } from './pick-types.js';
+import type { LineOverlayOptions } from './section-2d-types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
 import type { OverlayTheme } from './overlay-theme.js';
@@ -144,21 +145,6 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     centreline: false, // Selected source never reframes the model or camera.
 };
 
-/**
- * Whether a channel is clipped like the model by the section plane, the extra cutting planes and the
- * clip box (#8767). IfcAnnotation lines are part of the model: a cut that removes the storey above
- * removes its dimensions too, where they used to draw straight across the cut. The other channels
- * are reference layers and keep drawing whole; the grid has its own section band (#862).
- */
-const CHANNEL_SECTION_CLIPPED: Record<LineOverlayChannel, boolean> = {
-    annotation: true,
-    alignment: false,
-    grid: false,
-    dxf: false,
-    terrain: false,
-    centreline: false,
-};
-
 export class RendererOverlays {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
@@ -166,6 +152,11 @@ export class RendererOverlays {
     private readonly themeApplier = new OverlayThemeApplier();
     private readonly symbolic: SymbolicOverlays;
     private clashSolidPipeline: ClashSolidPipeline | null = null;
+    /**
+     * Channels whose current upload asked to be clipped like the model (#8767), opt-in like
+     * `SymbolicFillInput.sectionClipped`: the IfcAnnotation lines do, reference layers do not.
+     */
+    private readonly sectionClippedChannels = new Set<LineOverlayChannel>();
 
     constructor(private readonly host: OverlayHost) {
         this.symbolic = new SymbolicOverlays(host);
@@ -241,7 +232,7 @@ export class RendererOverlays {
             for (const channel of LINE_OVERLAY_CHANNELS) {
                 if (overlay.hasLineOverlay(channel)) {
                     overlay.drawLineOverlay(pass, viewProj, channel, ctx.rteViewProj, ctx.rteCamera,
-                        CHANNEL_SECTION_CLIPPED[channel] ? clippedBy : undefined);
+                        this.sectionClippedChannels.has(channel) ? clippedBy : undefined);
                 }
             }
             if (overlay.hasClashBoxLines3D()) {
@@ -314,9 +305,12 @@ export class RendererOverlays {
     }
 
     /** See `Renderer.setLineOverlay` for the published contract. */
-    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null, options?: LineOverlayOptions): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
+        // The flag belongs to this upload: a later upload without it, or a clear, draws unclipped again.
+        if (vertices && options?.sectionClipped === true) this.sectionClippedChannels.add(channel);
+        else this.sectionClippedChannels.delete(channel);
         if (CHANNEL_EXPANDS_MODEL_BOUNDS[channel] && vertices) {
             // Mirrors the point-cloud upload path (`addPointClouds`,
             // `setPointClouds`): without `syncCameraSceneBounds` the frustum

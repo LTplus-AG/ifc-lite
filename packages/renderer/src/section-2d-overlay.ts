@@ -63,7 +63,7 @@ const OVERLAY_CLIP_SLOT_EYE = OVERLAY_CLIP_SLOT_WORLD + 1;
 export { capHighlightKey } from './section-2d-lift.js';
 export type { CapHighlight, CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
-export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
+export type { LineOverlayChannel, LineOverlayOptions, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
 
 export class Section2DOverlayRenderer {
   private device: GPUDevice;

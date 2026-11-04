@@ -242,8 +242,14 @@ describe('Section2DOverlayRenderer: a section-clipped line channel (#8767)', () 
   });
 });
 
-/** Draw one frame through `RendererOverlays` and report the planes each line channel was handed. */
-function planesHandedOut(clip: PickClipState | null): Map<LineOverlayChannel, readonly ExtraClipPlane[]> {
+type Upload = (overlays: RendererOverlays) => void;
+/** The viewer's uploads: every channel set, only the IfcAnnotation lines opting in to the clip. */
+const VIEWER_UPLOADS: Upload = (overlays) => {
+  for (const channel of LINE_OVERLAY_CHANNELS) overlays.setLineOverlay(channel, TWO_SEGMENTS, { sectionClipped: channel === 'annotation' });
+};
+
+/** Upload through `RendererOverlays`, draw one frame and report the planes each line channel was handed. */
+function planesHandedOut(clip: PickClipState | null, upload: Upload = VIEWER_UPLOADS): Map<LineOverlayChannel, readonly ExtraClipPlane[]> {
   const host: OverlayHost = {
     getModelBounds: () => null,
     expandModelBoundsWithFlatVertices: () => {},
@@ -259,10 +265,12 @@ function planesHandedOut(clip: PickClipState | null): Map<LineOverlayChannel, re
     hasExtraGeometry: () => false,
     hasLineOverlay: () => true,
     hasClashBoxLines3D: () => false,
+    setLineOverlay: () => {},
     drawLineOverlay: (_p: unknown, _vp: unknown, channel: LineOverlayChannel, _r: unknown, _c: unknown, planes?: readonly ExtraClipPlane[]) => {
       received.set(channel, planes ?? []);
     },
   };
+  upload(overlays);
   overlays.draw({} as GPURenderPassEncoder, {
     options: {} as never,
     viewProj: new Float32Array(16),
@@ -274,12 +282,32 @@ function planesHandedOut(clip: PickClipState | null): Map<LineOverlayChannel, re
   return received;
 }
 
-describe('RendererOverlays: the model clip reaches the annotation channel only (#8767)', () => {
-  it('hands the annotation channel the frame\'s planes and every other channel none', () => {
+describe('RendererOverlays: the model clip reaches only a channel that opted in (#8767)', () => {
+  it('hands the opted-in annotation channel the frame\'s planes and every other channel none', () => {
     const received = planesHandedOut(CUT_DOWN);
     for (const channel of LINE_OVERLAY_CHANNELS) {
       assert.strictEqual(received.get(channel)?.length ?? 0, channel === 'annotation' ? 1 : 0, channel);
     }
+  });
+
+  it('clips no channel that did not opt in, the default for every existing caller', () => {
+    const received = planesHandedOut(CUT_DOWN, (overlays) => {
+      for (const channel of LINE_OVERLAY_CHANNELS) overlays.setLineOverlay(channel, TWO_SEGMENTS);
+    });
+    for (const channel of LINE_OVERLAY_CHANNELS) assert.strictEqual(received.get(channel)?.length ?? 0, 0, channel);
+  });
+
+  it('ties the opt-in to the upload: a later upload without it, or a clear, draws unclipped again', () => {
+    const reuploaded = planesHandedOut(CUT_DOWN, (overlays) => {
+      overlays.setLineOverlay('annotation', TWO_SEGMENTS, { sectionClipped: true });
+      overlays.setLineOverlay('annotation', TWO_SEGMENTS);
+    });
+    assert.strictEqual(reuploaded.get('annotation')?.length ?? 0, 0);
+    const cleared = planesHandedOut(CUT_DOWN, (overlays) => {
+      overlays.setLineOverlay('annotation', TWO_SEGMENTS, { sectionClipped: true });
+      overlays.setLineOverlay('annotation', null, { sectionClipped: true });
+    });
+    assert.strictEqual(cleared.get('annotation')?.length ?? 0, 0);
   });
 
   it('hands no plane when nothing clips, so an unclipped frame packs no block', () => {

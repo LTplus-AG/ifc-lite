@@ -139,6 +139,7 @@ export class GaussianGlassSplit {
       this.layerSamples = samples;
       this.onResult();
     } catch (error) {
+      if (this.destroyed) return;
       if (token === this.frame) { this.layers = 'unknown'; this.layerSamples = null; }
       console.error('[Gaussian] glass layer readback failed; count stays unknown:', error);
     } finally {

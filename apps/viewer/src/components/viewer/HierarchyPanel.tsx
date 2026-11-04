@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
+import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useIfcFederation } from '@/hooks/useIfcFederation';
 import { useEntityListMultiSelect } from '@/hooks/useEntityListMultiSelect';
@@ -41,7 +42,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
+import { hierarchyNodeOutsideIsolation, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -74,6 +75,9 @@ export function HierarchyPanel() {
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  // The set the viewport draws (storey Solo ∩ class filter ∩ isolation), so
+  // row dimming agrees with the renderer for every isolation channel (#8802).
+  const viewportIsolation = useVisibilityIsolation();
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
@@ -400,10 +404,7 @@ export function HierarchyPanel() {
 
     const elements = getNodeElements(node);
     const visibility = hierarchyNodeVisibility(node, elements, hiddenEntities);
-    // Rows wholly outside an active isolation dim, so the tree shows what the
-    // viewport shows (#8802). Containers of isolated elements stay normal.
-    const outsideIsolation = isolatedEntities !== null && elements.length > 0
-      && elements.every((id) => !isolatedEntities.has(id));
+    const outsideIsolation = hierarchyNodeOutsideIsolation(elements, viewportIsolation);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -413,7 +414,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, ...visibility, modelVisible, outsideIsolation };
-  }, [selectedEntityId, selectedEntityIds, hiddenEntities, isolatedEntities, getNodeElements, models]);
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
   // structure" step must find the panel while a model is absent or loading.

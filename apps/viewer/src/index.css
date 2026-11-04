@@ -1313,3 +1313,14 @@ body {
   background-color: var(--color-accent);
   box-shadow: 0 0 0 1px var(--color-border);
 }
+
+/* The tile's shadow replaces Button's `focus-visible:ring-1 ring-ring`, so the
+   active mode keeps a keyboard indicator here: the same 1px ring in place of
+   the border hairline, with the raised tile's drop shadow kept. */
+.hierarchy-grouping-tabs [aria-pressed="true"]:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-ring), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.dark .hierarchy-grouping-tabs [aria-pressed="true"]:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-ring);
+}

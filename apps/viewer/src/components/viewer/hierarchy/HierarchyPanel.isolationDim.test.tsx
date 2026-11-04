@@ -1,0 +1,114 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * #8802: rows wholly outside the viewport's isolation dim, so the tree shows
+ * what the viewport draws. Storey Solo isolates through `selectedStoreys`, not
+ * `isolatedEntities` (apps/viewer/AGENTS.md), so dimming must follow the
+ * renderer's effective set (`useVisibilityIsolation`), or Solo's other storeys
+ * stayed at full strength while absent from 3D.
+ */
+
+import '@/test/setup-dom.js';
+import { installLayout } from '@/test/dom-layout.js';
+installLayout();
+
+import assert from 'node:assert/strict';
+import { afterEach, describe, it } from 'node:test';
+import { act } from 'react';
+import { IfcTypeEnum } from '@ifc-lite/data';
+import { cleanup, render } from '@/test/render.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
+import { useViewerStore } from '@/store';
+import { HierarchyPanel } from '../HierarchyPanel.js';
+import { hierarchyNodeOutsideIsolation } from './nodeVisibility.js';
+
+afterEach(() => {
+  cleanup();
+  useViewerStore.setState({ selectedStoreys: new Set(), isolatedEntities: null, classFilter: null });
+});
+
+/** Project(1)/Site(2)/Building(3) with Storey 1 (4) holding wall 7 and
+ *  Storey 2 (5) holding wall 8. */
+function twoStoreyHierarchy() {
+  const lower = { expressId: 4, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 1', children: [], elements: [7] };
+  const upper = { expressId: 5, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 2', children: [], elements: [8] };
+  const building = { expressId: 3, type: IfcTypeEnum.IfcBuilding, name: 'Building', children: [lower, upper], elements: [] };
+  const site = { expressId: 2, type: IfcTypeEnum.IfcSite, name: 'Site', children: [building], elements: [] };
+  const project = { expressId: 1, type: IfcTypeEnum.IfcProject, name: 'Project', children: [site], elements: [] };
+  return {
+    project,
+    byStorey: new Map([[4, [7]], [5, [8]]]),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map([[4, 0], [5, 3]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map([[7, 4], [8, 5]]),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+}
+
+function rowDimmed(container: HTMLElement, text: string): boolean | null {
+  const row = [...container.querySelectorAll('.hierarchy-item')].find((el) => el.textContent?.includes(text));
+  return row ? row.className.split(/\s+/).includes('opacity-50') : null;
+}
+
+function mountPanel(): HTMLElement {
+  const model = fixtureModel('isolation-dim', { entities: [
+    { expressId: 7, type: 'IfcWall', name: 'Lower Wall' },
+    { expressId: 8, type: 'IfcWall', name: 'Upper Wall' },
+  ] });
+  Object.assign(model.ifcDataStore!, { spatialHierarchy: twoStoreyHierarchy() });
+  useViewerStore.setState({
+    ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial',
+    selectedEntityId: null, selectedEntityIds: new Set(), hiddenEntities: new Set(),
+    selectedStoreys: new Set(), isolatedEntities: null, classFilter: null,
+  });
+  return render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+}
+
+describe('HierarchyPanel dims rows outside the viewport isolation (#8802)', () => {
+  it('dims nothing while no isolation channel is active', () => {
+    const container = mountPanel();
+    assert.equal(rowDimmed(container, 'Storey 1'), false);
+    assert.equal(rowDimmed(container, 'Storey 2'), false);
+  });
+
+  it('dims the other storeys under storey Solo (selectedStoreys)', () => {
+    const container = mountPanel();
+    act(() => {
+      useViewerStore.setState({ selectedStoreys: new Set([5]) });
+    });
+    assert.equal(useViewerStore.getState().isolatedEntities, null, 'Solo does not use the isolatedEntities channel');
+    assert.equal(rowDimmed(container, 'Storey 1'), true, 'a storey outside the solo storey dims');
+    assert.equal(rowDimmed(container, 'Storey 2'), false, 'the solo storey stays at full strength');
+    assert.equal(rowDimmed(container, 'Building'), false, 'a container of the solo storey stays at full strength');
+  });
+
+  it('still dims under manual isolation (isolatedEntities)', () => {
+    const container = mountPanel();
+    act(() => {
+      useViewerStore.setState({ isolatedEntities: new Set([7]) });
+    });
+    assert.equal(rowDimmed(container, 'Storey 1'), false);
+    assert.equal(rowDimmed(container, 'Storey 2'), true);
+  });
+});
+
+describe('hierarchyNodeOutsideIsolation', () => {
+  it('is false with no isolation, or for a row with no elements', () => {
+    assert.equal(hierarchyNodeOutsideIsolation([1, 2], null), false);
+    assert.equal(hierarchyNodeOutsideIsolation([], new Set([1])), false);
+  });
+
+  it('is true only when every element is outside the allowlist', () => {
+    assert.equal(hierarchyNodeOutsideIsolation([1, 2], new Set([3])), true);
+    assert.equal(hierarchyNodeOutsideIsolation([1, 2], new Set([2])), false);
+  });
+});

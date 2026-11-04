@@ -28,3 +28,16 @@ it('showWorkspacePanel reveals hierarchy in the left slot without a right-pane c
   assert.equal(Object.values(dockedAfter).includes('hierarchy'), false);
   assert.equal(state().floatingPanels.some((panel) => panel.id === 'hierarchy'), false);
 });
+
+it('showWorkspacePanel closes a floating hierarchy copy before revealing the left slot (#8802)', () => {
+  // The UI never floats Hierarchy (#1267), but the store slice accepts it (a
+  // persisted layout, a future entry point): one tree must remain either way.
+  state().setLeftPanelCollapsed(true);
+  state().floatPanel('hierarchy');
+  assert.equal(state().floatingPanels.some((panel) => panel.id === 'hierarchy'), true);
+
+  state().showWorkspacePanel('hierarchy');
+
+  assert.equal(state().leftPanelCollapsed, false);
+  assert.equal(state().floatingPanels.some((panel) => panel.id === 'hierarchy'), false);
+});

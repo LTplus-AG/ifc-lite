@@ -133,6 +133,13 @@ export function HierarchyNode({
   const strikeWhenHidden = nodeHidden && 'line-through decoration-muted-foreground';
   const noGeometry = isNoGeometryNode(node);
   const showClassSuffix = Boolean(node.ifcType) && (node.type === 'element' || node.type === 'group-member');
+  // The IFC class is a quiet trailing suffix with no basis of its own, so it
+  // only takes room the name (and LongName) leave and truncates first (#8802).
+  const classSuffix = showClassSuffix ? (
+    <span data-hierarchy-class-suffix className="ml-1.5 min-w-0 flex-1 basis-0 truncate text-right text-2xs font-mono text-muted-foreground">
+      {node.ifcType}
+    </span>
+  ) : null;
   if (node.type === 'model-tag-group') {
     return (
       <ModelTagGroupRow
@@ -355,7 +362,7 @@ export function HierarchyNode({
         {node.secondaryName ? (
           <span
             className="flex-1 min-w-0 flex items-baseline text-row ml-1.5"
-            title={t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}
+            title={`${t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}${showClassSuffix ? ` · ${node.ifcType}` : ''}`}
           >
             {/* The Name takes its full width first and the LongName gets the
                 rest (#5394). A 55% cap truncated a descriptive Name to make
@@ -367,16 +374,13 @@ export function HierarchyNode({
             <span className={cn('truncate min-w-0 ml-1.5 font-normal text-muted-foreground', strikeWhenHidden)}>
               {node.secondaryName}
             </span>
+            {classSuffix}
           </span>
         ) : (
           // Name first; the IFC class suffix truncates first (#8802).
-          <span className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-1.5 text-row" title={showClassSuffix ? `${node.name} · ${node.ifcType}` : node.name}>
+          <span className="ml-1.5 flex min-w-0 flex-1 items-baseline text-row" title={showClassSuffix ? `${node.name} · ${node.ifcType}` : node.name}>
             <NameWithTail name={node.name} className={cn(primaryNameClass, strikeWhenHidden)} />
-            {showClassSuffix && (
-              <span className="min-w-0 flex-1 basis-0 truncate text-right text-2xs font-mono text-muted-foreground">
-                {node.ifcType}
-              </span>
-            )}
+            {classSuffix}
           </span>
         )}
 

@@ -178,8 +178,11 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
     // Hierarchy's home is the left slot (#1267), as every rail/palette entry
     // point already routes it. Programmatic callers (tours, deep links, layout
     // presets) used to dock a second copy of the tree in the right pane next to
-    // the left one (#8802); reveal the left slot instead.
+    // the left one (#8802); reveal the left slot instead. Hierarchy never
+    // floats today (#1267), but close any floating copy first, as every other
+    // panel below does, so the one-tree invariant holds if that ever changes.
     if (panel === 'hierarchy') {
+      get().closeFloatingPanel(panel);
       get().setLeftPanelCollapsed(false);
       return;
     }

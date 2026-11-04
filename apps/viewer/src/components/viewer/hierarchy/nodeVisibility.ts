@@ -20,3 +20,16 @@ export function hierarchyNodeVisibility(
     visibilityAction: elements.some((id) => hidden.has(id)) ? 'show' : 'hide',
   };
 }
+
+/** True when a row's elements are all outside the viewport's isolation
+ * allowlist, so the tree dims what the viewport does not draw (#8802).
+ * `isolation` must be the renderer's effective set (`useVisibilityIsolation`):
+ * storey Solo rides `selectedStoreys`, not `isolatedEntities`, so the store's
+ * manual isolation alone left Solo's other storeys undimmed. Containers of an
+ * isolated element stay normal; `null` means nothing is isolated. */
+export function hierarchyNodeOutsideIsolation(
+  elements: readonly number[],
+  isolation: ReadonlySet<number> | null,
+): boolean {
+  return isolation !== null && elements.length > 0 && elements.every((id) => !isolation.has(id));
+}

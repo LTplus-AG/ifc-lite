@@ -99,4 +99,19 @@ describe('HierarchyNode leaves the storey name room (#5394)', () => {
     assert.ok(!/max-w-\[\d+%\]/.test(primary.className), `no fractional cap: ${primary.className}`);
     assert.ok(primary.className.split(/\s+/).includes('shrink-0'), 'the Name keeps its width before the LongName');
   });
+
+  it('keeps the IFC class suffix on an element that also carries a LongName (#8802)', () => {
+    const element = { type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined } as const;
+    for (const secondaryName of [undefined, 'Exterior wall']) {
+      const row = mountRow(storey({ ...element, name: 'W-01', secondaryName }));
+      const suffix = row.querySelector('[data-hierarchy-class-suffix]');
+      const label = secondaryName ? 'with' : 'without';
+      assert.equal(suffix?.textContent ?? null, 'IfcWall', `the class suffix renders ${label} a LongName`);
+      const classes = suffix?.className.split(/\s+/) ?? [];
+      assert.equal(classes.includes('basis-0') && classes.includes('truncate'), true,
+        `the suffix takes only leftover room and truncates first ${label} a LongName: ${suffix?.className ?? ''}`);
+      assert.equal(suffix?.parentElement?.getAttribute('title')?.endsWith(' · IfcWall') ?? false, true,
+        `the row title names the class ${label} a LongName`);
+    }
+  });
 });

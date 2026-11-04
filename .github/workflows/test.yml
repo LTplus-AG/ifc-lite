@@ -3248,6 +3248,20 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      # #8811: the full workspace test link exhausted an ubuntu-latest disk
+      # before any verdict. These preinstalled SDKs are unused by this Rust
+      # job; never remove software from persistent/self-hosted runners.
+      - name: Reclaim unused SDKs on the hosted Rust runner
+        if: runner.environment == 'github-hosted' && runner.os == 'Linux'
+        run: |
+          df -h /
+          for sdk in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup; do
+            if [ -d "$sdk" ]; then
+              sudo du -sh "$sdk"
+              sudo rm -rf -- "$sdk"
+            fi
+          done
+          df -h /
       # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
       # target dir per job on the runner's rust-target volume, outside the
       # workspace that the runner wipes. A job killed mid-compile (reboot) can

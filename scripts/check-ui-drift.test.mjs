@@ -59,6 +59,12 @@ test('#8802 an apostrophe in JSX text does not hide later comments', () => {
   assert.equal(counts['palette-class'], 1);
 });
 
+test('#8802 a quote string ends at the newline, so a stray JSX apostrophe cannot hide later comments', () => {
+  // The apostrophe follows a space, so only the newline rule closes it.
+  const counts = scan("const a = <p>back in the '90s</p>;\n// see #5479\nconst b = 'x';\n");
+  assert.equal(counts['hex-literal'], 0);
+});
+
 test('#8802 a same-line JSX apostrophe does not hide a following comment', () => {
   const counts = scan("const a = <p>Don't</p>; const c = <i>{/* issue #5479 */}</i>; const d = 'x';\n");
   assert.equal(counts['hex-literal'], 0);

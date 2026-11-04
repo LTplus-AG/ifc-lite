@@ -4165,7 +4165,9 @@ jobs:
     name: AGENTS.md ratchet
     needs: changes
     if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    # This tiny gate uses a partial clone. Keep it ephemeral so promisor state
+    # cannot leak into full checkouts in later self-hosted jobs (e.g. semver).
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}

@@ -32,10 +32,12 @@ import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { engineIdentity, exclusivity, gitIdentity, hostIdentity, parseArgs, resetPartial, SCHEMA, sha256File, unreleasedQuietWindows, writeResult } from './retained-qual-lib.mjs';
+import { sampleTimeout, waitForProcess } from './retained-qual-process.mjs';
 import { startSampler } from './retained-qual-proc.mjs';
 import { assertNativeSummary } from './retained-qual-assert.mjs';
 
-export async function nativeSample({ command, workerName, summaryPath, expectation, intervalMs = 50 }) {
+export async function nativeSample({ command, workerName, summaryPath, expectation, intervalMs = 50, timeoutMs = sampleTimeout() }) {
+  timeoutMs = sampleTimeout(timeoutMs);
   if (existsSync(summaryPath)) throw new Error('summary already exists; use a fresh unique per-run path');
   const outAt = command.indexOf('--out');
   if (outAt < 0 || command.lastIndexOf('--out') !== outAt || !command[outAt + 1] || resolve(summaryPath) !== resolve(command[outAt + 1], 'summary.json')) {
@@ -51,20 +53,24 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
   summaryPath = join(childOut, 'summary.json');
   const timeFile = join(runDir, 'time.txt'); // runDir is unique per sample (mkdtemp)
   const started = process.hrtime.bigint();
-  const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...measuredCommand], { stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn('/usr/bin/time', ['-v', '-o', timeFile, ...measuredCommand], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
+  const completion = waitForProcess(child, timeoutMs);
   const sampler = startSampler(child.pid, { intervalMs, include: info => info.exe === workerName });
-  const { code, signal } = await new Promise(done => child.on('close', (code, signal) => done({ code, signal })));
+  const { code, signal, timedOut, spawnError } = await completion;
   const wallMs = Number(process.hrtime.bigint() - started) / 1e6;
   const workers = sampler.stop();
   const time = existsSync(timeFile) ? readFileSync(timeFile, 'utf8') : '';
   rmSync(timeFile, { force: true });
   const number = key => { const m = time.match(new RegExp(`${key}[^:]*: ([\\d.]+)`)); return m ? Number(m[1]) : null; };
-  const row = { ok: false, exitCode: signal ? -1 : code, signal, wallMs, executableMaxRssKiB: number('Maximum resident set size'),
+  const row = { ok: false, timeoutMs, exitCode: signal ? -1 : code, signal, wallMs, executableMaxRssKiB: number('Maximum resident set size'),
     timeUserSeconds: number('User time'), timeSystemSeconds: number('System time'), workerName,
     workerProcessesObserved: workers.processes, workerPeakHwmKiB: Object.fromEntries(Object.entries(workers.byPid).map(([pid, p]) => [pid, p.hwmKiB])),
     maxIndividualWorkerHwmKiB: workers.maxIndividualHwmKiB, maxObservedConcurrentWorkerRssKiB: workers.maxObservedConcurrentRssKiB,
     samples: workers.samples, sampleIntervalMs: intervalMs, memoryCaveat: workers.caveat };
   try {
+    if (spawnError) row.processError = spawnError.message;
+    if (timedOut) throw new Error('timeout');
+    if (spawnError) throw spawnError;
     const summary = existsSync(summaryPath) ? JSON.parse(readFileSync(summaryPath, 'utf8')) : null;
     assertNativeSummary({ exitCode: row.exitCode, summary, expectation });
     if (workers.processes === 0) throw new Error('native: no SMLib worker process was observed; the retained worker was not demonstrably used (sampling can miss short runs)');
@@ -89,7 +95,8 @@ export async function nativeSample({ command, workerName, summaryPath, expectati
 }
 
 export async function main(argv, { host: readHost = hostIdentity } = {}) {
-  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'round', 'pairing-id', 'summary', 'worker-name', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
+  const { options, rest } = parseArgs(argv, { values: ['out', 'label', 'side', 'round', 'pairing-id', 'summary', 'worker-name', 'timeout-ms', 'expect', 'checkout', 'engine', 'exclusive-receipt'], flags: ['require-quiet'] });
+  const timeoutMs = sampleTimeout(options['timeout-ms']);
   if (!options.out || !options.summary || !rest.length) throw new Error('--out DIR, --summary FILE and a command after `--` are required');
   if (!existsSync('/usr/bin/time')) throw new Error('/usr/bin/time -v is required');
   if (options['require-quiet'] && unreleasedQuietWindows().length) throw new Error('Unreleased quiet window blocks Pop work');
@@ -110,7 +117,7 @@ export async function main(argv, { host: readHost = hostIdentity } = {}) {
   const workerAt = rest.indexOf('--worker');
   for (const [name, path] of [['executable', rest[0]], ['worker', workerAt >= 0 ? rest[workerAt + 1] : undefined]]) if (path && existsSync(path)) hashes[name] = await sha256File(path);
   resetPartial(out);
-  const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation });
+  const row = await nativeSample({ command: rest, workerName: options['worker-name'] ?? 'ifclite_smlib_worker', summaryPath: resolve(options.summary), expectation, timeoutMs });
   Object.assign(row, { side: options.side ?? 'branch', path: options.label ?? 'native', command: rest, ...(round === undefined ? {} : { round }) });
   const result = { schema: SCHEMA, kind: 'native-retained-memory', reportOnly: true, exclusivity: admission, startedAt: new Date(started).toISOString(),
     finishedAt: new Date().toISOString(), pairingId: options['pairing-id'] ?? null, host, source: git, commit: git?.commit ?? null, engineManifestSha256: engine?.manifestSha256 ?? null,

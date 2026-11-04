@@ -6,7 +6,8 @@ import type { DecodedPointChunk } from '@ifc-lite/pointcloud';
 
 /** Shared capture/scan convention. Neither PLY nor .splat specifies an up-axis. */
 export type CaptureUpAxis = 'z' | 'y';
-export function captureAxisMatrix(axis: CaptureUpAxis = 'z'): readonly number[] {
+export const DEFAULT_CAPTURE_UP_AXIS: CaptureUpAxis = 'z';
+export function captureAxisMatrix(axis: CaptureUpAxis = DEFAULT_CAPTURE_UP_AXIS): readonly number[] {
   const x = { x: 1, y: 0, z: 0 }, y = { x: 0, y: 1, z: 0 }, z = { x: 0, y: 0, z: 1 };
   const basis = axis === 'z' ? [x, y, z].map(ifcToViewerAxes) : [x, y, z];
   return [...basis.flatMap(v => [v.x, v.y, v.z, 0]), 0, 0, 0, 1];

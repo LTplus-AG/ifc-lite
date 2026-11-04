@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
-import { captureAxisMatrix, type CaptureUpAxis } from './pointCloudFrame.js';
+import { captureAxisMatrix, DEFAULT_CAPTURE_UP_AXIS, type CaptureUpAxis } from './pointCloudFrame.js';
 
 export const IDENTITY_CAPTURE_PLACEMENT: readonly number[] = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
@@ -12,7 +12,7 @@ export const IDENTITY_CAPTURE_PLACEMENT: readonly number[] = Object.freeze([1, 0
 export function gaussianCaptureFrame(placement?: readonly number[], upAxis?: CaptureUpAxis, frame?: RenderFrameInfo | null) {
   const sourcePlacement = placement ?? IDENTITY_CAPTURE_PLACEMENT;
   if (sourcePlacement.length !== 16 || !sourcePlacement.every(Number.isFinite)) throw new Error('A capture placement needs 16 finite matrix values.');
-  const axis = upAxis ?? (placement ? 'y' : 'z');
+  const axis = upAxis ?? (placement ? 'y' : DEFAULT_CAPTURE_UP_AXIS);
   const basis = captureAxisMatrix(axis);
   const matrix = Array.from({ length: 16 }, (_, i) => {
     const row = i % 4, col = Math.floor(i / 4);

@@ -257,6 +257,9 @@ export function createDecodeWorkerSource(
       }
       abortIfAborted(signal);
       const session = await ensureSession();
+      // Before touching sourceId: an abort here sent nothing, so the worker
+      // still holds the source and close() must still release it.
+      abortIfAborted(signal);
       const id = sourceId;
       info = null;
       let resp: Extract<WorkerResponse, { kind: 'opened' }>;

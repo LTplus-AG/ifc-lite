@@ -220,7 +220,7 @@ describe('createDecodeWorkerSource — abort and reopen (#8777)', () => {
     await expect(source.next(1)).rejects.toThrow('not opened');
   });
 
-  it('sends nothing when the abort lands while waiting for the session', async () => {
+  it('sends nothing when the abort lands while waiting for the session, and still closes', async () => {
     const w = scriptedWorker();
     const source = await openedSource(w);
     const ctrl = new AbortController();
@@ -229,5 +229,8 @@ describe('createDecodeWorkerSource — abort and reopen (#8777)', () => {
     ctrl.abort();
     await expect(reopening).rejects.toThrow('Aborted');
     expect(w.sent.length).toBe(before);
+    // The worker never heard of the reopen, so the source is still its to release.
+    source.close();
+    await vi.waitFor(() => expect(w.sent).toContainEqual({ kind: 'close', sourceId: 5 }));
   });
 });

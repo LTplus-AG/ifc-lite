@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { Star, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { Button } from '@/components/ui/button';
 import { useGitHubStarPrompt } from './useGitHubStarPrompt';
 
 export function GitHubStarPrompt() {
@@ -38,12 +39,12 @@ export function GitHubStarPrompt() {
   if (!visible) return null;
   return (
     <aside ref={card} aria-label={t('viewerShell.star.title')}
-      className="absolute bottom-14 right-4 z-20 w-[280px] max-w-[calc(100%-2rem)] rounded-lg border bg-background p-3 shadow-md motion-safe:animate-in motion-safe:fade-in"
+      className="absolute bottom-14 right-4 z-20 w-70 max-w-full rounded-lg border bg-background p-3 shadow-md motion-safe:animate-in motion-safe:fade-in"
       >
-      <button type="button" aria-label={t('viewerShell.star.dismiss')}
-        className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <Button type="button" variant="ghost" size="icon-sm" aria-label={t('viewerShell.star.dismiss')}
+        className="absolute right-1 top-1 text-muted-foreground"
         onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); dismiss(); } }}
-        onClick={dismiss}><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+        onClick={dismiss}><X className="h-3.5 w-3.5" aria-hidden="true" /></Button>
       <p className="pr-6 text-sm font-medium">{t('viewerShell.star.title')}</p>
       <p className="mt-1 text-xs text-muted-foreground">{t('viewerShell.star.detail')}</p>
       <a href="https://github.com/LTplus-AG/ifc-lite" target="_blank" rel="noopener noreferrer"

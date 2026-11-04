@@ -44,6 +44,11 @@ const storeBound: Partial<UseMouseControlsParams> = {
   finalizeMeasurement: () => s().finalizeMeasurement(),
   setMeasurementConstraintEdge: (edge) => s().setMeasurementConstraintEdge(edge),
   updateConstraintActiveAxis: (axis) => s().updateConstraintActiveAxis(axis),
+  edgeLockStateRef: { get current() { return s().edgeLockState; }, set current(_v) { /* store-owned */ } },
+  setEdgeLock: (edge, id, t) => s().setEdgeLock(edge, id, t),
+  updateEdgeLockPosition: (t, corner, valence) => s().updateEdgeLockPosition(t, corner, valence),
+  clearEdgeLock: () => s().clearEdgeLock(),
+  incrementEdgeLockStrength: () => s().incrementEdgeLockStrength(),
 };
 
 // The measure raycasts are rAF-throttled; run them on demand.
@@ -318,6 +323,55 @@ describe('Distance is click–click (#8771)', () => {
     fire(canvas, 'pointerup', 500, 300);
     assert.equal(s().measurements.length, 0);
     assert.equal(s().activeMeasurement, null);
+  });
+});
+
+/**
+ * A corner at world (2,0,0) on an edge running along +x. A pick within 10px of
+ * it snaps there and locks the edge; while the edge is locked, any pick within
+ * the corner's pull (360px here) snaps back onto the corner, as the renderer's
+ * maintainEdgeLock does for a lock that was never moved by hover.
+ */
+function magneticCorner(x: number, y: number, lock: { edge: unknown }) {
+  const corner = { x: 2, y: 0, z: 0 };
+  const locked = {
+    edge: { v0: corner, v1: { x: 9, y: 0, z: 0 } }, meshExpressId: 1, edgeT: 0,
+    shouldLock: true, shouldRelease: false, isCorner: true, cornerValence: 2,
+  };
+  const released = { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: true, isCorner: false, cornerValence: 0 };
+  if ((lock.edge && Math.abs(x - 200) < 360) || Math.hypot(x - 200, y - 300) < 10) {
+    return { intersection: { point: corner }, snapTarget: null, edgeLock: locked };
+  }
+  return { intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } }, snapTarget: null, edgeLock: released };
+}
+
+describe('a start never inherits the edge lock of its own pick (#8771)', () => {
+  const mountMagnetic = () => {
+    const rig = mountMouseControls(storeBound);
+    Object.assign(rig.params.rendererRef.current!, { raycastSceneMagnetic: magneticCorner });
+    return rig;
+  };
+
+  it('a second tap away from a locked corner start measures to where it was tapped', () => {
+    const { canvas, params } = mountMagnetic();
+    const ctx = {
+      ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),
+      mouseState: params.mouseStateRef.current,
+    } as unknown as MouseHandlerContext;
+    act(() => handleMeasureTap(ctx, 202, 300));
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first tap snaps to the corner');
+    act(() => handleMeasureTap(ctx, 500, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: the start\'s own edge lock pulled the second tap back onto it');
+    assert.ok(near(s().measurements[0].distance, 3), `distance ${s().measurements[0].distance}, expected 3`);
+  });
+
+  it('a second click with no hover in between measures to where it was clicked', () => {
+    const { canvas } = mountMagnetic();
+    click(canvas, 202, 300);
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first click snaps to the corner');
+    click(canvas, 500, 300);
+    assert.equal(s().measurements.length, 1, 'BUG: the start\'s own edge lock pulled the second click back onto it');
+    assert.ok(near(s().measurements[0].distance, 3), `distance ${s().measurements[0].distance}, expected 3`);
   });
 });
 

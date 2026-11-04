@@ -38,6 +38,9 @@ export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoi
     colors: { axis1: IFC_AXIS_COLORS.x, axis2: IFC_AXIS_COLORS.z, axis3: IFC_AXIS_COLORS.y },
     activeAxis: null,
   });
+  // The pick's edge lock belongs to continuous motion: a hover or drag re-acquires it on its next
+  // frame, while a lock kept here would pull a second click or tap back onto the start.
+  ctx.clearEdgeLock();
 }
 
 /**

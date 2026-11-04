@@ -176,6 +176,70 @@ describe('Section2DOverlayRenderer: a section-clipped line channel (#8767)', () 
     r.drawLineOverlay(pass, new Float32Array(16), 'centreline', undefined, undefined, planesFor(CUT_DOWN));
     assert.deepStrictEqual(groupOne, []);
   });
+
+  it('binds each partition of one channel to its own frame: anchored to the eye block, legacy to the world block', () => {
+    const { device, writes } = makeLineDevice();
+    const r = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
+    const eye: [number, number, number] = [5_000_000.25, 20, -4];
+    // An anchored partition far from the origin and a legacy world-f32 one near it, in one upload.
+    r.setLineOverlay('annotation', [
+      { localVertices: TWO_SEGMENTS, origin: [5_000_000, 0, 0] },
+      { localVertices: TWO_SEGMENTS, origin: null } as never,
+    ]);
+    const clip: PickClipState = { sectionPlane: { normal: [1, 0, 0], distance: 1.5, flipped: false } };
+    const { pass, groupOne } = makeLinePass();
+    r.drawLineOverlay(pass, new Float32Array(16), 'annotation', new Float32Array(16), eye, planesFor(clip));
+    assert.strictEqual(groupOne.length, 2, 'both partitions draw clipped');
+    assert.notStrictEqual(groupOne[0], groupOne[1], 'each binds its own frame\'s block');
+    const block = (offset: number) => writes.filter((w) => w.offset === offset && w.data.length === CAP_CLIP_FLOATS).at(-1)!.data;
+    const [eyeBlock, worldBlock] = groupOne.map(block);
+    // Both cut at world x = 1.5: the eye block in eye-relative coordinates, the world block in world
+    // ones. The probes sit 100 m either side: 5,000 km from the eye, f32 resolves 0.5 m, not 0.1 m.
+    for (const worldX of [-100, 100]) {
+      const clipped = pointClipped(clip, worldX, 0, 0);
+      assert.strictEqual(blockClips(eyeBlock, 0, [worldX - eye[0], -eye[1], -eye[2]]), clipped, `eye x=${worldX}`);
+      assert.strictEqual(blockClips(worldBlock, 0, [worldX, 0, 0]), clipped, `world x=${worldX}`);
+    }
+  });
+
+  it('packs a full block (the cut, seven extras and the six box faces) without dropping a plane', () => {
+    const { device, writes } = makeLineDevice();
+    const r = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
+    r.setLineOverlay('annotation', TWO_SEGMENTS);
+    const full: PickClipState = {
+      ...EVERYTHING,
+      extraPlanes: Array.from({ length: MAX_EXTRA_CLIP_PLANES }, (_, i) => {
+        const a = (i / MAX_EXTRA_CLIP_PLANES) * Math.PI * 2;
+        return { normal: [Math.cos(a), 0, Math.sin(a)] as [number, number, number], distance: 6, flipped: i % 2 === 1 };
+      }),
+    };
+    const planes = planesFor(full);
+    assert.strictEqual(planes.length, MAX_CAP_CLIP_PLANES);
+    const { pass, groupOne } = makeLinePass();
+    r.drawLineOverlay(pass, new Float32Array(16), 'annotation', undefined, undefined, planes);
+    const block = writes.filter((w) => w.offset === groupOne[0] && w.data.length === CAP_CLIP_FLOATS).at(-1)!.data;
+    assert.strictEqual(new Uint32Array(block.buffer)[0], MAX_CAP_CLIP_PLANES);
+    for (const p of samplePoints(2000)) {
+      assert.strictEqual(blockClips(block, 0, p), pointClipped(full, p[0], p[1], p[2]), `at ${p.join(',')}`);
+    }
+  });
+
+  it('keeps its clip slots clear of every cap\'s, so a cap and the annotations clip independently in one frame', () => {
+    const { device, writes } = makeLineDevice();
+    const r = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
+    r.setLineOverlay('annotation', TWO_SEGMENTS);
+    const triangle = [{ polygon: { outer: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }], holes: [] }, ifcType: 'IfcWall', expressId: 1 }];
+    r.uploadDrawing(triangle, [], 'down', 3);
+    const { pass, groupOne } = makeLinePass();
+    const options = { axis: 'down' as const, position: 50, bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, viewProj: new Float32Array(16), showOutlines: true };
+    r.draw(pass, options, []);
+    const capSlot = groupOne.at(-1)!;
+    r.drawLineOverlay(pass, new Float32Array(16), 'annotation', undefined, undefined, planesFor(CUT_DOWN));
+    const annotationSlot = groupOne.at(-1)!;
+    assert.notStrictEqual(annotationSlot, capSlot);
+    const capBlock = writes.filter((w) => w.offset === capSlot && w.data.length === CAP_CLIP_FLOATS).at(-1)!.data;
+    assert.strictEqual(new Uint32Array(capBlock.buffer)[0], 0, 'the primary cap is clipped by no other plane, and stays so');
+  });
 });
 
 /** Draw one frame through `RendererOverlays` and report the planes each line channel was handed. */

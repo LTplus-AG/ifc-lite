@@ -58,7 +58,11 @@ export interface SurfaceProbe {
   /**
    * The cached surface point under the canvas point, or null. Never blocks.
    * `scene` keys what was visible (hidden/isolated sets): a point probed under
-   * another key may sit on an element since hidden, so it is not reused.
+   * another key may sit on an element since hidden, so it is not reused. The
+   * key is the caller's at request time; a probe that reads a frame drawn just
+   * before a visibility change (a skipped render) or before a section plane
+   * moved can therefore hold a stale point, for at most one step: every read
+   * asks again, and the age cap bounds it.
    */
   peek(x: number, y: number, scene?: string): SurfacePoint | null;
 }
@@ -81,8 +85,14 @@ export function surfaceProbeFor(renderer: SurfaceProbeRenderer, camera: SurfaceP
 
 type Waiter = (point: SurfacePoint | null, job: { x: number; y: number; scene: string }) => void;
 
-/** One readback that never settles must not stop probing for the session. */
-export const SURFACE_PROBE_TIMEOUT_MS = 500;
+/**
+ * How long a readback may hold the slot. A readback maps only once the GPU
+ * has drained all the work queued before it, which on a slow GPU with a heavy
+ * model can take several frames, so this is generous: it exists so that one
+ * readback which never settles cannot stop probing for the session. A timed
+ * out readback still lands in the cache if nothing newer has.
+ */
+export const SURFACE_PROBE_TIMEOUT_MS = 2000;
 
 export function createSurfaceProbe(
   probeSurface: (x: number, y: number) => Promise<SurfacePoint | null>,
@@ -96,25 +106,35 @@ export function createSurfaceProbe(
   let latest: { point: SurfacePoint; at: number; scene: string } | null = null;
   let pending: { x: number; y: number; scene: string; waiters: Waiter[] } | null = null;
   let busy = false; // scheduled or in flight
+  let issued = 0; // job sequence, so a late readback never overwrites a newer answer
+  let cachedFrom = 0;
 
   const run = () => {
     const job = pending;
     pending = null;
     if (!job) { busy = false; return; }
-    let settled = false;
-    const settle = (point: SurfacePoint | null) => {
-      if (settled) return;
-      settled = true;
+    const id = ++issued;
+    let released = false;
+    // Hand the slot on and answer the waiters, once: on the answer or the timeout.
+    const release = (point: SurfacePoint | null) => {
+      if (released) return;
+      released = true;
       clearTimeout(timer);
-      // A miss clears the cache: the pixel the gestures will ask about is empty now.
-      latest = point ? { point, at: Date.now(), scene: job.scene } : null;
       for (const w of job.waiters) w(point, job);
       if (pending) schedule(run); else busy = false;
     };
-    const timer = setTimeout(() => settle(null), SURFACE_PROBE_TIMEOUT_MS);
-    probeSurface(job.x, job.y).then(settle, (err: unknown) => {
+    const land = (point: SurfacePoint | null) => {
+      if (id > cachedFrom) {
+        cachedFrom = id;
+        // A miss clears the cache: the pixel the gestures will ask about is empty now.
+        latest = point ? { point, at: Date.now(), scene: job.scene } : null;
+      }
+      release(point);
+    };
+    const timer = setTimeout(() => release(null), SURFACE_PROBE_TIMEOUT_MS);
+    probeSurface(job.x, job.y).then(land, (err: unknown) => {
       console.warn('[Viewport] Surface depth probe failed:', err);
-      settle(null);
+      release(null);
     });
   };
 

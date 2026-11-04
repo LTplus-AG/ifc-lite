@@ -1646,10 +1646,9 @@ export class Renderer {
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
         const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
-        // What this frame will leave in the depth attachment, captured before
-        // any pass runs, for `probeSurface` (#8769); published after submit.
-        const depthFrame = this.depthProbe && this.pipeline
-            ? { snapshot: relativeToEyeFrame.snapshot(), texture: this.pipeline.getDepthTexture() } : null;
+        // The camera this frame draws with, captured before any pass runs, for
+        // `probeSurface` (#8769); published with its depth attachment after submit.
+        const depthSnapshot = this.depthProbe ? relativeToEyeFrame.snapshot() : null;
         // Culling must share the translation-free RTE frame used by every GPU
         // pass. `sourceFrustum` is the f64 plane equivalent for the immutable
         // source-space BVH; render-time boxes stay eye-relative below.
@@ -3079,9 +3078,10 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
-            if (depthFrame) {
-                const css = this.canvasCssSize.read();
-                this.depthProbe?.frameDrawn({ ...depthFrame, width: depthFrame.texture.width, height: depthFrame.texture.height, cssWidth: css.width, cssHeight: css.height });
+            if (depthSnapshot && this.depthProbe && this.pipeline) {
+                // Read at submit: a mid-frame resize swaps the attachment, and every pass drew into the current one.
+                const texture = this.pipeline.getDepthTexture(), css = this.canvasCssSize.read();
+                this.depthProbe.frameDrawn({ snapshot: depthSnapshot, texture, width: texture.width, height: texture.height, cssWidth: css.width, cssHeight: css.height });
             }
             if (glass) this.gaussianLayer.submitted();
             if (colorReadback && colorCapture) {

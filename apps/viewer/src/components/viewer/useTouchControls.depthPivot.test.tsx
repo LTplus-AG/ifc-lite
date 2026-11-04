@@ -49,7 +49,7 @@ function rig() {
   const raycasts: number[] = [];
   const heavy = { expressIds: [1, 2, 3], indexCount: PIVOT_RAYCAST_MAX_INDICES + 1 };
   const renderer = {
-    getCamera: () => camera, getCanvas: () => canvas, requestRender() {},
+    getCamera: () => camera, getCanvas: () => canvas, requestRender() {}, pick: async () => null,
     getScene: () => ({ getMeshes: () => [], getBatchedMeshes: () => [heavy], getInstancedEntityCount: () => 0 }),
     raycastScene: () => { raycasts.push(1); return null; },
     // Like the real probe: the answer is the frame drawn when it was issued, and it lands a frame later.

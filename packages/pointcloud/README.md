@@ -96,7 +96,7 @@ transfer keep each normal with the same position and colour row.
 Notes:
 
 - `streamPointCloud` refuses files over 4 GB by default only for formats
-  whose source reads the whole file (PCD, PTS, XYZ and non-COPC LAZ). E57,
+  whose source reads the whole file (PCD, PTS, XYZ and LAZ). E57,
   PLY and LAS decode from bounded byte windows, so their peak memory does
   not grow with file size and they have no default ceiling. Pass
   `maxFileSize` to set one for any format.

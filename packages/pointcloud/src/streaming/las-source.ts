@@ -51,7 +51,7 @@ export class LasStreamingSource implements StreamingPointSource {
       downsample?: DownsampleHint;
       /** See `decodeLasPoints`'s `originOffset` param (issue #1804). */
       originOffset?: readonly [number, number, number];
-      /** Test hook: a smaller strided read window, to exercise windowing. */
+      /** @internal Test hook: a smaller strided read window, to exercise windowing. */
       windowBytes?: number;
     } = {},
   ) {
@@ -59,7 +59,10 @@ export class LasStreamingSource implements StreamingPointSource {
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
     this.originOffset = options.originOffset;
-    this.windowBytes = options.windowBytes ?? MAX_WINDOW_BYTES;
+    const windowBytes = options.windowBytes;
+    this.windowBytes = windowBytes !== undefined && Number.isFinite(windowBytes) && windowBytes > 0
+      ? windowBytes
+      : MAX_WINDOW_BYTES;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {

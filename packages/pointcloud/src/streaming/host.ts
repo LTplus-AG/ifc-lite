@@ -41,8 +41,8 @@ export interface StreamPointCloudOptions {
   /**
    * Hard size ceiling — if `blob.size` exceeds, the call rejects. Default:
    * 4 GB for formats whose source reads the whole file (PCD, PTS, XYZ,
-   * non-COPC LAZ); no ceiling for formats that stream from bounded windows
-   * (E57, PLY, LAS), whose peak memory does not grow with file size (#8773).
+   * LAZ); no ceiling for formats that stream from bounded windows (E57,
+   * PLY, LAS), whose peak memory does not grow with file size (#8773).
    */
   maxFileSize?: number;
   /** Points per chunk during streaming decode. Default: 200_000. */
@@ -84,9 +84,9 @@ export interface StreamPointCloudOptions {
 const DEFAULT_MAX_POINTS = 25_000_000;
 const DEFAULT_MAX_FILE = 4 * 1024 * 1024 * 1024; // 4 GB
 /**
- * Formats whose source decodes from bounded byte windows: E57 ≤ 16 MiB
- * logical windows, PLY 4 MiB reads, LAS ≤ 16 MiB strided reads. Every other
- * format loads the whole blob, so only those keep {@link DEFAULT_MAX_FILE}.
+ * Formats whose source decodes from bounded byte windows (each source's
+ * window constant sets the bound). Every other format loads the whole blob,
+ * so only those keep {@link DEFAULT_MAX_FILE}.
  */
 const WINDOWED_FORMATS: ReadonlySet<DecodeWorkerFormat> = new Set(['e57', 'ply', 'las']);
 const DEFAULT_CHUNK = 200_000;

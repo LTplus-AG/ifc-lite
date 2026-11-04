@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { GAUSSIAN_LAUNCH_LIMITS } from './gaussianLaunchLimits.js';
 
 /** Canonical upstream PLY-space channels. Placement is a separate, explicit step. */
 export interface GaussianDecoded {
@@ -23,8 +24,8 @@ export function validateGaussianDecoded(
   shDegree: number,
   input: readonly { name: string; data: ArrayLike<number> }[],
 ): GaussianDecoded {
-  if (!Number.isSafeInteger(count) || count < 1 || count > 2_000_000
-    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > 3) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > GAUSSIAN_LAUNCH_LIMITS.maxSceneSplats
+    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > GAUSSIAN_LAUNCH_LIMITS.maxShDegree) {
     throw new Error('Invalid decoded Gaussian dimensions.');
   }
   const degree = shDegree as 0 | 1 | 2 | 3;

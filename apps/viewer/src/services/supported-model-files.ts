@@ -16,7 +16,7 @@
  */
 
 import { GEO_RASTER_FILE_EXTENSIONS, isGeoRasterFile } from '@/lib/terrain-imagery/raster-bundle';
-import { gaussianShowcaseBuild } from '@/hooks/ingest/gaussianAdmissionPolicy';
+import { gaussianAdmissionEnabled } from '@/hooks/ingest/gaussianAdmissionPolicy';
 
 /** Model formats routed to the model-load pipeline. */
 export const MODEL_FILE_EXTENSIONS = [
@@ -35,9 +35,10 @@ export const MODEL_FILE_EXTENSIONS = [
   '.xml',
 ] as const;
 
-/** Offered only where the loader can admit a capture: test/showcase builds (#8565).
- * Gaussian `.ply` shares the point-cloud extension and is told apart by content. */
-const GAUSSIAN_FILE_EXTENSIONS: readonly string[] = gaussianShowcaseBuild() ? ['.splat'] : [];
+/** Offered exactly when the loader admits captures, i.e. unless the build's kill
+ * switch is set (#8568). Gaussian `.ply` shares the point-cloud extension and is
+ * told apart by content. */
+const GAUSSIAN_FILE_EXTENSIONS: readonly string[] = gaussianAdmissionEnabled() ? ['.splat'] : [];
 
 /** Formats exposed by the compact mobile toolbar's single-file flow. */
 export const MOBILE_MODEL_FILE_EXTENSIONS = [

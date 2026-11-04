@@ -5,13 +5,13 @@
 import type { TranslationValue } from '../types';
 
 /**
- * Gaussian capture models (#8565/#8566): the capture's metadata panel and its
- * single-model hierarchy row. Capture names and attributions are content, not
- * literals. The wording never claims units, alignment, measurement or release
- * qualification: captures are an internal, unqualified preview.
+ * Gaussian capture models (#8565/#8566/#8568): the capture's metadata panel,
+ * its single-model hierarchy row, load refusals and the export notice. Capture
+ * names and attributions are content, not literals. The wording never claims
+ * units, alignment or measurement: captures are uncalibrated.
  */
 export const gaussianCaptureEn = {
-  'gaussianCapture.kind': 'Gaussian capture (internal preview)',
+  'gaussianCapture.kind': 'Gaussian capture',
   'gaussianCapture.format.gaussianPly': 'Gaussian PLY',
   'gaussianCapture.format.splat': '.splat',
   'gaussianCapture.heading.capture': 'Capture',
@@ -38,7 +38,20 @@ export const gaussianCaptureEn = {
   'gaussianCapture.attribution': 'Attribution',
   'gaussianCapture.limitation.clipping': 'Section planes and boxes cull whole Gaussians by centre; no section caps.',
   'gaussianCapture.limitation.composition': 'Composited over IFC glass and X-ray approximately.',
-  'gaussianCapture.limitation.picking': 'Not pickable: select the capture in the model list. No snapping or measurement.',
+  'gaussianCapture.limitation.picking': 'Not pickable: select the capture in the model list.',
+  'gaussianCapture.limitation.measurement': 'No measurement or snapping on captures.',
+  'gaussianCapture.limitation.uncalibrated': 'Uncalibrated: shown in source units, with no metric scale or survey alignment.',
+  'gaussianCapture.limitation.export': 'Capture data is not included in exports (IFC, glTF, USD, KMZ, PDF and others). BCF snapshots can show visible captures.',
+  'gaussianCapture.error.disabled': 'Gaussian capture loading is turned off in this viewer build. IFC models and point clouds still load.',
+  'gaussianCapture.error.captureBytes': 'This capture is {size}. Gaussian captures can be at most {limit}.',
+  'gaussianCapture.error.captureSplats': 'This capture has {count} splats. A scene can hold at most {limit} splats.',
+  'gaussianCapture.error.shDegree': 'This capture uses spherical harmonics degree {degree}. Degree {limit} or lower is supported.',
+  'gaussianCapture.error.sceneSplats': 'Opening this capture would bring the scene to {total} splats, over the {limit} limit. Remove a capture, then try again.',
+  'gaussianCapture.error.deviceLost': 'The graphics device was lost; reload the page and open the capture again.',
+  'gaussianCapture.error.rendererUnavailable': 'The viewer renderer cannot accept Gaussian captures right now; the capture was not decoded.',
+  'gaussianCapture.error.loadFailed': 'Gaussian capture could not be loaded: {reason}',
+  'gaussianCapture.error.webgpu': 'Gaussian captures need the WebGPU 3D view, which is not available here. The capture was not decoded.',
+  'gaussianCapture.export.notice': { one: '{formatted} Gaussian capture is loaded. Capture data is not included in exports. BCF snapshots can show visible captures.', other: '{formatted} Gaussian captures are loaded. Capture data is not included in exports. BCF snapshots can show visible captures.' },
   'gaussianCapture.row.summary': { one: '{formatted} splat · uncalibrated', other: '{formatted} splats · uncalibrated' },
   'gaussianCapture.row.inspect': 'Show capture details',
   'gaussianCapture.row.hide': 'Hide capture',

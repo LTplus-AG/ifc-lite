@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
-/** #8565: admission only. No decoded asset is published until M2 has a renderer contract. */
+import { captureLimitBreach, shDegreeForRestColumns, type GaussianLimitBreach } from './gaussianLaunchLimits.js';
+
+/** #8565/#8568: content admission and the published launch limits, before any decode. */
 const MAX_HEADER_BYTES = 64 * 1024;
-const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const MAX_DECODED_BYTES = 512 * 1024 * 1024;
-const MAX_SPLATS = 2_000_000;
 const REQUIRED = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity',
   'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
 const SCALAR_BYTES: Readonly<Record<string, number>> = {
@@ -17,14 +17,23 @@ const DECODE_TYPES = ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float'
 
 export type GaussianAdmission =
   | { kind: 'ordinary' }
-  | { kind: 'disabled'; format: 'gaussian-ply' | 'splat'; count: number; shDegree: number }
-  | { kind: 'invalid'; reason: string };
+  | { kind: 'capture'; format: 'gaussian-ply' | 'splat'; count: number; shDegree: number }
+  /** `breach` names the launch limit a well-formed capture exceeds, for a translated refusal.
+   * `format` is what the content claimed to be (PLY magic or not), for diagnostics. */
+  | { kind: 'invalid'; reason: string; breach?: GaussianLimitBreach; format?: 'gaussian-ply' | 'splat' };
 
-function limits(size: number, count: number, columns: number): string | undefined {
-  if (!Number.isSafeInteger(count) || count <= 0) return 'Invalid Gaussian record count.';
-  if (size > MAX_SOURCE_BYTES || count > MAX_SPLATS || count * columns * 4 > MAX_DECODED_BYTES) {
-    return 'Gaussian input exceeds the admission allocation limit.';
-  }
+type Invalid = Extract<GaussianAdmission, { kind: 'invalid' }>;
+const BREACH_REASON: Readonly<Record<GaussianLimitBreach['limit'], string>> = {
+  'capture-bytes': 'Gaussian capture exceeds the capture size limit.',
+  'capture-splats': 'Gaussian capture exceeds the scene splat limit.',
+  'sh-degree': 'Gaussian capture exceeds the spherical harmonics degree limit.',
+};
+
+function limits(size: number, count: number, columns: number, shDegree: number): Invalid | undefined {
+  if (!Number.isSafeInteger(count) || count <= 0) return { kind: 'invalid', reason: 'Invalid Gaussian record count.' };
+  const breach = captureLimitBreach(size, count, shDegree);
+  if (breach) return { kind: 'invalid', reason: BREACH_REASON[breach.limit], breach };
+  if (count * columns * 4 > MAX_DECODED_BYTES) return { kind: 'invalid', reason: 'Gaussian input exceeds the admission allocation limit.' };
 }
 
 // Use the same boundary as parsePlyHeader: first marker, then the following LF.
@@ -34,13 +43,14 @@ function headerEnd(text: string): number {
   return marker < 0 ? 0 : text.indexOf('\n', marker) + 1;
 }
 
-type GaussianDecodeAdmission = Exclude<GaussianAdmission, { kind: 'disabled' }>
-  | (Extract<GaussianAdmission, { kind: 'disabled' }> & { recordStride: number });
+type GaussianDecodeAdmission = Exclude<GaussianAdmission, { kind: 'capture' }>
+  | (Extract<GaussianAdmission, { kind: 'capture' }> & { recordStride: number });
 
 /** Keep the public admission result stable; decode uses the same validated layout. */
 export async function inspectGaussianAdmission(file: File, head: ArrayBuffer): Promise<GaussianAdmission> {
   const result = await inspectGaussianLayout(file, head, false);
-  if (result.kind !== 'disabled') return result;
+  if (result.kind === 'invalid') return { ...result, format: new TextDecoder().decode(head).startsWith('ply') ? 'gaussian-ply' : 'splat' };
+  if (result.kind !== 'capture') return result;
   const { kind, format, count, shDegree } = result;
   return { kind, format, count, shDegree };
 }
@@ -65,10 +75,11 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
   // Content wins over the suffix: an ordinary PLY named .splat remains a point cloud.
   if (!prefix.startsWith('ply')) {
     if (!/\.splat$/i.test(file.name)) return { kind: 'ordinary' };
+    const oversize = captureLimitBreach(file.size, 0, 0);
+    if (oversize) return { kind: 'invalid', reason: BREACH_REASON[oversize.limit], breach: oversize };
     if (!file.size || file.size % 32 !== 0) return { kind: 'invalid', reason: 'Truncated or empty .splat input (32-byte records required).' };
     const count = file.size / 32;
-    const reason = limits(file.size, count, 14);
-    return reason ? { kind: 'invalid', reason } : { kind: 'disabled', format: 'splat', count, shDegree: 0, recordStride: 32 };
+    return limits(file.size, count, 14, 0) ?? { kind: 'capture', format: 'splat', count, shDegree: 0, recordStride: 32 };
   }
   // Retain BOM bytes in the header used for the payload lower-bound check.
   const headerDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
@@ -146,9 +157,10 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     return { kind: 'invalid', reason: 'Unsupported compressed Gaussian PLY (packed_position).' };
   }
   // Only vertex properties count; comments and similarly named face properties do not.
-  const gaussian = [...properties].some(name => /^(?:f_dc_|f_rest_)\d+$/.test(name))
-    || (properties.has('opacity') && properties.has('scale_0') && properties.has('rot_0'));
-  if (!gaussian) return { kind: 'ordinary' };
+  // Opacity alone, or with an unrelated scale/rotation scalar, is ordinary
+  // point-cloud metadata. Only the full 3DGS transform signature claims capture.
+  const signature = ['opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
+  if (!signature.every(name => properties.has(name))) return { kind: 'ordinary' };
   // Upstream starts vertex records at headerBytes, without skipping earlier
   // elements. Public admission keeps reporting these captures as disabled.
   if (decode && precedingElement) {
@@ -158,12 +170,13 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
     return { kind: 'invalid', reason: 'Malformed Gaussian PLY vertex schema.' };
   }
   const rest = [...properties].filter(name => name.startsWith('f_rest_'));
-  const shDegree = [0, 9, 24, 45].indexOf(rest.length);
+  // A complete higher degree is well formed but over the launch limit: say so.
+  const shDegree = shDegreeForRestColumns(rest.length);
   if (shDegree < 0 || rest.some((_, i) => !properties.has(`f_rest_${i}`))) {
     return { kind: 'invalid', reason: 'Unsupported or incomplete Gaussian PLY spherical harmonics.' };
   }
-  const reason = limits(file.size, count, properties.size);
-  if (reason) return { kind: 'invalid', reason };
+  const refused = limits(file.size, count, properties.size, shDegree);
+  if (refused) return refused;
   if (!(decode ? ['binary_little_endian', 'binary_big_endian'] : ['ascii', 'binary_little_endian', 'binary_big_endian']).includes(encoding)) {
     return { kind: 'invalid', reason: 'Unsupported Gaussian PLY encoding.' };
   }
@@ -172,5 +185,5 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
   if (bodyBytes <= 0 || (encoding !== 'ascii' && bodyBytes < count * stride)) {
     return { kind: 'invalid', reason: 'Truncated Gaussian PLY vertex payload.' };
   }
-  return { kind: 'disabled', format: 'gaussian-ply', count, shDegree, recordStride: stride };
+  return { kind: 'capture', format: 'gaussian-ply', count, shDegree, recordStride: stride };
 }

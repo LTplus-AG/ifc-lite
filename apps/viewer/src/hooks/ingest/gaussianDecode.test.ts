@@ -192,7 +192,7 @@ it('decoder refuses unsupported grammar while dispatch keeps its PLY compatibili
     (header: string) => header.replace('property float x', 'property float32 x'),
   ]) {
     const file = await changeHeader(layoutPly(1), edit);
-    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'disabled');
+    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'capture');
     await assert.rejects(decodeGaussianFile(file), /Unsupported|Malformed|header/);
   }
   const late = await changeHeader(layoutPly(1), header => header.replace('\nend_header\n', '\ncomment end_header\ncomment ' + 'x'.repeat(65536) + '\nend_header\n'));
@@ -265,7 +265,13 @@ it('other upstream PLY model discriminators cannot reach materialization (#8565 
     assert.deepEqual(requested, []);
   }
   const twoDimensional = await changeHeader(layoutPly(1), header => header.replace('property float scale_2\n', ''));
-  await assert.rejects(decodeGaussianFile(twoDimensional), /Malformed/);
+  // #8745 round 2: an incomplete transform signature is ordinary PLY,
+  // even if another reader could interpret its metadata as 2D splats.
+  assert.deepEqual(await inspectGaussianAdmission(twoDimensional, await twoDimensional.arrayBuffer()), { kind: 'ordinary' });
+  const { requested } = await boundedFloat32(async () => {
+    await assert.rejects(decodeGaussianFile(twoDimensional), /Not a Gaussian capture/);
+  });
+  assert.deepEqual(requested, [], 'ordinary PLY never reaches Gaussian materialization');
 });
 
 // #8613 review r4: decoder admission must read the header exactly as the pinned
@@ -294,7 +300,7 @@ it('repeated, leading and trailing spaces decode as the pinned reader tokenizes 
   const canonical = layoutPly(2, 2);
   const upstream = tableColumns(await rawUpstream(canonical, 2));
   const decoded = await decodeGaussianFile(canonical);
-  const admitted = { kind: 'disabled', format: 'gaussian-ply', count: 2, shDegree: 0, recordStride: 14 * 4 + 2 * 8 };
+  const admitted = { kind: 'capture', format: 'gaussian-ply', count: 2, shDegree: 0, recordStride: 14 * 4 + 2 * 8 };
   assert.deepEqual(await decodeAdmission(canonical), admitted);
   for (const edit of [
     (header: string) => header.replace('property float x', 'property  float x'),
@@ -322,7 +328,7 @@ it('headers the pinned reader rejects stop at bounded admission before any body 
     const file = await changeHeader(layoutPly(1), edit);
     // Negative control: the real pinned reader refuses the same bytes.
     await assert.rejects(upstreamMeta(file), upstreamError);
-    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'disabled');
+    assert.equal((await inspectGaussianAdmission(file, await file.slice(0, 4096).arrayBuffer())).kind, 'capture');
     let wholeFileReads = 0;
     const read = file.arrayBuffer.bind(file);
     file.arrayBuffer = () => { wholeFileReads++; return read(); };
@@ -347,7 +353,7 @@ it('indented comments cannot hide a render model from the decoder (#8613 review 
 it('public admission keeps a preceding-element Gaussian PLY disabled; only the decoder refuses it (#8613 review r4)', async () => {
   const before = layoutPly(1, 0, 'before');
   assert.deepEqual(await inspectGaussianAdmission(before, await before.slice(0, 4096).arrayBuffer()),
-    { kind: 'disabled', format: 'gaussian-ply', count: 1, shDegree: 0 });
+    { kind: 'capture', format: 'gaussian-ply', count: 1, shDegree: 0 });
   assert.deepEqual(await decodeAdmission(before), { kind: 'invalid', reason: 'Unsupported Gaussian PLY element before vertex.' });
   await assert.rejects(decodeGaussianFile(before), /element before vertex/);
 });

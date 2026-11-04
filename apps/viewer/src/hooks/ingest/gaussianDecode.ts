@@ -7,7 +7,7 @@ import { validateGaussianDecoded, type GaussianDecoded } from './gaussianDecoded
 /** Worker-only upstream decoder. This does not grant admission to the renderer. */
 export async function decodeGaussianFile(file: File): Promise<GaussianDecoded> {
   const admission = await inspectGaussianDecodeAdmission(file, await file.slice(0, 4096).arrayBuffer());
-  if (admission.kind !== 'disabled') {
+  if (admission.kind !== 'capture') {
     throw new Error(admission.kind === 'invalid' ? admission.reason : 'Not a Gaussian capture.');
   }
   const fs = new MemoryReadFileSystem();

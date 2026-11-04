@@ -8,7 +8,7 @@ const point = (m: readonly number[], p: number[]) => [0, 1, 2].map(r => m[r] * p
 
 test('capture default matches actual point-cloud ingest, Y-up override preserves source (#8752)', () => {
   const p = [1, 2, 3];
-  const scan = swapZupChunkToYup({ positions: new Float32Array(p), pointCount: 1, bbox: { min: [1, 2, 3], max: [1, 2, 3] } });
+  const scan = swapZupChunkToYup({ positions: new Float32Array(p), pointCount: 1, normalState: 'absent', bbox: { min: [1, 2, 3], max: [1, 2, 3] } });
   assert.deepEqual(point(gaussianCaptureFrame().placement, p), [1, 3, -2]);
   assert.deepEqual(point(gaussianCaptureFrame().placement, p), [...scan.positions]);
   assert.deepEqual(point(gaussianCaptureFrame(undefined, 'y').placement, p), p);

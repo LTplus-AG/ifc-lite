@@ -58,5 +58,5 @@ export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number)
   const point = pickMeasurePoint(ctx, x, y);
   if (!point) return;
   if (ctx.activeMeasurementRef.current) finishDistance(ctx, point, { x, y });
-  else beginDistance(ctx, point);
+  else beginDistance(ctx, point, { x, y });
 }

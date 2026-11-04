@@ -22,10 +22,15 @@ const startingPresses = new WeakSet<MouseState>();
 const finishingPresses = new WeakSet<MouseState>();
 /** The last press set a start right after a finish: a dblclick on it drops that start. */
 const startsAfterFinish = new WeakSet<MouseState>();
+/** Where each start was pressed, before snapping, keyed by its start point (#8788). */
+const startPresses = new WeakMap<MeasurePoint, { x: number; y: number }>();
+/** A second press this far (CSS px) from both the start's press and its shown point is a new point. */
+const REPRESS_SLOP_PX = 8;
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
-export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint): void {
+export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
   ctx.startMeasurement(measurePoint);
+  if (at) startPresses.set(measurePoint, at);
 
   // Set up orthogonal constraint for Shift - always use world axes
   ctx.setMeasurementConstraintEdge({
@@ -55,13 +60,26 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
   ctx.clearEdgeLock();
   // Pressed away from the start but snapped back onto it (a vertex or edge both points are near):
   // measure to the exact surface under the pointer instead of dropping the press (#8788).
-  if (at && isDuplicateClickPoint(active.start, end) && !isDuplicateClickPoint(active.start, { screenX: at.x, screenY: at.y })) {
+  if (at && isDuplicateClickPoint(active.start, end) && pressedAwayFromStart(ctx, active.start, at)) {
     end = pickSurfacePoint(ctx, at.x, at.y) ?? end;
   }
   if (isDuplicateClickPoint(active.start, end)) return false;
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
   return true;
+}
+
+/**
+ * Whether a press at `at` is clearly a new point: away from where the start was
+ * pressed (so not a double-click or double-tap snapping to the same target) and
+ * from where the start now shows (so not a press on the start after the camera moved).
+ */
+function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at: { x: number; y: number }): boolean {
+  const press = startPresses.get(start);
+  if (!press) return false;
+  const shown = projectToCssScreen(ctx.camera, ctx.canvas, start) ?? { x: start.screenX, y: start.screenY };
+  return Math.hypot(at.x - press.x, at.y - press.y) > REPRESS_SLOP_PX
+    && Math.hypot(at.x - shown.x, at.y - shown.y) > REPRESS_SLOP_PX;
 }
 
 /** Any other press (navigation, another tool) breaks the finish-then-start chain a dblclick may drop. */
@@ -98,9 +116,10 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
 
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
-  const measurePoint = pickMeasurePoint(ctx, e.clientX - rect.left, e.clientY - rect.top);
+  const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
   if (measurePoint) {
-    beginDistance(ctx, measurePoint);
+    beginDistance(ctx, measurePoint, at);
     startingPresses.add(mouseState);
     if (afterFinish) startsAfterFinish.add(mouseState);
   }

@@ -431,6 +431,32 @@ describe('a snap never swallows a second point placed away from the start (#8788
     assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
   });
 
+  it('a double-tap near a vertex both taps snap to is no measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 230, 300));
+    act(() => handleMeasureTap(ctx, 231, 301));
+    assert.equal(s().measurements.length, 0, 'BUG: the second tap of a double-tap finished a measurement from the snap');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
+  it('a double-click near a vertex both clicks snap to is no measurement', () => {
+    const { canvas } = mountSnapping();
+    click(canvas, 230, 300);
+    click(canvas, 230, 300);
+    assert.equal(s().measurements.length, 0, 'BUG: the second click of a double-click finished a measurement from the snap');
+  });
+
+  it('a drag that returns to where it was pressed keeps the start pending', () => {
+    const { canvas } = mountSnapping();
+    fire(canvas, 'pointerdown', 230, 300);
+    fire(canvas, 'pointermove', 400, 300);
+    flushFrames();
+    fire(canvas, 'pointerup', 230, 300);
+    assert.equal(s().measurements.length, 0, 'BUG: a drag back onto its own press finished a measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
   it('a retap on the start itself is still no 0 m measurement', () => {
     const { canvas, params } = mountSnapping();
     const ctx = ctxOf(params, canvas);

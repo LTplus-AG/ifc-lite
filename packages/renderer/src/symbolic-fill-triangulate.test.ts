@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { SymbolicFillPipeline, type SymbolicFillInput } from './symbolic-overlay-pipelines.js';
-import { SYMBOLIC_FILL_UNIFORM_FLOATS } from './shaders/symbolic-overlay.wgsl.js';
+import { CAP_CLIP_FLOATS } from './extra-clip-planes.js';
 
 // WebGPU enum globals referenced by the pipeline's bind-group visibility and
 // buffer usage flags (not defined in node) — same polyfill as
@@ -129,7 +129,8 @@ describe('SymbolicFillPipeline — IfcAnnotationFillArea holes (#2516)', () => {
 
     assert.strictEqual(bindings.length, 2, 'both partitions are drawn in the encoded pass');
     assert.notStrictEqual(bindings[0], bindings[1], 'each partition retains its own queued uniform resource');
-    const uniforms = writes.filter(write => write.length === SYMBOLIC_FILL_UNIFORM_FLOATS);
+    // The 160-byte camera, then the partition's clip block (#8767).
+    const uniforms = writes.filter(write => write.length === 40 + CAP_CLIP_FLOATS);
     assert.strictEqual(uniforms.length, 2, 'one uniform upload per partition');
     assert.strictEqual(uniforms[0][35], 1, 'anchored partition selects RTE projection');
     assert.strictEqual(uniforms[1][35], 0, 'legacy world-f32 partition retains global projection');

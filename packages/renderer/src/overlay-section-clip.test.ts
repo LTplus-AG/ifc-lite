@@ -5,14 +5,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { clipStatePlanes } from './clip-half-spaces.js';
+import { clipHalfSpaces } from './clip-half-spaces.js';
 import { CAP_CLIP_FLOATS, MAX_CAP_CLIP_PLANES, MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
 import { pointClipped } from './scene-raycaster.js';
 import { Section2DOverlayRenderer } from './section-2d-overlay.js';
 import { RendererOverlays, type OverlayHost } from './renderer-overlays.js';
 import { LINE_OVERLAY_CHANNELS, type LineOverlayChannel } from './section-2d-types.js';
 import { SymbolicFillPipeline, SymbolicTextPipeline, type SymbolicFillInput } from './symbolic-overlay-pipelines.js';
-import { SYMBOLIC_FILL_CLIPPED_WGSL, SYMBOLIC_FILL_UNIFORM_FLOATS, SYMBOLIC_FILL_WGSL } from './shaders/symbolic-overlay.wgsl.js';
+import { SYMBOLIC_FILL_WGSL } from './shaders/symbolic-overlay.wgsl.js';
 import type { SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import type { PickClipState } from './pick-types.js';
 import type { ExtraClipPlane } from './clip-types.js';
@@ -24,7 +24,18 @@ import type { ExtraClipPlane } from './clip-types.js';
  *
  * The oracle throughout is `pointClipped`, the CPU mirror the picker already trusts for the mesh
  * clip: a plane list the shaders read must agree with it at every point.
+ *
+ * Only exports that exist on main are imported, so reverting the production change fails these
+ * tests on their assertions instead of at import (the revert oracle, scripts/check-test-revert-oracle.mjs).
  */
+
+/** A fill partition's uniform: the 160-byte camera, then one overlay clip block. */
+const FILL_UNIFORM_FLOATS = 40 + CAP_CLIP_FLOATS;
+
+/** The model clip as a plane list, built from the half-spaces snapping already uses: test input only. */
+function planesFor(clip: PickClipState): ExtraClipPlane[] {
+  return clipHalfSpaces(clip).map(({ n, limit }) => ({ normal: [n[0], n[1], n[2]], distance: limit, flipped: false }));
+}
 
 (globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
 (globalThis as Record<string, unknown>).GPUColorWrite = { ALL: 15 };
@@ -67,35 +78,6 @@ const EVERYTHING: PickClipState = {
   ],
   clipBox: { enabled: true, min: [-8, -6, -7], max: [7, 9, 6] },
 };
-
-describe('clipStatePlanes: the model clip as one plane list (#8767)', () => {
-  it('is empty when nothing clips, so an unclipped frame packs no block', () => {
-    assert.strictEqual(clipStatePlanes(null).length, 0);
-    assert.strictEqual(clipStatePlanes({}).length, 0);
-    assert.strictEqual(clipStatePlanes({ clipBox: { enabled: false, min: [0, 0, 0], max: [1, 1, 1] } }).length, 0);
-  });
-
-  for (const [name, clip] of [['a plain cut', CUT_DOWN], ['a flipped cut, two extras and a box', EVERYTHING]] as const) {
-    it(`agrees with pointClipped at every sample point: ${name}`, () => {
-      const planes = clipStatePlanes(clip);
-      for (const p of samplePoints(2000)) {
-        assert.strictEqual(planesClip(planes, p), pointClipped(clip, p[0], p[1], p[2]), `at ${p.join(',')}`);
-      }
-    });
-  }
-
-  it('drops the extras past the mesh block capacity, as the mesh does, and keeps the box', () => {
-    const extras = Array.from({ length: MAX_EXTRA_CLIP_PLANES + 2 }, (_, i) => (
-      { normal: [1, 0, 0] as [number, number, number], distance: 9 - i, flipped: false }));
-    const clip: PickClipState = { ...EVERYTHING, extraPlanes: extras };
-    const planes = clipStatePlanes(clip);
-    assert.strictEqual(planes.length, 1 + MAX_EXTRA_CLIP_PLANES + 6);
-    assert.ok(planes.length <= MAX_CAP_CLIP_PLANES, 'every plane fits one overlay block');
-    for (const p of samplePoints(2000)) {
-      assert.strictEqual(planesClip(planes, p), pointClipped(clip, p[0], p[1], p[2]), `at ${p.join(',')}`);
-    }
-  });
-});
 
 // ─── Lines ────────────────────────────────────────────────────────────────────
 
@@ -155,7 +137,7 @@ describe('Section2DOverlayRenderer: a section-clipped line channel (#8767)', () 
     const { device, writes } = makeLineDevice();
     const r = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
     r.setLineOverlay('annotation', TWO_SEGMENTS);
-    const planes = clipStatePlanes(EVERYTHING);
+    const planes = planesFor(EVERYTHING);
     const { pass, pipelines, groupOne } = makeLinePass();
     r.drawLineOverlay(pass, new Float32Array(16), 'annotation', undefined, undefined, planes);
     assert.deepStrictEqual(pipelines, ['clipped']);
@@ -174,7 +156,7 @@ describe('Section2DOverlayRenderer: a section-clipped line channel (#8767)', () 
     r.setLineOverlay('annotation', { localVertices: TWO_SEGMENTS, origin: [5_000_000, 0, 0] });
     const clip: PickClipState = { sectionPlane: { normal: [1, 0, 0], distance: 5_000_001.5, flipped: false } };
     const { pass, pipelines, groupOne } = makeLinePass();
-    r.drawLineOverlay(pass, new Float32Array(16), 'annotation', new Float32Array(16), eye, clipStatePlanes(clip));
+    r.drawLineOverlay(pass, new Float32Array(16), 'annotation', new Float32Array(16), eye, planesFor(clip));
     assert.deepStrictEqual(pipelines, ['clipped']);
     assert.strictEqual(groupOne.length, 1);
     const block = writes.filter((w) => w.offset === groupOne[0] && w.data.length === CAP_CLIP_FLOATS).at(-1);
@@ -191,42 +173,76 @@ describe('Section2DOverlayRenderer: a section-clipped line channel (#8767)', () 
     const r = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
     r.setLineOverlay('centreline', TWO_SEGMENTS);
     const { pass, groupOne } = makeLinePass();
-    r.drawLineOverlay(pass, new Float32Array(16), 'centreline', undefined, undefined, clipStatePlanes(CUT_DOWN));
+    r.drawLineOverlay(pass, new Float32Array(16), 'centreline', undefined, undefined, planesFor(CUT_DOWN));
     assert.deepStrictEqual(groupOne, []);
   });
 });
 
-describe('RendererOverlays: which channels the model clip reaches (#8767)', () => {
-  it('hands the frame\'s planes to the annotation channel only', () => {
-    const host: OverlayHost = {
-      getModelBounds: () => null,
-      expandModelBoundsWithFlatVertices: () => {},
-      expandModelBoundsWithAnchoredLineVertices: () => {},
-      syncCameraSceneBounds: () => {},
-      requestRender: () => {},
-    };
-    const overlays = new RendererOverlays(host);
-    const received = new Map<LineOverlayChannel, number>();
-    (overlays as unknown as Record<string, unknown>)['section2DOverlayRenderer'] = {
-      setCapHighlight: () => {},
-      hasGeometry: () => false,
-      hasExtraGeometry: () => false,
-      hasLineOverlay: () => true,
-      hasClashBoxLines3D: () => false,
-      drawLineOverlay: (_p: unknown, _vp: unknown, channel: LineOverlayChannel, _r: unknown, _c: unknown, planes?: readonly unknown[]) => {
-        received.set(channel, planes?.length ?? 0);
-      },
-    };
-    overlays.draw({} as GPURenderPassEncoder, {
-      options: {} as never,
-      viewProj: new Float32Array(16),
-      modelBounds: null,
-      camera: { getPosition: () => ({ x: 0, y: 0, z: 1 }), getTarget: () => ({ x: 0, y: 0, z: 0 }), getUp: () => ({ x: 0, y: 1, z: 0 }) } as never,
-      canvasWidth: 1, canvasHeight: 1,
-      clip: CUT_DOWN,
-    });
+/** Draw one frame through `RendererOverlays` and report the planes each line channel was handed. */
+function planesHandedOut(clip: PickClipState | null): Map<LineOverlayChannel, readonly ExtraClipPlane[]> {
+  const host: OverlayHost = {
+    getModelBounds: () => null,
+    expandModelBoundsWithFlatVertices: () => {},
+    expandModelBoundsWithAnchoredLineVertices: () => {},
+    syncCameraSceneBounds: () => {},
+    requestRender: () => {},
+  };
+  const overlays = new RendererOverlays(host);
+  const received = new Map<LineOverlayChannel, readonly ExtraClipPlane[]>();
+  (overlays as unknown as Record<string, unknown>)['section2DOverlayRenderer'] = {
+    setCapHighlight: () => {},
+    hasGeometry: () => false,
+    hasExtraGeometry: () => false,
+    hasLineOverlay: () => true,
+    hasClashBoxLines3D: () => false,
+    drawLineOverlay: (_p: unknown, _vp: unknown, channel: LineOverlayChannel, _r: unknown, _c: unknown, planes?: readonly ExtraClipPlane[]) => {
+      received.set(channel, planes ?? []);
+    },
+  };
+  overlays.draw({} as GPURenderPassEncoder, {
+    options: {} as never,
+    viewProj: new Float32Array(16),
+    modelBounds: null,
+    camera: { getPosition: () => ({ x: 0, y: 0, z: 1 }), getTarget: () => ({ x: 0, y: 0, z: 0 }), getUp: () => ({ x: 0, y: 1, z: 0 }) } as never,
+    canvasWidth: 1, canvasHeight: 1,
+    clip,
+  } as Parameters<RendererOverlays['draw']>[1]);
+  return received;
+}
+
+describe('RendererOverlays: the model clip reaches the annotation channel only (#8767)', () => {
+  it('hands the annotation channel the frame\'s planes and every other channel none', () => {
+    const received = planesHandedOut(CUT_DOWN);
     for (const channel of LINE_OVERLAY_CHANNELS) {
-      assert.strictEqual(received.get(channel), channel === 'annotation' ? 1 : 0, channel);
+      assert.strictEqual(received.get(channel)?.length ?? 0, channel === 'annotation' ? 1 : 0, channel);
+    }
+  });
+
+  it('hands no plane when nothing clips, so an unclipped frame packs no block', () => {
+    assert.strictEqual(planesHandedOut(null).get('annotation')?.length ?? 0, 0);
+    assert.strictEqual(planesHandedOut({}).get('annotation')?.length ?? 0, 0);
+    assert.strictEqual(planesHandedOut({ clipBox: { enabled: false, min: [0, 0, 0], max: [1, 1, 1] } }).get('annotation')?.length ?? 0, 0);
+  });
+
+  for (const [name, clip] of [['a plain cut', CUT_DOWN], ['a flipped cut, two extras and a box', EVERYTHING]] as const) {
+    it(`hands planes that agree with pointClipped at every sample point: ${name}`, () => {
+      const planes = planesHandedOut(clip).get('annotation') ?? [];
+      assert.ok(planes.length > 0);
+      for (const p of samplePoints(2000)) {
+        assert.strictEqual(planesClip(planes, p), pointClipped(clip, p[0], p[1], p[2]), `at ${p.join(',')}`);
+      }
+    });
+  }
+
+  it('drops the extras past the mesh block capacity, as the mesh does, and keeps the box', () => {
+    const extras = Array.from({ length: MAX_EXTRA_CLIP_PLANES + 2 }, (_, i) => (
+      { normal: [1, 0, 0] as [number, number, number], distance: 9 - i, flipped: false }));
+    const clip: PickClipState = { ...EVERYTHING, extraPlanes: extras };
+    const planes = planesHandedOut(clip).get('annotation') ?? [];
+    assert.strictEqual(planes.length, 1 + MAX_EXTRA_CLIP_PLANES + 6);
+    assert.ok(planes.length <= MAX_CAP_CLIP_PLANES, 'every plane fits one overlay block');
+    for (const p of samplePoints(2000)) {
+      assert.strictEqual(planesClip(planes, p), pointClipped(clip, p[0], p[1], p[2]), `at ${p.join(',')}`);
     }
   });
 });
@@ -237,10 +253,11 @@ function makeFillDevice() {
   const uniformSizes: number[] = [];
   const layouts: GPUBindGroupLayoutDescriptor[] = [];
   const writes: Array<{ buffer: GPUBuffer; data: Float32Array }> = [];
+  const shaders: string[] = [];
   const device = {
     createBindGroupLayout: (desc: GPUBindGroupLayoutDescriptor) => { layouts.push(desc); return {} as GPUBindGroupLayout; },
     createPipelineLayout: () => ({}) as GPUPipelineLayout,
-    createShaderModule: () => ({}) as GPUShaderModule,
+    createShaderModule: (desc: { code: string }) => { shaders.push(desc.code); return {} as GPUShaderModule; },
     createRenderPipeline: () => ({}) as GPURenderPipeline,
     createBindGroup: () => ({}) as GPUBindGroup,
     createBuffer: (desc: { size: number; usage: number }) => {
@@ -253,7 +270,7 @@ function makeFillDevice() {
       },
     },
   } as unknown as GPUDevice;
-  return { device, uniformSizes, layouts, writes };
+  return { device, uniformSizes, layouts, writes, shaders };
 }
 
 const SQUARE = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
@@ -263,21 +280,22 @@ function fill(over: Partial<SymbolicFillInput>): SymbolicFillInput {
 
 /** The camera uniforms one fill render wrote, in draw order. */
 function fillUniforms(writes: Array<{ data: Float32Array }>): Float32Array[] {
-  return writes.filter((w) => w.data.length === SYMBOLIC_FILL_UNIFORM_FLOATS).map((w) => w.data);
+  return writes.filter((w) => w.data.length === FILL_UNIFORM_FLOATS).map((w) => w.data);
 }
 
 describe('SymbolicFillPipeline: section-clipped fills (#8767)', () => {
   it('reads its clip block in the fragment stage, after the 160-byte camera', () => {
-    const { device, uniformSizes, layouts } = makeFillDevice();
+    const { device, uniformSizes, layouts, shaders } = makeFillDevice();
     const pipeline = new SymbolicFillPipeline(device, 'bgra8unorm', 4);
     pipeline.upload([fill({ sectionClipped: true })]);
-    assert.strictEqual(SYMBOLIC_FILL_UNIFORM_FLOATS, 40 + CAP_CLIP_FLOATS);
-    assert.deepStrictEqual(uniformSizes, [SYMBOLIC_FILL_UNIFORM_FLOATS * 4]);
+    assert.deepStrictEqual(uniformSizes, [FILL_UNIFORM_FLOATS * 4]);
     const visibility = (layouts[0].entries as GPUBindGroupLayoutEntry[])[0].visibility;
     assert.ok(visibility & 2, 'the fragment stage can read the clip block');
-    assert.match(SYMBOLIC_FILL_CLIPPED_WGSL, /clip: ExtraClip,/);
-    assert.match(SYMBOLIC_FILL_CLIPPED_WGSL, /array<vec4<f32>, 14>/);
-    assert.match(SYMBOLIC_FILL_CLIPPED_WGSL, /if \(extraClipClipped\(camera\.clip, in\.clipSpacePos\)\) \{ discard; \}/);
+    assert.strictEqual(shaders.length, 1);
+    const code = shaders[0];
+    assert.match(code, /originLow: vec4<f32>,\s*\/\/[^\n]*\n[^\n]*\n\s*clip: ExtraClip,/, 'the block follows the 160-byte camera');
+    assert.match(code, /array<vec4<f32>, 14>/);
+    assert.match(code, /if \(extraClipClipped\(camera\.clip, in\.clipSpacePos\)\) \{ discard; \}/);
   });
 
   it('leaves the shared unclipped fill shader exactly as the clash solid binds it: 160 bytes, vertex only', () => {
@@ -296,7 +314,7 @@ describe('SymbolicFillPipeline: section-clipped fills (#8767)', () => {
       fill({}),
     ]);
     const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
-    const planes = clipStatePlanes(EVERYTHING);
+    const planes = planesFor(EVERYTHING);
     pipeline.render(pass, new Float32Array(16), undefined, undefined, planes);
     const uniforms = fillUniforms(writes);
     assert.strictEqual(uniforms.length, 2, 'legacy fills share one partition per clip mode');
@@ -315,7 +333,7 @@ describe('SymbolicFillPipeline: section-clipped fills (#8767)', () => {
     const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
     const eye: [number, number, number] = [5_000_000.25, 20, -4];
     const clip: PickClipState = { sectionPlane: { normal: [1, 0, 0], distance: 5_000_000.5, flipped: false } };
-    pipeline.render(pass, new Float32Array(16), new Float32Array(16), eye, clipStatePlanes(clip));
+    pipeline.render(pass, new Float32Array(16), new Float32Array(16), eye, planesFor(clip));
     const [u] = fillUniforms(writes);
     assert.strictEqual(u[35], 1, 'the partition draws on the RTE path');
     for (const worldX of [5_000_000.4, 5_000_000.6]) {

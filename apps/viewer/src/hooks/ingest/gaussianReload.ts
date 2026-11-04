@@ -22,8 +22,8 @@ export interface GaussianReloadDeps {
  * Reload a capture from the File it was opened from (#8566). A failed handle
  * is terminal and a replaced renderer never received the asset, so the only
  * way back is the canonical loader again: admission is re-decided (public
- * builds still refuse), an explicit placement is replayed, and a raw-source
- * placement stays raw. Without a retained source the reload refuses.
+ * builds still refuse), the source axes and unbaked placement are replayed against the current
+ * IFC frame. Without a retained source the reload refuses.
  */
 // Shared by hierarchy/properties hooks: one source model owns one replacement.
 const transactions = new Map<string, Promise<GaussianReloadResult>>();

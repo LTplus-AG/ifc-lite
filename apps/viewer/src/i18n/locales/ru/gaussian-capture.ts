@@ -17,7 +17,7 @@ export const gaussianCaptureRu = {
   "gaussianCapture.splats": "Сплаты",
   "gaussianCapture.shDegree": "Степень сферических гармоник",
   "gaussianCapture.placement": "Размещение",
-  "gaussianCapture.placement.source": "Исходные координаты источника",
+  "gaussianCapture.placement.source": "Координаты источника в системе просмотрщика",
   "gaussianCapture.placement.explicit": "Явно заданное размещение",
   "gaussianCapture.calibration": "Калибровка",
   "gaussianCapture.calibration.uncalibrated": "Не откалиброван: без единиц, привязки и измерений",

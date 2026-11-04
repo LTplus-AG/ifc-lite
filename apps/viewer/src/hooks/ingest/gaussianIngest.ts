@@ -4,7 +4,7 @@
 
 import type { RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { CaptureUpAxis } from './pointCloudFrame.js';
-import { gaussianCaptureFrame, IDENTITY_CAPTURE_PLACEMENT } from './gaussianCaptureFrame.js';
+import { gaussianCaptureFrame } from './gaussianCaptureFrame.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -13,9 +13,6 @@ import {
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import { modelIndices } from '../../lib/model-placement/model-indices.js';
 import type { GaussianDecoded } from './gaussianDecoded.js';
-
-/** Identity for explicitly supplied placements. */
-export const UNCALIBRATED_PLACEMENT: readonly number[] = IDENTITY_CAPTURE_PLACEMENT;
 
 /** Store record of one capture. `handle` is the renderer-issued object itself. */
 export interface GaussianSplatModel {
@@ -27,11 +24,11 @@ export interface GaussianSplatModel {
   readonly sourceCenterBounds: GaussianDecoded['centerBounds'];
   /** Column-major source-local -> viewer world matrix handed to the renderer. */
   readonly placement: readonly number[];
-  /** 'source': default frame policy. 'explicit': a supplied placement matrix. */
   /** Unbaked placement and axes for reload/portable restore (#8752). */
   readonly sourcePlacement?: readonly number[];
   readonly upAxis?: CaptureUpAxis;
   readonly frameOffset?: { x: number; y: number; z: number };
+  /** 'source': default frame policy. 'explicit': a supplied placement matrix. */
   readonly placementOrigin: 'source' | 'explicit';
   readonly calibration: 'uncalibrated';
   /** Only an attribution the caller supplied; never inferred from file contents. */

@@ -79,7 +79,7 @@ export interface FederationSetupSlot {
   tagIds: string[];
   /**
    * A Gaussian capture's EXPLICIT placement (#8566): the column-major matrix a
-   * caller or user supplied. Raw-source (identity) placement is not stored, so
+   * caller or user supplied, before axis conversion and render-origin subtraction. Default placement is not stored, so
    * nothing is replayed that was never chosen. Optional, so earlier readers skip it.
    */
   gaussianPlacement?: number[];

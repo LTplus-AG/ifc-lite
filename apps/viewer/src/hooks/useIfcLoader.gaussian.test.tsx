@@ -117,7 +117,9 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.deepEqual({ count: record.count, shDegree: record.shDegree, format: record.format, origin: record.placementOrigin, calibration: record.calibration },
       { count: 3, shDegree: 0, format: 'gaussian-ply', origin: 'source', calibration: 'uncalibrated' });
     assert.deepEqual(record.sourceCenterBounds, { min: [-2, 0, 1], max: [4, 5, 6] });
-    assert.deepEqual(splats().getBounds(record.handle), { min: [-2, 1, -5], max: [4, 6, 0] }, 'default capture frame matches Z-up scans');
+    const bounds = splats().getBounds(record.handle)!;
+    assert.deepEqual(bounds.min, [-2, 1, -5]);
+    assert.ok(bounds.max.every((value, axis) => Math.abs(value - [4, 6, 0][axis]) < 1e-12), 'Z-up scan bounds, allowing quaternion roundoff');
     assert.equal(capture.ifcDataStore?.entityCount ?? 0, 0, 'no IFC entity row is invented for a capture');
     assert.equal(capture.loadPath, 'gaussian');
     assert.match(String(capture.sourceFingerprint), /^capture\.ply:/);
@@ -237,7 +239,7 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.equal(model('stale'), undefined);
     assert.equal(model('next')?.loadState, 'complete');
     assert.equal(splats().getStats().assets, 1, 'the superseded upload left no asset behind');
-    assert.deepEqual(splats().getBounds(), { min: [9, 9, 9], max: [9, 9, 9] });
+    assert.deepEqual(splats().getBounds(), { min: [9, 9, -9], max: [9, 9, -9] });
   });
 
   it('a lost device refuses before decoding; a rejected upload retains nothing', async () => {
@@ -618,13 +620,26 @@ it('mounted up-axis control updates actual renderer bounds; setup and reload pre
   cleanup();
   useViewerStore.getState().removeModel('survey');
   let id: string | null = null;
-  await act(async () => { id = await federation.addModel(file, { ...parsed.setup.slots[0], modelId: 'restored' }); });
+  await act(async () => { id = await federation.addModel(file, { ...parsedY.setup.slots[0], modelId: 'restored' }); });
   assert.equal(id, 'restored');
   const restored = model('restored')!.gaussianSplat!;
-  assert.equal(restored.upAxis, 'z', 'portable setup axis reaches the canonical loader through addModel');
-  assert.deepEqual(splats().getBounds(restored.handle), { min: [2, 4, -33], max: [2, 4, -33] });
+  assert.equal(restored.upAxis, 'y', 'portable setup axis reaches the canonical loader through addModel');
+  assert.deepEqual(splats().getBounds(restored.handle), { min: [2, 683, 1_694], max: [2, 683, 1_694] });
   const result = await act(async () => reloadGaussianCapture('restored', federation));
   assert.ok(result.ok);
-  assert.equal(model(result.modelId)!.gaussianSplat!.upAxis, 'z');
-  assert.deepEqual(splats().getBounds(model(result.modelId)!.gaussianSplat!.handle), { min: [2, 4, -33], max: [2, 4, -33] }, 'reload does not rotate or shift twice');
+  assert.equal(model(result.modelId)!.gaussianSplat!.upAxis, 'y');
+  assert.deepEqual(splats().getBounds(model(result.modelId)!.gaussianSplat!.handle), { min: [2, 683, 1_694], max: [2, 683, 1_694] }, 'reload does not rotate or shift twice');
+});
+
+it('canonical Gaussian ingest reconciles a Swiss survey-scale IFC origin plus RTC offset (#8752)', async () => {
+  const ifc = addIfcModel('georeferenced', [{ expressId: 7, type: 'IfcWall' }]);
+  const geometry = ifc.geometryResult!;
+  useViewerStore.getState().updateModel('georeferenced', { geometryResult: { ...geometry, coordinateInfo: {
+    ...geometry.coordinateInfo, originShift: { x: 10, y: 20, z: 30 },
+    wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 },
+  } } });
+  await load(gaussianPly('survey-world.ply', [[2_600_012, 1_200_003, 524]]), { kind: 'federated', modelId: 'survey-world' });
+  const record = model('survey-world')!.gaussianSplat!;
+  assert.deepEqual(splats().getBounds(record.handle), { min: [2, 4, -33], max: [2, 4, -33] });
+  assert.equal(record.calibration, 'uncalibrated', 'render-origin reconciliation makes no registration or scale claim');
 });

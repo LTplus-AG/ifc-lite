@@ -101,7 +101,7 @@ export interface PointCloudIngestOptions {
   expressId?: number;
   /** Soft cap on points held on the GPU. Default: 25M. */
   maxPointsInMemory?: number;
-  /** Hard cap on file size in bytes. Default: 4 GB. */
+  /** Hard cap on file size in bytes. Default: per format, see `streamPointCloud`. */
   maxFileSize?: number;
   /**
    * Points retained CPU-side (reservoir-sampled) for the 2D section scan

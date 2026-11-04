@@ -2049,10 +2049,6 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/reframe-apply.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/scan-candidate.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
           fi
-          # #8566: BCF must restore the camera with a Gaussian capture present.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gaussian-viewpoint-8566/skip-camera-restore.oracle.patch | grep -Fxq 'tests/evidence/gaussian-viewpoint-8566/skip-camera-restore.oracle.patch'; then
-            oracle_args+=(--mutation tests/evidence/gaussian-viewpoint-8566/skip-camera-restore.oracle.patch --test apps/viewer/src/hooks/useBCF.gaussian-viewpoint.test.tsx)
-          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

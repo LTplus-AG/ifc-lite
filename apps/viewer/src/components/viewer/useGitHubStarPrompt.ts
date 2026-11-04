@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTourStore } from '@/lib/tours/tour-store';
 
@@ -36,6 +36,7 @@ function overlayOpen(): boolean {
 /** #8806: one durable impression, counted only in a focused, recently used viewer. */
 export function useGitHubStarPrompt() {
   const [visible, setVisible] = useState(false);
+  const stop = useRef(() => {});
   useEffect(() => {
     if (window.self !== window.top) return;
     let eligible: number | null;
@@ -55,24 +56,24 @@ export function useGitHubStarPrompt() {
     const up = () => { pressed = false; input(); };
     const blur = () => { pressed = false; lastInput = 0; };
     const changed = (event: StorageEvent) => {
-      if (event.key === KEY) { finished = true; setVisible(false); }
+      if (event.key === KEY) { stop.current(); setVisible(false); }
     };
     const claim = async () => {
       // Web Locks serializes competing tabs. Without it, skip this optional UI.
-      if (!navigator.locks) { finished = true; return; }
+      if (!navigator.locks) { stop.current(); return; }
       claiming = true;
       try {
         await navigator.locks.request(KEY, () => {
           if (finished || !viewerReady() || overlayOpen() || !document.hasFocus()
             || document.visibilityState !== 'visible' || pressed
             || performance.now() - lastInput < QUIET_TIME || performance.now() - lastInput > 30_000) return;
-          if (localStorage.getItem(KEY) !== String(eligible)) { finished = true; return; }
+          if (localStorage.getItem(KEY) !== String(eligible)) { stop.current(); return; }
           localStorage.setItem(KEY, 'shown');
           finished = true;
           setVisible(true);
         });
       } catch (error) {
-        finished = true;
+        stop.current();
         console.warn('[GitHubStarPrompt] Could not persist invitation; suppressed.', error);
       } finally { claiming = false; }
     };
@@ -82,7 +83,7 @@ export function useGitHubStarPrompt() {
       previous = now;
       const ready = viewerReady() && !overlayOpen() && document.hasFocus()
         && document.visibilityState === 'visible';
-      if (finished) { if (!ready) setVisible(false); return; }
+      if (finished) { if (!ready) { stop.current(); setVisible(false); } return; }
       if (!ready || !lastInput || now - lastInput > 30_000) return;
       active += elapsed;
       if (active >= ACTIVE_TIME && now - lastInput >= QUIET_TIME && !pressed && !claiming) void claim();
@@ -95,7 +96,7 @@ export function useGitHubStarPrompt() {
     window.addEventListener('pointercancel', up);
     window.addEventListener('blur', blur);
     window.addEventListener('storage', changed);
-    return () => {
+    stop.current = () => {
       finished = true;
       clearInterval(timer);
       window.removeEventListener('pointermove', input);
@@ -107,6 +108,7 @@ export function useGitHubStarPrompt() {
       window.removeEventListener('blur', blur);
       window.removeEventListener('storage', changed);
     };
+    return stop.current;
   }, []);
-  return { visible, dismiss: () => setVisible(false) };
+  return { visible, dismiss: () => { stop.current(); setVisible(false); } };
 }

@@ -95,6 +95,11 @@ transfer keep each normal with the same position and colour row.
 
 Notes:
 
+- `streamPointCloud` refuses files over 4 GB by default only for formats
+  whose source reads the whole file (PCD, PTS, XYZ and non-COPC LAZ). E57,
+  PLY and LAS decode from bounded byte windows, so their peak memory does
+  not grow with file size and they have no default ceiling. Pass
+  `maxFileSize` to set one for any format.
 - The inlined worker bundle is lazy-loaded — consumers that only call
   `decodeIfcxPointAttribute` (the non-worker decoder) don't pay the bytes.
 - LAZ decoding (`format: 'laz'`) pulls in `laz-perf`'s wasm at runtime via

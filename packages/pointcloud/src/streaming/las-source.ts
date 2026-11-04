@@ -9,7 +9,8 @@
  * 227-byte public header on `open()`, then yields chunks of decoded
  * points on each `next()`. Stride-based downsampling is supported
  * natively: when `stride > 1`, the source advances by `stride * recordLen`
- * bytes per emitted point.
+ * bytes per emitted point, reading at most 16 MiB of source records at a
+ * time so peak memory does not grow with file size.
  */
 
 import type { DecodedPointChunk } from '../types.js';
@@ -30,6 +31,8 @@ import type {
 const HEADER_PROBE_BYTES = 1024;
 /** RGB-detection probe: read up to 256 KB worth of point records. */
 const RGB_PROBE_RECORDS = 4096;
+/** 16 MiB — caps the source bytes held per strided read (#8773). */
+const MAX_WINDOW_BYTES = 16 << 20;
 
 export class LasStreamingSource implements StreamingPointSource {
   private bytes: BlobByteSource;
@@ -39,6 +42,7 @@ export class LasStreamingSource implements StreamingPointSource {
   private downsample: DownsampleHint;
   private label?: string;
   private originOffset?: readonly [number, number, number];
+  private windowBytes: number;
 
   constructor(
     blob: Blob,
@@ -47,12 +51,15 @@ export class LasStreamingSource implements StreamingPointSource {
       downsample?: DownsampleHint;
       /** See `decodeLasPoints`'s `originOffset` param (issue #1804). */
       originOffset?: readonly [number, number, number];
+      /** Test hook: a smaller strided read window, to exercise windowing. */
+      windowBytes?: number;
     } = {},
   ) {
     this.bytes = new BlobByteSource(blob);
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
     this.originOffset = options.originOffset;
+    this.windowBytes = options.windowBytes ?? MAX_WINDOW_BYTES;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -120,52 +127,49 @@ export class LasStreamingSource implements StreamingPointSource {
       return chunk;
     }
 
-    // Strided reads: pull a packed slab covering `take * stride` source
-    // records, then decode every Nth record.
+    // Strided reads: cover `take * stride` source records in windows of at
+    // most `windowBytes` (#8773), copying every Nth record into one
+    // compacted buffer. The window bounds peak memory independently of the
+    // stride, which grows with file size, while the emitted chunk stays the
+    // same size. Each window starts on a stride boundary, so the selected
+    // records match one contiguous slab exactly.
+    const recordLen = this.header.pointRecordLength;
     const remainingSource = this.header.pointCount - this.cursor;
     const sourceTake = Math.min(maxPoints * stride, remainingSource);
     const decodedCount = Math.ceil(sourceTake / stride);
-    const startByte = this.header.pointDataOffset + this.cursor * this.header.pointRecordLength;
-    const endByte = startByte + sourceTake * this.header.pointRecordLength;
-    const slab = await this.bytes.read(startByte, endByte);
-    abortIfAborted(signal);
-    // `BlobByteSource.read` silently clamps to the blob's actual size — a
-    // file whose header declares more points than the body backs (a
-    // truncated download, a corrupt producer) returns a SHORT slab with no
-    // error. Unlike the stride===1 branch above (where `decodeLasPoints`'s
-    // own `bytes.length < count * stride` check catches this because the
-    // short `slab` is handed to it directly), this branch always allocates
-    // `compact` at the FULL expected size and copies into it via
-    // `subarray`/`set` — `subarray` silently saturates to the available
-    // length near the end of a short `slab`, so the tail of `compact` is
-    // left at its zero-initialised default instead of raising an error.
-    // `decodeLasPoints` then sees a `compact` buffer that already matches
-    // `decodedCount * stride` exactly and has nothing left to catch this
-    // with — it decodes the zero-filled tail as real records, emitting
-    // points at the header's own scale/offset origin and counting them in
-    // `pointCount`. Fabricated data, reported as a successful read.
-    const expectedSlabLen = sourceTake * this.header.pointRecordLength;
-    if (slab.length < expectedSlabLen) {
-      throw new Error(
-        `LAS: decode expects ${expectedSlabLen} bytes for ${sourceTake} strided source records, ` +
-        `got ${slab.length} — file truncated?`,
-      );
-    }
-
-    // Build a compacted slab that contains only the records we want, then
-    // hand it to decodeLasPoints with stride === recordLen.
-    const compact = new Uint8Array(decodedCount * this.header.pointRecordLength);
+    const recordsPerWindow = Math.max(stride, Math.floor(this.windowBytes / recordLen / stride) * stride);
+    const compact = new Uint8Array(decodedCount * recordLen);
     let writeOff = 0;
-    for (let i = 0; i < decodedCount; i++) {
-      const srcOff = i * stride * this.header.pointRecordLength;
-      compact.set(
-        slab.subarray(srcOff, srcOff + this.header.pointRecordLength),
-        writeOff,
-      );
-      writeOff += this.header.pointRecordLength;
+    for (let windowStart = 0; windowStart < sourceTake; windowStart += recordsPerWindow) {
+      const windowRecords = Math.min(recordsPerWindow, sourceTake - windowStart);
+      const startByte = this.header.pointDataOffset + (this.cursor + windowStart) * recordLen;
+      const slab = await this.bytes.read(startByte, startByte + windowRecords * recordLen);
+      abortIfAborted(signal);
+      // `BlobByteSource.read` silently clamps to the blob's actual size — a
+      // file whose header declares more points than the body backs (a
+      // truncated download, a corrupt producer) returns a SHORT slab with no
+      // error. Unlike the stride===1 branch above (where `decodeLasPoints`'s
+      // own `bytes.length < count * stride` check catches this because the
+      // short `slab` is handed to it directly), `compact` is allocated at
+      // the FULL expected size, so a short window would leave its tail at
+      // the zero-initialised default. `decodeLasPoints` would then decode
+      // that tail as real records, emitting points at the header's own
+      // scale/offset origin and counting them in `pointCount`. Fabricated
+      // data, reported as a successful read.
+      const expectedSlabLen = windowRecords * recordLen;
+      if (slab.length < expectedSlabLen) {
+        throw new Error(
+          `LAS: decode expects ${expectedSlabLen} bytes for ${windowRecords} strided source records, ` +
+          `got ${slab.length} — file truncated?`,
+        );
+      }
+      for (let i = 0; i < windowRecords; i += stride) {
+        compact.set(slab.subarray(i * recordLen, (i + 1) * recordLen), writeOff);
+        writeOff += recordLen;
+      }
     }
     const chunk = decodeLasPoints(
-      compact, this.header, decodedCount, this.header.pointRecordLength, this.rgbScale, this.originOffset,
+      compact, this.header, decodedCount, recordLen, this.rgbScale, this.originOffset,
     );
     this.cursor += sourceTake;
     return chunk;

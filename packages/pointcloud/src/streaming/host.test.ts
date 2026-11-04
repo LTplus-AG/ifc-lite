@@ -387,3 +387,66 @@ describe('streamPointCloud (in-process source)', () => {
     expect(factoryCalls).toBe(1);
   });
 });
+
+/** A Blob that reports a size past the 4 GB default ceiling without allocating it. */
+class OversizedBlob extends Blob {
+  override get size(): number {
+    return 5 * 1024 * 1024 * 1024;
+  }
+}
+
+function emptySource(onOpen: () => void): StreamingPointSource {
+  return {
+    open: async () => {
+      onOpen();
+      return {
+        totalPointCount: 0,
+        bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+        hasColor: false,
+        hasClassification: false,
+        hasIntensity: false,
+      };
+    },
+    next: async () => null,
+    close: () => {},
+  };
+}
+
+describe('streamPointCloud default file-size ceiling (#8773)', () => {
+  it.each(['e57', 'ply', 'las'] as const)('streams a %s file over 4 GB, because its source reads bounded windows', async (format) => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format,
+      blob: new OversizedBlob([]),
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await handle.done;
+    expect(opened).toBe(1);
+  });
+
+  it.each(['pcd', 'pts', 'xyz', 'laz'] as const)('refuses a %s file over 4 GB before opening it, because its source reads the whole file', async (format) => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format,
+      blob: new OversizedBlob([]),
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await expect(handle.done).rejects.toThrow(/exceeds maxFileSize 4295 MB/);
+    expect(opened).toBe(0);
+  });
+
+  it('applies an explicit maxFileSize to a windowed format too', async () => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format: 'e57',
+      blob: new OversizedBlob([]),
+      maxFileSize: 4 * 1024 * 1024 * 1024,
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await expect(handle.done).rejects.toThrow(/exceeds maxFileSize/);
+    expect(opened).toBe(0);
+  });
+});

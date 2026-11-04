@@ -146,12 +146,24 @@ describe('wheel zoom on a large-extent site stops at the ground (#8769)', () => 
     await frame();
     assert.ok(s.pickSurface(CURSOR.x, CURSOR.y));
     await frame();
-    s.visibility.hiddenIds.add(7); // hidden in place, as the store's set mutates
+    s.visibility.hiddenIds.add(7); // an in-place mutation: the size guard catches it
     assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null, 'the probe from before the hide is not reused');
     await frame();
     assert.ok(s.pickSurface(CURSOR.x, CURSOR.y), 'the next probe, under the new visibility, is');
     s.visibility.isolatedIds = new Set([1]);
     assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null, 'isolation is a new visibility too');
+  });
+
+  it('a same-sized but different hidden set is a new visibility (the store copies on write)', async () => {
+    const s = site();
+    s.visibility.hiddenIds = new Set([1]); // hide A
+    s.pickSurface.prime?.(CURSOR.x, CURSOR.y);
+    await frame();
+    assert.ok(s.pickSurface(CURSOR.x, CURSOR.y), 'probed with A hidden');
+    await frame();
+    s.visibility.hiddenIds = new Set([1, 2]); // hide B
+    s.visibility.hiddenIds = new Set([2]); // show A: size 1 again, different members
+    assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null, 'the point probed with A hidden is not reused');
   });
 
   it('coalesces probes to one readback in flight, answering the newest position', async () => {

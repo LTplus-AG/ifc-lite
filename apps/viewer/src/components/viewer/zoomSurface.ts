@@ -58,7 +58,12 @@ export function isSurfaceRaycastGated(
   return isStreaming || camera.getOrbitAnchorBounds() !== null || isPivotRaycastTooExpensive(renderer.getScene());
 }
 
-/** Identity of a visibility state: a new or resized hidden/isolated set is a new key. */
+/**
+ * Identity of a visibility state. The store is copy-on-write: every hide,
+ * show or isolate builds a new Set (visibilitySlice.ts, pinboard-isolation.ts),
+ * so a new set object is a new key even when its size repeats. The size is a
+ * second guard for a caller that mutates a set in place.
+ */
 const setIds = new WeakMap<object, number>();
 let nextSetId = 0;
 function visibilityKey(options: Pick<ZoomSurfacePickOptions, 'hiddenIds' | 'isolatedIds'>): string {

@@ -364,9 +364,8 @@ export function computePointCloudAlignment(
 
   // Unaligned matrix: undo ONLY the decode-time subtraction, in the same
   // swapped Y-up axes (swap(E,N,H) = (E,H,-N)) — no rotation, no unit
-  // scaling or viewer shift here. The registry subtracts the current shared
-  // render-frame offset when it applies this matrix, preserving native
-  // coordinates relative to the IFC. Compose manual
+  // scaling. The registry subtracts the shared render offset when applying
+  // this matrix, keeping native coordinates relative to IFC. Compose manual
   // correction in double precision before the renderer narrows to f32.
   const unalignedMatrix = new Float64Array([
     1, 0, 0, 0,
@@ -398,5 +397,4 @@ function matrixFromNativeScanTransform(transform: SpatialAffineTransform): Float
 export { registerPointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment,
   applyPointCloudAlignmentToggle, retargetPointCloudDecodeOrigin,
   realignRegisteredPointClouds,
-  reframeRegisteredPointClouds,
   type PointCloudAlignmentRegistration, type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';

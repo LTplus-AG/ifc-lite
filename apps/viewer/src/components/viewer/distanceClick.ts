@@ -13,7 +13,7 @@ import type { MeasurePoint } from '@/store';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
-import { pickMeasurePoint } from './measurePick.js';
+import { pickMeasurePoint, pickSurfacePoint } from './measurePick.js';
 import { isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
@@ -48,11 +48,16 @@ export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoi
  * on top of the start (the second half of a double-click) is ignored, so it
  * cannot finish a zero-length measurement.
  */
-export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint): boolean {
+export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?: { x: number; y: number }): boolean {
   const active = ctx.activeMeasurementRef.current;
   if (!active) return false;
   // Finished or rejected, this pick's edge lock must not pull the next one (see beginDistance).
   ctx.clearEdgeLock();
+  // Pressed away from the start but snapped back onto it (a vertex or edge both points are near):
+  // measure to the exact surface under the pointer instead of dropping the press (#8788).
+  if (at && isDuplicateClickPoint(active.start, end) && !isDuplicateClickPoint(active.start, { screenX: at.x, screenY: at.y })) {
+    end = pickSurfacePoint(ctx, at.x, at.y) ?? end;
+  }
   if (isDuplicateClickPoint(active.start, end)) return false;
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
@@ -185,7 +190,9 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   // The second click, or a press dragged past the click slop, finishes where it is released (#8771).
   // A release on background or back on the start keeps the start pending; a first click leaves it so.
   const finishing = !startingPresses.has(mouseState) || mouseState.didDrag;
-  if (finishing && end && finishDistance(ctx, end)) finishingPresses.add(mouseState);
+  // On the Shift axis an end projected onto the start is the constrained answer, not a stray snap.
+  const at = useOrthogonalConstraint ? undefined : { x: mx, y: my };
+  if (finishing && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
   startingPresses.delete(mouseState);
   mouseState.isDragging = false;
   mouseState.didDrag = false;

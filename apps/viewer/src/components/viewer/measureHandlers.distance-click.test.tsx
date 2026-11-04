@@ -389,6 +389,58 @@ describe('a start never inherits the edge lock of its own pick (#8771)', () => {
   });
 });
 
+/**
+ * The mobile journey's case (#8788): a vertex snap with a 60px pull and no edge
+ * lock. Both points sit near the corner at world (2,0,0), so a second tap or
+ * click 38px from the first snaps onto the start too.
+ */
+function snapToCorner(x: number, y: number) {
+  const edgeLock = { shouldRelease: false, shouldLock: false, edge: null };
+  if (Math.hypot(x - 200, y - 300) < 60) return { intersection: { point: { x: 2, y: 0, z: 0 } }, snapTarget: null, edgeLock };
+  return { intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } }, snapTarget: null, edgeLock };
+}
+/** The exact surface hit under the pointer: canvas x/100, (300 - y)/100. */
+const exactSurface = (x: number, y: number) => ({ intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } } });
+
+describe('a snap never swallows a second point placed away from the start (#8788)', () => {
+  const mountSnapping = () => {
+    const rig = mountMouseControls(storeBound);
+    Object.assign(rig.params.rendererRef.current!, { raycastSceneMagnetic: snapToCorner, raycastScene: exactSurface });
+    return rig;
+  };
+  const ctxOf = (params: UseMouseControlsParams, canvas: HTMLCanvasElement) => ({
+    ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),
+    mouseState: params.mouseStateRef.current,
+  }) as unknown as MouseHandlerContext;
+
+  it('a second tap 38px away that snaps onto the start measures to the surface it was tapped on', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first tap snaps to the corner');
+    act(() => handleMeasureTap(ctx, 240, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: the snap pulled the second tap onto the start and it was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('a second click with no hover that snaps onto the start measures to the surface it was clicked on', () => {
+    const { canvas } = mountSnapping();
+    click(canvas, 202, 300);
+    click(canvas, 240, 300);
+    assert.equal(s().measurements.length, 1, 'BUG: the snap pulled the second click onto the start and it was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('a retap on the start itself is still no 0 m measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    act(() => handleMeasureTap(ctx, 200, 300));
+    assert.equal(s().measurements.length, 0, 'a tap on the start finished a 0 m measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+});
+
 describe('one distance path for mouse and touch (#8771, #5856)', () => {
   const ctxFrom = (params: UseMouseControlsParams, canvas: HTMLCanvasElement) => ({
     ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),

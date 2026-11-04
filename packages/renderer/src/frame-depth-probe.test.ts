@@ -115,6 +115,14 @@ describe('frame depth probe (#8769)', () => {
     const want = drawnAt(rec, 200, 441, 0.004);
     const err = Math.hypot(point.x - want.x, point.y - want.y, point.z - want.z);
     assert.ok(err < 1e-3, `world point off by ${err} m: ${JSON.stringify(point)} vs ${JSON.stringify(want)}`);
+    // Independent of the inverse helpers both sides above use: project the
+    // answer forward with a plain column-major product, back to its texel.
+    const eye = rec.snapshot.getCameraWorld(), m = rec.snapshot.getViewProjection().m;
+    const [rx, ry, rz] = [point.x - eye[0], point.y - eye[1], point.z - eye[2]];
+    const clip = [0, 1, 2, 3].map((r) => m[r] * rx + m[4 + r] * ry + m[8 + r] * rz + m[12 + r]);
+    const texX = ((clip[0] / clip[3] + 1) / 2) * TEX_W, texY = ((1 - clip[1] / clip[3]) / 2) * TEX_H;
+    assert.ok(Math.abs(texX - 200.5) < 0.5 && Math.abs(texY - 441.5) < 0.5, `projects to texel (${texX}, ${texY}), not (200.5, 441.5)`);
+    assert.ok(Math.abs(clip[2] / clip[3] - 0.004) < 1e-4, `at device depth ${clip[2] / clip[3]}, not 0.004`);
     assert.ok(gpu.buffers.every((b) => b.destroyed), 'every per-probe buffer is released');
   });
 

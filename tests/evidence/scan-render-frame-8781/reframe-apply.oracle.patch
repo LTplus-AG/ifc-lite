@@ -1,0 +1,10 @@
+--- a/apps/viewer/src/hooks/ingest/pointCloudAlignmentRegistry.ts
++++ b/apps/viewer/src/hooks/ingest/pointCloudAlignmentRegistry.ts
+@@ -92,6 +92,7 @@
+   const plans = [...registry.values()].map((entry) => ({
+     entry, previous: matrixFor(entry), next: matrixFor(entry, entry.transform, offset),
+   }));
++  writeTransaction(renderer, plans);
+   renderOffset = { ...offset };
+ }
+ 

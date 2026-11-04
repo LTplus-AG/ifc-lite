@@ -76,6 +76,8 @@ export interface GaussianSplatApi {
   remove(handle: GaussianSplatHandle): boolean;
   setVisible(handle: GaussianSplatHandle, visible: boolean): boolean;
   setPlacement(handle: GaussianSplatHandle, placement: GaussianSplatPlacement): Promise<boolean>;
+  /** Translate the entire render frame and its f64 anchor; packed local rows stay unchanged. */
+  translateFrame(delta: readonly [number, number, number]): Promise<boolean>;
   getBounds(handle?: GaussianSplatHandle): GaussianSplatBounds | null;
   getState(handle: GaussianSplatHandle): GaussianSplatState;
   getStats(): GaussianSplatStats;

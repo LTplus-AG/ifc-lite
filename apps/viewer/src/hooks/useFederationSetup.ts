@@ -114,6 +114,7 @@ export function useFederationSetup() {
           visible: match.slot.visible,
           collapsed: match.slot.collapsed,
           gaussianPlacement: match.slot.gaussianPlacement,
+          gaussianUpAxis: match.slot.gaussianUpAxis,
         });
         if (!modelId) failedSlots.push({ name: match.slot.name, reason: useViewerStore.getState().error ?? 'The model did not load.' });
         if (modelId) {

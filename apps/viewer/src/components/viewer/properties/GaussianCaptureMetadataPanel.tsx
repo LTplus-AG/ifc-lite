@@ -8,12 +8,13 @@
  * shows what the loader actually knows, and its limitations, instead.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Clock, HardDrive, Info, Move3D, Ruler, RotateCw, ScanLine, ShieldAlert, Sparkles } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { FederatedModel } from '@/store/types';
 import type { GaussianSplatModel } from '@/hooks/ingest/gaussianIngest';
-import { gaussianNeedsReload, useGaussianCaptureState } from '@/hooks/ingest/gaussianAssets';
+import { appliedGaussianUpAxis } from '@/hooks/ingest/gaussianCaptureFrame';
+import { gaussianNeedsReload, setGaussianCaptureUpAxis, useGaussianCaptureState } from '@/hooks/ingest/gaussianAssets';
 import { useGaussianReload } from '@/hooks/ingest/gaussianReload';
 import { toast } from '@/components/ui/toast';
 import { gaussianStateLabel } from '../gaussian-capture-state';
@@ -50,6 +51,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
   const state = useGaussianCaptureState(model);
   const label = gaussianStateLabel(state);
   const reload = useGaussianReload();
+  const [changingAxis, setChangingAxis] = useState(false);
   const fileSize = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
@@ -76,6 +78,22 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
           <Row icon={icon(Move3D)} label={t('gaussianCapture.placement')}>
             {t(capture.placementOrigin === 'explicit' ? 'gaussianCapture.placement.explicit' : 'gaussianCapture.placement.source')}
           </Row>
+          <div className="px-3 py-2 flex items-center justify-between gap-3">
+            <label className="text-xs text-zinc-500" htmlFor={`capture-up-axis-${model.id}`}>{t('gaussianCapture.upAxis')}</label>
+            <select id={`capture-up-axis-${model.id}`} className="text-xs bg-transparent border border-zinc-300 dark:border-zinc-700"
+              value={appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? capture.sourcePlacement ?? capture.placement : undefined, capture.upAxis)} disabled={changingAxis || state.state !== 'resident'}
+              onChange={(event) => {
+                const axis = event.target.value;
+                if (axis !== 'z' && axis !== 'y') return;
+                setChangingAxis(true);
+                void setGaussianCaptureUpAxis(model.id, axis).then((ok) => {
+                  if (!ok) toast.error(t('gaussianCapture.upAxis.failed'));
+                }).catch(() => toast.error(t('gaussianCapture.upAxis.failed'))).finally(() => setChangingAxis(false));
+              }}>
+              <option value="z">{t('gaussianCapture.upAxis.z')}</option>
+              <option value="y">{t('gaussianCapture.upAxis.y')}</option>
+            </select>
+          </div>
           <Row icon={icon(ShieldAlert)} label={t('gaussianCapture.calibration')}>{t('gaussianCapture.calibration.uncalibrated')}</Row>
           <Row icon={icon(Ruler)} label={t('gaussianCapture.scale')}>{t('gaussianCapture.scale.unknown')}</Row>
           <Row icon={icon(ScanLine)} label={t('gaussianCapture.rendererState')}>

@@ -25,6 +25,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const AXES = ['hierarchy', 'coherence', 'density', 'modelPrimacy', 'stateClarity', 'craft'];
+// The model is these scenes' subject; see COUNCIL.md's veto list for why selected-properties counts.
 const MODEL_SCENES = new Set(['loaded', 'isolated', 'selected-properties', 'mobile-loaded']);
 
 function parseArgs(argv) {

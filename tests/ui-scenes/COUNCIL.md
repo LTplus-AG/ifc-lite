@@ -32,8 +32,12 @@ long sessions on large models. They value:
 A candidate that violates any of these loses the round, whatever the votes:
 
 - `modelVisibleFraction` drops more than 0.03 below the baseline in a scene
-  where the scene does not itself open a panel (`loaded`, `isolated`,
-  `selected-properties`, `mobile-loaded`).
+  whose subject is the model rather than an extra panel: `loaded`,
+  `isolated`, `mobile-loaded`, and `selected-properties` (it shows the
+  properties panel, which is already the default right panel in `loaded`,
+  so it adds no chrome of its own). Scenes that open a further panel or a
+  dialog (`lists`, `drawing`, `command-palette`, ...) are judged by the
+  council instead.
 - `minFontPx` below 10, or `smallTextShare` (text under 11 px) rises more than
   0.05 above the baseline.
 - Any page error new against the baseline.

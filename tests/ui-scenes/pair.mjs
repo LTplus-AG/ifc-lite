@@ -44,6 +44,9 @@ function parseArgs(argv) {
     else if (key === '--seed') args.seed = Number(v);
     else throw new Error(`unknown argument ${key}`);
   }
+  for (const name of ['controls', 'seed']) {
+    if (!Number.isSafeInteger(args[name]) || args[name] < 0) throw new Error(`--${name} must be a non-negative integer`);
+  }
   if (!args.out || !args.key || !(args.solo || (args.a && args.b))) {
     throw new Error('usage: pair.mjs (--a <dir> --b <dir> | --solo <dir>) --out <packet> --key <key.json>');
   }

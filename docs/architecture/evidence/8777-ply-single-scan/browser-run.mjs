@@ -4,8 +4,9 @@
 // Drives a running Chrome over CDP; the file path is native to that Chrome's OS.
 // Usage: node browser-run.mjs <cdpPort> <viewerUrl> <windowsFilePath> load|cancel [cancelAfterSeconds]
 //   load:   time from handing the file to the viewer until streaming completes.
-//   cancel: click the status bar's Cancel button after N seconds, then time how
-//           long until the load is gone (no Cancel button, no Streaming phase).
+//   cancel: click the status bar's Cancel button after N seconds, then count the
+//           decode worker's file reads and time the last one. The button hides
+//           at once either way; the worker's reads show when the work stopped.
 import { chromium } from '@playwright/test';
 const [port, url, winPath, mode, after = '4'] = process.argv.slice(2);
 const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
@@ -25,6 +26,14 @@ let target = null;
 for (const id of nodeIds) { const { attributes } = await cdp.send('DOM.getAttributes', { nodeId: id }); const i = attributes.indexOf('accept'); if (i >= 0 && attributes[i + 1].includes('.ply')) { target = id; break; } }
 if (!target) throw new Error(`no model file input (found ${nodeIds.length} inputs)`);
 const cancel = page.getByRole('button', { name: /^cancel$/i }).first();
+// Count every Blob read in the decode worker (PLY reads 4 MiB windows).
+const countReads = () => {
+  const g = globalThis, read = Blob.prototype.arrayBuffer;
+  g.__reads = 0; g.__lastRead = 0;
+  Blob.prototype.arrayBuffer = function () { g.__reads++; g.__lastRead = performance.timeOrigin + performance.now(); return read.call(this); };
+};
+let decodeWorker = null;
+page.on('worker', (w) => { if (/decode/i.test(w.url())) { decodeWorker = w; void w.evaluate(countReads).catch(() => {}); } });
 const phase = async () => ((await page.evaluate(() => document.body.innerText)).match(/Streaming[^\n]*/g) ?? []).join(' | ');
 const t0 = Date.now();
 const s = () => +((Date.now() - t0) / 1000).toFixed(2);
@@ -36,12 +45,20 @@ if (mode === 'cancel') {
   result.cancelVisible = await cancel.isVisible();
   await cancel.click();
   const tc = Date.now();
-  while (Date.now() - tc < 10 * 60_000) {
-    if (!(await cancel.isVisible().catch(() => false)) && !(await phase())) break;
-    await page.waitForTimeout(50);
+  if (!decodeWorker) throw new Error('decode worker not found');
+  const reads = () => decodeWorker.evaluate(() => [globalThis.__reads, globalThis.__lastRead]);
+  const [atCancel] = await reads();
+  // Stop once the worker has read nothing for 5 s.
+  let last = await reads(), quietSince = Date.now();
+  while (Date.now() - quietSince < 5000 && Date.now() - tc < 10 * 60_000) {
+    await page.waitForTimeout(250);
+    const now = await reads();
+    if (now[0] !== last[0]) { last = now; quietSince = Date.now(); }
   }
   result.cancelledAt = Number(after);
-  result.settleSeconds = +((Date.now() - tc) / 1000).toFixed(2);
+  result.readsBeforeCancel = atCancel;
+  result.readsAfterCancel = last[0] - atCancel;
+  result.lastReadSecondsAfterCancel = last[1] > tc ? +((last[1] - tc) / 1000).toFixed(2) : 0;
 } else {
   let last = '', sawStreaming = false;
   while (Date.now() - t0 < 20 * 60_000) {

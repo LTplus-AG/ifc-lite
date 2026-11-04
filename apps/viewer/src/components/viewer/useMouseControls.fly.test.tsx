@@ -174,7 +174,8 @@ describe('useMouseControls right-button fly mode', () => {
           let measureUpdates = 0;
           const { canvas, camera } = mount({
             activeToolRef: { current: tool },
-            activeMeasurementRef: { current: { start: point, current: point, distance: 0 } },
+            // A pending measure start makes Shift+left finish it (#8771); with none, Shift+left pans.
+            activeMeasurementRef: { current: tool === 'measure' ? null : { start: point, current: point, distance: 0 } },
             updateMeasurement: () => { measureUpdates++; },
           });
           const position = camera.getPosition();

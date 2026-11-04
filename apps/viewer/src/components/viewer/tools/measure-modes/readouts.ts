@@ -76,7 +76,7 @@ export interface MeasureHintState {
  * The one hint line for the HUD's bottom-center region. In angle and radius
  * modes `activeMeasurement` is always null (the drag gate refuses to start
  * one), so those branches name the gesture that actually works instead of
- * falling through to "Drag to measure".
+ * falling through to "Click to set the start point".
  */
 export function measureHintKey(s: MeasureHintState): TranslationKey {
   switch (s.measureMode) {

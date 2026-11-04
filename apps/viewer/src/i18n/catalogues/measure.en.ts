@@ -110,8 +110,8 @@ export const measureEn = {
   'measure.hint.radiusActive':
     'Click to add a point on the arc · dbl-click/Enter to finish · Esc to cancel',
   'measure.hint.radiusStart': 'Click 3+ points on a circular edge',
-  'measure.hint.dragActive': 'Release to complete',
-  'measure.hint.dragStart': 'Drag to measure',
+  'measure.hint.dragActive': 'Click to set the end point · Shift for axis · Esc to cancel',
+  'measure.hint.dragStart': 'Click to set the start point',
 
   'measure.readout.live': 'Live',
   'measure.readout.last': 'Last',

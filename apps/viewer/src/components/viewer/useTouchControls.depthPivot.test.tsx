@@ -34,6 +34,9 @@ function rig() {
   camera.setPosition(0, -1600, 1200);
   camera.setTarget(0, 0, 0);
   const pivots: (Vec3 | null)[] = [];
+  const surfaces: (Vec3 | undefined)[] = [];
+  const zoom = camera.zoom.bind(camera);
+  camera.zoom = (...args: Parameters<Camera['zoom']>) => { surfaces.push(args[7] ? { ...args[7] } : undefined); zoom(...args); };
   const setOrbitCenter = camera.setOrbitCenter.bind(camera);
   camera.setOrbitCenter = (c) => { pivots.push(c ? { ...c } : null); setOrbitCenter(c); };
   const ground = (x: number, y: number): Vec3 | null => {
@@ -64,7 +67,7 @@ function rig() {
   };
   function Probe() { useTouchControls(params); return null; }
   render(<Probe />);
-  return { canvas, camera, pivots, raycasts, ground };
+  return { canvas, camera, pivots, raycasts, ground, surfaces };
 }
 
 function finger(canvas: HTMLCanvasElement, x: number, y: number): Touch {
@@ -80,7 +83,7 @@ const near = (a: Vec3 | null | undefined, b: Vec3 | null) =>
 
 describe('touch orbit pivot from the depth under the finger (#8769)', () => {
   const realRaf = globalThis.requestAnimationFrame;
-  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as typeof requestAnimationFrame; });
+  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as unknown as typeof requestAnimationFrame; });
   afterEach(() => {
     globalThis.requestAnimationFrame = realRaf;
     cleanup();
@@ -99,15 +102,47 @@ describe('touch orbit pivot from the depth under the finger (#8769)', () => {
     act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });
   });
 
-  it('leaves the pivot alone once the finger has orbited the camera', async () => {
+  it('adopts it for the rest of the gesture even once the finger is orbiting (no drag threshold on touch)', async () => {
     const r = rig();
+    const under = r.ground(250, 420);
     act(() => {
       r.canvas.dispatchEvent(touchEvent('touchstart', [finger(r.canvas, 250, 420)]));
       r.canvas.dispatchEvent(touchEvent('touchmove', [finger(r.canvas, 320, 400)]));
     });
+    await frame();
+    await frame();
+    assert.ok(near(r.pivots.at(-1), under), `pivot ${JSON.stringify(r.pivots.at(-1))} is the ground first touched`);
+    act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });
+  });
+
+  it('never applies a probe that lands after the finger lifted', async () => {
+    const r = rig();
+    act(() => {
+      r.canvas.dispatchEvent(touchEvent('touchstart', [finger(r.canvas, 250, 420)]));
+      r.canvas.dispatchEvent(touchEvent('touchend', []));
+    });
     const count = r.pivots.length;
     await frame();
+    await frame();
     assert.equal(r.pivots.length, count);
+  });
+
+  it('pinch zoom-in approaches the probed surface under the pinch, not a plain dolly', async () => {
+    const r = rig();
+    const two = (s: number) => [
+      { identifier: 1, target: r.canvas, clientX: 400 - s, clientY: 420 } as unknown as Touch,
+      { identifier: 2, target: r.canvas, clientX: 400 + s, clientY: 420 } as unknown as Touch,
+    ];
+    act(() => { r.canvas.dispatchEvent(touchEvent('touchstart', two(100))); });
+    for (let s = 104; s < 200; s += 4) {
+      act(() => { r.canvas.dispatchEvent(touchEvent('touchmove', two(s))); });
+      await frame();
+    }
     act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });
+    const used = r.surfaces.filter((p): p is Vec3 => p !== undefined);
+    assert.ok(used.length > 0, `no pinch step zoomed toward a surface (${r.surfaces.length} steps)`);
+    assert.ok(used.every((p) => Math.abs(p.z) < 1e-6), 'every surface used is the ground');
+    assert.ok(r.camera.getPosition().z > 0);
+    assert.equal(r.raycasts.length, 0);
   });
 });

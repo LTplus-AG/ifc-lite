@@ -274,6 +274,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // The surface under the cursor for zoom (#5393) and the orbit pivot: the
     // CPU raycast where affordable, else the depth probe (#8769, zoomSurface.ts).
     const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
+    let disposed = false; // a probe landing after unmount must not touch the camera
     const hoverPicker = createHoverPicker({
       owner: { canvas, renderer, getTool: () => activeToolRef.current, getPickOptions,
         isOwnerCurrent: () => rendererRef.current === renderer && hoverTooltipsEnabledRef.current && !mouseState.isDragging },
@@ -544,7 +545,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           // still a click (its pivot not yet shown) and nothing moved the camera.
           const pose = cameraPoseKey(camera);
           void pickSurface.probed?.(awaitProbe.x, awaitProbe.y).then((point) => {
-            if (!point || pendingOrbitPivot !== pending || cameraPoseKey(camera) !== pose) return;
+            if (!point || disposed || pendingOrbitPivot !== pending || cameraPoseKey(camera) !== pose) return;
             camera.setOrbitCenter(point);
             pending.point = point;
           });
@@ -848,6 +849,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('dblclick', handleDoubleClick);
 
     return () => {
+      disposed = true;
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();

@@ -63,6 +63,18 @@ export function isSurfaceRaycastGated(
  * depth under the point (`surfaceProbe.ts`, #8769), else null (plain zoom,
  * scene-centre pivot). Every gated pick also asks for a fresh probe there.
  */
+/** Identity of a visibility state: a new or resized hidden/isolated set is a new key. */
+const setIds = new WeakMap<object, number>();
+let nextSetId = 0;
+function visibilityKey(options: Pick<ZoomSurfacePickOptions, 'hiddenIds' | 'isolatedIds'>): string {
+  const id = (s: Set<number>) => {
+    let n = setIds.get(s);
+    if (n === undefined) setIds.set(s, (n = ++nextSetId));
+    return `${n}:${s.size}`;
+  };
+  return `${id(options.hiddenIds)}|${options.isolatedIds ? id(options.isolatedIds) : '-'}`;
+}
+
 export function createZoomSurfacePicker(
   renderer: ZoomSurfaceRenderer,
   camera: { getOrbitAnchorBounds(): unknown } & SurfaceProbeCamera,
@@ -75,15 +87,21 @@ export function createZoomSurfacePicker(
     gated = isSurfaceRaycastGated(renderer, camera, options.isStreaming);
     if (!gated) return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
     if (!probe) return null;
-    const point = probe.peek(x, y);
-    void probe.request(x, y);
+    const scene = visibilityKey(options);
+    const point = probe.peek(x, y, scene);
+    void probe.request(x, y, scene);
     return point;
   };
   pick.live = () => gated && probe !== null;
   pick.prime = (x, y) => {
-    if (probe && isSurfaceRaycastGated(renderer, camera, getPickOptions().isStreaming)) void probe.request(x, y);
+    const options = getPickOptions();
+    if (probe && isSurfaceRaycastGated(renderer, camera, options.isStreaming)) void probe.request(x, y, visibilityKey(options));
   };
-  pick.probed = (x, y) => (pick.live?.() && probe ? probe.request(x, y).then(() => probe.peek(x, y)) : Promise.resolve(null));
+  pick.probed = (x, y) => {
+    if (!pick.live?.() || !probe) return Promise.resolve(null);
+    const scene = visibilityKey(getPickOptions());
+    return probe.request(x, y, scene).then(() => probe.peek(x, y, scene));
+  };
   return pick;
 }
 
@@ -157,15 +175,16 @@ export function createCentreSurfaceZoom(
       return;
     }
     const now = Date.now();
-    const stale = !last || last.pose !== cameraPoseKey(camera) || now - last.pickedAt >= SURFACE_PICK_IDLE_MS;
+    let step = last && last.pose === cameraPoseKey(camera) && now - last.pickedAt < SURFACE_PICK_IDLE_MS ? last : null;
     // A live (probe) pick re-picks every step; a miss keeps the known point,
     // which the surface step left on the centre ray.
-    if (stale || pickSurface.live?.()) {
+    if (!step || pickSurface.live?.()) {
       const { width, height } = canvas.getBoundingClientRect();
       const point = width > 0 && height > 0 ? pickSurface(width / 2, height / 2) : null;
-      last = stale || !last ? { point, pose: '', pickedAt: now } : { ...last, point: point ?? last.point };
+      step = step ? { ...step, point: point ?? step.point } : { point, pose: '', pickedAt: now };
     }
-    camera.zoom(delta, false, undefined, undefined, undefined, undefined, false, last.point ?? undefined);
-    last.pose = cameraPoseKey(camera);
+    last = step;
+    camera.zoom(delta, false, undefined, undefined, undefined, undefined, false, step.point ?? undefined);
+    step.pose = cameraPoseKey(camera);
   };
 }

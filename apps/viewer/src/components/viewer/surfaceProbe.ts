@@ -51,9 +51,13 @@ export interface SurfaceProbe {
    * Probe the canvas point (CSS px) on the next frame. Resolves with that
    * probe's point (null for empty space or when superseded by nothing usable).
    */
-  request(x: number, y: number): Promise<SurfacePoint | null>;
-  /** The cached surface point under the canvas point, or null. Never blocks. */
-  peek(x: number, y: number): SurfacePoint | null;
+  request(x: number, y: number, scene?: string): Promise<SurfacePoint | null>;
+  /**
+   * The cached surface point under the canvas point, or null. Never blocks.
+   * `scene` keys what was visible (hidden/isolated sets): a point probed under
+   * another key may sit on an element since hidden, so it is not reused.
+   */
+  peek(x: number, y: number, scene?: string): SurfacePoint | null;
 }
 
 const probes = new WeakMap<object, SurfaceProbe>();
@@ -83,8 +87,8 @@ export function createSurfaceProbe(
     else setTimeout(run, 0);
   },
 ): SurfaceProbe {
-  let latest: { point: SurfacePoint; at: number } | null = null;
-  let pending: { x: number; y: number; waiters: Waiter[] } | null = null;
+  let latest: { point: SurfacePoint; at: number; scene: string } | null = null;
+  let pending: { x: number; y: number; scene: string; waiters: Waiter[] } | null = null;
   let busy = false; // scheduled or in flight
 
   const run = () => {
@@ -93,7 +97,7 @@ export function createSurfaceProbe(
     if (!job) { busy = false; return; }
     const settle = (point: SurfacePoint | null) => {
       // A miss clears the cache: the pixel the gestures will ask about is empty now.
-      latest = point ? { point, at: Date.now() } : null;
+      latest = point ? { point, at: Date.now(), scene: job.scene } : null;
       for (const w of job.waiters) w(point);
       if (pending) schedule(run); else busy = false;
     };
@@ -104,15 +108,15 @@ export function createSurfaceProbe(
   };
 
   return {
-    request(x, y) {
+    request(x, y, scene = '') {
       return new Promise((resolve) => {
         // The newest position wins; earlier callers hear its answer.
-        pending = { x, y, waiters: [...(pending?.waiters ?? []), resolve] };
+        pending = { x, y, scene, waiters: [...(pending?.waiters ?? []), resolve] };
         if (!busy) { busy = true; schedule(run); }
       });
     },
-    peek(x, y) {
-      if (!latest || Date.now() - latest.at >= SURFACE_PROBE_MAX_AGE_MS) return null;
+    peek(x, y, scene = '') {
+      if (!latest || latest.scene !== scene || Date.now() - latest.at >= SURFACE_PROBE_MAX_AGE_MS) return null;
       const { width, height } = getCanvas().getBoundingClientRect();
       if (!(width > 0 && height > 0)) return null;
       const screen = project(latest.point, width, height);

@@ -120,7 +120,7 @@ const near = (a: Vec3 | null | undefined, b: Vec3 | null, tol = 1e-3) =>
 
 describe('orbit pivot from the depth under the cursor on a large model (#8769)', () => {
   const realRaf = globalThis.requestAnimationFrame;
-  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as typeof requestAnimationFrame; });
+  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as unknown as typeof requestAnimationFrame; });
   afterEach(() => {
     globalThis.requestAnimationFrame = realRaf;
     while (mounted.length) {

@@ -38,7 +38,6 @@ export interface FrameDepthRecord {
 
 export class FrameDepthProbe {
   private frame: FrameDepthRecord | null = null;
-  private armed = false;
   private sampler: PickDepthSample | null = null;
   private readonly readbacks: PickerReadbackOwner;
 
@@ -51,14 +50,10 @@ export class FrameDepthProbe {
   }
 
   /**
-   * Whether the renderer should record frames. Nothing is recorded until the
-   * first probe, so a session that never needs one pays nothing per frame.
+   * Call after each completed frame's submit: one small snapshot. Recorded
+   * always, not only once probing starts: the viewer renders on demand, so a
+   * still camera would otherwise leave the first probes with no frame at all.
    */
-  get wanted(): boolean {
-    return this.armed;
-  }
-
-  /** Call after each completed frame's submit. */
   frameDrawn(record: FrameDepthRecord): void {
     this.frame = record;
   }
@@ -70,7 +65,6 @@ export class FrameDepthProbe {
    * a layout change since the frame makes its texels stale, so it is a miss.
    */
   async probe(x: number, y: number, cssWidth: number, cssHeight: number): Promise<Vec3 | null> {
-    this.armed = true;
     const frame = this.frame;
     if (!frame || this.readbacks.deviceLost) return null;
     if (Math.abs(frame.cssWidth - cssWidth) > 0.5 || Math.abs(frame.cssHeight - cssHeight) > 0.5) return null;

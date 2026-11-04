@@ -89,12 +89,10 @@ function drawnAt(rec: FrameDepthRecord, tx: number, ty: number, depth: number) {
 }
 
 describe('frame depth probe (#8769)', () => {
-  it('records nothing until asked, then answers from the last frame', async () => {
+  it('misses before the first frame, without touching the GPU', async () => {
     const gpu = fakeGpu(() => 0.01);
     const probe = new FrameDepthProbe(gpu.device, () => texture(), 1);
-    assert.equal(probe.wanted, false, 'a session that never probes pays nothing per frame');
     assert.equal(await probe.probe(10, 10, CSS_W, CSS_H), null, 'no frame recorded yet');
-    assert.equal(probe.wanted, true, 'the first probe arms recording');
     assert.equal(gpu.reads.length, 0);
   });
 

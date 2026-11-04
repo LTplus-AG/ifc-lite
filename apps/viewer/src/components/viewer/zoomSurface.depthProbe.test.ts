@@ -57,9 +57,10 @@ function site(opts: SiteOptions = {}) {
       probeSurface: async (x: number, y: number) => { probes.push([x, y]); return ground(x, y); },
     }),
   };
-  const getPickOptions = () => ({ isStreaming: opts.streaming ?? false, hiddenIds: new Set<number>(), isolatedIds: null });
+  const visibility = { hiddenIds: new Set<number>(), isolatedIds: null as Set<number> | null };
+  const getPickOptions = () => ({ isStreaming: opts.streaming ?? false, ...visibility });
   const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
-  return { canvas, camera, renderer, raycasts, probes, pickSurface, getPickOptions };
+  return { canvas, camera, renderer, raycasts, probes, pickSurface, getPickOptions, visibility };
 }
 
 function wheel(x: number, y: number): WheelZoomEvent {
@@ -82,7 +83,7 @@ async function zoomIn(s: ReturnType<typeof site>, n: number): Promise<number[]> 
 
 describe('wheel zoom on a large-extent site stops at the ground (#8769)', () => {
   const realRaf = globalThis.requestAnimationFrame;
-  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as typeof requestAnimationFrame; });
+  beforeEach(() => { globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as unknown as typeof requestAnimationFrame; });
   afterEach(() => { globalThis.requestAnimationFrame = realRaf; });
 
   it('without a depth probe the gated zoom is a plain dolly that flies through the ground (the defect)', async () => {
@@ -137,6 +138,20 @@ describe('wheel zoom on a large-extent site stops at the ground (#8769)', () => 
     s.camera.setPosition(300, -1600, 1200); // panned: the old point left the cursor
     s.camera.setTarget(300, 0, 0);
     assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null);
+  });
+
+  it('drops a probed point once the hidden or isolated set changed (it may sit on a hidden element)', async () => {
+    const s = site();
+    s.pickSurface.prime?.(CURSOR.x, CURSOR.y);
+    await frame();
+    assert.ok(s.pickSurface(CURSOR.x, CURSOR.y));
+    await frame();
+    s.visibility.hiddenIds.add(7); // hidden in place, as the store's set mutates
+    assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null, 'the probe from before the hide is not reused');
+    await frame();
+    assert.ok(s.pickSurface(CURSOR.x, CURSOR.y), 'the next probe, under the new visibility, is');
+    s.visibility.isolatedIds = new Set([1]);
+    assert.equal(s.pickSurface(CURSOR.x, CURSOR.y), null, 'isolation is a new visibility too');
   });
 
   it('coalesces probes to one readback in flight, answering the newest position', async () => {

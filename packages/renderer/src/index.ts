@@ -3075,7 +3075,7 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
-            if (this.depthProbe?.wanted) {
+            if (this.depthProbe) {
                 const css = this.canvasCssSize.read();
                 this.depthProbe.frameDrawn({ snapshot: relativeToEyeFrame.snapshot(), width: this.canvas.width, height: this.canvas.height, cssWidth: css.width, cssHeight: css.height });
             }
@@ -3171,8 +3171,8 @@ export class Renderer {
      * nothing: it reads one texel of that frame's depth, so it costs the same
      * on any model and is what navigation uses where the CPU raycast is too
      * expensive. Only opaque surfaces write depth, so it never stops on an
-     * overlay or on glass. The first call arms frame recording and resolves
-     * null; later calls answer from the most recent frame.
+     * overlay or on glass. Null before the first frame and after a resize
+     * until the next one.
      */
     async probeSurface(x: number, y: number): Promise<{ x: number; y: number; z: number } | null> {
         if (!this.pickPathAlive() || !this.depthProbe) return null;

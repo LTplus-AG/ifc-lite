@@ -93,6 +93,9 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // on every move, and a raycast per touchmove is what the gate is there to
     // avoid. Cleared when a new two-finger gesture starts.
     let pinchSurface: { point: SurfacePoint | null; pose: string } | null = null;
+    // Each pivot pick (a new one-finger gesture) supersedes a probe still in flight.
+    let pivotGesture = 0;
+    let disposed = false;
     const longPress = createTouchLongPress((x, y) => {
       void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
         .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
@@ -126,12 +129,13 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // the mouse orbit fallback in useMouseControls.
       camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, rect.width, rect.height));
       if (!pickSurface.live?.()) return;
-      // A finger has no hover to prime the probe: adopt its answer when it
-      // lands, if the same single finger is still down and has not moved the camera.
-      const pose = cameraPoseKey(camera);
+      // A finger has no hover to prime the probe and no drag threshold, so it
+      // is usually orbiting before the probe lands: adopt the answer for the
+      // rest of this one-finger gesture. Orbit steps are incremental, so a new
+      // pivot changes the rotation from here on and never jumps the camera.
+      const gesture = ++pivotGesture;
       void pickSurface.probed?.(tx, ty).then((point) => {
-        if (point && touchState.touches.length === 1 && touchState.touches[0]?.identifier === touch.identifier
-          && cameraPoseKey(camera) === pose) camera.setOrbitCenter(point);
+        if (point && !disposed && gesture === pivotGesture && touchState.touches.length === 1) camera.setOrbitCenter(point);
       });
     };
 
@@ -293,6 +297,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
       if (touchState.touches.length === 0) {
         camera.stopInertia();
+        pivotGesture++; // the gesture ended: a probe still in flight is moot
 
         // Tap-to-select: detect quick tap without significant movement
         const tapDuration = Date.now() - touchState.tapStartTime;
@@ -357,6 +362,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       }
       touchState.touches = [];
       touchState.multiTouch = false;
+      pivotGesture++;
     };
 
     // Use { passive: false } to ensure preventDefault() works on mobile
@@ -376,6 +382,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     document.addEventListener('touchmove', preventOverscroll, { passive: false });
 
     return () => {
+      disposed = true;
       invalidateSelectionPick(canvas);
       longPress.dispose();
       canvas.removeEventListener('touchstart', handleTouchStart);

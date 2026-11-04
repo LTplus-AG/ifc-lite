@@ -164,9 +164,14 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
         }
       }
       if (stride > 1 || consumedProbe || originOffset !== opts.originOffset) {
-        source.close();
-        source = probeFactory({ format: opts.format, blob: opts.blob, label: opts.label, stride, originOffset });
-        info = await source.open(composed);
+        if (source.reopen) {
+          // Keeps what the probe learnt: a PLY is not scanned again (#8777).
+          info = await source.reopen({ stride, originOffset }, composed);
+        } else {
+          source.close();
+          source = probeFactory({ format: opts.format, blob: opts.blob, label: opts.label, stride, originOffset });
+          info = await source.open(composed);
+        }
       }
 
       opts.onOpen?.({ ...info, stride, originOffset });

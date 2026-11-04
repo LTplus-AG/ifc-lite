@@ -42,6 +42,7 @@ export {
 export type {
   StreamingPointSource,
   PointSourceInfo,
+  PointSourceReopenOptions,
   PointSourceSpatialMetadata,
   DownsampleHint,
 } from './streaming/types.js';

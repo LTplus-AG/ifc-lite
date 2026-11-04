@@ -57,12 +57,6 @@ export function isSurfaceRaycastGated(
   return isStreaming || camera.getOrbitAnchorBounds() !== null || isPivotRaycastTooExpensive(renderer.getScene());
 }
 
-/**
- * The viewer's surface pick, shared by zoom and the orbit pivot: the CPU
- * raycast where {@link isSurfaceRaycastGated} allows it, else the last frame's
- * depth under the point (`surfaceProbe.ts`, #8769), else null (plain zoom,
- * scene-centre pivot). Every gated pick also asks for a fresh probe there.
- */
 /** Identity of a visibility state: a new or resized hidden/isolated set is a new key. */
 const setIds = new WeakMap<object, number>();
 let nextSetId = 0;
@@ -75,6 +69,12 @@ function visibilityKey(options: Pick<ZoomSurfacePickOptions, 'hiddenIds' | 'isol
   return `${id(options.hiddenIds)}|${options.isolatedIds ? id(options.isolatedIds) : '-'}`;
 }
 
+/**
+ * The viewer's surface pick, shared by zoom and the orbit pivot: the CPU
+ * raycast where {@link isSurfaceRaycastGated} allows it, else the last frame's
+ * depth under the point (`surfaceProbe.ts`, #8769), else null (plain zoom,
+ * scene-centre pivot). Every gated pick also asks for a fresh probe there.
+ */
 export function createZoomSurfacePicker(
   renderer: ZoomSurfaceRenderer,
   camera: { getOrbitAnchorBounds(): unknown } & SurfaceProbeCamera,

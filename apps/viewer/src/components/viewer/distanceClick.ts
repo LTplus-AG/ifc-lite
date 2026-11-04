@@ -50,10 +50,12 @@ export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoi
  */
 export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint): boolean {
   const active = ctx.activeMeasurementRef.current;
-  if (!active || isDuplicateClickPoint(active.start, end)) return false;
+  if (!active) return false;
+  // Finished or rejected, this pick's edge lock must not pull the next one (see beginDistance).
+  ctx.clearEdgeLock();
+  if (isDuplicateClickPoint(active.start, end)) return false;
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
-  ctx.clearEdgeLock();
   return true;
 }
 

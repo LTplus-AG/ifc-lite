@@ -365,6 +365,20 @@ describe('a start never inherits the edge lock of its own pick (#8771)', () => {
     assert.ok(near(s().measurements[0].distance, 3), `distance ${s().measurements[0].distance}, expected 3`);
   });
 
+  it('a rejected retap on the start leaves no lock to pull the next tap back', () => {
+    const { canvas, params } = mountMagnetic();
+    const ctx = {
+      ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),
+      mouseState: params.mouseStateRef.current,
+    } as unknown as MouseHandlerContext;
+    act(() => handleMeasureTap(ctx, 202, 300));
+    act(() => handleMeasureTap(ctx, 201, 300));
+    assert.equal(s().measurements.length, 0, 'a retap on the start is no 0 m measurement');
+    act(() => handleMeasureTap(ctx, 500, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: the rejected retap\'s edge lock pulled the next tap back onto the start');
+    assert.ok(near(s().measurements[0].distance, 3), `distance ${s().measurements[0].distance}, expected 3`);
+  });
+
   it('a second click with no hover in between measures to where it was clicked', () => {
     const { canvas } = mountMagnetic();
     click(canvas, 202, 300);

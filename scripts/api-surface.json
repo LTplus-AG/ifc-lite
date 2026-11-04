@@ -9207,6 +9207,7 @@
     "PointCloudBBox: interface",
     "PointNormalState: type",
     "PointSourceInfo: interface",
+    "PointSourceReopenOptions: interface",
     "PointSourceSpatialMetadata: interface",
     "PointsArrayAttribute: interface",
     "PointsBase64Attribute: interface",

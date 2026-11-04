@@ -22,13 +22,20 @@ export interface PlyStreamInstrumentation {
   onOutputAllocation?: (pointCapacity: number) => void;
 }
 
+/** What one pass over a PLY body learns; independent of stride and origin. */
+export interface PlyBoundsScan {
+  /** Bounds in the file's own coordinates, before any origin offset. */
+  bbox: PointCloudBBox;
+  normalState: PointNormalState;
+  floatColorsUseByteRange: boolean;
+}
+
 export async function scanPlyBounds(
   blob: Blob,
   header: PlyHeader,
   layout: PlyVertexLayout,
-  origin: readonly [number, number, number] | undefined,
   signal?: AbortSignal,
-): Promise<{ bbox: PointCloudBBox; normalState: PointNormalState; floatColorsUseByteRange: boolean }> {
+): Promise<PlyBoundsScan> {
   if (!Number.isSafeInteger(layout.vertex.count) || layout.vertex.count < 0) {
     throw new Error(`PLY: invalid vertex count ${layout.vertex.count}`);
   }
@@ -46,12 +53,12 @@ export async function scanPlyBounds(
       const parts = line.split(/\s+/);
       if (layout.vertex.hasListProperty) {
         const values = parseAsciiVariableRow(parts, layout.vertex.propertyOrder, row);
-        extendBounds(bounds, (values.get('x') ?? Number.NaN) - (origin?.[0] ?? 0), (values.get('y') ?? Number.NaN) - (origin?.[1] ?? 0), (values.get('z') ?? Number.NaN) - (origin?.[2] ?? 0));
+        extendBounds(bounds, values.get('x') ?? Number.NaN, values.get('y') ?? Number.NaN, values.get('z') ?? Number.NaN);
         normalState = observeValues(values, normalState);
         floatColorsUseByteRange ||= valuesUseByteColors(values, channels);
       } else {
         requireColumns(parts, layout.vertex.properties.length, row);
-        extendBounds(bounds, Number(parts[indices[0]]) - (origin?.[0] ?? 0), Number(parts[indices[1]]) - (origin?.[1] ?? 0), Number(parts[indices[2]]) - (origin?.[2] ?? 0));
+        extendBounds(bounds, Number(parts[indices[0]]), Number(parts[indices[1]]), Number(parts[indices[2]]));
         normalState = observeAsciiRow(parts, layout, channels, normalState);
         floatColorsUseByteRange ||= asciiUsesByteColors(parts, layout, channels);
       }
@@ -61,7 +68,7 @@ export async function scanPlyBounds(
       const cursor = new BinaryPlyRowCursor(blob, header.bodyOffset, header.format === 'binary_little_endian');
       for (let row = 0; row < layout.vertex.count; row++) {
         const values = await cursor.row(layout.vertex.propertyOrder, row, signal);
-        extendBounds(bounds, (values.get('x') ?? Number.NaN) - (origin?.[0] ?? 0), (values.get('y') ?? Number.NaN) - (origin?.[1] ?? 0), (values.get('z') ?? Number.NaN) - (origin?.[2] ?? 0));
+        extendBounds(bounds, values.get('x') ?? Number.NaN, values.get('y') ?? Number.NaN, values.get('z') ?? Number.NaN);
         normalState = observeValues(values, normalState);
         floatColorsUseByteRange ||= valuesUseByteColors(values, channels);
       }
@@ -80,7 +87,7 @@ export async function scanPlyBounds(
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       for (let row = 0; row < count; row++) {
         const base = row * recordSize;
-        extendBinaryBounds(bounds, view, base, layout, header, origin);
+        extendBinaryBounds(bounds, view, base, layout, header);
         normalState = observeBinaryRow(view, base, layout, header, normalState);
         floatColorsUseByteRange ||= binaryUsesByteColors(view, base, layout, channels, header);
       }
@@ -280,9 +287,9 @@ function writeAsciiRow(output: DecodedPointChunk, dst: number, parts: string[], 
   if (output.intensities) output.intensities[dst] = clampIntensity(Number(parts[columns.intensity]));
 }
 
-function extendBinaryBounds(bounds: PointCloudBBox, view: DataView, base: number, layout: PlyVertexLayout, header: PlyHeader, origin?: readonly [number, number, number]): void {
+function extendBinaryBounds(bounds: PointCloudBBox, view: DataView, base: number, layout: PlyVertexLayout, header: PlyHeader): void {
   const le = header.format === 'binary_little_endian';
-  extendBounds(bounds, readPlyScalar(view, base + layout.xProp.offset, layout.xProp, le) - (origin?.[0] ?? 0), readPlyScalar(view, base + layout.yProp.offset, layout.yProp, le) - (origin?.[1] ?? 0), readPlyScalar(view, base + layout.zProp.offset, layout.zProp, le) - (origin?.[2] ?? 0));
+  extendBounds(bounds, readPlyScalar(view, base + layout.xProp.offset, layout.xProp, le), readPlyScalar(view, base + layout.yProp.offset, layout.yProp, le), readPlyScalar(view, base + layout.zProp.offset, layout.zProp, le));
 }
 
 function findChannels(layout: PlyVertexLayout): Channels {

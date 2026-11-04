@@ -175,6 +175,14 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
 
   showWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    // Hierarchy's home is the left slot (#1267), as every rail/palette entry
+    // point already routes it. Programmatic callers (tours, deep links, layout
+    // presets) used to dock a second copy of the tree in the right pane next to
+    // the left one (#8802); reveal the left slot instead.
+    if (panel === 'hierarchy') {
+      get().setLeftPanelCollapsed(false);
+      return;
+    }
     const alreadyDocked = isBottomPanel(panel) && isBottomPanelDocked(get(), panel);
     // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);

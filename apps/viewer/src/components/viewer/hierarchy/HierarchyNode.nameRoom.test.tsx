@@ -7,7 +7,7 @@
  * ("0…", "D.. A"), because every other part of the row was fixed-width and the
  * name was the only part that could shrink. The rules pinned here, on the
  * rendered row:
- *  - the indent step is 12 px per level, not 16;
+ *  - the indent step is 10 px per level (16 before #5394, 12 before #8802);
  *  - the visibility toggle overlays the type icon instead of reserving a slot
  *    of its own while invisible;
  *  - the element-count badge yields below an 18rem tree (container query);
@@ -54,8 +54,17 @@ function mountRow(node: TreeNode, nodeHidden = false): HTMLElement {
 }
 
 describe('HierarchyNode leaves the storey name room (#5394)', () => {
-  it('indents 12 px per level', () => {
-    assert.equal(mountRow(storey()).style.paddingLeft, `${3 * 12 + 8}px`);
+  it('indents 10 px per level', () => {
+    assert.equal(mountRow(storey()).style.paddingLeft, `${3 * 10 + 6}px`);
+  });
+
+  it('keeps the distinguishing end of a long name visible (#8802)', () => {
+    const name = 'house - outer wall - house right';
+    const row = mountRow(storey({ name, type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined }));
+    const tail = [...row.querySelectorAll('span')].find((s) => s.textContent === ' house right');
+    assert.ok(tail, `the tail renders on its own: ${row.innerHTML}`);
+    assert.ok(tail.className.split(/\s+/).includes('shrink-0'), 'the tail never shrinks');
+    assert.ok(row.textContent?.includes(name), 'head and tail concatenate to the exact name');
   });
 
   it('overlays the visibility toggle on the type icon rather than reserving a slot', () => {

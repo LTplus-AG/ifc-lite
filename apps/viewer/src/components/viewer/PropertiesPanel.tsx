@@ -2,21 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
-import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, Box, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
 import { ModelBadge } from './ModelBadge';
-import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
@@ -34,7 +30,6 @@ import type { ZoneSet } from '@/lib/zones';
 import { effectiveMaterials, effectiveMaterialProperties } from './properties/effectiveMaterials';
 import { useInheritedTypeQuantities } from './properties/useInheritedTypeQuantities';
 import { useCurrentProjectUnits } from './properties/useCurrentProjectUnits';
-import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
 import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
@@ -60,10 +55,10 @@ import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
-import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
+import { EntityHeader } from './properties/EntityHeader';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
-import { EntityHeaderActions } from './properties/EntityHeaderActions';
+import { EntityPositionSection } from './properties/EntityPositionSection';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -79,10 +74,9 @@ import { PropertyFindBox } from './properties/PropertyFindBox';
 import { AssociationAttributeSearchCard, findAssociationAttributes } from './properties/associationAttributeSearch';
 import { associationDisclosureId } from './properties/associationDisclosureId';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
-import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
+import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorGroupLabel, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './properties/inspector-ui';
 import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
-import { useCopyValue } from './properties/useCopyValue';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 
@@ -145,9 +139,6 @@ export function PropertiesPanel() {
   }, [model, selectedEntity]);
 
   const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
-  const { copiedKey, copy } = useCopyValue(); // the panel's one clipboard path (#5900)
-  const copied = copiedKey === 'globalId';
-  const [coordOpen, setCoordOpen] = usePersistentDisclosure('coordinates', false);
   const [find, setFind] = useState('');
 
   // Inline property editing is gated by the global edit-mode pill in
@@ -1170,202 +1161,72 @@ export function PropertiesPanel() {
   const entityGlobalId = renderedEntityGlobalId;
 
   return (
-    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-      {/* Entity Header */}
-      <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="p-2 border-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.1)]">
-            <Building2 className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
-          </div>
-          <div className="flex-1 min-w-0 pt-0.5">
-            <div className="flex items-start gap-2">
-              <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100 min-w-0">
-                {entityName || `${entityType}`}
-              </h3>
-              {/* Issue #540: indicate that the wall solid the user is
-                  looking at represents aggregated multilayer parts. We
-                  over-trigger on any IfcWall* class instead of probing
-                  the aggregation graph — the chip is cheap and
-                  informative, and walls that aren't actually layered
-                  simply confirm the user's selection is the parent. */}
-              {mergeLayersActive && entityType?.toLowerCase().startsWith('ifcwall') && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 rounded-sm px-1.5 py-0 text-2xs font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
-                    >
-                      <Layers2 className="h-2.5 w-2.5" />
-                      {t('properties.panel.layersMergedBadge')}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t('properties.panel.layersMergedTooltip')}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{entityType}</p>
-            {/* Show associated type entity for occurrences */}
-            {!renderedIsTypeEntity && renderedTypeProperties && (
-              <p className="text-2xs font-mono text-indigo-500 dark:text-indigo-400 truncate" title={`${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: ${renderedTypeProperties.typeName}`}>
-                <Building2 className="inline h-3 w-3 mr-1 -mt-0.5" />
-                {activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: {renderedTypeProperties.typeName}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-1 shrink-0">
-            <EntityHeaderActions />
-            {/* Display-unit converter (issue #1573 proposal 2) — covers both
-                the Properties and Quantities tabs below, so it lives in the
-                shared header rather than inside either TabsContent. */}
-            <UnitDisplayControl />
-          </div>
-        </div>
-
-        {/* GlobalId */}
-        {entityGlobalId && (
-          <div className={`flex items-center gap-0 border transition-colors duration-200 ${
-            copied
-              ? 'border-emerald-400 dark:border-emerald-600'
-              : 'border-zinc-200 dark:border-zinc-800'
-          }`}>
-            <code className="flex-1 text-2xs bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
-              {entityGlobalId}
-            </code>
-            <IconButton
-              label={t(ACTION_NAME_KEYS.copyGlobalId)}
-              size="icon-xs"
-              className={`h-6 w-6 rounded-none border-l transition-all duration-200 ${
-                copied
-                  ? 'border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
-                  : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-950'
-              }`}
-              onClick={() => copy(entityGlobalId, 'globalId')}
-            >
-              {copied ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <Copy className="h-3 w-3 text-zinc-600 dark:text-zinc-400" />
-              )}
-            </IconButton>
-          </div>
-        )}
-
-        {/* Spatial Location */}
+    <div className="h-full flex flex-col bg-background">
+      <EntityHeader
+        name={entityName}
+        entityType={entityType}
+        typeLine={!renderedIsTypeEntity && renderedTypeProperties ? `${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: ${renderedTypeProperties.typeName}` : null}
+        layersMerged={mergeLayersActive && entityType?.toLowerCase().startsWith('ifcwall')}
+        globalId={entityGlobalId}
+      >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
-
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
-
-        {/* World coordinates + Georeferencing — single consolidated section */}
+        {/* World coordinates + Georeferencing: one Position row with a disclosure */}
         {(entityCoordinates || renderedGeoref || editMode) && (
-          <Collapsible open={coordOpen} onOpenChange={setCoordOpen}>
-            <CollapsibleTrigger className="flex items-center gap-2 w-full text-xs border border-teal-500/30 px-2 py-1.5 text-teal-800 dark:text-teal-400 min-w-0 text-left group/coord">
-              <Crosshair className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-bold uppercase tracking-wide shrink-0">{t('properties.panel.worldCoordinates')}</span>
-              {!coordOpen && (
-                <>
-                  {entityCoordinates && (
-                    <span className="font-mono text-2xs text-teal-600/70 dark:text-teal-500/70 truncate min-w-0 flex-1 tabular-nums">
-                      <CoordVal axis="E" value={entityCoordinates.worldZup.center.x} />{' '}
-                      <CoordVal axis="N" value={entityCoordinates.worldZup.center.y} />{' '}
-                      <CoordVal axis="Z" value={entityCoordinates.worldZup.center.z} />
-                    </span>
-                  )}
-                  {renderedGeoref?.projectedCRS?.name && (
-                    <span className="font-mono text-2xs text-teal-500/60 shrink-0">{renderedGeoref.projectedCRS.name}</span>
-                  )}
-                  <span className="text-2xs text-teal-500/0 group-hover/coord:text-teal-500/40 transition-colors shrink-0">{t('properties.panel.worldCoordinatesDetails')}</span>
-                </>
-              )}
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              {entityCoordinates && (
-                <div className="px-2 py-1.5 space-y-0.5">
-                  <CoordRow
-                    label=""
-                    values={[
-                      { axis: 'E', value: entityCoordinates.worldZup.center.x },
-                      { axis: 'N', value: entityCoordinates.worldZup.center.y },
-                      { axis: 'Z', value: entityCoordinates.worldZup.center.z },
-                    ]}
-                    primary
-                    copyName={t('properties.panel.worldCoordinates')}
-                  />
-                  <CoordRow
-                    label="Local"
-                    values={[
-                      { axis: 'X', value: entityCoordinates.local.center.x },
-                      { axis: 'Y', value: entityCoordinates.local.center.y },
-                      { axis: 'Z', value: entityCoordinates.local.center.z },
-                    ]}
-                  />
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
-                    <span className="font-mono text-2xs text-muted-foreground tabular-nums">
-                      {t('properties.panel.sizeDisplay', { x: (entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2), y: (entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2), z: (entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2) })}
-                    </span>
-                  </div>
-                </div>
-              )}
-              <GeoreferencingPanel
-                georef={renderedGeoref}
-                modelId={selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId)}
-                enableEditing={editMode}
-                schemaVersion={activeDataStore?.schemaVersion}
-                coordinateInfo={(model?.geometryResult ?? geometryResult)?.coordinateInfo}
-                geometryResult={model?.geometryResult ?? geometryResult}
-                lengthUnitScale={lengthUnitScale}
-                storeyElevations={activeDataStore?.spatialHierarchy?.storeyElevations}
-              />
-            </CollapsibleContent>
-          </Collapsible>
+          <EntityPositionSection
+            coordinates={entityCoordinates}
+            crsName={renderedGeoref?.projectedCRS?.name}
+            georefPanel={{
+              georef: renderedGeoref,
+              modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
+              enableEditing: editMode,
+              schemaVersion: activeDataStore?.schemaVersion,
+              coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
+              geometryResult: model?.geometryResult ?? geometryResult,
+              lengthUnitScale,
+              storeyElevations: activeDataStore?.spatialHierarchy?.storeyElevations,
+            }}
+          />
         )}
-
-        {/* Model Source (when multiple models loaded) - below storey, less prominent */}
+        {/* Model Source (when multiple models loaded) */}
         {models.size > 1 && model && (
-          <div className="px-2 py-1">
+          <div className="px-3 py-1">
             <ModelBadge modelId={model.id} className="gap-2 text-2xs max-w-full" />
           </div>
         )}
-      </div>
+      </EntityHeader>
 
       <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length + foundInheritedQuantities.length > 0} />
 
       {/* IFC Attributes */}
       {foundAttributes.length > 0 && (
-        <PersistentCollapsible id="attributes" forceOpen={!!findQuery} className="border-b">
-          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
-            <Tag className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
-            {editMode && <PenLine className="h-3 w-3 text-overlay-accent ml-1" />}
-            <span className="text-xs text-muted-foreground ml-auto">{foundAttributes.length}</span>
-            <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
-          </CollapsibleTrigger>
+        <PersistentCollapsible id="attributes" forceOpen={!!findQuery} className={INSPECTOR_SECTION}>
+          <InspectorSectionTrigger
+            title={t('properties.panel.attributesHeading')}
+            trailing={editMode ? <PenLine className="h-3 w-3 text-overlay-accent shrink-0" /> : undefined}
+            count={foundAttributes.length}
+          />
           <CollapsibleContent>
-            <div className="divide-y border-t">
+            <div className={INSPECTOR_ROWS}>
               {foundAttributes.map((attr) => (
-                <div key={attr.name} className="group/copyrow grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
-                  <span className="text-muted-foreground truncate" title={attr.name}><PropertySearchHighlight text={attr.name} query={findQuery} /></span>
-                  <div className="flex items-center gap-1 min-w-0">
-                    {editMode && selectedEntity && !findQuery ? (
-                      <AttributeEditorField
-                        modelId={selectedEntity.modelId}
-                        entityId={selectedEntity.expressId}
-                        attrName={attr.name}
-                        currentValue={String(attr.value)}
-                      />
-                    ) : (
-                      <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                        <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
-                          <PropertySearchHighlight text={String(attr.value)} query={findQuery} />
-                        </span>
-                      </div>
-                    )}
-                    <CopyValueButton name={attr.name} value={String(attr.value)} />
-                  </div>
-                </div>
+                <InspectorRow
+                  key={attr.name}
+                  label={attr.name}
+                  labelNode={<PropertySearchHighlight text={attr.name} query={findQuery} />}
+                  value={String(attr.value)}
+                  mono={attr.name === 'Tag' || isNumericDisplay(String(attr.value))}
+                  valueClassName={editMode && selectedEntity && !findQuery ? 'overflow-visible whitespace-normal' : undefined}
+                >
+                  {editMode && selectedEntity && !findQuery ? (
+                    <AttributeEditorField
+                      modelId={selectedEntity.modelId}
+                      entityId={selectedEntity.expressId}
+                      attrName={attr.name}
+                      currentValue={String(attr.value)}
+                    />
+                  ) : <PropertySearchHighlight text={String(attr.value)} query={findQuery} />}
+                </InspectorRow>
               ))}
             </div>
           </CollapsibleContent>
@@ -1374,19 +1235,14 @@ export function PropertiesPanel() {
 
       {/* Spatial Containment - for spatial containers (Project, Site, Building, Storey) */}
       {foundStructure && foundStructure.length > 0 && (
-        <PersistentCollapsible id="structure" forceOpen={!!findQuery} className="border-b">
-          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
-            <Layers className="h-4 w-4 text-emerald-600" />
-            <span className="font-medium text-sm">{t('properties.panel.structureHeading')}</span>
-            <span className="text-xs text-muted-foreground ml-auto">{foundStructure.length}</span>
-            <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
-          </CollapsibleTrigger>
+        <PersistentCollapsible id="structure" forceOpen={!!findQuery} className={INSPECTOR_SECTION}>
+          <InspectorSectionTrigger title={t('properties.panel.structureHeading')} count={foundStructure.length} />
           <CollapsibleContent>
-            <div className="divide-y border-t">
+            <div className={INSPECTOR_ROWS}>
               {foundStructure.map((item) => (
-                <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                <div key={item.label} className="inspector-kv inspector-kv-sub min-h-7 gap-x-2 px-3 text-xs">
                   <span className="text-muted-foreground truncate" title={item.label}><PropertySearchHighlight text={item.label} query={findQuery} /></span>
-                  <span className="font-medium font-mono"><PropertySearchHighlight text={String(item.value)} query={findQuery} /></span>
+                  <span className="truncate font-mono tabular-nums"><PropertySearchHighlight text={String(item.value)} query={findQuery} /></span>
                 </div>
               ))}
             </div>
@@ -1398,20 +1254,15 @@ export function PropertiesPanel() {
           element falls in, per zone set. Read-only: editing zones happens in
           the Zones panel, not here. */}
       {foundZones && foundZones.length > 0 && (
-        <PersistentCollapsible id="zones" forceOpen={!!findQuery} className="border-b">
-          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
-            <Box className="h-4 w-4 text-amber-600" />
-            <span className="font-medium text-sm">{t('properties.panel.zonesHeading')}</span>
-            <span className="text-xs text-muted-foreground ml-auto">{foundZones.length}</span>
-            <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
-          </CollapsibleTrigger>
+        <PersistentCollapsible id="zones" forceOpen={!!findQuery} className={INSPECTOR_SECTION}>
+          <InspectorSectionTrigger title={t('properties.panel.zonesHeading')} count={foundZones.length} />
           <CollapsibleContent>
-            <div className="divide-y border-t">
+            <div className={INSPECTOR_ROWS}>
               {foundZones.map((item) => (
                 <div key={item.setId}>
-                  <div className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                  <div className="inspector-kv inspector-kv-sub min-h-7 gap-x-2 px-3 text-xs">
                     <span className="text-muted-foreground truncate" title={item.label}><PropertySearchHighlight text={item.label} query={findQuery} /></span>
-                    <span className="font-medium font-mono truncate" title={item.value}><PropertySearchHighlight text={item.value} query={findQuery} /></span>
+                    <span className="truncate" title={item.value}><PropertySearchHighlight text={item.value} query={findQuery} /></span>
                   </div>
                   {/* Only a straddler has anything to apportion (#2508): an
                       element wholly inside one zone contributes its whole
@@ -1449,7 +1300,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="properties"
             title={t('properties.panel.tab.properties')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <FileText className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.properties')}</span>
@@ -1457,7 +1308,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="quantities"
             title={t('properties.panel.tab.quantities')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
@@ -1465,7 +1316,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
@@ -1484,21 +1335,21 @@ export function PropertiesPanel() {
           </TabsTrigger>
         </TabsList>
 
-        <ScrollArea className="flex-1 bg-white dark:bg-black">
-          <TabsContent value="properties" className="m-0 p-3 overflow-hidden">
+        <ScrollArea className="flex-1 bg-background">
+          <TabsContent value="properties" className="m-0 p-0 overflow-hidden">
             {/* Task edit card — renders when exactly one Gantt task is
                 selected. Shown above any entity properties because the
                 user's attention shifted to editing the task, not the 3D
                 element. Other tabs (quantities / relationships / bSDD)
                 still show entity content regardless. */}
             {singleSelectedTaskGlobalId && (
-              <div className="mb-3">
+              <div className="border-b border-border p-2">
                 <TaskEditCard taskGlobalId={singleSelectedTaskGlobalId} />
               </div>
             )}
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && (
-              <>
+              <div className="space-y-2 border-b border-border p-2">
                 <GeometryEditCard
                   modelId={selectedEntity.modelId}
                   entityId={selectedEntity.expressId}
@@ -1513,7 +1364,7 @@ export function PropertiesPanel() {
                   schemaVersion={activeDataStore?.schemaVersion}
                   inheritedFrom={inheritedFrom}
                 />
-              </>
+              </div>
             )}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
@@ -1521,19 +1372,14 @@ export function PropertiesPanel() {
                 && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
-              <div className="space-y-3 w-full overflow-hidden">
+              <div className="flex w-full flex-col overflow-hidden">
                 {/* Occurrence/Type Properties (based on whether entity itself is a type) */}
                 {foundOccurrence.length > 0 && (
                   <>
                     {(renderedIsTypeEntity || (renderedTypeProperties && renderedTypeProperties.psets.length > 0)) && (
-                      <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold">
-                        {renderedIsTypeEntity ? (
-                          <>
-                            <Building2 className="h-3 w-3 shrink-0 text-indigo-500" />
-                            {t('properties.panel.typePropertiesHeading')}
-                          </>
-                        ) : t('properties.panel.occurrencePropertiesHeading')}
-                      </div>
+                      <InspectorGroupLabel icon={renderedIsTypeEntity ? <Building2 className="h-3 w-3 shrink-0" /> : undefined}>
+                        {renderedIsTypeEntity ? t('properties.panel.typePropertiesHeading') : t('properties.panel.occurrencePropertiesHeading')}
+                      </InspectorGroupLabel>
                     )}
                     {foundOccurrence.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
@@ -1556,13 +1402,9 @@ export function PropertiesPanel() {
                 {/* Inherited Type Properties */}
                 {foundInherited.length > 0 && renderedTypeProperties && (
                   <>
-                    {foundOccurrence.length > 0 && (
-                      <div className="border-t border-indigo-200 dark:border-indigo-800/50 pt-2 mt-2" />
-                    )}
-                    <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider font-semibold">
-                      <Building2 className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}</span>
-                    </div>
+                    <InspectorGroupLabel icon={<Building2 className="h-3 w-3 shrink-0" />} title={t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}>
+                      {t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}
+                    </InspectorGroupLabel>
                     {foundInherited.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
                         key={`type-${pset.name}-${index}`}
@@ -1584,9 +1426,6 @@ export function PropertiesPanel() {
                 {/* Classifications */}
                 {visibleClassificationCount > 0 && (
                   <>
-                    {visiblePsetCount > 0 && (
-                      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
-                    )}
                     {findQuery ? foundAssociations.classifications.map((card, i) => <AssociationAttributeSearchCard key={`class-${i}`} card={card} query={findQuery} />)
                       : renderedClassifications.map((classification, i) => <ClassificationCard key={`class-${i}`} classification={classification} sectionId={associationDisclosureId('classification', classification, renderedClassifications, i)} />)}
                   </>
@@ -1595,9 +1434,6 @@ export function PropertiesPanel() {
                 {/* Materials — one card per IfcRelAssociatesMaterial */}
                 {visibleMaterialCount > 0 && (
                   <>
-                    {(visiblePsetCount > 0 || visibleClassificationCount > 0) && (
-                      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
-                    )}
                     {findQuery ? foundAssociations.materials.map((card, i) => <AssociationAttributeSearchCard key={`mat-${i}`} card={card} query={findQuery} />)
                       : renderedMaterialInfos.map((info, i) => <MaterialCard key={i} material={info} sectionId={associationDisclosureId('material', info, renderedMaterialInfos, i)} />)}
                   </>
@@ -1608,15 +1444,11 @@ export function PropertiesPanel() {
                     mirroring the Type Properties block. */}
                 {foundMaterialProperties.length > 0 && (
                   <>
-                    {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0) && (
-                      <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
-                    )}
                     {foundMaterialProperties.map((group) => (
-                      <div key={`matpset-${group.materialId}`} className="space-y-3">
-                        <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
-                          <Layers className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{t('properties.panel.materialPropertiesGroupHeading', { materialName: group.materialName })}</span>
-                        </div>
+                      <div key={`matpset-${group.materialId}`}>
+                        <InspectorGroupLabel icon={<Layers className="h-3 w-3 shrink-0" />}>
+                          {t('properties.panel.materialPropertiesGroupHeading', { materialName: group.materialName })}
+                        </InspectorGroupLabel>
                         {group.psets.map((pset, index) => (
                           <PropertySetCard
                             key={`matpset-${group.materialId}-${pset.name}-${index}`}
@@ -1634,10 +1466,7 @@ export function PropertiesPanel() {
                 {/* Documents */}
                 {(visibleDocumentCount > 0 || (!findQuery && documentData.membershipUnavailable)) && (
                   <>
-                    {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0 || foundMaterialProperties.length > 0) && (
-                      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
-                    )}
-                    {!findQuery && documentData.membershipUnavailable && <output className="block text-xs text-amber-700 dark:text-amber-300">{t('properties.document.membershipUnavailable')}</output>}
+                    {!findQuery && documentData.membershipUnavailable && <output className="block px-3 py-1.5 text-xs text-status-warn">{t('properties.document.membershipUnavailable')}</output>}
                     {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
                       : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} sectionId={associationDisclosureId('document', doc, renderedDocuments, i)} />)}
                   </>
@@ -1646,7 +1475,6 @@ export function PropertiesPanel() {
                 {/* Relationships */}
                 {!findQuery && renderedEntityRelationships && (
                   <>
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard
                       relationships={renderedEntityRelationships}
                       populationUnavailable={relationshipPopulationUnavailable(activeDataStore as IfcDataStore | null, selectedEntity ? mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId) : null)}
@@ -1661,7 +1489,6 @@ export function PropertiesPanel() {
                     doesn't render on its own when ScheduleCard would return null. */}
                 {!findQuery && selectedEntity && scheduleData && hasScheduleForSelection && (
                   <>
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <ScheduleCard
                       scheduleData={scheduleData}
                       selectedExpressId={selectedEntity.expressId}
@@ -1677,7 +1504,6 @@ export function PropertiesPanel() {
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
                   <>
-                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <StructuralCard
                       structuralData={structuralData}
                       sourceUnavailable={!activeDataStore?.source?.length}
@@ -1689,24 +1515,24 @@ export function PropertiesPanel() {
               </div>
             )}
           </TabsContent>
-          <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
-            {occurrenceQuantities.status === 'unavailable' ? <output className="block text-sm text-muted-foreground">{t('properties.panel.occurrenceUnavailable', { reason: occurrenceQuantities.reason ?? '' })}</output> : null}
-            <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
-            <div className="mb-3"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
+          <TabsContent value="quantities" className="m-0 p-0 overflow-hidden">
+            {occurrenceQuantities.status === 'unavailable' ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('properties.panel.occurrenceUnavailable', { reason: occurrenceQuantities.reason ?? '' })}</output> : null}
+            <div className="p-2 empty:hidden"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
+            <div className="p-2 empty:hidden"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {quantityUnitContext.status === 'unavailable' ? (
-              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
+              <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
             ) : null}
             {inheritedTypeQuantities.status === 'unavailable' ? (
-              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedTypeQuantities.reason ?? 'unverified current data' })}</output>
+              <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedTypeQuantities.reason ?? 'unverified current data' })}</output>
             ) : null}
             {foundQuantities.length + foundInheritedQuantities.length === 0 ? (
-              findQuery || occurrenceQuantities.status === 'unavailable' || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
+              findQuery || occurrenceQuantities.status === 'unavailable' || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-muted-foreground text-center py-8">{t('properties.panel.noQuantities')}</p>
             ) : (
-              <div className="space-y-3 w-full overflow-hidden">
+              <div className="flex w-full flex-col overflow-hidden">
                 {[{ scope: 'occurrence', sets: foundQuantities, heading: 'properties.panel.occurrenceQuantitiesHeading' as const },
                   { scope: 'type', sets: foundInheritedQuantities, heading: 'properties.panel.typeQuantitiesHeading' as const }].map(({ scope, sets, heading }) => sets.length > 0 ? (
-                  <section key={scope} aria-label={t(heading)} className="space-y-3">
-                    <h3 className="text-sm font-medium">{t(heading)}</h3>
+                  <section key={scope} aria-label={t(heading)}>
+                    <InspectorGroupLabel as="h3">{t(heading)}</InspectorGroupLabel>
                     {sets.map((qset: QuantitySet, index: number) => (
                       <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
                     ))}
@@ -1741,7 +1567,7 @@ export function PropertiesPanel() {
                 enableEditing={editMode}
               />
             ) : (
-              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
+              <p className="text-sm text-muted-foreground text-center py-8">
                 {t('properties.panel.selectEntityForRawStep')}
               </p>
             )}
@@ -1764,15 +1590,15 @@ function MultiEntityPanel({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div className="px-3 py-1.5 border-b border-border">
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-emerald-600" />
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">
+          <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+          <h2 className="text-row font-semibold text-foreground">
             {t('properties.panel.multiEntity.heading')}
           </h2>
-          <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+          <span className="text-2xs tabular-nums text-muted-foreground">
             {t('properties.panel.multiEntity.modelCount', { count: entities.length })}
           </span>
           {/* Display-unit converter (issue #1573 proposal 2) — one control
@@ -1783,7 +1609,7 @@ function MultiEntityPanel({
 
       {/* Scrollable content with each entity's data */}
       <ScrollArea className="flex-1">
-        <div className="divide-y-2 divide-zinc-200 dark:divide-zinc-800">
+        <div className="divide-y divide-border">
           {entities.map((entityRef) => (
             <EntityDataSection
               key={`${entityRef.modelId}-${entityRef.expressId}`}

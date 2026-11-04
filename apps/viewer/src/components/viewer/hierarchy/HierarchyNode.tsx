@@ -14,6 +14,7 @@ import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
 import { ModelBadge } from '../ModelBadge';
 import { HierarchyRowActions, type HierarchyRowAction } from './HierarchyRowActions';
+import { NameWithTail } from './NameWithTail';
 import type { HierarchyVisibilityAction } from './nodeVisibility';
 
 /**
@@ -32,9 +33,9 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   'presentation-layer': Layers3,
 };
 
-/** Indent per tree level. 12 px (was 16) still reads as a hierarchy and gives
- *  a storey row 12 px more for its name (#5394). */
-const HIERARCHY_INDENT_STEP_PX = 12;
+/** Indent per tree level. 10 px (was 16, then 12) still reads as a hierarchy
+ *  and leaves deep element rows their name (#5394, #8802). */
+const HIERARCHY_INDENT_STEP_PX = 10;
 
 /** ARIA tree-row attributes plus the roving-tabIndex/focus wiring every row
  *  type needs to behave as a `treeitem` (#5883) — computed once per rendered
@@ -58,6 +59,8 @@ export interface HierarchyNodeProps extends HierarchyNodeAriaProps {
   virtualRow: { size: number; start: number };
   isSelected: boolean;
   nodeHidden: boolean;
+  /** Every element of the row is outside the active isolation. */
+  outsideIsolation?: boolean;
   visibilityAction?: HierarchyVisibilityAction;
   isMultiModel: boolean;
   modelsCount: number;
@@ -81,6 +84,7 @@ export function HierarchyNode({
   virtualRow,
   isSelected,
   nodeHidden,
+  outsideIsolation = false,
   visibilityAction = nodeHidden ? 'show' : 'hide',
   isMultiModel,
   modelsCount,
@@ -124,10 +128,11 @@ export function HierarchyNode({
     node.type === 'presentation-layer' ||
     node.type === 'group' ||
     node.type === 'other-group'
-      ? 'font-medium text-zinc-900 dark:text-zinc-100'
-      : 'text-zinc-700 dark:text-zinc-300';
-  const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
+      ? 'font-medium text-foreground'
+      : 'text-foreground';
+  const strikeWhenHidden = nodeHidden && 'line-through decoration-muted-foreground';
   const noGeometry = isNoGeometryNode(node);
+  const showClassSuffix = Boolean(node.ifcType) && (node.type === 'element' || node.type === 'group-member');
   if (node.type === 'model-tag-group') {
     return (
       <ModelTagGroupRow
@@ -170,7 +175,7 @@ export function HierarchyNode({
   // containers in multi-model mode have none.
   const hasToggle = !(isMultiModel && isSpatialContainer(node.type));
   const iconClass = cn(
-    'text-zinc-500 dark:text-zinc-400 transition-opacity',
+    'text-muted-foreground transition-opacity',
     hasToggle && 'group-hover:opacity-0',
     hasToggle && nodeHidden && 'opacity-0',
   );
@@ -203,25 +208,20 @@ export function HierarchyNode({
         tabIndex={tabIndex}
         onFocus={onRowFocus}
         className={cn(
-          'relative flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'relative flex h-full items-center gap-1 pr-2 border-l-2 transition-colors group hierarchy-item',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           // No selection styling for spatial containers in multi-model mode
           isMultiModel && isSpatialContainer(node.type)
             ? 'border-transparent cursor-default'
             : cn(
                 'cursor-pointer',
-                isSelected ? 'border-l-primary font-medium selected' : 'border-transparent'
+                isSelected ? 'border-l-primary font-medium text-foreground selected' : 'border-transparent'
               ),
-          (nodeHidden || noGeometry) && 'opacity-50 grayscale'
+          (nodeHidden || noGeometry) && 'opacity-50 grayscale',
+          outsideIsolation && !nodeHidden && 'opacity-50'
         )}
-        style={{
-          paddingLeft: `${node.depth * HIERARCHY_INDENT_STEP_PX + 8}px`,
-          // No selection highlighting for spatial containers in multi-model mode
-          backgroundColor: isSelected && !(isMultiModel && isSpatialContainer(node.type))
-            ? 'var(--hierarchy-selected-bg)' : undefined,
-          color: isSelected && !(isMultiModel && isSpatialContainer(node.type))
-            ? 'var(--hierarchy-selected-text)' : undefined,
-        }}
+        // Selected tint: `.hierarchy-item.selected` in index.css (#8802).
+        style={{ paddingLeft: `${node.depth * HIERARCHY_INDENT_STEP_PX + 6}px` }}
         onClick={(e) => {
           // React bubbles through portals even when the menu item is outside
           // this row in the DOM. Only a physical row click selects entities.
@@ -273,7 +273,7 @@ export function HierarchyNode({
             // via padding (part of the button's own box) rather than a
             // pseudo-element slop, so normal flex flow keeps it from
             // overlapping the type-icon slot that follows.
-            className="p-[5px] hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="p-[5px] hover:bg-muted rounded-sm mr-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <ChevronRight
               className={cn(
@@ -283,7 +283,8 @@ export function HierarchyNode({
             />
           </button>
         ) : (
-          <div className="w-5" />
+          // Chevron width (24 px + 4 px gap): leaves share the icon grid.
+          <div className="w-7 shrink-0" />
         )}
 
         {/* Type icon, with the visibility toggle overlaid in the same 14 px slot
@@ -334,9 +335,9 @@ export function HierarchyNode({
                   )}
                 >
                   {visibilityAction === 'hide' ? (
-                    <Eye className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
+                    <Eye className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   ) : (
-                    <EyeOff className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
+                    <EyeOff className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   )}
                 </button>
               </TooltipTrigger>
@@ -353,7 +354,7 @@ export function HierarchyNode({
             19650 code in Name and the descriptive label in LongName, #1634) */}
         {node.secondaryName ? (
           <span
-            className="flex-1 min-w-0 flex items-baseline text-sm ml-1.5"
+            className="flex-1 min-w-0 flex items-baseline text-row ml-1.5"
             title={t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}
           >
             {/* The Name takes its full width first and the LongName gets the
@@ -363,24 +364,24 @@ export function HierarchyNode({
             <span className={cn('shrink-0 max-w-full truncate', primaryNameClass, strikeWhenHidden)}>
               {node.name}
             </span>
-            <span className={cn('truncate min-w-0 ml-1.5 font-normal text-zinc-400 dark:text-zinc-500', strikeWhenHidden)}>
+            <span className={cn('truncate min-w-0 ml-1.5 font-normal text-muted-foreground', strikeWhenHidden)}>
               {node.secondaryName}
             </span>
           </span>
         ) : (
-          <span className={cn('flex-1 text-sm truncate ml-1.5', primaryNameClass, strikeWhenHidden)}>
-            {node.name}
+          // Name first; the IFC class suffix truncates first (#8802).
+          <span className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-1.5 text-row" title={showClassSuffix ? `${node.name} · ${node.ifcType}` : node.name}>
+            <NameWithTail name={node.name} className={cn(primaryNameClass, strikeWhenHidden)} />
+            {showClassSuffix && (
+              <span className="min-w-0 flex-1 basis-0 truncate text-right text-2xs font-mono text-muted-foreground">
+                {node.ifcType}
+              </span>
+            )}
           </span>
         )}
 
         {isMultiModel && node.type !== 'model-header' && node.modelIds.length === 1 && (
           <ModelBadge modelId={node.modelId ?? node.modelIds[0]} className="max-w-24 shrink-0" />
-        )}
-
-        {node.ifcType && (node.type === 'element' || node.type === 'group-member') && (
-          <span className="text-2xs font-mono text-zinc-400 dark:text-zinc-500 truncate max-w-[90px]">
-            {node.ifcType}
-          </span>
         )}
 
         <HierarchyNodeBadges node={node} />

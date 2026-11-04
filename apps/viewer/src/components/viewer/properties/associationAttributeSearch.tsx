@@ -17,6 +17,7 @@ import {
   EXPRESS_INTENDED_USE_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_LOCATION_ATTRIBUTE,
   EXPRESS_NAME_ATTRIBUTE, EXPRESS_PURPOSE_ATTRIBUTE, EXPRESS_REVISION_ATTRIBUTE,
 } from './express-labels';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_CHEVRON } from './inspector-ui';
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 type SearchRow = { label: string; value: string; href?: string };
@@ -111,10 +112,10 @@ export function findAssociationAttributes({ classifications, materials, document
 }
 
 export function AssociationAttributeSearchCard({ card, query }: { card: AssociationSearchCard; query: string }) {
-  return <PersistentCollapsible id={card.id} forceOpen className="border-2 border-border bg-muted/20 w-full max-w-full overflow-hidden">
-    <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 text-left text-xs hover:bg-muted/50">
+  return <PersistentCollapsible id={card.id} forceOpen className={INSPECTOR_SECTION}>
+    <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
       <span className="font-bold truncate flex-1 min-w-0"><PropertySearchHighlight text={card.title} query={query} /></span>
-      <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+      <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
     </CollapsibleTrigger>
     <CollapsibleContent>
       <div className="divide-y border-t">

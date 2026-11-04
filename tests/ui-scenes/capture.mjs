@@ -52,8 +52,9 @@ function parseArgs(argv) {
     if (key === '--dist') args.dist = resolve(value());
     else if (key === '--out') args.out = resolve(value());
     else if (key === '--label') args.label = value();
-    else if (key === '--scenes') args.scenes = value().split(',');
-    else if (key === '--themes') args.themes = value().split(',');
+    // De-duplicated, so a repeated id is neither captured twice nor mistaken for an unknown one.
+    else if (key === '--scenes') args.scenes = [...new Set(value().split(','))];
+    else if (key === '--themes') args.themes = [...new Set(value().split(','))];
     else if (key === '--cdp') args.cdp = value();
     else throw new Error(`unknown argument ${key}`);
   }

@@ -6,6 +6,7 @@ import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import type { Renderer } from '@ifc-lite/renderer';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { setGlobalRendererRef } from '../useBCF.js';
 import type { PointCloudAlignmentTransform } from './pointCloudAlignment.js';
 import { watchPointCloudRenderFrame } from './pointCloudFrameSync.js';
@@ -19,6 +20,10 @@ const writes: Array<Float32Array | Float64Array | null> = [];
 const renderer = { setPointCloudTransform(_handle: { id: number }, matrix: Float32Array | Float64Array | null) { writes.push(matrix); } };
 const origin: readonly [number, number, number] = [2_600_010, 1_200_020, 8];
 const noOffset = { x: 0, y: 0, z: 0 };
+const placeholderScan: PointCloudAsset = {
+  expressId: 1,
+  chunk: { positions: new Float32Array(), pointCount: 0, bbox: { min: [0, 0, 0], max: [0, 0, 0] } },
+};
 
 function ifcModel() {
   const ifc = fixtureModel('ifc');
@@ -37,6 +42,23 @@ function ifcModel() {
   return ifc;
 }
 const ifcOffset = () => totalYupOffset(sharedRenderFrame([ifcModel()]));
+
+function unanchoredIfc() {
+  const ifc = ifcModel();
+  ifc.geometryResult!.coordinateInfo!.wasmRtcOffset = undefined;
+  return ifc;
+}
+
+function scanModel() {
+  const scan = fixtureModel('scan');
+  scan.loadedAt = 0;
+  scan.loadState = 'complete';
+  scan.geometryResult = {
+    meshes: [], pointClouds: [placeholderScan], totalVertices: 0, totalTriangles: 0,
+    coordinateInfo: { ...unanchoredIfc().geometryResult!.coordinateInfo!, originShift: noOffset },
+  };
+  return scan;
+}
 
 afterEach(() => {
   unregisterPointCloudAlignment(handle.id);
@@ -73,6 +95,37 @@ test('scan before IFC reaches the same placement as scan after IFC (#8781)', () 
   const count = writes.length;
   reframeRegisteredPointClouds(renderer, ifcOffset());
   assert.equal(writes.length, count, 'unchanged frame does not write again');
+});
+
+test('scan-only model published first cannot take an unanchored IFC render frame (#8781)', () => {
+  setGlobalRendererRef({ current: renderer as unknown as Renderer });
+  watchPointCloudRenderFrame(renderer);
+  registerPointCloudAlignment(handle, undefined);
+  retargetPointCloudDecodeOrigin(renderer, handle, origin);
+  const scan = scanModel();
+  useViewerStore.setState({ models: new Map([[scan.id, scan]]) });
+  const ifc = unanchoredIfc();
+  useViewerStore.setState({ models: new Map([[scan.id, scan], [ifc.id, ifc]]) });
+  assert.deepEqual(sharedRenderFrame(useViewerStore.getState().models.values()), ifc.geometryResult!.coordinateInfo);
+  const offset = totalYupOffset(ifc.geometryResult!.coordinateInfo);
+  assert.deepEqual(Array.from(writes.at(-1)!.subarray(12, 15)),
+    [origin[0] - offset.x, origin[2] - offset.y, -origin[1] - offset.z]);
+});
+
+test('IFC with meshes and point clouds remains a render frame candidate (#8781)', () => {
+  const ifc = unanchoredIfc();
+  ifc.geometryResult!.pointClouds = [placeholderScan];
+  ifc.geometryResult!.meshes = [{ expressId: 1, positions: new Float32Array([0, 0, 0]),
+    normals: new Float32Array([0, 1, 0]), indices: new Uint32Array(),
+    color: [1, 1, 1, 1], origin: [0, 0, 0] }];
+  assert.deepEqual(sharedRenderFrame([scanModel(), ifc]), ifc.geometryResult!.coordinateInfo);
+});
+
+test('meshless LandXML remains a render frame candidate (#8781)', () => {
+  const landXml = unanchoredIfc();
+  landXml.sourceSchema = 'LandXML-1.2';
+  landXml.geometryResult!.meshes = [];
+  assert.deepEqual(sharedRenderFrame([scanModel(), landXml]), landXml.geometryResult!.coordinateInfo);
 });
 
 test('removing the anchor restores native zero-offset placement (#8781)', () => {

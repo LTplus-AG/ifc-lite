@@ -426,6 +426,32 @@ node examples/gaussian-splat-spike/prepare.mjs   # fixtures for --real-glass
 ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs --backend=hardware --real-glass=/abs/k-layer/checkout
 ```
 
-Still blocked: splats between transparent layers, the X-Ray policy, scalable GPU
+Not proven by this adapter: splats between transparent layers, scalable GPU
 ordering, per-fragment clipping and caps, hardware memory and frame-time budgets,
-and the qualified native-viewer contract.
+and the qualified native-viewer contract. They stay in the readiness `reasons`.
+
+## Verdict for #8564 (2026-11-04)
+
+**Pass, under the nearest-glass split decided on 2026-11-03.** The native adapter
+renders captures on the viewer's own device and frame, and composes them with
+transparent IFC exactly where a sample has at most one transparent layer. That is
+the composition gate the release decision set, in place of K = 4 depth peeling.
+
+| #8564 acceptance | Result | Evidence |
+| --- | --- | --- |
+| Borrowed device, colour/depth/stencil attachments, MSAA, resize, reverse-Z, perspective and orthographic | pass | #8640 adapter witness (4x MSAA under resize, both projections, device loss and recovery pixel-identical); #8584 at 1x and 4x |
+| More than 64 interleaved source runs, two overlapping assets, close and equal depths | pass | #8584 (16 cases); #8640 packs every asset into one source, so the run budget no longer applies; 96 interleaved runs, add-order invariant |
+| Reference composition and adversarial proof | pass for one layer; approximate beyond it, reported | Evidence table above; `peel-validate` exact against both references on NVIDIA at 1x and 4x in all 24 cases |
+| Real IFC, point cloud and licensed captures, readback, clipping and object IDs | partial | FZK-Haus windows with the plant capture on NVIDIA (8/8); point-cloud occlusion in the adapter witness; clipping by Gaussian centre and pass-through picking disclosed. A single readback scene with IFC, a point cloud and both licensed captures is left to #8567 |
+| Upstream GPU-path changes and resource budgets | changes recorded; budgets with #8567 | luma #3619, sample-count propagation, stencil load/store, the depth-interval hook (local patch). Launch limits bound resources until #8567 measures budgets |
+
+Final GPU run of #8743 at `128d2c6`: the full native witness passed 471/471 on
+NVIDIA and 470/470 on SwiftShader, and an injected console error failed both.
+
+**X-Ray decision (2026-11-04):** X-Ray ships with approximate splat ordering,
+disclosed. Every X-Ray frame reports `transparentLayers: 'multiple'`; the capture
+panel and the user guide state the limit. Exact ordering in X-Ray (the K-layer
+peel) is a possible later upgrade, not a release requirement.
+
+Follow-ups outside this verdict: the combined real-asset readback scene and the
+hardware budgets (#8567), and upstreaming the depth-interval hook.

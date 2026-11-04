@@ -10,7 +10,7 @@ On 2026-11-03 the release owner decided (comments on #8562 and #8568) to ship Ga
 
 The research renderer in #8557 is isolated from the production viewer. The reverse-Z fix is proposed upstream in [luma.gl #3619](https://github.com/visgl/luma.gl/pull/3619).
 
-The counterexample preserved in #8570 proves that upstream `drawMixed` composites an intermediate transparent mesh over a nearer splat (reference center pixel `[189,33,24,255]`, helper `[94,128,24,255]`). The shipped renderer composites captures after the main pass over IFC glass and X-ray, which is the disclosed "composition is approximate" limitation; the nearest-glass composition work under #8564 continues separately and changes renderer readiness/composition on its own schedule. Borrowed-device survival passed in isolation. Hardware performance budgets (#8567) were not measured before launch; the published limits below bound resource use instead.
+The counterexample preserved in #8570 proves that upstream `drawMixed` composites an intermediate transparent mesh over a nearer splat (reference center pixel `[189,33,24,255]`, helper `[94,128,24,255]`). Since #8743 the shipped renderer composes captures with transparent IFC by a nearest-glass split: exact behind one transparent layer, approximate between two or more layers and in X-ray, which is the disclosed composition limitation (#8564 verdict, [research README](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/research/gaussian-splat-contract/README.md#verdict-for-8564-2026-11-04)). Borrowed-device survival passed in isolation. Hardware performance budgets (#8567) were not measured before launch; the published limits below bound resource use instead.
 
 ## Release state transitions
 

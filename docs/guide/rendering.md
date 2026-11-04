@@ -1253,8 +1253,10 @@ internal adapter implements in `capabilities`. There is no `ready` state: exact
 mixed transparency, scalable global ordering and the qualified native-viewer
 contract are outstanding. No flag, decode or successful upload changes that. The
 capability `nearest-glass-split` means splats compose exactly with one transparent
-layer; `exact-mixed-transparency` stays a blocker because splats between two
-transparent layers remain approximate.
+layer; `exact-mixed-transparency` stays in `reasons` because splats between two
+transparent layers, and splats in X-ray, remain approximate. The reasons describe
+what the adapter does not prove; since the 2026-11-03 release decision they are
+disclosed limitations, not launch gates.
 `upstream` is `missing` once the backend has loaded and found that the installed
 upstream renderer cannot order reverse-Z depth, normally on the first valid
 `add()`. Before that check it is `unknown`.

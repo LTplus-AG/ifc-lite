@@ -246,9 +246,12 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    `https://github.com/LTplus-AG/ifc-lite/tree/<tag>` source URL. Owner must fill
    and verify the matching `v<version>` tag before distribution, as above.
 6. **Outside this licence closure: registry operations.** Bootstrap and per-crate
-   Trusted Publisher configuration remain manual and unverified; follow the
-   [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
-   failures remain visible; this record does not waive publication prerequisites.
+   Trusted Publisher configuration are set up by hand; follow the
+   [release runbook](../guide/retained-release.md). They are verified for the 28.2.0
+   release: all nine workspace crates (`ifc-lite-core`, `-geometry`, `-geometry-runtime`,
+   `-processing`, `-export`, `-clash`, `-landxml`, `-ffi`, `-wasm`) were published by
+   Trusted Publishing (see above). A crate added later needs its own configuration
+   before its first publish; this record does not waive publication prerequisites.
 
 7. **Resolved by the maintainer (2026-11-01): OR-licence elections and
    Emscripten attribution.** Every OR-licensed component offering MIT elects MIT

@@ -36,6 +36,12 @@ export interface SectionLinePipelineResources {
   uniformBuffer: GPUBuffer;
   /** Byte stride between the uniform slots in `uniformBuffer`. */
   uniformStride: number;
+  /**
+   * Group 1 of a clipped line pipeline (#8767): the clip block, bound at the offset
+   * packed for the frame each partition shades in (eye-relative for an RTE
+   * partition, world for a legacy one). Absent for the unclipped pipeline.
+   */
+  clip?: { bindGroup: GPUBindGroup; worldOffset: number; eyeOffset: number };
 }
 
 /** Opt-in canonical overlay geometry. Legacy f32 world lines must not claim this precision. */
@@ -160,16 +166,19 @@ export class WorldLineBuffer {
       const byteOffset = (this.uniformSlot + index) * resources.uniformStride;
       const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
       uniforms.set(viewProj, SECTION_2D_UNIFORM_SLOTS.viewProj);
-      if (partition.anchor && rteViewProj && camera) {
-        uniforms.set(rteViewProj, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
+      const rte = !!(partition.anchor && rteViewProj && camera);
+      if (rte) {
+        uniforms.set(rteViewProj!, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
         // Outside this camera's RTE envelope: not rasterisable this frame (#6128).
-        if (!tryPackRteDrawableDelta(partition.anchor, camera, uniforms, SECTION_2D_UNIFORM_SLOTS.originDeltaHigh)) continue;
+        if (!tryPackRteDrawableDelta(partition.anchor!, camera!, uniforms, SECTION_2D_UNIFORM_SLOTS.originDeltaHigh)) continue;
         uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3] = 1;
       }
       uniforms.set(color, SECTION_2D_UNIFORM_SLOTS.lineColor);
       resources.device.queue.writeBuffer(resources.uniformBuffer, byteOffset, uniforms);
       pass.setPipeline(resources.pipeline);
       pass.setBindGroup(0, resources.bindGroup, [byteOffset]);
+      const clip = resources.clip;
+      if (clip) pass.setBindGroup(1, clip.bindGroup, [rte ? clip.eyeOffset : clip.worldOffset]);
       pass.setVertexBuffer(0, partition.buffer);
       pass.draw(partition.count);
     }

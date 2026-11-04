@@ -38,11 +38,13 @@ export const EXTRA_CLIP_FLOATS = 4 + MAX_EXTRA_CLIP_PLANES * 4;
 export const EXTRA_CLIP_BYTES = EXTRA_CLIP_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 /**
- * Planes one section CAP's block carries (#8696): every other cutting plane plus the six section-box
- * faces. The caps bind their block on their own (group 1 of the cap pipelines), so this is theirs
- * alone; the mesh, pick, shadow and point-cloud layouts keep {@link MAX_EXTRA_CLIP_PLANES}.
+ * Planes one overlay clip block carries: every cutting plane (the primary and the extras) plus the
+ * six section-box faces. A section CAP's block (#8696) carries every OTHER plane, one fewer; the
+ * IfcAnnotation overlays (#8767) carry all of them, so they are clipped like the model. These blocks
+ * bind on their own (group 1 of the cap pipelines, the symbolic fill uniform), so the mesh, pick,
+ * shadow and point-cloud layouts keep {@link MAX_EXTRA_CLIP_PLANES}.
  */
-export const MAX_CAP_CLIP_PLANES = MAX_EXTRA_CLIP_PLANES + 6;
+export const MAX_CAP_CLIP_PLANES = MAX_EXTRA_CLIP_PLANES + 1 + 6;
 /** Floats in one packed cap block. */
 export const CAP_CLIP_FLOATS = 4 + MAX_CAP_CLIP_PLANES * 4;
 /** Bytes in one packed cap block. */

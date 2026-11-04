@@ -251,6 +251,16 @@ describe('PlyStreamingSource reopen (#8777)', () => {
     expect(await drain(reopened)).toEqual(await drain(fresh));
   });
 
+  it('moves from one origin to another exactly as a fresh source at the second would', async () => {
+    const first = new PlyStreamingSource(binaryBlob(), { originOffset: [2600000, 1200000, 400] });
+    await first.open();
+    const second = [2600004.25, 1199997.75, 410.5] as const;
+    const reopenedInfo = await first.reopen({ stride: 1, originOffset: second });
+    const fresh = new PlyStreamingSource(binaryBlob(), { originOffset: second });
+    expect(reopenedInfo).toEqual(await fresh.open());
+    expect(await drain(first)).toEqual(await drain(fresh));
+  });
+
   it('does not read the body again, and restarts from the first point', async () => {
     const blob = binaryBlob();
     const source = new PlyStreamingSource(blob);

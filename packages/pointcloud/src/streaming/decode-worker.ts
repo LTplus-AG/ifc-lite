@@ -100,11 +100,7 @@ async function handleOpen(msg: OpenRequest): Promise<void> {
   const abort = new AbortController();
   pendingOpens.set(msg.requestId, abort);
   try {
-    const source = await createSource(msg.format, msg.blob, {
-      label: msg.label,
-      downsample: { stride: normalizePointStride(msg.stride) },
-      originOffset: msg.originOffset,
-    });
+    const source = await sourceFor(msg, normalizePointStride(msg.stride), msg.originOffset);
     const info = await source.open(abort.signal);
     opened = { source, abort, request: msg };
     const sourceId = nextSourceId++;
@@ -161,8 +157,7 @@ async function handleReopen(msg: Extract<WorkerRequest, { kind: 'reopen' }>): Pr
       info = await open.source.reopen({ stride, originOffset: msg.originOffset }, open.abort.signal);
     } else {
       open.source.close();
-      const { format, blob, label } = open.request;
-      open.source = await createSource(format, blob, { label, downsample: { stride }, originOffset: msg.originOffset });
+      open.source = await sourceFor(open.request, stride, msg.originOffset);
       info = await open.source.open(open.abort.signal);
     }
     // A `close` that arrived mid-reopen has already dropped this entry.
@@ -232,6 +227,15 @@ function handleAbort(sourceId: number): void {
   const open = sources.get(sourceId);
   if (!open) return;
   open.abort.abort();
+}
+
+/** The source an `open` request names, at the given stride and origin. */
+function sourceFor(
+  request: OpenRequest,
+  stride: number,
+  originOffset: readonly [number, number, number] | undefined,
+): Promise<StreamingPointSource> {
+  return createSource(request.format, request.blob, { label: request.label, downsample: { stride }, originOffset });
 }
 
 /**

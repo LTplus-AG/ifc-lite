@@ -50,7 +50,11 @@ export interface StreamingPointSource {
   close(): void;
 }
 
-/** What `StreamingPointSource.reopen()` changes; every other option is kept. */
+/**
+ * The stride and origin `StreamingPointSource.reopen()` applies. Both replace
+ * the source's own, so omitting `originOffset` means no origin; every other
+ * option is kept.
+ */
 export interface PointSourceReopenOptions {
   stride: number;
   originOffset?: readonly [number, number, number];

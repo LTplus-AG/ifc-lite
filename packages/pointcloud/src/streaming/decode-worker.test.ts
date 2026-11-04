@@ -211,6 +211,28 @@ describe('decode-worker reopen and abort-open (#8777)', () => {
     expect(closeMock).toHaveBeenCalledTimes(2);
   });
 
+  it('releases both sources when a close arrives while a rebuild is opening', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const sourceId = await openLas(onmessage, posted);
+    let release: (() => void) | undefined;
+    // The rebuilt source's open() ignores its signal, so only the entry check can catch the close.
+    openMock.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ totalPointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] }, hasColor: false, hasClassification: false, hasIntensity: false });
+    }));
+    onmessage({ data: { kind: 'reopen', requestId: 2, sourceId, stride: 2 } });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    onmessage({ data: { kind: 'close', sourceId } });
+    release!();
+    await vi.waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ kind: 'error', requestId: 2 })));
+    expect(posted).not.toContainEqual(expect.objectContaining({ kind: 'opened', requestId: 2 }));
+    onmessage({ data: { kind: 'next', requestId: 3, sourceId, maxPoints: 1 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 3, message: `Unknown sourceId ${sourceId}` }));
+    // The old source, by the rebuild and again by the close; the new one, by the entry check.
+    expect(closeMock).toHaveBeenCalledTimes(3);
+  });
+
   it('answers a reopen for an unknown source with an error', async () => {
     const posted: unknown[] = [];
     installSelfPolyfill(msg => { posted.push(msg); });

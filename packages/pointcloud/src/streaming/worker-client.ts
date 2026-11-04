@@ -221,7 +221,6 @@ export function createDecodeWorkerSource(
       if (info) return info;
       abortIfAborted(signal);
       const session = await ensureSession();
-      abortIfAborted(signal);
       // The worker may spend a long time in open() (PLY scans the whole
       // body for bounds), so an abort must reach it by request id (#8777).
       let requestId = 0;
@@ -278,7 +277,11 @@ export function createDecodeWorkerSource(
         sourceId = null;
         throw err;
       }
-      abortIfAborted(signal);
+      if (signal?.aborted) {
+        // Answered just as the abort fired: release it, as open() does.
+        close();
+        throw new DOMException('Aborted', 'AbortError');
+      }
       info = resp.info;
       return info;
     },
@@ -312,26 +315,32 @@ export function createDecodeWorkerSource(
       if (!resp.chunk) return null;
       return chunkFromWire(resp.chunk);
     },
-    close(): void {
-      if (sourceId !== null && sessionPromise) {
-        const id = sourceId;
-        // Fire-and-forget — close() stays sync for callers. We only enter
-        // this branch if `open()` previously assigned `sourceId`, which
-        // means `sessionPromise` is already resolved (open awaited it).
-        void sessionPromise.then((session) => session.notify({ kind: 'close', sourceId: id }));
-        sourceId = null;
-      }
-      // Clear cached open()-result too so a subsequent open() actually
-      // re-opens the worker source instead of returning stale info
-      // alongside a now-null sourceId (which would make next() throw
-      // "decode-worker source not opened").
-      info = null;
-    },
+    close,
   };
+
+  function close(): void {
+    if (sourceId !== null && sessionPromise) {
+      const id = sourceId;
+      // Fire-and-forget — close() stays sync for callers. We only enter
+      // this branch if `open()` previously assigned `sourceId`, which
+      // means `sessionPromise` is already resolved (open awaited it).
+      void sessionPromise.then((session) => session.notify({ kind: 'close', sourceId: id }));
+      sourceId = null;
+    }
+    // Clear cached open()-result too so a subsequent open() actually
+    // re-opens the worker source instead of returning stale info
+    // alongside a now-null sourceId (which would make next() throw
+    // "decode-worker source not opened").
+    info = null;
+  }
 }
 
-/** Run `request`, calling `onAbort` if `signal` fires before it settles. */
+/**
+ * Run `request`, calling `onAbort` if `signal` fires before it settles. Checks
+ * the signal first: an abort during the caller's await would never fire.
+ */
 async function whileListening<T>(signal: AbortSignal | undefined, onAbort: () => void, request: () => Promise<T>): Promise<T> {
+  abortIfAborted(signal);
   signal?.addEventListener('abort', onAbort, { once: true });
   try {
     return await request();

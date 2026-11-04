@@ -42,7 +42,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { hierarchyNodeOutsideIsolation, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
+import { createStoreySubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -397,14 +397,13 @@ export function HierarchyPanel() {
     toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
   });
 
+  const storeySubtreeOf = useMemo(() => createStoreySubtreeResolver(models, ifcDataStore), [models, ifcDataStore]);
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>) => {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    const elements = getNodeElements(node);
-    const visibility = hierarchyNodeVisibility(node, elements, hiddenEntities);
-    const outsideIsolation = hierarchyNodeOutsideIsolation(elements, viewportIsolation);
+    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, storeySubtreeOf);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -413,8 +412,8 @@ export function HierarchyPanel() {
       modelVisible = model?.visible;
     }
 
-    return { isSelected, ...visibility, modelVisible, outsideIsolation };
-  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models]);
+    return { isSelected, ...appearance, modelVisible };
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, storeySubtreeOf]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
   // structure" step must find the panel while a model is absent or loading.

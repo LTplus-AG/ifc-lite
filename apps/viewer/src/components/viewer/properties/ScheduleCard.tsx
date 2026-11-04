@@ -28,7 +28,8 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
 import { parseIsoDate } from '@/store/slices/schedule-edit-helpers';
-import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON } from './inspector-ui';
+import { cn } from '@/lib/utils';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, INSPECTOR_ROWS, InspectorRow } from './inspector-ui';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -92,17 +93,15 @@ export function ScheduleCard({
         <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t-2 border-sky-200 dark:border-sky-800">
-          {isGenerated && (
-            <div className="px-3 py-1.5 text-2xs text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
-              {t('properties.schedule.generatedLocallyNote')}
-            </div>
-          )}
-          <div className="divide-y divide-sky-100 dark:divide-sky-900/30">
-            {tasks.map((task) => (
-              <TaskRow key={task.globalId} task={task} scheduleNames={scheduleNames} locale={locale} />
-            ))}
-          </div>
+        {isGenerated && (
+          <p className="px-3 py-1.5 text-2xs text-amber-700 dark:text-amber-300">
+            {t('properties.schedule.generatedLocallyNote')}
+          </p>
+        )}
+        <div className={INSPECTOR_ROWS}>
+          {tasks.map((task) => (
+            <TaskRow key={task.globalId} task={task} scheduleNames={scheduleNames} locale={locale} />
+          ))}
         </div>
       </CollapsibleContent>
     </PersistentCollapsible>
@@ -127,61 +126,32 @@ function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
     .filter((s): s is string => Boolean(s));
 
   return (
-    <div className="px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-      <div className="flex items-center gap-1.5 mb-1">
+    <div className="pt-1">
+      <div className="flex h-6 min-w-0 items-center gap-1.5 px-3 text-xs">
         {task.isMilestone ? (
           <Diamond className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
         ) : isCritical ? (
           <Flag className="h-3 w-3 text-red-500 fill-red-500 shrink-0" />
         ) : null}
         <span
-          className={
-            'font-medium text-foreground truncate ' + (isCritical ? 'text-red-600 dark:text-red-400' : '')
-          }
+          className={cn('min-w-0 flex-1 truncate font-medium', isCritical ? 'text-red-600 dark:text-red-400' : 'text-foreground')}
           title={task.name}
         >
           {task.name || task.identification || task.globalId.slice(0, 12)}
         </span>
         {task.predefinedType && (
-          <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300 shrink-0">
-            {task.predefinedType}
-          </span>
+          <span className={cn(INSPECTOR_COUNT, 'pr-1 font-mono')}>{task.predefinedType}</span>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-1 text-2xs">
-        {start && (
-          <>
-            <span className="text-muted-foreground">{t('properties.schedule.start')}</span>
-            <span className="font-mono text-foreground/90">{start}</span>
-          </>
-        )}
-        {finish && (
-          <>
-            <span className="text-muted-foreground">{t('properties.schedule.finish')}</span>
-            <span className="font-mono text-foreground/90">{finish}</span>
-          </>
-        )}
-        {duration && (
-          <>
-            <span className="text-muted-foreground">{t('properties.schedule.duration')}</span>
-            <span className="font-mono text-foreground/90">{duration}</span>
-          </>
-        )}
-        {completion !== undefined && (
-          <>
-            <span className="text-muted-foreground">{t('properties.schedule.complete')}</span>
-            <span className="font-mono text-foreground/90">{Math.round(completion)}%</span>
-          </>
-        )}
-        {scheduleLabels.length > 0 && (
-          <>
-            <span className="text-muted-foreground">{t('properties.schedule.schedule')}</span>
-            <span className="text-foreground/90 truncate" title={scheduleLabels.join(', ')}>
-              {scheduleLabels.join(', ')}
-            </span>
-          </>
-        )}
-      </div>
+      {start && <InspectorRow label={t('properties.schedule.start')} value={start} />}
+      {finish && <InspectorRow label={t('properties.schedule.finish')} value={finish} />}
+      {duration && <InspectorRow label={t('properties.schedule.duration')} value={duration} mono />}
+      {completion !== undefined && (
+        <InspectorRow label={t('properties.schedule.complete')} value={`${Math.round(completion)}%`} />
+      )}
+      {scheduleLabels.length > 0 && (
+        <InspectorRow label={t('properties.schedule.schedule')} value={scheduleLabels.join(', ')} />
+      )}
     </div>
   );
 }

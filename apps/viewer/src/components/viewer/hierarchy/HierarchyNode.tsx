@@ -14,7 +14,7 @@ import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
 import { ModelBadge } from '../ModelBadge';
 import { HierarchyRowActions, type HierarchyRowAction } from './HierarchyRowActions';
-import { NameWithTail } from './NameWithTail';
+import { HierarchyNodeName } from './HierarchyNodeName';
 import type { HierarchyVisibilityAction } from './nodeVisibility';
 
 /**
@@ -115,31 +115,7 @@ export function HierarchyNode({
   const LucideIcon = NODE_TYPE_ICONS[node.type];
   const iconCodepoint = getIfcIconCodepoint(resolvedType);
 
-  // Spatial containers, storeys, spaces, and grouping headers get the emphasized
-  // label treatment; element rows stay lighter.
-  const primaryNameClass =
-    isSpatialContainer(node.type) ||
-    node.type === 'IfcBuildingStorey' ||
-    node.type === 'IfcSpace' ||
-    node.type === 'IfcSpatialZone' ||
-    node.type === 'unified-storey' ||
-    node.type === 'type-group' ||
-    node.type === 'material-group' ||
-    node.type === 'presentation-layer' ||
-    node.type === 'group' ||
-    node.type === 'other-group'
-      ? 'font-medium text-foreground'
-      : 'text-foreground';
-  const strikeWhenHidden = nodeHidden && 'line-through decoration-muted-foreground';
   const noGeometry = isNoGeometryNode(node);
-  const showClassSuffix = Boolean(node.ifcType) && (node.type === 'element' || node.type === 'group-member');
-  // The IFC class is a quiet trailing suffix with no basis of its own, so it
-  // only takes room the name (and LongName) leave and truncates first (#8802).
-  const classSuffix = showClassSuffix ? (
-    <span data-hierarchy-class-suffix className="ml-1.5 min-w-0 flex-1 basis-0 truncate text-right text-2xs font-mono text-muted-foreground">
-      {node.ifcType}
-    </span>
-  ) : null;
   if (node.type === 'model-tag-group') {
     return (
       <ModelTagGroupRow
@@ -357,32 +333,7 @@ export function HierarchyNode({
           )}
         </span>
 
-        {/* Name (+ optional muted LongName for spatial nodes carrying an ISO
-            19650 code in Name and the descriptive label in LongName, #1634) */}
-        {node.secondaryName ? (
-          <span
-            className="flex-1 min-w-0 flex items-baseline text-row ml-1.5"
-            title={`${t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}${showClassSuffix ? ` · ${node.ifcType}` : ''}`}
-          >
-            {/* The Name takes its full width first and the LongName gets the
-                rest (#5394). A 55% cap truncated a descriptive Name to make
-                room for a LongName that was often an id; the #1634 case, a
-                short ISO code, still leaves the LongName its room. */}
-            <span className={cn('shrink-0 max-w-full truncate', primaryNameClass, strikeWhenHidden)}>
-              {node.name}
-            </span>
-            <span className={cn('truncate min-w-0 ml-1.5 font-normal text-muted-foreground', strikeWhenHidden)}>
-              {node.secondaryName}
-            </span>
-            {classSuffix}
-          </span>
-        ) : (
-          // Name first; the IFC class suffix truncates first (#8802).
-          <span className="ml-1.5 flex min-w-0 flex-1 items-baseline text-row" title={showClassSuffix ? `${node.name} · ${node.ifcType}` : node.name}>
-            <NameWithTail name={node.name} className={cn(primaryNameClass, strikeWhenHidden)} />
-            {classSuffix}
-          </span>
-        )}
+        <HierarchyNodeName node={node} nodeHidden={nodeHidden} />
 
         {isMultiModel && node.type !== 'model-header' && node.modelIds.length === 1 && (
           <ModelBadge modelId={node.modelId ?? node.modelIds[0]} className="max-w-24 shrink-0" />

@@ -67,6 +67,17 @@ describe('HierarchyNode leaves the storey name room (#5394)', () => {
     assert.ok(row.textContent?.includes(name), 'head and tail concatenate to the exact name');
   });
 
+  it('keeps the distinguishing end of a long name visible beside a LongName too (#8802)', () => {
+    const name = 'house - outer wall - house right';
+    const row = mountRow(storey({ name, secondaryName: 'Exterior', type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined }));
+    const tail = [...row.querySelectorAll('span')].find((s) => s.textContent === ' house right');
+    assert.equal(tail?.className.split(/\s+/).includes('shrink-0') ?? false, true, `the tail renders on its own and never shrinks: ${row.innerHTML}`);
+    const nameBox = tail?.parentElement;
+    assert.equal(nameBox?.textContent ?? null, name, 'head and tail concatenate to the exact name');
+    assert.equal(nameBox?.className.split(/\s+/).includes('shrink-0') ?? false, true, 'the Name keeps its width before the LongName');
+    assert.equal(nameBox?.nextElementSibling?.textContent ?? null, 'Exterior', 'the LongName follows the Name');
+  });
+
   it('overlays the visibility toggle on the type icon rather than reserving a slot', () => {
     const row = mountRow(storey());
     const toggle = row.querySelector('button[aria-label*="Dachgeschoss"]:not([aria-expanded])');

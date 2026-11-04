@@ -53,6 +53,12 @@ test('#8802 comments, URL fragments and string comment markers', () => {
   assert.equal(counts['native-control'], 0);
 });
 
+test('#8802 an apostrophe in JSX text does not hide later comments', () => {
+  const counts = scan("const a = <p>Don't panic</p>;\n// see #5479 and #abc\nconst b = 'bg-zinc-800 #ff00aa';\n");
+  assert.equal(counts['hex-literal'], 1);
+  assert.equal(counts['palette-class'], 1);
+});
+
 test('#8802 templates preserve raw text, escaped quotes and nested expressions', () => {
   const text = 'const x = `https://x/ // #abc ${ /* #def */ ({x: `#123 ${ "#456" }`}).x }`;\n'
     + 'const y = "escaped \\" // #789"; // #aaa\n'

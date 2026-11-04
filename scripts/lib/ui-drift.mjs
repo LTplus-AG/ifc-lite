@@ -39,6 +39,10 @@ function stripComments(text) {
       if (char === '\\') {
         if (next !== undefined) output.push(text[++i]);
       } else if (char === state.quote) stack.pop();
+      // A quote string cannot span lines, so a newline ends it. Without this an
+      // apostrophe in JSX text ("Don't") swallowed the rest of the file and left
+      // later comments, with their "#1234" issue refs, counted as hex colours.
+      else if (state.kind === 'string' && (char === '\n' || char === '\r')) stack.pop();
       else if (state.kind === 'template' && char === '$' && next === '{') {
         output.push(text[++i]);
         stack.push({ kind: 'code', depth: 1 });

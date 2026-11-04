@@ -9,7 +9,7 @@ import { render, click, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { useTourStore } from '@/lib/tours/tour-store';
-import { GitHubStarPrompt } from './GitHubStarPrompt';
+import { ViewportOverlays } from './ViewportOverlays';
 
 const KEY = 'ifc-lite:github-star';
 const original = useViewerStore.getState();
@@ -27,7 +27,8 @@ function tick(seconds: number, interact = true) {
 }
 async function qualify() { tick(126); await act(async () => {}); }
 
-// #8806: exercise the mounted card, real event handlers and durable impression.
+// #8806: mount the existing viewport entrypoint so removing its invitation
+// fails behavioral assertions, including when the new modules are reverted.
 describe('GitHub star invitation (#8806)', () => {
   beforeEach(() => {
     now = 100;
@@ -49,70 +50,70 @@ describe('GitHub star invitation (#8806)', () => {
 
   it('never prompts on the first visit or on an immediate remount', async () => {
     localStorage.clear();
-    render(<GitHubStarPrompt />); await qualify();
+    render(<ViewportOverlays hideAxis hideScale />); await qualify();
     assert.equal(invitation(), null);
-    cleanup(); render(<GitHubStarPrompt />); await qualify();
+    cleanup(); render(<ViewportOverlays hideAxis hideScale />); await qualify();
     assert.equal(invitation(), null);
   });
   it('waits for active time and a quiet moment, then persists before dismissal', async () => {
-    render(<GitHubStarPrompt />);
+    render(<ViewportOverlays hideAxis hideScale />);
     tick(119); assert.equal(invitation(), null);
     tick(7); await act(async () => {});
     assert.ok(invitation()); assert.equal(localStorage.getItem(KEY), 'shown');
     click(document.querySelector('button[aria-label="Dismiss GitHub invitation permanently"]')!);
     assert.equal(invitation(), null);
-    cleanup(); render(<GitHubStarPrompt />); await qualify();
+    cleanup(); render(<ViewportOverlays hideAxis hideScale />); await qualify();
     assert.equal(invitation(), null);
   });
   it('never counts unattended time', async () => {
-    render(<GitHubStarPrompt />); tick(300, false); await act(async () => {});
+    render(<ViewportOverlays hideAxis hideScale />); tick(300, false); await act(async () => {});
     assert.equal(invitation(), null);
   });
   for (const state of [{ loading: true }, { geometryStreamingActive: true }, { error: 'failed' },
     { isMobile: true }, { activeTool: 'measure' as const }, { models: new Map() }]) {
     it(`suppresses in viewer state ${JSON.stringify(state)}`, async () => {
-      useViewerStore.setState(state); render(<GitHubStarPrompt />); await qualify();
+      useViewerStore.setState(state); render(<ViewportOverlays hideAxis hideScale />); await qualify();
       assert.equal(invitation(), null);
     });
   }
   it('defers for dialogs and notifications without consuming the invitation', async () => {
     const dialog = document.createElement('div'); dialog.setAttribute('role', 'dialog'); document.body.append(dialog);
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
     dialog.remove();
     const toast = document.createElement('div'); toast.dataset.toastSeq = '1'; document.body.append(toast);
     await qualify(); assert.equal(invitation(), null); toast.remove();
     await qualify(); assert.ok(invitation());
   });
   it('does not show during a held pointer gesture', async () => {
-    render(<GitHubStarPrompt />); window.dispatchEvent(new window.Event('pointerdown'));
+    render(<ViewportOverlays hideAxis hideScale />); window.dispatchEvent(new window.Event('pointerdown'));
     await qualify(); assert.equal(invitation(), null);
     window.dispatchEvent(new window.Event('pointerup')); tick(6, false); await act(async () => {});
     assert.ok(invitation());
   });
   it('times out once, but pauses while keyboard focus is inside', async () => {
-    render(<GitHubStarPrompt />); await qualify();
+    render(<ViewportOverlays hideAxis hideScale />); await qualify();
     const link = document.querySelector<HTMLAnchorElement>('aside a')!;
     assert.equal(link.href, 'https://github.com/LTplus-AG/ifc-lite');
     assert.equal(link.target, '_blank'); assert.equal(link.rel, 'noopener noreferrer');
     act(() => link.focus()); tick(30); assert.ok(invitation());
     act(() => link.blur()); tick(21); assert.equal(invitation(), null);
-    cleanup(); render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    cleanup(); render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
   });
   it('suppresses corrupt preferences and missing cross-tab locking', async () => {
-    localStorage.setItem(KEY, 'broken'); render(<GitHubStarPrompt />); await qualify();
+    localStorage.setItem(KEY, 'broken'); render(<ViewportOverlays hideAxis hideScale />); await qualify();
     assert.equal(invitation(), null); cleanup();
     localStorage.setItem(KEY, String(Date.now() - 2 * 86_400_000));
     Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
   });
   it('hides if another tab consumes the invitation', async () => {
-    render(<GitHubStarPrompt />); await qualify(); assert.ok(invitation());
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.ok(invitation());
     act(() => window.dispatchEvent(new window.StorageEvent('storage', { key: KEY, newValue: 'shown' })));
     assert.equal(invitation(), null);
   });
   it('does not count hidden tabs or an active tour', async () => {
     mock.getter(document, 'visibilityState', () => 'hidden');
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
     mock.getter(document, 'visibilityState', () => 'visible');
     useTourStore.setState({ status: 'running' });
     await qualify(); assert.equal(invitation(), null);
@@ -120,10 +121,10 @@ describe('GitHub star invitation (#8806)', () => {
   it('fails closed when reading or persisting storage throws', async () => {
     mock.method(console, 'warn', () => {});
     const read = mock.method(localStorage, 'getItem', () => { throw new Error('blocked'); });
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
     cleanup(); read.mock.restore();
     mock.method(localStorage, 'setItem', () => { throw new Error('quota'); });
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
   });
   it('rechecks quiet eligibility after waiting for a competing tab lock', async () => {
     let release: (() => void) | undefined;
@@ -132,7 +133,7 @@ describe('GitHub star invitation (#8806)', () => {
         release = () => { callback(); resolve(); };
       }),
     } });
-    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    render(<ViewportOverlays hideAxis hideScale />); await qualify(); assert.equal(invitation(), null);
     window.dispatchEvent(new window.Event('pointermove'));
     await act(async () => { release?.(); });
     assert.equal(invitation(), null); assert.notEqual(localStorage.getItem(KEY), 'shown');

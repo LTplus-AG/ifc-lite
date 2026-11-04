@@ -19,6 +19,7 @@ import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
+import { handlePointClick } from './measurePointMode.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 
@@ -28,6 +29,7 @@ export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: num
   if (mode === 'polyline') handlePolylineClick(ctx, x, y);
   else if (mode === 'angle') handleAngleClick(ctx, x, y);
   else if (mode === 'radius') handleRadiusClick(ctx, x, y);
+  else if (mode === 'point') handlePointClick(ctx, x, y);
 }
 
 export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEvent): Promise<void> {

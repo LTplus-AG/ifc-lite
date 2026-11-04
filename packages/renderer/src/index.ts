@@ -3013,6 +3013,7 @@ export class Renderer {
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
                 extraPlanes: extraClipPlanes,
                 primaryPlane: sectionPlaneData && options.sectionPlane?.enabled ? { ...sectionPlaneData, flipped: options.sectionPlane.flipped === true } : null,
+                clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
             });
 
             if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }

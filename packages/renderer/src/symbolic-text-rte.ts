@@ -17,14 +17,18 @@ export const TEXT_RTE_DELTA_STRIDE_BYTES = TEXT_RTE_DELTA_FLOATS * 4;
  * envelope cannot be rasterised this frame and keeps a stale delta, so it is
  * left out of every run (#6128). Without a camera (legacy path) every glyph
  * draws with a zero delta. high.w flags RTE projection; low.w marks an
- * anchor-local legacy origin.
+ * anchor-local legacy origin. A `hidden` glyph keeps its stale delta and is left
+ * out of the runs too.
  */
 export function packTextRteDeltas(
   anchors: ReadonlyArray<WorldPoint | null>,
   camera: WorldPoint | undefined,
   out: Float32Array,
+  /** Glyphs left out of every run this frame, whatever their anchor (#8767: a section-clipped label). */
+  hidden?: (index: number) => boolean,
 ): InstanceRun[] {
   return collectInstanceRuns(anchors.length, (index) => {
+    if (hidden?.(index)) return false;
     const offset = index * TEXT_RTE_DELTA_FLOATS;
     const anchor = anchors[index];
     let drawable = true;

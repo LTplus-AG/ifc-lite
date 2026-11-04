@@ -40,6 +40,8 @@ export interface SymbolicLineChannels {
 export interface SymbolicLineChannelsEntry {
   cached: ParseResult;
   isHidden?: (ownerId: number) => boolean;
+  /** Annotation-only isolation; grids remain a reference layer (#8767). */
+  isIsolatedOut?: (ownerId: number) => boolean;
 }
 
 interface SymbolicLineChannelsParams {
@@ -78,20 +80,20 @@ export function buildSymbolicLineChannels(
 
   const annotationVerts: number[] = [];
   const gridVerts: number[] = [];
-  for (const { cached, isHidden } of entries) {
+  for (const { cached, isHidden, isIsolatedOut } of entries) {
+    const annotationHidden = isIsolatedOut
+      ? (id: number) => !!isHidden?.(id) || isIsolatedOut(id)
+      : isHidden;
     if (enabled) {
       for (const bucket of cached.byStorey.values()) {
-        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), annotationVerts, isHidden);
+        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), annotationVerts, annotationHidden);
       }
-      liftTo3DLineList(cached.loose, fallbackY, annotationVerts, isHidden);
+      liftTo3DLineList(cached.loose, fallbackY, annotationVerts, annotationHidden);
     }
 
     if (effectiveGridEnabled) {
-      // Issue #862: section-clip grid buckets only — IfcAnnotation
-      // intentionally bypasses this per the feedback memory ("the
-      // user expects every storey's dimensions/grid bubbles to lift
-      // into the viewport when [the annotation toggle is] on, even
-      // while a section cut is active").
+      // Grid references retain their elevation band (#862). Annotations
+      // use the renderer's section planes instead (#8767).
       if (clipEnabled) {
         const lo = clipPos - clipDepth;
         const hi = clipPos + clipDepth;

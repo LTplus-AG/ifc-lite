@@ -158,3 +158,25 @@ for (const kind of ['fills', 'texts'] as const) {
     assert.ok(ui.ui.querySelector('canvas'));
   });
 }
+
+it('forwards annotation and grid sectionClipped flags unchanged (#8767)', () => {
+  let fillFlags = '', textFlags = '';
+  const target: Pick<Renderer, 'setLineOverlay' | 'uploadAnnotationFills3D' | 'uploadAnnotationTexts3D'> = {
+    setLineOverlay() {},
+    uploadAnnotationFills3D(value) { fillFlags = value.map(f => String(f.sectionClipped)).join(','); },
+    uploadAnnotationTexts3D(value) { textFlags = value.map(t => String(t.sectionClipped)).join(','); },
+  };
+  const fills = [true, false].map(sectionClipped => ({ ...twoFills[0], sectionClipped }));
+  const texts = [true, false].map(sectionClipped => ({ ...glyph[0], sectionClipped }));
+  function Probe() {
+    const rendererRef = useRef<typeof target | null>(target);
+    const count = useRef(0);
+    useViewportSymbolicUploads({ rendererRef, isInitialized: true, gpuRecoveryEpoch: 0,
+      annotation: empty, alignment: empty, grid: empty, gridVisible: true,
+      annotationCountRef: count, fills, texts });
+    return null;
+  }
+  render(<Probe />);
+  assert.equal(fillFlags, 'true,false');
+  assert.equal(textFlags, 'true,false');
+});

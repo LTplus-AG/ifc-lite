@@ -26,7 +26,7 @@
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { createSectionCapPipelines } from './section-cap-pipelines.js';
 import { SectionCapSet, type CapDrawResources, type ExtraCapDraw } from './section-cap-set.js';
-import { CAP_CLIP_BYTES } from './extra-clip-planes.js';
+import { CAP_CLIP_BYTES, CAP_CLIP_FLOATS, MAX_CAP_CLIP_PLANES, packExtraClip } from './extra-clip-planes.js';
 import type { ExtraClipPlane } from './clip-types.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
@@ -56,6 +56,10 @@ import {
   type Section2DOverlayOptions,
 } from './section-2d-types.js';
 
+/** The clip slots after the caps' (#8767): the section-clipped line channels' planes, world and eye-relative. */
+const OVERLAY_CLIP_SLOT_WORLD = 1 + SECTION_2D_MAX_EXTRA_CAPS;
+const OVERLAY_CLIP_SLOT_EYE = OVERLAY_CLIP_SLOT_WORLD + 1;
+
 export { capHighlightKey } from './section-2d-lift.js';
 export type { CapHighlight, CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
@@ -77,6 +81,8 @@ export class Section2DOverlayRenderer {
   private clipBindGroup: GPUBindGroup | null = null;
   private clipBuffer: GPUBuffer | null = null;
   private clipStride = 0;
+  /** One packed overlay clip block, reused every frame (#8767). */
+  private readonly overlayClipScratch = new Float32Array(CAP_CLIP_FLOATS);
   /** Byte stride between the uniform slots in {@link uniformBuffer}. Set by `init()`. */
   private uniformStride = 0;
   private format: GPUTextureFormat;
@@ -248,12 +254,15 @@ export class Section2DOverlayRenderer {
       ],
     });
 
-    // One clip block per cap: the primary plane's and each extra plane's.
+    // One clip block per cap (the primary plane's and each extra plane's), then the two blocks the
+    // section-clipped line channels share (#8767): the frame's planes in world space for a legacy
+    // partition and eye-relative for an RTE one. Every clipped channel reads the same planes, so two
+    // slots serve them all.
     const align = this.device.limits?.minUniformBufferOffsetAlignment ?? 256;
     this.clipStride = Math.ceil(CAP_CLIP_BYTES / (Number.isFinite(align) && align > 0 ? align : 256))
       * (Number.isFinite(align) && align > 0 ? align : 256);
     this.clipBuffer = this.device.createBuffer({
-      size: this.clipStride * (1 + SECTION_2D_MAX_EXTRA_CAPS),
+      size: this.clipStride * (OVERLAY_CLIP_SLOT_EYE + 1),
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.clipBindGroup = this.device.createBindGroup({
@@ -401,11 +410,16 @@ export class Section2DOverlayRenderer {
    * Draw one channel with its line depth mode and the shared overlay
    * colour, binding that channel's own uniform slot. No-ops when the channel is
    * empty or the pipeline could not be built.
+   *
+   * `clippedBy` (#8767) is the frame's model clip as planes (`clipStatePlanes`): when it holds any,
+   * the channel draws through the clipped line shader and loses what the model loses. Empty or
+   * absent draws the unclipped shader, as every channel did before.
    */
   drawLineOverlay(
     pass: GPURenderPassEncoder,
     viewProj: Float32Array,
     channel: LineOverlayChannel, rteViewProj?: Float32Array, camera?: readonly [number, number, number],
+    clippedBy: readonly ExtraClipPlane[] = [],
   ): void {
     this.init();
     if (channel === 'centreline' && this.lineOverlays.centreline.has()
@@ -417,9 +431,35 @@ export class Section2DOverlayRenderer {
         depthStencil: { ...this.linePipelineDescriptor.depthStencil!, depthCompare: 'always' },
       });
     }
-    const resources = this.lineResources(channel === 'centreline' ? this.centrelinePipeline : this.linePipeline);
+    if (!this.lineOverlays[channel].has()) return;
+    const clipped = clippedBy.length > 0 && channel !== 'centreline';
+    const resources = clipped
+      ? this.clippedLineResources(clippedBy, camera)
+      : this.lineResources(channel === 'centreline' ? this.centrelinePipeline : this.linePipeline);
     if (!resources) return;
     this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor, rteViewProj, camera);
+  }
+
+  /**
+   * The clipped line pipeline (the cap outline's: same depth policy, plus group 1) with this frame's
+   * planes packed into the two overlay clip slots, in both frames a partition can shade in. Planes
+   * past {@link MAX_CAP_CLIP_PLANES} are dropped by `packExtraClip`, as for a cap.
+   */
+  private clippedLineResources(
+    clippedBy: readonly ExtraClipPlane[],
+    camera: readonly [number, number, number] | undefined,
+  ): SectionLinePipelineResources | null {
+    const base = this.lineResources(this.capLinePipeline);
+    if (!base || !this.clipBuffer || !this.clipBindGroup) return null;
+    const worldOffset = OVERLAY_CLIP_SLOT_WORLD * this.clipStride;
+    const eyeOffset = OVERLAY_CLIP_SLOT_EYE * this.clipStride;
+    packExtraClip(clippedBy, null, this.overlayClipScratch, 0, MAX_CAP_CLIP_PLANES);
+    this.device.queue.writeBuffer(this.clipBuffer, worldOffset, this.overlayClipScratch);
+    if (camera) {
+      packExtraClip(clippedBy, camera, this.overlayClipScratch, 0, MAX_CAP_CLIP_PLANES);
+      this.device.queue.writeBuffer(this.clipBuffer, eyeOffset, this.overlayClipScratch);
+    }
+    return { ...base, clip: { bindGroup: this.clipBindGroup, worldOffset, eyeOffset } };
   }
 
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */

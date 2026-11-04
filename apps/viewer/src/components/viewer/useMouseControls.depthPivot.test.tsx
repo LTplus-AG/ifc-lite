@@ -27,6 +27,7 @@ type Vec3 = { x: number; y: number; z: number };
 const ref = <T,>(current: T) => ({ current });
 const noop = () => {};
 const W = 400, H = 300;
+const HIDDEN = new Set<number>();
 
 function pointer(type: string, x: number, y: number, button = 0): PointerEvent {
   const e = new PointerEvent(type, { button, pointerId: 1, bubbles: true, cancelable: true });
@@ -97,7 +98,8 @@ function mount(opts: { small?: boolean } = {}) {
     clearEdgeLock: noop, incrementEdgeLockStrength: noop, setMeasurementConstraintEdge: noop,
     updateConstraintActiveAxis: noop, updateMeasurementScreenCoords: noop, updateCameraRotationRealtime: noop,
     toggleSelection: noop, calculateScale: noop,
-    getPickOptions: () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null }),
+    // One set, as the store hands the viewport: a new set means the visibility changed.
+    getPickOptions: () => ({ isStreaming: false, hiddenIds: HIDDEN, isolatedIds: null }),
     hasPendingMeasurements: () => false, setSectionPlaneFromFace: noop, setSectionPickMode: noop, setSectionPickPreview: noop,
     HOVER_SNAP_THROTTLE_MS: 50, SLOW_RAYCAST_THRESHOLD_MS: 50, hoverThrottleMs: 50,
     fastZoomRef: ref(false),

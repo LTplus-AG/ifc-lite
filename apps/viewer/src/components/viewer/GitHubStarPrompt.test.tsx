@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { render, click, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { useTourStore } from '@/lib/tours/tour-store';
 import { GitHubStarPrompt } from './GitHubStarPrompt';
 
 const KEY = 'ifc-lite:github-star';
@@ -20,7 +21,7 @@ function tick(seconds: number, interact = true) {
     act(() => {
       if (interact && i % 10 === 0) window.dispatchEvent(new window.Event('pointermove'));
       now += 1000;
-      for (const callback of [...callbacks]) callback();
+      for (const callback of callbacks) callback();
     });
   }
 }
@@ -44,7 +45,7 @@ describe('GitHub star invitation (#8806)', () => {
       request: async (_key: string, callback: () => void) => callback(),
     } });
   });
-  afterEach(() => { cleanup(); mock.restoreAll(); localStorage.clear(); useViewerStore.setState(original); });
+  afterEach(() => { cleanup(); mock.restoreAll(); localStorage.clear(); useViewerStore.setState(original); useTourStore.setState({ status: 'idle' }); });
 
   it('never prompts on the first visit or on an immediate remount', async () => {
     localStorage.clear();
@@ -109,4 +110,32 @@ describe('GitHub star invitation (#8806)', () => {
     act(() => window.dispatchEvent(new window.StorageEvent('storage', { key: KEY, newValue: 'shown' })));
     assert.equal(invitation(), null);
   });
+  it('does not count hidden tabs or an active tour', async () => {
+    mock.getter(document, 'visibilityState', () => 'hidden');
+    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    mock.getter(document, 'visibilityState', () => 'visible');
+    useTourStore.setState({ status: 'running' });
+    await qualify(); assert.equal(invitation(), null);
+  });
+  it('fails closed when reading or persisting storage throws', async () => {
+    mock.method(console, 'warn', () => {});
+    const read = mock.method(localStorage, 'getItem', () => { throw new Error('blocked'); });
+    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    cleanup(); read.mock.restore();
+    mock.method(localStorage, 'setItem', () => { throw new Error('quota'); });
+    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+  });
+  it('rechecks quiet eligibility after waiting for a competing tab lock', async () => {
+    let release: (() => void) | undefined;
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+      request: (_key: string, callback: () => void) => new Promise<void>((resolve) => {
+        release = () => { callback(); resolve(); };
+      }),
+    } });
+    render(<GitHubStarPrompt />); await qualify(); assert.equal(invitation(), null);
+    window.dispatchEvent(new window.Event('pointermove'));
+    await act(async () => { release?.(); });
+    assert.equal(invitation(), null); assert.notEqual(localStorage.getItem(KEY), 'shown');
+  });
+
 });

@@ -64,7 +64,8 @@ export function useGitHubStarPrompt() {
       try {
         await navigator.locks.request(KEY, () => {
           if (finished || !viewerReady() || overlayOpen() || !document.hasFocus()
-            || document.visibilityState !== 'visible' || pressed) return;
+            || document.visibilityState !== 'visible' || pressed
+            || performance.now() - lastInput < QUIET_TIME || performance.now() - lastInput > 30_000) return;
           if (localStorage.getItem(KEY) !== String(eligible)) { finished = true; return; }
           localStorage.setItem(KEY, 'shown');
           finished = true;

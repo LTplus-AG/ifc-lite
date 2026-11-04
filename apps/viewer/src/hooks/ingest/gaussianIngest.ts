@@ -48,10 +48,7 @@ export interface PreparedGaussianCapture extends Pick<GaussianDecoded, 'count' |
 export function prepareGaussianCapture(decoded: GaussianDecoded): PreparedGaussianCapture {
   const { count, shDegree, centerBounds } = decoded;
   const attributes = normalizeGaussianAttributes(decoded);
-  const decodeOrigin = centerBounds.min.map((min, axis) => min / 2 + centerBounds.max[axis] / 2) as [number, number, number];
-  for (let row = 0; row < count; row++) {
-    for (let axis = 0; axis < 3; axis++) attributes.positions[row * 3 + axis] -= decodeOrigin[axis];
-  }
+  const decodeOrigin = decoded.decodeOrigin;
   return { attributes, decodeOrigin, count, shDegree, centerBounds };
 }
 

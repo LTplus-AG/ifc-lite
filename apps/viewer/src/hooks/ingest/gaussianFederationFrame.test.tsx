@@ -183,3 +183,46 @@ it('every capture follows a survey-scale frame once, including a later-added cap
     assert.deepEqual(bounds(), BOUNDS, 'adding a capture does not shift existing captures again');
   });
 });
+
+it('a primary IFC frame held in geometryResult aligns a capture before and after reconcile (#8778)', async () => {
+  await act(async () => {
+    const primary = fixtureModel('primary', { entities: [] });
+    primary.loadState = 'complete';
+    primary.geometryResult = null;
+    useViewerStore.getState().addModel(primary);
+    const geometry = gaussianModelShell(0).geometryResult;
+    geometry.coordinateInfo = { ...geometry.coordinateInfo, ...FRAME };
+    useViewerStore.setState({ geometryResult: geometry });
+    await loadCapture();
+    await settled(BOUNDS);
+    await reframeGaussianCapture('capture');
+    assert.deepEqual(bounds(), BOUNDS, 'reconcile keeps the primary geometry fallback');
+  });
+});
+
+it('an upload waits behind a pending adapter translation and lands in the IFC-first frame (#8778)', async () => {
+  await act(async () => {
+    await loadCapture();
+    const splats = gpu.renderer.gaussianSplats;
+    const translate = splats.translateFrame.bind(splats);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let entered = false;
+    splats.translateFrame = async delta => { entered = true; await gate; return translate(delta); };
+    try {
+      addIfc();
+      for (let i = 0; i < 100 && !entered; i++) await tick();
+      assert.ok(entered, 'the old capture has a pending frame translation');
+      const decodedBefore = worker.stats.terminated;
+      const pending = loader.loadFile(gaussianPly('concurrent.ply', [WORLD]), { kind: 'federated', modelId: 'concurrent' });
+      for (let i = 0; i < 100 && worker.stats.terminated === decodedBefore; i++) await tick();
+      assert.ok(worker.stats.terminated > decodedBefore, 'the new capture decoded while translation was held');
+      assert.equal(splats.getStats().assets, 1, 'the new upload waits for the adapter frame');
+      release();
+      await pending;
+      await settled(BOUNDS);
+      const next = useViewerStore.getState().models.get('concurrent')!.gaussianSplat!;
+      assert.deepEqual(splats.getBounds(next.handle), BOUNDS, 'new upload and IFC-first ordering agree');
+    } finally { release(); splats.translateFrame = translate; }
+  });
+});

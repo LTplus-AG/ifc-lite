@@ -70,6 +70,20 @@ export interface RendererRecoveryHost {
   requestRender(): void;
 }
 
+/**
+ * The reason `whenReady()` rejects when the renderer is destroyed.
+ *
+ * A plain `Error` carrying a stable `name` rather than an exported subclass:
+ * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
+ * without this package growing a new export (and without `instanceof` breaking
+ * across duplicated copies of the package).
+ */
+export function rendererDestroyedError(): Error {
+  const error = new Error('Renderer was destroyed before it became ready');
+  error.name = 'RendererDestroyedError';
+  return error;
+}
+
 /** Internal stable error used by readiness and recovery. */
 export function rendererDeviceLostError(): Error {
   const error = new Error('GPU device was lost before the renderer became ready');

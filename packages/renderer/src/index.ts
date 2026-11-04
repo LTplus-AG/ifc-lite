@@ -153,6 +153,7 @@ import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { remapOverrideColors } from './scene-derived-batches.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
+import { FrameDepthProbe } from './frame-depth-probe.js';
 import { reportableItemId } from './pick-resolve.js';
 import { viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
@@ -233,22 +234,8 @@ export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithi
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
-import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
+import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
-
-/**
- * The reason `whenReady()` rejects when the renderer is destroyed.
- *
- * A plain `Error` carrying a stable `name` rather than an exported subclass:
- * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
- * without this package growing a new export (and without `instanceof` breaking
- * across duplicated copies of the package).
- */
-function rendererDestroyedError(): Error {
-    const error = new Error('Renderer was destroyed before it became ready');
-    error.name = 'RendererDestroyedError';
-    return error;
-}
 
 /**
  * Main renderer class
@@ -259,6 +246,7 @@ export class Renderer {
     private camera: Camera;
     private scene: Scene;
     private picker: Picker | null = null;
+    private depthProbe: FrameDepthProbe | null = null; // #8769: the last frame's depth under a point
     private canvas: HTMLCanvasElement; private readonly canvasCssSize: CanvasCssSize; // frame-loop layout reads (renderer-viewport.ts)
     // The overlay theme (#5484), kept so a pre-init `setOverlayTheme` call
     // (and a later re-init) still lands — `init()` re-applies it to `pipeline`.
@@ -673,6 +661,7 @@ export class Renderer {
         // init() before a device-loss re-init, so it isn't lost (#5484).
         this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
+        this.depthProbe?.destroy(); this.depthProbe = FrameDepthProbe.forPipeline(this.device.getDevice(), this.pipeline);
         this.overlays.init(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -1641,6 +1630,7 @@ export class Renderer {
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
         const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
+        const depthSnapshot = this.depthProbe ? relativeToEyeFrame.snapshot() : null; // #8769: this frame's camera, for probeSurface
         // Culling must share the translation-free RTE frame used by every GPU
         // pass. `sourceFrustum` is the f64 plane equivalent for the immutable
         // source-space BVH; render-time boxes stay eye-relative below.
@@ -3071,6 +3061,7 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
+            if (depthSnapshot) this.depthProbe?.frameSubmitted(depthSnapshot, this.canvasCssSize.read());
             if (glass) this.gaussianLayer.submitted();
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
@@ -3155,6 +3146,11 @@ export class Renderer {
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
         if (!this.pickPathAlive()) return null;
         return this.pickingManager.pick(x, y, options, this.activePickClip());
+    }
+
+    /** The nearest opaque surface the last frame drew under a CSS-px point, or null; renders nothing (#8769, `FrameDepthProbe.probe`). */
+    async probeSurface(x: number, y: number): Promise<{ x: number; y: number; z: number } | null> {
+        return this.pickPathAlive() && this.depthProbe ? this.depthProbe.probe(x, y, this.canvasCssSize.read()) : null;
     }
 
     /**
@@ -3643,6 +3639,7 @@ export class Renderer {
         this.picker?.destroy();
         this.picker = null;
         this.pickingManager.setPicker(null);
+        this.depthProbe?.destroy(); this.depthProbe = null;
 
         this.postPasses?.destroy();
         this.postPasses = null;

@@ -21,7 +21,6 @@ import type {
 } from '@/store';
 import type { HoverState, MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
-import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import { orbitPivotStore } from './orbitPivotStore.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
@@ -40,7 +39,7 @@ import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
-import { createZoomSurfacePicker } from './zoomSurface.js';
+import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
 import { flyLook } from './flyNavigation.js';
 
@@ -273,6 +272,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     let pointerGesture: PointerGesture = 'orbit';
     // The pressed orbit's pivot, shown only once the press becomes a drag.
     let pendingOrbitPivot: Parameters<typeof orbitPivotStore.begin>[0] | null = null;
+    // The surface under the cursor for zoom (#5393) and the orbit pivot: the
+    // CPU raycast where affordable, else the depth probe (#8769, zoomSurface.ts).
+    const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
+    let disposed = false; // a probe landing after unmount must not touch the camera
     const hoverPicker = createHoverPicker({
       owner: { canvas, renderer, getTool: () => activeToolRef.current, getPickOptions,
         isOwnerCurrent: () => rendererRef.current === renderer && hoverTooltipsEnabledRef.current && !mouseState.isDragging },
@@ -511,36 +514,22 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const clashPivot = willOrbit
         ? focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current) : null;
       let orbitPivot = clashPivot;
+      let awaitProbe: { x: number; y: number } | null = null;
       if (willOrbit && !clashPivot) {
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
 
-        // For large models, skip the expensive CPU raycast (collectVisibleMeshData +
-        // BVH build over 200K+ meshes can block the main thread for seconds).
-        // Instead, project the camera target onto the cursor ray for a fast pivot.
-        // The census counts GPU-instanced entities and triangles too — see
-        // orbitPivotCensus.ts for why flat entities alone undercount
-        // CATIA-class models (input-to-first-orbit-frame stall on pointer down).
-        const scene = renderer.getScene();
-        const isLargeModel = isPivotRaycastTooExpensive(scene);
-        // Outlier/sparse models (issue #1394) already carry a robust orbit
-        // anchor that gives an instant, good pivot. Skip the CPU raycast for
-        // them too: the first-orbit BVH build can stall the main thread for
-        // ~1s (the reported "model only appears after ~1s of dragging"), and
-        // orbiting around the model centre is the better behaviour anyway.
-        const hasRobustAnchor = camera.getOrbitAnchorBounds() !== null;
-
-        let hit: { intersection: { point: { x: number; y: number; z: number } } } | null = null;
-        if (!isLargeModel && !hasRobustAnchor) {
-          hit = renderer.raycastScene(cx, cy, {
-            hiddenIds: hiddenEntitiesRef.current,
-            isolatedIds: isolatedEntitiesRef.current,
-          });
-        }
-
-        if (hit?.intersection) {
-          orbitPivot = hit.intersection.point;
+        // Large models (BVH build over 200K+ meshes blocks the main thread
+        // for seconds; the census counts instanced entities and triangles
+        // too, see orbitPivotCensus.ts), outlier models with a robust anchor
+        // (#1394, whose first-orbit BVH build stalled ~1s) and streaming skip
+        // the CPU raycast; the picker answers them from the depth probe
+        // (#8769), primed by the hover, else the fallbacks below.
+        const hit = pickSurface(cx, cy);
+        if (!hit && pickSurface.live?.()) awaitProbe = { x: cx, y: cy };
+        if (hit) {
+          orbitPivot = hit;
         } else if (selectedEntityIdRef.current) {
           // No geometry under cursor but object selected — use its center
           const center = getEntityCenter(geometryRef.current, selectedEntityIdRef.current);
@@ -552,7 +541,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
       if (willOrbit) {
         camera.setOrbitCenter(orbitPivot);
-        pendingOrbitPivot = { point: orbitPivot ?? camera.getTarget(), camera, canvas };
+        const pending = { point: orbitPivot ?? camera.getTarget(), camera, canvas };
+        pendingOrbitPivot = pending;
+        if (awaitProbe) {
+          // No probe answer yet: adopt it when it lands, if this press is
+          // still a click (its pivot not yet shown) and nothing moved the camera.
+          const pose = cameraPoseKey(camera);
+          void pickSurface.probed?.(awaitProbe.x, awaitProbe.y).then((point) => {
+            if (!point || disposed || pendingOrbitPivot !== pending || cameraPoseKey(camera) !== pose) return;
+            camera.setOrbitCenter(point);
+            pending.point = point;
+          });
+        }
       }
 
       if (gesture === 'pan' || gesture === 'fly') {
@@ -570,6 +570,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const y = e.clientY - rect.top;
       const tool = activeToolRef.current;
       if (commandPress.move(e)) return;
+      if (!mouseState.isDragging) pickSurface.prime?.(x, y); // #8769: the next wheel or orbit finds the depth waiting
 
       // Rectangle-select drag: just update the visual; no orbit / pan
       // / pick / hover work happens in this branch.
@@ -806,7 +807,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           camera, canvas,
           fastZoom: e.shiftKey || params.fastZoomRef.current,
           fineModifierHeld: fineZoomModifier.isHeld(),
-          pickSurface: createZoomSurfacePicker(renderer, camera, getPickOptions), // #5393
+          pickSurface, // #5393, #8769
         });
       }
       if (!wheel.panX && !wheel.panY && !wheel.zoom) return;
@@ -850,6 +851,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('dblclick', handleDoubleClick);
 
     return () => {
+      disposed = true;
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();

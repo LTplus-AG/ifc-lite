@@ -397,4 +397,5 @@ function matrixFromNativeScanTransform(transform: SpatialAffineTransform): Float
 export { registerPointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment,
   applyPointCloudAlignmentToggle, retargetPointCloudDecodeOrigin,
   realignRegisteredPointClouds,
+  reframeRegisteredPointClouds,
   type PointCloudAlignmentRegistration, type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';

@@ -37,6 +37,7 @@ import {
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
+import { watchPointCloudRenderFrame } from './pointCloudFrameSync.js';
 import { streamPointCloudOrCopc } from './copc/copcLodStream.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
@@ -133,8 +134,8 @@ export interface PointCloudIngestOptions {
    * IfcMapConversion-derived alignment transform for this scan (issue
    * #1804), computed by the caller from the reference model's
    * georeference (`computePointCloudAlignment`). `undefined` when the
-   * loaded model has no usable `IfcMapConversion` — the scan streams at
-   * its raw native coordinates, exactly as before this feature existed.
+   * loaded model has no usable `IfcMapConversion` — the scan keeps its
+   * native coordinates relative to the shared render origin.
    * When present:
    *   - decoding subtracts a nearby scan origin in f64 before narrowing,
    *     then retargets this alignment to that origin before the first chunk.
@@ -341,16 +342,12 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // retains its explicit source CRS and can atomically realign it when an IFC
   // anchor loads later; omitting raw scans made model-after-scan order depend
   // on a manual reload.
+  watchPointCloudRenderFrame(opts.renderer);
   registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
     sourceSpatialReference: opts.spatialReference,
     sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
   });
-  if (alignment) {
-    opts.renderer.setPointCloudTransform(
-      handle,
-      alignmentEnabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
-    );
-  }
+  retargetPointCloudDecodeOrigin(opts.renderer, handle, alignment?.decodeOriginOffset ?? [0, 0, 0]);
 
   // Running per-class histogram, pushed to the caller periodically so
   // the classes checklist populates while a large scan is still

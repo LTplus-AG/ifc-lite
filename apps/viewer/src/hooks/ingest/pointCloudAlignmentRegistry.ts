@@ -28,6 +28,24 @@ export interface PointCloudAlignmentRegistration {
  * source opened later or removed independently cannot move another scan.
  */
 const registry = new Map<number, RegisteredAlignment>();
+export type PointCloudRenderOffset = Readonly<{ x: number; y: number; z: number }>;
+let renderOffset: PointCloudRenderOffset = { x: 0, y: 0, z: 0 };
+
+function nativeMatrix(origin: readonly [number, number, number] = [0, 0, 0], offset = renderOffset): Float64Array {
+  const matrix = nativePointCloudOriginMatrix(origin);
+  matrix[12] -= offset.x;
+  matrix[13] -= offset.y;
+  matrix[14] -= offset.z;
+  return matrix;
+}
+
+function unalignedMatrix(matrix: Float64Array, offset = renderOffset): Float64Array {
+  const framed = new Float64Array(matrix);
+  framed[12] -= offset.x;
+  framed[13] -= offset.y;
+  framed[14] -= offset.z;
+  return framed;
+}
 
 export function registerPointCloudAlignment(
   handle: { id: number },
@@ -62,9 +80,20 @@ export interface PointCloudTransformTarget {
 function matrixFor(
   entry: RegisteredAlignment,
   transform = entry.transform,
+  offset = renderOffset,
 ): Float32Array | Float64Array | null {
-  if (transform) return entry.enabled ? transform.alignedMatrix : transform.unalignedMatrix;
-  return entry.origin ? nativePointCloudOriginMatrix(entry.origin) : null;
+  if (transform) return entry.enabled ? transform.alignedMatrix : unalignedMatrix(transform.unalignedMatrix, offset);
+  return nativeMatrix(entry.origin, offset);
+}
+
+/** Reapply native scan placement when the IFC render frame changes. */
+export function reframeRegisteredPointClouds(renderer: PointCloudTransformTarget | null | undefined, offset: PointCloudRenderOffset): void {
+  if (!renderer || (offset.x === renderOffset.x && offset.y === renderOffset.y && offset.z === renderOffset.z)) return;
+  const plans = [...registry.values()].map((entry) => ({
+    entry, previous: matrixFor(entry), next: matrixFor(entry, entry.transform, offset),
+  }));
+  writeTransaction(renderer, plans);
+  renderOffset = { ...offset };
 }
 
 interface PlannedWrite {
@@ -114,9 +143,7 @@ export function applyPointCloudAlignmentToggle(
   const plans = entries.map((entry) => ({
     entry,
     previous: matrixFor(entry),
-    next: entry.transform
-      ? enabled ? entry.transform.alignedMatrix : entry.transform.unalignedMatrix
-      : matrixFor(entry),
+    next: matrixFor({ ...entry, enabled }),
   }));
   writeTransaction(renderer, plans);
   for (const entry of entries) entry.enabled = enabled;
@@ -126,11 +153,9 @@ export function applyPointCloudAlignmentToggle(
  * source opened stays authoritative; don't reuse the ingest-time boolean. */
 export function retargetPointCloudDecodeOrigin(renderer: PointCloudTransformTarget, handle: { id: number }, origin: readonly [number, number, number]): void {
   const entry = registry.get(handle.id);
-  if (!entry) { renderer.setPointCloudTransform(handle, nativePointCloudOriginMatrix(origin)); return; }
+  if (!entry) { renderer.setPointCloudTransform(handle, nativeMatrix(origin)); return; }
   const transform = entry.transform && rebasePointCloudDecodeOrigin(entry.transform, origin);
-  const next = transform
-    ? entry.enabled ? transform.alignedMatrix : transform.unalignedMatrix
-    : nativePointCloudOriginMatrix(origin);
+  const next = matrixFor({ ...entry, origin, transform });
   writeTransaction(renderer, [{ entry, previous: matrixFor(entry), next }]);
   entry.transform = transform;
   entry.origin = [...origin];
@@ -155,9 +180,7 @@ export function realignRegisteredPointClouds(
     const transform = base && entry.origin
       ? rebasePointCloudDecodeOrigin(base, entry.origin)
       : base;
-    const next = transform
-      ? entry.enabled ? transform.alignedMatrix : transform.unalignedMatrix
-      : entry.origin ? nativePointCloudOriginMatrix(entry.origin) : null;
+    const next = matrixFor({ ...entry, transform });
     return { entry, previous: matrixFor(entry), next, transform };
   });
   writeTransaction(renderer, plans);

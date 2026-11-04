@@ -6,7 +6,8 @@
 
 import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { PreAlignmentSnapshot } from '../../store/types.js';
-import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { useViewerStore } from '../../store/index.js';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
@@ -108,7 +109,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   constructor(private readonly options: FederatedLandXmlStreamingOptions) {
     this.reference = findReferenceSpatialModel()?.placement ?? null;
     this.fallbackFrame = this.reference?.coordinateInfo
-      ?? federationFrameInfo([...useViewerStore.getState().models.values()].filter(model => !model.gaussianSplat))
+      ?? sharedRenderFrame(useViewerStore.getState().models.values())
       ?? null;
     this.rawCoordinateInfo = rawAbsoluteCoordinateInfo(options.sourceCoordinateInfo);
     this.source = options.spatialReference

@@ -32,7 +32,8 @@ import {
   type ViewerBounds,
 } from '@ifc-lite/bcf';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { federationFrameInfo, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { FederatedModel } from '@/store/types';
 
 /**
@@ -45,7 +46,7 @@ export function bcfWorldOffset(
   models: Map<string, FederatedModel>,
   geometryResult: { coordinateInfo?: CoordinateInfo | null } | null | undefined,
 ): BCFPoint {
-  return renderFrameWorldOffset(federationFrameInfo(models.values(), geometryResult));
+  return renderFrameWorldOffset(sharedRenderFrame(models.values(), geometryResult));
 }
 
 /** Render-frame bounds of the loaded model(s), Y-up, for section-plane maths. */

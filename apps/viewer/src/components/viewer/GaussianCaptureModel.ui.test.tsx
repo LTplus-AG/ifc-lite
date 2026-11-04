@@ -102,6 +102,18 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
     }
   });
 
+  it('up-axis control shows the applied default for unplaced and explicitly placed captures (#8752)', () => {
+    const source = captureModel('source', 'source.ply');
+    let container = render(<ModelMetadataPanel model={source} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'z');
+    cleanup();
+    const explicit = { ...source, gaussianSplat: {
+      ...source.gaussianSplat!, placementOrigin: 'explicit' as const, placement: IDENTITY,
+    } };
+    container = render(<ModelMetadataPanel model={explicit} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'y');
+  });
+
   it('an IFC model keeps its IFC metadata panel', () => {
     const ifc = { ...fixtureModel('ifc', { entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall' }] }),
       name: 'house.ifc', fileSize: 1024, loadedAt: Date.UTC(2026, 10, 2), schemaVersion: 'IFC4' } as FederatedModel;

@@ -14,7 +14,8 @@
  * first; the render frame is always metres.
  */
 
-import { federationFrameInfo, ifcToViewerAxes, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { ifcToViewerAxes, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { ViewerState } from '@/store';
 import { SCENE_UNITS, type SceneUnit, type Vec3 } from './scene-actions';
 
@@ -49,7 +50,7 @@ export function sceneFrame(state: FrameState): SceneFrame | null {
   }
   if (!bounds) return null;
   const diagonal = Math.hypot(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, bounds.max.z - bounds.min.z);
-  const offset = renderFrameWorldOffset(federationFrameInfo(state.models.values(), state.geometryResult));
+  const offset = renderFrameWorldOffset(sharedRenderFrame(state.models.values(), state.geometryResult));
   return { offset, bounds, tolerance: Math.max(1, diagonal * 0.1) };
 }
 

@@ -9,13 +9,17 @@ export const IDENTITY_CAPTURE_PLACEMENT: readonly number[] = Object.freeze([1, 0
  * override they retain that mapping. PLY and .splat declare no standard up-axis.
  * Unplaced captures use the same Z-up default as point-cloud ingest.
  */
+export function appliedGaussianUpAxis(placement?: readonly number[], upAxis?: CaptureUpAxis): CaptureUpAxis {
+  return upAxis ?? (placement ? 'y' : DEFAULT_CAPTURE_UP_AXIS);
+}
+
 export function gaussianCaptureFrame(placement?: readonly number[], upAxis?: CaptureUpAxis, frame?: RenderFrameInfo | null): {
   placement: number[]; sourcePlacement: number[]; upAxis: CaptureUpAxis;
   frameOffset: { x: number; y: number; z: number };
 } {
   const sourcePlacement = placement ?? IDENTITY_CAPTURE_PLACEMENT;
   if (sourcePlacement.length !== 16 || !sourcePlacement.every(Number.isFinite)) throw new Error('A capture placement needs 16 finite matrix values.');
-  const axis = upAxis ?? (placement ? 'y' : DEFAULT_CAPTURE_UP_AXIS);
+  const axis = appliedGaussianUpAxis(placement, upAxis);
   const basis = captureAxisMatrix(axis);
   const matrix = Array.from({ length: 16 }, (_, i) => {
     const row = i % 4, col = Math.floor(i / 4);

@@ -6,7 +6,7 @@ import type { UnknownVerticalPolicy } from './federationSpatialTransform.js';
 import { conflictingVerticalDeclarations, ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
-import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { FederatedModel, PreAlignmentSnapshot } from '@/store';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -202,7 +202,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // coordinates retain their separation without exceeding the GPU frame.
     // This is a render-origin operation only: it never claims CRS equivalence.
     const renderFrame = reference?.coordinateInfo
-      ?? federationFrameInfo([...useViewerStore.getState().models.values()].filter(model => !model.gaussianSplat));
+      ?? sharedRenderFrame(useViewerStore.getState().models.values());
     if (renderFrame) {
       const meshesBeforeReframe = options.geometry.meshes.slice();
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {

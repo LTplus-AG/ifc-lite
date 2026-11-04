@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState, type MutableRefObject } from 'react';
-import { federationFrameInfo, totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -175,13 +176,13 @@ export async function uploadInGaussianFrame<T extends { record: { handle: Gaussi
   let adapter = frames.get(splats);
   if (!adapter) {
     const state = useViewerStore.getState();
-    adapter = { offset: totalYupOffset(federationFrameInfo([...state.models.values()].filter(m => !m.gaussianSplat), state.geometryResult)), pending: new Map() };
+    adapter = { offset: totalYupOffset(sharedRenderFrame(state.models.values(), state.geometryResult)), pending: new Map() };
     frames.set(splats, adapter);
   }
   const current = adapter;
   const update = (current.update ?? Promise.resolve(true)).catch(() => false).then(async () => {
     const state = useViewerStore.getState();
-    const frame = federationFrameInfo([...state.models.values()].filter(m => !m.gaussianSplat), state.geometryResult);
+    const frame = sharedRenderFrame(state.models.values(), state.geometryResult);
     if (![...registry.owned.values()].some(asset => asset.splats === splats) && current.pending.size === 0) {
       // A cleared scene has no rows to translate. Its next upload establishes
       // the adapter frame afresh, even when this adapter object is reused.
@@ -221,7 +222,7 @@ export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis):
     const current = state.models.get(modelId);
     const capture = current?.gaussianSplat;
     if (!current || !capture || currentAsset(current) !== asset) return false;
-    const frame = federationFrameInfo([...state.models.values()].filter(m => !m.gaussianSplat), state.geometryResult);
+    const frame = sharedRenderFrame(state.models.values(), state.geometryResult);
     const offset = totalYupOffset(frame);
     const delta: [number, number, number] = [adapter.offset.x - offset.x, adapter.offset.y - offset.y, adapter.offset.z - offset.z];
     if (delta.some(value => value !== 0)) {

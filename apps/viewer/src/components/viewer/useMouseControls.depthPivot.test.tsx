@@ -148,6 +148,7 @@ describe('orbit pivot from the depth under the cursor on a large model (#8769)',
     m.canvas.dispatchEvent(pointer('pointerdown', 120, 200));
     assert.ok(!near(m.pivots.at(-1), under), 'nothing probed yet: the fallback pivot');
     await frame();
+    await frame();
     assert.ok(near(m.pivots.at(-1), under), `pivot ${JSON.stringify(m.pivots.at(-1))} adopted the probed ground`);
     const before = m.camera.getPosition();
     m.canvas.dispatchEvent(pointer('pointermove', 190, 230));

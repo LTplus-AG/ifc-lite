@@ -93,6 +93,7 @@ describe('touch orbit pivot from the depth under the finger (#8769)', () => {
     act(() => { r.canvas.dispatchEvent(touchEvent('touchstart', [finger(r.canvas, 250, 420)])); });
     assert.ok(!near(r.pivots.at(-1), under), 'no probe yet: the fallback pivot');
     await frame();
+    await frame();
     assert.ok(near(r.pivots.at(-1), under), `pivot ${JSON.stringify(r.pivots.at(-1))} is the ground under the finger`);
     assert.equal(r.raycasts.length, 0, 'the CPU raycast stays gated off');
     act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });

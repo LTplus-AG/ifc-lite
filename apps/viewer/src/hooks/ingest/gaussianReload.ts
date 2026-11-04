@@ -48,9 +48,12 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
   const replacementId = crypto.randomUUID();
   let committed = false;
   let completed = false;
+  let releaseBudget = () => {};
   try {
     const next = await deps.addModel(sourceFile, {
       modelId: replacementId,
+      gaussianReplacingModelId: modelId,
+      onGaussianBudgetReserved: release => { releaseBudget = release; },
       onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
       name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
       retryOperation: () => { void reloadGaussianCapture(modelId, deps); },
@@ -72,7 +75,11 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
     committed = true;
     return { ok: true, modelId: replacementId };
   } finally {
-    if (!committed && useViewerStore.getState().models.has(replacementId)) deps.removeModel(replacementId);
+    try {
+      if (!committed && useViewerStore.getState().models.has(replacementId)) deps.removeModel(replacementId);
+    } finally {
+      releaseBudget();
+    }
   }
 }
 

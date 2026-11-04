@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** #8565: admission through the actual canonical loader, without a renderer. */
+/** #8565/#8568: admission through the actual canonical loader, without a renderer.
+ * These run the kill-switch build (`VITE_GAUSSIAN_SPLATS=disabled`) unless a test says otherwise. */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,11 +11,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader } from './useIfcLoader.js';
 
 let loader: ReturnType<typeof useIfcLoader> | null = null;
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+let restoreBuild: () => void = () => {};
 
 function Probe() {
   loader = useIfcLoader();
@@ -22,6 +25,7 @@ function Probe() {
 }
 
 beforeEach(async () => {
+  restoreBuild = setGaussianBuild('disabled');
   const state = useViewerStore.getState();
   state.setActiveLoadCanceller(null);
   state.resetViewerState();
@@ -34,6 +38,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  restoreBuild();
   const mounted = root;
   root = null;
   if (mounted) await act(async () => mounted.unmount());
@@ -47,12 +52,12 @@ const gaussianHeader = 'ply\nformat binary_little_endian 1.0\nelement vertex 1\n
   + 'end_header\n';
 function capture() { return new File([gaussianHeader, new Uint8Array(56)], 'capture.ply'); }
 
-it('primary Gaussian PLY is refused before point-cloud rendering or whole-file allocation (#8565)', async () => {
+it('the kill switch refuses a primary Gaussian PLY before point-cloud rendering or whole-file allocation (#8565, #8568)', async () => {
   const file = capture();
   file.arrayBuffer = async () => { throw new Error('unexpected whole-file read'); };
   await act(async () => loader!.loadFile(file, { kind: 'primary', modelId: 'capture' }));
   const state = useViewerStore.getState();
-  assert.match(state.error ?? '', /Gaussian splat loading is disabled/);
+  assert.match(state.error ?? '', /Gaussian capture loading is turned off/);
   assert.equal(state.models.get('capture')?.loadState, 'error');
   assert.equal(state.pointCloudAssetCount, 0);
   assert.equal(state.loading, false);
@@ -65,13 +70,26 @@ for (const n of [1, 2]) it(`federated Gaussian refusal preserves ${n} existing m
   const before = useViewerStore.getState();
   await act(async () => loader!.loadFile(new File([new Uint8Array(32)], 'capture.splat'), { kind: 'federated', modelId: 'refused' }));
   const after = useViewerStore.getState();
-  assert.match(after.error ?? '', /Gaussian splat loading is disabled/);
+  assert.match(after.error ?? '', /Gaussian capture loading is turned off/);
   assert.equal(after.models, before.models);
   assert.equal(after.selectedEntityId, 7);
   assert.equal(after.models.has('refused'), false);
 });
 
-it('ordinary PLY still reaches the existing point-cloud renderer seam (#8565)', async () => {
+it('the default build admits a capture past the kill switch, then refuses without WebGPU before reading it (#8568)', async () => {
+  setGaussianBuild(undefined);
+  const file = capture();
+  file.arrayBuffer = async () => { throw new Error('unexpected whole-file read'); };
+  await act(async () => loader!.loadFile(file, { kind: 'primary', modelId: 'capture' }));
+  const state = useViewerStore.getState();
+  assert.match(state.error ?? '', /Gaussian captures need the WebGPU 3D view/);
+  assert.doesNotMatch(state.error ?? '', /turned off/);
+  assert.equal(state.pointCloudAssetCount, 0);
+  assert.equal(state.loading, false);
+});
+
+for (const build of ['disabled', undefined] as const) it(`ordinary PLY still reaches the existing point-cloud renderer seam in the ${build ?? 'default'} build (#8565, #8568)`, async () => {
+  setGaussianBuild(build);
   const file = new File(['ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n'], 'ordinary.ply');
   await act(async () => loader!.loadFile(file));
   assert.match(useViewerStore.getState().error ?? '', /Renderer not initialised/);
@@ -104,7 +122,7 @@ for (const action of ['cancel', 'supersede'] as const) it(`a ${action} during ex
 
 // PR #8580's real upstream decoder preserves NaN positions. Until the decoder
 // boundary exists, the disabled gate must still prevent any such asset publication.
-for (const format of ['ply', 'splat'] as const) it(`nonfinite ${format} payload cannot publish an asset while admission is disabled (#8565)`, async () => {
+for (const format of ['ply', 'splat'] as const) it(`nonfinite ${format} payload cannot publish an asset while the kill switch is set (#8565)`, async () => {
   const bytes = new Uint8Array(format === 'ply' ? 56 : 32);
   const view = new DataView(bytes.buffer);
   view.setFloat32(0, NaN, true);
@@ -112,7 +130,7 @@ for (const format of ['ply', 'splat'] as const) it(`nonfinite ${format} payload 
   const file = new File(format === 'ply' ? [gaussianHeader, bytes] : [bytes], `nonfinite.${format}`);
   await act(async () => loader!.loadFile(file, { kind: 'primary', modelId: 'nonfinite' }));
   const state = useViewerStore.getState();
-  assert.match(state.error ?? '', /Gaussian splat loading is disabled/);
+  assert.match(state.error ?? '', /Gaussian capture loading is turned off/);
   assert.equal(state.models.get('nonfinite')?.loadState, 'error');
   assert.equal(state.models.get('nonfinite')?.geometryResult, null);
   assert.equal(state.pointCloudAssetCount, 0);
@@ -127,7 +145,7 @@ for (const [label, magic, terminator] of [
 ]) it(`canonical admission preserves PLY delimiter compatibility: ${label} (#8582)`, async () => {
   const header = gaussianHeader.replace(/^ply/, magic).replace('end_header', terminator);
   await act(async () => loader!.loadFile(new File([header, new Uint8Array(56)], 'gaussian.ply')));
-  assert.match(useViewerStore.getState().error ?? '', /Gaussian splat loading is disabled/);
+  assert.match(useViewerStore.getState().error ?? '', /Gaussian capture loading is turned off/);
   assert.equal(useViewerStore.getState().pointCloudAssetCount, 0);
   const ordinary = `${magic}\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\n${terminator}\n1 2 3\n`;
   await act(async () => loader!.loadFile(new File([ordinary], 'ordinary.ply')));
@@ -135,6 +153,7 @@ for (const [label, magic, terminator] of [
 });
 
 it('Gaussian scalar trailing tokens cannot bypass canonical refusal (#8582 round 2)', async () => {
+  setGaussianBuild(undefined); // the default build: the kill switch would answer first
   const header = gaussianHeader.replace(/property float (?![xyz]\n)(\w+)\n/g, 'property float $1 ignored\n');
   await act(async () => loader!.loadFile(new File([header, new Uint8Array(56)], 'trailing.ply')));
   assert.match(useViewerStore.getState().error ?? '', /Malformed Gaussian PLY vertex schema/);
@@ -151,6 +170,6 @@ for (const gaussian of [false, true]) it(`BOM ${gaussian ? 'Gaussian refusal' : 
   const header = gaussian ? gaussianHeader : 'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n';
   const file = new File([new Uint8Array([0xef, 0xbb, 0xbf]), header, new Uint8Array(gaussian ? 56 : 12)], 'capture.ply');
   await act(async () => loader!.loadFile(file));
-  assert.match(useViewerStore.getState().error ?? '', gaussian ? /Gaussian splat loading is disabled/ : /Renderer not initialised/);
+  assert.match(useViewerStore.getState().error ?? '', gaussian ? /Gaussian capture loading is turned off/ : /Renderer not initialised/);
   assert.equal(useViewerStore.getState().pointCloudAssetCount, 0);
 });

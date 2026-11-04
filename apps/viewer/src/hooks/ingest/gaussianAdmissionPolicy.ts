@@ -2,19 +2,37 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** The only Gaussian qualification that exists before #8562 acceptance. */
-export type GaussianQualification = 'internal-unqualified';
+/** Whether a viewer build admits Gaussian captures at all. */
+export type GaussianSplatsMode = 'enabled' | 'disabled';
 
 /**
- * The canonical loader's one Gaussian admission decision (#8568 internal
- * qualification). A load is admitted only when its caller passes the explicit
- * test opt-in, or when the build itself is a test/showcase build
- * (`VITE_GAUSSIAN_SPLATS=internal-unqualified`). Public builds leave the
- * variable unset, so picker, drop, federation and restore all still refuse.
+ * The committed default (#8568: general availability, 2026-11-03). Rollback is
+ * a reviewed commit that sets this to `'disabled'`, promoted like any other
+ * main commit; see `docs/architecture/gaussian-splats-release.md`.
  */
-export function resolveGaussianQualification(explicit?: GaussianQualification): GaussianQualification | undefined {
-  if (explicit === 'internal-unqualified') return explicit;
-  return gaussianShowcaseBuild() ? 'internal-unqualified' : undefined;
+export const GAUSSIAN_SPLATS_DEFAULT: GaussianSplatsMode = 'enabled';
+
+/**
+ * The build's mode. `VITE_GAUSSIAN_SPLATS` (declared in the Turbo build
+ * environment) overrides the default at build time: `disabled` is the kill
+ * switch, `enabled` and the presenter build's `internal-unqualified` admit.
+ * Any other non-empty value fails closed, so a mistyped kill switch still
+ * disables admission.
+ */
+export function gaussianSplatsMode(): GaussianSplatsMode {
+  const value = import.meta.env?.VITE_GAUSSIAN_SPLATS;
+  if (value === undefined || value === '') return GAUSSIAN_SPLATS_DEFAULT;
+  return value === 'enabled' || value === 'internal-unqualified' ? 'enabled' : 'disabled';
+}
+
+/**
+ * The canonical loader's one Gaussian admission decision. Picker, drop, Add
+ * model, `?model=`, federation restore and capture reload all reach it through
+ * `loadGaussianCapture`, and pickers list `.splat` from it. A disabled build
+ * refuses every capture before decoding.
+ */
+export function gaussianAdmissionEnabled(): boolean {
+  return gaussianSplatsMode() === 'enabled';
 }
 
 const ROTATE_X_180: readonly number[] = Object.freeze([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]);
@@ -22,14 +40,14 @@ const ROTATE_X_180: readonly number[] = Object.freeze([1, 0, 0, 0, 0, -1, 0, 0, 
 /**
  * A presenter-supplied placement for showcase builds (`?gaussianPlacement=rx180`).
  * It is explicit user input for that session, never inferred from a capture's
- * contents, and public builds ignore it. The capture stays uncalibrated.
+ * contents, and other builds ignore it. The capture stays uncalibrated.
  */
 export function showcaseGaussianPlacement(): readonly number[] | undefined {
   if (!gaussianShowcaseBuild() || typeof window === 'undefined') return undefined;
   return new URLSearchParams(window.location.search).get('gaussianPlacement') === 'rx180' ? ROTATE_X_180 : undefined;
 }
 
-/** A build made for internal test/showcase use; never a public deployment. */
+/** A presenter/test build (`VITE_GAUSSIAN_SPLATS=internal-unqualified`); never a public deployment. */
 export function gaussianShowcaseBuild(): boolean {
-  return import.meta.env.VITE_GAUSSIAN_SPLATS === 'internal-unqualified';
+  return import.meta.env?.VITE_GAUSSIAN_SPLATS === 'internal-unqualified';
 }

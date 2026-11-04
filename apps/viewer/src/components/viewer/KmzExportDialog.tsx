@@ -37,6 +37,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
+import { exportableModels } from '@/lib/export/capture-export';
 import type { TranslationKey } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -81,7 +82,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
       geometryResult: GeometryResult;
       dataStore: IfcDataStore;
       instancedModelRange: InstancedModelRange | null;
-    }[] = Array.from(models.values())
+    }[] = exportableModels(models)
       .filter((m) => m.geometryResult && m.ifcDataStore)
       .map((m) => ({
         id: m.id,

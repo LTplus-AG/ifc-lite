@@ -52,25 +52,32 @@ function run() {
   if (baseline && (baseline.version !== 1 || !baseline.totals || Object.values(baseline.totals)
     .some((count) => !Number.isSafeInteger(count) || count < 0))) throw new Error('Invalid UI drift baseline (expected version 1 and nonnegative integer totals)');
   const categories = new Set([...Object.keys(totals), ...Object.keys(baseline?.totals ?? {})]);
-  let failed = false;
+  const override = values.update && values['allow-increase'];
+  let increased = false;
+  let mismatched = false;
   for (const category of categories) {
     const previous = baseline?.totals[category];
     const current = totals[category];
     if (baseline && (previous === undefined || current === undefined)) {
+      // Only a scanner change adds or drops a category; rewriting the baseline is then deliberate.
+      if (override) continue;
       console.error(`Category mismatch: ${category} missing from ${previous === undefined ? 'baseline' : 'tree'}`);
-      failed = true;
+      mismatched = true;
     } else if (previous !== undefined && current > previous && !(values.update && values['allow-increase'])) {
       console.error(`${category}: baseline ${previous}, current ${current}, delta +${current - previous}`);
       printFiles(category, 15);
-      failed = true;
+      increased = true;
     } else if (!values.update && current < previous) {
       console.log(`drift went down by ${previous - current} in ${category}; lock it in with \`pnpm ui-drift:update\``);
     }
   }
-  if (failed) {
-    console.error('Use design tokens/primitives (apps/viewer/src/index.css @theme tokens, components/ui/*), or for a justified increase run node scripts/check-ui-drift.mjs --update --allow-increase and explain in the PR.');
-    return 1;
+  if (mismatched) {
+    console.error('The scanner\'s categories and the baseline\'s differ, which only a change to scripts/lib/ui-drift.mjs causes. Regenerate the baseline with node scripts/check-ui-drift.mjs --update --allow-increase in that same change.');
   }
+  if (increased) {
+    console.error('Use design tokens/primitives (apps/viewer/src/index.css @theme tokens, components/ui/*), or for a justified increase run node scripts/check-ui-drift.mjs --update --allow-increase and explain in the PR.');
+  }
+  if (mismatched || increased) return 1;
   if (values.update) {
     writeFileSync(baselinePath, `${JSON.stringify({ version: 1, totals }, null, 2)}\n`);
     console.log('Updated UI drift baseline.');

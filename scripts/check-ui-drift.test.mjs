@@ -59,6 +59,18 @@ test('#8802 an apostrophe in JSX text does not hide later comments', () => {
   assert.equal(counts['palette-class'], 1);
 });
 
+test('#8802 a same-line JSX apostrophe does not hide a following comment', () => {
+  const counts = scan("const a = <p>Don't</p>; const c = <i>{/* issue #5479 */}</i>; const d = 'x';\n");
+  assert.equal(counts['hex-literal'], 0);
+  // A real string right after an operator or bracket still opens: its hex counts.
+  assert.equal(scan("f('#ff00aa', [\"#abc\"])")['hex-literal'], 2);
+});
+
+test('#8802 black and white count on every prefix the palette pattern accepts', () => {
+  const counts = scan('ring-offset-white accent-black caret-white focus:ring-offset-black/50');
+  assert.equal(counts['bw-class'], 4);
+});
+
 test('#8802 templates preserve raw text, escaped quotes and nested expressions', () => {
   // eslint-disable-next-line no-template-curly-in-string -- scanner input: literal template syntax in the SOURCE UNDER TEST
   const text = 'const x = `https://x/ // #abc ${ /* #def */ ({x: `#123 ${ "#456" }`}).x }`;\n'
@@ -162,5 +174,14 @@ test('#8802 CLI fails closed on category mismatch in either direction', (t) => {
   assert.match(result.stderr, /bw-class missing from baseline/);
   // @source-text-assertion-ok CLI stdout/stderr behaviour, not source text
   assert.match(result.stderr, /obsolete missing from tree/);
-  assert.equal(f.run('--update', '--allow-increase').status, 1);
+  // A mismatch gets its own remedy, not the drift-increase one, and that remedy works.
+  // @source-text-assertion-ok CLI stdout/stderr behaviour, not source text
+  assert.match(result.stderr, /only a change to scripts\/lib\/ui-drift\.mjs causes/);
+  // @source-text-assertion-ok CLI stdout/stderr behaviour, not source text
+  assert.doesNotMatch(result.stderr, /justified increase/);
+  assert.equal(f.run('--update').status, 1);
+  success(f.run('--update', '--allow-increase'));
+  const rewritten = JSON.parse(readFileSync(f.baselinePath, 'utf8')).totals;
+  assert.deepEqual(Object.keys(rewritten).sort(), ['arbitrary-value', 'bw-class', 'hex-literal', 'native-control', 'palette-class']);
+  success(f.run());
 });

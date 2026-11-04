@@ -64,7 +64,9 @@ function rig(tool: string, pickedId: number | null = null) {
   const mouseParams = {
     canvasRef: ref(canvas), rendererRef: ref(renderer), isInitialized: true,
     mouseStateRef: ref<MouseState>({ isDragging: false, isPanning: false, lastX: 0, lastY: 0, button: 0, startX: 0, startY: 0, didDrag: false }),
-    activeToolRef, activeMeasurementRef: ref(null), snapEnabledRef: ref(false),
+    // Distance state is store-bound, as Viewport.tsx binds it: a tap's start is the store's (#8771).
+    activeToolRef, snapEnabledRef: ref(false),
+    activeMeasurementRef: { get current() { return useViewerStore.getState().activeMeasurement; }, set current(_v) { /* store-owned */ } },
     edgeLockStateRef: ref(state.edgeLockState), measurementConstraintEdgeRef: ref(null),
     sectionPickModeRef: ref(false), modelBoundsRef: ref(null),
     hiddenEntitiesRef: ref(new Set<number>()), isolatedEntitiesRef: ref(null),
@@ -77,7 +79,9 @@ function rig(tool: string, pickedId: number | null = null) {
     isInteractingRef: ref(false), lastClickTimeRef: ref(0), lastClickPosRef: ref(null), lastCameraStateRef: ref(null),
     handlePickForSelection: noop, setHoverState: noop, clearHover: noop,
     openContextMenu: (id, x, y) => menus.push({ id, x, y }),
-    startMeasurement: noop, updateMeasurement: noop, finalizeMeasurement: noop,
+    startMeasurement: (p) => useViewerStore.getState().startMeasurement(p),
+    updateMeasurement: (p) => useViewerStore.getState().updateMeasurement(p),
+    finalizeMeasurement: () => useViewerStore.getState().finalizeMeasurement(),
     setSnapTarget: noop, setSnapVisualization: noop, setEdgeLock: noop, updateEdgeLockPosition: noop,
     clearEdgeLock: noop, incrementEdgeLockStrength: noop, setMeasurementConstraintEdge: noop,
     updateConstraintActiveAxis: noop, updateMeasurementScreenCoords: noop, updateCameraRotationRealtime: noop,

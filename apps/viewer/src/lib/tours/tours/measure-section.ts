@@ -56,7 +56,7 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       id: 'measure-distance',
       kind: 'canvas',
       title: 'Measure a distance',
-      body: 'Press and drag from one point to another. Snap markers lock onto corners, edges, and faces. Release to place the measurement.',
+      body: 'Click one point, then another. Snap markers lock onto corners, edges, and faces. The second click places the measurement.',
       arm: (state, ctx) => {
         ctx.baseline.measurements = state.measurements.length;
       },

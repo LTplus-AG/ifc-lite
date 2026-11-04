@@ -12,39 +12,79 @@
  */
 
 import { isPivotRaycastTooExpensive, type PivotCensusScene } from './orbitPivotCensus.js';
+import { surfaceProbeFor, type SurfaceProbeCamera, type SurfaceProbeRenderer } from './surfaceProbe.js';
 
 /** World-space point on the visible surface under the cursor or pinch. */
 export interface SurfacePoint { x: number; y: number; z: number }
 
 /** A canvas point (CSS px) to the surface under it, or null for empty space. */
-export type ZoomSurfacePicker = (x: number, y: number) => SurfacePoint | null;
+export interface ZoomSurfacePicker {
+  (x: number, y: number): SurfacePoint | null;
+  /**
+   * True when the pick answers from the depth probe (#8769): cheap, and it
+   * sharpens as the camera nears, so callers re-pick on every step instead of
+   * once per gesture. Absent or false: the CPU raycast, picked once.
+   */
+  live?(): boolean;
+  /**
+   * When {@link live}, the surface under the point once the probe this pick
+   * requested lands (a frame later): for a press that found none yet.
+   */
+  probed?(x: number, y: number): Promise<SurfacePoint | null>;
+  /** Probe ahead where the raycast is gated (the hover), so the next gesture finds an answer. */
+  prime?(x: number, y: number): void;
+}
 
 /** What {@link createZoomSurfacePicker} needs from the renderer. */
-export interface ZoomSurfaceRenderer {
+export interface ZoomSurfaceRenderer extends SurfaceProbeRenderer {
   getScene(): PivotCensusScene;
   raycastScene(x: number, y: number, options: ZoomSurfacePickOptions): { intersection: { point: SurfacePoint } } | null;
 }
 export interface ZoomSurfacePickOptions { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null }
 
 /**
- * The viewer's surface pick, under the same gate the orbit pivot raycast uses
- * (useMouseControls, orbitPivotCensus.ts): the first CPU raycast builds a BVH
- * over every entity, which stalls large models for seconds, and while
- * streaming the mesh set changes under it. So no pick (plain zoom) while
- * streaming, above the census limit, or on a model with a robust orbit anchor
- * (#1394), whose sparse far tail makes the raycast both slow and unneeded.
+ * Whether the CPU raycast is off limits for a surface pick: the first call
+ * builds a BVH over every entity, which stalls large models for seconds
+ * (orbitPivotCensus.ts), and while streaming the mesh set changes under it.
+ * A model with a robust orbit anchor (#1394) skips it too: its sparse far
+ * tail makes the raycast both slow and unneeded.
+ */
+export function isSurfaceRaycastGated(
+  renderer: Pick<ZoomSurfaceRenderer, 'getScene'>,
+  camera: { getOrbitAnchorBounds(): unknown },
+  isStreaming: boolean,
+): boolean {
+  return isStreaming || camera.getOrbitAnchorBounds() !== null || isPivotRaycastTooExpensive(renderer.getScene());
+}
+
+/**
+ * The viewer's surface pick, shared by zoom and the orbit pivot: the CPU
+ * raycast where {@link isSurfaceRaycastGated} allows it, else the last frame's
+ * depth under the point (`surfaceProbe.ts`, #8769), else null (plain zoom,
+ * scene-centre pivot). Every gated pick also asks for a fresh probe there.
  */
 export function createZoomSurfacePicker(
   renderer: ZoomSurfaceRenderer,
-  camera: { getOrbitAnchorBounds(): unknown },
+  camera: { getOrbitAnchorBounds(): unknown } & SurfaceProbeCamera,
   getPickOptions: () => ZoomSurfacePickOptions,
 ): ZoomSurfacePicker {
-  return (x, y) => {
+  const probe = surfaceProbeFor(renderer, camera);
+  let gated = false;
+  const pick: ZoomSurfacePicker = (x, y) => {
     const options = getPickOptions();
-    if (options.isStreaming || camera.getOrbitAnchorBounds() !== null) return null;
-    if (isPivotRaycastTooExpensive(renderer.getScene())) return null;
-    return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
+    gated = isSurfaceRaycastGated(renderer, camera, options.isStreaming);
+    if (!gated) return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
+    if (!probe) return null;
+    const point = probe.peek(x, y);
+    void probe.request(x, y);
+    return point;
   };
+  pick.live = () => gated && probe !== null;
+  pick.prime = (x, y) => {
+    if (probe && isSurfaceRaycastGated(renderer, camera, getPickOptions().isStreaming)) void probe.request(x, y);
+  };
+  pick.probed = (x, y) => (pick.live?.() && probe ? probe.request(x, y).then(() => probe.peek(x, y)) : Promise.resolve(null));
+  return pick;
 }
 
 /** Both ends of the view ray: a look-around keeps the position but turns it. */
@@ -117,9 +157,13 @@ export function createCentreSurfaceZoom(
       return;
     }
     const now = Date.now();
-    if (!last || last.pose !== cameraPoseKey(camera) || now - last.pickedAt >= SURFACE_PICK_IDLE_MS) {
+    const stale = !last || last.pose !== cameraPoseKey(camera) || now - last.pickedAt >= SURFACE_PICK_IDLE_MS;
+    // A live (probe) pick re-picks every step; a miss keeps the known point,
+    // which the surface step left on the centre ray.
+    if (stale || pickSurface.live?.()) {
       const { width, height } = canvas.getBoundingClientRect();
-      last = { point: width > 0 && height > 0 ? pickSurface(width / 2, height / 2) : null, pose: '', pickedAt: now };
+      const point = width > 0 && height > 0 ? pickSurface(width / 2, height / 2) : null;
+      last = stale || !last ? { point, pose: '', pickedAt: now } : { ...last, point: point ?? last.point };
     }
     camera.zoom(delta, false, undefined, undefined, undefined, undefined, false, last.point ?? undefined);
     last.pose = cameraPoseKey(camera);

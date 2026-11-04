@@ -170,6 +170,9 @@ function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number):
   if (g && now - g.at < SURFACE_PICK_IDLE_MS && g.pose === cameraPoseKey(opts.camera)
     && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
     g.at = now;
+    // A depth-probe pick (#8769) is cheap and sharpens as the camera nears, so
+    // it re-picks every notch; a miss (no answer yet) keeps the known point.
+    if (pick.live?.()) g.point = pick(mouseX, mouseY) ?? g.point;
     return g;
   }
   const fresh: SurfaceGesture = { x: mouseX, y: mouseY, at: now, point: pick(mouseX, mouseY), pose: '' };

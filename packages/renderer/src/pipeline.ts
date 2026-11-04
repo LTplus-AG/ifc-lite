@@ -851,6 +851,10 @@ export class RenderPipeline {
         });
     }
 
+    getDepthTexture(): GPUTexture {
+        return this.depthTexture;
+    }
+
     getDepthTextureView(): GPUTextureView {
         return this.depthTextureView;
     }

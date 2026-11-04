@@ -12,7 +12,6 @@ import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
-import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import { cameraPoseKey, createZoomSurfacePicker, type SurfacePoint } from './zoomSurface.js';
 import { useViewerStore } from '@/store';
@@ -69,8 +68,6 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     isInitialized,
     touchStateRef,
     activeToolRef,
-    hiddenEntitiesRef,
-    isolatedEntitiesRef,
     isInteractingRef,
     selectedEntityIdRef,
     handlePickForSelection,
@@ -115,28 +112,27 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const rect = canvas.getBoundingClientRect();
       const tx = touch.clientX - rect.left;
       const ty = touch.clientY - rect.top;
-      // Outlier/sparse models (issue #1394) carry a robust orbit anchor that
-      // gives an instant, good pivot — skip the raycast (its first-touch BVH
-      // build can stall the main thread ~1s) and orbit the model centre below.
-      // Large models skip it too (same input-to-first-frame stall as the
-      // mouse path — see orbitPivotCensus.ts).
-      const skipPivotRaycast =
-        camera.getOrbitAnchorBounds() !== null ||
-        isPivotRaycastTooExpensive(renderer.getScene());
-      const hit = skipPivotRaycast
-        ? null
-        : renderer.raycastScene(tx, ty, {
-            hiddenIds: hiddenEntitiesRef.current,
-            isolatedIds: isolatedEntitiesRef.current,
-          });
-      if (hit?.intersection) {
-        camera.setOrbitCenter(hit.intersection.point);
+      // Outlier/sparse models (issue #1394), large models (the same
+      // input-to-first-frame BVH stall as the mouse path, orbitPivotCensus.ts)
+      // and streaming skip the CPU raycast; the picker answers them from the
+      // depth probe (#8769) instead.
+      const hit = pickSurface(tx, ty);
+      if (hit) {
+        camera.setOrbitCenter(hit);
         return;
       }
       // Anchor to the scene centre (stable) rather than the drifting camera
       // target, projected onto the finger ray (issue #1107, item 3). Matches
       // the mouse orbit fallback in useMouseControls.
       camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, rect.width, rect.height));
+      if (!pickSurface.live?.()) return;
+      // A finger has no hover to prime the probe: adopt its answer when it
+      // lands, if the same single finger is still down and has not moved the camera.
+      const pose = cameraPoseKey(camera);
+      void pickSurface.probed?.(tx, ty).then((point) => {
+        if (point && touchState.touches.length === 1 && touchState.touches[0]?.identifier === touch.identifier
+          && cameraPoseKey(camera) === pose) camera.setOrbitCenter(point);
+      });
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
@@ -251,6 +247,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           // can pass through a surface, so only it picks.
           if (delta < 0) {
             if (pinchSurface?.pose !== cameraPoseKey(camera)) pinchSurface = { point: pickSurface(x, y), pose: '' };
+            // The depth probe (#8769) is cheap: re-pick every step, keeping the known point on a miss.
+            else if (pickSurface.live?.()) pinchSurface.point = pickSurface(x, y) ?? pinchSurface.point;
             camera.zoom(delta, false, x, y, rect.width, rect.height, false, pinchSurface.point ?? undefined);
             pinchSurface.pose = cameraPoseKey(camera);
           } else {

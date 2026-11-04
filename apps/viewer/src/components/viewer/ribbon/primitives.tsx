@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ribbon building blocks (issue #1686). Office/IFCFlux-style grammar:
- * a labeled RibbonGroup holds either large one-command buttons (icon
- * over a two-line label) or a stack of small icon+label rows, and the
- * group name sits beneath in drafting-annotation caps. All colors ride
- * the existing shadcn tokens so light/dark/colorful themes just work.
+ * Ribbon building blocks (issue #1686), compacted for #8802 R1. A named
+ * RibbonGroup holds headline commands (a 20px icon over a one-line label)
+ * and stacks of small 24px icon+label rows that flow two to a column, all
+ * inside one 48px band (two rows keep the 24px target floor, #5826). Groups are separated by hairline dividers and spacing; their
+ * names stay on the ARIA group (and in tooltips) instead of a caption row.
+ * Icons are one monochrome family (`.shell-ribbon-band` maps the house
+ * icons' accent paint to the ink) and turn primary only when latched.
  */
 
-import React, { forwardRef, useId } from 'react';
+import React, { Children, forwardRef, useId } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -22,6 +24,9 @@ import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label'
  *  their own class instead. */
 export const RIBBON_ACTIVE_CLASS =
   'bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40';
+
+/** Icon tint of a latched command that uses the shared active state. */
+const RIBBON_ACTIVE_ICON_CLASS = 'text-primary';
 
 interface RibbonTooltipProps {
   label: string;
@@ -67,9 +72,9 @@ export interface RibbonContentButtonProps extends Omit<React.ButtonHTMLAttribute
 }
 
 /**
- * Large ribbon button: icon over a (wrappable) two-line label. The
- * headline commands of each group. Forwards ref so it can serve as a
- * DropdownMenu / Dialog trigger via `asChild`.
+ * Large ribbon button: the headline commands of each group, a 20px icon
+ * over a one-line label. Forwards ref so it can serve as a DropdownMenu /
+ * Dialog trigger via `asChild`.
  */
 export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonContentButtonProps>(
   function RibbonContentLargeButton(
@@ -94,14 +99,11 @@ export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonCont
             onClick?.(e);
           }}
           className={cn(
-            // Width: 56 px floor, grown to the longest unbreakable word. A fixed
-            // `w-14` clipped any single word wider than the ~48 px label box
-            // sideways with no ellipsis, "Orthographic" -> "Orthograpl" (#5395).
-            // `w-min` is the min-content width, so multi-word labels still wrap
-            // onto two lines instead of widening the button.
-            'relative flex h-full w-min min-w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
-            'text-2xs font-medium leading-[1.15] text-foreground/90 transition-colors',
-            'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
+            // One line, never clipped: the label keeps its natural width
+            // (#5395's "Orthographic" lesson) and the band scrolls instead.
+            'relative flex h-11 min-w-12 shrink-0 select-none flex-col items-center justify-center gap-0.5 self-center rounded-md px-1.5',
+            'text-2xs font-medium text-foreground/90 transition-colors',
+            'hover:bg-muted disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,
@@ -110,10 +112,10 @@ export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonCont
           data-ribbon-content-source={contentSource}
           data-ribbon-content-id={contentId}
         >
-          <Icon className="h-8 w-8 shrink-0" aria-hidden="true" />
-          <span className="flex h-[2.3em] w-full items-start justify-center gap-0.5">
-            {/* `data-ribbon-label`: the e2e overflow check measures these (#5395). */}
-            <span data-ribbon-label className="line-clamp-2 min-w-0 text-center">{label}</span>
+          <Icon className={cn('h-5 w-5 shrink-0', active && !activeClassName && RIBBON_ACTIVE_ICON_CLASS)} aria-hidden="true" />
+          {/* `data-ribbon-label`: the e2e overflow check measures these (#5395). */}
+          <span className="flex items-center gap-0.5">
+            <span data-ribbon-label className="whitespace-nowrap leading-tight">{label}</span>
             {hasMenu && <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           </span>
           {badge}
@@ -125,8 +127,8 @@ export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonCont
 );
 
 /**
- * Small ribbon button: one icon+label row, stacked up to three per
- * column inside a group (wrap in `RibbonSmallStack`).
+ * Small ribbon button: one 24px icon+label row (the WCAG 2.5.8 floor, #5826);
+ * a `RibbonSmallStack` flows them two to a column inside the band.
  */
 export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonContentButtonProps>(
   function RibbonContentSmallButton(
@@ -145,9 +147,9 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
             onClick?.(e);
           }}
           className={cn(
-            'relative flex h-[20px] w-full min-w-0 select-none items-center gap-1.5 rounded px-1.5',
+            'relative flex h-6 w-full min-w-0 select-none items-center gap-1.5 rounded px-1.5',
             'text-2xs leading-none text-foreground/90 transition-colors',
-            'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
+            'hover:bg-muted disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,
@@ -156,7 +158,7 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
           data-ribbon-content-source={contentSource}
           data-ribbon-content-id={contentId}
         >
-          <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <Icon className={cn('h-4 w-4 shrink-0', active && !activeClassName && RIBBON_ACTIVE_ICON_CLASS)} aria-hidden="true" />
           <span className="truncate">{label}</span>
           {hasMenu && <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           {badge}
@@ -166,22 +168,25 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
   },
 );
 
-/** Column of up to three small buttons, vertically centered in the band.
- *  Width is natural (widest row wins) so group labels center on the
- *  actual content instead of padded air. */
+/** Small buttons flowing two to a column, centred in the band. Width is
+ *  natural (widest row of each column wins). A lone button sits on the
+ *  band's centre line instead of the top row. */
 export function RibbonSmallStack({ children, className }: { children: React.ReactNode; className?: string }) {
+  // Two explicit rows make the column flow; a lone row stays auto-sized so
+  // `content-center` can centre it.
+  const rows = Children.toArray(children).length > 1 && 'grid-rows-2';
   return (
-    <div className={cn('flex h-full w-max flex-col justify-center gap-px', className)}>
+    <div className={cn('grid h-full w-max auto-cols-max grid-flow-col content-center gap-x-1', rows, className)}>
       {children}
     </div>
   );
 }
 
 /**
- * One labeled command cluster. Content row on top, the group name in
- * tiny drafting caps beneath — the plan-sheet annotation register.
- * Content is centered over the label (and vice versa) so a one-button
- * group whose label is wider than the button still reads as one axis.
+ * One named command cluster. The name is the ARIA group label (screen
+ * readers and the e2e inventory read it); visually, groups are separated
+ * by `RibbonGroupDivider` and spacing rather than a caption row, which kept
+ * the band at 88px for seven buttons (#8802 R1).
  */
 export function RibbonGroup({ label, children, className }: {
   label: string;
@@ -192,18 +197,13 @@ export function RibbonGroup({ label, children, className }: {
     <div
       // Ribbon commands need a named ARIA group; a fieldset would add form semantics here.
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-      role="group" aria-label={label} className={cn('flex h-full shrink-0 flex-col px-1.5', className)}>
-      <div className="flex min-h-0 flex-1 items-stretch justify-center gap-0.5 pt-1">
-        {children}
-      </div>
-      <div className="pb-1 pt-0.5 text-center text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </div>
+      role="group" aria-label={label} className={cn('flex h-full shrink-0 items-center gap-0.5 px-1', className)}>
+      {children}
     </div>
   );
 }
 
 /** Hairline divider between ribbon groups. */
 export function RibbonGroupDivider() {
-  return <div aria-hidden="true" className="my-2 w-px shrink-0 self-stretch bg-border/70" />;
+  return <div aria-hidden="true" className="mx-1 my-2 w-px shrink-0 self-stretch bg-divider" />;
 }

@@ -51,6 +51,8 @@ export const shellChromeEn = {
   'shellChrome.activityBar.altShortcutHint': 'Alt+{key}',
   'shellChrome.activityBar.floatingHint': 'floating',
   'shellChrome.activityBar.poppedHint': 'popped out',
+  'shellChrome.activityBar.needsModelHint': 'open a model first',
+  'shellChrome.activityBar.morePanels': 'More panels ({count})',
   'shellChrome.activityBar.expandSidebar': 'Expand sidebar',
   'shellChrome.activityBar.sidebarOptions': 'Sidebar options',
   'shellChrome.activityBar.customizePanelsMenuItem': 'Customize panels…',

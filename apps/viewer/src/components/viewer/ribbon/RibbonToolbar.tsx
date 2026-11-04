@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Desktop ribbon toolbar: a slim tab strip selects a command context, and
- * the band beneath lays commands out in labeled groups with visible names.
+ * Desktop ribbon toolbar: a slim 32px tab strip selects a command context,
+ * and a 48px band beneath lays its commands out in named groups split by
+ * hairline dividers (80px in all, down from 128px; #8802 R1).
  *
  * Office conventions kept: double-click the active tab (or the chevron)
  * to collapse the band to the tab strip; the collapsed state persists.
@@ -83,11 +84,11 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   };
 
   return (
-    <Tabs value={activeTab} onValueChange={(value) => handleTabClick(value as RibbonTabId)} className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black">
+    <Tabs value={activeTab} onValueChange={(value) => handleTabClick(value as RibbonTabId)} className="relative z-50 border-b border-divider bg-panel">
       {fileCommands.fileInputs}
 
       {/* ── Tab strip ── */}
-      <div className="flex h-10 items-center gap-0.5 border-b border-zinc-200/70 px-2 dark:border-zinc-800/70">
+      <div className="flex h-8 items-center gap-0.5 px-2">
         <TabsList
           aria-label={t('ribbon.tabsAriaLabel')}
           className="flex h-full items-end justify-start gap-0.5 rounded-none bg-transparent p-0"
@@ -104,12 +105,12 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                   if (isActive) setRibbonCollapsed(!ribbonCollapsed);
                 }}
                 className={cn(
-                  'relative flex h-8 select-none items-center rounded-t-md px-3 text-xs font-medium tracking-wide transition-colors',
+                  'relative flex h-8 select-none items-center rounded-t-md px-2.5 text-xs font-medium transition-colors',
                   'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                   'bg-transparent shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none',
                   isActive
                     ? 'text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 {t(tab.labelKey)}
@@ -159,8 +160,8 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             reading position and slides sideways whenever the tab set
             changes. Docked to the right it lands where a search field is
             looked for, beside the rest of the always-on chrome. */}
-        <div className="mr-2 min-w-0 [&>div]:max-w-full">
-          <SearchInline />
+        <div className="mr-2 min-w-0">
+          <SearchInline compact />
         </div>
 
         {/* Extension toolbar contributions, right-aligned beside search. */}
@@ -170,23 +171,21 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             regardless of the active tab or collapse state. */}
         <ExportChangesButton surface="ribbon" />
 
-        <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700/60">
+        <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-divider pl-2">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1.5 whitespace-nowrap text-xs"
+            className="h-7 gap-1.5 whitespace-nowrap px-2 text-xs font-normal"
             onClick={emitOpenCommandPalette}
           >
             <Search className="h-3.5 w-3.5" aria-hidden="true" />
             {t('ribbon.commands')}
-            <kbd className="text-xs text-muted-foreground">{t('ribbon.commandsShortcut')}</kbd>
+            <kbd className="rounded border border-divider px-1 font-sans text-2xs text-muted-foreground">{t('ribbon.commandsShortcut')}</kbd>
           </Button>
-          <RibbonCommandSmallButton commandId="pref:settings" icon={Settings} className="h-8 w-auto shrink-0 whitespace-nowrap px-2 text-xs" />
+          <RibbonCommandSmallButton commandId="pref:settings" icon={Settings} className="h-7 w-auto shrink-0 whitespace-nowrap px-2 text-xs" />
           <Tooltip>
             <TooltipTrigger asChild>
-              <div>
-                <ThemeSwitch />
-              </div>
+              <ThemeSwitch />
             </TooltipTrigger>
             <TooltipContent>{t('ribbon.themeTooltip')}</TooltipContent>
           </Tooltip>
@@ -195,7 +194,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 aria-label={t('ribbon.infoAriaLabel')}
                 onClick={() => onShowShortcuts?.()}
               >
@@ -209,7 +208,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 aria-label={ribbonCollapsed ? t('ribbon.expand') : t('ribbon.collapse')}
                 aria-expanded={!ribbonCollapsed}
                 onClick={() => setRibbonCollapsed(!ribbonCollapsed)}
@@ -228,14 +227,18 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
         <TabsContent
           value={activeTab}
           aria-label={t('ribbon.bandAriaLabel', { tab: t(`ribbon.tab.${activeTab}`) })}
-          className="mt-0 flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1"
+          // The band's own height is its content's; a horizontal scrollbar
+          // (narrow windows) adds below the 48px row instead of squeezing it.
+          className="shell-ribbon-band mt-0 overflow-x-auto overflow-y-hidden"
         >
-          {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
-          {activeTab === 'home' && <HomeTab />}
-          {activeTab === 'view' && <ViewTab />}
-          {activeTab === 'elements' && <ElementsTab />}
-          {activeTab === 'analyze' && <AnalyzeTab />}
-          {activeTab === 'author' && <AuthorTab />}
+          <div className="flex h-12 w-max min-w-full items-stretch px-1">
+            {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
+            {activeTab === 'home' && <HomeTab />}
+            {activeTab === 'view' && <ViewTab />}
+            {activeTab === 'elements' && <ElementsTab />}
+            {activeTab === 'analyze' && <AnalyzeTab />}
+            {activeTab === 'author' && <AuthorTab />}
+          </div>
         </TabsContent>
       )}
 

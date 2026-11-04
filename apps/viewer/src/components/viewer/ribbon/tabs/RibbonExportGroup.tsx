@@ -23,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useTranslation } from '@/i18n';
+import { useViewerStore } from '@/store';
+import { isViewerEmpty } from '@/lib/tours/demo-kit';
 import {
   groupExportCommands,
   type CsvExportType,
@@ -99,10 +101,27 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
     commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
   } = useExportCommands('ribbon');
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
+  // Nothing is loaded or loading: every format is gated off, so the
+  // cluster folds into one quiet control instead of filling the File tab
+  // with a wall of disabled formats before there is a model (#8802 R1). It
+  // unfolds the moment a load starts; extension exporters keep their rows.
+  const empty = useViewerStore(isViewerEmpty);
+  const folded = empty && commands.every((resolved) => resolved.disabled);
 
   return (
     <RibbonGroup label={t('ribbon.file.exportGroup')}>
-      {groups.map((group) => {
+      {folded && (
+        <RibbonContentLargeButton
+          icon={icons.ifc}
+          contentLabel={t('ribbon.file.exportGroup')}
+          contentSource="export"
+          contentId="export-folded"
+          tooltip={t('ribbon.file.exportFoldedTooltip')}
+          disabled
+          data-export-folded=""
+        />
+      )}
+      {!folded && groups.map((group) => {
         const buttons = group.map((resolved) => (
           <RibbonExportButton
             key={resolved.command.id}

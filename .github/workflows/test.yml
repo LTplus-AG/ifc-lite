@@ -2049,9 +2049,6 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/reframe-apply.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/scan-candidate.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
           fi
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/gaussian-measure-snap-8566/placeholder-mesh.oracle.patch | grep -Fxq 'tests/evidence/gaussian-measure-snap-8566/placeholder-mesh.oracle.patch'; then
-            oracle_args+=(--mutation tests/evidence/gaussian-measure-snap-8566/placeholder-mesh.oracle.patch --test apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx)
-          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

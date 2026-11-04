@@ -22,12 +22,15 @@ const noOffset = { x: 0, y: 0, z: 0 };
 
 function ifcModel() {
   const ifc = fixtureModel('ifc');
-  ifc.geometryResult!.coordinateInfo = {
-    originShift: { x: 100, y: 2, z: -30 },
-    wasmRtcOffset: { x: 2_599_900, y: 1_199_970, z: 3 },
-    hasLargeCoordinates: true,
-    originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
-    shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+  ifc.geometryResult = {
+    meshes: [], totalVertices: 0, totalTriangles: 0,
+    coordinateInfo: {
+      originShift: { x: 100, y: 2, z: -30 },
+      wasmRtcOffset: { x: 2_599_900, y: 1_199_970, z: 3 },
+      hasLargeCoordinates: true,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+    },
   };
   return ifc;
 }
@@ -78,7 +81,7 @@ test('removing the anchor restores native zero-offset placement (#8781)', () => 
   registerPointCloudAlignment(handle, undefined);
   retargetPointCloudDecodeOrigin(renderer, handle, origin);
   useViewerStore.setState({ models: new Map() });
-  assert.deepEqual([...writes.at(-1)!.slice(12, 15)], [origin[0], origin[2], -origin[1]]);
+  assert.deepEqual(Array.from(writes.at(-1)!.subarray(12, 15)), [origin[0], origin[2], -origin[1]]);
 });
 
 function alignedTransform(): PointCloudAlignmentTransform {
@@ -102,5 +105,5 @@ test('alignment OFF uses the shared render frame with a georeferenced IFC (#8781
   retargetPointCloudDecodeOrigin(renderer, handle, origin);
   reframeRegisteredPointClouds(renderer, ifcOffset());
   applyPointCloudAlignmentToggle(renderer, false);
-  assert.deepEqual([...writes.at(-1)!.slice(12, 15)], [10, 3, -20]);
+  assert.deepEqual(Array.from(writes.at(-1)!.subarray(12, 15)), [10, 3, -20]);
 });

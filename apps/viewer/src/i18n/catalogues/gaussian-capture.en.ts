@@ -41,7 +41,7 @@ export const gaussianCaptureEn = {
   'gaussianCapture.scale.mixed': 'Scale applies to IFC geometry. Captures are uncalibrated.',
   'gaussianCapture.attribution': 'Attribution',
   'gaussianCapture.limitation.clipping': 'Section planes and boxes cull whole Gaussians by centre; no section caps.',
-  'gaussianCapture.limitation.composition': 'Composited over IFC glass and X-ray approximately.',
+  'gaussianCapture.limitation.composition': 'Exact behind one glass layer; approximate behind several layers and in X-ray.',
   'gaussianCapture.limitation.picking': 'Not pickable: select the capture in the model list.',
   'gaussianCapture.limitation.measurement': 'No measurement or snapping on captures.',
   'gaussianCapture.limitation.uncalibrated': 'Uncalibrated: shown in source units, with no metric scale or survey alignment.',

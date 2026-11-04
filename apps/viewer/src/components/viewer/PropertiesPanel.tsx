@@ -5,7 +5,7 @@
 import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
-import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, Box, ChevronDown } from 'lucide-react';
+import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
 import { ModelBadge } from './ModelBadge';
@@ -1039,7 +1039,6 @@ export function PropertiesPanel() {
   const visibleClassificationCount = findQuery ? foundAssociations.classifications.length : renderedClassifications.length;
   const visibleMaterialCount = findQuery ? foundAssociations.materials.length : renderedMaterialInfos.length;
   const visibleDocumentCount = findQuery ? foundAssociations.documents.length : renderedDocuments.length;
-  const visiblePsetCount = findQuery ? foundOccurrence.length + foundInherited.length : renderedMergedProperties.length;
   const hasPropertyHits = foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
     + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0 || hasAssociationHits;
   // Switch tabs when the only search hits live on the other Properties tab.

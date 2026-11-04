@@ -24,6 +24,7 @@ import { DeviationPanel } from './DeviationPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 import { ScanDetectionSection } from './scan-detection/ScanDetectionSection';
 import { applyPointCloudAlignmentToggle } from '@/hooks/ingest/pointCloudAlignment';
+import { syncPointCloudRenderFrame } from '@/hooks/ingest/pointCloudFrameSync';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; labelKey: TranslationKey; hintKey: TranslationKey }> = [
@@ -179,6 +180,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
             onChange={(e) => {
               const enabled = e.target.checked;
               setAlignmentEnabled(enabled);
+              syncPointCloudRenderFrame(getGlobalRenderer());
               applyPointCloudAlignmentToggle(getGlobalRenderer(), enabled);
             }}
             className="accent-teal-600"

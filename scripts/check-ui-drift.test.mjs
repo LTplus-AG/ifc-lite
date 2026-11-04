@@ -60,6 +60,7 @@ test('#8802 an apostrophe in JSX text does not hide later comments', () => {
 });
 
 test('#8802 templates preserve raw text, escaped quotes and nested expressions', () => {
+  // eslint-disable-next-line no-template-curly-in-string -- scanner input: literal template syntax in the SOURCE UNDER TEST
   const text = 'const x = `https://x/ // #abc ${ /* #def */ ({x: `#123 ${ "#456" }`}).x }`;\n'
     + 'const y = "escaped \\" // #789"; // #aaa\n'
     + "const z = '#abcdef';";

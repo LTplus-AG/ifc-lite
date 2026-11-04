@@ -129,3 +129,72 @@ describe('createDecodeWorkerSource — failure recovery', () => {
     expect(retrySpawn).toHaveBeenCalledTimes(1);
   });
 });
+
+/** A scripted worker: records every message and lets the test answer by hand. */
+function scriptedWorker() {
+  const sent: Array<Record<string, unknown>> = [];
+  let listener: ((event: { data: unknown }) => void) | undefined;
+  const worker = {
+    postMessage: (msg: Record<string, unknown>) => { sent.push(msg); },
+    addEventListener: (_type: string, l: (event: { data: unknown }) => void) => { listener = l; },
+  };
+  const info = { totalPointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] }, hasColor: false, hasClassification: false, hasIntensity: false };
+  return {
+    sent,
+    spawn: () => worker as unknown as Worker,
+    reply: (data: unknown) => listener!({ data }),
+    opened: (requestId: number, sourceId: number) => listener!({ data: { kind: 'opened', requestId, sourceId, info } }),
+    lastRequest: (kind: string) => [...sent].reverse().find(msg => msg.kind === kind) as { requestId: number },
+  };
+}
+
+describe('createDecodeWorkerSource — abort and reopen (#8777)', () => {
+  beforeEach(() => {
+    __resetSharedSessionForTests();
+  });
+
+  it('sends abort-open for the pending open, and settles when the worker answers', async () => {
+    const w = scriptedWorker();
+    const source = createDecodeWorkerSource({ format: 'ply', blob: new Blob([]), spawn: w.spawn });
+    const ctrl = new AbortController();
+    const opening = source.open(ctrl.signal);
+    await vi.waitFor(() => expect(w.lastRequest('open')).toBeDefined());
+    ctrl.abort();
+    const { requestId } = w.lastRequest('open');
+    expect(w.sent).toContainEqual({ kind: 'abort-open', targetRequestId: requestId });
+    w.reply({ kind: 'error', requestId, message: 'Aborted' });
+    await expect(opening).rejects.toThrow('Aborted');
+  });
+
+  it('closes a source whose open finished just as the abort fired', async () => {
+    const w = scriptedWorker();
+    const source = createDecodeWorkerSource({ format: 'ply', blob: new Blob([]), spawn: w.spawn });
+    const ctrl = new AbortController();
+    const opening = source.open(ctrl.signal);
+    await vi.waitFor(() => expect(w.lastRequest('open')).toBeDefined());
+    ctrl.abort();
+    w.opened(w.lastRequest('open').requestId, 17);
+    await expect(opening).rejects.toThrow('Aborted');
+    expect(w.sent).toContainEqual({ kind: 'close', sourceId: 17 });
+    await expect(source.next(1)).rejects.toThrow('not opened');
+  });
+
+  it('reopens in place, aborting by source id', async () => {
+    const w = scriptedWorker();
+    const source = createDecodeWorkerSource({ format: 'ply', blob: new Blob([]), spawn: w.spawn });
+    const opening = source.open();
+    await vi.waitFor(() => expect(w.lastRequest('open')).toBeDefined());
+    w.opened(w.lastRequest('open').requestId, 5);
+    await opening;
+    const ctrl = new AbortController();
+    const reopening = source.reopen!({ stride: 3, originOffset: [1, 2, 3] }, ctrl.signal);
+    await vi.waitFor(() => expect(w.lastRequest('reopen')).toBeDefined());
+    expect(w.lastRequest('reopen')).toMatchObject({ sourceId: 5, stride: 3, originOffset: [1, 2, 3] });
+    ctrl.abort();
+    expect(w.sent).toContainEqual({ kind: 'abort', sourceId: 5 });
+    w.reply({ kind: 'error', requestId: w.lastRequest('reopen').requestId, message: 'Aborted' });
+    await expect(reopening).rejects.toThrow('Aborted');
+    // The worker released the source on the failed reopen; so does the client.
+    await expect(source.next(1)).rejects.toThrow('not opened');
+  });
+});

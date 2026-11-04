@@ -36,6 +36,7 @@ import {
 } from './protocol.js';
 import type {
   PointSourceInfo,
+  PointSourceReopenOptions,
   StreamingPointSource,
 } from './types.js';
 
@@ -220,18 +221,64 @@ export function createDecodeWorkerSource(
       if (info) return info;
       abortIfAborted(signal);
       const session = await ensureSession();
-      const resp = await session.send<Extract<WorkerResponse, { kind: 'opened' }>>(
-        (requestId) => ({
-          kind: 'open',
-          requestId,
-          format: opts.format,
-          blob: opts.blob,
-          label: opts.label,
-          stride: Math.max(1, opts.stride ?? 1),
-          originOffset: opts.originOffset,
-        }),
+      abortIfAborted(signal);
+      // The worker may spend a long time in open() (PLY scans the whole
+      // body for bounds), so an abort must reach it by request id (#8777).
+      let requestId = 0;
+      const resp = await whileListening(
+        signal,
+        () => session.notify({ kind: 'abort-open', targetRequestId: requestId }),
+        () => session.send<Extract<WorkerResponse, { kind: 'opened' }>>(
+          (id) => ({
+            kind: 'open',
+            requestId: id,
+            format: opts.format,
+            blob: opts.blob,
+            label: opts.label,
+            stride: Math.max(1, opts.stride ?? 1),
+            originOffset: opts.originOffset,
+          }),
+          [],
+          (id) => { requestId = id; },
+        ),
       );
+      if (signal?.aborted) {
+        // The open finished just as the abort fired: release it rather than
+        // hand the caller a source it has already given up on.
+        session.notify({ kind: 'close', sourceId: resp.sourceId });
+        throw new DOMException('Aborted', 'AbortError');
+      }
       sourceId = resp.sourceId;
+      info = resp.info;
+      return info;
+    },
+    async reopen(options: PointSourceReopenOptions, signal?: AbortSignal): Promise<PointSourceInfo> {
+      if (sourceId === null) {
+        throw new Error('decode-worker source not opened');
+      }
+      abortIfAborted(signal);
+      const session = await ensureSession();
+      const id = sourceId;
+      info = null;
+      let resp: Extract<WorkerResponse, { kind: 'opened' }>;
+      try {
+        resp = await whileListening(
+          signal,
+          () => session.notify({ kind: 'abort', sourceId: id }),
+          () => session.send<Extract<WorkerResponse, { kind: 'opened' }>>((requestId) => ({
+            kind: 'reopen',
+            requestId,
+            sourceId: id,
+            stride: Math.max(1, options.stride),
+            originOffset: options.originOffset,
+          })),
+        );
+      } catch (err) {
+        // A failed reopen has already released the worker-side source.
+        sourceId = null;
+        throw err;
+      }
+      abortIfAborted(signal);
       info = resp.info;
       return info;
     },
@@ -245,31 +292,25 @@ export function createDecodeWorkerSource(
       // Propagate aborts that fire WHILE the worker is decoding —
       // without this, cancel() returns immediately to the caller but
       // the worker keeps grinding on a soon-to-be-discarded chunk.
-      const abortListener = () => {
-        session.notify({ kind: 'abort', sourceId: id });
-      };
-      signal?.addEventListener('abort', abortListener, { once: true });
-      try {
-        const resp = await session.send<Extract<WorkerResponse, { kind: 'chunk' }>>(
+      const resp = await whileListening(
+        signal,
+        () => session.notify({ kind: 'abort', sourceId: id }),
+        () => session.send<Extract<WorkerResponse, { kind: 'chunk' }>>(
           (requestId) => ({
             kind: 'next',
             requestId,
             sourceId: id,
             maxPoints,
           }),
-        );
-        // Race: if the signal fired *while* the worker was finishing a
-        // chunk, the response can still arrive after the host has
-        // moved on. Treat a late completion as cancelled so the host's
-        // `onChunk` doesn't run after `cancel()` returned to the caller.
-        if (signal?.aborted) {
-          throw new DOMException('Aborted', 'AbortError');
-        }
-        if (!resp.chunk) return null;
-        return chunkFromWire(resp.chunk);
-      } finally {
-        signal?.removeEventListener('abort', abortListener);
-      }
+        ),
+      );
+      // Race: if the signal fired *while* the worker was finishing a
+      // chunk, the response can still arrive after the host has
+      // moved on. Treat a late completion as cancelled so the host's
+      // `onChunk` doesn't run after `cancel()` returned to the caller.
+      abortIfAborted(signal);
+      if (!resp.chunk) return null;
+      return chunkFromWire(resp.chunk);
     },
     close(): void {
       if (sourceId !== null && sessionPromise) {
@@ -287,6 +328,16 @@ export function createDecodeWorkerSource(
       info = null;
     },
   };
+}
+
+/** Run `request`, calling `onAbort` if `signal` fires before it settles. */
+async function whileListening<T>(signal: AbortSignal | undefined, onAbort: () => void, request: () => Promise<T>): Promise<T> {
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    return await request();
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 function abortIfAborted(signal?: AbortSignal): void {

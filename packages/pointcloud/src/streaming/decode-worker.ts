@@ -15,7 +15,7 @@
 
 /// <reference lib="webworker" />
 
-import type { StreamingPointSource } from './types.js';
+import type { PointSourceInfo, StreamingPointSource } from './types.js';
 import {
   chunkToWire,
   type WorkerRequest,
@@ -30,12 +30,18 @@ import { normalizePointStride } from './stride.js';
 
 declare const self: DedicatedWorkerGlobalScope;
 
+type OpenRequest = Extract<WorkerRequest, { kind: 'open' }>;
+
 interface OpenSource {
   source: StreamingPointSource;
   abort: AbortController;
+  /** The original request, so a source without its own `reopen()` can be rebuilt. */
+  request: OpenRequest;
 }
 
 const sources = new Map<number, OpenSource>();
+/** Aborts for `open` requests that have not answered yet, by requestId (#8777). */
+const pendingOpens = new Map<number, AbortController>();
 let nextSourceId = 1;
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
@@ -43,6 +49,12 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   switch (msg.kind) {
     case 'open':
       void handleOpen(msg);
+      return;
+    case 'reopen':
+      void handleReopen(msg);
+      return;
+    case 'abort-open':
+      pendingOpens.get(msg.targetRequestId)?.abort();
       return;
     case 'next':
       void handleNext(msg);
@@ -78,20 +90,23 @@ async function handleCopc(
   }
 }
 
-async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promise<void> {
+async function handleOpen(msg: OpenRequest): Promise<void> {
   // Hoisted so the catch below can release a source that was created
   // (and possibly opened) but never made it into `sources` — see the
   // comment at the `post()` call.
   let opened: OpenSource | undefined;
+  // Registered before the first await, so an `abort-open` that follows this
+  // message always finds it, even mid-scan of a multi-GB file.
+  const abort = new AbortController();
+  pendingOpens.set(msg.requestId, abort);
   try {
     const source = await createSource(msg.format, msg.blob, {
       label: msg.label,
       downsample: { stride: normalizePointStride(msg.stride) },
       originOffset: msg.originOffset,
     });
-    const abort = new AbortController();
     const info = await source.open(abort.signal);
-    opened = { source, abort };
+    opened = { source, abort, request: msg };
     const sourceId = nextSourceId++;
     // Report success to the client BEFORE registering the source. If
     // `post()` throws (e.g. a future `PointSourceInfo` field that isn't
@@ -106,7 +121,7 @@ async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promis
       sourceId,
       info,
     });
-    sources.set(sourceId, { source, abort });
+    sources.set(sourceId, opened);
     opened = undefined; // ownership transferred to `sources`
   } catch (err) {
     if (opened) {
@@ -122,6 +137,41 @@ async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promis
       requestId: msg.requestId,
       message: errMessage(err),
     });
+  } finally {
+    pendingOpens.delete(msg.requestId);
+  }
+}
+
+/**
+ * Restart a source at a new stride and origin. A source with `reopen()` keeps
+ * what its `open()` learnt (PLY keeps its bounds scan); any other is rebuilt
+ * from the original request, as a close plus a fresh open would. On failure
+ * the source is released, and the client forgets its id.
+ */
+async function handleReopen(msg: Extract<WorkerRequest, { kind: 'reopen' }>): Promise<void> {
+  const open = sources.get(msg.sourceId);
+  if (!open) {
+    post({ kind: 'error', requestId: msg.requestId, message: `Unknown sourceId ${msg.sourceId}` });
+    return;
+  }
+  const stride = normalizePointStride(msg.stride);
+  try {
+    let info: PointSourceInfo;
+    if (open.source.reopen) {
+      info = await open.source.reopen({ stride, originOffset: msg.originOffset }, open.abort.signal);
+    } else {
+      open.source.close();
+      const { format, blob, label } = open.request;
+      open.source = await createSource(format, blob, { label, downsample: { stride }, originOffset: msg.originOffset });
+      info = await open.source.open(open.abort.signal);
+    }
+    // A `close` that arrived mid-reopen has already dropped this entry.
+    if (sources.get(msg.sourceId) !== open) throw new DOMException('Aborted', 'AbortError');
+    post({ kind: 'opened', requestId: msg.requestId, sourceId: msg.sourceId, info });
+  } catch (err) {
+    if (sources.get(msg.sourceId) === open) handleClose(msg.sourceId);
+    else open.source.close();
+    post({ kind: 'error', requestId: msg.requestId, message: errMessage(err) });
   }
 }
 

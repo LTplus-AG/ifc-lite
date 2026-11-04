@@ -19,7 +19,13 @@ export function watchPointCloudRenderFrame(renderer: PointCloudTransformTarget):
     subscribed = true;
     useViewerStore.subscribe((state, previous) => {
       if (state.models !== previous.models || state.geometryResult !== previous.geometryResult) {
-        syncPointCloudRenderFrame(getGlobalRenderer());
+        try {
+          syncPointCloudRenderFrame(getGlobalRenderer());
+        } catch (error) {
+          // The registry transaction restored prior GPU matrices; a device
+          // failure must not abort publication of an otherwise valid IFC.
+          console.error('[pointcloud] render-frame update failed:', error);
+        }
       }
     });
   }

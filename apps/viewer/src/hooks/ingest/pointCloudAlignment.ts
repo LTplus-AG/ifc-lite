@@ -364,8 +364,9 @@ export function computePointCloudAlignment(
 
   // Unaligned matrix: undo ONLY the decode-time subtraction, in the same
   // swapped Y-up axes (swap(E,N,H) = (E,H,-N)) — no rotation, no unit
-  // scaling, no viewer shift. Reproduces the raw native placement
-  // (native coordinates rendered 1:1 as viewer units). Compose manual
+  // scaling or viewer shift here. The registry subtracts the current shared
+  // render-frame offset when it applies this matrix, preserving native
+  // coordinates relative to the IFC. Compose manual
   // correction in double precision before the renderer narrows to f32.
   const unalignedMatrix = new Float64Array([
     1, 0, 0, 0,

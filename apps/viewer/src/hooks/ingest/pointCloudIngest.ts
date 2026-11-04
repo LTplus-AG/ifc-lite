@@ -37,7 +37,7 @@ import {
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
-import { watchPointCloudRenderFrame } from './pointCloudFrameSync.js';
+import { syncPointCloudRenderFrame, watchPointCloudRenderFrame } from './pointCloudFrameSync.js';
 import { streamPointCloudOrCopc } from './copc/copcLodStream.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
@@ -394,6 +394,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       autoOrigin: true,
       onOpen: (info) => {
         opts.onSpatialMetadata?.(info.spatialMetadata);
+        syncPointCloudRenderFrame(opts.renderer);
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
         opts.onProgress?.({
           phase: info.stride > 1

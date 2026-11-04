@@ -22,6 +22,8 @@ const noOffset = { x: 0, y: 0, z: 0 };
 
 function ifcModel() {
   const ifc = fixtureModel('ifc');
+  ifc.loadedAt = 1;
+  ifc.loadState = 'complete';
   ifc.geometryResult = {
     meshes: [], totalVertices: 0, totalTriangles: 0,
     coordinateInfo: {

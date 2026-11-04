@@ -342,12 +342,20 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // retains its explicit source CRS and can atomically realign it when an IFC
   // anchor loads later; omitting raw scans made model-after-scan order depend
   // on a manual reload.
-  watchPointCloudRenderFrame(opts.renderer);
-  registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
-    sourceSpatialReference: opts.spatialReference,
-    sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
-  });
-  retargetPointCloudDecodeOrigin(opts.renderer, handle, alignment?.decodeOriginOffset ?? [0, 0, 0]);
+  try {
+    watchPointCloudRenderFrame(opts.renderer);
+    registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
+      sourceSpatialReference: opts.spatialReference,
+      sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
+    });
+    retargetPointCloudDecodeOrigin(opts.renderer, handle, alignment?.decodeOriginOffset ?? [0, 0, 0]);
+  } catch (error) {
+    opts.renderer.removePointCloudAsset(handle);
+    unregisterPointCloudAlignment(handle.id);
+    removePointCloudScanCache(handle.id);
+    onCountChange(-1);
+    throw error;
+  }
 
   // Running per-class histogram, pushed to the caller periodically so
   // the classes checklist populates while a large scan is still

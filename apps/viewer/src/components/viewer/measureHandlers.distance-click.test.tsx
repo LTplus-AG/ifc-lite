@@ -448,6 +448,25 @@ describe('a snap never swallows a second point placed away from the start (#8788
     assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
   });
 
+  it('the mobile journey\'s taps: a second tap near the vertex the first one snapped to still measures', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    // Snap anything within 60px of where the corner shows onto the corner, as the renderer does.
+    const corner = { x: 2, y: 0, z: 0 };
+    const shown = projectToCssScreen(ctx.camera, canvas, corner)!;
+    const edgeLock = { shouldRelease: false, shouldLock: false, edge: null };
+    Object.assign(params.rendererRef.current!, {
+      raycastSceneMagnetic: (x: number, y: number) => Math.hypot(x - shown.x, y - shown.y) < 60
+        ? { intersection: { point: corner }, snapTarget: null, edgeLock }
+        : { intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } }, snapTarget: null, edgeLock },
+    });
+    act(() => handleMeasureTap(ctx, shown.x + 30, shown.y));
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first tap snaps to the corner 30px away');
+    act(() => handleMeasureTap(ctx, shown.x + 5, shown.y));
+    assert.equal(s().measurements.length, 1, 'BUG: a tap 25px from the first, 5px from the snapped start, was dropped as a retap');
+    assert.ok(s().measurements[0].distance > 0, 'the measurement has length');
+  });
+
   it('a double-tap near a vertex both taps snap to is no measurement', () => {
     const { canvas, params } = mountSnapping();
     const ctx = ctxOf(params, canvas);

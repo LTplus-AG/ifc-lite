@@ -27,7 +27,7 @@ const startsAfterFinish = new WeakSet<MouseState>();
  * Matched to the start by world position: a camera move rebuilds the start object.
  */
 const startPresses = new WeakMap<MouseState, { world: { x: number; y: number; z: number }; press: { x: number; y: number }; shown: { x: number; y: number } }>();
-/** A second press this far (CSS px) from both the start's press and its shown point is a new point. */
+/** A second press within this far (CSS px) of the start's own press is that press repeated (#8788). */
 const REPRESS_SLOP_PX = 8;
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
@@ -80,7 +80,7 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
 /**
  * Whether a press at `at` is clearly a new point: away from where the start was
  * pressed (so not a double-click or double-tap snapping to the same target) and
- * from where the start now shows (so not a press on the start after the camera moved).
+ * not on the start as it now shows (so not a retap on it after the camera moved).
  */
 function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at: { x: number; y: number }): boolean {
   const record = startPresses.get(ctx.mouseState);
@@ -89,7 +89,8 @@ function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at:
   // Once the camera has moved, the raw press is no longer where the user pressed the start.
   const cameraMoved = Math.hypot(shown.x - record.shown.x, shown.y - record.shown.y) > 1;
   const nearPress = !cameraMoved && Math.hypot(at.x - record.press.x, at.y - record.press.y) <= REPRESS_SLOP_PX;
-  return !nearPress && Math.hypot(at.x - shown.x, at.y - shown.y) > REPRESS_SLOP_PX;
+  // A press on the shown start itself stays a retap, as finishDistance's duplicate guard has it.
+  return !nearPress && !isDuplicateClickPoint({ screenX: shown.x, screenY: shown.y }, { screenX: at.x, screenY: at.y });
 }
 
 /** Any other press (navigation, another tool) breaks the finish-then-start chain a dblclick may drop. */

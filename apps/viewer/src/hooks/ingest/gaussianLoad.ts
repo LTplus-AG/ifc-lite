@@ -14,7 +14,7 @@ import type { CaptureFailureCode } from '@/lib/analytics-capture-events';
 import type { GaussianAdmission } from './gaussianAdmission.js';
 import type { GaussianLoadOutcome, ModelLoadOptions } from '../modelLoadOptions.js';
 import { gaussianAdmissionEnabled, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
-import { adoptGaussianAsset } from './gaussianAssets.js';
+import { adoptGaussianAsset, forgetPendingGaussianAsset, uploadInGaussianFrame } from './gaussianAssets.js';
 import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
 import { captureLoadFailure, captureRefusal, type CaptureRefusal } from './gaussianRefusals.js';
 import { reserveSceneSplats } from './gaussianSceneBudget.js';
@@ -27,7 +27,7 @@ export interface GaussianLoadContext {
   target: { kind: 'primary' | 'federated'; visible?: boolean };
   modelId: string;
   /** Caller/user placement and credit; admission itself is the build's (`gaussianAdmissionEnabled`). */
-  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved'>;
+  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved'>;
   /** The load's own cancellation: it terminates the decoder worker and the upload. */
   signal: AbortSignal;
   isCurrent(): boolean;
@@ -117,12 +117,14 @@ async function decodeAndPublish(
     const capture = prepareGaussianCapture(await (ctx.decode ?? decodeGaussianInWorker)(ctx.file, ctx.signal));
     if (!ctx.isCurrent()) return 'cancelled';
     store.setProgress({ phase: 'Uploading Gaussian capture', percent: 70 });
-    upload = await uploadGaussianCapture({
+    upload = await uploadInGaussianFrame(splats, frame => uploadGaussianCapture({
       modelId: ctx.modelId, format, capture, splats, generation,
       currentGeneration: () => blockedGeneration(renderer), models: () => useViewerStore.getState().models,
       visible: ctx.target.visible ?? true, signal: ctx.signal, isCurrent: ctx.isCurrent,
+      upAxis: ctx.options?.gaussianUpAxis,
+      frame,
       placement: ctx.options?.gaussianPlacement ?? showcaseGaussianPlacement(), attribution: ctx.options?.gaussianAttribution,
-    });
+    }));
   } catch (error) {
     // A superseded or cancelled load: its canceller or successor owns the UI.
     if (!ctx.isCurrent()) return 'cancelled';
@@ -133,10 +135,12 @@ async function decodeAndPublish(
   try {
     await ctx.finalize(shell.dataStore, shell.geometryResult, 'IFC4', { gaussianSplat: upload.record, loadPath: 'gaussian' });
   } catch (error) {
+    forgetPendingGaussianAsset(splats, upload.record.handle);
     upload.rollback();
     throw error;
   }
   if (useViewerStore.getState().models.get(ctx.modelId)?.gaussianSplat?.handle !== upload.record.handle) {
+    forgetPendingGaussianAsset(splats, upload.record.handle);
     upload.rollback(); // Finalization declined: superseded before publication.
     return ctx.isCurrent() ? 'failed' : 'cancelled';
   }

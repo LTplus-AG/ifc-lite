@@ -3,6 +3,7 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createChunkDataPool, MemoryReadFileSystem, readPly, materializeToDataTable } from '@playcanvas/splat-transform';
 import { inspectGaussianAdmission } from './gaussianAdmission.js';
+import { prepareGaussianCapture } from './gaussianIngest.js';
 // A production-only revert removes this new module. Load inside each test so
 // that missing decode capability fails an assertion, rather than file loading.
 async function decodeGaussianFile(file: File) {
@@ -57,6 +58,33 @@ it('decodes real 32-byte splat framing via upstream without implicit placement (
   assert.ok(Math.abs(Math.exp(decoded.columns.scale_0[0]) - 2) < 1e-6);
   bytes[0] = 0; view.setFloat32(0, NaN, true);
   await assert.rejects(decodeGaussianFile(new File([bytes], 'bad.splat')), /Non-finite/);
+});
+
+it('rebases double PLY centres before f32 narrowing at a survey origin (#8752, #8778)', async () => {
+  const centres = [[2_600_000.0012, 1_200_000.0023, 500.0045], [2_600_000.0314, 1_200_000.0425, 500.0546]];
+  const names = base;
+  const stride = names.length * 4 + 12;
+  const body = new DataView(new ArrayBuffer(stride * centres.length));
+  centres.forEach((centre, row) => {
+    let offset = row * stride;
+    names.forEach(name => {
+      if (['x', 'y', 'z'].includes(name)) { body.setFloat64(offset, centre[['x', 'y', 'z'].indexOf(name)], true); offset += 8; }
+      else { body.setFloat32(offset, name === 'rot_0' ? 1 : 0, true); offset += 4; }
+    });
+  });
+  const header = `ply\nformat binary_little_endian 1.0\nelement vertex ${centres.length}\n`
+    + names.map(name => `property ${['x', 'y', 'z'].includes(name) ? 'double' : 'float'} ${name}\n`).join('') + 'end_header\n';
+  const decoded = await decodeGaussianFile(new File([header, body.buffer], 'double.ply'));
+  const prepared = prepareGaussianCapture(decoded);
+  const local = prepared.attributes.positions;
+  for (let row = 0; row < centres.length; row++) for (let axis = 0; axis < 3; axis++) {
+    const roundtrip = prepared.decodeOrigin[axis] + local[row * 3 + axis];
+    assert.ok(Math.abs(roundtrip - centres[row][axis]) < 0.001, `row ${row} axis ${axis}: ${roundtrip}`);
+  }
+  assert.deepEqual(decoded.centerBounds.min, centres[0]);
+  // Mutation control: the former narrow-then-rebase order loses centimetres.
+  assert.ok(Math.abs(Math.fround(centres[0][0]) - prepared.decodeOrigin[0]
+    - local[0]) > 0.001, 'narrowing the source centre before rebase must fail this precision bound');
 });
 
 it('ordinary PLY and truncated Gaussian payload never enter decoding (#8565)', async () => {

@@ -6,7 +6,7 @@ import { useEffect, useState, type MutableRefObject } from 'react';
 import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { gaussianCaptureFrame } from './gaussianCaptureFrame.js';
+import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
 import type { CaptureUpAxis } from './pointCloudFrame.js';
 import { getGlobalRenderer } from '../useBCF.js';
 
@@ -153,7 +153,7 @@ export async function setGaussianCaptureUpAxis(modelId: string, upAxis: CaptureU
   if (!asset || asset === 'renderer-replaced') return false;
   const framed = gaussianCaptureFrame(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined),
     upAxis, { originShift: capture.frameOffset });
-  if (!await asset.splats.setPlacement(capture.handle, { matrix: framed.placement })) return false;
+  if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
   if (useViewerStore.getState().models.get(modelId)?.gaussianSplat !== capture) return false;
   useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
   return true;

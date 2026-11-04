@@ -25,3 +25,15 @@ export function gaussianCaptureFrame(placement?: readonly number[], upAxis?: Cap
   matrix[14] -= offset.z;
   return { placement: matrix, sourcePlacement: [...sourcePlacement], upAxis: axis, frameOffset: offset };
 }
+
+/** Undo the CPU position rebase in f64, after source axes and before upload.
+ * This keeps the renderer anchor near the placed capture instead of at -IFC RTC.
+ */
+export function gaussianUploadPlacement(placement: readonly number[], origin?: readonly number[]): readonly number[] {
+  if (!origin) return placement;
+  const matrix = [...placement];
+  for (let row = 0; row < 3; row++) {
+    matrix[12 + row] += matrix[row] * origin[0] + matrix[4 + row] * origin[1] + matrix[8 + row] * origin[2];
+  }
+  return matrix;
+}

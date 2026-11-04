@@ -4,7 +4,7 @@
 
 import type { RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { CaptureUpAxis } from './pointCloudFrame.js';
-import { gaussianCaptureFrame } from './gaussianCaptureFrame.js';
+import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -25,6 +25,8 @@ export interface GaussianSplatModel {
   /** Column-major source-local -> viewer world matrix handed to the renderer. */
   readonly placement: readonly number[];
   /** Unbaked placement and axes for reload/portable restore (#8752). */
+  /** Source-coordinate centre subtracted from the CPU position arrays only. */
+  readonly decodeOrigin?: readonly [number, number, number];
   readonly sourcePlacement?: readonly number[];
   readonly upAxis?: CaptureUpAxis;
   readonly frameOffset?: { x: number; y: number; z: number };
@@ -38,13 +40,19 @@ export interface GaussianSplatModel {
 /** Renderer-boundary arrays plus the summary the store keeps. */
 export interface PreparedGaussianCapture extends Pick<GaussianDecoded, 'count' | 'shDegree' | 'centerBounds'> {
   attributes: NormalizedGaussianAttributes;
+  decodeOrigin: readonly [number, number, number];
 }
 
 /** Normalize once. The caller passes the decode result straight in and keeps no
  * reference, so the raw decoded columns are collectable during the upload. */
 export function prepareGaussianCapture(decoded: GaussianDecoded): PreparedGaussianCapture {
   const { count, shDegree, centerBounds } = decoded;
-  return { attributes: normalizeGaussianAttributes(decoded), count, shDegree, centerBounds };
+  const attributes = normalizeGaussianAttributes(decoded);
+  const decodeOrigin = centerBounds.min.map((min, axis) => min / 2 + centerBounds.max[axis] / 2) as [number, number, number];
+  for (let row = 0; row < count; row++) {
+    for (let axis = 0; axis < 3; axis++) attributes.positions[row * 3 + axis] -= decodeOrigin[axis];
+  }
+  return { attributes, decodeOrigin, count, shDegree, centerBounds };
 }
 
 export interface GaussianUploadRequest {
@@ -94,7 +102,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
     // The adapter's acknowledgement literal is a renderer call detail, not the
     // admission decision: that is the build's (`gaussianAdmissionEnabled`, #8568).
     handle = await splats.add({
-      attributes: capture.attributes, placement: { matrix: placement }, modelIndex: slot.index, visible: request.visible,
+      attributes: capture.attributes, placement: { matrix: gaussianUploadPlacement(placement, capture.decodeOrigin) }, modelIndex: slot.index, visible: request.visible,
     }, { qualification: 'internal-unqualified', signal });
   } catch (error) {
     slot.release(); // A rejected add retains nothing, including this index.
@@ -106,7 +114,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   return {
     record: {
       handle, format: request.format, count, shDegree, sourceCenterBounds: centerBounds,
-      ...framed, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
+      ...framed, decodeOrigin: capture.decodeOrigin, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
       ...(request.attribution ? { attribution: request.attribution } : {}),
     },
     commit: () => slot.release(),

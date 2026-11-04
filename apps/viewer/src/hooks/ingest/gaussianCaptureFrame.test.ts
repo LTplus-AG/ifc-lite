@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gaussianCaptureFrame } from './gaussianCaptureFrame.js';
+import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
 
 const point = (m: readonly number[], p: number[]) => [0, 1, 2].map(r => m[r] * p[0] + m[r + 4] * p[1] + m[r + 8] * p[2] + m[r + 12]);
@@ -28,4 +28,12 @@ test('explicit historical axis mapping is respected, invalid placement refuses (
   const rx180 = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];
   assert.deepEqual(point(gaussianCaptureFrame(rx180).placement, [1, 2, 3]), [1, -2, -3]);
   assert.throws(() => gaussianCaptureFrame([1, 2, 3]), /16 finite/);
+});
+
+test('CPU position rebase is restored inside rotation, before IFC offset, without mutating source placement (#8752)', () => {
+  const placement = gaussianCaptureFrame(undefined, 'z', { originShift: { x: 2_600_000, y: 500, z: -1_200_000 } }).placement;
+  const before = [...placement];
+  const upload = gaussianUploadPlacement(placement, [2_600_010, 1_200_020, 530]);
+  assert.deepEqual(point(upload, [2, 3, 4]), [12, 34, -23]);
+  assert.deepEqual(placement, before);
 });

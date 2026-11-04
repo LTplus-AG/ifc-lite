@@ -639,6 +639,7 @@ it('canonical Gaussian ingest reconciles a Swiss survey-scale IFC origin plus RT
     wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 },
   } } });
   await load(gaussianPly('survey-world.ply', [[2_600_012, 1_200_003, 524]]), { kind: 'federated', modelId: 'survey-world' });
+  assert.ok(model('survey-world'), String(useViewerStore.getState().error));
   const record = model('survey-world')!.gaussianSplat!;
   assert.deepEqual(splats().getBounds(record.handle), { min: [2, 4, -33], max: [2, 4, -33] });
   assert.equal(record.calibration, 'uncalibrated', 'render-origin reconciliation makes no registration or scale claim');

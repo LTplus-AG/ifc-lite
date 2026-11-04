@@ -52,7 +52,11 @@ function rig() {
     getCamera: () => camera, getCanvas: () => canvas, requestRender() {},
     getScene: () => ({ getMeshes: () => [], getBatchedMeshes: () => [heavy], getInstancedEntityCount: () => 0 }),
     raycastScene: () => { raycasts.push(1); return null; },
-    probeSurface: async (x: number, y: number) => ground(x, y),
+    // Like the real probe: the answer is the frame drawn when it was issued, and it lands a frame later.
+    probeSurface: (x: number, y: number) => {
+      const answer = ground(x, y);
+      return new Promise<Vec3 | null>((resolve) => setTimeout(() => resolve(answer), 0));
+    },
   } as unknown as Renderer;
   const state = useViewerStore.getState();
   const params: UseTouchControlsParams = {
@@ -99,6 +103,7 @@ describe('touch orbit pivot from the depth under the finger (#8769)', () => {
     assert.ok(!near(r.pivots.at(-1), under), 'no probe yet: the fallback pivot');
     await frame();
     await frame();
+    await frame();
     assert.ok(near(r.pivots.at(-1), under), `pivot ${JSON.stringify(r.pivots.at(-1))} is the ground under the finger`);
     assert.equal(r.raycasts.length, 0, 'the CPU raycast stays gated off');
     act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });
@@ -106,15 +111,15 @@ describe('touch orbit pivot from the depth under the finger (#8769)', () => {
 
   it('adopts it for the rest of the gesture even once the finger is orbiting (no drag threshold on touch)', async () => {
     const r = rig();
-    act(() => {
-      r.canvas.dispatchEvent(touchEvent('touchstart', [finger(r.canvas, 250, 420)]));
-      r.canvas.dispatchEvent(touchEvent('touchmove', [finger(r.canvas, 320, 400)]));
-    });
+    const under = r.ground(250, 420);
+    act(() => { r.canvas.dispatchEvent(touchEvent('touchstart', [finger(r.canvas, 250, 420)])); });
+    await frame(); // the probe is issued against the frame before the finger moves
+    act(() => { r.canvas.dispatchEvent(touchEvent('touchmove', [finger(r.canvas, 320, 400)])); });
+    assert.ok(r.camera.getPosition().x !== 0 || r.camera.getPosition().y !== -1600, 'the finger really orbited before the probe landed');
     await frame();
     await frame();
-    // The probe reads the frame after the finger moved: the ground now under the first touch point.
-    const p = r.pivots.at(-1);
-    assert.ok(p && Math.abs(p.z) < 1e-6 && r.pivots.length >= 2, `pivot ${JSON.stringify(p)} is not the probed ground`);
+    await frame();
+    assert.ok(near(r.pivots.at(-1), under), `pivot ${JSON.stringify(r.pivots.at(-1))} is the ground first touched ${JSON.stringify(under)}`);
     act(() => { r.canvas.dispatchEvent(touchEvent('touchend', [])); });
   });
 

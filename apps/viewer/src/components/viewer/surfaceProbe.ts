@@ -48,8 +48,11 @@ export interface SurfaceProbeCamera {
 
 export interface SurfaceProbe {
   /**
-   * Probe the canvas point (CSS px) on the next frame. Resolves with that
-   * probe's point (null for empty space or when superseded by nothing usable).
+   * Probe the canvas point (CSS px) on the next frame. Resolves with the
+   * surface probed there, or null for empty space, or when a newer request
+   * moved the probe elsewhere (or to another visibility). The answer is the
+   * surface the frame drew at that pixel, even if the camera has moved since:
+   * a gesture adopting it decides for itself whether that is still wanted.
    */
   request(x: number, y: number, scene?: string): Promise<SurfacePoint | null>;
   /**
@@ -76,7 +79,10 @@ export function surfaceProbeFor(renderer: SurfaceProbeRenderer, camera: SurfaceP
   return probe;
 }
 
-type Waiter = (point: SurfacePoint | null) => void;
+type Waiter = (point: SurfacePoint | null, job: { x: number; y: number; scene: string }) => void;
+
+/** One readback that never settles must not stop probing for the session. */
+export const SURFACE_PROBE_TIMEOUT_MS = 500;
 
 export function createSurfaceProbe(
   probeSurface: (x: number, y: number) => Promise<SurfacePoint | null>,
@@ -95,12 +101,17 @@ export function createSurfaceProbe(
     const job = pending;
     pending = null;
     if (!job) { busy = false; return; }
+    let settled = false;
     const settle = (point: SurfacePoint | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       // A miss clears the cache: the pixel the gestures will ask about is empty now.
       latest = point ? { point, at: Date.now(), scene: job.scene } : null;
-      for (const w of job.waiters) w(point);
+      for (const w of job.waiters) w(point, job);
       if (pending) schedule(run); else busy = false;
     };
+    const timer = setTimeout(() => settle(null), SURFACE_PROBE_TIMEOUT_MS);
     probeSurface(job.x, job.y).then(settle, (err: unknown) => {
       console.warn('[Viewport] Surface depth probe failed:', err);
       settle(null);
@@ -111,7 +122,9 @@ export function createSurfaceProbe(
     request(x, y, scene = '') {
       return new Promise((resolve) => {
         // The newest position wins; earlier callers hear its answer.
-        pending = { x, y, scene, waiters: [...(pending?.waiters ?? []), resolve] };
+        const mine: Waiter = (point, job) => resolve(
+          job.scene === scene && Math.abs(job.x - x) <= SURFACE_PROBE_SLOP_PX && Math.abs(job.y - y) <= SURFACE_PROBE_SLOP_PX ? point : null);
+        pending = { x, y, scene, waiters: [...(pending?.waiters ?? []), mine] };
         if (!busy) { busy = true; schedule(run); }
       });
     },

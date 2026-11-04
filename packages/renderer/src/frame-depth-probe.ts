@@ -28,6 +28,8 @@ import type { Vec3 } from './types.js';
 /** What one completed frame left in the depth attachment. */
 export interface FrameDepthRecord {
   snapshot: RelativeToEyeSnapshot;
+  /** The depth attachment the frame drew into; a resize replaces it. */
+  texture: GPUTexture;
   /** Depth attachment size, device px. */
   width: number;
   height: number;
@@ -71,7 +73,7 @@ export class FrameDepthProbe {
     if (!(x >= 0 && y >= 0 && x < frame.cssWidth && y < frame.cssHeight)) return null;
     const texture = this.depthTexture();
     // A resize replaced the attachment after this frame; its content is not the frame's.
-    if (texture.width !== frame.width || texture.height !== frame.height) return null;
+    if (texture !== frame.texture || texture.width !== frame.width || texture.height !== frame.height) return null;
     const tx = Math.min(frame.width - 1, Math.floor((x * frame.width) / frame.cssWidth));
     const ty = Math.min(frame.height - 1, Math.floor((y * frame.height) / frame.cssHeight));
 

@@ -106,6 +106,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // at current view distance — never to a selected entity's center, which
     // would pivot far from the user's touch and feel disconnected.
     const anchorOrbitPivotUnderFinger = (touch: Touch) => {
+      // Any new pivot pick supersedes a probe still in flight for an older one.
+      const gesture = ++pivotGesture;
       // A focused clash with nothing selected orbits around the clashing pair (#4806).
       const clashPivot = focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current);
       if (clashPivot) {
@@ -133,7 +135,6 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // is usually orbiting before the probe lands: adopt the answer for the
       // rest of this one-finger gesture. Orbit steps are incremental, so a new
       // pivot changes the rotation from here on and never jumps the camera.
-      const gesture = ++pivotGesture;
       void pickSurface.probed?.(tx, ty).then((point) => {
         if (point && !disposed && gesture === pivotGesture && touchState.touches.length === 1) camera.setOrbitCenter(point);
       });

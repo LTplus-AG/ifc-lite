@@ -27,8 +27,9 @@ export interface ZoomSurfacePicker {
    */
   live?(): boolean;
   /**
-   * When {@link live}, the surface under the point once the probe this pick
-   * requested lands (a frame later): for a press that found none yet.
+   * When {@link live}, the surface the probe finds at the point a frame or
+   * so later, for a press that found none yet. It is the surface drawn there
+   * when the probe ran: the caller checks the camera if that matters.
    */
   probed?(x: number, y: number): Promise<SurfacePoint | null>;
   /** Probe ahead where the raycast is gated (the hover), so the next gesture finds an answer. */
@@ -97,11 +98,7 @@ export function createZoomSurfacePicker(
     const options = getPickOptions();
     if (probe && isSurfaceRaycastGated(renderer, camera, options.isStreaming)) void probe.request(x, y, visibilityKey(options));
   };
-  pick.probed = (x, y) => {
-    if (!pick.live?.() || !probe) return Promise.resolve(null);
-    const scene = visibilityKey(getPickOptions());
-    return probe.request(x, y, scene).then(() => probe.peek(x, y, scene));
-  };
+  pick.probed = (x, y) => (pick.live?.() && probe ? probe.request(x, y, visibilityKey(getPickOptions())) : Promise.resolve(null));
   return pick;
 }
 

@@ -22,6 +22,7 @@ import { cleanupMouseControls, mountMouseControls, mousePointer } from '@/test/m
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
 import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 const s = () => useViewerStore.getState();
@@ -428,6 +429,22 @@ describe('a snap never swallows a second point placed away from the start (#8788
     click(canvas, 202, 300);
     click(canvas, 240, 300);
     assert.equal(s().measurements.length, 1, 'BUG: the snap pulled the second click onto the start and it was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('the start being reprojected between the taps (a camera frame) keeps the fallback', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    const before = s().activeMeasurement!.start;
+    // The animation loop's per-frame reprojection, nudged by a pixel so the store rebuilds the start.
+    act(() => s().updateMeasurementScreenCoords((p) => {
+      const at = projectToCssScreen(ctx.camera, canvas, p);
+      return at ? { x: at.x + 0.5, y: at.y } : null;
+    }));
+    assert.notEqual(s().activeMeasurement!.start, before, 'the reprojection rebuilds the start object');
+    act(() => handleMeasureTap(ctx, 240, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: a reprojected start lost its press and the second tap was dropped');
     assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
   });
 

@@ -22,15 +22,23 @@ const startingPresses = new WeakSet<MouseState>();
 const finishingPresses = new WeakSet<MouseState>();
 /** The last press set a start right after a finish: a dblclick on it drops that start. */
 const startsAfterFinish = new WeakSet<MouseState>();
-/** Where each start was pressed, before snapping, keyed by its start point (#8788). */
-const startPresses = new WeakMap<MeasurePoint, { x: number; y: number }>();
+/**
+ * Where the pending start was pressed, before snapping, and where it showed then (#8788).
+ * Matched to the start by world position: a camera move rebuilds the start object.
+ */
+const startPresses = new WeakMap<MouseState, { world: { x: number; y: number; z: number }; press: { x: number; y: number }; shown: { x: number; y: number } }>();
 /** A second press this far (CSS px) from both the start's press and its shown point is a new point. */
 const REPRESS_SLOP_PX = 8;
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
 export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
   ctx.startMeasurement(measurePoint);
-  if (at) startPresses.set(measurePoint, at);
+  if (at) {
+    const { x, y, z, screenX, screenY } = measurePoint;
+    startPresses.set(ctx.mouseState, { world: { x, y, z }, press: at, shown: { x: screenX, y: screenY } });
+  } else {
+    startPresses.delete(ctx.mouseState);
+  }
 
   // Set up orthogonal constraint for Shift - always use world axes
   ctx.setMeasurementConstraintEdge({
@@ -75,11 +83,13 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
  * from where the start now shows (so not a press on the start after the camera moved).
  */
 function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at: { x: number; y: number }): boolean {
-  const press = startPresses.get(start);
-  if (!press) return false;
+  const record = startPresses.get(ctx.mouseState);
+  if (!record || record.world.x !== start.x || record.world.y !== start.y || record.world.z !== start.z) return false;
   const shown = projectToCssScreen(ctx.camera, ctx.canvas, start) ?? { x: start.screenX, y: start.screenY };
-  return Math.hypot(at.x - press.x, at.y - press.y) > REPRESS_SLOP_PX
-    && Math.hypot(at.x - shown.x, at.y - shown.y) > REPRESS_SLOP_PX;
+  // Once the camera has moved, the raw press is no longer where the user pressed the start.
+  const cameraMoved = Math.hypot(shown.x - record.shown.x, shown.y - record.shown.y) > 1;
+  const nearPress = !cameraMoved && Math.hypot(at.x - record.press.x, at.y - record.press.y) <= REPRESS_SLOP_PX;
+  return !nearPress && Math.hypot(at.x - shown.x, at.y - shown.y) > REPRESS_SLOP_PX;
 }
 
 /** Any other press (navigation, another tool) breaks the finish-then-start chain a dblclick may drop. */

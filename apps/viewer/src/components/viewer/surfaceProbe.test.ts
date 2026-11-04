@@ -115,16 +115,20 @@ describe('surface probe cache (#8769)', () => {
 
   it('a slow readback that lands after its timeout still fills the cache, unless a newer one landed first', async () => {
     const r = rig();
-    void r.probe.request(5, 5);
+    const slow = r.probe.request(5, 5);
     r.frame();
-    advance(SURFACE_PROBE_TIMEOUT_MS);
     await tick();
+    advance(SURFACE_PROBE_TIMEOUT_MS);
+    assert.equal(await slow, null, 'the caller hears null at the timeout');
     r.calls[0].resolve(at(5, 5)); // a slow GPU: valid, just late
     await tick();
     assert.deepEqual(r.probe.peek(5, 5), at(5, 5), 'the late answer is kept, not thrown away');
+    advance(SURFACE_PROBE_MAX_AGE_MS - SURFACE_PROBE_TIMEOUT_MS);
+    assert.equal(r.probe.peek(5, 5), null, 'aged from when its frame was read, not from when it landed');
 
     void r.probe.request(9, 9);
     r.frame();
+    await tick();
     advance(SURFACE_PROBE_TIMEOUT_MS);
     await tick();
     void r.probe.request(20, 20);
@@ -134,6 +138,48 @@ describe('surface probe cache (#8769)', () => {
     r.calls[1].resolve(at(9, 9)); // older, landing after the newer one
     await tick();
     assert.deepEqual(r.probe.peek(20, 20), at(20, 20), 'an old readback never overwrites a newer answer');
+  });
+
+  it('a timed-out readback landing before the next one is cached, then replaced by it', async () => {
+    const r = rig();
+    void r.probe.request(5, 5);
+    r.frame();
+    await tick();
+    advance(SURFACE_PROBE_TIMEOUT_MS);
+    await tick();
+    void r.probe.request(80, 80);
+    r.frame();
+    await tick();
+    r.calls[0].resolve(at(5, 5));
+    await tick();
+    assert.deepEqual(r.probe.peek(5, 5), at(5, 5));
+    r.calls[1].resolve(at(80, 80));
+    await tick();
+    assert.deepEqual(r.probe.peek(80, 80), at(80, 80));
+    assert.equal(r.probe.peek(5, 5), null, 'the newer answer replaced it');
+  });
+
+  it('a renderer that throws synchronously does not wedge probing', async () => {
+    let calls = 0;
+    const frames: Array<() => void> = [];
+    const probe = createSurfaceProbe(
+      () => { calls++; if (calls === 1) throw new Error('sync'); return Promise.resolve(at(2, 2)); },
+      () => ({ getBoundingClientRect: () => ({ width: 800, height: 600 }) as DOMRect }),
+      (p) => ({ x: p.x, y: p.y }),
+      (run) => { frames.push(run); },
+    );
+    const realWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = probe.request(2, 2);
+      frames.shift()!();
+      assert.equal(await first, null);
+      const second = probe.request(2, 2);
+      frames.shift()!();
+      assert.deepEqual(await second, at(2, 2));
+    } finally {
+      console.warn = realWarn;
+    }
   });
 
   it('a failed readback answers null and keeps probing', async () => {

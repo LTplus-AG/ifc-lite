@@ -53,6 +53,8 @@ export interface SurfaceProbe {
    * moved the probe elsewhere (or to another visibility). The answer is the
    * surface the frame drew at that pixel, even if the camera has moved since:
    * a gesture adopting it decides for itself whether that is still wanted.
+   * A readback that outlasts {@link SURFACE_PROBE_TIMEOUT_MS} answers null;
+   * if it lands later, its point only refills the cache, never the callers.
    */
   request(x: number, y: number, scene?: string): Promise<SurfacePoint | null>;
   /**
@@ -92,7 +94,7 @@ type Waiter = (point: SurfacePoint | null, job: { x: number; y: number; scene: s
  * readback which never settles cannot stop probing for the session. A timed
  * out readback still lands in the cache if nothing newer has.
  */
-export const SURFACE_PROBE_TIMEOUT_MS = 2000;
+export const SURFACE_PROBE_TIMEOUT_MS = 1000; // below the age cap, or a late answer would land already expired
 
 export function createSurfaceProbe(
   probeSurface: (x: number, y: number) => Promise<SurfacePoint | null>,
@@ -114,6 +116,7 @@ export function createSurfaceProbe(
     pending = null;
     if (!job) { busy = false; return; }
     const id = ++issued;
+    const issuedAt = Date.now(); // the age cap counts from the frame read, not from when a slow readback lands
     let released = false;
     // Hand the slot on and answer the waiters, once: on the answer or the timeout.
     const release = (point: SurfacePoint | null) => {
@@ -127,15 +130,19 @@ export function createSurfaceProbe(
       if (id > cachedFrom) {
         cachedFrom = id;
         // A miss clears the cache: the pixel the gestures will ask about is empty now.
-        latest = point ? { point, at: Date.now(), scene: job.scene } : null;
+        latest = point ? { point, at: issuedAt, scene: job.scene } : null;
       }
       release(point);
     };
     const timer = setTimeout(() => release(null), SURFACE_PROBE_TIMEOUT_MS);
-    probeSurface(job.x, job.y).then(land, (err: unknown) => {
+    const fail = (err: unknown) => {
       console.warn('[Viewport] Surface depth probe failed:', err);
       release(null);
-    });
+    };
+    // A synchronous throw must not leave the slot taken for the session.
+    let readback: Promise<SurfacePoint | null>;
+    try { readback = probeSurface(job.x, job.y); } catch (err) { fail(err); return; }
+    readback.then(land, fail);
   };
 
   return {

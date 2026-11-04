@@ -9383,6 +9383,7 @@
     "LOD_MIN_TRIANGLES: const",
     "LightingEnvironment: interface",
     "LineOverlayChannel: type",
+    "LineOverlayOptions: interface",
     "MAX_EXTRA_CLIP_PLANES: const",
     "MAX_QUANT_EXTENT: const",
     "MIN_EVICTION_AGE_FRAMES: const",

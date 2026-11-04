@@ -129,6 +129,17 @@ describe('wheel zoom on a large-extent site stops at the ground (#8769)', () => 
     assert.equal(s.pickSurface.live?.() ?? false, false);
   });
 
+  it('switches a running gesture to the probe when the raycast becomes gated mid-gesture', async () => {
+    const opts: SiteOptions = { small: true };
+    const s = site(opts);
+    await zoomIn(s, 2);
+    assert.equal(s.raycasts.length, 1, 'the gesture began on the CPU raycast');
+    opts.streaming = true; // a load starts streaming while the wheel keeps turning
+    await zoomIn(s, 5);
+    assert.equal(s.raycasts.length, 1, 'no more CPU raycasts once gated');
+    assert.ok(s.probes.length > 0, 'later notches re-pick from the depth probe');
+  });
+
   it('ignores a probed point that no longer projects under the cursor', async () => {
     const s = site();
     s.pickSurface.prime?.(CURSOR.x, CURSOR.y);

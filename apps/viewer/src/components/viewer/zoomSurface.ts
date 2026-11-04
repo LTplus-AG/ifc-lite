@@ -87,18 +87,17 @@ export function createZoomSurfacePicker(
   getPickOptions: () => ZoomSurfacePickOptions,
 ): ZoomSurfacePicker {
   const probe = surfaceProbeFor(renderer, camera);
-  let gated = false;
   const pick: ZoomSurfacePicker = (x, y) => {
     const options = getPickOptions();
-    gated = isSurfaceRaycastGated(renderer, camera, options.isStreaming);
-    if (!gated) return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
+    if (!isSurfaceRaycastGated(renderer, camera, options.isStreaming)) return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
     if (!probe) return null;
     const scene = visibilityKey(options);
     const point = probe.peek(x, y, scene);
     void probe.request(x, y, scene);
     return point;
   };
-  pick.live = () => gated && probe !== null;
+  // From the current inputs, not the last pick: a load or stream can gate the raycast mid-gesture.
+  pick.live = () => probe !== null && isSurfaceRaycastGated(renderer, camera, getPickOptions().isStreaming);
   pick.prime = (x, y) => {
     const options = getPickOptions();
     if (probe && isSurfaceRaycastGated(renderer, camera, options.isStreaming)) void probe.request(x, y, visibilityKey(options));

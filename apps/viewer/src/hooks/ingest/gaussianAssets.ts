@@ -8,7 +8,7 @@ import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
+import { appliedGaussianUpAxis, gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
 import type { CaptureUpAxis } from './pointCloudFrame.js';
 import { getGlobalRenderer } from '../useBCF.js';
 
@@ -234,8 +234,9 @@ export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis):
       for (const [handle, placed] of adapter.pending) adapter.pending.set(handle,
         { x: placed.x - delta[0], y: placed.y - delta[1], z: placed.z - delta[2] });
     }
-    const framed = gaussianCaptureFrame(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined),
-      upAxis ?? capture.upAxis, frame);
+    const sourcePlacement = capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined);
+    const appliedAxis = appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? sourcePlacement : undefined, upAxis ?? capture.upAxis);
+    const framed = gaussianCaptureFrame(sourcePlacement, appliedAxis, frame);
     if (capture.upAxis === framed.upAxis && asset.placedOffset.x === offset.x
       && asset.placedOffset.y === offset.y && asset.placedOffset.z === offset.z) return true;
     if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;

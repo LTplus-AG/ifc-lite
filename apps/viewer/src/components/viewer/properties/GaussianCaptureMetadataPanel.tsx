@@ -81,7 +81,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
           <div className="px-3 py-2 flex items-center justify-between gap-3">
             <label className="text-xs text-zinc-500" htmlFor={`capture-up-axis-${model.id}`}>{t('gaussianCapture.upAxis')}</label>
             <select id={`capture-up-axis-${model.id}`} className="text-xs bg-transparent border border-zinc-300 dark:border-zinc-700"
-              value={appliedGaussianUpAxis(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined), capture.upAxis)} disabled={changingAxis || state.state !== 'resident'}
+              value={appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? capture.sourcePlacement ?? capture.placement : undefined, capture.upAxis)} disabled={changingAxis || state.state !== 'resident'}
               onChange={(event) => {
                 const axis = event.target.value;
                 if (axis !== 'z' && axis !== 'y') return;

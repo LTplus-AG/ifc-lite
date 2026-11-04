@@ -103,7 +103,8 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
   });
 
   it('up-axis control shows the applied default for unplaced and explicitly placed captures (#8752)', () => {
-    const source = captureModel('source', 'source.ply');
+    const original = captureModel('source', 'source.ply');
+    const source = { ...original, gaussianSplat: { ...original.gaussianSplat!, sourcePlacement: IDENTITY } };
     let container = render(<ModelMetadataPanel model={source} />);
     assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'z');
     cleanup();

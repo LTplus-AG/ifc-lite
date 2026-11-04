@@ -178,9 +178,9 @@ source available at that URL. The repository's template remains reproducible;
 Remaining for the maintainer: verify the final tag/source and deployed notice
 copies, review this record against the actual release scope, and retain the scoped approval below.
 No final release archive, deployed host, or future native binary was audited here.
-Registry bootstrap/Trusted Publisher settings and actual OIDC publication are
-also unverified; they are operational release prerequisites, not inferred from
-this licence record.
+The crates.io Trusted Publisher route and actual OIDC publication are verified:
+`ifc-lite-geometry-runtime` 28.2.0 was published by [Release run 41430668478](https://github.com/LTplus-AG/ifc-lite/actions/runs/41430668478)
+at commit `c748326ee0`, as confirmed by the [crates.io publication metadata](https://crates.io/api/v1/crates/ifc-lite-geometry-runtime/28.2.0).
 
 Approved for the scope above by: Louis Trümpler (date: 2026-11-01)
 

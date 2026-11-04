@@ -116,13 +116,18 @@ jobs:
     # pr-review-signal.yml this gate asks a question that is already answered
     # when the PR event fires, rather than waiting for other jobs to appear.
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
+          # Metadata gates do not need model/evidence blobs. Fetch on demand.
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
           persist-credentials: false
 
       # THE GATE'S OWN UNIT TESTS, RUN BEFORE THE GATE, and in the same job for

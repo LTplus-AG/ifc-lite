@@ -40,7 +40,7 @@ import { isLandXmlSchema } from './landXmlSemantics.js';
  * far would split it; it is converged when its own load settles.
  */
 function hasSettledGeometry(model: FederatedModel): boolean {
-  return model.geometryResult != null
+  return !model.gaussianSplat && model.geometryResult != null
     && model.loadState !== 'pending'
     && model.loadState !== 'streaming-geometry'
     && model.loadState !== 'error';

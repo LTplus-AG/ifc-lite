@@ -202,7 +202,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // coordinates retain their separation without exceeding the GPU frame.
     // This is a render-origin operation only: it never claims CRS equivalence.
     const renderFrame = reference?.coordinateInfo
-      ?? federationFrameInfo(useViewerStore.getState().models.values());
+      ?? federationFrameInfo([...useViewerStore.getState().models.values()].filter(model => !model.gaussianSplat));
     if (renderFrame) {
       const meshesBeforeReframe = options.geometry.meshes.slice();
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {

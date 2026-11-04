@@ -108,7 +108,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   constructor(private readonly options: FederatedLandXmlStreamingOptions) {
     this.reference = findReferenceSpatialModel()?.placement ?? null;
     this.fallbackFrame = this.reference?.coordinateInfo
-      ?? federationFrameInfo(useViewerStore.getState().models.values())
+      ?? federationFrameInfo([...useViewerStore.getState().models.values()].filter(model => !model.gaussianSplat))
       ?? null;
     this.rawCoordinateInfo = rawAbsoluteCoordinateInfo(options.sourceCoordinateInfo);
     this.source = options.spatialReference

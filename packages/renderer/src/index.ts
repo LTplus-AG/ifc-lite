@@ -234,22 +234,8 @@ export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithi
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
-import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
+import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
-
-/**
- * The reason `whenReady()` rejects when the renderer is destroyed.
- *
- * A plain `Error` carrying a stable `name` rather than an exported subclass:
- * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
- * without this package growing a new export (and without `instanceof` breaking
- * across duplicated copies of the package).
- */
-function rendererDestroyedError(): Error {
-    const error = new Error('Renderer was destroyed before it became ready');
-    error.name = 'RendererDestroyedError';
-    return error;
-}
 
 /**
  * Main renderer class
@@ -675,9 +661,7 @@ export class Renderer {
         // init() before a device-loss re-init, so it isn't lost (#5484).
         this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
-        this.depthProbe?.destroy();
-        const pipeline = this.pipeline;
-        this.depthProbe = new FrameDepthProbe(this.device.getDevice(), () => pipeline.getDepthTexture(), pipeline.getSampleCount());
+        this.depthProbe?.destroy(); this.depthProbe = FrameDepthProbe.forPipeline(this.device.getDevice(), this.pipeline);
         this.overlays.init(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -1646,9 +1630,7 @@ export class Renderer {
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
         const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
-        // The camera this frame draws with, captured before any pass runs, for
-        // `probeSurface` (#8769); published with its depth attachment after submit.
-        const depthSnapshot = this.depthProbe ? relativeToEyeFrame.snapshot() : null;
+        const depthSnapshot = this.depthProbe ? relativeToEyeFrame.snapshot() : null; // #8769: this frame's camera, for probeSurface
         // Culling must share the translation-free RTE frame used by every GPU
         // pass. `sourceFrustum` is the f64 plane equivalent for the immutable
         // source-space BVH; render-time boxes stay eye-relative below.
@@ -3078,11 +3060,7 @@ export class Renderer {
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             flushMeshUniforms(device); // every batch uniform staged this frame, one write per arena page
             submitRendererGpuTiming(this, device, encoder);
-            if (depthSnapshot && this.depthProbe && this.pipeline) {
-                // Read at submit: a mid-frame resize swaps the attachment, and every pass drew into the current one.
-                const texture = this.pipeline.getDepthTexture(), css = this.canvasCssSize.read();
-                this.depthProbe.frameDrawn({ snapshot: depthSnapshot, texture, width: texture.width, height: texture.height, cssWidth: css.width, cssHeight: css.height });
-            }
+            if (depthSnapshot) this.depthProbe?.frameSubmitted(depthSnapshot, this.canvasCssSize.read());
             if (glass) this.gaussianLayer.submitted();
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
@@ -3169,19 +3147,9 @@ export class Renderer {
         return this.pickingManager.pick(x, y, options, this.activePickClip());
     }
 
-    /**
-     * The nearest surface the last completed frame drew under a CSS-px canvas
-     * point (#8769), or null for empty space. Unlike {@link pick} it renders
-     * nothing: it reads one texel of that frame's depth, so it costs the same
-     * on any model and is what navigation uses where the CPU raycast is too
-     * expensive. Only opaque surfaces write depth, so it never stops on an
-     * overlay or on glass. Null before the first frame and after a resize
-     * until the next one.
-     */
+    /** The nearest opaque surface the last frame drew under a CSS-px point, or null; renders nothing (#8769, `FrameDepthProbe.probe`). */
     async probeSurface(x: number, y: number): Promise<{ x: number; y: number; z: number } | null> {
-        if (!this.pickPathAlive() || !this.depthProbe) return null;
-        const css = this.canvasCssSize.read();
-        return this.depthProbe.probe(x, y, css.width, css.height);
+        return this.pickPathAlive() && this.depthProbe ? this.depthProbe.probe(x, y, this.canvasCssSize.read()) : null;
     }
 
     /**
@@ -3667,8 +3635,7 @@ export class Renderer {
         this.picker?.destroy();
         this.picker = null;
         this.pickingManager.setPicker(null);
-        this.depthProbe?.destroy();
-        this.depthProbe = null;
+        this.depthProbe?.destroy(); this.depthProbe = null;
 
         this.postPasses?.destroy();
         this.postPasses = null;

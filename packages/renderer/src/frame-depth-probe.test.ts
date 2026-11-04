@@ -95,7 +95,7 @@ describe('frame depth probe (#8769)', () => {
   it('misses before the first frame, without touching the GPU', async () => {
     const gpu = fakeGpu(() => 0.01);
     const probe = new FrameDepthProbe(gpu.device, () => TEX, 1);
-    assert.equal(await probe.probe(10, 10, CSS_W, CSS_H), null, 'no frame recorded yet');
+    assert.equal(await probe.probe(10, 10, { width: CSS_W, height: CSS_H }), null, 'no frame recorded yet');
     assert.equal(gpu.reads.length, 0);
   });
 
@@ -105,7 +105,7 @@ describe('frame depth probe (#8769)', () => {
     const gpu = fakeGpu(() => 0.004);
     const probe = new FrameDepthProbe(gpu.device, () => TEX, 1);
     probe.frameDrawn(rec);
-    const pending = probe.probe(100.4, 220.9, CSS_W, CSS_H);
+    const pending = probe.probe(100.4, 220.9, { width: CSS_W, height: CSS_H });
     // The camera moves before the readback lands: the answer is still the frame's.
     camera.setPosition(250_010, 1_200_010, 400);
     camera.getRelativeToEyeFrame();
@@ -126,11 +126,24 @@ describe('frame depth probe (#8769)', () => {
     assert.ok(gpu.buffers.every((b) => b.destroyed), 'every per-probe buffer is released');
   });
 
+  it('records a submitted frame against the attachment current at submit, as the renderer publishes it', async () => {
+    let tex = texture(TEX_W, TEX_H);
+    const gpu = fakeGpu(() => 0.004);
+    const probe = FrameDepthProbe.forPipeline(gpu.device, { getDepthTexture: () => tex, getSampleCount: () => 1 });
+    const camera = siteCamera();
+    const snapshot = camera.getRelativeToEyeFrame().snapshot();
+    tex = texture(TEX_W, TEX_H); // a mid-frame resize swapped the attachment before submit
+    probe.frameSubmitted(snapshot, { width: CSS_W, height: CSS_H });
+    const point = await probe.probe(100.4, 220.9, { width: CSS_W, height: CSS_H });
+    assert.ok(point, 'the frame is paired with the attachment every pass drew into');
+    assert.deepEqual(gpu.reads, [[200, 441]]);
+  });
+
   it('reports empty space (cleared reverse-Z depth) as a miss', async () => {
     const gpu = fakeGpu(() => 0);
     const probe = new FrameDepthProbe(gpu.device, () => TEX, 1);
     probe.frameDrawn(record(siteCamera()));
-    assert.equal(await probe.probe(200, 150, CSS_W, CSS_H), null);
+    assert.equal(await probe.probe(200, 150, { width: CSS_W, height: CSS_H }), null);
   });
 
   it('misses rather than misreads when the layout or attachment changed since the frame', async () => {
@@ -138,13 +151,13 @@ describe('frame depth probe (#8769)', () => {
     let tex = TEX;
     const probe = new FrameDepthProbe(gpu.device, () => tex, 1);
     probe.frameDrawn(record(siteCamera()));
-    assert.equal(await probe.probe(200, 150, CSS_W + 40, CSS_H), null, 'canvas resized since the frame');
-    assert.equal(await probe.probe(-1, 150, CSS_W, CSS_H), null, 'outside the canvas');
-    assert.equal(await probe.probe(CSS_W, 150, CSS_W, CSS_H), null, 'past the right edge');
+    assert.equal(await probe.probe(200, 150, { width: CSS_W + 40, height: CSS_H }), null, 'canvas resized since the frame');
+    assert.equal(await probe.probe(-1, 150, { width: CSS_W, height: CSS_H }), null, 'outside the canvas');
+    assert.equal(await probe.probe(CSS_W, 150, { width: CSS_W, height: CSS_H }), null, 'past the right edge');
     tex = texture(TEX_W * 2, TEX_H * 2);
-    assert.equal(await probe.probe(200, 150, CSS_W, CSS_H), null, 'attachment recreated by a resize');
+    assert.equal(await probe.probe(200, 150, { width: CSS_W, height: CSS_H }), null, 'attachment recreated by a resize');
     tex = texture();
-    assert.equal(await probe.probe(200, 150, CSS_W, CSS_H), null, 'a same-sized replacement is not the frame\'s attachment either');
+    assert.equal(await probe.probe(200, 150, { width: CSS_W, height: CSS_H }), null, 'a same-sized replacement is not the frame\'s attachment either');
     assert.equal(gpu.reads.length, 0, 'none of those read the GPU');
   });
 
@@ -153,7 +166,7 @@ describe('frame depth probe (#8769)', () => {
     const gpu = fakeGpu(() => 0.01, { mapError: abort });
     const probe = new FrameDepthProbe(gpu.device, () => TEX, 1);
     probe.frameDrawn(record(siteCamera()));
-    assert.equal(await probe.probe(200, 150, CSS_W, CSS_H), null);
+    assert.equal(await probe.probe(200, 150, { width: CSS_W, height: CSS_H }), null);
     assert.ok(gpu.buffers.every((b) => b.destroyed));
   });
 
@@ -161,7 +174,7 @@ describe('frame depth probe (#8769)', () => {
     const gpu = fakeGpu(() => 0.01);
     const probe = new FrameDepthProbe(gpu.device, () => TEX, 4);
     probe.frameDrawn(record(siteCamera()));
-    await probe.probe(200, 150, CSS_W, CSS_H);
+    await probe.probe(200, 150, { width: CSS_W, height: CSS_H });
     const code = gpu.shaders.at(-1) ?? '';
     assert.match(code, /texture_depth_multisampled_2d/);
     assert.match(code, /s < 4i/, 'every sample is read');

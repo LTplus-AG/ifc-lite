@@ -51,6 +51,21 @@ export class FrameDepthProbe {
     this.readbacks = new PickerReadbackOwner(device);
   }
 
+  /** The probe for one render pipeline's depth attachment (re-created with it on `init`). */
+  static forPipeline(device: GPUDevice, pipeline: { getDepthTexture(): GPUTexture; getSampleCount(): number }): FrameDepthProbe {
+    return new FrameDepthProbe(device, () => pipeline.getDepthTexture(), pipeline.getSampleCount());
+  }
+
+  /**
+   * {@link frameDrawn} after a frame's submit, with the camera snapshot taken
+   * at its start. The attachment is read now, not then: a mid-frame resize
+   * swaps it, and every pass of the frame drew into the current one.
+   */
+  frameSubmitted(snapshot: RelativeToEyeSnapshot, css: { width: number; height: number }): void {
+    const texture = this.depthTexture();
+    this.frameDrawn({ snapshot, texture, width: texture.width, height: texture.height, cssWidth: css.width, cssHeight: css.height });
+  }
+
   /**
    * Call after each completed frame's submit: one small snapshot. Recorded
    * always, not only once probing starts: the viewer renders on demand, so a
@@ -63,10 +78,12 @@ export class FrameDepthProbe {
   /**
    * World point of the nearest surface the last frame drew under the CSS-px
    * canvas point `(x, y)`, or null for empty space, an unusable frame, or a
-   * device lost mid-readback. `cssWidth`/`cssHeight` is the canvas size now;
-   * a layout change since the frame makes its texels stale, so it is a miss.
+   * device lost mid-readback. `css` is the canvas size now (CSS px); a
+   * layout change since the frame makes its texels stale, so it is a miss.
+   * This is `Renderer.probeSurface`.
    */
-  async probe(x: number, y: number, cssWidth: number, cssHeight: number): Promise<Vec3 | null> {
+  async probe(x: number, y: number, css: { width: number; height: number }): Promise<Vec3 | null> {
+    const { width: cssWidth, height: cssHeight } = css;
     const frame = this.frame;
     if (!frame || this.readbacks.deviceLost) return null;
     if (Math.abs(frame.cssWidth - cssWidth) > 0.5 || Math.abs(frame.cssHeight - cssHeight) > 0.5) return null;

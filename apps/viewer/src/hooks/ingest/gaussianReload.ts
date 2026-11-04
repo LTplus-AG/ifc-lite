@@ -55,9 +55,9 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
       gaussianReplacingModelId: modelId,
       onGaussianBudgetReserved: release => { releaseBudget = release; },
       onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
-      name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
+      name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution, gaussianUpAxis: capture.upAxis,
       retryOperation: () => { void reloadGaussianCapture(modelId, deps); },
-      ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
+      ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...(capture.sourcePlacement ?? capture.placement)] } : {}),
     });
     const state = useViewerStore.getState();
     // A superseded federation add can publish but return null. The explicit

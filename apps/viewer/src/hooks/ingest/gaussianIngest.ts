@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
+import type { CaptureUpAxis } from './pointCloudFrame.js';
+import { gaussianCaptureFrame, IDENTITY_CAPTURE_PLACEMENT } from './gaussianCaptureFrame.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -11,8 +14,8 @@ import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import { modelIndices } from '../../lib/model-placement/model-indices.js';
 import type { GaussianDecoded } from './gaussianDecoded.js';
 
-/** Raw source coordinates: no axis flip, unit, survey or measurement claim. */
-export const UNCALIBRATED_PLACEMENT: readonly number[] = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+/** Identity for explicitly supplied placements. */
+export const UNCALIBRATED_PLACEMENT: readonly number[] = IDENTITY_CAPTURE_PLACEMENT;
 
 /** Store record of one capture. `handle` is the renderer-issued object itself. */
 export interface GaussianSplatModel {
@@ -24,7 +27,11 @@ export interface GaussianSplatModel {
   readonly sourceCenterBounds: GaussianDecoded['centerBounds'];
   /** Column-major source-local -> viewer world matrix handed to the renderer. */
   readonly placement: readonly number[];
-  /** 'source': raw coordinates (identity). 'explicit': supplied by the caller or user. */
+  /** 'source': default frame policy. 'explicit': a supplied placement matrix. */
+  /** Unbaked placement and axes for reload/portable restore (#8752). */
+  readonly sourcePlacement?: readonly number[];
+  readonly upAxis?: CaptureUpAxis;
+  readonly frameOffset?: { x: number; y: number; z: number };
   readonly placementOrigin: 'source' | 'explicit';
   readonly calibration: 'uncalibrated';
   /** Only an attribution the caller supplied; never inferred from file contents. */
@@ -55,8 +62,10 @@ export interface GaussianUploadRequest {
   visible: boolean;
   signal: AbortSignal;
   isCurrent(): boolean;
-  /** Explicit caller/user placement; absent means raw source coordinates. */
+  /** Caller placement before the shared render-frame offset is subtracted. */
   placement?: readonly number[];
+  upAxis?: CaptureUpAxis;
+  frame?: RenderFrameInfo | null;
   attribution?: string;
 }
 
@@ -80,8 +89,8 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   if (request.currentGeneration() !== request.generation) {
     throw new Error('The viewer renderer was reinitialised while the capture decoded.');
   }
-  const placement = request.placement ?? UNCALIBRATED_PLACEMENT;
-  if (placement.length !== 16 || !placement.every(Number.isFinite)) throw new Error('A capture placement needs 16 finite matrix values.');
+  const framed = gaussianCaptureFrame(request.placement, request.upAxis, request.frame);
+  const { placement } = framed;
   const slot = modelIndices.reserve(request.modelId, request.models());
   let handle: GaussianSplatHandle;
   try {
@@ -100,7 +109,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   return {
     record: {
       handle, format: request.format, count, shDegree, sourceCenterBounds: centerBounds,
-      placement, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
+      ...framed, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
       ...(request.attribution ? { attribution: request.attribution } : {}),
     },
     commit: () => slot.release(),

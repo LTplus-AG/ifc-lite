@@ -82,7 +82,7 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
   it('capture metadata states what is known and its limits, never IFC schema or statistics', () => {
     const container = render(<ModelMetadataPanel model={useViewerStore.getState().models.get('capture')!} />);
     const text = container.textContent ?? '';
-    for (const expected of ['Gaussian capture', 'Gaussian PLY', '914,000', 'Raw source coordinates',
+    for (const expected of ['Gaussian capture', 'Gaussian PLY', '914,000', 'Source coordinates in viewer frame',
       'Uncalibrated: no units, alignment or measurement', 'Seem Kirke by roedsgaard, CC BY 4.0']) {
       assert.ok(text.includes(expected), `shows ${expected}`);
     }

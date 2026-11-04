@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GaussianReadiness, Renderer } from '@ifc-lite/renderer';
@@ -27,7 +28,7 @@ export interface GaussianLoadContext {
   target: { kind: 'primary' | 'federated'; visible?: boolean };
   modelId: string;
   /** Caller/user placement and credit; admission itself is the build's (`gaussianAdmissionEnabled`). */
-  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved'>;
+  options?: Pick<ModelLoadOptions, 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved'>;
   /** The load's own cancellation: it terminates the decoder worker and the upload. */
   signal: AbortSignal;
   isCurrent(): boolean;
@@ -121,6 +122,8 @@ async function decodeAndPublish(
       modelId: ctx.modelId, format, capture, splats, generation,
       currentGeneration: () => blockedGeneration(renderer), models: () => useViewerStore.getState().models,
       visible: ctx.target.visible ?? true, signal: ctx.signal, isCurrent: ctx.isCurrent,
+      upAxis: ctx.options?.gaussianUpAxis,
+      frame: federationFrameInfo([...useViewerStore.getState().models.values()].filter(m => !m.gaussianSplat && m.id !== ctx.modelId), useViewerStore.getState().geometryResult),
       placement: ctx.options?.gaussianPlacement ?? showcaseGaussianPlacement(), attribution: ctx.options?.gaussianAttribution,
     });
   } catch (error) {

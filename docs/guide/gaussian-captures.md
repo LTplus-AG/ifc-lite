@@ -19,6 +19,14 @@ Use any of the usual entry points: **Open**, drag and drop onto the window, **Ad
 
 Select the capture in the model list to see its details in the properties panel: format, file size, splat count, spherical-harmonics degree, placement, calibration, renderer state and the limitations below.
 
+## Orientation and model origin
+
+Captures without an explicit placement default to **Z up**, like point clouds: `(x, y, z)` becomes `(x, z, −y)` in the viewer. The supported Gaussian PLY and `.splat` formats do not declare a standard up-axis. Select a capture in the model list and change **Source up-axis** to **Y up** if its authoring tool already exported Y-up coordinates. The setting affects the whole Gaussian, including its covariance and spherical harmonics.
+
+Ingest subtracts the current IFC/federation render-frame offset after orientation and placement. This includes both the IFC origin shift and WASM RTC offset, through the same shared frame helpers used by IFC and scans. Open the IFC reference before adding captures in its source world coordinates. This reconciles the render origin; it does not register unrelated coordinate systems, infer units, or fit a reconstruction to the model.
+
+For loader callers, `gaussianUpAxis` selects `z` or `y`. `gaussianPlacement` is an optional column-major adjustment after axis conversion and before automatic origin subtraction. An explicit matrix without an axis option retains its own axis mapping for compatibility with earlier saved placements. Callers must not include the IFC origin subtraction themselves. Saved setups and capture reload preserve the source axes and original placement, then recompute the origin offset on ingest rather than applying the saved render shift twice.
+
 ## Limits
 
 These limits are checked before a capture is decoded, so an oversized file is refused straight away with a message saying which limit it exceeds.
@@ -36,12 +44,12 @@ The scene limit bounds **logical scene splats**: one share per capture, loaded o
 
 - **Composition with glass and X-ray is approximate.** Captures are composited after the main pass, over transparent IFC surfaces, so a capture can show through glass or X-rayed elements that should hide it.
 - **Clipping is by Gaussian centre.** Section planes and section boxes cull whole Gaussians by their centre. There are no section caps, and a Gaussian's footprint can cross the plane.
-- **Captures are uncalibrated.** A capture is shown in its source coordinates with no axis flip, unit or survey alignment, and the viewer makes no metric claim about it. With only captures visible, the scale overlay says the scale is unknown.
+- **Captures are uncalibrated.** Axis conversion and render-origin reconciliation do not establish units or survey alignment, and the viewer makes no metric claim about it. With only captures visible, the scale overlay says the scale is unknown.
 - **Not pickable.** Clicking a capture in the 3D view does not select it; select it in the model list.
 - **No measurement or snapping.** The measure and snapping tools ignore captures.
 - **Not included in exports.** IFC, glTF/GLB, USD, KMZ, energy model, PDF, Cesium ion exports leave capture data out; a capture is never offered as an export source, and a merged IFC export skips it. While a capture is loaded, the export dialogs say that captures are not included. BCF viewpoints keep the camera and clipping but do not embed capture data; their snapshot images can show visible captures. Screenshots show what is on screen, captures included.
 
-A saved federation setup records a capture's slot, visibility and an explicitly chosen placement, but not its contents: reopen the setup and select the capture file again.
+A saved federation setup records a capture's slot, visibility, source up-axis and an explicitly chosen placement, but not its contents: reopen the setup and select the capture file again.
 
 ## When the graphics device is lost
 

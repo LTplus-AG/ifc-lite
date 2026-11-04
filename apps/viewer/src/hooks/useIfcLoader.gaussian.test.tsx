@@ -18,6 +18,9 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel } from '@/test/scan-federation';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
+import { render, cleanup } from '@/test/render.js';
+import { GaussianCaptureMetadataPanel } from '@/components/viewer/properties/GaussianCaptureMetadataPanel';
+import { buildFederationSetupFile, parseFederationSetupFile, serializeFederationSetupFile } from '@/lib/federation/federationSetupFile';
 import { ViewportLoadErrorCard } from '@/components/viewer/ViewportLoadErrorCard';
 import { useIfcFederation } from './useIfcFederation.js';
 import { setGlobalRendererRef } from './useBCF.js';
@@ -77,6 +80,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  cleanup();
   restoreBuild();
   worker.restore();
   setGlobalRendererRef({ current: null });
@@ -113,7 +117,7 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.deepEqual({ count: record.count, shDegree: record.shDegree, format: record.format, origin: record.placementOrigin, calibration: record.calibration },
       { count: 3, shDegree: 0, format: 'gaussian-ply', origin: 'source', calibration: 'uncalibrated' });
     assert.deepEqual(record.sourceCenterBounds, { min: [-2, 0, 1], max: [4, 5, 6] });
-    assert.deepEqual(splats().getBounds(record.handle), { min: [-2, 0, 1], max: [4, 5, 6] }, 'identity placement: raw source coordinates');
+    assert.deepEqual(splats().getBounds(record.handle), { min: [-2, 1, -5], max: [4, 6, 0] }, 'default capture frame matches Z-up scans');
     assert.equal(capture.ifcDataStore?.entityCount ?? 0, 0, 'no IFC entity row is invented for a capture');
     assert.equal(capture.loadPath, 'gaussian');
     assert.match(String(capture.sourceFingerprint), /^capture\.ply:/);
@@ -564,4 +568,63 @@ it('a renderer clear during an outstanding upload aborts it and the loader retai
   assert.match(String(useViewerStore.getState().error), /could not be loaded/);
   assert.equal(splats().getStats().assets, 0, 'no unpublished or cleared rows survive');
   assertNoHeldSlot();
+});
+
+
+it('mounted up-axis control updates actual renderer bounds; setup and reload preserve axes without double shifting (#8752)', async () => {
+  const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+  const ifc = addIfcModel('survey-ifc', [{ expressId: 7, type: 'IfcWall' }]);
+  const geometry = ifc.geometryResult!;
+  useViewerStore.getState().updateModel('survey-ifc', { geometryResult: { ...geometry, coordinateInfo: {
+    ...geometry.coordinateInfo, originShift: { x: 10, y: 20, z: 30 },
+    wasmRtcOffset: { x: 2_600, y: 1_200, z: 500 },
+  } } });
+  const file = gaussianPly('survey.ply', [[2_612, 1_203, 524]]);
+  await load(file, { kind: 'federated', modelId: 'survey' });
+  const initial = model('survey')!.gaussianSplat!;
+  assert.deepEqual(splats().getBounds(initial.handle), { min: [2, 4, -33], max: [2, 4, -33] },
+    'canonical ingest rotates then subtracts the combined nonzero IFC origin/RTC offset');
+  function Panel() {
+    const selected = useViewerStore(state => state.models.get('survey'))!;
+    return <GaussianCaptureMetadataPanel model={selected} capture={selected.gaussianSplat!} />;
+  }
+  const ui = render(<Panel />);
+  let select = ui.querySelector<HTMLSelectElement>('select')!;
+  assert.equal(select.value, 'z');
+  assert.equal(select.disabled, false);
+  assert.equal(ui.querySelector('label')!.textContent, 'Source up-axis');
+  const change = async (axis: string) => {
+    select = ui.querySelector<HTMLSelectElement>('select')!;
+    await act(async () => {
+      select.value = axis;
+      select.dispatchEvent(new window.Event('change', { bubbles: true }));
+      for (let i = 0; i < 100 && model('survey')!.gaussianSplat!.upAxis !== axis; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    });
+  };
+  await change('y');
+  assert.equal(model('survey')!.gaussianSplat!.upAxis, 'y');
+  assert.deepEqual(splats().getBounds(initial.handle), { min: [2, 683, 1_694], max: [2, 683, 1_694] });
+  // Y-up is a persisted override, not a second copy of the final shifted matrix.
+  const savedY = await buildFederationSetupFile([model('survey')!], null);
+  const parsedY = parseFederationSetupFile(serializeFederationSetupFile(savedY));
+  assert.ok(parsedY.ok);
+  assert.equal(parsedY.setup.slots[0].gaussianUpAxis, 'y');
+  assert.equal(parsedY.setup.slots[0].gaussianPlacement, undefined);
+  await change('z');
+  assert.deepEqual(splats().getBounds(initial.handle), { min: [2, 4, -33], max: [2, 4, -33] });
+  const setup = await buildFederationSetupFile([model('survey')!], null);
+  const parsed = parseFederationSetupFile(serializeFederationSetupFile(setup));
+  assert.ok(parsed.ok);
+  cleanup();
+  useViewerStore.getState().removeModel('survey');
+  let id: string | null = null;
+  await act(async () => { id = await federation.addModel(file, { ...parsed.setup.slots[0], modelId: 'restored' }); });
+  assert.equal(id, 'restored');
+  const restored = model('restored')!.gaussianSplat!;
+  assert.equal(restored.upAxis, 'z', 'portable setup axis reaches the canonical loader through addModel');
+  assert.deepEqual(splats().getBounds(restored.handle), { min: [2, 4, -33], max: [2, 4, -33] });
+  const result = await act(async () => reloadGaussianCapture('restored', federation));
+  assert.ok(result.ok);
+  assert.equal(model(result.modelId)!.gaussianSplat!.upAxis, 'z');
+  assert.deepEqual(splats().getBounds(model(result.modelId)!.gaussianSplat!.handle), { min: [2, 4, -33], max: [2, 4, -33] }, 'reload does not rotate or shift twice');
 });

@@ -6,6 +6,8 @@ import { useEffect, useState, type MutableRefObject } from 'react';
 import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { gaussianCaptureFrame } from './gaussianCaptureFrame.js';
+import type { CaptureUpAxis } from './pointCloudFrame.js';
 import { getGlobalRenderer } from '../useBCF.js';
 
 /** `splats` issued `handle`; every call on the handle goes to that adapter alone. */
@@ -140,4 +142,19 @@ export function gaussianFitBox(bounds: GaussianSplatBounds | null) {
   if (!bounds) return null;
   const [x0, y0, z0] = bounds.min, [x1, y1, z1] = bounds.max;
   return { min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } };
+}
+
+/** Change axes on the owning renderer, then publish only an accepted placement. */
+export async function setGaussianCaptureUpAxis(modelId: string, upAxis: CaptureUpAxis): Promise<boolean> {
+  const model = useViewerStore.getState().models.get(modelId);
+  const capture = model?.gaussianSplat;
+  if (!model || !capture) return false;
+  const asset = currentAsset(model);
+  if (!asset || asset === 'renderer-replaced') return false;
+  const framed = gaussianCaptureFrame(capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined),
+    upAxis, { originShift: capture.frameOffset });
+  if (!await asset.splats.setPlacement(capture.handle, { matrix: framed.placement })) return false;
+  if (useViewerStore.getState().models.get(modelId)?.gaussianSplat !== capture) return false;
+  useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
+  return true;
 }

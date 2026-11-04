@@ -202,6 +202,9 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         if (Math.abs(totalDx) > 10 || Math.abs(totalDy) > 10) {
           touchState.didMove = true;
         }
+        // A possible tap leaves the camera alone (past the long-press radius, within this per-axis slop):
+        // a nudge and its interaction frame would discard the tap's pick as stale.
+        if (!touchState.didMove && !touchState.multiTouch) return;
 
         camera.orbit(dx, dy, false);
         touchState.lastCenter = {

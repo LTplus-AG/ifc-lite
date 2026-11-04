@@ -100,6 +100,11 @@ Notes:
   PLY and LAS decode from bounded byte windows, so their peak memory does
   not grow with file size and they have no default ceiling. Pass
   `maxFileSize` to set one for any format.
+- A PLY `open()` reads the whole body once for bounds. When the host then
+  downsamples or picks a local origin it calls the source's optional
+  `reopen()`, which keeps that scan, so the file is read twice in all: one
+  scan, one decode. Cancelling during `open()` reaches the worker and stops
+  the scan at its next 4 MiB window.
 - The inlined worker bundle is lazy-loaded — consumers that only call
   `decodeIfcxPointAttribute` (the non-worker decoder) don't pay the bytes.
 - LAZ decoding (`format: 'laz'`) pulls in `laz-perf`'s wasm at runtime via

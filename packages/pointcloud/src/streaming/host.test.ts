@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { streamPointCloud } from './host.js';
 import { LasStreamingSource } from './las-source.js';
 import type { DecodedPointChunk } from '../types.js';
-import type { StreamingPointSource } from './types.js';
+import type { PointSourceInfo, StreamingPointSource } from './types.js';
 
 function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: number }>): Blob {
   const headerSize = 227;
@@ -448,5 +448,26 @@ describe('streamPointCloud default file-size ceiling (#8773)', () => {
     });
     await expect(handle.done).rejects.toThrow(/exceeds maxFileSize/);
     expect(opened).toBe(0);
+  });
+
+  it('reopens a source in place when it can, instead of building a second one (#8777)', async () => {
+    let built = 0;
+    const reopened: unknown[] = [];
+    const info: PointSourceInfo = { totalPointCount: 10, bbox: { min: [10, 20, 30], max: [12, 22, 32] }, hasColor: false, hasClassification: false, hasIntensity: false };
+    const handle = streamPointCloud({
+      format: 'ply', blob: new Blob([]), maxPointsInMemory: 4, autoOrigin: true, onChunk: () => {},
+      createSource: () => {
+        built++;
+        return {
+          open: async () => info,
+          reopen: async (options) => { reopened.push(options); return { ...info, totalPointCount: 4 }; },
+          next: async () => null,
+          close: () => {},
+        } satisfies StreamingPointSource;
+      },
+    });
+    await handle.done;
+    expect(built).toBe(1);
+    expect(reopened).toEqual([{ stride: 3, originOffset: [11, 21, 31] }]);
   });
 });

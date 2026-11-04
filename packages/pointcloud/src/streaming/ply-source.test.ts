@@ -214,3 +214,69 @@ describe('PlyStreamingSource source normals (#4561)', () => {
     expect(Math.max(...allocations)).toBeLessThan(9);
   });
 });
+
+describe('PlyStreamingSource reopen (#8777)', () => {
+  const asciiText = 'ply\nformat ascii 1.0\nelement vertex 5\nproperty double x\nproperty double y\nproperty double z\nend_header\n'
+    + ['2600123.457 1200456.123 431.75', '2600124.001 1200455.5 432.125', '2600122.875 1200457.25 430.5',
+      '2600125.333 1200454.75 433', '2600123.125 1200456.875 431.0625'].join('\n') + '\n';
+
+  function binaryBlob(): TrackingBlob {
+    const header = new TextEncoder().encode('ply\nformat binary_little_endian 1.0\nelement vertex 6\n'
+      + 'property double x\nproperty double y\nproperty double z\nend_header\n');
+    const body = new ArrayBuffer(6 * 24), view = new DataView(body);
+    for (let i = 0; i < 6; i++) {
+      view.setFloat64(i * 24, 2600000.1 + i * 1.7, true);
+      view.setFloat64(i * 24 + 8, 1200000.3 - i * 0.9, true);
+      view.setFloat64(i * 24 + 16, 400.25 + i * i, true);
+    }
+    return new TrackingBlob([header, body]);
+  }
+
+  async function drain(source: PlyStreamingSource): Promise<number[]> {
+    const out: number[] = [];
+    for (let chunk = await source.next(2); chunk; chunk = await source.next(2)) out.push(...chunk.positions);
+    return out;
+  }
+
+  it.each([
+    ['ascii', () => new TrackingBlob([asciiText])],
+    ['binary', binaryBlob],
+  ])('matches a freshly opened source at the new stride and origin, bit for bit (%s)', async (_name, makeBlob) => {
+    const origin = [2600123.5, 1200456.25, 431.5] as const;
+    const reopened = new PlyStreamingSource(makeBlob());
+    await reopened.open();
+    const reopenedInfo = await reopened.reopen({ stride: 2, originOffset: origin });
+    const fresh = new PlyStreamingSource(makeBlob(), { downsample: { stride: 2 }, originOffset: origin });
+    expect(reopenedInfo).toEqual(await fresh.open());
+    expect(await drain(reopened)).toEqual(await drain(fresh));
+  });
+
+  it('moves from one origin to another exactly as a fresh source at the second would', async () => {
+    const first = new PlyStreamingSource(binaryBlob(), { originOffset: [2600000, 1200000, 400] });
+    await first.open();
+    const second = [2600004.25, 1199997.75, 410.5] as const;
+    const reopenedInfo = await first.reopen({ stride: 1, originOffset: second });
+    const fresh = new PlyStreamingSource(binaryBlob(), { originOffset: second });
+    expect(reopenedInfo).toEqual(await fresh.open());
+    expect(await drain(first)).toEqual(await drain(fresh));
+  });
+
+  it('does not read the body again, and restarts from the first point', async () => {
+    const blob = binaryBlob();
+    const source = new PlyStreamingSource(blob);
+    await source.open();
+    const first = await source.next(1);
+    const readsAfterOpen = blob.requestedSliceBytes.length;
+    await source.reopen({ stride: 1 });
+    expect(blob.requestedSliceBytes.length).toBe(readsAfterOpen);
+    expect((await source.next(1))?.positions[0]).toBe(first?.positions[0]);
+  });
+
+  it('opens a source that was never opened, or was closed', async () => {
+    const source = new PlyStreamingSource(new TrackingBlob([asciiText]));
+    expect((await source.reopen({ stride: 5 })).totalPointCount).toBe(1);
+    source.close();
+    expect(await source.next(1)).toBeNull();
+    expect((await source.reopen({ stride: 1 })).totalPointCount).toBe(5);
+  });
+});

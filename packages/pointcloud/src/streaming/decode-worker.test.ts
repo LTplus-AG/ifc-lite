@@ -21,6 +21,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { chunkFromWire, type SerializedChunk } from './protocol.js';
+import { streamPointCloud } from './host.js';
+import { PLY_STREAM_READ_BYTES } from './ply-stream-decode.js';
+import { createDecodeWorkerSource, __resetSharedSessionForTests } from './worker-client.js';
 
 const { openMock, closeMock, sourceCtorMock } = vi.hoisted(() => {
   const openMock = vi.fn().mockResolvedValue({
@@ -168,4 +171,201 @@ describe('decode-worker PLY normal payload (#4561)', () => {
     const response = posted.find(row => (row as { kind?: string }).kind === 'chunk') as { chunk: SerializedChunk };
     expect(Array.from(chunkFromWire(response.chunk).positions)).toEqual([1, 0, 0]);
   });
+});
+
+describe('decode-worker reopen and abort-open (#8777)', () => {
+  beforeEach(() => {
+    openMock.mockClear();
+    closeMock.mockClear();
+    sourceCtorMock.mockClear();
+  });
+
+  async function openLas(onmessage: (e: { data: unknown }) => void, posted: unknown[]): Promise<number> {
+    onmessage({ data: { kind: 'open', requestId: 1, format: 'las', blob: new Blob([]), stride: 1 } });
+    await vi.waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ kind: 'opened' })));
+    return (posted.find(row => (row as { kind?: string }).kind === 'opened') as { sourceId: number }).sourceId;
+  }
+
+  it('rebuilds a source without its own reopen() under the same id, with the new stride and origin', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const sourceId = await openLas(onmessage, posted);
+    onmessage({ data: { kind: 'reopen', requestId: 2, sourceId, stride: 4, originOffset: [1, 2, 3] } });
+    await vi.waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ kind: 'opened', requestId: 2, sourceId })));
+    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(sourceCtorMock).toHaveBeenCalledTimes(2);
+    expect(sourceCtorMock.mock.calls[1][1]).toMatchObject({ downsample: { stride: 4 }, originOffset: [1, 2, 3] });
+  });
+
+  it('releases the source when reopen fails, so the client cannot reach a half-open one', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const sourceId = await openLas(onmessage, posted);
+    openMock.mockRejectedValueOnce(new Error('reopen boom'));
+    onmessage({ data: { kind: 'reopen', requestId: 2, sourceId, stride: 2 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 2, message: 'reopen boom' }));
+    onmessage({ data: { kind: 'next', requestId: 3, sourceId, maxPoints: 1 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 3, message: `Unknown sourceId ${sourceId}` }));
+    expect(closeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases both sources when a close arrives while a rebuild is opening', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const sourceId = await openLas(onmessage, posted);
+    let release: (() => void) | undefined;
+    // The rebuilt source's open() ignores its signal, so only the entry check can catch the close.
+    openMock.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ totalPointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] }, hasColor: false, hasClassification: false, hasIntensity: false });
+    }));
+    onmessage({ data: { kind: 'reopen', requestId: 2, sourceId, stride: 2 } });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    onmessage({ data: { kind: 'close', sourceId } });
+    release!();
+    await vi.waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ kind: 'error', requestId: 2 })));
+    expect(posted).not.toContainEqual(expect.objectContaining({ kind: 'opened', requestId: 2 }));
+    onmessage({ data: { kind: 'next', requestId: 3, sourceId, maxPoints: 1 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 3, message: `Unknown sourceId ${sourceId}` }));
+    // The old source, by the rebuild and again by the close; the new one, by the entry check.
+    expect(closeMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('answers a reopen for an unknown source with an error', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    onmessage({ data: { kind: 'reopen', requestId: 9, sourceId: 404, stride: 1 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 9, message: 'Unknown sourceId 404' }));
+  });
+
+  it('aborts an open that is still running', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    let seen: AbortSignal | undefined;
+    openMock.mockImplementationOnce((signal: AbortSignal) => {
+      seen = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('open aborted'))));
+    });
+    onmessage({ data: { kind: 'open', requestId: 7, format: 'las', blob: new Blob([]), stride: 1 } });
+    await vi.waitFor(() => expect(seen).toBeDefined());
+    onmessage({ data: { kind: 'abort-open', targetRequestId: 6 } });
+    expect(seen!.aborted).toBe(false);
+    onmessage({ data: { kind: 'abort-open', targetRequestId: 7 } });
+    await vi.waitFor(() => expect(posted).toContainEqual({ kind: 'error', requestId: 7, message: 'open aborted' }));
+  });
+});
+
+/**
+ * A browser finishes each file read in a task of its own, which is when a
+ * worker can handle a queued message. Node's in-memory Blob resolves in a
+ * microtask, so without this a bridged `abort-open` would never interleave.
+ */
+class TaskBlob extends Blob {
+  override async arrayBuffer(): Promise<ArrayBuffer> {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return super.arrayBuffer();
+  }
+}
+
+/** A binary xyz-float PLY whose bytes are generated per read, so its size costs no memory. */
+class VirtualPly extends Blob {
+  readonly bodyReads: number[] = [];
+  /** Reads that start at the first body byte: one per pass over the body. */
+  passes = 0;
+  private readonly header: Uint8Array;
+  private readonly total: number;
+
+  constructor(readonly count: number, private readonly onBodyRead?: (reads: number) => void) {
+    super([]);
+    this.header = new TextEncoder().encode(`ply\nformat binary_little_endian 1.0\nelement vertex ${count}\n`
+      + 'property float x\nproperty float y\nproperty float z\nend_header\n');
+    this.total = this.header.byteLength + count * 12;
+  }
+
+  override get size(): number { return this.total; }
+
+  override slice(start = 0, end = this.total): Blob {
+    const from = Math.max(0, start), to = Math.min(this.total, end);
+    const out = new Uint8Array(Math.max(0, to - from));
+    out.set(this.header.subarray(from, to));
+    const bodyFrom = Math.max(from, this.header.byteLength);
+    if (bodyFrom < to) {
+      this.bodyReads.push(to - bodyFrom);
+      if (from <= this.header.byteLength && this.header.byteLength + 12 <= to) this.passes++;
+      this.onBodyRead?.(this.bodyReads.length);
+      // Record i is (i, 2i, 3i) with every coordinate of record 0 shifted by 1000.
+      const view = new DataView(out.buffer);
+      const firstRecord = Math.floor((bodyFrom - this.header.byteLength) / 12);
+      for (let record = firstRecord; record * 12 + this.header.byteLength < to; record++) {
+        for (let axis = 0; axis < 3; axis++) {
+          const at = this.header.byteLength + record * 12 + axis * 4 - from;
+          if (at >= 0 && at + 4 <= out.byteLength) view.setFloat32(at, record * (axis + 1) + 1000, true);
+        }
+      }
+    }
+    return new TaskBlob([out]);
+  }
+}
+
+/** Route a decode-worker client through the real worker module in-process. */
+async function inProcessWorker(): Promise<() => Worker> {
+  const listeners = new Set<(event: { data: unknown }) => void>();
+  installSelfPolyfill(msg => { setTimeout(() => listeners.forEach(listener => listener({ data: msg })), 0); });
+  const onmessage = await loadWorker();
+  const worker = {
+    postMessage: (msg: unknown) => setTimeout(() => onmessage({ data: msg }), 0),
+    addEventListener: (_type: string, listener: (event: { data: unknown }) => void) => listeners.add(listener),
+  };
+  return () => worker as unknown as Worker;
+}
+
+describe('large PLY through the real worker (#8777)', () => {
+  beforeEach(() => { __resetSharedSessionForTests(); });
+
+  it('reads a downsampled, auto-origin PLY at most twice: one bounds scan and one decode', async () => {
+    const spawn = await inProcessWorker();
+    const blob = new VirtualPly(3_000_000);
+    const bodyBytes = blob.count * 12;
+    let emitted = 0, first: number[] | undefined, opened: { stride: number; originOffset?: readonly number[] } | undefined;
+    const handle = streamPointCloud({
+      format: 'ply', blob, maxPointsInMemory: 1_000_000, autoOrigin: true, chunkSize: 500_000,
+      createSource: options => createDecodeWorkerSource({ ...options, spawn }),
+      onOpen: info => { opened = info; },
+      onChunk: chunk => { first ??= Array.from(chunk.positions.subarray(0, 6)); emitted += chunk.pointCount; },
+    });
+    await handle.done;
+    expect(opened?.stride).toBe(3);
+    expect(emitted).toBe(1_000_000);
+    // Record i is (i, 2i, 3i) + 1000 for i < 3,000,000, so the bbox centre is
+    // known without asking the code under test.
+    const origin = [1_500_999.5, 3_000_999, 4_500_998.5];
+    expect(opened!.originOffset).toEqual(origin);
+    expect(first).toEqual([1000, 1000, 1000, 1003, 1006, 1009].map((v, i) => Math.fround(v - origin[i % 3])));
+    // The header read (its window overlaps the body), one bounds scan, one
+    // decode. Before #8777 the reopen read the header and scanned again: 5.
+    expect(blob.passes).toBe(3);
+    const read = blob.bodyReads.reduce((sum, bytes) => sum + bytes, 0);
+    expect(read).toBeGreaterThanOrEqual(2 * bodyBytes);
+    expect(read).toBeLessThan(2.25 * bodyBytes);
+  });
+
+  it('settles promptly when cancelled during the bounds scan of a 5 GiB PLY', async () => {
+    const spawn = await inProcessWorker();
+    let handle: ReturnType<typeof streamPointCloud> | undefined;
+    const blob = new VirtualPly(Math.floor(5 * 2 ** 30 / 12), reads => { if (reads === 3) handle!.cancel(); });
+    const onError = vi.fn();
+    handle = streamPointCloud({
+      format: 'ply', blob, autoOrigin: true, onChunk: () => {}, onError,
+      createSource: options => createDecodeWorkerSource({ ...options, spawn }),
+    });
+    await handle.done;
+    expect(onError).not.toHaveBeenCalled();
+    // The scan stops at its next window: nowhere near the ~1280 windows of the file.
+    expect(blob.bodyReads.length).toBeLessThanOrEqual(5);
+    expect(Math.max(...blob.bodyReads)).toBeLessThanOrEqual(PLY_STREAM_READ_BYTES);
+  }, 10_000);
 });

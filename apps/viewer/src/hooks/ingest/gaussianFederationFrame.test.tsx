@@ -133,6 +133,7 @@ it('real setup restore loads a capture slot before its survey reference and re-f
   const survey = new File([`<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
     <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
     <CgPoints><CgPoint name="control">1200000 2600000 500</CgPoint></CgPoints>
+    <PlanFeatures><PlanFeature name="survey"><CoordGeom><Line><Start>1200000 2600000 500</Start><End>1200010 2600010 500</End></Line></CoordGeom></PlanFeature></PlanFeatures>
     </LandXML>`], 'reference.xml');
   await act(async () => {
     await loadCapture();

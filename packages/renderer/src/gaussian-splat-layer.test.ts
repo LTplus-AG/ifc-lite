@@ -527,3 +527,22 @@ test('#8752 a whole-scene frame translation preserves packed locals and the prec
   assert.equal(await h.layer.translateFrame([2_600_000, 0, 0]), true);
   assert.equal(await h.layer.setPlacement(a, { matrix: translate(2_600_001) }), true);
 });
+
+test('#8752 frame changes survive pending device recovery and refuse after clear', async () => {
+  const h = harness();
+  const handle = await add(h.layer, 2, translate(2_600_000));
+  h.life.lost = true;
+  h.layer.release(false, false);
+  assert.equal(h.layer.getState(handle).state, 'pending');
+  assert.equal(await h.layer.translateFrame([-2_600_000, 0, 0]), true);
+  assert.equal(await h.layer.setPlacement(handle, { matrix: translate(1) }), true);
+  const pendingBounds = h.layer.getBounds(handle);
+  h.life.lost = false;
+  h.replaceDevice();
+  h.layer.frameReady();
+  await settle();
+  assert.equal(h.layer.getState(handle).state, 'resident');
+  assert.deepEqual(h.layer.getBounds(handle), pendingBounds);
+  h.layer.clear();
+  assert.equal(await h.layer.translateFrame([1, 0, 0]), false);
+});

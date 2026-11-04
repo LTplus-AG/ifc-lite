@@ -1,0 +1,15 @@
+{
+  "issue": 8806,
+  "reviewComment": 4474532754,
+  "status": "PASS",
+  "method": "T3 browser getBoundingClientRect: actual card classes compiled with installed Tailwind 4.3.3, border-box, inside a positioned overflow-hidden container. Isolated layout check, not a full viewer/model run.",
+  "assertions": "At least 16px left clearance, exactly 16px right clearance, width at most 280px.",
+  "measurements": [
+    { "viewport": 160, "left": 16, "right": 16, "width": 128 },
+    { "viewport": 200, "left": 16, "right": 16, "width": 168 },
+    { "viewport": 280, "left": 16, "right": 16, "width": 248 },
+    { "viewport": 312, "left": 16, "right": 16, "width": 280 },
+    { "viewport": 768, "left": 472, "right": 16, "width": 280 },
+    { "viewport": 1280, "left": 984, "right": 16, "width": 280 }
+  ]
+}

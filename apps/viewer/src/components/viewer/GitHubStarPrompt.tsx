@@ -39,7 +39,7 @@ export function GitHubStarPrompt() {
   if (!visible) return null;
   return (
     <aside ref={card} aria-label={t('viewerShell.star.title')}
-      className="absolute bottom-14 right-4 z-20 w-70 max-w-full rounded-lg border bg-background p-3 shadow-md motion-safe:animate-in motion-safe:fade-in"
+      className="absolute bottom-14 inset-x-4 z-20 ml-auto max-w-70 rounded-lg border bg-background p-3 shadow-md motion-safe:animate-in motion-safe:fade-in"
       >
       <Button type="button" variant="ghost" size="icon-sm" aria-label={t('viewerShell.star.dismiss')}
         className="absolute right-1 top-1 text-muted-foreground"

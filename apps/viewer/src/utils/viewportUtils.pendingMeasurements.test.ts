@@ -35,6 +35,7 @@ function base(): PendingMeasurementState {
     activeRadius: null,
     radiusMeasurements: { length: 0 },
     measurePointLast: null,
+    measurePointLive: null,
   };
 }
 
@@ -57,6 +58,10 @@ describe('hasPendingMeasurementState — animation-loop reprojection gate', () =
 
   it('is true for a placed Point-mode point, whose marker must follow the camera (#8770)', () => {
     assert.equal(hasPendingMeasurementState({ ...base(), measurePointLast: {} }), true);
+  });
+
+  it('is true for a lone Point-mode hover point, which a camera move must end (#8828)', () => {
+    assert.equal(hasPendingMeasurementState({ ...base(), measurePointLive: {} }), true);
   });
 
   it('is true for a FINISHED polyline with nothing else pending', () => {

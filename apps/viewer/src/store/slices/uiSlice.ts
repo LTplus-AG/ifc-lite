@@ -246,10 +246,12 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // Leaving 'measure' must discard any in-progress gesture — MeasureOverlay
     // only mounts while activeTool === 'measure' (ToolOverlays.tsx), so this
     // is the one place a stray drag/polyline sequence could be left stranded.
+    // Entering it resets too, so a press begun in another tool places no
+    // Measure point on release (#8786).
     // Routed through measurementSlice's resetMeasureGesture instead of
     // duplicating the clear here, keeping one place that knows what
     // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
-    const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
+    const crossingMeasure = (get().activeTool === 'measure') !== (activeTool === 'measure');
     // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
     const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
     if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
@@ -259,13 +261,13 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       // tools, so we only block the authoring branch.
       const cross = get() as unknown as WorkspaceCrossSlice;
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
-      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
       // Authoring happens in the Model workspace; no editable model, no tool.
       if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
       set({ activeTool, editEnabled: true });
       return;
     }
-    if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+    if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {

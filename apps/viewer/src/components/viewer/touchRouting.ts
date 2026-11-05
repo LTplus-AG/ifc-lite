@@ -11,15 +11,18 @@
  * measurement while the touch path orbited underneath it. Touch now belongs
  * to `useTouchControls` alone: the mouse controls ignore touch-sourced pointer
  * events, and a Measure tap is handed to the mouse side's measure logic
- * through a per-canvas handler, the same way `markTouchSelection` hands off a
- * selection tap.
+ * through a per-canvas measure context, the same way `markTouchSelection`
+ * hands off a selection tap.
  */
 
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
-import { beginDistance, finishDistance } from './distanceClick.js';
+import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
+
+/** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
+export { beginMeasurePress } from './distanceClick.js';
 
 /** Wrap a pointer handler so touch-sourced pointer events never reach it. */
 export function ignoreTouchPointers(handler: (e: PointerEvent) => unknown): (e: PointerEvent) => void {
@@ -28,19 +31,33 @@ export function ignoreTouchPointers(handler: (e: PointerEvent) => unknown): (e: 
   };
 }
 
-const measureTapHandlers = new WeakMap<HTMLCanvasElement, (x: number, y: number) => void>();
+const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContext; stop: () => void }>();
 
-/** Registered by the mouse controls, which own the measure context. */
-export function setMeasureTapHandler(canvas: HTMLCanvasElement, handler: ((x: number, y: number) => void) | null): void {
-  if (handler) measureTapHandlers.set(canvas, handler);
-  else measureTapHandlers.delete(canvas);
+/**
+ * Registered by the mouse controls, which own the measure context; null on
+ * unmount. While registered, every Measure gesture reset (the store's
+ * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
+ * reposition) reaches the context's press state and queued frame (#8786).
+ */
+export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
+  measureContexts.get(canvas)?.stop();
+  measureContexts.delete(canvas);
+  if (!ctx) return;
+  const stop = useViewerStore.subscribe((state, prev) => {
+    if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
+  });
+  measureContexts.set(canvas, { ctx, stop });
 }
 
-/** Called by the touch controls on a tap in the Measure tool (canvas CSS px). */
-export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number): boolean {
-  const handler = measureTapHandlers.get(canvas);
-  if (!handler) return false;
-  handler(x, y);
+/**
+ * Called by the touch controls on a tap in the Measure tool (canvas CSS px).
+ * `press` is the touch the tap ends: one begun before a Measure gesture reset
+ * (Esc, a mode or tool switch) places nothing (#8786).
+ */
+export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number, press?: object): boolean {
+  const registered = measureContexts.get(canvas);
+  if (!registered) return false;
+  if (!press || !pressOutlivedReset(press)) handleMeasureTap(registered.ctx, x, y);
   return true;
 }
 

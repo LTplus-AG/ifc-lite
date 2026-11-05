@@ -28,10 +28,10 @@ import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { handleMeasureDrag, handleMeasureHover, updateMeasureScreenCoords } from './measureHandlers.js';
-import { forgetDistancePress, handleMeasureDown, handleMeasureUp } from './distanceClick.js';
+import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
-import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
+import { ignoreTouchPointers, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
@@ -485,7 +485,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         distancePending: activeMeasurementRef.current !== null,
       });
       pointerGesture = gesture;
-      if (tool !== 'measure' || gesture !== 'tool') forgetDistancePress(mouseState);
+      beginMeasurePress(mouseState, tool === 'measure' && gesture === 'tool'); // #8786; any other press breaks the dblclick chain
       if (tool === 'command' && gesture === 'tool' && commandPress.begin(e)) {
         canvas.style.cursor = 'crosshair';
         return;
@@ -721,7 +721,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // Handle measure tool completion
-      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2) {
+      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2 && !pressOutlivedReset(mouseState)) {
         if (handleMeasureUp(ctx, e)) return;
       }
 
@@ -838,9 +838,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleDoubleClick = (e: MouseEvent) => handleMeasureDoubleClick(ctx, e);
 
-    // Touch belongs to useTouchControls; a Measure tap comes back through the tap handler (#5856).
+    // Touch belongs to useTouchControls; a Measure tap comes back through the measure context (#5856).
     const onPointerDown = ignoreTouchPointers(handleMouseDown), onPointerMove = ignoreTouchPointers(handleMouseMove), onPointerUp = ignoreTouchPointers(handleMouseUp);
-    setMeasureTapHandler(canvas, (x, y) => handleMeasureTap(ctx, x, y));
+    setMeasureContext(canvas, ctx);
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
@@ -858,7 +858,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();
-      setMeasureTapHandler(canvas, null);
+      setMeasureContext(canvas, null);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);

@@ -1074,5 +1074,1081 @@
   "lensPanel.type.classification": {
     "value": "Classification",
     "reason": "French uses the same spelling « Classification » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.propertyNamePlaceholder": {
+    "value": "FireRating",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.psetPlaceholder": {
+    "value": "Pset_…",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.qtoPlaceholder": {
+    "value": "Qto_…",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.quantityNamePlaceholder": {
+    "value": "NetVolume",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.regexBadge": {
+    "value": "regex",
+    "reason": "French uses the same spelling « regex » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.source.classification": {
+    "value": "Classification",
+    "reason": "French uses the same spelling « Classification » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.source.spatial": {
+    "value": "Spatial",
+    "reason": "French uses the same spelling « Spatial » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.source.zone": {
+    "value": "Zone",
+    "reason": "French uses the same spelling « Zone » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.spatial.site": {
+    "value": "Site",
+    "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.sumIcon": {
+    "value": "Σ",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.valuePlaceholder.boolean": {
+    "value": "true / false",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.builder.valuePlaceholder.volume": {
+    "value": "volume",
+    "reason": "French uses the same spelling « volume » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.builder.zoneOption": {
+    "value": "Zone",
+    "reason": "French uses the same spelling « Zone » for this contextual label; reviewed against its feature meaning."
+  },
+  "lists.resultsTable.sumIcon": {
+    "value": "Σ",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "lists.resultsTable.totalCount": {
+    "value": "Total · {count}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "lists.scheduleTable.sumIcon": {
+    "value": "Σ",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.mcpLanding.brand": {
+    "value": "ifc-lite",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.mcpLanding.bsddWallBadge": {
+    "value": "bSDD · IfcWall",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.mcpLanding.colDescription": {
+    "value": "description",
+    "reason": "French uses the same spelling « description » for this contextual label; reviewed against its feature meaning."
+  },
+  "mcp.mcpLanding.colType": {
+    "value": "type",
+    "reason": "French uses the same spelling « type » for this contextual label; reviewed against its feature meaning."
+  },
+  "mcp.mcpLanding.footerBrand": {
+    "value": "ifc-lite/mcp · v{version} · MPL-2.0",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "mcp.mcpLanding.footerColSource": {
+    "value": "Source",
+    "reason": "French uses the same spelling « Source » for this contextual label; reviewed against its feature meaning."
+  },
+  "mcp.mcpLanding.ifcTypeLabel": {
+    "value": "Ifc{type}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "mcp.mcpLanding.navBadge": {
+    "value": "/ mcp · {version}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "mcp.mcpLanding.signature": {
+    "value": "Signature",
+    "reason": "French uses the same spelling « Signature » for this contextual label; reviewed against its feature meaning."
+  },
+  "mcp.mcpLanding.statTransportsSublabel": {
+    "value": "stdio · http",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.mcpPlayground.footerNpm": {
+    "value": "npm",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.mcpPlayground.playgroundPath": {
+    "value": "/mcp/playground",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.playgroundChat.brand": {
+    "value": "ifc-lite/mcp · agent",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "mcp.playgroundChat.msSuffix": {
+    "value": "{ms} ms",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "measure.angleKind.faces.label": {
+    "value": "Faces",
+    "reason": "French uses the same spelling « Faces » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.basis.net": {
+    "value": "net",
+    "reason": "French uses the same spelling « net » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.geo.easting": {
+    "value": "E",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "measure.geo.height": {
+    "value": "H",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "measure.geo.northing": {
+    "value": "N",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "measure.geo.unitMeters": {
+    "value": "m",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "measure.mode.angle": {
+    "value": "Angle",
+    "reason": "French uses the same spelling « Angle » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.mode.distance": {
+    "value": "Distance",
+    "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.mode.point": {
+    "value": "Point",
+    "reason": "Standard French geometric term."
+  },
+  "measure.qty.volume": {
+    "value": "Volume",
+    "reason": "French uses the same spelling « Volume » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.section.centreline.label": {
+    "value": "Source",
+    "reason": "French uses the same spelling « Source » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.section.point.label": {
+    "value": "Point",
+    "reason": "French uses the same spelling « Point » for this contextual label; reviewed against its feature meaning."
+  },
+  "measure.source.extrusionSolid": {
+    "value": "{modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "measure.source.product": {
+    "value": "{modelId} · #{productId}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "measure.source.sweptDiskSolid": {
+    "value": "{modelId} · #{productId} · IfcSweptDiskSolid #{solidId}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelInspector.dims.title": {
+    "value": "Dimensions",
+    "reason": "French uses the same spelling « Dimensions » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelInspector.header.selection": {
+    "value": "{ifcClass} #{id}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelInspector.header.selectionOnStorey": {
+    "value": "{ifcClass} #{id} · {storey}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelInspector.layers.targetType": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelInspector.layers.total": {
+    "value": "Total {total} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelInspector.type.label": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelInspector.type.title": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelWorkspace.layout.3d": {
+    "value": "3D",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "modelWorkspace.layout.plan": {
+    "value": "Plan",
+    "reason": "French uses the same spelling « Plan » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelWorkspace.plan.title": {
+    "value": "Plan",
+    "reason": "French uses the same spelling « Plan » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelWorkspace.storey.elevation": {
+    "value": "{elevation} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelWorkspace.storey.withModel": {
+    "value": "{model} · {storey}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelWorkspace.tool.shortcutHint": {
+    "value": "· {key}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "modelingCommand.field.rotation": {
+    "value": "Rotation",
+    "reason": "French uses the same spelling « Rotation » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelingCommand.slab.rectangle": {
+    "value": "Rectangle",
+    "reason": "French uses the same spelling « Rectangle » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelingCommand.unit.count": {
+    "value": "",
+    "reason": "Intentional dimensionless count-unit suffix; the numeric count carries the quantity."
+  },
+  "modelingCommand.unit.deg": {
+    "value": "°",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "modelingCommand.unit.m": {
+    "value": "m",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "modelingCommand.wall.alignCentre": {
+    "value": "Centre",
+    "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."
+  },
+  "modelingCommand.wall.angle": {
+    "value": "Angle",
+    "reason": "French uses the same spelling « Angle » for this contextual label; reviewed against its feature meaning."
+  },
+  "moveRotate.field.angle": {
+    "value": "Angle",
+    "reason": "French uses the same spelling « Angle » for this contextual label; reviewed against its feature meaning."
+  },
+  "moveRotate.field.direction": {
+    "value": "Direction",
+    "reason": "French uses the same spelling « Direction » for this contextual label; reviewed against its feature meaning."
+  },
+  "moveRotate.field.distance": {
+    "value": "Distance",
+    "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
+  },
+  "moveRotate.rotate.pivot": {
+    "value": "Pivot",
+    "reason": "French uses the same spelling « Pivot » for this contextual label; reviewed against its feature meaning."
+  },
+  "peerPresenceLayer.nameWithTool": {
+    "value": "{name} — {tool}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "placementPanel.tabs.local": {
+    "value": "Local",
+    "reason": "French uses the same spelling « Local » for this contextual label; reviewed against its feature meaning."
+  },
+  "placementPanel.title": {
+    "value": "Placement",
+    "reason": "French uses the same spelling « Placement » for this contextual label; reviewed against its feature meaning."
+  },
+  "pointCloudClasses.summaryLabel": {
+    "value": "Classes",
+    "reason": "French uses the same spelling « Classes » for this contextual label; reviewed against its feature meaning."
+  },
+  "pointCloudPanel.colorMode.classification.label": {
+    "value": "Classification",
+    "reason": "French uses the same spelling « Classification » for this contextual label; reviewed against its feature meaning."
+  },
+  "pointCloudPanel.sizeMode.attenuated.label": {
+    "value": "Auto",
+    "reason": "French uses the same spelling « Auto » for this contextual label; reviewed against its feature meaning."
+  },
+  "presentationPanel.activeBadge": {
+    "value": "Active",
+    "reason": "French uses the same spelling « Active » for this contextual label; reviewed against its feature meaning."
+  },
+  "profileSection.kind.I": {
+    "value": "I / H",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "profileSection.kind.Rectangle": {
+    "value": "Rectangle",
+    "reason": "French uses the same spelling « Rectangle » for this contextual label; reviewed against its feature meaning."
+  },
+  "profileSection.picker.label": {
+    "value": "Section",
+    "reason": "French uses the same spelling « Section » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.classification.heading": {
+    "value": "Classification",
+    "reason": "French uses the same spelling « Classification » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.document.heading": {
+    "value": "Document",
+    "reason": "French uses the same spelling « Document » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.epsgLookup.triggerButton": {
+    "value": "EPSG",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.extrusion.profile": {
+    "value": "SweptArea",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "properties.extrusion.profileType": {
+    "value": "ProfileType",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "properties.extrusion.segments": {
+    "value": "segments",
+    "reason": "French uses the same spelling « segments » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.extrusion.solid": {
+    "value": "IfcExtrudedAreaSolid #{id}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.extrusion.translation": {
+    "value": "Translation",
+    "reason": "French uses the same spelling « Translation » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.field.description": {
+    "value": "Description",
+    "reason": "French uses the same spelling « Description » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.field.identification": {
+    "value": "Identification",
+    "reason": "French uses the same spelling « Identification » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.georef.eastingNorthingSummary": {
+    "value": "E {easting} N {northing}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.georef.epsgButton": {
+    "value": "EPSG",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.georef.globePlacement.exact": {
+    "value": "Exact",
+    "reason": "French uses the same spelling « Exact » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.georef.heightMeters": {
+    "value": "{value} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.landXmlAlignment.distance": {
+    "value": "Distance",
+    "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.landXmlSource.geometryName": {
+    "value": "{kind} {ordinal}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.landXmlSource.points": {
+    "value": "Points",
+    "reason": "French uses the same spelling « Points » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.locationMap.elevationMeters": {
+    "value": "{value} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.locationMap.googleEarth": {
+    "value": "Google Earth",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.locationMap.googleMaps": {
+    "value": "Google Maps",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.locationMap.openStreetMap": {
+    "value": "OpenStreetMap",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.materialTotals.volume": {
+    "value": "Volume",
+    "reason": "French uses the same spelling « Volume » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.modelMetadata.globalIdLabel": {
+    "value": "GlobalId",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "properties.modelMetadata.lengthUnitValue": {
+    "value": "{unitName} ({scale})",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.modelMetadata.parseTimeValue": {
+    "value": "{ms} ms",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.modelMetadata.sourceSurfaces": {
+    "value": "Surfaces",
+    "reason": "French uses the same spelling « Surfaces » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.panel.associatedTypeFallback": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.panel.positionLabel": {
+    "value": "Position",
+    "reason": "Standard French coordinate label."
+  },
+  "properties.panel.structureHeading": {
+    "value": "Structure",
+    "reason": "French uses the same spelling « Structure » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.panel.tab.bsdd": {
+    "value": "bSDD",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "properties.panel.zonesHeading": {
+    "value": "Zones",
+    "reason": "French uses the same spelling « Zones » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.quantitySet.type.volume": {
+    "value": "Volume",
+    "reason": "French uses the same spelling « Volume » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.rawStep.argN": {
+    "value": "Arg {n}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.structural.configurationAt": {
+    "value": "{components} @ {location}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.sweptDisk.solid": {
+    "value": "IfcSweptDiskSolid #{id}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "properties.sweptDisk.status": {
+    "value": "Description",
+    "reason": "French uses the same spelling « Description » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.taskEdit.globalIdLabel": {
+    "value": "Global ID",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "properties.unitDisplay.kind.angle": {
+    "value": "Angle",
+    "reason": "French uses the same spelling « Angle » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.unitDisplay.kind.force": {
+    "value": "Force",
+    "reason": "French uses the same spelling « Force » for this contextual label; reviewed against its feature meaning."
+  },
+  "properties.unitDisplay.kind.volume": {
+    "value": "Volume",
+    "reason": "French uses the same spelling « Volume » for this contextual label; reviewed against its feature meaning."
+  },
+  "propertyEditor.material.category.aluminium": {
+    "value": "Aluminium",
+    "reason": "French uses the same spelling « Aluminium » for this contextual label; reviewed against its feature meaning."
+  },
+  "propertyEditor.material.category.composite": {
+    "value": "Composite",
+    "reason": "French uses the same spelling « Composite » for this contextual label; reviewed against its feature meaning."
+  },
+  "propertyEditor.shared.type": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "propertyEditor.valueType.identifierShort": {
+    "value": "ID",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "pushPull.bar.readout": {
+    "value": "{face} {delta} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "reportExportDialog.orientationAriaLabel": {
+    "value": "Orientation",
+    "reason": "French uses the same spelling « Orientation » for this contextual label; reviewed against its feature meaning."
+  },
+  "reportExportDialog.orientationLabel": {
+    "value": "Orientation",
+    "reason": "French uses the same spelling « Orientation » for this contextual label; reviewed against its feature meaning."
+  },
+  "reportExportDialog.orientationPortrait": {
+    "value": "Portrait",
+    "reason": "French uses the same spelling « Portrait » for this contextual label; reviewed against its feature meaning."
+  },
+  "reportExportDialog.pageSizeA3": {
+    "value": "A3",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "reportExportDialog.pageSizeA4": {
+    "value": "A4",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "reportExportDialog.pageSizeLabel": {
+    "value": "Page",
+    "reason": "French uses the same spelling « Page » for this contextual label; reviewed against its feature meaning."
+  },
+  "repositionPanel.axisFieldDeltaAriaLabel": {
+    "value": "Delta {axis}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "repositionPanel.axisFieldSourceAriaLabel": {
+    "value": "Source {axis}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "repositionPanel.deltaPrefix": {
+    "value": "Δ",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "repositionPanel.gizmo.deltaLabel": {
+    "value": "{distance} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "repositionPanel.hoverDetail": {
+    "value": "{kind} · {name}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "repositionPanel.hoverKindFace": {
+    "value": "face",
+    "reason": "French uses the same spelling « face » for this contextual label; reviewed against its feature meaning."
+  },
+  "repositionPanel.hoverKindPoint": {
+    "value": "point",
+    "reason": "French uses the same spelling « point » for this contextual label; reviewed against its feature meaning."
+  },
+  "repositionPanel.pickRoleSource": {
+    "value": "source",
+    "reason": "French uses the same spelling « source » for this contextual label; reviewed against its feature meaning."
+  },
+  "repositionPanel.rotation.pivotAxisLabel": {
+    "value": "Pivot {axis}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "repositionPanel.toggleLockAriaLabel": {
+    "value": "{action} {name}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "resultView.population": {
+    "value": "Population",
+    "reason": "French uses the same spelling « Population » for this contextual label; reviewed against its feature meaning."
+  },
+  "resultView.source": {
+    "value": "Source",
+    "reason": "French uses the same spelling « Source » for this contextual label; reviewed against its feature meaning."
+  },
+  "retainedGeometry.faces.column.triangles": {
+    "value": "Triangles",
+    "reason": "French uses the same spelling « Triangles » for this contextual label; reviewed against its feature meaning."
+  },
+  "retainedGeometry.panel.column.code": {
+    "value": "Code",
+    "reason": "French uses the same spelling « Code » for this contextual label; reviewed against its feature meaning."
+  },
+  "retainedGeometry.panel.column.id": {
+    "value": "ID",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "retainedGeometry.panel.column.message": {
+    "value": "Message",
+    "reason": "French uses the same spelling « Message » for this contextual label; reviewed against its feature meaning."
+  },
+  "retainedGeometry.panel.filterCode": {
+    "value": "{code} ({count})",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "retainedGeometry.panel.rowId": {
+    "value": "#{id}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "reviewWorkspace.card.element": {
+    "value": "{type} {name} · {globalId} · {model}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "reviewWorkspace.facetOption": {
+    "value": "{label} ({cards})",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "reviewWorkspace.sourceKind.validation": {
+    "value": "Validation",
+    "reason": "French uses the same spelling « Validation » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.analyze.styleGroup": {
+    "value": "Style",
+    "reason": "French uses the same spelling « Style » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.commandsShortcut": {
+    "value": "Ctrl+K",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "ribbon.elements.type": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.file.exportGroup": {
+    "value": "Export",
+    "reason": "French uses the same spelling « Export » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.view.interfaceGroup": {
+    "value": "Interface",
+    "reason": "French uses the same spelling « Interface » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.view.projectionGroup": {
+    "value": "Projection",
+    "reason": "French uses the same spelling « Projection » for this contextual label; reviewed against its feature meaning."
+  },
+  "ribbon.view.spaceMouse": {
+    "value": "SpaceMouse",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "roomReview.ObjectType": {
+    "value": "ObjectType",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "roomReview.PredefinedType": {
+    "value": "PredefinedType",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "roomTool.auto.label": {
+    "value": "Auto · {countDisplay}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "roomTool.options.classification": {
+    "value": "IfcSpace.{attribute}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "roomTool.options.objectType": {
+    "value": "IfcSpace.ObjectType",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "scanToBim.confidence": {
+    "value": "{value} %",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "scanToBim.filter.class": {
+    "value": "{label} ({count})",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "scanToBim.filter.minConfidenceValue": {
+    "value": "{value} %",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "sceneActions.channel.isolate": {
+    "value": "isolation",
+    "reason": "French uses the same spelling « isolation » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.animation.minimalLabel": {
+    "value": "Minimal",
+    "reason": "French uses the same spelling « Minimal » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.animation.styleLabel": {
+    "value": "Style",
+    "reason": "French uses the same spelling « Style » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.animation.taskType.construction": {
+    "value": "Construction",
+    "reason": "French uses the same spelling « Construction » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.animation.taskType.installation": {
+    "value": "Installation",
+    "reason": "French uses the same spelling « Installation » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.animation.taskType.maintenance": {
+    "value": "Maintenance",
+    "reason": "French uses the same spelling « Maintenance » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.generateAdvanced.predefinedTypeLabel": {
+    "value": "PredefinedType",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "schedule.heightStrategy.optionType": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.heightStrategy.sliceHeightValue": {
+    "value": "{value} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "schedule.toolbar.pause": {
+    "value": "Pause",
+    "reason": "French uses the same spelling « Pause » for this contextual label; reviewed against its feature meaning."
+  },
+  "schedule.workPlanSummary.planTitle": {
+    "value": "IfcWorkPlan {globalId}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "scriptPanel.output.bimCode": {
+    "value": "bim.*",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "scriptPanel.output.fetchCode": {
+    "value": "fetch",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.filterEditors.attributeNamePlaceholder": {
+    "value": "Description, ObjectType, Tag, …",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.filterEditors.siUnits": {
+    "value": "SI",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.filterSelector.placeholder": {
+    "value": "IfcWall, Pset_WallCommon.FireRating=/REI.*/",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.inline.cycleNextKey": {
+    "value": "n",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.inline.cyclePrevKey": {
+    "value": "N",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "searchModal.library.family.documents": {
+    "value": "Documents",
+    "reason": "French uses the same spelling « Documents » for this contextual label; reviewed against its feature meaning."
+  },
+  "searchModal.library.family.scripts": {
+    "value": "Scripts",
+    "reason": "French uses the same spelling « Scripts » for this contextual label; reviewed against its feature meaning."
+  },
+  "searchModal.text.fieldDescription": {
+    "value": "Description",
+    "reason": "French uses the same spelling « Description » for this contextual label; reviewed against its feature meaning."
+  },
+  "searchModal.text.fieldGuid": {
+    "value": "GUID",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "searchModal.text.fieldName": {
+    "value": "Name",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "searchModal.text.fieldObjectType": {
+    "value": "ObjectType",
+    "reason": "IFC field or schema identifier shown for field recognition; preserve its original EXPRESS spelling."
+  },
+  "searchModal.text.fieldType": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "section2d.cutNamed": {
+    "value": "{name} · {cut}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "section2d.display.ifcAnnotations": {
+    "value": "Annotations",
+    "reason": "French uses the same spelling « Annotations » for this contextual label; reviewed against its feature meaning."
+  },
+  "section2d.display.projection": {
+    "value": "Projection",
+    "reason": "French uses the same spelling « Projection » for this contextual label; reviewed against its feature meaning."
+  },
+  "section2d.tools.distance": {
+    "value": "Distance",
+    "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
+  },
+  "sectionCap.angleLabel": {
+    "value": "Angle (°)",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "sectionCap.surfaces": {
+    "value": "Surfaces",
+    "reason": "French uses the same spelling « Surfaces » for this contextual label; reviewed against its feature meaning."
+  },
+  "sectionPlanes.offset.datum.alignment": {
+    "value": "station",
+    "reason": "French uses the same spelling « station » for this contextual label; reviewed against its feature meaning."
+  },
+  "sectionPlanes.zoom.label": {
+    "value": "Zoom",
+    "reason": "French uses the same spelling « Zoom » for this contextual label; reviewed against its feature meaning."
+  },
+  "sectionTool.box.size": {
+    "value": "{x} × {y} × {z} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "sectionTool.distance.percentUnit": {
+    "value": "%",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "sectionTool.distance.unit": {
+    "value": "m",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "sectionTool.parked.faceAxis": {
+    "value": "Face",
+    "reason": "French uses the same spelling « Face » for this contextual label; reviewed against its feature meaning."
+  },
+  "sectionTool.parked.label": {
+    "value": "{axis} · {distance} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "sectionTool.storeys.elevation": {
+    "value": "{elevation} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "semantic.type": {
+    "value": "Type",
+    "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
+  },
+  "semantic.validationEngines": {
+    "value": "JSON Schema / SHACL",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "semanticAssist.projectionValues": {
+    "value": "{previous} → {value} {unit}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "semanticAssist.spanAt": {
+    "value": "{source} [{start}–{end}]",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "settings.display.navigationTitle": {
+    "value": "Navigation",
+    "reason": "French uses the same spelling « Navigation » for this contextual label; reviewed against its feature meaning."
+  },
+  "settings.display.spaceMouseTitle": {
+    "value": "SpaceMouse",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "settings.sections.collaboration": {
+    "value": "Collaboration",
+    "reason": "French uses the same spelling « Collaboration » for this contextual label; reviewed against its feature meaning."
+  },
+  "sheetsPdf.sheetSetup.drawingAreaValue": {
+    "value": "{width} × {height} mm",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "sheetsPdf.sheetSetup.frameStyleMinimal": {
+    "value": "Minimal",
+    "reason": "French uses the same spelling « Minimal » for this contextual label; reviewed against its feature meaning."
+  },
+  "sheetsPdf.sheetSetup.frameStyleSimple": {
+    "value": "Simple",
+    "reason": "French uses the same spelling « Simple » for this contextual label; reviewed against its feature meaning."
+  },
+  "sheetsPdf.sheetSetup.paperDimensions": {
+    "value": "{width} × {height} mm",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "sheetsPdf.titleBlock.dateLabel": {
+    "value": "Date",
+    "reason": "French uses the same spelling « Date » for this contextual label; reviewed against its feature meaning."
+  },
+  "sheetsPdf.titleBlock.datePlaceholder": {
+    "value": "2024-01-15",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "sheetsPdf.titleBlock.descriptionLabel": {
+    "value": "Description",
+    "reason": "French uses the same spelling « Description » for this contextual label; reviewed against its feature meaning."
+  },
+  "sheetsPdf.titleBlock.logoAlt": {
+    "value": "Logo",
+    "reason": "French uses the same spelling « Logo » for this contextual label; reviewed against its feature meaning."
+  },
+  "shellChrome.activityBar.altShortcutHint": {
+    "value": "Alt+{key}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "shellChrome.mobileToolbar.perspective": {
+    "value": "Perspective",
+    "reason": "French uses the same spelling « Perspective » for this contextual label; reviewed against its feature meaning."
+  },
+  "shellChrome.panelGroups.site": {
+    "value": "Site",
+    "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
+  },
+  "shellChrome.statusBar.appVersion": {
+    "value": "v{version}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "shellChrome.statusBar.ifcliteLinkLabel": {
+    "value": "ifclite.dev →",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "shellChrome.statusBar.webgpuLabel": {
+    "value": "WebGPU",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "spaceMousePanel.deviceNameFallback": {
+    "value": "SpaceMouse",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "spaceMousePanel.diagnosticsLabel": {
+    "value": "Diagnostics",
+    "reason": "French uses the same spelling « Diagnostics » for this contextual label; reviewed against its feature meaning."
+  },
+  "splitTool.unitMetres": {
+    "value": "m",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "tableChanges.matchTypeTag": {
+    "value": "Tag",
+    "reason": "French uses the same spelling « Tag » for this contextual label; reviewed against its feature meaning."
+  },
+  "terrainImagery.source": {
+    "value": "Source",
+    "reason": "French uses the same spelling « Source » for this contextual label; reviewed against its feature meaning."
+  },
+  "terrainImagery.tiles.kind": {
+    "value": "Service",
+    "reason": "French uses the same spelling « Service » for this contextual label; reviewed against its feature meaning."
+  },
+  "terrainImagery.tiles.kindWms": {
+    "value": "WMS",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "terrainImagery.tiles.templatePlaceholder": {
+    "value": "https://tile.example.org/{z}/{x}/{y}.png",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "terrainImagery.tiles.wmsPlaceholder": {
+    "value": "https://wms.example.org/service",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "terrainImagery.tiles.zoom": {
+    "value": "Zoom",
+    "reason": "French uses the same spelling « Zoom » for this contextual label; reviewed against its feature meaning."
+  },
+  "tours.learnTab.minutes": {
+    "value": "{count} min",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "validationEditor.compare.valueType.date": {
+    "value": "Date",
+    "reason": "French uses the same spelling « Date » for this contextual label; reviewed against its feature meaning."
+  },
+  "validationEditor.subjectKind.classification": {
+    "value": "Classification",
+    "reason": "French uses the same spelling « Classification » for this contextual label; reviewed against its feature meaning."
+  },
+  "validationEditor.subjectKind.parent": {
+    "value": "Parent",
+    "reason": "French uses the same spelling « Parent » for this contextual label; reviewed against its feature meaning."
+  },
+  "validationEditor.unit.unitPlaceholder": {
+    "value": "mm",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.footer.discoverLink": {
+    "value": "ifclite.dev →",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.scene.metres": {
+    "value": "{value} m",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.dateLabel": {
+    "value": "Date",
+    "reason": "French uses the same spelling « Date » for this contextual label; reviewed against its feature meaning."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.readout.site": {
+    "value": "Site",
+    "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.timezone.site": {
+    "value": "Site",
+    "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.timezone.siteWithOffset": {
+    "value": "Site ({offset})",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.timezone.utc": {
+    "value": "UTC",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.firefox.aboutConfig": {
+    "value": "about:config",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.firefox.arrowTrue": {
+    "value": "→ true",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.firefox.domWebgpuEnabled": {
+    "value": "dom.webgpu.enabled",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.firefox.heading": {
+    "value": "Firefox",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpLocalhost": {
+    "value": "http://localhost",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpsScheme": {
+    "value": "https://",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.insecureOrigin.localhostWord": {
+    "value": "localhost",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.noApi.chromePolicyPath": {
+    "value": "chrome://policy",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.noApi.defaultWebGpuAccess": {
+    "value": "DefaultWebGPUAccess",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.noApi.navigatorGpu": {
+    "value": "navigator.gpu",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.noGpu.flagIgnoreBlocklist": {
+    "value": "chrome://flags/#ignore-gpu-blocklist",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.noGpu.flagUnsafeWebgpu": {
+    "value": "chrome://flags/#enable-unsafe-webgpu",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.restOfToolkit.cliCommand": {
+    "value": "npx @ifc-lite/cli query model.ifc --type IfcWall",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.safari.heading": {
+    "value": "Safari",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.verifyStatus.aboutSupportPath": {
+    "value": "about:support",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "webgpuTroubleshooting.verifyStatus.chromeGpuPath": {
+    "value": "chrome://gpu",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "workspacePanels.bottom.document": {
+    "value": "Document",
+    "reason": "French uses the same spelling « Document » for this contextual label; reviewed against its feature meaning."
+  },
+  "zonesPanel.roomPanel.status.local": {
+    "value": "Local",
+    "reason": "French uses the same spelling « Local » for this contextual label; reviewed against its feature meaning."
+  },
+  "zonesPanel.zoneRow.baseYLabel": {
+    "value": "Base (Y)",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "zonesPanel.zoneRow.rotationLabel": {
+    "value": "Rotation (°)",
+    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
   }
 }

@@ -24,7 +24,7 @@ test('#8896 GLB colour choices explain apparent SurfaceColour and distinct Diffu
 // Importing a catalogue supplies data, but must not register its lazy English copy.
 // Each test file runs in a fresh Node process under the viewer test runner.
 test('#8896 all retained messages validate before feature English registration', () => {
-  for (const key of Object.keys(retainedGeometryEn)) {
+  for (const key of Object.keys(retainedGeometryEn) as (keyof typeof retainedGeometryEn)[]) {
     assert.equal(englishMessage(key), undefined, `${key} must remain lazy at startup`);
   }
   assert.deepEqual(checkCatalogue(retainedGeometryEn), {

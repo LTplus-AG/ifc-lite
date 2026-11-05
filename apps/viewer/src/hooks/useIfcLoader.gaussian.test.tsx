@@ -333,6 +333,94 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.deepEqual(splats().getBounds(), { min: [9, 9, -9], max: [9, 9, -9] });
   });
 
+  it('fifty load and remove cycles release every Gaussian owner, index and scene share (#8567)', async () => {
+    const { residentSceneSplats, reserveSceneSplats } = await import('./ingest/gaussianSceneBudget.js');
+    const registry = (globalThis as typeof globalThis & {
+      __ifc_lite_gaussian_assets__?: { owned: Map<string, unknown>; replaced: Set<string> };
+    }).__ifc_lite_gaussian_assets__;
+    assert.ok(registry);
+    for (let cycle = 0; cycle < 50; cycle++) {
+      const id = `cycle-${cycle}`;
+      await load(gaussianPly(`${id}.ply`, [[cycle, 2, 3]]), { kind: 'federated', modelId: id });
+      const handle = model(id)?.gaussianSplat?.handle;
+      assert.ok(handle, `load ${cycle} published a handle`);
+      assert.equal(splats().getStats().assets, 1);
+      useViewerStore.getState().removeModel(id);
+      assert.equal(useViewerStore.getState().models.size, 0, `model ${cycle} removed`);
+      assert.equal(registry.owned.size, 0, `registry owner ${cycle} released`);
+      assert.equal(registry.replaced.size, 0, `registry replacement ${cycle} released`);
+      assert.equal(splats().getState(handle).state, 'invalid', `handle ${cycle} invalidated`);
+      assert.equal(splats().getStats().assets, 0, `renderer ${cycle} released`);
+      assert.equal(residentSceneSplats(useViewerStore.getState().models), 0);
+      const fullBudget = reserveSceneSplats(1_000_000, useViewerStore.getState().models);
+      assert.ok(fullBudget.ok, `budget ${cycle} returned to zero`);
+      fullBudget.release();
+      assertNoHeldSlot();
+    }
+    assert.deepEqual([worker.stats.created, worker.stats.terminated], [50, 50]);
+  });
+
+  it('overlapping primary replacements leave only the final capture and its handle (#8567)', async () => {
+    const release = gpu.backend.hold();
+    await act(async () => {
+      const requests = [hookApi!.loadFile(gaussianPly('first.ply', [[1, 0, 0]]), { kind: 'primary', modelId: 'first' })];
+      await new Promise(resolve => setTimeout(resolve, 50));
+      for (let index = 2; index <= 5; index++) {
+        requests.push(hookApi!.loadFile(gaussianPly(`${index}.ply`, [[index, 0, 0]]),
+          { kind: 'primary', modelId: `replacement-${index}` }));
+      }
+      release();
+      await Promise.all(requests);
+    });
+    const models = useViewerStore.getState().models;
+    assert.deepEqual([...models.keys()], ['replacement-5']);
+    const final = model('replacement-5')?.gaussianSplat;
+    assert.ok(final);
+    assert.equal(splats().getState(final.handle).state, 'resident');
+    assert.equal(splats().getStats().assets, 1);
+    assert.deepEqual(splats().getBounds(), { min: [5, 0, 0], max: [5, 0, 0] });
+    assert.equal((globalThis as typeof globalThis & {
+      __ifc_lite_gaussian_assets__?: { owned: Map<string, unknown> };
+    }).__ifc_lite_gaussian_assets__?.owned.size, 1);
+    assert.equal(worker.stats.created, worker.stats.terminated, 'every decoder request terminated');
+    useViewerStore.getState().removeModel('replacement-5');
+    assertNoHeldSlot();
+  });
+
+  it('visibility changes during decoding and after publication preserve the capture (#8567)', async () => {
+    const release = worker.hold();
+    let hidden = false;
+    const original = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+    const visibility = (value: boolean) => {
+      hidden = value;
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    try {
+      await act(async () => {
+        const pending = hookApi!.loadFile(gaussianPly('suspended.ply', CENTRES),
+          { kind: 'federated', modelId: 'suspended' });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        visibility(true);
+        visibility(false);
+        release();
+        await pending;
+      });
+      const handle = model('suspended')?.gaussianSplat?.handle;
+      assert.ok(handle);
+      assert.equal(splats().getState(handle).state, 'resident');
+      visibility(true);
+      assert.equal(splats().getState(handle).state, 'resident');
+      visibility(false);
+      assert.equal(model('suspended')?.loadState, 'complete');
+      assert.equal(splats().getStats().assets, 1);
+    } finally {
+      release();
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
   it('a lost device refuses before decoding; a rejected upload retains nothing', async () => {
     gpu.loseDevice();
     await load(gaussianPly('lost.ply', CENTRES), { kind: 'primary', modelId: 'lost' });
@@ -361,6 +449,38 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 });
 
 describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () => {
+  it('device recovery requiring reload restores the source placement and up axis (#8567)', async () => {
+    const { gaussianModelState, rebindGaussianAssets } = await import('./ingest/gaussianAssets.js');
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    const placement = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 12, 20, 30, 1];
+    await load(gaussianPly('recovery.ply', CENTRES),
+      { kind: 'federated', modelId: 'recovery', name: 'recovery.ply' },
+      { gaussianPlacement: placement, gaussianUpAxis: 'y' });
+    const before = model('recovery')!.gaussianSplat!;
+    assert.equal(before.upAxis, 'y');
+    gpu.loseDevice();
+    assert.equal(splats().getState(before.handle).state, 'pending');
+    // The renderer's documented cleared-scene recovery cannot re-upload rows.
+    const old = gpu;
+    (old.renderer.gaussianSplats as typeof old.renderer.gaussianSplats & { release(clear: boolean, dispose: boolean): void }).release(true, false);
+    assert.deepEqual(gaussianModelState(model('recovery')!), { state: 'failed', reason: 'reload-required' });
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    rebindGaussianAssets(gpu.renderer.gaussianSplats);
+    const result = await act(async () => reloadGaussianCapture('recovery', federation));
+    assert.ok(result.ok);
+    const restored = model(result.modelId)?.gaussianSplat;
+    assert.ok(restored);
+    assert.equal(restored.upAxis, before.upAxis);
+    assert.deepEqual(restored.sourcePlacement, before.sourcePlacement);
+    assert.deepEqual(restored.placement, before.placement);
+    assert.equal(splats().getState(restored.handle).state, 'resident');
+    assert.equal(model('recovery'), undefined);
+    assert.equal(old.renderer.gaussianSplats.getStats().assets, 0);
+    useViewerStore.getState().removeModel(result.modelId);
+    assertNoHeldSlot();
+  });
+
   it('before rebinding, a capture on a replaced renderer reports replaced and has no fit bounds', async () => {
     const { rebindGaussianAssets, gaussianModelState, gaussianModelBounds } = await import('./ingest/gaussianAssets.js');
     await load(gaussianPly('stale.ply', CENTRES), { kind: 'federated', modelId: 'stale', name: 'stale.ply' });

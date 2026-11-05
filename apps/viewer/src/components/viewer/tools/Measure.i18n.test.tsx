@@ -249,9 +249,11 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.geo.easting',
   'measure.geo.northing',
   'measure.geo.height',
+  // Point mode's Model XYZ HUD line renders this "m" too, but the bare "m"
+  // also appears in other states' text, so it cannot be credited by text.
   'measure.geo.unitMeters',
-  'measure.readout.live',
-  'measure.readout.last',
+  // (`measure.readout.live`/`last` do render: Point mode's HUD line uses
+  // them, see the point-mode state.)
   'measure.point.rowMap',
   'measure.point.rowLatLon',
   // frame.rebased / coords.shifted need a federation alignment this suite
@@ -314,9 +316,9 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
  *  text "Length" with `measure.qty.length`, which never mounts in this
  *  state; without the skip, that coincidence would look like unearned
  *  coverage for a key whose own component was never rendered. */
-function assertStaticCoverage(english: Set<string>, after: Set<string>): void {
+function assertStaticCoverage(english: Set<string>, after: Set<string>, notMountedHere: readonly MeasureKey[] = []): void {
   for (const key of STATIC_KEYS) {
-    if (NOT_RENDERED_IN_THIS_STATE.includes(key)) continue;
+    if (NOT_RENDERED_IN_THIS_STATE.includes(key) || notMountedHere.includes(key)) continue;
     const text = CATALOGUE[key] as string;
     if (!english.has(text)) continue;
     assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: "${text}" must be translated, marked text not found`);
@@ -350,7 +352,9 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     act(() => setLocale(PSEUDO_LOCALE));
     const after = chromeStrings(container);
 
-    assertStaticCoverage(english, after);
+    // The Point tab's "Point" is the Point mode label's English text too, but
+    // the mode strip is not mounted here; the chrome state covers it.
+    assertStaticCoverage(english, after, ['measure.mode.point']);
   });
 
   it('chrome: snap-off variant', () => {
@@ -425,6 +429,33 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     walk(after);
 
     assertStaticCoverage(english, after);
+  });
+
+  it('point mode: hints and the HUD line, before and after a point is placed (#8770)', () => {
+    useViewerStore.setState({ measureMode: 'point', measurePointLive: null, measurePointLast: null });
+    renderMeasure();
+
+    const walk = (out: Set<string>) => {
+      act(() => useViewerStore.setState({ measurePointLive: null, measurePointLast: null }));
+      addReadable(document.body, out);
+      act(() => useViewerStore.setState({ measurePointLast: mp(1, 2, 3) }));
+      addReadable(document.body, out);
+      act(() => useViewerStore.setState({ measurePointLive: mp(4, 5, 6) }));
+      addReadable(document.body, out);
+    };
+
+    const english = new Set<string>();
+    walk(english);
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = new Set<string>();
+    walk(after);
+
+    assertStaticCoverage(english, after);
+    for (const key of ['measure.hint.pointStart', 'measure.hint.pointActive'] as const) {
+      assert.ok(coveredStatic.has(key), `${key} must render translated in Point mode`);
+    }
   });
 
   it('polyline mode: start hint before any point is placed', () => {

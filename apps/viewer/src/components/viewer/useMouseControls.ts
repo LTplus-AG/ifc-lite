@@ -32,6 +32,7 @@ import { forgetDistancePress, handleMeasureDown, handleMeasureUp } from './dista
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
+import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
 import { routeCommandPointer } from './commandPointer.js';
@@ -590,9 +591,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // Handle measure tool hover preview (BEFORE dragging starts)
-      // Show snap indicators to help user see where they can snap
-      if (tool === 'measure' && !mouseState.isDragging && snapEnabledRef.current) {
-        if (handleMeasureHover(ctx, x, y)) return;
+      // Show snap indicators to help user see where they can snap (Point mode previews with Snap off too, #8770)
+      if (tool === 'measure' && !mouseState.isDragging) {
+        if (useViewerStore.getState().measureMode === 'point') { hoverMeasurePointAt(ctx, x, y); return; }
+        if (snapEnabledRef.current && handleMeasureHover(ctx, x, y)) return;
       }
 
       // A running modeling command owns the hover (#6232, commandPointer.ts).
@@ -755,6 +757,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       sectionLastFaceKeyRef.current = null;
       sectionLastCastPosRef.current = null;
       setSectionPickPreview(null);
+      if (tool === 'measure') endMeasurePointHover(ctx);
       // Restore cursor based on active tool (same mapping as pointerup)
       canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
       clearHover();
@@ -872,11 +875,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       fly.dispose();
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
 
-      // Cancel pending raycast requests
-      if (measureRaycastFrameRef.current !== null) {
-        cancelAnimationFrame(measureRaycastFrameRef.current);
-        measureRaycastFrameRef.current = null;
-      }
+      // Cancel pending raycast requests and Point mode's hover (#8770)
+      endMeasurePointHover(ctx);
 
       // Section face-pick: drop any pending dwell so the timer
       // doesn't fire after unmount and call into a stale renderer.

@@ -145,7 +145,7 @@
    482 apps/viewer/src/store/slices/dataSlice.ts
    882 apps/viewer/src/store/slices/drawing2DSlice.ts
    474 apps/viewer/src/store/slices/idsSlice.ts
-   820 apps/viewer/src/store/slices/measurementSlice.ts
+   828 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
   2305 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts

@@ -225,10 +225,10 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
                     className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
                   />
                 )}
-                <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-ok hover:text-ok shrink-0">
+                <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-ok hover:bg-ok-surface shrink-0">
                   <Check className="h-3 w-3" />
                 </IconButton>
-                <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-danger hover:text-danger shrink-0">
+                <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-danger hover:bg-danger-surface shrink-0">
                   <X className="h-3 w-3" />
                 </IconButton>
               </div>
@@ -359,10 +359,10 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
               />
               <span className="text-xs text-muted-foreground">{t('properties.georef.degUnit')}</span>
-              <IconButton label={t('properties.georef.saveField', { field: label })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-ok hover:text-ok shrink-0">
+              <IconButton label={t('properties.georef.saveField', { field: label })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-ok hover:bg-ok-surface shrink-0">
                 <Check className="h-3 w-3" />
               </IconButton>
-              <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-danger hover:text-danger shrink-0">
+              <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-danger hover:bg-danger-surface shrink-0">
                 <X className="h-3 w-3" />
               </IconButton>
             </div>

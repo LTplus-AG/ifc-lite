@@ -807,7 +807,7 @@ export function LocationMap({
             {!mapUnavailable && (
               <button
                 onClick={handleStyleToggle}
-                className="ml-auto text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 {t('properties.locationMap.toggleStyle')}
               </button>

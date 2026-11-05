@@ -118,7 +118,7 @@ export function LocationMapSearchBar({
           label={t('properties.locationMap.closeSearch')}
           size="icon-xs"
           onClick={onClose}
-          className="p-0.5 text-muted-foreground hover:text-muted-foreground"
+          className="p-0.5 text-muted-foreground hover:text-foreground"
         >
           <X className="h-3 w-3" />
         </IconButton>

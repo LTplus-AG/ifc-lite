@@ -604,12 +604,12 @@ export function LocationMap({
     <div className="border-t border-zinc-100 dark:border-zinc-900">
       {/* Header with search */}
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <MapIcon className="h-3 w-3 text-teal-500 shrink-0" />
-        <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1">
+        <MapIcon className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-xs font-semibold text-foreground flex-1">
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
+          <span className="text-xs font-mono text-muted-foreground" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -617,7 +617,7 @@ export function LocationMap({
           <IconButton
             label={t('properties.locationMap.searchTooltip')} size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
-            className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Search className="h-3 w-3" />
           </IconButton>

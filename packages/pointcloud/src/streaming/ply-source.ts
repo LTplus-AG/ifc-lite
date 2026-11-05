@@ -12,6 +12,7 @@
  * arrays, and `reopen()` re-targets stride and origin without a second scan.
  */
 
+import { findPlyClassification } from '../formats/ply-scalar.js';
 import { inspectPlyVertex, parsePlyHeader, type PlyHeader, type PlyVertexLayout } from '../formats/ply.js';
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import { PlyChunkReader, scanPlyBounds, type PlyBoundsScan, type PlyStreamInstrumentation } from './ply-stream-decode.js';
@@ -94,7 +95,7 @@ export class PlyStreamingSource implements StreamingPointSource {
       totalPointCount: Math.ceil(layout.vertex.count / stride),
       bbox: offsetBounds(scan.bbox, this.originOffset),
       hasColor: has('red', 'r') && has('green', 'g') && has('blue', 'b'),
-      hasClassification: has('classification'),
+      hasClassification: findPlyClassification(layout.vertex) !== undefined,
       hasIntensity: has('intensity', 'scalar_Intensity'),
       label: this.label,
     };

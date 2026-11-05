@@ -19,7 +19,7 @@
  */
 
 import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
-import { plyClassification } from './ply-scalar.js';
+import { plyClassification, findPlyClassification } from './ply-scalar.js';
 import { normalizePlyColors } from './ply-color.js';
 import { parseAsciiVariableRow, parseBinaryVariableRow, writeVariablePlyRow } from './ply-variable-row.js';
 import { decodeFixedBinaryPlyBody } from './ply-fixed-binary.js';
@@ -193,8 +193,6 @@ export function inspectPlyVertex(header: PlyHeader): PlyVertexLayout {
     if (matches.length > 1) throw new Error(`PLY: vertex property "${name}" must not be declared more than once`);
     return matches[0];
   };
-  one('classification');
-  if (vertex.listPropertyNames.includes('classification')) throw new Error('PLY: classification must be a scalar');
   const xProp = one('x'), yProp = one('y'), zProp = one('z');
   if (!xProp || !yProp || !zProp) throw new Error('PLY: vertex element must define x, y, z properties');
   const normalProps = (name: string) => vertex.properties.filter((property) => property.name === name);
@@ -256,7 +254,7 @@ export function decodePly(
         `but only ${availableBytes} are available`,
     );
   }
-  const classifications = vertex.properties.some(p => p.name === 'classification') ? new Uint8Array(count) : undefined;
+  const classifications = findPlyClassification(vertex) ? new Uint8Array(count) : undefined;
   const positions = new Float32Array(count * 3);
   const colors = hasRgb ? new Float32Array(count * 3) : undefined;
   const normals = nxProp && nyProp && nzProp ? new Float32Array(count * 3) : undefined;

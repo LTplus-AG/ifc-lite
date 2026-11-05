@@ -2,6 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { PlyElementDecl, PlyPropertyDecl } from './ply.js';
+
+/** Optional byte classes only; legacy/custom classification properties stay ignored (#8915). */
+export function findPlyClassification(vertex: PlyElementDecl): PlyPropertyDecl | undefined {
+  const matches = vertex.properties.filter(property => property.name === 'classification');
+  if (matches.length !== 1 || vertex.listPropertyNames.includes('classification')) return undefined;
+  return ['uchar', 'uint8'].includes(matches[0].type) ? matches[0] : undefined;
+}
+
 interface ScalarProperty { type: string }
 
 export function readPlyScalar(

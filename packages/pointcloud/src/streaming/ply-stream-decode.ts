@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { plyClassification } from '../formats/ply-scalar.js';
+import { plyClassification, findPlyClassification } from '../formats/ply-scalar.js';
 import { floatColorSelectsByteRange, normalizeColorChannel } from '../formats/ply-color.js';
 import { readPlyScalar } from '../formats/ply-scalar.js';
 import { parseAsciiVariableRow, writeVariablePlyRow } from '../formats/ply-variable-row.js';
@@ -299,7 +299,7 @@ function extendBinaryBounds(bounds: PointCloudBBox, view: DataView, base: number
 
 function findChannels(layout: PlyVertexLayout): Channels {
   const find = (...names: string[]) => layout.vertex.properties.find((property) => names.includes(property.name));
-  return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity'), classification: find('classification') };
+  return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity'), classification: findPlyClassification(layout.vertex) };
 }
 function usableNormal(x: number, y: number, z: number): boolean {
   const stored = [Math.fround(x), Math.fround(y), Math.fround(z)];

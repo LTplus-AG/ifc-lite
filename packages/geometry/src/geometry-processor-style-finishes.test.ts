@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const calls: string[] = [];
+  const parallel = vi.fn(async function* (..._args: unknown[]) {});
   const buildPrePassOnce = vi.fn();
   const setSkipVoids = vi.fn();
   const setStyleFinishes = vi.fn((_ids: Uint32Array, _finishes: Float32Array) => {
@@ -47,13 +48,15 @@ const wasmMocks = vi.hoisted(() => {
     clearPrePassCache = vi.fn();
     free = vi.fn();
   }
-  return { init: vi.fn(async () => undefined), calls, buildPrePassOnce, setSkipVoids, setStyleFinishes, processGeometryBatch, MockIfcAPI };
+  return { init: vi.fn(async () => undefined), parallel, calls, buildPrePassOnce, setSkipVoids, setStyleFinishes, processGeometryBatch, MockIfcAPI };
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
   default: wasmMocks.init,
   IfcAPI: wasmMocks.MockIfcAPI,
 }));
+
+vi.mock('./geometry-parallel.js', () => ({ processParallel: wasmMocks.parallel }));
 
 import { GeometryProcessor } from './index.js';
 
@@ -131,4 +134,16 @@ it('sets skipVoids on the actual bridge before adaptive small-file geometry', as
     expect(wasmMocks.setSkipVoids.mock.invocationCallOrder[0])
       .toBeLessThan(wasmMocks.processGeometryBatch.mock.invocationCallOrder[0]);
   } finally { processor.dispose(); }
+});
+
+// #8875: the adaptive large-file route must forward the same cut policy to its pool.
+it('forwards skipVoids through adaptive worker-pool selection', async () => {
+  vi.stubGlobal('Worker', class {});
+  vi.stubGlobal('navigator', { hardwareConcurrency: 2 });
+  const processor = new GeometryProcessor({ skipVoids: true });
+  try {
+    for await (const _event of processor.processAdaptive(new Uint8Array([65]), { sizeThreshold: 0 })) { /* drain */ }
+    expect(wasmMocks.parallel).toHaveBeenCalled();
+    expect(wasmMocks.parallel.mock.calls.at(-1)?.[4]).toMatchObject({ skipVoids: true });
+  } finally { processor.dispose(); vi.unstubAllGlobals(); }
 });

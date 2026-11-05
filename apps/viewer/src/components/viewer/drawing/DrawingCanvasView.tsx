@@ -28,7 +28,7 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
     <div
       ref={vm.containerRef}
       data-drawing-canvas
-      className={`relative min-h-0 flex-1 overflow-hidden bg-white dark:bg-zinc-950 ${vm.cursorClass}`}
+      className={`relative min-h-0 flex-1 overflow-hidden bg-paper ${vm.cursorClass}`}
       {...vm.canvasMouseHandlers}
     >
       {status === 'generating' && (

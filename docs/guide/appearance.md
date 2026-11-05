@@ -352,3 +352,25 @@ The complete selected boulder capture is covered by the
 including export, fresh import, selection and an independent IFC reader. This
 known-derived control does not establish automatic alignment of unrelated scans
 and BIM models.
+
+## Download positioned scans
+
+Use **Download positioned file…** on a scan's model row, in the Point Clouds panel, or in the Local placement
+panel. Apply or cancel the placement preview before downloading. The original
+source is read at full resolution independently of the displayed sample.
+
+The result is binary PLY in project coordinates, Z up, with the active scan
+alignment and applied model translation baked in. Reopen it without the old
+placement settings. Supported decoded RGB, intensity, classification and valid
+normals are included when present. Missing RGB, intensity or classification in
+mixed scans is filled with zero. Other source fields, scan organization and
+CRS metadata are not retained. PLY conversion does not preserve the original
+LAS/LAZ/E57/PCD format. Display clipping, visibility and classification filters do
+not remove points from the download.
+
+The browser output limit is 256 MiB. Existing whole-file readers also impose
+export input limits: PCD/PTS/XYZ up to 16 MiB, LAZ up to 64 MiB, and PCD up to one
+million points / 64 MiB uncompressed records. Larger exports fail explicitly;
+no decimation or partial download is substituted. Progress and cancellation are
+available. Streaming LAS, PLY and E57 inputs do not have those whole-file input
+limits, but their output must still fit the browser limit.

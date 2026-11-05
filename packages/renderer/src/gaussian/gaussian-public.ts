@@ -13,3 +13,5 @@ export type {
   GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle,
   GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats,
 } from './gaussian-types.js';
+
+export { positionedGaussianChunks } from './gaussian-export.js';

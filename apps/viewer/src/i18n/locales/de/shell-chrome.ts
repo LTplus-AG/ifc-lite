@@ -119,4 +119,11 @@ export const shellChromeDe = {
   "shellChrome.mobileToolbar.export": "Exportieren",
   "shellChrome.mobileToolbar.lightMode": "Heller Modus",
   "shellChrome.mobileToolbar.darkMode": "Dunkler Modus",
+  "shellChrome.activityBar.iconAriaLabelOpen": "{title} (geöffnet)",
+  "shellChrome.activityBar.openHint": "geöffnet",
+  "shellChrome.activityBar.needsModelHint": "Zuerst ein Modell öffnen",
+  "shellChrome.activityBar.morePanels": "Weitere Bereiche ({count})",
+  "shellChrome.activityBar.morePanelsSomeOpen": "Weitere Bereiche ({count}), einige geöffnet",
+  "shellChrome.activityBar.morePanelsHint": "Bereiche, die nicht in die Seitenleiste passen",
+  "shellChrome.activityBar.moreCaption": "Mehr",
 } satisfies Catalogue;

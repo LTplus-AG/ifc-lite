@@ -143,4 +143,7 @@ export const section2dDe = {
   "section2d.savedCuts.renameTitle": "Gespeicherten Schnitt umbenennen",
   "section2d.savedCuts.renamePrompt": "Diesen Schnitt umbenennen",
   "section2d.savedCuts.deleteTitle": "Gespeicherten Schnitt löschen"
+  "section2d.cutPlane": "Schnittebene: {cut}",
+  "section2d.drawers.activeTip": "{label} · in Verwendung",
+  "section2d.zoom.fitShort": "Einpassen",
 } satisfies Catalogue;

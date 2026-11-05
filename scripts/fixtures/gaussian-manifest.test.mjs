@@ -86,3 +86,26 @@ test('publisher Gaussian artifacts retain hash provenance and release hosting (#
   assert.ok(validateManifest({ version: 1, files: [landxml] }).some(e => e.includes('commit')),
     'publisher source does not relax LandXML Git provenance');
 });
+
+test('the release corpus carries a public metric IFC/scan/splat triple and a pinned batch witness (#8567)', () => {
+  const byPath = new Map(catalogue.files.map(entry => [entry.path, entry]));
+  const triple = ['edinburgh/model.ifc', 'edinburgh/cloud_coloured.e57', 'edinburgh/scan-vox12mm.laz', 'gaussian/edinburgh-scan-sh3.ply'];
+  for (const path of triple) {
+    const entry = byPath.get(path);
+    assert.ok(entry, `${path} is in the corpus`);
+    assert.equal(entry.provenance?.license, 'CC-BY-4.0', `${path} is publicly licensed`);
+    assert.match(entry.sha256, /^[0-9a-f]{64}$/, `${path} is hash-pinned`);
+    assert.ok(entry.size > 0, `${path} has a pinned size`);
+  }
+  // Metric co-registration is measured, not assumed: the splat must sit on the
+  // scan, and the scan on the IFC, at centimetre scale in one shared frame.
+  const alignment = byPath.get('gaussian/edinburgh-scan-sh3.ply').alignment;
+  assert.ok(alignment.scan_to_ifc_wall_slab_band_median_m < 0.05, 'scan lies on the IFC walls and slabs');
+  assert.ok(alignment.scan_to_nearest_splat_center_median_m < 0.05, 'splat centres lie on the scan');
+  assert.ok(alignment.ifc_scan_aabb_iou > 0.8, 'IFC and scan share one frame');
+  const witness = byPath.get('gaussian/qualification-32-batch-sh3.ply');
+  assert.ok(witness, 'the interleaved-batch witness is in the corpus');
+  assert.match(witness.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(witness.gaussian.sh_degree, 3);
+  assert.deepEqual(validateManifest({ version: catalogue.version, files: [...triple.map(path => byPath.get(path)), witness] }), []);
+});

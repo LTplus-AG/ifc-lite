@@ -233,8 +233,14 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
  * Handle mousemove for measurement tool hover preview (before dragging starts).
  * Shows snap indicators to help user see where they can snap.
  * Returns true if the event was handled (caller should early-return).
+ * `pick` replaces the frame's snap preview, keeping the same throttle (Point mode, #8770).
  */
-export function handleMeasureHover(ctx: MouseHandlerContext, x: number, y: number): boolean {
+export function handleMeasureHover(
+  ctx: MouseHandlerContext,
+  x: number,
+  y: number,
+  pick?: (ctx: MouseHandlerContext, x: number, y: number) => void,
+): boolean {
   const { renderer } = ctx;
 
   // Throttle hover snap detection more aggressively (100ms) to avoid performance issues
@@ -251,6 +257,7 @@ export function handleMeasureHover(ctx: MouseHandlerContext, x: number, y: numbe
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
+      if (pick) { pick(ctx, x, y); return; }
 
       // Use magnetic snap for hover preview
       const currentLock = ctx.edgeLockStateRef.current;

@@ -79,8 +79,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     measureRaycastFrameRef: { current: null as number | null },
     lastCameraStateRef: { current: null },
     // The real store action, as Viewport passes it in.
-    updateMeasurementScreenCoords: (project: Parameters<ReturnType<typeof useViewerStore.getState>['updateMeasurementScreenCoords']>[0]) =>
-      useViewerStore.getState().updateMeasurementScreenCoords(project),
+    updateMeasurementScreenCoords: (...args: Parameters<ReturnType<typeof useViewerStore.getState>['updateMeasurementScreenCoords']>) =>
+      useViewerStore.getState().updateMeasurementScreenCoords(...args),
     setSnapTarget: (t: unknown) => { snapTargets.push(t); },
     // Like the store action: the ref only catches up on the next render.
     clearEdgeLock: () => {},
@@ -610,6 +610,8 @@ describe('Point mode readout staleness (#8828)', () => {
   it('a projection toggle, an orthographic zoom or a viewpoint restore ends "Live"; a pass with the camera unmoved keeps it', () => {
     for (const move of ['projection', 'orthoSize', 'fov', 'up'] as const) {
       const { ctx, pose } = fakeCtx({ current: ON_WALL });
+      ctx.canvas.width = 1601;
+      ctx.canvas.height = 801;
       const passes: boolean[] = [];
       const update = ctx.updateMeasurementScreenCoords;
       ctx.updateMeasurementScreenCoords = (project, viewMoved) => { passes.push(viewMoved ?? true); update(project, viewMoved); };
@@ -618,7 +620,8 @@ describe('Point mode readout staleness (#8828)', () => {
       syncMeasureScreenCoords(ctx); // a clamped wheel step: nothing moved
       assert.ok(useViewerStore.getState().measurePointLive !== null, `an unmoved camera ended Live (${move})`);
       // The drawing buffer drops to pixel ratio 1 while the view interacts: no point moves on screen.
-      ctx.canvas.width = 37;
+      ctx.canvas.width = 800;
+      ctx.canvas.height = 400;
       syncMeasureScreenCoords(ctx);
       assert.ok(useViewerStore.getState().measurePointLive !== null, `a drawing-buffer resize ended Live (${move})`);
       assert.deepEqual(passes, [false], 'a drawing-buffer resize must still reproject the markers (the aspect follows it)');
@@ -631,6 +634,16 @@ describe('Point mode readout staleness (#8828)', () => {
     }
   });
 
+  it('a canvas that changes shape under a resting cursor ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    ctx.canvas.width = 1600;
+    ctx.canvas.height = 800;
+    hoverMeasurePoint(ctx, 3, 4);
+    ctx.canvas.width = 1200; // a side panel opened
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a canvas reshape');
+  });
+
   it('a wheel zoom on the mounted canvas drops "Live" with no pointer move afterwards', () => {
     const raf = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 1; }) as typeof requestAnimationFrame;
@@ -638,7 +651,7 @@ describe('Point mode readout staleness (#8828)', () => {
       const ui = mountMouseControls({
         activeToolRef: { current: 'measure' },
         hasPendingMeasurements: () => hasPendingMeasurementState(useViewerStore.getState()),
-        updateMeasurementScreenCoords: (project) => useViewerStore.getState().updateMeasurementScreenCoords(project),
+        updateMeasurementScreenCoords: (project, viewMoved) => useViewerStore.getState().updateMeasurementScreenCoords(project, viewMoved),
       });
       (ui.params.rendererRef.current as unknown as Record<string, unknown>).raycastSceneMagnetic = () => ({
         intersection: { point: ON_WALL }, snapTarget: null,

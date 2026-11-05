@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { collectPageErrors, workflowFailed } from './workflow-verdict.mjs';
 const root = process.cwd();
-const out = path.join(root, 'tools/localization-italian/evidence', process.env.ITALIAN_WORKFLOW_ATTEMPT ?? 'final');
+const out = process.env.ITALIAN_WORKFLOW_OUT ?? path.join(root, 'tools/localization-italian/evidence', process.env.ITALIAN_WORKFLOW_ATTEMPT ?? 'final');
 fs.mkdirSync(out, { recursive: true });
 const dependency = fs.readdirSync('node_modules/.pnpm').find(n => /^playwright@/.test(n));
 const { chromium } = await import(pathToFileURL(path.resolve('node_modules/.pnpm', dependency, 'node_modules/playwright/index.mjs')));
@@ -25,7 +25,7 @@ const context = await browser.newContext({ viewport: { width: 1600, height: 1000
 const page = await context.newPage();
 page.setDefaultTimeout(20000);
 const hashes=Object.fromEntries(['apps/viewer/dist/index.html','packages/wasm/pkg/ifc-lite_bg.wasm','apps/viewer/public/samples/building-architecture.ifc','apps/viewer/public/samples/building-architecture.ids'].map(p=>[p,createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
-const report = { mode: process.env.ITALIAN_INSPECT === '1' ? 'inspection' : 'acceptance', untimed: true, url: process.env.ITALIAN_WORKFLOW_URL, hashes, at: new Date().toISOString(), host: os.hostname(), source: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), dirty: true, executablePath, gpuArgs: process.env.IFC_GPU_CHROME_ARGS, vulkanDriver: process.env.VK_DRIVER_FILES, checks: [], errors: [], httpErrors: [], wasm: [] };
+const report = { mode: process.env.ITALIAN_INSPECT === '1' ? 'inspection' : 'acceptance', untimed: true, url: process.env.ITALIAN_WORKFLOW_URL, hashes, at: new Date().toISOString(), host: os.hostname(), source: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), dirty: execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim() !== '', executablePath, gpuArgs: process.env.IFC_GPU_CHROME_ARGS, vulkanDriver: process.env.VK_DRIVER_FILES, checks: [], errors: [], httpErrors: [], wasm: [] };
 page.on('console',m=>{if(m.type()==='error'||/device|GPU/i.test(m.text()))fs.appendFileSync(path.join(out,'browser-console.log'),m.text()+'\n');});
 collectPageErrors(page, report);
 page.on('response', r => { if(r.status()>=400)report.httpErrors.push({url:r.url(),status:r.status()}); if (/\.wasm(?:\?|$)/.test(r.url())) report.wasm.push({ url:r.url(), status:r.status() }); });
@@ -86,8 +86,8 @@ try {
       await page.getByRole('button',{name:'Validazione dei dati',exact:true}).click();
       const idsTab=page.getByRole('tab',{name:'Validazione IDS',exact:true});
       if(await idsTab.count()) await idsTab.click();
-      else await page.getByRole('button',{name:/^Validazione IDS Verifica il modello/}).click();
-      await page.locator('input[type=file][accept=".ids,.xml"]').first().setInputFiles(path.join(root,'apps/viewer/public/samples/building-architecture.ids'));
+      else await page.getByRole('button',{name:'Validazione IDS Controlla il modello rispetto a un file di requisiti IDS di buildingSMART.',exact:true}).click();
+      await page.locator('input[type=file][accept=".ids,.xml"]').first().setInputFiles({name:'building-architecture.ids',mimeType:'application/xml',buffer:fs.readFileSync(path.join(root,'apps/viewer/public/samples/building-architecture.ids'))});
       await page.locator('[data-tour="ids-run"]').click();
       await page.locator('[data-tour="ids-summary"]').waitFor({timeout:60000});
       // Round 5: verify corrected library actions through actual accessible controls.
@@ -115,12 +115,26 @@ try {
       return {summary,download:download.suggestedFilename(),exportedSummary:exported.summary};
     });
     await check('narrow-layout',async()=>{
+      await page.keyboard.press('Escape');
+      const notice = page.getByRole('button', {name:'Chiudi la notifica', exact:true});
+      if (await notice.isVisible()) await notice.click();
       await page.setViewportSize({width:390,height:844});
       // Let the resized GPU canvas present before recording pixels.
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await page.waitForTimeout(500);
-      await page.getByRole('tab', {name:'Home', exact:true}).waitFor({state:'visible'});
-      await page.getByRole('button', {name:'Scegli il formato di esportazione', exact:true}).waitFor({state:'visible'});
+      // The observed phone UI replaces the ribbon with a compact toolbar (#8892).
+      await page.getByRole('button', {name:'Home', exact:true}).waitFor({state:'visible'});
+      await page.getByRole('button', {name:'Altre azioni', exact:true}).click();
+      await page.getByRole('menuitem', {name:'Impostazioni', exact:true}).waitFor({state:'visible'});
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', {name:"Apri l'elenco dei pannelli", exact:true}).click();
+      await page.getByRole('button', {name:'Validazione dei dati', exact:true}).click();
+      await page.locator('[data-tour="ids-summary"]').waitFor({state:'visible'});
+      const exportButton = page.getByRole('button', {name:'Scegli il formato di esportazione', exact:true});
+      await exportButton.waitFor({state:'visible'});
+      const exportBox = await exportButton.boundingBox();
+      assert.ok(exportBox && exportBox.x >= 0 && exportBox.x + exportBox.width <= 390,
+        'mobile export control must fit inside the viewport');
       await save('narrow');
       fs.writeFileSync(path.join(out,'narrow-aria.txt'),await page.locator('body').ariaSnapshot());
       const widths=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));

@@ -66,3 +66,13 @@ it('missing source is explained, and cancelling a held decoder cannot download l
     assert.equal(worker.stats.created,worker.stats.terminated);
   } finally { release(); worker.restore(); }
 });
+
+it('a single scan exposes its download from the Point Clouds panel', async () => {
+  const { PointCloudPanel } = await import('./PointCloudPanel');
+  useViewerStore.setState({...fixtureModels({...fixtureModel('scan'),name:'Survey.xyz',pointCloudHandleId:40,
+    sourceFile:new File(['1 2 3\n'],'Survey.xyz')}),modelPlacement:emptyPlacementState()});
+  render(<PointCloudPanel assetCount={1} triangleCount={0} />);
+  click(button('Download positioned file…'));
+  assert.match(document.body.textContent ?? '', /Survey.xyz/);
+  assert.equal(button('Download PLY').disabled,false);
+});

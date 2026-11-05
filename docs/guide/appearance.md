@@ -355,7 +355,7 @@ and BIM models.
 
 ## Download positioned scans
 
-Use **Download positioned file…** on a scan's model row or in the Local placement
+Use **Download positioned file…** on a scan's model row, in the Point Clouds panel, or in the Local placement
 panel. Apply or cancel the placement preview before downloading. The original
 source is read at full resolution independently of the displayed sample.
 

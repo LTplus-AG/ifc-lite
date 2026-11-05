@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { plyClassification } from './ply-scalar.js';
 import type { PlyPropertyOrderEntry } from './ply.js';
-import { readPlyScalar } from './ply-scalar.js';
+import { readPlyScalar, plyClassification } from './ply-scalar.js';
 
 export function parseAsciiVariableRow(tokens: readonly string[], order: readonly PlyPropertyOrderEntry[], row: number): Map<string, number> {
   const values = new Map<string, number>();

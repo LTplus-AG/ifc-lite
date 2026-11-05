@@ -212,6 +212,7 @@ export function LocalTab() {
       {runtime.selected.map((id) => (
         <p key={id} className="font-mono truncate">
           {t('repositionPanel.modelPositionRow', { name: models.get(id)?.name ?? '', values: displayedTranslation(placement, id).map((v) => v.toFixed(4)).join(', ') })}
+          <PositionedDownload modelId={id} />
         </p>
       ))}
 
@@ -226,7 +227,6 @@ export function LocalTab() {
           onClick={() => useViewerStore.getState().resetModelTranslations(runtime.selected)}>{t('repositionPanel.resetButton')}</Button>
       </div>
 
-      {runtime.selected.map(id => <PositionedDownload key={id} modelId={id} />)}
       <PlacementFiles />
     </section>
   );

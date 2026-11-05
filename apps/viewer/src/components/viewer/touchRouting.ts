@@ -18,7 +18,10 @@
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
-import { beginDistance, finishDistance } from './distanceClick.js';
+import { beginDistance, finishDistance, pressOutlivedReset } from './distanceClick.js';
+
+/** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
+export { beginMeasurePress } from './distanceClick.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 
 /** Wrap a pointer handler so touch-sourced pointer events never reach it. */
@@ -36,10 +39,15 @@ export function setMeasureTapHandler(canvas: HTMLCanvasElement, handler: ((x: nu
   else measureTapHandlers.delete(canvas);
 }
 
-/** Called by the touch controls on a tap in the Measure tool (canvas CSS px). */
-export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number): boolean {
+/**
+ * Called by the touch controls on a tap in the Measure tool (canvas CSS px).
+ * `press` is the touch the tap ends: one begun before a Measure gesture reset
+ * (Esc, a mode or tool switch) places nothing (#8786).
+ */
+export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number, press?: object): boolean {
   const handler = measureTapHandlers.get(canvas);
   if (!handler) return false;
+  if (press && pressOutlivedReset(press)) return true;
   handler(x, y);
   return true;
 }

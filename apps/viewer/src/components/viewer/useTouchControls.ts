@@ -18,8 +18,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
-import { routeMeasureTap } from './touchRouting.js';
-import { beginMeasurePress, pressOutlivedReset } from './distanceClick.js';
+import { beginMeasurePress, routeMeasureTap } from './touchRouting.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress } from './touchLongPress.js';
 
@@ -327,8 +326,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           if (tool === 'measure') {
             // The measure logic lives with the mouse controls; touchstart's
             // preventDefault suppresses the compatibility click, so hand the tap over (#5856).
-            // A touch from before a Measure gesture reset places nothing (#8786).
-            if (!pressOutlivedReset(touchState)) routeMeasureTap(canvas, x, y);
+            routeMeasureTap(canvas, x, y, touchState);
           } else if (tool === 'appearance-face') {
             // Touchend owns this tap. Record it before routing the exact hit so
             // the browser's compatibility click cannot toggle the same face a

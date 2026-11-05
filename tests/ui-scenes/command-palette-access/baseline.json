@@ -1,0 +1,10 @@
+{
+  "issue": 8947,
+  "acceptedUxHead": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3",
+  "acceptedUxTree": "63f8396b08b2271c02364336e14f8f8acd0b41a4",
+  "ciRun": 42127421737,
+  "viewerArtifact": 13462775595,
+  "testedTreeArtifact": 13461248722,
+  "coverageVerdict": "not evaluated",
+  "scope": "Presentation inherited from accepted UX; separate feature inventory and U/L/S behavior evidence required"
+}

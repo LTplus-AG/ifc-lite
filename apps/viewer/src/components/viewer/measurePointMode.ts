@@ -17,7 +17,7 @@
 
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
+import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 
@@ -75,7 +75,7 @@ export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number
 const trailingHover = new WeakMap<object, ReturnType<typeof setTimeout>>();
 
 /** Drop a pending trailing hover pick (a click, the canvas going away). */
-export function cancelTrailingHover(ctx: MouseHandlerContext): void {
+function cancelTrailingHover(ctx: MouseHandlerContext): void {
   const timer = trailingHover.get(ctx.lastHoverSnapTimeRef);
   if (timer === undefined) return;
   clearTimeout(timer);
@@ -101,14 +101,14 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
   handleMeasureHover(ctx, x, y, hoverMeasurePoint);
 }
 
-/** Drop a trailing hover pick and a hover frame already queued. */
-function cancelQueuedHover(ctx: MouseHandlerContext): void {
+/**
+ * Drop a trailing hover pick and a hover or rubber-band frame already queued.
+ * Shared by a gesture reset (`resetMeasurePress`, #8786), a Point click and the
+ * cursor leaving the canvas (#8828).
+ */
+export function cancelQueuedHover(ctx: MouseHandlerContext): void {
   cancelTrailingHover(ctx);
-  if (ctx.measureRaycastFrameRef.current !== null) {
-    cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-    ctx.measureRaycastFrameRef.current = null;
-    ctx.measureRaycastPendingRef.current = false;
-  }
+  cancelMeasureRaycast(ctx);
 }
 
 /** The cursor left the canvas: drop a queued hover frame and the preview, so the readout falls back to the last point. */

@@ -437,6 +437,13 @@ export function isDuplicateClickPoint(
   return screenDistance(a, b) <= DUPLICATE_POINT_SCREEN_RADIUS_PX;
 }
 
+/** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
+export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
+  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
+  ctx.measureRaycastFrameRef.current = null;
+  ctx.measureRaycastPendingRef.current = false;
+}
+
 /**
  * Reproject the stored measurement points if the view changed since the last
  * pass (wheel zoom, a Point-mode hover). The same pass the animation loop runs.

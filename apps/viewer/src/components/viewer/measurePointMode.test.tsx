@@ -45,6 +45,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
   const pose = {
     position: { x: 0, y: 0, z: 10 }, rotation: { azimuth: 0, elevation: 0 }, distance: 10,
     projectionMode: 'perspective' as 'perspective' | 'orthographic', orthoSize: 10,
+    fov: 45, up: { x: 0, y: 1, z: 0 },
   };
   const ctx = {
     canvas: document.createElement('canvas'),
@@ -55,6 +56,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
       getDistance: () => pose.distance,
       getProjectionMode: () => pose.projectionMode,
       getOrthoSize: () => pose.orthoSize,
+      getFOV: () => pose.fov,
+      getUp: () => ({ ...pose.up }),
     },
     renderer: {
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
@@ -595,23 +598,29 @@ describe('Point mode readout staleness (#8828)', () => {
     const { ctx, pose } = fakeCtx({ current: ON_WALL });
     ctx.lastCameraStateRef.current = {
       position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
-      projectionMode: 'perspective', orthoSize: 1, canvasWidth: 1, canvasHeight: 1,
+      projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, cssWidth: 1, cssHeight: 1,
     };
     hoverMeasurePoint(ctx, 3, 4);
     assert.deepEqual(xyz(useViewerStore.getState().measurePointLive), [3, 4, -5]);
     assert.deepEqual(ctx.lastCameraStateRef.current, {
-      ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height,
+      ...pose, cssWidth: ctx.canvas.clientWidth, cssHeight: ctx.canvas.clientHeight,
     }, 'the next animation frame would count the camera as moved and drop the point just picked');
   });
 
-  it('a projection toggle or an orthographic zoom ends "Live"; a pass with the camera unmoved keeps it', () => {
-    for (const move of ['projection', 'orthoSize'] as const) {
+  it('a projection toggle, an orthographic zoom or a viewpoint restore ends "Live"; a pass with the camera unmoved keeps it', () => {
+    for (const move of ['projection', 'orthoSize', 'fov', 'up'] as const) {
       const { ctx, pose } = fakeCtx({ current: ON_WALL });
       hoverMeasurePoint(ctx, 3, 4);
       syncMeasureScreenCoords(ctx); // a clamped wheel step: nothing moved
       assert.ok(useViewerStore.getState().measurePointLive !== null, `an unmoved camera ended Live (${move})`);
+      // The drawing buffer drops to pixel ratio 1 while the view interacts: no point moves on screen.
+      ctx.canvas.width = 37;
+      syncMeasureScreenCoords(ctx);
+      assert.ok(useViewerStore.getState().measurePointLive !== null, `a drawing-buffer resize ended Live (${move})`);
       if (move === 'projection') pose.projectionMode = 'orthographic';
-      else pose.orthoSize = 5;
+      else if (move === 'orthoSize') pose.orthoSize = 5;
+      else if (move === 'fov') pose.fov = 60;
+      else pose.up = { x: 0, y: 0, z: 1 };
       syncMeasureScreenCoords(ctx); // the camera pass, as the animation loop and wheel run it
       assert.equal(useViewerStore.getState().measurePointLive, null, `Live outlived a ${move} change`);
     }

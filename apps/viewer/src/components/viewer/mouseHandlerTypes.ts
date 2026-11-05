@@ -41,6 +41,8 @@ export interface Camera {
   getDistance(): number;
   getProjectionMode(): string;
   getOrthoSize(): number;
+  getFOV(): number;
+  getUp(): { x: number; y: number; z: number };
 }
 
 /**

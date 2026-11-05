@@ -15,8 +15,16 @@ export interface MeasureCameraState {
   /** A projection toggle or an orthographic zoom moves nothing above, yet re-frames the view. */
   projectionMode: string;
   orthoSize: number;
-  canvasWidth: number;
-  canvasHeight: number;
+  /** A viewpoint restore can change only these. */
+  fov: number;
+  up: { x: number; y: number; z: number };
+  /**
+   * The canvas's CSS box, the space `projectToCssScreen` lands in. Not the
+   * drawing buffer: that shrinks to pixel ratio 1 while the view is
+   * interacting and grows back once it settles, which moves no projected point.
+   */
+  cssWidth: number;
+  cssHeight: number;
 }
 
 interface CameraPose {
@@ -25,17 +33,21 @@ interface CameraPose {
   getDistance(): number;
   getProjectionMode(): string;
   getOrthoSize(): number;
+  getFOV(): number;
+  getUp(): { x: number; y: number; z: number };
 }
 
-export function measureCameraState(camera: CameraPose, canvas: { width: number; height: number }): MeasureCameraState {
+export function measureCameraState(camera: CameraPose, canvas: { clientWidth: number; clientHeight: number }): MeasureCameraState {
   return {
     position: camera.getPosition(),
     rotation: camera.getRotation(),
     distance: camera.getDistance(),
     projectionMode: camera.getProjectionMode(),
     orthoSize: camera.getOrthoSize(),
-    canvasWidth: canvas.width,
-    canvasHeight: canvas.height,
+    fov: camera.getFOV(),
+    up: camera.getUp(),
+    cssWidth: canvas.clientWidth,
+    cssHeight: canvas.clientHeight,
   };
 }
 
@@ -49,6 +61,10 @@ export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureC
     a.distance === b.distance &&
     a.projectionMode === b.projectionMode &&
     a.orthoSize === b.orthoSize &&
-    a.canvasWidth === b.canvasWidth &&
-    a.canvasHeight === b.canvasHeight;
+    a.fov === b.fov &&
+    a.up.x === b.up.x &&
+    a.up.y === b.up.y &&
+    a.up.z === b.up.z &&
+    a.cssWidth === b.cssWidth &&
+    a.cssHeight === b.cssHeight;
 }

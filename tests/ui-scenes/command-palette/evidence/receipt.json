@@ -1,0 +1,165 @@
+{
+  "baseline": {
+    "source": "0f57524cfe347d29d68f53df7fc97f0b1f80d61a",
+    "tree": "ab16f045fb0c2cda8ac609278acce083976a3b97",
+    "artifactRun": 42104971748,
+    "artifactId": 13453000744,
+    "testedTreeArtifact": 13451166539,
+    "mergeQueueHead": "b4054b32104e4839577dc8a348e43a99f74c8430",
+    "scope": "Unloaded real shared browser, 1440x900",
+    "browse": {
+      "input": {
+        "x": 501,
+        "y": 214.5,
+        "width": 418.390625,
+        "height": 20,
+        "top": 214.5,
+        "right": 919.390625,
+        "bottom": 234.5,
+        "left": 501
+      },
+      "dialog": {
+        "x": 464,
+        "y": 203.5,
+        "width": 512,
+        "height": 493,
+        "top": 203.5,
+        "right": 976,
+        "bottom": 696.5,
+        "left": 464
+      },
+      "rows": 144
+    },
+    "empty": {
+      "input": {
+        "x": 501,
+        "y": 378.5,
+        "width": 418.390625,
+        "height": 20,
+        "top": 378.5,
+        "right": 919.390625,
+        "bottom": 398.5,
+        "left": 501
+      },
+      "dialog": {
+        "x": 464,
+        "y": 367.5,
+        "width": 512,
+        "height": 165,
+        "top": 367.5,
+        "right": 976,
+        "bottom": 532.5,
+        "left": 464
+      },
+      "rows": 0
+    }
+  },
+  "candidate": {
+    "head": "a4d9e777d66d9f077592f16e079ff96f4564b6e5",
+    "tree": "d24b957a1967c396807e86025bb846f213bcd443",
+    "run": 42124190558,
+    "viewerArtifact": 13460770806,
+    "testedTreeArtifact": 13460241812,
+    "distIndexSha256": "ad9befb5207154dc35cce69ef04af48a02a61e599349ca359d8847a058fb1070"
+  },
+  "browser": {
+    "head": "a4d9e777d66d9f077592f16e079ff96f4564b6e5",
+    "tree": "d24b957a1967c396807e86025bb846f213bcd443",
+    "artifact": 13460770806,
+    "run": 42124190558,
+    "exitCode": 0,
+    "timedBenchmark": false,
+    "stats": {
+      "startTime": "2026-11-05T22:56:56.548Z",
+      "duration": 39414.679,
+      "expected": 11,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "scenarios": [
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 loaded bundled IFC: keyboard command reaches real Settings UI",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 short viewport: privacy notice stays below palette and survives close",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX desktop light: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX desktop dark: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX narrow light: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX narrow dark: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short light: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short dark: bounded dialog and stable search across result heights",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX native Tab and Shift+Tab stay in the dialog and skip result options",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short viewport: arrow keys scroll the active row into view without moving focus",
+        "status": "passed"
+      },
+      {
+        "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX Escape/reopen resets query and active row; Enter opens the canonical Settings UI",
+        "status": "passed"
+      }
+    ]
+  },
+  "locale": {
+    "head": "a4d9e777d66d9f077592f16e079ff96f4564b6e5",
+    "shippedLocales": [
+      "en",
+      "ru"
+    ],
+    "german": "No German catalogue is shipped; ?lang=de correctly negotiates to English. Earlier German suggestions were not evidence of a shipped locale.",
+    "russian": {
+      "viewport": [
+        390,
+        844
+      ],
+      "dialog": [
+        16,
+        96,
+        358,
+        412
+      ],
+      "englishQuery": "section",
+      "firstCommand": "tool:section",
+      "displayLabel": "\u0421\u0435\u0447\u0435\u043d\u0438\u0435",
+      "pointerAfterKeyboard": {
+        "focus": "combobox",
+        "active": "vis:ifcGrid",
+        "inputTop": 113
+      },
+      "emptyState": {
+        "inputTop": 113,
+        "footer": "Esc \u0437\u0430\u043a\u0440\u044b\u0442\u044c",
+        "buttons": [
+          "",
+          "\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u043f\u043e\u0438\u0441\u043a"
+        ]
+      }
+    },
+    "scope": "Shared preview, unloaded, no WebGPU adapter. No loaded-model claim."
+  },
+  "visualReview": "pending fresh Opus judgment; no acceptance yet"
+}

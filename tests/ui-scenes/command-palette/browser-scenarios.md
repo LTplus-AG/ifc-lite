@@ -80,3 +80,19 @@ sibling dependencies are already built and the dry run confirms exactly the test
 task. This is a lightweight diagnostic, not full root graph/typecheck coverage.
 Without that condition use normal fleet admission, since environment-dependent
 Turbo hashes can rebuild dependencies even in an apparently built checkout.
+
+Palette comparison matrix (six scenes × two themes), after obtaining a verified
+build and the managed GPU helper's CDP endpoint:
+
+```sh
+node tests/ui-scenes/command-palette/capture-matrix.mjs \
+  --dist "$PALETTE_DIST" --out "$PALETTE_EVIDENCE" --label "$PALETTE_SOURCE" \
+  --scenes command-palette,palette-browse,palette-annot,palette-narrow,palette-empty,palette-short \
+  --themes light,dark --cdp "$IFC_GPU_CDP_URL"
+```
+
+Do not confuse CI head SHA with its tested tree. Record the tested-tree artifact
+and compare it to the source tree; a squash/merge-queue head can legitimately have
+a different commit SHA with identical tree. Preserve the artifact IDs and dist
+hashes. Retire downloaded dist directories and owned preview servers after review;
+keep compact screenshots/receipts, not full generated builds.

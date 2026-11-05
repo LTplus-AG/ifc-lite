@@ -69,9 +69,9 @@ function OptionChrome({ owner, icon: Icon, label, detail, shortcut, categoryLabe
       onMouseDown={event => event.preventDefault()}
       onClick={onActivate} onMouseMove={onHover}>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">{label}</span>
-        {categoryLabel && <span className="block truncate text-xs text-muted-foreground">{categoryLabel}</span>}
+      <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+        <span className="block truncate sm:min-w-0 sm:flex-1">{label}</span>
+        {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
       </span>
       {detail && <span title={detail} className="max-w-[30%] truncate text-xs text-muted-foreground">{detail}</span>}
       {shortcut && <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">

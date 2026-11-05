@@ -245,7 +245,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {/* Results */}
           {/* The command palette implements a custom listbox with keyboard-managed button options. */}
           {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="min-h-0 max-h-[420px] overflow-y-auto overscroll-contain py-1" role="listbox">
+          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="min-h-0 max-h-[420px] overflow-y-auto overscroll-contain scrollbar-thin py-1" role="listbox">
             {grouped.map((group) => (
               <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (

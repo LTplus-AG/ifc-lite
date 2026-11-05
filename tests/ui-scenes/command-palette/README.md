@@ -29,7 +29,8 @@ taste reviews; Codex implementation; Astra reasoning/behavior review. Existing
 | Round | Status | Hypothesis | Evidence / decision |
 | --- | --- | --- | --- |
 | 1 | Rejected for visual defects | Stable combobox focus, top anchoring and tiered search improve execution predictability | Ten browser scenarios passed at `8ae26bb7c0`; Opus found fuzzy noise, toast overlap and weak light selection contrast |
-| 2 | Candidate, validation pending | Suppress fuzzy noise when direct hits exist; distinguish selection and keep modal above notifications | Fresh browser execution and independent visual verdict required |
+| 2 | Rejected for theme inconsistency | Suppress fuzzy noise when direct hits exist; distinguish selection and keep modal above notifications | All prior defects fixed, 11/11 browser pass; fresh Opus found a bright native scrollbar in dark mode |
+| 3 | Candidate, validation pending | Use the existing themed scrollbar and restore desktop search density | Preserve two-line narrow labels and category context; fresh captures/verdict required |
 
 ## Complete feature access — #8947
 
@@ -226,3 +227,61 @@ The mounted fixed eight-query oracle also passed (presentation suite 5/5, zero
 skipped). All 60 temporary dependency/runtime links were removed after diagnostics;
 no compiled outputs were copied and no references remain. Post-commit pre-handoff
 will re-evaluate cheap gates; absent local dist remains an explicit skip.
+
+## Round 2 actual browser evidence
+
+Frozen baseline CI run [42104971748](https://github.com/LTplus-AG/ifc-lite/actions/runs/42104971748)
+built merge-queue head `b4054b32104e4839577dc8a348e43a99f74c8430`, whose tree
+`ab16f045fb0c2cda8ac609278acce083976a3b97` exactly equals baseline `0f57524cfe`.
+Its tested-tree artifact confirms the same tree. Viewer artifact `13453000744`
+therefore supplies the frozen baseline without replaying its queued fleet request.
+Baseline real browser input top moves from **214.5 to 378.5 CSS px** when browsing
+144 rows versus no results at 1440×900.
+
+Candidate CI run [42124190558](https://github.com/LTplus-AG/ifc-lite/actions/runs/42124190558)
+built `a4d9e777d66d9f077592f16e079ff96f4564b6e5`, tree
+`d24b957a1967c396807e86025bb846f213bcd443`, matching its tested-tree artifact.
+Viewer artifact `13460770806` was used for **11/11 passing browser scenarios,
+zero skipped or flaky**, through the managed Windows GPU helper. This includes
+actual first-visit toast hit testing and selecting Settings as the first recent
+command on reopen. These are untimed correctness checks, not benchmarks.
+
+`capture-matrix.mjs` reuses the existing real-model scene protocol. Both builds
+produced 12 corresponding captures with zero capture failures: loaded browse,
+wall/annotation search, loaded narrow annotation search, narrow and short empty
+states, all in light and dark. Private manifests preserve adapter, page errors,
+image hashes and dist index hashes. Representative public images and compact
+receipts are below. Full CI and fresh Opus visual judgment remain pending.
+
+Shipped locale inventory correction: only English and Russian are present.
+`?lang=de` negotiates to English; no German production acceptance is claimed.
+German-like pseudo-catalogue tests remain useful long-label tests. Actual Russian
+at 390×844 finds Section via English `section`, shows Сечение, keeps the input at
+113px through pointer-after-keyboard and empty states, and retains translated
+recovery/footer controls. Its screenshot is unloaded shared-preview evidence.
+
+| Scenario | Frozen baseline | Round 2 candidate |
+| --- | --- | --- |
+| Loaded, desktop light | ![Baseline desktop](evidence/baseline-desktop-light.png) | ![Candidate desktop](evidence/candidate-desktop-light.png) |
+| Loaded, narrow dark, annot | ![Baseline narrow](evidence/baseline-narrow-dark.png) | ![Candidate narrow](evidence/candidate-narrow-dark.png) |
+
+![Short empty recovery](evidence/candidate-short-empty.png)
+![Russian narrow search](evidence/candidate-russian-narrow.png)
+
+[Machine-readable receipt](evidence/receipt.json). Original full-suite and queued
+intermediate jobs remain recorded separately; these images do not convert them
+to passes. Earlier unsupported-browser screenshots are not loaded-model proof.
+
+## Round 3 bounded correction
+
+Fresh Opus inspected all twelve round-2 candidate images, the Russian capture and
+real toast screenshot. Verdict: REVISE. Six frozen rubric axes rated Good or
+Excellent; responsive light/dark coherence remained Weak because the result list
+used a light native scrollbar in dark mode. No veto or regression observed.
+
+Round 3 applies the app's existing `scrollbar-thin` utility and puts category
+metadata alongside the label at desktop widths, restoring one-line row density.
+Narrow widths retain two-line categories for label space. The existing real
+Settings/reopen browser scenario now also retains a Recent-group screenshot.
+These changes do not alter ranking, action dispatch or context availability.
+Round-2 screenshots/receipt remain historical evidence, not proof of this source.

@@ -199,7 +199,7 @@ test.describe('#8946 unloaded palette UX', () => {
     await expectWithinViewport(search);
   });
 
-  test('Escape/reopen resets query and active row; Enter opens the canonical Settings UI', async ({ page }) => {
+  test('Escape/reopen resets query and active row; Enter opens the canonical Settings UI', async ({ page }, testInfo) => {
     await page.goto('/?lang=en');
     const { dialog, search, options } = await openPalette(page);
     await search.fill('view');
@@ -218,6 +218,7 @@ test.describe('#8946 unloaded palette UX', () => {
     await expect(options.first()).toHaveAttribute('aria-label', 'Settings…');
     await expect(options.first()).toHaveAttribute('aria-selected', 'true');
     await expectActiveVisible(page);
+    await testInfo.attach('recent-settings-selected.png', { body: await page.screenshot(), contentType: 'image/png' });
   });
 });
 

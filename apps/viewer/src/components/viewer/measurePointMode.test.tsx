@@ -447,11 +447,13 @@ describe('Point mode readouts (#8770)', () => {
     assert.equal(container.querySelector('[data-testid="measure-point-hud"]') === null, true);
   });
 
-  it('the marker sits on the placed point, not on a Distance tap start left from before the switch', () => {
+  it('switching to Point drops a Distance tap start, so the marker sits on the placed point only', () => {
     useViewerStore.setState({ measureMode: 'drag' });
     useViewerStore.getState().startMeasurement({ x: 0, y: 0, z: 0, screenX: 11, screenY: 12 });
     render(<><ViewportHud /><MeasureOverlay /></>);
+    assert.ok([...document.querySelectorAll('circle')].some((c) => c.getAttribute('cx') === '11'), 'the Distance start is not drawn before the switch');
     act(() => useViewerStore.getState().setMeasureMode('point'));
+    assert.equal(useViewerStore.getState().activeMeasurement, null, 'the Distance start survived the switch to Point');
     const { ctx } = fakeCtx({ current: ON_WALL });
     act(() => handleMeasureClickAt(ctx, 3, 4));
     const marks = [...document.querySelectorAll('circle')].map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`);

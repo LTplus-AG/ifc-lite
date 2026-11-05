@@ -76,3 +76,17 @@ it('a single scan exposes its download from the Point Clouds panel', async () =>
   assert.match(document.body.textContent ?? '', /Survey.xyz/);
   assert.equal(button('Download PLY').disabled,false);
 });
+
+it('#8915 portalled download overlay clicks do not activate the containing model row', () => {
+  seed();
+  let selections = 0;
+  render(<div role="presentation" onClick={() => selections++}><PositionedDownload modelId="capture" /></div>);
+  click(button('Download positioned file…'));
+  const overlay = document.querySelector<HTMLElement>('[data-state="open"].inset-0');
+  assert.ok(overlay, 'dialog overlay is mounted outside the model row');
+  click(overlay);
+  assert.equal(selections, 0);
+  click(button('Close'));
+  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(selections, 0);
+});

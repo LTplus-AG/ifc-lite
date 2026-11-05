@@ -59,4 +59,25 @@ describe('PLY classification round-trip', () => {
       });
     }
   }
+  for (const variable of [false, true]) {
+    it(`#8915 malformed ASCII byte classes stay loadable (${variable ? 'variable' : 'fixed'} rows)`, async () => {
+      const values = [42, 300, -1, 3.5, NaN, Infinity, 255];
+      const header = `ply\nformat ascii 1.0\nelement vertex ${values.length}\nproperty float x\nproperty float y\nproperty float z\n${variable ? 'property list uchar float ignored\n' : ''}property uchar classification\nproperty ushort intensity\nend_header\n`;
+      const blob = new Blob([header, values.map((value, i) => `${i} 2 3 ${variable ? '1 9 ' : ''}${value} 81`).join('\n')]);
+      const decoded = decodePly(new Uint8Array(await blob.arrayBuffer()));
+      expect([...decoded.classifications!]).toEqual([42, 0, 0, 0, 0, 0, 255]);
+      expect([...decoded.positions]).toEqual(values.flatMap((_, i) => [i, 2, 3]));
+      expect([...decoded.intensities!]).toEqual(values.map(() => 81));
+      const reader = new PlyStreamingSource(blob);
+      try {
+        await reader.open();
+        const chunks = [];
+        for (;;) { const chunk = await reader.next(2); if (!chunk) break; chunks.push(chunk); }
+        expect(chunks.flatMap(chunk => [...chunk.classifications!])).toEqual([...decoded.classifications!]);
+        expect(chunks.flatMap(chunk => [...chunk.positions])).toEqual([...decoded.positions]);
+        expect(chunks.flatMap(chunk => [...chunk.intensities!])).toEqual([...decoded.intensities!]);
+      } finally { reader.close(); }
+    });
+  }
+
 });

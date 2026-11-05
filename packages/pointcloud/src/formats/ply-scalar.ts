@@ -40,8 +40,8 @@ export function readPlyScalar(
   }
 }
 
-/** LAS-style class ids are unsigned bytes; never wrap malformed input. */
+/** Keep geometry loadable: malformed optional ASCII classes become unclassified, never wrapped (#8915). */
 export function plyClassification(value: number): number {
-  if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error('PLY: classification must be an integer from 0 to 255');
+  if (!Number.isInteger(value) || value < 0 || value > 255) return 0;
   return value;
 }

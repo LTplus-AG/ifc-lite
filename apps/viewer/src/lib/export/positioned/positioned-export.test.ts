@@ -213,3 +213,16 @@ it('compressed LAS and renamed COPC choose a full-resolution LAZ reader by conte
   bytes.set(new TextEncoder().encode('copc'),377);data.setUint16(393,1,true);
   assert.equal(positionedScanFormat('renamed.las',header),'laz');
 });
+
+// #8915: the real parser rejects malformed allocation metadata before the decoder can run.
+it('PCD preflight rejects non-finite counts and invalid field strides', async () => {
+  const { preflightPositionedScan } = await import('./preflight');
+  for (const metadata of [
+    'WIDTH nonsense', 'WIDTH NaN', 'WIDTH Infinity', 'POINTS nonsense',
+    'POINTS NaN', 'POINTS Infinity', 'POINTS -1', 'POINTS 0',
+    'SIZE NaN 4 4', 'COUNT Infinity 1 1', 'COUNT -1 1 1',
+  ]) {
+    const header = `FIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nWIDTH 1\nHEIGHT 1\n${metadata}\nDATA ascii\n0 0 0\n`;
+    await assert.rejects(preflightPositionedScan(new Blob([header]), 'pcd', signal()), /invalid.*(count|SIZE|COUNT)/i, metadata);
+  }
+});

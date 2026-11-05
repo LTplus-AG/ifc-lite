@@ -217,3 +217,5 @@ to reject oversized whole-file allocations before starting a reader.
 PLY readers preserve a single scalar `uchar`/`uint8` classification property.
 Other classification declarations (including float, list and duplicate fields)
 remain ignored so optional metadata does not prevent loading legacy geometry.
+Malformed ASCII byte-class values become class 0 (unclassified) rather than
+rejecting geometry or wrapping into another class. Valid byte classes are unchanged.

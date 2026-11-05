@@ -42,7 +42,7 @@ export function PositionedDownload({ modelId }: { modelId: string }) {
       if (!abort.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     } finally { controller.current = null; setBusy(false); }
   };
-  return <>
+  return <span role="presentation" className="contents" onClick={event => event.stopPropagation()}>
     <button type="button" className="p-[5px]" aria-label={t('positionedDownload.open')} title={t('positionedDownload.open')}
       onClick={event => { event.stopPropagation(); setOpen(true); }}><Download className="h-3.5 w-3.5" /></button>
     <Dialog open={open} onOpenChange={value => { if (!value) controller.current?.abort(); setOpen(value); }}>
@@ -62,5 +62,5 @@ export function PositionedDownload({ modelId }: { modelId: string }) {
         </div>
       </DialogContent>
     </Dialog>
-  </>;
+  </span>;
 }

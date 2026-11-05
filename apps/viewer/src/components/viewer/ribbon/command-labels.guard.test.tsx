@@ -45,20 +45,21 @@ it('#6604 federation setup stays compact beside the prominent IFC export and Sav
   assert.deepEqual([...save.parentElement.querySelectorAll('[data-command-id]')]
     .map((button) => button.getAttribute('data-command-id')), setupIds.slice(0, 2));
   for (const button of setupButtons) {
-    assert.ok(button.classList.contains('min-h-6'), 'compact setup targets preserve the 24px minimum');
+    assert.ok(button.classList.contains('h-6'), 'compact setup rows keep the 24px target minimum');
     const icon = button.querySelector('svg');
     assert.ok(icon);
-    assert.ok(icon.classList.contains('h-3.5'), 'setup icons use the small ribbon size');
-    assert.ok(icon.classList.contains('w-3.5'));
+    assert.ok(icon.classList.contains('h-4'), 'setup icons use the small ribbon size');
+    assert.ok(icon.classList.contains('w-4'));
   }
   assert.ok(save.querySelector('svg[data-testid="icon-stub"]'),
     'Save uses the viewer collection rather than the Lucide fallback');
   assert.equal(save.querySelector('span')?.textContent,
     resolve('commandPalette.file.saveFederationSetup.label'), 'the compact row displays the full label');
-  const ifcIcon = container.querySelector('[data-export-command="ifc"] svg');
-  assert.ok(ifcIcon);
-  assert.ok(ifcIcon.classList.contains('h-8'), 'IFC export retains its large icon');
-  assert.ok(ifcIcon.classList.contains('w-8'));
+  // No model: the export cluster is one folded headline control (#8802 R1).
+  const exportIcon = container.querySelector('[data-export-folded] svg');
+  assert.ok(exportIcon);
+  assert.ok(exportIcon.classList.contains('h-5'), 'the export control keeps the headline icon size');
+  assert.ok(exportIcon.classList.contains('w-5'));
 
   let saves = 0;
   const onSave = () => { saves++; };
@@ -132,6 +133,17 @@ it('#5870/#5878 mounts every ribbon command with its registry name across the he
         panelBrowsers++;
         continue;
       }
+      // No model: the export cluster's one disabled placeholder (#8802 R1).
+      // It runs nothing, so it carries the export owner and no command id.
+      if (button.dataset.exportFolded !== undefined) {
+        assert.equal(tab, 'file', 'the folded export control belongs to File');
+        assert.equal(button.dataset.ribbonContentSource, 'export');
+        assert.equal(button.getAttribute('aria-disabled'), 'true', 'the folded export control is inert');
+        assert.equal(button.getAttribute('aria-label'), resolve('ribbon.file.exportGroup'));
+        const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+        assert.equal(reason, resolve('ribbon.file.exportFoldedTooltip'), 'the folded control describes why it is inert');
+        continue;
+      }
       const exportId = button.dataset.exportCommand;
       if (exportId) {
         assert.equal(button.dataset.ribbonContentSource, 'export', `${tab}: ${exportId} declares its export owner`);
@@ -186,6 +198,7 @@ it('#5878 enabled collaboration File controls use registered names', () => {
   assert.ok(commandIds.includes('panel:collab'));
   for (const button of buttons) {
     if (button.dataset.exportExtension) continue;
+    if (button.dataset.exportFolded !== undefined) continue;
     if (button.dataset.exportCommand) {
       const exportCommand = EXPORT_COMMANDS.find((item) => item.id === button.dataset.exportCommand);
       assert.ok(exportCommand);

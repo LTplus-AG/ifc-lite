@@ -20,7 +20,7 @@
 import { closeSync, createReadStream, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, appendFileSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { constants, tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { assertPinCoverage, engineIdentity, gitIdentity, parseArgs, parseArms, pinFor, resultEnvelope, resetPartial, roundSides, sha256File, summarizeRows,
@@ -72,7 +72,8 @@ async function timedRun(argv, cwd, scratch, name, timeoutMs) {
   const timeFile = join(scratch, `${name}.time`);
   const command = TIME ? [TIME, '-v', '-o', timeFile, ...argv] : argv;
   const started = process.hrtime.bigint();
-  const child = spawn(command[0], command.slice(1), { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command[0], command.slice(1), { cwd, detached: true,
+    env: { ...process.env, LC_ALL: 'C' }, stdio: ['ignore', 'pipe', 'pipe'] });
   const completion = waitForProcess(child, timeoutMs);
   let stdout = '', stderr = Buffer.alloc(0);
   // Only emptiness matters for stdout; retain bounded diagnostics for stderr.
@@ -82,9 +83,17 @@ async function timedRun(argv, cwd, scratch, name, timeoutMs) {
   const { code, signal, timedOut, spawnError } = await completion;
   const memory = sampler.stop();
   const totalMs = Number(process.hrtime.bigint() - started) / 1e6;
-  let maxRssKiB = null;
-  try { maxRssKiB = Number(readFileSync(timeFile, 'utf8').match(/Maximum resident set size \(kbytes\): (\d+)/)?.[1] ?? NaN); } catch { /* no /usr/bin/time */ }
+  let maxRssKiB = null, timeDiagnostic = null, terminationSignal = signal;
+  if (TIME && existsSync(timeFile)) {
+    const timeReport = readFileSync(timeFile, 'utf8');
+    maxRssKiB = Number(timeReport.match(/Maximum resident set size \(kbytes\): (\d+)/)?.[1] ?? NaN);
+    timeDiagnostic = timeReport.match(/^Command (?:terminated by signal|exited with non-zero status) .+$/m)?.[0] ?? null;
+    const signalNumber = Number(timeReport.match(/^Command terminated by signal (\d+)$/m)?.[1]);
+    terminationSignal ??= Object.entries(constants.signals).find(([, value]) => value === signalNumber)?.[0] ?? null;
+  }
   return { exitCode: signal ? -1 : code, signal, timedOut, spawnError, stdout, stderr: stderr.toString('utf8'), totalMs, memory,
+    processStatus: { stage: name, pid: child.pid ?? null, executable: command[0], timeWrapped: !!TIME,
+      exitCode: code, signal, terminationSignal, timeDiagnostic },
     maxRssKiB: Number.isFinite(maxRssKiB) ? maxRssKiB : null };
 }
 
@@ -98,6 +107,9 @@ export async function cliSample({ arm, fixture, round, options, expectation }) {
     row.timeoutMs = timeoutMs;
     const deadline = performance.now() + timeoutMs;
     const checkRun = run => {
+      // GNU time returns 128+signal with a normal wrapper exit. Preserve its
+      // diagnosis before scratch cleanup; 139 alone is not evidence of SIGSEGV (#8868).
+      (row.processes ??= []).push(run.processStatus);
       row.stderrTail = run.stderr;
       if (run.spawnError) row.processError = run.spawnError.message;
       if (run.timedOut) throw new Error('timeout');

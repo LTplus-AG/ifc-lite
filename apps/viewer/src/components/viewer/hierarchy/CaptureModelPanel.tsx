@@ -8,6 +8,7 @@
  * multi-model header rows provide: inspect, hide/show, fit and remove.
  */
 
+import { PositionedDownload } from '../PositionedDownload';
 import type { MouseEvent } from 'react';
 import { Eye, EyeOff, Maximize2, RotateCw, Sparkles, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -62,6 +63,7 @@ export function CaptureModelPanel({ model, title, onRemove, onReload, rootProps 
             onClick={() => { try { frameModels([model.id]); } catch { /* bounds not resident yet */ } }}>
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
+          <PositionedDownload modelId={model.id} />
           {gaussianNeedsReload(state) && (
             <button type="button" className={ACTION} aria-label={t('gaussianCapture.row.reload')} title={t('gaussianCapture.row.reload')}
               onClick={() => void onReload(model.id).then((result) => {

@@ -34,6 +34,7 @@ import type {
 } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
+import { getDefaultEdgeLockState, gestureReset } from './measureGesture.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
 import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
@@ -44,7 +45,6 @@ let measurementCounter = 0;
 export interface MeasurementSlice extends MeasurePointSlice {
   // State
   measurements: Measurement[];
-  pendingMeasurePoint: MeasurePoint | null;
   activeMeasurement: ActiveMeasurement | null;
   snapTarget: SnapTarget | null;
   snapEnabled: boolean;
@@ -88,6 +88,14 @@ export interface MeasurementSlice extends MeasurePointSlice {
    * `setActiveTool('select')`).
    */
   measureMode: MeasureMode;
+  /**
+   * Bumped by every Measure gesture reset ({@link resetMeasureGesture}): Esc,
+   * a mode switch, entering or leaving the tool, a model reposition (#8786).
+   * The pointer and touch handlers note it when a press begins, so a press
+   * that outlives a reset places nothing on release, and they cancel their
+   * queued measure raycast frame when it changes.
+   */
+  measureGestureEpoch: number;
   /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
   activePolyline: ActivePolyline | null;
   /** Which angle the tool measures when `measureMode === 'angle'` (#2735). */
@@ -106,10 +114,6 @@ export interface MeasurementSlice extends MeasurePointSlice {
   /** Finished radius measurements. Picks only — the fit (or refusal) is
    *  derived on render by `fitRadius`. */
   radiusMeasurements: RadiusMeasurement[];
-
-  // Legacy measurement actions
-  addMeasurePoint: (point: MeasurePoint) => void;
-  completeMeasurement: (endPoint: MeasurePoint) => void;
 
   // Drag-based measurement actions
   startMeasurement: (point: MeasurePoint) => void;
@@ -217,7 +221,10 @@ export interface MeasurementSlice extends MeasurePointSlice {
   /**
    * Discard whatever measurement gesture is in progress — a drag mid-flight
    * or a polyline click sequence — without touching finished measurements,
-   * snap/geo toggles, or the user's last-picked {@link measureMode}.
+   * snap/geo toggles, or the user's last-picked {@link measureMode}. It also
+   * drops the gesture's edge lock and snap glyph and bumps
+   * {@link measureGestureEpoch} (#8786). Esc (`cancel*`) and
+   * {@link setMeasureMode} are this same reset.
    *
    * This is the single call `setActiveTool` (uiSlice.ts) makes whenever the
    * tool changes away from `'measure'`. See the {@link measureMode} doc
@@ -253,14 +260,7 @@ export interface MeasurementSlice extends MeasurePointSlice {
   resetAllMeasurementState: () => void;
 }
 
-export const getDefaultEdgeLockState = (): EdgeLockState => ({
-  edge: null,
-  meshExpressId: null,
-  edgeT: 0,
-  lockStrength: 0,
-  isCorner: false,
-  cornerValence: 0,
-});
+export { getDefaultEdgeLockState };
 
 /**
  * The registered KIND of each reprojected field must match that field's real
@@ -297,11 +297,11 @@ export type _ReprojectedKindsMatch = AssertAllTrue<RegisteredKindMatchesSliceSha
 export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => {
   // Finishing a measurement un-hides it (#5893) — a stale chip-hidden `sceneState.measurements.visible: false` would otherwise draw nothing.
   const revealMeasurements = (): void => { (get() as unknown as { setMeasurementsVisible?: (v: boolean) => void }).setMeasurementsVisible?.(true); };
+  const resetMeasureGesture = (): void => set(gestureReset);
 
   return {
   // Initial state
   measurements: [],
-  pendingMeasurePoint: null,
   activeMeasurement: null,
   snapTarget: null,
   snapEnabled: true,
@@ -311,6 +311,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   measurementConstraintEdge: null,
   measureReferencePoint: null,
   measureMode: 'drag',
+  measureGestureEpoch: 0,
   activePolyline: null,
   polylineMeasurements: [],
   angleKind: 'points',
@@ -319,25 +320,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   activeRadius: null,
   radiusMeasurements: [],
   ...createMeasurePointSlice(set),
-
-  // Legacy measurement actions
-  addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
-
-  completeMeasurement: (endPoint) => {
-    set((state) => {
-      if (!state.pendingMeasurePoint) return {};
-      const start = state.pendingMeasurePoint;
-      const distance = Math.sqrt(
-        Math.pow(endPoint.x - start.x, 2) +
-        Math.pow(endPoint.y - start.y, 2) +
-        Math.pow(endPoint.z - start.z, 2)
-      );
-      measurementCounter++; // combined with timestamp to guarantee unique IDs
-      const measurement: Measurement = { id: `m-${Date.now()}-${measurementCounter}`, start, end: endPoint, distance };
-      return { measurements: [...state.measurements, measurement], pendingMeasurePoint: null };
-    });
-    revealMeasurements();
-  },
 
   // Drag-based measurement actions
   startMeasurement: (point) => set({
@@ -380,19 +362,16 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     revealMeasurements();
   },
 
-  cancelMeasurement: () => set({
-    activeMeasurement: null,
-    snapTarget: null,
-    measurementConstraintEdge: null,
-  }),
+  cancelMeasurement: resetMeasureGesture,
 
   deleteMeasurement: (id) => set((state) => ({
     measurements: state.measurements.filter((m) => m.id !== id),
   })),
 
-  clearMeasurements: () => set({
+  // "Clear all" is a gesture reset too (#8786).
+  clearMeasurements: () => set((state) => ({
+    ...gestureReset(state),
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     // "Clear all" clears every kind of measurement the panel lists,
@@ -405,7 +384,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activeRadius: null,
     radiusMeasurements: [],
     ...NO_MEASURE_POINT,
-  }),
+  })),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
     const state = get();
@@ -611,30 +590,24 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   // Polyline (multi-click) measurement actions (#2199)
   setMeasureMode: (mode) => set((state) => {
     if (mode === state.measureMode) return {};
-    // Symmetric: discard the state of the mode being LEFT, and cancel any
-    // in-progress drag when entering a click-driven mode. Written as spread
-    // arms over one object rather than per-mode early returns so adding a
-    // fourth mode cannot leave an arm behind - the regression this slice
-    // documents at `resetAllMeasurementState` was exactly a hand-maintained
-    // list that missed a newly added field.
-    const leaving = state.measureMode;
+    // A mode switch is a gesture reset (#8786): the one field list in
+    // gestureReset covers every mode, so a new mode cannot leave an arm
+    // behind - the regression this slice documents at
+    // `resetAllMeasurementState` was exactly a hand-maintained list that
+    // missed a newly added field. Leaving Point mode also drops its placed
+    // point, which belongs to that mode alone.
     return {
       measureMode: mode,
-      ...(leaving === 'polyline' ? { activePolyline: null } : {}),
-      ...(leaving === 'angle' ? { activeAngle: null } : {}),
-      ...(leaving === 'radius' ? { activeRadius: null } : {}),
-      ...(leaving === 'point' ? NO_MEASURE_POINT : {}),
-      ...(mode !== 'drag'
-        ? { activeMeasurement: null, snapTarget: null, measurementConstraintEdge: null }
-        : {}),
+      ...gestureReset(state),
+      ...(state.measureMode === 'point' ? NO_MEASURE_POINT : {}),
     };
   }),
 
   setAngleKind: (kind) => set((state) => {
     if (kind === state.angleKind) return {};
     // Switching kind mid-sequence discards it: picks already taken mean
-    // something different under the new kind.
-    return { angleKind: kind, activeAngle: null };
+    // something different under the new kind. It is a gesture reset (#8786).
+    return { angleKind: kind, ...gestureReset(state) };
   }),
 
   addAnglePick: (pick) => {
@@ -660,7 +633,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     if (recorded) revealMeasurements();
   },
 
-  cancelAngle: () => set({ activeAngle: null }),
+  cancelAngle: resetMeasureGesture,
 
   deleteAngleMeasurement: (id) => set((state) => ({
     angleMeasurements: state.angleMeasurements.filter((m) => m.id !== id),
@@ -740,7 +713,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return recorded;
   },
 
-  cancelPolyline: () => set({ activePolyline: null }),
+  cancelPolyline: resetMeasureGesture,
 
   deletePolylineMeasurement: (id) => set((state) => ({
     polylineMeasurements: state.polylineMeasurements.filter((m) => m.id !== id),
@@ -787,25 +760,17 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return recorded;
   },
 
-  cancelRadius: () => set({ activeRadius: null }),
+  cancelRadius: resetMeasureGesture,
 
   deleteRadiusMeasurement: (id) => set((state) => ({
     radiusMeasurements: state.radiusMeasurements.filter((m) => m.id !== id),
   })),
 
-  resetMeasureGesture: () => set({
-    activeMeasurement: null,
-    activePolyline: null,
-    activeAngle: null,
-    activeRadius: null,
-    measurePointLive: null, // the placed point stays readable, like the last distance
-    snapTarget: null,
-    measurementConstraintEdge: null,
-  }),
+  resetMeasureGesture,
 
-  resetAllMeasurementState: () => set({
+  resetAllMeasurementState: () => set((state) => ({
+    ...gestureReset(state),
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     snapVisualization: null,
@@ -823,6 +788,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activeRadius: null,
     radiusMeasurements: [],
     ...NO_MEASURE_POINT,
-  }),
+  })),
   };
 };

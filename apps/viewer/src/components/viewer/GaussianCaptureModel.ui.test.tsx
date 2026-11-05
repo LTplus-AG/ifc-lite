@@ -72,6 +72,11 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
     let container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
     assert.ok(label(container, 'Remove model church.ply'), 'the capture has the federated model header row');
     assert.ok(label(container, 'Remove model ifc'));
+    // #8915: select the name, independently of the row's growing action group.
+    const name = [...container.querySelectorAll('span')].find(node => node.textContent === 'church.ply');
+    assert.ok(name);
+    click(name);
+    assert.equal(useViewerStore.getState().selectedModelId, 'capture');
     assert.equal(container.querySelector('[data-testid="capture-model-row"]'), null);
     cleanup();
     useViewerStore.setState(fixtureModels(fixtureModel('ifc', { entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall' }] })));
@@ -95,7 +100,7 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
       ['uncalibrated', 'Uncalibrated: shown in source units, with no metric scale or survey alignment.'],
       ['picking', 'Not pickable: select the capture in the model list.'],
       ['measurement', 'No measurement or snapping on captures.'],
-      ['export', 'Capture data is not included in exports (IFC, glTF, USD, KMZ, PDF and others). BCF snapshots can show visible captures.'],
+      ['export', 'Capture data is not included in IFC, glTF, USD, KMZ or PDF exports. Use Download positioned file for Gaussian PLY. BCF snapshots can show visible captures.'],
     ]);
     for (const absent of ['IFC Model', 'IFC4', 'Total Entities', 'Building Storeys', 'Max Express ID']) {
       assert.ok(!text.includes(absent), `does not claim ${absent}`);

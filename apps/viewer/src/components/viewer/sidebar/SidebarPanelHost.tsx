@@ -194,9 +194,10 @@ function SplitDivider({ onResizeStart }: { onResizeStart: (e: React.MouseEvent) 
       aria-valuemin={20}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
-      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
+      className="shell-splitter-h group flex items-center justify-center"
     >
-      <GripHorizontal className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary/70 transition-colors" />
+      {/* 1px divider at rest; the grip appears on hover / keyboard focus. */}
+      <GripHorizontal className="pointer-events-none absolute h-3 w-4 rounded-sm bg-panel text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </div>
   );
 }

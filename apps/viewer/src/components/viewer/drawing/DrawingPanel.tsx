@@ -7,9 +7,11 @@
  * the bottom strip, floating, or popped out. A slim action row (the cut it
  * shows, Regenerate, Match 3D, Export — the strip / floating / pop-out host
  * owns title and Close, #5498), one toolbar row, the canvas with the
- * settings drawers beside it, and a status line. Its runtime (generation,
- * persistence) is `DrawingRuntimeHost` and runs whether or not this is
- * mounted (#5492).
+ * settings drawers beside it, and a status line while a tool or markup has
+ * something to say. Docked in the strip, the action row moves into the
+ * strip's tab row beside the "Drawing" tab (#8802 R3b), so the canvas does
+ * not sit under three header rows. Its runtime (generation, persistence) is
+ * `DrawingRuntimeHost` and runs whether or not this is mounted (#5492).
  *
  * The Section tool does not auto-open this panel (#5497): the action row
  * shows a "Section parked · Resume" banner instead whenever the cut it is
@@ -20,7 +22,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PencilRuler, RefreshCw, Video } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { RefreshCw, Video } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -37,6 +40,7 @@ import { DrawingCanvasView } from './DrawingCanvasView';
 import { DrawingStatusLine } from './DrawingStatusLine';
 import { DrawingInspector } from './DrawingInspector';
 import { DrawingSectionCutMenu } from './DrawingSectionCutMenu';
+import { useBottomStripHeaderSlot } from '../bottom-strip-header-slot';
 
 /** Labels need ~1180px for one row; icons alone fit from ~640px; below that
  *  the rarest items overflow (see DrawingToolbar). */
@@ -63,11 +67,20 @@ function usePanelMetrics(ref: React.RefObject<HTMLDivElement | null>): { tier: D
   return { tier, width };
 }
 
+/** A cut position as the header shows it: one decimal, none when it is whole ("50", "37.5"). */
+function formatCutPosition(position: number): string {
+  return String(Number(position.toFixed(1)));
+}
+
+function HeaderDivider() {
+  return <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />;
+}
+
 function HeaderAction({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} disabled={disabled}>{children}</Button>
+        <Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} disabled={disabled}>{children}</Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -86,11 +99,13 @@ export function DrawingPanel(): React.ReactElement {
   const { tier, width: panelWidth } = usePanelMetrics(panelRef);
   const { sectionPlane, status, displayOptions } = vm;
   const isCustomPlane = sectionPlane.custom !== undefined;
+  const headerSlot = useBottomStripHeaderSlot();
+  const navigationPreset = useViewerStore((s) => s.navigationPreset);
 
   // The same wording the Section tool's header uses for the cut.
   const cut = isCustomPlane
     ? t('sectionTool.header.custom', { distance: sectionPlane.custom!.distance.toFixed(2) })
-    : t('sectionTool.header.axis', { axis: t(AXIS_INFO[sectionPlane.axis].labelKey), position: sectionPlane.position.toFixed(1) });
+    : t('sectionTool.header.axis', { axis: t(AXIS_INFO[sectionPlane.axis].labelKey), position: formatCutPosition(sectionPlane.position) });
   // With several cutting planes the drawing is the ACTIVE plane's (#7545): name it, so "which plane is this?" has an answer.
   const hasOtherPlanes = useViewerStore((s) => s.inactiveSectionPlanes.length > 0);
   const cutLabel = hasOtherPlanes && sectionPlane.name ? t('section2d.cutNamed', { name: sectionPlane.name, cut }) : cut;
@@ -111,64 +126,79 @@ export function DrawingPanel(): React.ReactElement {
     cameraCallbacks.setPresetView?.(presetViewForAxis(sectionPlane.axis, sectionPlane.flipped));
   }, [setProjectionMode, cameraCallbacks, sectionPlane.axis, sectionPlane.flipped]);
 
+  const cutMenu = <DrawingSectionCutMenu cutLabel={cutLabel} displayLabel={t('section2d.cutPlane', { cut: cutLabel })} />;
+  const actions = (
+    <>
+      <HeaderAction label={t('section2d.regenerate')} onClick={() => vm.runtime.generateDrawing(false)} disabled={status === 'generating'}>
+        {status === 'generating' ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
+      </HeaderAction>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {tier === 'narrow' ? (
+            <Button
+              variant="ghost" size="icon-xs"
+              aria-label={t('section2d.matchView.button')}
+              onClick={handleMatchView} disabled={isCustomPlane}
+            >
+              <Video className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs"
+              aria-label={t('section2d.matchView.button')}
+              onClick={handleMatchView} disabled={isCustomPlane}
+            >
+              <Video className="h-3.5 w-3.5" />
+              {t('section2d.matchView.button')}
+            </Button>
+          )}
+        </TooltipTrigger>
+        <TooltipContent>{t(isCustomPlane ? 'section2d.matchView.unavailableTitle' : 'section2d.matchView.title')}</TooltipContent>
+      </Tooltip>
+      <DrawingExportMenu
+        hasDrawing={!!vm.drawing} compact={tier === 'narrow'}
+        onExportSvg={layers.handleExportSVG} onExportDxf={layers.handleExportDXF}
+        onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
+        displayedScale={displayOptions.scale || 100}
+        sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
+        markupCounts={vm.markupCounts}
+        visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
+        visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
+      />
+      <AssistantAction />
+    </>
+  );
+
   return (
     <div ref={panelRef} className="flex h-full w-full flex-col overflow-hidden bg-background">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <PencilRuler className="h-4 w-4 shrink-0" />
-          <span className="shrink-0 text-sm font-medium">{t('section2d.heading')}</span>
-          <DrawingSectionCutMenu cutLabel={cutLabel} />
+      {headerSlot ? createPortal(
+        <div data-drawing-header className="flex min-w-0 flex-1 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center">
+            <HeaderDivider />
+            {cutMenu}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {actions}
+            <HeaderDivider />
+          </div>
+        </div>,
+        headerSlot,
+      ) : (
+        <div data-drawing-header className="flex shrink-0 items-center justify-between gap-2 border-b px-2 py-1">
+          <div className="flex min-w-0 items-center">{cutMenu}</div>
+          <div className="flex shrink-0 items-center gap-0.5">{actions}</div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <HeaderAction label={t('section2d.regenerate')} onClick={() => vm.runtime.generateDrawing(false)} disabled={status === 'generating'}>
-            {status === 'generating' ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          </HeaderAction>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {tier === 'narrow' ? (
-                <Button
-                  variant="ghost" size="icon-sm"
-                  aria-label={t('section2d.matchView.button')}
-                  onClick={handleMatchView} disabled={isCustomPlane}
-                >
-                  <Video className="h-3.5 w-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs"
-                  aria-label={t('section2d.matchView.button')}
-                  onClick={handleMatchView} disabled={isCustomPlane}
-                >
-                  <Video className="h-3.5 w-3.5" />
-                  {t('section2d.matchView.button')}
-                </Button>
-              )}
-            </TooltipTrigger>
-            <TooltipContent>{t(isCustomPlane ? 'section2d.matchView.unavailableTitle' : 'section2d.matchView.title')}</TooltipContent>
-          </Tooltip>
-          <DrawingExportMenu
-            hasDrawing={!!vm.drawing} compact={tier === 'narrow'}
-            onExportSvg={layers.handleExportSVG} onExportDxf={layers.handleExportDXF}
-            onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
-            displayedScale={displayOptions.scale || 100}
-            sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
-            markupCounts={vm.markupCounts}
-            visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
-            visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
-          />
-          <AssistantAction />
-        </div>
-      </div>
+      )}
 
       {isParked && (
         <div
           data-drawing-parked-banner
-          className="flex shrink-0 items-center gap-1.5 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          className="flex shrink-0 items-center gap-1.5 border-b bg-status-warn/15 px-3 py-1 text-xs text-foreground"
         >
           <span>{t('section2d.parked.label')}</span>
           <span aria-hidden="true">·</span>
           <Button
-            variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-amber-900 hover:text-amber-950 dark:text-amber-200 dark:hover:text-amber-100"
+            variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs font-medium text-foreground hover:bg-status-warn/20"
             onClick={handleResumeSection} title={t('section2d.parked.resumeTitle')}
           >
             {t('section2d.parked.resume')}
@@ -179,6 +209,7 @@ export function DrawingPanel(): React.ReactElement {
       <DrawingToolbar
         tier={tier}
         activeTool={vm.annotation2DActiveTool} onSelectTool={vm.selectTool}
+        selectHint={t(navigationPreset === 'trackpad' ? 'section2d.tip.trackpad' : 'section2d.tip.pan')}
         hasMarkup={vm.hasMarkup} onClearMarkup={vm.clearAllAnnotations2D}
         display={{
           symbolic: displayOptions.useSymbolicRepresentations,

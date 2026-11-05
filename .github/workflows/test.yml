@@ -511,6 +511,8 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # Corpus documentation is read by the Node guards.
+              - 'tests/models/README.md'
               # The path-coverage regression harness mirrors tracked evidence,
               # and conservative gate inputs include the committed archive tree.
               - 'tests/evidence/**'
@@ -2184,6 +2186,11 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm lint
+        env:
+          # The unused-locals guard compiles apps/viewer standalone; since
+          # #8790 that exceeds Node's default ~4 GiB heap and the guard reports
+          # the package as uncompilable. Same allowance as Typecheck.
+          NODE_OPTIONS: --max-old-space-size=8192
       # THE ARTIFACT CLASS NOBODY REVIEWED. PR #3175 corrected twelve changesets
       # by hand that would have shipped breaking changes as `patch`, with the
       # release one command from publishing; its own body names the cause --

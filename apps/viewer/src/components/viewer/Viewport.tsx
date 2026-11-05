@@ -247,7 +247,6 @@ export function Viewport({
     startMeasurement,
     updateMeasurement,
     finalizeMeasurement,
-    cancelMeasurement,
     updateMeasurementScreenCoords,
     snapEnabled,
     setSnapTarget,
@@ -295,9 +294,9 @@ export function Viewport({
     return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
   }, [coordinateInfo, sectionCoordinateInfo, sectionPlane.axis]);
 
-  // Theme-aware clear color ref (updated when theme changes)
-  // Tokyo Night storm: #1a1b26 = rgb(26, 27, 38)
-  const clearColorRef = useRef<[number, number, number, number]>([0.102, 0.106, 0.149, 1]);
+  // Theme-aware clear color ref (updated when theme changes); starts on the
+  // dark canvas shell token until the theme effect runs.
+  const clearColorRef = useRef<[number, number, number, number]>(getThemeClearColor('dark'));
   const visualEnhancement = useMemo<VisualEnhancementOptions>(() => ({
     enabled: isMobile ? false : visualEnhancementsEnabled,
     contactShading: {
@@ -549,23 +548,12 @@ export function Viewport({
     }
   }, [activeTool, isInitialized]);
 
-  // Cleanup measurement state when tool changes + set cursor
+  // Set the cursor when the tool changes. Leaving Measure resets its gesture
+  // in the store (setActiveTool → resetMeasureGesture), and the mouse controls
+  // cancel the queued measure raycast on that reset (#8786).
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    if (activeTool !== 'measure') {
-      // Cancel any active measurement
-      if (activeMeasurement) {
-        cancelMeasurement();
-      }
-      // Clear pending raycast requests
-      if (measureRaycastFrameRef.current !== null) {
-        cancelAnimationFrame(measureRaycastFrameRef.current);
-        measureRaycastFrameRef.current = null;
-        measureRaycastPendingRef.current = false;
-      }
-    }
 
     // Leaving the section tool disarms face-pick so it doesn't ambush the
     // user on re-entry to a different tool (issue #243).
@@ -582,7 +570,7 @@ export function Viewport({
     } else {
       canvas.style.cursor = 'default';
     }
-  }, [activeTool, activeMeasurement, cancelMeasurement, sectionPickMode, setSectionPickMode]);
+  }, [activeTool, sectionPickMode, setSectionPickMode]);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {

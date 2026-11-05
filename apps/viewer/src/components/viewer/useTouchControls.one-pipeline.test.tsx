@@ -151,7 +151,7 @@ afterEach(() => {
   cleanup();
   for (const canvas of document.querySelectorAll('canvas')) canvas.remove();
   useViewerStore.getState().clearMeasurements();
-  useViewerStore.setState({ measureMode: 'drag', pendingMeasurePoint: null, activeMeasurement: null });
+  useViewerStore.setState({ measureMode: 'drag', activeMeasurement: null });
 });
 
 describe('touch long press (#5859)', () => {
@@ -266,9 +266,32 @@ describe('Measure by tap (#5856)', () => {
     const { canvas } = rig('measure');
     await tap(canvas, 200, 300);
     await tap(canvas, 500, 300);
-    const { measurements, pendingMeasurePoint } = useViewerStore.getState();
+    const { measurements, activeMeasurement } = useViewerStore.getState();
     assert.equal(measurements.length, 1, 'two taps did not produce a measurement');
-    assert.equal(pendingMeasurePoint, null);
+    assert.equal(activeMeasurement, null);
     assert.ok(Math.abs(measurements[0].distance - 3) < 1e-9, `distance ${measurements[0].distance}, expected 3`);
+  });
+});
+
+describe('a touch that began before a Measure gesture reset places no point (#8786)', () => {
+  it('a Distance touch, a switch to Polyline while held, then lift, adds no polyline point', async () => {
+    useViewerStore.setState({ measureMode: 'drag', activePolyline: null });
+    const { canvas } = rig('measure');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    act(() => useViewerStore.getState().setMeasureMode('polyline'));
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.equal(useViewerStore.getState().activePolyline === null, true, 'BUG: the lift added a polyline point the user never placed in Polyline');
+    await tap(canvas, 300, 300);
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'the next tap in Polyline places its point');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a Polyline touch, a switch to Distance while held, then lift, sets no start', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    act(() => useViewerStore.getState().setMeasureMode('drag'));
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.equal(useViewerStore.getState().activeMeasurement === null, true, 'BUG: the lift set a distance start the user never placed in Distance');
   });
 });

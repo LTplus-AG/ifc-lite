@@ -196,7 +196,6 @@ const RESET = {
   measureMode: 'drag' as const,
   measurements: [],
   activeMeasurement: null,
-  pendingMeasurePoint: null,
   angleMeasurements: [],
   activeAngle: null,
   angleKind: 'points' as const,

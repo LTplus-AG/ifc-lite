@@ -2049,6 +2049,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/reframe-apply.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
             oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/scan-candidate.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
           fi
+          # #8802: the UI drift scanner and its test are both new, so a blunt
+          # revert leaves the test unable to load. Break one behaviour at a time.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ui-drift/no-comment-strip.oracle.patch | grep -Fxq 'tests/evidence/ui-drift/no-comment-strip.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/ui-drift/no-comment-strip.oracle.patch --test scripts/check-ui-drift.test.mjs)
+            oracle_args+=(--mutation tests/evidence/ui-drift/string-spans-lines.oracle.patch --test scripts/check-ui-drift.test.mjs)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"
@@ -2467,6 +2473,10 @@ jobs:
       # scripts/check-module-size.mjs; this comment is its summary.
       - name: Check TypeScript module size ratchet
         run: node scripts/check-module-size.mjs
+      # #8802: objective hill-climb score for the viewer UI overhaul.
+      # Totals ratchet down as styling migrates to tokens and primitives.
+      - name: Check UI style drift ratchet
+        run: node scripts/check-ui-drift.mjs
       - name: Check for hardcoded viewer UI literals
         run: node scripts/check-i18n-literals.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for

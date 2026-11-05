@@ -10,6 +10,7 @@ import { registerEnglish, registerLocale, setLocale, resolve, type Catalogue } f
 import { activateStartupLocale, createLocaleActivator, LOCALE_STORAGE_KEY } from '../locale-activation';
 import type { TranslationKey } from '../en';
 import { messageParameters } from './message-parameters';
+import { mergeEnglishEntries } from './merge-english';
 
 async function allEnglish(): Promise<Catalogue> {
   const english: Catalogue = {};
@@ -17,7 +18,7 @@ async function allEnglish(): Promise<Catalogue> {
   for (const file of readdirSync(dir).filter(name => name.endsWith('.en.ts')).sort()) {
     const module: Record<string, unknown> = await import(new URL(file, dir).href);
     for (const value of Object.values(module)) {
-      if (isCatalogueRecord(value)) Object.assign(english, value);
+      if (isCatalogueRecord(value)) mergeEnglishEntries(english, value, file);
     }
   }
   return english;

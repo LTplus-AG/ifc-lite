@@ -9,7 +9,7 @@
  * click, or a press dragged past the #8740 click slop, finishes.
  */
 
-import type { MeasurePoint } from '@/store';
+import { useViewerStore, type MeasurePoint } from '@/store';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
@@ -29,6 +29,43 @@ const startsAfterFinish = new WeakSet<MouseState>();
 const startPresses = new WeakMap<MouseState, { world: { x: number; y: number; z: number }; press: { x: number; y: number }; shown: { x: number; y: number } }>();
 /** A second press within this far (CSS px) of the start's own press is that press repeated (#8788). */
 const REPRESS_SLOP_PX = 8;
+/** The store's measure gesture epoch when each press (a mouse state, a touch state) began (#8786). */
+const pressEpochs = new WeakMap<object, number>();
+
+/** A press began: a Measure gesture reset before its release makes it another gesture's (#8786). */
+export function beginMeasurePress(press: object): void {
+  pressEpochs.set(press, useViewerStore.getState().measureGestureEpoch);
+}
+
+/**
+ * Whether a Measure gesture reset (Esc, a mode or tool switch) came after this
+ * press began, so its release or click must place nothing (#8786): the press
+ * belongs to the gesture that was reset, not to the one now active.
+ */
+export function pressOutlivedReset(press: object): boolean {
+  const began = pressEpochs.get(press);
+  return began !== undefined && began !== useViewerStore.getState().measureGestureEpoch;
+}
+
+/** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
+function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
+  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
+  ctx.measureRaycastFrameRef.current = null;
+  ctx.measureRaycastPendingRef.current = false;
+}
+
+/**
+ * The pointer side of a Measure gesture reset (#8786), run whenever the store's
+ * `resetMeasureGesture` bumps the epoch: the queued raycast frame would set the
+ * snap target, edge lock and glyph the reset just cleared, and this press
+ * state's records belong to the gesture that is gone.
+ */
+export function resetMeasurePress(ctx: MouseHandlerContext): void {
+  cancelMeasureRaycast(ctx);
+  startingPresses.delete(ctx.mouseState);
+  startPresses.delete(ctx.mouseState);
+  forgetDistancePress(ctx.mouseState);
+}
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
 export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
@@ -147,11 +184,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   const { canvas, renderer, camera, mouseState } = ctx;
 
   // Cancel any pending raycast to avoid stale updates
-  if (ctx.measureRaycastFrameRef.current) {
-    cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-    ctx.measureRaycastFrameRef.current = null;
-    ctx.measureRaycastPendingRef.current = false;
-  }
+  cancelMeasureRaycast(ctx);
 
   // Do a final synchronous raycast at the mouseup position to ensure accurate end point
   const rect = canvas.getBoundingClientRect();

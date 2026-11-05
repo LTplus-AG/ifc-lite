@@ -28,7 +28,7 @@ import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { handleMeasureDrag, handleMeasureHover, updateMeasureScreenCoords } from './measureHandlers.js';
-import { forgetDistancePress, handleMeasureDown, handleMeasureUp } from './distanceClick.js';
+import { beginMeasurePress, forgetDistancePress, handleMeasureDown, handleMeasureUp, resetMeasurePress } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
@@ -475,6 +475,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.didDrag = false;
       mouseState.isRectSelecting = false;
       mouseState.isPanning = false;
+      beginMeasurePress(mouseState);
 
       const tool = activeToolRef.current;
       const gesture = resolveNavigationPointerGesture(useViewerStore.getState().navigationPreset, {
@@ -835,6 +836,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleClick = (e: MouseEvent) => { void handleSelectionClick(ctx, e); };
+    // Every Measure gesture reset (Esc, a mode or tool switch) reaches the press state here (#8786).
+    const stopGestureReset = useViewerStore.subscribe((state, prev) => {
+      if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
+    });
 
     const handleDoubleClick = (e: MouseEvent) => handleMeasureDoubleClick(ctx, e);
 
@@ -855,6 +860,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     return () => {
       disposed = true;
+      stopGestureReset();
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();

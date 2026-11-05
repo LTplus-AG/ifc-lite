@@ -20,6 +20,7 @@ import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
 import { handlePointClick } from './measurePointMode.js';
+import { pressOutlivedReset } from './distanceClick.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 
@@ -61,7 +62,8 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // opposite — it does nothing on mousedown/drag, so a click is the ONLY
   // gesture that adds a point, which is what makes the two modes unable to
   // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
-  if (tool === 'measure') return handleMeasureClickAt(ctx, x, y);
+  // A press from before Esc or a mode or tool switch belongs to the gesture that was reset (#8786).
+  if (tool === 'measure') return pressOutlivedReset(mouseState) ? undefined : handleMeasureClickAt(ctx, x, y);
 
   // Section-tool face-pick (issue #243): clicking any visible face places
   // the clip plane through it. Intercept BEFORE the generic select path

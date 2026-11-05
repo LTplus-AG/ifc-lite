@@ -22,6 +22,8 @@ const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes e
 // ─── Fill input ─────────────────────────────────────────────────────────────
 
 export interface SymbolicFillInput {
+  /** Scene owner id for annotation picking; omitted reference layers remain unpickable. */
+  ownerId?: number;
   /** Flat ring buffer: [x, z, x, z, …]. Y is taken from `worldY`. */
   points: Float32Array;
   /** Vertex indices marking the start of each hole. Empty = no holes. */

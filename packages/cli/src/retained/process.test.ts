@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { exportRetainedIsolated, RetainedProcessError } from './process.js';
 import { logger } from '../logger.js';
+
+// Keep real filesystem behavior, with hooks to deliver cancellation exactly at
+// the post-child validation/publication boundary instead of racing a timer.
+vi.mock('node:fs/promises', { spy: true });
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -37,24 +41,25 @@ const staged = `
   if (args.includes('--retained-report')) await writeFile(flag('--retained-report'), 'complete report\\n');
 `;
 
-it.each(['exit', 'signal'])('#8868 %s after staging cannot overwrite destinations or publish stdout', async (kind, context) => {
-  if (kind === 'signal' && process.platform === 'win32') return context.skip();
-  const f = await fixture(staged + (kind === 'signal' ? "process.kill(process.pid, 'SIGSEGV');" : 'process.exit(139);'));
-  await writeFile(f.obj, 'original obj');
-  await writeFile(f.report, 'original report');
-  const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-  let failure: unknown;
-  try { await exportRetainedIsolated(f.args, { entry: f.entry }); } catch (error) { failure = error; }
-  expect(failure).toBeInstanceOf(RetainedProcessError);
-  expect(failure).toMatchObject({ code: 'RETAINED_PROCESS_FAILED', signal: kind === 'signal' ? 'SIGSEGV' : null,
-    exitCode: kind === 'signal' ? null : 139, cancelled: false });
-  expect(await readFile(f.obj, 'utf8')).toBe('original obj');
-  expect(await readFile(f.report, 'utf8')).toBe('original report');
-  expect(stdout).not.toHaveBeenCalled();
-  const { request, pid } = JSON.parse(await readFile(f.observation, 'utf8'));
-  await expect(readFile(request)).rejects.toMatchObject({ code: 'ENOENT' });
-  expect(() => process.kill(pid, 0)).toThrow();
-}, 15000);
+for (const kind of ['exit', 'signal']) {
+  it.skipIf(kind === 'signal' && process.platform === 'win32')(`#8868 ${kind} after staging cannot overwrite destinations or publish stdout`, async () => {
+    const f = await fixture(staged + (kind === 'signal' ? "process.kill(process.pid, 'SIGSEGV');" : 'process.exit(139);'));
+    await writeFile(f.obj, 'original obj');
+    await writeFile(f.report, 'original report');
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    let failure: unknown;
+    try { await exportRetainedIsolated(f.args, { entry: f.entry }); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(RetainedProcessError);
+    expect(failure).toMatchObject({ code: 'RETAINED_PROCESS_FAILED', signal: kind === 'signal' ? 'SIGSEGV' : null,
+      exitCode: kind === 'signal' ? null : 139, cancelled: false });
+    expect(await readFile(f.obj, 'utf8')).toBe('original obj');
+    expect(await readFile(f.report, 'utf8')).toBe('original report');
+    expect(stdout).not.toHaveBeenCalled();
+    const { request, pid } = JSON.parse(await readFile(f.observation, 'utf8'));
+    await expect(readFile(request)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(() => process.kill(pid, 0)).toThrow();
+  }, 15000);
+}
 
 it('#8868 success publishes identical staged bytes only after exit and preserves filters and verbosity', async () => {
   const f = await fixture(staged + `process.stdout.write('must never leak'); process.stderr.write('retained summary\\n');`);
@@ -89,8 +94,7 @@ it('#8868 a missing report after clean exit cannot publish an otherwise valid OB
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it.each([false, true])('#8868 cancellation wins and reaps the child (ignore SIGTERM: %s)', async (ignoresSignal, context) => {
-  if (process.platform === 'win32') return context.skip();
+it.skipIf(process.platform === 'win32').each([false, true])('#8868 cancellation wins and reaps the child (ignore SIGTERM: %s)', async ignoresSignal => {
   const f = await fixture(staged + `
     process.on('SIGTERM', () => { ${ignoresSignal ? '' : 'process.exit(0);'} });
     setInterval(() => {}, 100);
@@ -139,6 +143,44 @@ it('#8868 retains only the final 8 KiB of a failed child diagnostic', async () =
   const failure = await exportRetainedIsolated(f.args, { entry: f.entry }).then(() => null, (error: unknown) => error);
   expect(failure).toBeInstanceOf(RetainedProcessError);
   expect(failure).toMatchObject({ stderr: 'x'.repeat(8192 - 'fatal tail'.length) + 'fatal tail' });
+});
+
+it.each(['validation', 'publication'])('#8868 owns repeated parent signals through %s and cleanup', async phase => {
+  const f = await fixture(staged);
+  await writeFile(f.obj, 'original obj');
+  await writeFile(f.report, 'original report');
+  const original = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+  const interrupt = () => {
+    expect(process.emit('SIGTERM')).toBe(true);
+    expect(process.emit('SIGINT')).toBe(true);
+    expect(process.emit('SIGTERM')).toBe(true);
+  };
+  if (phase === 'validation') {
+    vi.mocked(lstat).mockImplementationOnce((...args) => {
+      interrupt();
+      return original.lstat(...args);
+    });
+  } else {
+    vi.mocked(copyFile).mockImplementationOnce((...args) => {
+      interrupt();
+      return original.copyFile(...args);
+    });
+  }
+  const operation = exportRetainedIsolated(f.args, { entry: f.entry });
+  if (phase === 'validation') {
+    await expect(operation).rejects.toMatchObject({ code: 'RETAINED_PROCESS_FAILED', cancelled: true });
+    expect(await readFile(f.obj, 'utf8')).toBe('original obj');
+    expect(await readFile(f.report, 'utf8')).toBe('original report');
+  } else {
+    await operation;
+    expect(await readFile(f.obj, 'utf8')).toBe('complete obj\n');
+    expect(await readFile(f.report, 'utf8')).toBe('complete report\n');
+  }
+  const { request, pid } = JSON.parse(await readFile(f.observation, 'utf8'));
+  await expect(readFile(request)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(() => process.kill(pid, 0)).toThrow();
+  expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(listeners);
 });
 
 it.each([{ heapFlags: ['--max-old-space-size', '128'] }, { heapFlags: ['--max_old_space_size=128'] }])(

@@ -1848,7 +1848,9 @@ A crash reports `RETAINED_PROCESS_FAILED` with its exit code or signal, leaves
 existing destination files unchanged, and publishes no stdout payload. The CLI
 does not retry the export or switch kernels. This contains process crashes; it
 does not make the two final file copies an atomic transaction against disk errors.
-The child inherits `NODE_OPTIONS` and explicit Node heap-limit and fatal-report
+Cancellation before publication leaves destinations unchanged. Once publication
+starts, cancellation is deferred until output and staging cleanup finish.
+The child inherits `NODE_OPTIONS` and selected explicit Node heap-limit and fatal-report
 flags. Parent eval programs, loaders, and debugger ports are not forwarded.
 Retained publishes complete products only, with no exact fallback. Orphan type products
 are included once per type, with all unreferenced maps placed at their MappingOrigin.

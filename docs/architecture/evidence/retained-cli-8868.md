@@ -52,3 +52,9 @@ Cancellation tests wait until the child has staged artifacts and installed its
 handler, then distinguish a successful exit on SIGTERM from forced SIGKILL.
 A further review identified lost explicit Node heap limits; selected heap and
 fatal-report flags now reach the child, with a runtime heap observation test.
+Another review caught signal handlers ending at child closure, leaving an
+unprotected publication/cleanup interval. The export now owns signals through
+cleanup: cancellation before the publication commit point rejects without
+writing destinations; after that point it is deferred until output finishes.
+Boundary tests deliver repeated parent signal events during real filesystem
+validation and copying, and check destination contents and staging cleanup.

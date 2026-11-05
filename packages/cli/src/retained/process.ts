@@ -63,8 +63,6 @@ async function runChild(entry: URL, config: string, abort?: AbortSignal): Promis
     escalation.unref();
   };
   const killOnExit = () => { child.kill('SIGKILL'); };
-  process.on('SIGINT', terminate);
-  process.on('SIGTERM', terminate);
   process.once('exit', killOnExit);
   abort?.addEventListener('abort', terminate, { once: true });
   // Register before testing abort so even immediate cancellation is reaped.
@@ -81,8 +79,6 @@ async function runChild(entry: URL, config: string, abort?: AbortSignal): Promis
     return stderr.toString('utf8');
   } finally {
     clearTimeout(escalation);
-    process.off('SIGINT', terminate);
-    process.off('SIGTERM', terminate);
     process.off('exit', killOnExit);
     abort?.removeEventListener('abort', terminate);
   }
@@ -93,8 +89,20 @@ async function runChild(entry: URL, config: string, abort?: AbortSignal): Promis
 export async function exportRetainedIsolated(args: string[], options: {
   entry?: URL; signal?: AbortSignal;
 } = {}): Promise<void> {
-  const directory = await mkdtemp(join(tmpdir(), 'ifc-retained-export-'));
+  const cancellation = new AbortController();
+  const cancel = () => cancellation.abort();
+  const checkCancellation = () => {
+    if (cancellation.signal.aborted) throw new RetainedProcessError(undefined, null, null, '', true);
+  };
+  // Own signals until staging cleanup completes, including repeated Ctrl-C.
+  process.on('SIGINT', cancel);
+  process.on('SIGTERM', cancel);
+  options.signal?.addEventListener('abort', cancel, { once: true });
+  if (options.signal?.aborted) cancel();
+  let directory: string | undefined;
   try {
+    checkCancellation();
+    directory = await mkdtemp(join(tmpdir(), 'ifc-retained-export-'));
     const obj = join(directory, 'model.obj'), report = join(directory, 'report.json');
     const outPath = getFlag(args, '--out'), reportPath = getFlag(args, '--retained-report');
     const stagedArgs: string[] = [];
@@ -106,13 +114,16 @@ export async function exportRetainedIsolated(args: string[], options: {
     if (reportPath) stagedArgs.push('--retained-report', report);
     const config = join(directory, 'request.json');
     await writeFile(config, JSON.stringify({ args: stagedArgs, level: logger.level() }));
-    const stderr = await runChild(options.entry ?? new URL('./process-child.js', import.meta.url), config, options.signal);
+    const stderr = await runChild(options.entry ?? new URL('./process-child.js', import.meta.url), config, cancellation.signal);
     // Validate every expected artifact before opening any user destination.
     for (const path of reportPath ? [obj, report] : [obj]) {
       const info = await lstat(path);
       if (!info.isFile() || !info.size) throw new Error('Retained process produced no complete artifact');
     }
-    if (options.signal?.aborted) throw new RetainedProcessError(undefined, null, null, '', true);
+    checkCancellation();
+    // Publication commit point: from here, defer cancellation through both
+    // copies/stdout and cleanup. Interrupting midway cannot retract stdout or
+    // atomically restore two destinations. Disk/write errors still propagate.
     if (reportPath) await copyFile(report, reportPath);
     if (outPath) await copyFile(obj, outPath);
     else {
@@ -123,6 +134,12 @@ export async function exportRetainedIsolated(args: string[], options: {
     // The child logged private staging paths; report the caller's paths only.
     process.stderr.write(stderr.replaceAll(obj, outPath ?? 'stdout').replaceAll(report, reportPath ?? 'report'));
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    try {
+      if (directory) await rm(directory, { recursive: true, force: true });
+    } finally {
+      process.off('SIGINT', cancel);
+      process.off('SIGTERM', cancel);
+      options.signal?.removeEventListener('abort', cancel);
+    }
   }
 }

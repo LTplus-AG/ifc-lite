@@ -58,18 +58,13 @@ fn issue_8875_gross_preserves_material_layer_slicing() {
         assert_eq!(actual.indices, expected.indices);
         assert_eq!(actual.color, expected.color);
     }
-
 }
 
 #[test]
 fn issue_8875_real_archicad_model_has_gross_hosts() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    if !path.exists() {
-        eprintln!("SKIP #8875 real Archicad geometry: run pnpm fixtures");
+    let Some(bytes) = ifc_lite_testkit::fixture_bytes("ara3d/AC20-FZK-Haus.ifc") else {
         return;
-    }
-    let bytes = std::fs::read(path).expect("read Archicad fixture");
+    };
     let net = process(&bytes, &ProcessingRequest::full_pass(), &mut ());
     let gross = process(&bytes, &ProcessingRequest::full_pass().skip_voids(true), &mut ());
     let changed = gross.meshes.iter().filter(|g| {

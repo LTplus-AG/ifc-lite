@@ -24,7 +24,7 @@ export class RetainedProcessError extends Error {
 
 /** Preserve explicit heap limits and fatal-error diagnostics in the process
  * doing the work. Eval programs, loaders and debugger ports belong to the parent. */
-function childRuntimeArgs(): string[] {
+export function childRuntimeArgs(args = process.execArgv, nodeVersion = process.versions.node): string[] {
   const valued = new Set(['--max-old-space-size', '--max-semi-space-size', '--stack-size',
     '--report-directory', '--report-filename']);
   const switches = new Set(['--report-on-fatalerror', '--report-compact', '--report-exclude-env',
@@ -32,14 +32,20 @@ function childRuntimeArgs(): string[] {
   const parentOperands = new Set(['-e', '--eval', '-p', '--print', '-r', '--require',
     '--import', '--loader', '--experimental-loader', '--conditions']);
   const forwarded: string[] = [];
-  for (let i = 0; i < process.execArgv.length; i++) {
-    const arg = process.execArgv[i], key = arg.split('=')[0].replaceAll('_', '-');
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i], key = arg.split('=')[0].replaceAll('_', '-');
     if (valued.has(key)) {
       forwarded.push(arg);
-      if (!arg.includes('=') && i + 1 < process.execArgv.length) forwarded.push(process.execArgv[++i]);
+      if (!arg.includes('=') && i + 1 < args.length) forwarded.push(args[++i]);
     } else if (switches.has(key)) forwarded.push(arg);
     else if (parentOperands.has(key) && !arg.includes('=')) i++;
   }
+  // #8868: Node 24's V8 can reclaim a dying import wrapper twice during
+  // tier-up (nodejs/node#66366). Disable code GC only in this short-lived
+  // retained export process; process exit reclaims the generated code.
+  // TODO(remove-by: supported Node 24 releases contain the verified V8
+  // 9b8ca54d5a backport, owner: CLI maintainers; nodejs/node#66366).
+  if (nodeVersion.startsWith('24.')) forwarded.push('--no-wasm-code-gc');
   return forwarded;
 }
 

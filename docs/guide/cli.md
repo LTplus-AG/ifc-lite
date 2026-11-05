@@ -1852,6 +1852,9 @@ Cancellation before publication leaves destinations unchanged. Once publication
 starts, cancellation is deferred until output and staging cleanup finish.
 The child inherits `NODE_OPTIONS` and selected explicit Node heap-limit and fatal-report
 flags. Parent eval programs, loaders, and debugger ports are not forwarded.
+On Node 24, the retained child disables V8 WASM code garbage collection to avoid
+the wrapper-code reclamation race tracked in [Node #66366](https://github.com/nodejs/node/issues/66366).
+Generated code remains allocated until the export child exits.
 Retained publishes complete products only, with no exact fallback. Orphan type products
 are included once per type, with all unreferenced maps placed at their MappingOrigin.
 One unsupported map refuses the entire type. Instanced type-library shapes and

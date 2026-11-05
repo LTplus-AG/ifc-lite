@@ -58,3 +58,45 @@ cleanup: cancellation before the publication commit point rejects without
 writing destinations; after that point it is deferred until output finishes.
 Boundary tests deliver repeated parent signal events during real filesystem
 validation and copying, and check destination contents and staging cleanup.
+
+### Fatal Node/V8 reproduction and mitigation experiment
+
+The corrected frozen-source rebuild (`b132066a-b05c-412c-95ef-fcc09185392b`)
+completed successfully with unchanged source. Its manifest SHA-256 is
+`117ba5a46c350cda1b36824a490003b3d5e4936b339db885c2789c2c26c3ae04`.
+Only `pkg-retained/ifc-lite_bg.wasm` and `smlib/asset-manifest.json` differ
+from the archived inventory; the SMLib executable assets match. This is
+not a byte-identical reconstruction of the original engine.
+
+GDB job `46e24032-938b-48c6-ac28-edb7b1e2a6d6`, using Node 24.22.0 and
+baseline CLI `828740c6b05b9ebcbe0db25619a324c7abc00f11`, reproduced fatal
+SIGSEGV while exporting the real `advanced_model.ifc`. The captured stack was:
+
+```text
+v8::base::RecursiveMutex::Lock
+v8::internal::wasm::NativeModule::FreeCode
+v8::internal::wasm::WasmEngine::FreeDeadCodeLocked
+v8::internal::wasm::WasmEngine::FreeDeadCode
+v8::internal::wasm::WasmCode::DecrementRefCount
+v8::internal::wasm::WasmCodeRefScope::~WasmCodeRefScope
+v8::internal::Runtime_TierUpWasmToJSWrapper
+```
+
+GDB continued signal delivery and reported `Program terminated with signal
+SIGSEGV`; this was not classified from an initial V8 trap alone. GDB itself
+returned zero, which is **not** a successful export verdict.
+
+This matches the independently reported stack in
+[Node #66366](https://github.com/nodejs/node/issues/66366). Inspection of
+[Node 24.22.0's wrapper cache](https://github.com/nodejs/node/blob/v24.22.0/deps/v8/src/wasm/wasm-import-wrapper-cache.cc)
+confirmed `MaybeGet` adds a reference before testing `is_dying()`, the order
+addressed by [V8's fix](https://github.com/v8/v8/commit/9b8ca54d5a).
+This supports the V8 wrapper-code reclamation race diagnosis for the rebuilt
+engine reproduction; the unavailable original binary limits attribution of
+the archived incident.
+
+A 20-export baseline cohort and a separate 20-export cohort with
+`--no-wasm-code-gc` are pending. The proposed mitigation applies this flag
+only to the isolated retained child on Node 24. Generated code stays alive
+until that child exits; this is not a general-purpose long-lived-process
+recommendation. No successful mitigation-cohort verdict is claimed yet.

@@ -4,7 +4,7 @@ import { copyFile, lstat, mkdtemp, readFile, readdir, rm, writeFile } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { exportRetainedIsolated, RetainedProcessError } from './process.js';
+import { childRuntimeArgs, exportRetainedIsolated, RetainedProcessError } from './process.js';
 import { logger } from '../logger.js';
 
 // Keep real filesystem behavior, with hooks to deliver cancellation exactly at
@@ -199,8 +199,37 @@ it.each([{ heapFlags: ['--max-old-space-size', '128'] }, { heapFlags: ['--max_ol
       await exportRetainedIsolated([...f.args, '--runtime-observation', observation], { entry: f.entry });
     } finally { process.execArgv = previous; }
     const runtime = JSON.parse(await readFile(observation, 'utf8'));
-    expect(runtime.execArgv).toEqual([...heapFlags, '--report-on-fatalerror']);
+    expect(runtime.execArgv).toEqual([...heapFlags, '--report-on-fatalerror',
+      ...(process.versions.node.startsWith('24.') ? ['--no-wasm-code-gc'] : [])]);
     expect(runtime.heap).toBeLessThan(512 * 1024 * 1024);
     expect(await readFile(f.obj, 'utf8')).toBe('complete obj\n');
   },
 );
+
+
+it.each(['20.6.0', '22.23.0', '24.22.0', '26.10.0'])(
+  '#8868 scopes the V8 workaround to Node 24 (%s)', version => {
+    expect(childRuntimeArgs(['--wasm-code-gc', '--max-old-space-size=256'], version))
+      .toEqual(['--max-old-space-size=256', ...(version.startsWith('24.') ? ['--no-wasm-code-gc'] : [])]);
+  });
+
+it('#8868 retained child starts a real worker with inherited runtime flags', async () => {
+  const f = await fixture(`
+    const { Worker } = await import('node:worker_threads');
+    const worker = new Worker(\`
+      const { parentPort } = require('node:worker_threads');
+      WebAssembly.compile(new Uint8Array([0,97,115,109,1,0,0,0])).then(module => {
+        parentPort.postMessage({ valid: module instanceof WebAssembly.Module, flags: process.execArgv });
+      });
+    \`, { eval: true });
+    const result = await new Promise((resolve, reject) => {
+      worker.once('message', resolve); worker.once('error', reject);
+    });
+    await writeFile(flag('--out'), JSON.stringify(result));
+    await writeFile(flag('--retained-report'), 'worker started');
+  `);
+  await exportRetainedIsolated(f.args, { entry: f.entry });
+  const result = JSON.parse(await readFile(f.obj, 'utf8'));
+  expect(result.valid).toBe(true);
+  expect(result.flags.includes('--no-wasm-code-gc')).toBe(process.versions.node.startsWith('24.'));
+});

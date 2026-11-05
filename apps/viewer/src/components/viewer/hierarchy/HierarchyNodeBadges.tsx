@@ -4,6 +4,7 @@
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { cn } from '@/lib/utils';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { CountBadgeTooltip } from './CountBadgeTooltip';
 import type { TreeNode } from './types';
@@ -24,7 +25,7 @@ export function HierarchyNodeBadges({ node }: { node: TreeNode }) {
     {elevation !== undefined && (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
+          <span className="shrink-0 text-2xs font-mono tabular-nums text-muted-foreground">
             {elevationLabel}
           </span>
         </TooltipTrigger>
@@ -34,8 +35,10 @@ export function HierarchyNodeBadges({ node }: { node: TreeNode }) {
     {node.elementCount !== undefined && (
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Yields first when the tree is narrow (#5394). */}
-          <span data-hierarchy-count-badge className="hidden @2xs:inline text-2xs font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
+          {/* One muted, right-aligned count style in every tree (#8802). Next
+              to a storey's elevation it still yields first when the tree is
+              narrow (#5394); a group row keeps it, it has nothing else. */}
+          <span data-hierarchy-count-badge className={cn('shrink-0 pl-1 text-2xs tabular-nums text-muted-foreground', elevation !== undefined && 'hidden @2xs:inline')}>
             {formatLocaleNumber(locale, node.elementCount)}
           </span>
         </TooltipTrigger>

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { computeIsolationFilterSet } from '@/store/basketVisibleSet.js';
@@ -58,11 +59,15 @@ function annotationAndGrid(): FlatSymbolic {
 let root: Root | undefined;
 let container: HTMLDivElement;
 let restore: ReturnType<typeof __setOverlayWorkerFactoryForTest>;
+let owners: { lines: number[]; texts: (number | undefined)[]; fills: (number | undefined)[] };
 let latest = { lines: 0, grid: '', labels: '', fills: 0, textClip: '', fillClip: '' };
 let visibility: { hidden?: ReadonlySet<number> | null; isolated?: ReadonlySet<number> | null } | undefined;
 function Probe() {
   const lines = useSymbolicAnnotations({ enabled: true, visibility });
   const rich = useSymbolicAnnotationsRichData({ enabled: true, visibility });
+  const annotation = lines.annotation;
+  owners = { lines: annotation instanceof Float32Array ? [] : ('localVertices' in annotation ? [annotation] : annotation).flatMap(p => Array.from(p.ownerIds ?? [])),
+    texts: rich.texts.map(t => t.ownerId), fills: rich.fills.map(f => f.ownerId) };
   latest = { lines: symbolicLineVertexData(lines.annotation).length,
     grid: JSON.stringify(lines.grid), labels: rich.texts.map(t => t.content).join(','),
     fills: rich.fills.length, textClip: rich.texts.map(t => String(t.sectionClipped)).join(','),
@@ -76,6 +81,7 @@ async function sample(next = visibility) {
   return { ...latest };
 }
 beforeEach(() => {
+  federationRegistry.clear();
   visibility = undefined;
   __resetSymbolicAnnotationsCacheForTests();
   restore = __setOverlayWorkerFactoryForTest(() => {
@@ -170,4 +176,23 @@ END-ISO-10303-21;`;
   const s = await sample({ isolated });
   assert.equal(s.lines, 6);
   assert.equal(s.labels.includes('DIM'), true);
+});
+
+it('#8783 upload owners resolve through federation for one and multiple models; grids stay unowned', async () => {
+  const store = useViewerStore.getState().ifcDataStore!;
+  const a = federationRegistry.registerModel('a', 100);
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('a', { idOffset: a }), ifcDataStore: store }));
+  await sample();
+  assert.deepEqual(owners.lines, [2]);
+  assert.deepEqual(owners.texts, [2, undefined]);
+  assert.deepEqual(owners.fills, [2, undefined]);
+  const b = federationRegistry.registerModel('b', 100);
+  useViewerStore.setState(fixtureModels(
+    { ...fixtureModel('a', { idOffset: a }), ifcDataStore: store },
+    { ...fixtureModel('b', { idOffset: b }), ifcDataStore: store },
+  ));
+  await sample({ isolated: new Set([federationRegistry.toGlobalId('b', 2)]) });
+  assert.deepEqual(owners.lines, [federationRegistry.toGlobalId('b', 2)]);
+  assert.deepEqual(owners.texts, [undefined, federationRegistry.toGlobalId('b', 2), undefined]);
+  assert.deepEqual(owners.fills, [undefined, federationRegistry.toGlobalId('b', 2), undefined]);
 });

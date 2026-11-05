@@ -1,0 +1,12 @@
+diff --git a/packages/renderer/src/section-2d-lift.ts b/packages/renderer/src/section-2d-lift.ts
+--- a/packages/renderer/src/section-2d-lift.ts
++++ b/packages/renderer/src/section-2d-lift.ts
+@@ -207,7 +207,7 @@ export const CAP_HATCH_OVERRIDE = {
+ 
+ /** The 12 hatch floats (`hatchA`, `hatchB`, `hatchStroke`) shared by one polygon's vertices. */
+ function capHatchFloats(hatch: CutPolygon2D['hatch']): number[] {
++  if (!hatch) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+-  if (hatch || !hatch) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+   let mask = CAP_HATCH_OVERRIDE.patternId;
+   const field = (value: number | undefined, bit: number): number => {
+     if (value === undefined) return 0;

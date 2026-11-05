@@ -104,6 +104,27 @@ describe('HierarchyPanel dims rows outside the viewport isolation (#8802)', () =
     assert.equal(rowDimmed(container, 'Storey 2'), true);
   });
 
+  it('refreshes a cached storey subtree after an in-place space edit (#8802)', () => {
+    const container = mountPanel();
+    act(() => {
+      useViewerStore.setState({ isolatedEntities: new Set([8]) });
+    });
+    assert.equal(rowDimmed(container, 'Storey 1'), true, 'warm the subtree cache before editing');
+    const state = useViewerStore.getState();
+    const hierarchy = state.ifcDataStore!.spatialHierarchy!;
+    act(() => {
+      hierarchy.bySpace.get(6)!.push(10);
+      hierarchy.project!.children[0].children[0].children[0].children[0].elements.push(10);
+      hierarchy.elementToStorey.set(10, 4);
+      useViewerStore.setState({ mutationVersion: state.mutationVersion + 1 });
+    });
+    act(() => {
+      useViewerStore.setState({ isolatedEntities: new Set([10]) });
+    });
+    assert.equal(rowDimmed(container, 'Storey 1'), false, 'the newly added element in Room keeps Storey 1 normal');
+    assert.equal(rowDimmed(container, 'Storey 2'), true);
+  });
+
   it('keeps a storey whose only isolated element sits in one of its spaces normal', () => {
     const container = mountPanel();
     act(() => {

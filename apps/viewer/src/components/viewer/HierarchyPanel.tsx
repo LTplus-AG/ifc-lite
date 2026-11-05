@@ -397,7 +397,7 @@ export function HierarchyPanel() {
     toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
   });
 
-  const storeySubtreeOf = useMemo(() => createStoreySubtreeResolver(models, ifcDataStore), [models, ifcDataStore]);
+  const storeySubtreeOf = useMemo(() => createStoreySubtreeResolver(models, ifcDataStore), [models, ifcDataStore, mutationVersion]);
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>) => {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>

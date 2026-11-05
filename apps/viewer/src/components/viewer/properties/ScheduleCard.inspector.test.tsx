@@ -23,7 +23,7 @@ function mountCard(): HTMLElement {
         tasks: [{
           expressId: 1, globalId: 'task1', name: 'Foundations', isMilestone: false, predefinedType: 'CONSTRUCTION',
           childGlobalIds: [], productGlobalIds: ['g1'], productExpressIds: [1], controllingScheduleGlobalIds: ['ws1'],
-          taskTime: { scheduleStart: '2024-01-01T00:00:00', scheduleFinish: '2024-02-01T00:00:00', completion: 40 },
+          taskTime: { scheduleStart: '2024-01-01T00:00:00', scheduleFinish: '2024-02-01T00:00:00', scheduleDuration: 'P31D', completion: 40 },
         }],
         workSchedules: [{ globalId: 'ws1', name: 'Main schedule' }],
         sequences: [],
@@ -38,8 +38,22 @@ function mountCard(): HTMLElement {
 
 describe('ScheduleCard uses the inspector rows (#8802)', () => {
   it('renders each task field as an inspector key/value row', () => {
-    const rows = [...mountCard().querySelectorAll('.inspector-kv')].map((row) => row.firstElementChild?.textContent ?? '');
-    assert.deepEqual(rows, ['Start', 'Finish', 'Complete', 'Schedule']);
+    const rows = [...mountCard().querySelectorAll('.inspector-kv')];
+    const date = (iso: string) => new Date(iso).toLocaleDateString('en', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+    const expected = [
+      ['Start', date('2024-01-01T00:00:00Z')],
+      ['Finish', date('2024-02-01T00:00:00Z')],
+      ['Duration', 'P31D'],
+      ['Complete', '40%'],
+      ['Schedule', 'Main schedule'],
+    ];
+    assert.equal(rows.length, expected.length);
+    rows.forEach((row, i) => {
+      assert.equal(row.firstElementChild?.textContent ?? '', expected[i][0]);
+      assert.equal(row.children[1]?.textContent ?? '', expected[i][1], expected[i][0]);
+    });
   });
 
   it('draws no coloured frame or divider inside the card', () => {

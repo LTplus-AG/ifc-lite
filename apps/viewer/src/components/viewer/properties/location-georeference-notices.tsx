@@ -13,17 +13,17 @@ export function LocationGeoreferenceNotices({ locationKind, geometryDistanceKm, 
   const { t, locale } = useTranslation();
   return <>
     {locationKind === 'geometry' && (
-      <p className="px-3 pb-2 text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="px-3 pb-2 text-xs text-muted-foreground">
         {t('properties.locationMap.geometryLocation')}
       </p>
     )}
     {geometryDistanceKm !== null && (
-      <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <output className="block px-3 py-2 text-xs text-warn">
         {t('properties.locationMap.geometryDistance', { value: formatLocaleNumber(locale, geometryDistanceKm) })}
       </output>
     )}
     {siteDistanceMetres !== null && (
-      <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <output className="block px-3 py-2 text-xs text-warn">
         {t('properties.locationMap.siteDistance', { value: formatLocaleNumber(locale, siteDistanceMetres) })}
       </output>
     )}

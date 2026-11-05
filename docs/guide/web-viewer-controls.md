@@ -269,8 +269,11 @@ are assigned to several layers can appear in each; the viewer does not split
 its faces by layer or automatically apply authored layer visibility/style flags.
 Presentation layers are separate from the IFCX layer stack.
 
-Hiding a presentation layer also hides its curve-only IFC annotations. During
-isolation, symbolic annotation overlays continue to follow their global visibility setting.
+Hiding a presentation layer also hides its curve-only IFC annotations. Annotation
+overlays follow isolation and section clipping. Click an annotation curve, filled
+region or label in 3D to select its owning `IfcAnnotation`, including in large
+models. Thin curves have a four-pixel click tolerance; hidden and clipped portions
+do not select. Grid references remain a separate, unpickable overlay.
 
 ### Orthophoto backgrounds
 

@@ -68,8 +68,8 @@ const KIND_TONES: Record<AuditEventKind, string> = {
   deactivate: 'text-muted-foreground',
   mutation_summary: 'text-sky-600 dark:text-sky-400',
   network_fetch: 'text-cyan-600 dark:text-cyan-400',
-  unhealthy: 'text-amber-600 dark:text-amber-400',
-  killed: 'text-rose-600 dark:text-rose-400',
+  unhealthy: 'text-warn',
+  killed: 'text-danger',
 };
 
 interface AuditLogPanelProps {

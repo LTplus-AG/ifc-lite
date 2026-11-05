@@ -293,7 +293,7 @@ export function SourceBrowser({
         onDownload={onDownload} busy={busy} downloadStates={downloadStates} downloadProjectId={downloadProjectId} />}
 
       {error && (
-        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm text-red-600 dark:text-red-400">
+        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm text-danger">
           <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>

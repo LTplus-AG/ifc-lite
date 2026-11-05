@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { plyClassification, findPlyClassification } from '../formats/ply-scalar.js';
 import { floatColorSelectsByteRange, normalizeColorChannel } from '../formats/ply-color.js';
 import { readPlyScalar } from '../formats/ply-scalar.js';
 import { parseAsciiVariableRow, writeVariablePlyRow } from '../formats/ply-variable-row.js';
@@ -14,7 +15,7 @@ const TEXT_DECODER = new TextDecoder();
 
 interface Channels {
   r?: PlyPropertyDecl; g?: PlyPropertyDecl; b?: PlyPropertyDecl;
-  intensity?: PlyPropertyDecl;
+  intensity?: PlyPropertyDecl; classification?: PlyPropertyDecl;
 }
 
 export interface PlyStreamInstrumentation {
@@ -238,6 +239,7 @@ function allocateChunk(capacity: number, layout: PlyVertexLayout, channels: Chan
     colors: channels.r && channels.g && channels.b ? new Float32Array(capacity * 3) : undefined,
     normals: layout.nxProp && layout.nyProp && layout.nzProp ? new Float32Array(capacity * 3) : undefined,
     normalState,
+    classifications: channels.classification ? new Uint8Array(capacity) : undefined,
     intensities: channels.intensity ? new Uint16Array(capacity) : undefined,
     pointCount: capacity,
     bbox: emptyBounds(),
@@ -255,6 +257,7 @@ function finishChunk(output: DecodedPointChunk, written: number, channels: Chann
   output.positions = output.positions.slice(0, written * 3);
   if (output.colors) output.colors = output.colors.slice(0, written * 3);
   if (output.normals) output.normals = output.normals.slice(0, written * 3);
+  if (output.classifications) output.classifications = output.classifications.slice(0, written);
   if (output.intensities) output.intensities = output.intensities.slice(0, written);
   return output;
 }
@@ -270,10 +273,11 @@ function writeBinaryRow(output: DecodedPointChunk, dst: number, view: DataView, 
   if (output.normals && layout.nxProp && layout.nyProp && layout.nzProp) {
     output.normals[dst * 3] = scalar(view, base, layout.nxProp, le); output.normals[dst * 3 + 1] = scalar(view, base, layout.nyProp, le); output.normals[dst * 3 + 2] = scalar(view, base, layout.nzProp, le);
   }
+  if (output.classifications && channels.classification) output.classifications[dst] = plyClassification(scalar(view, base, channels.classification, le));
   if (output.intensities && channels.intensity) output.intensities[dst] = clampIntensity(scalar(view, base, channels.intensity, le));
 }
 
-interface AsciiColumns { x: number; y: number; z: number; r: number; g: number; b: number; nx: number; ny: number; nz: number; intensity: number }
+interface AsciiColumns { x: number; y: number; z: number; r: number; g: number; b: number; nx: number; ny: number; nz: number; intensity: number; classification: number }
 function writeAsciiRow(output: DecodedPointChunk, dst: number, parts: string[], columns: AsciiColumns, origin?: readonly [number, number, number]): void {
   output.positions[dst * 3] = Number(parts[columns.x]) - (origin?.[0] ?? 0);
   output.positions[dst * 3 + 1] = Number(parts[columns.y]) - (origin?.[1] ?? 0);
@@ -284,6 +288,7 @@ function writeAsciiRow(output: DecodedPointChunk, dst: number, parts: string[], 
   if (output.normals) {
     output.normals[dst * 3] = Number(parts[columns.nx]); output.normals[dst * 3 + 1] = Number(parts[columns.ny]); output.normals[dst * 3 + 2] = Number(parts[columns.nz]);
   }
+  if (output.classifications) output.classifications[dst] = plyClassification(Number(parts[columns.classification]));
   if (output.intensities) output.intensities[dst] = clampIntensity(Number(parts[columns.intensity]));
 }
 
@@ -294,7 +299,7 @@ function extendBinaryBounds(bounds: PointCloudBBox, view: DataView, base: number
 
 function findChannels(layout: PlyVertexLayout): Channels {
   const find = (...names: string[]) => layout.vertex.properties.find((property) => names.includes(property.name));
-  return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity') };
+  return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity'), classification: findPlyClassification(layout.vertex) };
 }
 function usableNormal(x: number, y: number, z: number): boolean {
   const stored = [Math.fround(x), Math.fround(y), Math.fround(z)];
@@ -330,7 +335,7 @@ function binaryUsesByteColors(view: DataView, base: number, layout: PlyVertexLay
 function positionColumns(layout: PlyVertexLayout): [number, number, number] { return [layout.vertex.properties.indexOf(layout.xProp), layout.vertex.properties.indexOf(layout.yProp), layout.vertex.properties.indexOf(layout.zProp)]; }
 function asciiColumns(layout: PlyVertexLayout, channels: Channels): AsciiColumns {
   const index = (property?: PlyPropertyDecl) => property ? layout.vertex.properties.indexOf(property) : -1;
-  return { x: index(layout.xProp), y: index(layout.yProp), z: index(layout.zProp), r: index(channels.r), g: index(channels.g), b: index(channels.b), nx: index(layout.nxProp), ny: index(layout.nyProp), nz: index(layout.nzProp), intensity: index(channels.intensity) };
+  return { x: index(layout.xProp), y: index(layout.yProp), z: index(layout.zProp), r: index(channels.r), g: index(channels.g), b: index(channels.b), nx: index(layout.nxProp), ny: index(layout.nyProp), nz: index(layout.nzProp), intensity: index(channels.intensity), classification: index(channels.classification) };
 }
 function requireColumns(parts: string[], count: number, row: number): void { if (parts.length < count) throw new Error(`PLY ascii: vertex row ${row + 1} has ${parts.length} values; expected ${count}`); }
 function clampIntensity(value: number): number { return Math.min(65535, Math.max(0, value | 0)); }

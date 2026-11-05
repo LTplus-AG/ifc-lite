@@ -19,7 +19,7 @@ function harness(overBudget: boolean) {
   annotations.setLines({origin:[0,0,0],localVertices:new Float32Array([-1,0,0,1,0,0]),ownerIds:new Uint32Array([71])},true);
   // Real scene mesh-data budget and real triangle raycast, without allocating GPU buffers.
   if (overBudget) {
-    for (let id=1;id<=501;id++) scene.addMeshData({expressId:id,positions:new Float32Array([20,0,0,21,0,0,20,1,0]),
+    for (let id=1000;id<=1500;id++) scene.addMeshData({expressId:id,positions:new Float32Array([20,0,0,21,0,0,20,1,0]),
       indices:new Uint32Array([0,1,2]),normals:new Float32Array(9),color:[1,1,1,1]} as MeshData);
     scene.getBatchedMeshes = () => [{}] as ReturnType<Scene['getBatchedMeshes']>;
   }

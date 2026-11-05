@@ -124,13 +124,13 @@ test.describe('#5826 target size and focus visibility', () => {
     ).toEqual([]);
   });
 
-  test('#6604 File setup controls retain accessible targets and compact icons beside IFC export', async ({ page }) => {
+  test('#6604 File setup controls retain accessible targets and compact icons beside the export control', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
     await page.getByRole('tab', { name: 'File', exact: true }).click();
 
     // #6604: compact setup controls retain real 24px targets and smaller
-    // glyphs than IFC export; DOM-harness icon classes cannot prove layout.
+    // glyphs than the export control; DOM-harness icon classes cannot prove layout.
     for (const id of ['file:save-federation-setup', 'file:open-federation-setup', 'file:model-tags']) {
       const button = page.locator(`[data-command-id="${id}"]`);
       await expect(button).toBeVisible();
@@ -141,12 +141,14 @@ test.describe('#5826 target size and focus visibility', () => {
       });
       expect(dimensions.width, `${id} target width`).toBeGreaterThanOrEqual(MIN_TARGET_PX);
       expect(dimensions.height, `${id} target height`).toBeGreaterThanOrEqual(MIN_TARGET_PX);
-      expect(dimensions.iconWidth, `${id} compact icon width`).toBe(14);
-      expect(dimensions.iconHeight, `${id} compact icon height`).toBe(14);
+      expect(dimensions.iconWidth, `${id} compact icon width`).toBe(16);
+      expect(dimensions.iconHeight, `${id} compact icon height`).toBe(16);
     }
-    const ifcIcon = await page.locator('[data-export-command="ifc"] svg').boundingBox();
-    expect(ifcIcon?.width, 'IFC export retains its prominent icon').toBe(32);
-    expect(ifcIcon?.height).toBe(32);
+    // No model yet: the export cluster is one folded headline control
+    // (#8802 R1), still a larger glyph than the compact setup rows.
+    const exportIcon = await page.locator('[data-export-folded] svg').boundingBox();
+    expect(exportIcon?.width, 'the export control keeps the headline icon size').toBe(20);
+    expect(exportIcon?.height).toBe(20);
 
   });
 

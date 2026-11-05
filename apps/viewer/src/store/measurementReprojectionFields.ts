@@ -61,6 +61,8 @@ export const REPROJECTED_MEASUREMENT_FIELDS = {
   activeRadius: 'nullable',
   /** Finished radius measurements (#2737 item 2). */
   radiusMeasurements: 'list',
+  /** Point mode's placed point, drawn as a marker (#8770). */
+  measurePointLast: 'nullable',
 } as const satisfies Record<string, ReprojectedFieldKind>;
 
 /** Field names of {@link REPROJECTED_MEASUREMENT_FIELDS}. */

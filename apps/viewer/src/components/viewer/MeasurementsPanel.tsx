@@ -15,7 +15,7 @@
  * the tool is closed because finished measurements outlive the gesture.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -41,7 +41,11 @@ const TABS: ReadonlyArray<{ id: PanelTab; labelKey: TranslationKey; titleKey: Tr
 export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
-  const [tab, setTab] = useState<PanelTab>('list');
+  const pointMode = useViewerStore((s) => s.activeTool === 'measure' && s.measureMode === 'point');
+  const [tab, setTab] = useState<PanelTab>(pointMode ? 'point' : 'list');
+  // Choosing Point mode (#8770) brings its readout forward; the user can
+  // still switch tabs afterwards.
+  useEffect(() => { if (pointMode) setTab('point'); }, [pointMode]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

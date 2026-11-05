@@ -42,14 +42,18 @@ export function rememberVertexPress(ctx: MouseHandlerContext, vertex: MeasurePoi
  * that is the exact surface under the pointer instead, so the press is not
  * dropped. A press repeating the one that placed such an unsnapped `prev` (the
  * second half of a double-click or double-tap, which snaps back onto the older
- * vertex) is unsnapped too, so it lands on `prev` again rather than on that
- * vertex. Otherwise `picked` unchanged: the caller's duplicate guard still
+ * vertex) is `prev` itself, so the caller's duplicate guard drops it even when
+ * the two presses jitter apart. Otherwise `picked` unchanged: that guard still
  * catches a double-click, a double-tap and a retap on `prev`.
+ *
+ * `repeatOnly` applies just the repeat rule, for a press that may deliberately
+ * snap onto `prev` (Angle's shared corner between two edges).
  */
-export function unsnapFromPrevious(ctx: MouseHandlerContext, prev: MeasurePoint, picked: MeasurePoint, at: { x: number; y: number }): MeasurePoint {
+export function unsnapFromPrevious(ctx: MouseHandlerContext, prev: MeasurePoint, picked: MeasurePoint, at: { x: number; y: number }, repeatOnly = false): MeasurePoint {
   const press = classifyPress(ctx, prev, at);
-  const unsnap = press === 'away' ? isDuplicateClickPoint(prev, picked) : press === 'repeat-unsnapped';
-  return unsnap ? pickSurfacePoint(ctx, at.x, at.y) ?? picked : picked;
+  if (press === 'repeat-unsnapped') return prev;
+  if (repeatOnly || press !== 'away' || !isDuplicateClickPoint(prev, picked)) return picked;
+  return pickSurfacePoint(ctx, at.x, at.y) ?? picked;
 }
 
 /**

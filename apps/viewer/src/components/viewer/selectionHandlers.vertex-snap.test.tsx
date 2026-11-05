@@ -166,6 +166,15 @@ for (const mode of MODES) {
         assert.ok(!mode.vertices().slice(1).some((v) => sameWorld(v, CORNER)), 'BUG: the second press snapped back onto the earlier corner');
       });
 
+      it(`a jittery double-${input} away from the previous vertex still adds one surface point`, () => {
+        const rig = mountSnapping();
+        const { shown } = rig;
+        press(rig, shown.x + 30, shown.y);
+        press(rig, shown.x - 30, shown.y);
+        press(rig, shown.x - 25, shown.y + 2); // the second press lands 5px off the first
+        assert.equal(distinctOf(mode.vertices()).length, 2, `BUG: the jittery double-press left ${distinctOf(mode.vertices()).length} vertices, expected 2`);
+      });
+
       it(`a double-${input} with the camera drifting a few pixels between the ${input}s adds it once`, () => {
         const rig = mountSnapping();
         const { shown, ctx, canvas } = rig;
@@ -242,4 +251,33 @@ describe('Polyline and Radius still finish on a double-click (#8866)', () => {
       assert.ok(sameWorld(finished[0].points[2], CORNER), 'the double-click placed the snapped corner');
     });
   }
+});
+
+describe('Angle edges: a double-click across the edge boundary is the shared corner (#8866)', () => {
+  it('the second click of a double-click on an unsnapped pick 2 starts edge B there, not at the earlier corner', () => {
+    s().setMeasureMode('angle');
+    s().setAngleKind('edges');
+    const rig = mountSnapping();
+    const { shown, canvas } = rig;
+    click(canvas, shown.x + 30, shown.y); // pick 1 snaps to the corner
+    click(canvas, shown.x - 30, shown.y); // pick 2 snaps onto it too, so takes the surface
+    click(canvas, shown.x - 30, shown.y); // the double-click's second click
+    const picks = s().activeAngle?.picks ?? [];
+    assert.equal(picks.length, 3, 'edge A and the start of edge B');
+    assert.ok(sameWorld(picks[1].point, surfaceAt(shown.x - 30, shown.y)), 'pick 2 is the surface point');
+    assert.ok(sameWorld(picks[2].point, picks[1].point), 'BUG: the repeat snapped edge B\'s start back onto edge A\'s start');
+  });
+});
+
+describe('one vertex path for taps and clicks (#8866)', () => {
+  it('a vertex tapped, then a click away from it that snaps onto it, adds the surface point', () => {
+    s().setMeasureMode('polyline');
+    const rig = mountSnapping();
+    const { shown } = rig;
+    tap(rig, shown.x + 30, shown.y);
+    mouse(rig, shown.x - 30, shown.y);
+    const points = s().activePolyline?.points ?? [];
+    assert.equal(points.length, 2, 'two vertices');
+    assert.ok(sameWorld(points[1], surfaceAt(shown.x - 30, shown.y)), 'BUG: the click after a tap lost the tap\'s press and kept the snap');
+  });
 });

@@ -93,7 +93,7 @@ test('the release corpus carries a public metric IFC/scan/splat triple and a pin
   for (const path of triple) {
     const entry = byPath.get(path);
     assert.ok(entry, `${path} is in the corpus`);
-    assert.equal(entry.provenance?.license, 'CC-BY-4.0', `${path} is publicly licensed`);
+    assert.equal(entry.provenance?.license?.spdx, 'CC-BY-4.0', `${path} is publicly licensed`);
     assert.match(entry.sha256, /^[0-9a-f]{64}$/, `${path} is hash-pinned`);
     assert.ok(entry.size > 0, `${path} has a pinned size`);
   }

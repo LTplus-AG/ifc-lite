@@ -158,7 +158,6 @@ export const bcfRu = {
   "bcf.panel.title": "Темы BCF",
   "bcf.panel.importTitle": "Импортировать BCF",
   "bcf.panel.exportTitle": "Экспортировать BCF",
-  "bcf.panel.formatBcfzip": "BCF",
   "bcf.panel.hideMarkers": "Скрыть 3D-маркеры",
   "bcf.panel.showMarkers": "Показать 3D-маркеры",
   "bcf.panel.setAuthorTitle": "Указать автора",

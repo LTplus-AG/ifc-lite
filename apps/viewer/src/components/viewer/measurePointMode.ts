@@ -48,6 +48,8 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
   const picked = pickPoint(ctx, x, y);
   if (!picked) {
     // The cancelled hover frame would have read this miss too: nothing is under the cursor now.
+    ctx.setSnapTarget(null);
+    updateSnapViz(ctx, null);
     useViewerStore.getState().setMeasurePointLive(null);
     return;
   }

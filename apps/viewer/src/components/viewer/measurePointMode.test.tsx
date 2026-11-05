@@ -692,12 +692,13 @@ describe('Point mode readout staleness (#8828)', () => {
 
   it('a click that misses ends "Live" along with the hover frame it cancelled', () => {
     const hit = { current: ON_WALL as Hit };
-    const { ctx } = fakeCtx(hit);
+    const { ctx, snapTargets } = fakeCtx(hit);
     hoverMeasurePoint(ctx, 3, 4);
     assert.ok(useViewerStore.getState().measurePointLive !== null);
     hit.current = null;
     handleMeasureClickAt(ctx, 50, 50);
     assert.equal(useViewerStore.getState().measurePointLive, null, 'Live named a point no longer under the cursor');
+    assert.equal(snapTargets.at(-1), null, 'the snap target of the point no longer under the cursor stayed up');
   });
 
   it('a model move marks the placed point Stale on the HUD and the Point tab; the next click is current', () => {

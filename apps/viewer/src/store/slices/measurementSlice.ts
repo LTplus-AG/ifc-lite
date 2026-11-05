@@ -34,6 +34,7 @@ import type {
 } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
+import { getDefaultEdgeLockState, gestureReset } from './measureGesture.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
 import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
@@ -259,14 +260,7 @@ export interface MeasurementSlice extends MeasurePointSlice {
   resetAllMeasurementState: () => void;
 }
 
-export const getDefaultEdgeLockState = (): EdgeLockState => ({
-  edge: null,
-  meshExpressId: null,
-  edgeT: 0,
-  lockStrength: 0,
-  isCorner: false,
-  cornerValence: 0,
-});
+export { getDefaultEdgeLockState };
 
 /**
  * The registered KIND of each reprojected field must match that field's real
@@ -303,24 +297,6 @@ export type _ReprojectedKindsMatch = AssertAllTrue<RegisteredKindMatchesSliceSha
 export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => {
   // Finishing a measurement un-hides it (#5893) — a stale chip-hidden `sceneState.measurements.visible: false` would otherwise draw nothing.
   const revealMeasurements = (): void => { (get() as unknown as { setMeasurementsVisible?: (v: boolean) => void }).setMeasurementsVisible?.(true); };
-  /**
-   * Every Measure gesture reset's fields, the one list of what "in-progress
-   * gesture" means (#8786): each mode's sequence, the hover point, and the
-   * pick's snap target, edge lock and glyph, which a later pick would
-   * otherwise inherit. The epoch tells the handlers a press is now stale.
-   */
-  const gestureReset = (state: MeasurementSlice) => ({
-    activeMeasurement: null,
-    activePolyline: null,
-    activeAngle: null,
-    activeRadius: null,
-    measurePointLive: null, // the placed point stays readable, like the last distance
-    snapTarget: null,
-    snapVisualization: null,
-    edgeLockState: getDefaultEdgeLockState(),
-    measurementConstraintEdge: null,
-    measureGestureEpoch: state.measureGestureEpoch + 1,
-  });
   const resetMeasureGesture = (): void => set(gestureReset);
 
   return {

@@ -33,9 +33,14 @@ const REPRESS_SLOP_PX = 8;
 /** The store's measure gesture epoch when each press (a mouse state, a touch state) began (#8786). */
 const pressEpochs = new WeakMap<object, number>();
 
-/** A press began: a Measure gesture reset before its release makes it another gesture's (#8786). */
-export function beginMeasurePress(press: object): void {
+/**
+ * A press began: a Measure gesture reset before its release makes it another
+ * gesture's (#8786). A mouse press that is not a Measure tool press
+ * (navigation, another tool) also breaks the finish-then-start chain.
+ */
+export function beginMeasurePress(press: object, measuring = true): void {
   pressEpochs.set(press, useViewerStore.getState().measureGestureEpoch);
+  if (!measuring) forgetDistancePress(press as MouseState);
 }
 
 /**

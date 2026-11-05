@@ -23,7 +23,7 @@ it('#5823 opens a list from its row with the keyboard while actions stay indepen
     <ListLibrary definitions={[saved]} activeListId={null} executing={false} hasData
       onExecute={(list) => executed.push(list.id)} onEdit={(list) => edited.push(list.id)}
       onCreateNew={() => {}} onDuplicate={() => {}} onDelete={() => {}}
-      onExport={() => {}} onImport={() => {}} />,
+      onExport={() => {}} />,
   );
   const row = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('My list'));
   assert.ok(row);

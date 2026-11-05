@@ -20,10 +20,27 @@ import { create } from 'zustand';
 
 export type ValidationSourceChoice = 'ids' | 'rules' | 'manual';
 
-export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null }>()(() => ({
+export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null; idsPickRequested: boolean }>()(() => ({
   choice: null,
+  idsPickRequested: false,
 }));
 
 export function setValidationSourceChoice(choice: ValidationSourceChoice | null): void {
   useValidationSourceChoice.setState({ choice });
+}
+
+/**
+ * The IDS entry card's "Load IDS file" (#8802): switch to the IDS side and
+ * ask its panel to open the file picker once it mounts. The picker belongs
+ * to the IDS panel, which owns loading; the card only starts it.
+ */
+export function requestIdsFilePick(): void {
+  useValidationSourceChoice.setState({ choice: 'ids', idsPickRequested: true });
+}
+
+/** Consumes a pending `requestIdsFilePick`; true when one was waiting. */
+export function takeIdsFilePickRequest(): boolean {
+  if (!useValidationSourceChoice.getState().idsPickRequested) return false;
+  useValidationSourceChoice.setState({ idsPickRequested: false });
+  return true;
 }

@@ -52,17 +52,17 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
   if (!document) {
     const hasAuditIssues = auditReport !== null && auditReport.issues.length > 0;
     return (
-      <div className="flex flex-col h-full p-6">
-        {hasAuditIssues && <div className="mb-4"><IDSAuditSummary report={auditReport} auditing={auditing} /></div>}
+      <div className="flex flex-col">
+        {hasAuditIssues && <div className="px-4 pt-4"><IDSAuditSummary report={auditReport} auditing={auditing} /></div>}
         <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={onFileSelect} />
         <AnalysisEmptyState
-          className="flex-1"
-          icon={<FileText className="size-8" />}
+          align="start"
+          icon={<FileText />}
           title={t(hasAuditIssues ? 'idsPanel.documentHasErrors' : 'idsPanel.noIdsLoaded')}
           description={t(hasAuditIssues ? 'idsPanel.fixAndRetry' : 'idsPanel.loadDescription')}
           action={(
-            <Button onClick={onLoadClick} {...tourAnchor(TOUR_ANCHORS.idsLoad)}>
-              <Upload className="h-4 w-4 mr-2" />
+            <Button size="sm" className="gap-1.5" onClick={onLoadClick} {...tourAnchor(TOUR_ANCHORS.idsLoad)}>
+              <Upload className="h-3.5 w-3.5" />
               {t(hasAuditIssues ? 'idsPanel.loadDifferentFile' : 'idsPanel.loadFile')}
             </Button>
           )}

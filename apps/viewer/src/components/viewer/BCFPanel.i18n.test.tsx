@@ -14,6 +14,7 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { bcfEn as BcfEnType } from '@/i18n/catalogues/bcf.en';
 import { BCFPanel } from './BCFPanel.js';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
 
 let bcfEn: typeof BcfEnType | undefined;
 try {
@@ -106,7 +107,7 @@ describe('BCFPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', /BCF Topics/);
   });
 
-  it('updates the panel header titles and dialogs when the active locale changes', () => {
+  it('updates the panel header titles and dialogs when the active locale changes', async () => {
     assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
     const container = renderPanel();
     registerLocale('bcf-panel-pseudo', pseudoLocale());
@@ -116,15 +117,9 @@ describe('BCFPanel localization (#4918)', () => {
     const titles = [...container.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label'));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.importTitle'] as string)));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.exportTitle'] as string)));
-    assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string)));
-
-    const setAuthorButton = [...container.querySelectorAll('button')].find(
-      (b) => b.getAttribute('aria-label') === marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string),
-    );
-    assert.ok(setAuthorButton, 'expected a Set author button');
-    act(() => {
-      setAuthorButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
+    // Set author is a header action; the shared header (#8802) lists it in More actions.
+    assert.ok(await findPanelAction(container, marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string)), 'expected a Set author action');
+    await runPanelAction(container, marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string));
     assert.match(document.body.textContent ?? '', /⟦Set Author Email⟧/);
     const authorInput = container.querySelector<HTMLInputElement>('input[aria-label]');
     assert.equal(authorInput?.getAttribute('aria-label'), marked(CATALOGUE['bcf.panel.authorEmailLabel'] as string));

@@ -195,7 +195,7 @@ describe('ValidationPanel wiring (#5138)', () => {
         ['Fire rating set', 'Unique name'],
       );
 
-      const close = reopened.querySelector('button[aria-label="Data validation"]');
+      const close = reopened.querySelector('[data-panel-header] button[data-panel-close]');
       assert.ok(close);
       click(close);
       cleanup();
@@ -227,8 +227,8 @@ describe('ValidationPanel wiring (#5138)', () => {
     click(entry as Element);
     // IDSPanel's own title is suppressed when embedded (ValidationPanel's
     // header + toggle is the only chrome) — its EMPTY-STATE BODY still is.
-    assert.match(ui.textContent ?? '', /No IDS Loaded/);
-    assert.match(ui.textContent ?? '', /Load an IDS/);
+    assert.match(ui.textContent ?? '', /No IDS loaded/);
+    assert.match(ui.textContent ?? '', /Load IDS file/);
   });
 
   it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {
@@ -329,7 +329,7 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     // No rule set loaded yet on this side — the New/Open entry, not a blank pane.
     assert.match(ui.textContent ?? '', /New rule set/);
-    assert.match(ui.textContent ?? '', /Open \.rules\.json/);
+    assert.match(ui.textContent ?? '', /Open rule set/);
     assert.doesNotMatch(ui.textContent ?? '', /Wiring IDS fixture/, 'the IDS document title must not leak into the rules side');
 
     const idsToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'IDS validation');

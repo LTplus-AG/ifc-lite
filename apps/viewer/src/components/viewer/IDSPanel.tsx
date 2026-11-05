@@ -17,7 +17,6 @@
 
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { FileText, Trash2, Upload } from 'lucide-react';
-import { IconButton } from '@/components/ui/icon-button';
 import { useIDS } from '@/hooks/useIDS';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
@@ -28,6 +27,7 @@ import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
 import { AnalysisPanel, AnalysisPanelChrome } from './analysis/AnalysisPanel';
 import { DefinitionLibraryToolbar } from './validation/DefinitionLibraryToolbar';
+import { takeIdsFilePickRequest, useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 
 // ============================================================================
 // Types
@@ -162,6 +162,12 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     fileInputRef.current?.click();
   }, [loadIdsFromDialog]);
 
+  // The Data validation IDS card's "Load IDS file" opens this side's picker.
+  const idsPickRequested = useValidationSourceChoice((state) => state.idsPickRequested);
+  useEffect(() => {
+    if (idsPickRequested && takeIdsFilePickRequest()) void handleLoadIdsClick();
+  }, [idsPickRequested, handleLoadIdsClick]);
+
   // Handle entity click. The row's focus MODE (highlight / isolate / ghost) is
   // the user's persistent choice, applied by `focusEntity` — activating a row
   // used to select, colour nothing extra and frame, which in a dense model
@@ -193,17 +199,11 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
         cancelLabel: t('idsPanel.cancel'),
       } : undefined}
       onClearResults={document ? clearValidation : undefined}
-      actions={document && (
-        <>
-          <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={handleFileSelect} />
-          <IconButton label={t('idsPanel.loadNew')} className="h-7 w-7" onClick={() => { void handleLoadIdsClick(); }}>
-            <Upload className="h-4 w-4" />
-          </IconButton>
-          <IconButton label={t('idsPanel.unload')} className="h-7 w-7" onClick={() => { clearIDS(); clearValidation(); }}>
-            <Trash2 className="h-4 w-4" />
-          </IconButton>
-        </>
-      )}
+      actions={document ? [
+        { id: 'ids-load', label: t('idsPanel.loadNew'), icon: <Upload className="h-4 w-4" />, onSelect: () => { void handleLoadIdsClick(); } },
+        { id: 'ids-unload', label: t('idsPanel.unload'), icon: <Trash2 className="h-4 w-4" />, onSelect: () => { clearIDS(); clearValidation(); } },
+      ] : undefined}
+      dialogs={document && <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={handleFileSelect} />}
       error={error ? (typeof error === 'string' ? error : t(error.labelKey, error.params)) : null}
       progress={loading && progress ? idsProgressState(progress, t, locale) : null}
       staleFor={report}

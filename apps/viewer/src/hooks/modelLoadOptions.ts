@@ -4,7 +4,6 @@
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
-import type { GaussianQualification } from './ingest/gaussianAdmissionPolicy.js';
 
 /** Terminal Gaussian load result; publication alone is not completion. */
 export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
@@ -27,19 +26,22 @@ export interface ModelLoadOptions {
   // prompt's retry). Absent: the user's standing settings
   // (`landXmlGeorefAssumptionSettings`) apply. Never inferred.
   landXmlAssumptions?: LandXmlGeorefAssumptions;
-  // #8565: explicit internal Gaussian opt-in for test/showcase callers only.
-  // Public entry points never pass it; see `resolveGaussianQualification`.
-  gaussianQualification?: GaussianQualification;
-  // Caller/user-supplied capture placement (column-major source -> viewer
-  // world) and credit. Never inferred from file contents.
+  // Caller placement after the chosen axis conversion, before automatic IFC
+  // origin subtraction. An explicit matrix without gaussianUpAxis retains its
+  // own axis mapping (Y-up). No units or survey registration are inferred.
+  gaussianUpAxis?: 'z' | 'y';
   gaussianPlacement?: readonly number[];
   gaussianAttribution?: string;
+  /** Internal reload: reserve against the scene excluding this source model. */
+  gaussianReplacingModelId?: string;
+  /** Transfer the reload hold to the swap transaction, including post-publication metadata. */
+  onGaussianBudgetReserved?: (release: () => void) => void;
   /** Report settlement after awaited Gaussian source metadata, including cancellation. */
   onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianAttribution' | 'onGaussianLoadSettled'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

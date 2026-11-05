@@ -24,7 +24,7 @@ it('uses the bridge FactorZ scale for the Cesium model as well as its camera (#4
     modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 2,
-    placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null,
+    placement: { requested: 'anchor', mode: 'anchor', estimate: null, prescribed: null, key: '' }, geoMapping: null,
   } as unknown as CesiumBridge;
   const coordinateInfo: GeometryResult['coordinateInfo'] = {
     originalBounds: { min: { x: 0, y: 8, z: 0 }, max: { x: 0, y: 12, z: 0 } },
@@ -58,7 +58,7 @@ it('rebuilds the World Context GLB for preview and cancel without a geometry or 
   const bridgeRef = { current: { modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 1,
-    placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null,
+    placement: { requested: 'anchor', mode: 'anchor', estimate: null, prescribed: null, key: '' }, geoMapping: null,
   } as unknown as CesiumBridge };
   const zero = { x: 0, y: 0, z: 0 };
   const geometry: GeometryResult = { meshes: [{ expressId: 1, origin: [10, 20, 30],
@@ -102,10 +102,10 @@ it('keeps the installed Anchor GLB where it is while an Exact bridge waits for i
   const anchorBridge = { modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
     viewerUpScale: 1,
-    placement: { requested: 'anchor', mode: 'anchor', estimate: null, key: '' }, geoMapping: null,
+    placement: { requested: 'anchor', mode: 'anchor', estimate: null, prescribed: null, key: '' }, geoMapping: null,
   } as unknown as CesiumBridge;
   const exactBridge = { ...anchorBridge, modelOrigin: { longitude: 10, latitude: 50, height: 0 },
-    placement: { requested: 'exact', mode: 'exact', estimate: null, key: 'exact' }, geoMapping: {},
+    placement: { requested: 'exact', mode: 'exact', estimate: null, prescribed: null, key: 'exact' }, geoMapping: {},
   } as unknown as CesiumBridge;
   const bridgeRef = { current: anchorBridge };
   const zero = { x: 0, y: 0, z: 0 };

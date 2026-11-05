@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Internal, unqualified Gaussian adapter (#8564). Every asset is packed into one
- * upstream source on the viewer's device and drawn in the viewer's frame. Handles
- * are validated by identity; mutations are serialized and allocate before they
- * commit; anything that awaits re-checks the lifetime epoch so no completion can
- * publish after a loss, teardown or dispose. Readiness never becomes ready here.
- */
+/** Internal, unqualified Gaussian adapter (#8564). Identity-validated handles,
+ * serialized mutations and epoch checks prevent publication after teardown. */
 
+import { translateGaussianFrame } from './gaussian-frame-translation.js';
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import type { GaussianBackend, GaussianBackendFactory, GaussianBackendScene, GaussianEncodeTarget } from './gaussian-backend.js';
 import { assertUsableLifetime, GaussianSplatError, requireDevice } from './gaussian-errors.js';
@@ -21,10 +17,10 @@ import type { SimilarityPlacement } from './gaussian-placement.js';
 import { gaussianReadiness, type GaussianReadiness } from './gaussian-readiness.js';
 export type { GaussianSplatApi } from './gaussian-types.js';
 import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
-import { anchoredCamera, boundsChange, centreClipFilter, clipKey, encodeResolveOnly, layerStats, sameTranslation, STATES, unionBounds } from './gaussian-frame.js';
+import { anchoredCamera, boundsChange, centreClipFilter, clipKey, layerStats, sameTranslation, STATES, unionBounds } from './gaussian-frame.js';
+import { GaussianGlassComposer, type DeferredPassRecorder, type GaussianCompositionMode, type GlassFrameInput, type GlassVisibility } from './gaussian-glass-frame.js';
 import type { PickClipState } from '../pick-types.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
-
 /** What the layer reads from its Renderer; nothing here is owned by the layer. */
 export interface GaussianLayerHost {
   lifetime(): { ready: boolean; lost: boolean; disposed: boolean; generation: number };
@@ -36,7 +32,7 @@ export interface GaussianLayerHost {
   extentChanged(visible: GaussianSplatBounds | null): void;
 }
 
-export interface GaussianFrameInput extends Omit<GaussianEncodeTarget, 'depthFormat'> {
+export interface GaussianFrameInput extends Omit<GaussianEncodeTarget, 'depthFormat'>, GlassFrameInput {
   readonly depthFormat?: GPUTextureFormat;
   readonly frame: RelativeToEyeFrame;
   readonly clip: PickClipState | null;
@@ -57,7 +53,6 @@ interface AssetRecord {
   bounds: GaussianSplatBounds;
 }
 
-
 export class GaussianSplatLayer implements GaussianSplatApi {
   private readonly records = new Map<GaussianSplatHandle, AssetRecord>();
   private packed: PackedScene | null = null;
@@ -76,6 +71,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   private notifiedBounds: GaussianSplatBounds | null = null;
   private drawnFrames = 0;
   private lastEncodeMs = 0;
+  private readonly glass = new GaussianGlassComposer(() => this.host.requestRender());
 
   constructor(private readonly host: GaussianLayerHost, createBackend: GaussianBackendFactory = loadLumaBackend) {
     this.slot = new GaussianDeviceSlot(() => host.adapter(), createBackend);
@@ -159,6 +155,17 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       throw error;
     }
   }
+  /** A scene frame change moves the anchor too, preserving the f32 envelope. */
+  translateFrame(delta: readonly [number, number, number]): Promise<boolean> {
+    const epoch = this.epoch, clears = this.clears;
+    return this.queue.run(async () => {
+      if (this.epoch !== epoch || this.clears !== clears || !this.anchor) return false;
+      this.anchor = translateGaussianFrame(this.records.values(), this.anchor, delta);
+      this.clipKey = '';
+      this.applyFilter(true);
+      return true;
+    });
+  }
 
   /** Re-place every asset of `modelIndex` after the renderer's model translation changed. */
   setModelTranslation(modelIndex: number): void {
@@ -178,8 +185,10 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   }
 
   getStats(): GaussianSplatStats {
-    return layerStats(this.liveRecords(), this.packed?.source, this.uploadedOnCurrentDevice() ? this.slot.scene?.gpuBytes ?? 0 : 0, this.drawnFrames, this.lastEncodeMs);
+    return layerStats(this.liveRecords(), this.packed?.source, this.uploadedOnCurrentDevice() ? this.slot.scene?.gpuBytes ?? 0 : 0, this.drawnFrames, this.lastEncodeMs, this.glass.report);
   }
+
+  setCompositionMode(mode: GaussianCompositionMode): void { this.glass.setMode(mode); }
 
   clear(): void {
     this.clears++;
@@ -191,14 +200,13 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   /** Renderer teardown drops GPU state: `dispose` invalidates handles, a cleared scene fails assets (reload-required), recovery keeps them pending. */
   release(clearScene: boolean, dispose: boolean): void {
     this.epoch++;
-    this.slot.dropAll();
+    this.slot.dropAll(); this.glass.release();
     this.uploadedVersion = -1;
     if (dispose) { this.clear(); return; }
     if (!clearScene) return;
     for (const record of this.records.values()) { record.failure = 'reload-required'; record.attributes = null; }
     this.resetPacked();
   }
-
   /** Decide before the main pass whether this frame ends in the splat pass (which then resolves MSAA). */
   captureDiagnostics(): Record<string, unknown> | null { return this.slot.scene?.captureDiagnostics?.() ?? null; }
   frameReady(): boolean {
@@ -208,29 +216,22 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     return false;
   }
 
-  /** Record the splat pass after the viewer's main pass; always ends (and resolves) the pass. */
+  /** #8564 split: `glassRecorder` holds a splat frame's transparent IFC (call before its main pass); `submitted` reads the layer count back. */
+  glassRecorder(visibility: GlassVisibility): DeferredPassRecorder { return this.glass.recorder(requireDevice(this.host.device()), this.slot.depthInterval, visibility); }
+  submitted(): void { this.glass.submitted(); }
+  /** Record the splat passes after the viewer's main pass (and held transparent IFC); always ends with the MSAA resolve. */
   encode(input: GaussianFrameInput): void {
     const scene = this.slot.scene;
     const target: GaussianEncodeTarget = { ...input, depthFormat: input.depthFormat ?? 'depth24plus-stencil8' };
-    if (!scene || !this.anchor || !this.packed) { encodeResolveOnly(target); return; }
-    this.updateClip(input.clip);
+    const anchor = scene && this.packed ? this.anchor : null;
+    if (anchor) this.updateClip(input.clip);
     const started = performance.now();
-    try {
-      scene.encode(target, anchoredCamera(input.frame, this.anchor));
-      this.drawnFrames++;
-    } catch (error) {
-      console.error('[Gaussian] splat pass failed; the frame still resolved:', error);
-    } finally {
-      this.lastEncodeMs = performance.now() - started;
-    }
+    if (this.glass.encode(anchor ? scene : null, target, anchor ? anchoredCamera(input.frame, anchor) : null, input) && anchor) this.drawnFrames++;
+    this.lastEncodeMs = performance.now() - started;
   }
 
-  /**
-   * Re-place one asset with the current model translation: an edit applies its own
-   * placement (skipped once a newer edit is requested); a model follow keeps the
-   * committed placement and never adopts a pending, unvalidated edit. Rows are
-   * transformed into fresh arrays first; nothing changes on failure.
-   */
+  /** Re-place from fresh rows; superseded edits and failed transforms never commit.
+   * Model following uses committed placement, never a pending edit. */
   private place(record: AssetRecord, edit: SimilarityPlacement | null): Promise<SimilarityPlacement | null> {
     const epoch = this.epoch;
     const clears = this.clears;
@@ -396,5 +397,4 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       if (signal?.aborted || this.clears !== clears) throw new GaussianSplatError('aborted', 'Gaussian add was aborted or cleared.');
     };
   }
-
 }

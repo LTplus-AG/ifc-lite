@@ -22,8 +22,8 @@ export interface GaussianReloadDeps {
  * Reload a capture from the File it was opened from (#8566). A failed handle
  * is terminal and a replaced renderer never received the asset, so the only
  * way back is the canonical loader again: admission is re-decided (public
- * builds still refuse), an explicit placement is replayed, and a raw-source
- * placement stays raw. Without a retained source the reload refuses.
+ * builds still refuse), the source axes and unbaked placement are replayed against the current
+ * IFC frame. Without a retained source the reload refuses.
  */
 // Shared by hierarchy/properties hooks: one source model owns one replacement.
 const transactions = new Map<string, Promise<GaussianReloadResult>>();
@@ -48,13 +48,16 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
   const replacementId = crypto.randomUUID();
   let committed = false;
   let completed = false;
+  let releaseBudget = () => {};
   try {
     const next = await deps.addModel(sourceFile, {
       modelId: replacementId,
+      gaussianReplacingModelId: modelId,
+      onGaussianBudgetReserved: release => { releaseBudget = release; },
       onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
-      name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution,
+      name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution, gaussianUpAxis: capture.upAxis,
       retryOperation: () => { void reloadGaussianCapture(modelId, deps); },
-      ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...capture.placement] } : {}),
+      ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...(capture.sourcePlacement ?? capture.placement)] } : {}),
     });
     const state = useViewerStore.getState();
     // A superseded federation add can publish but return null. The explicit
@@ -72,7 +75,11 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
     committed = true;
     return { ok: true, modelId: replacementId };
   } finally {
-    if (!committed && useViewerStore.getState().models.has(replacementId)) deps.removeModel(replacementId);
+    try {
+      if (!committed && useViewerStore.getState().models.has(replacementId)) deps.removeModel(replacementId);
+    } finally {
+      releaseBudget();
+    }
   }
 }
 

@@ -27,12 +27,15 @@ export function AssemblyBadge({ assembly, onSelect }: {
     <button
       type="button"
       onClick={() => onSelect(assembly.expressId)}
-      className="flex items-center gap-2 text-xs border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/10 px-2 py-1.5 text-indigo-800 dark:text-indigo-400 min-w-0 w-full text-left hover:bg-indigo-100/60 dark:hover:bg-indigo-900/20 transition-colors"
+      className="inspector-kv min-h-7 w-full gap-x-2 pl-3 pr-1 text-left text-xs hover:bg-muted/50"
       title={t('properties.assemblyBadge.tooltip')}
     >
-      <Box className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-bold uppercase tracking-wide shrink-0">{t('properties.assemblyBadge.label')}</span>
-      <span className="truncate min-w-0 flex-1 font-mono">{assembly.name || `#${assembly.expressId}`}</span>
+      <span data-assembly-label className="min-w-0 truncate text-muted-foreground">{t('properties.assemblyBadge.label')}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-primary">
+        <Box className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate min-w-0">{assembly.name || `#${assembly.expressId}`}</span>
+      </span>
+      <span className="w-6" aria-hidden="true" />
     </button>
   );
 }

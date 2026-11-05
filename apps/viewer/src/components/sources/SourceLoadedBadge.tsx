@@ -20,5 +20,5 @@ export function SourceLoadedBadge({ providerId, projectId, fileId, revisionId }:
     }
     return loaded;
   });
-  return count === 0 ? null : <output className="block text-xs text-emerald-700 dark:text-emerald-300">{t('sources.workspace.loadedModels', { count })}</output>;
+  return count === 0 ? null : <output className="block text-xs text-ok">{t('sources.workspace.loadedModels', { count })}</output>;
 }

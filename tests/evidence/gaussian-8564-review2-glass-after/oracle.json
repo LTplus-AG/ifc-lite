@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-glass-frame.ts",
+  "mutation": "tests/evidence/gaussian-8564-review2-glass-after/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
+  "why": "Reverse application removes the glass-after safety contract; the review2 recording witness must fail."
+}

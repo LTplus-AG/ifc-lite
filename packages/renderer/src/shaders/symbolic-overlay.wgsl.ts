@@ -12,13 +12,30 @@
 
 import { GLYPH_HALO_PX } from '../symbolic-text-atlas.js';
 import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
+import { MAX_CAP_CLIP_PLANES, extraClipWgslFor } from '../extra-clip-planes.js';
 
-export const SYMBOLIC_FILL_WGSL = /* wgsl */ `
+/**
+ * Floats in one fill partition's uniform: the camera (two matrices, the RTE origin split) and then
+ * the partition's clip block (#8767), packed in the frame it shades in.
+ */
+export const SYMBOLIC_FILL_UNIFORM_FLOATS = 40 + 4 + MAX_CAP_CLIP_PLANES * 4;
+
+/**
+ * The fill shader, unclipped or clipped. The clipped one (the IfcAnnotation fills, #8767) appends a
+ * clip block to the camera uniform and discards what it removes; the unclipped one is the original
+ * 160-byte, vertex-only layout the clash-overlap solid (`ClashSolidPipeline`) still binds.
+ */
+function symbolicFillWgsl(clipped: boolean): string {
+  return /* wgsl */ `
+${clipped ? extraClipWgslFor(MAX_CAP_CLIP_PLANES) : ''}
 struct Camera {
   viewProj: mat4x4<f32>,
   rteViewProj: mat4x4<f32>,
   originHigh: vec4<f32>,
-  originLow: vec4<f32>,
+  originLow: vec4<f32>,${clipped ? `
+  // The planes that clip this partition: the model's, in the frame
+  // clipSpacePos is in. A count of zero (every unclipped fill) clips nothing.
+  clip: ExtraClip,` : ''}
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -30,7 +47,9 @@ struct VsIn {
 
 struct VsOut {
   @builtin(position) clipPos: vec4<f32>,
-  @location(0)        color:  vec4<f32>,
+  @location(0)        color:  vec4<f32>,${clipped ? `
+  // World position for a legacy partition, eye-relative for an RTE one.
+  @location(1)        clipSpacePos: vec3<f32>,` : ''}
 };
 
 @vertex
@@ -39,17 +58,24 @@ fn vs_main(in: VsIn) -> VsOut {
   let global = camera.viewProj * vec4<f32>(in.position, 1.0);
   let relative = (in.position + camera.originHigh.xyz) + camera.originLow.xyz;
   out.clipPos = select(global, camera.rteViewProj * vec4<f32>(relative, 1.0), camera.originHigh.w == 1.0);
-  out.color   = in.color;
+  out.color   = in.color;${clipped ? `
+  out.clipSpacePos = relative;` : ''}
   return out;
 }
 
 @fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {${clipped ? `
+  if (extraClipClipped(camera.clip, in.clipSpacePos)) { discard; }` : ''}
   // Premultiply alpha so the standard "src * 1 + dst * (1-src.a)" blend
   // produces the correct composite on top of the existing scene.
   return vec4<f32>(in.color.rgb * in.color.a, in.color.a);
 }
 `;
+}
+
+export const SYMBOLIC_FILL_WGSL = symbolicFillWgsl(false);
+/** The IfcAnnotation fill pipeline's shader, read with {@link SYMBOLIC_FILL_UNIFORM_FLOATS} (#8767). */
+export const SYMBOLIC_FILL_CLIPPED_WGSL = symbolicFillWgsl(true);
 
 export const SYMBOLIC_TEXT_WGSL = /* wgsl */ `
 ${overlayDepthLiftWgsl}

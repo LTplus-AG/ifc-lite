@@ -5,6 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
+import { AnnotationPicker, resolveAnnotationPick } from './annotation-picking.js';
+import { Camera } from './camera.js';
 import { SymbolicTextPipeline } from './symbolic-overlay-pipelines.js';
 import type { SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import { SYMBOLIC_TEXT_WGSL } from './shaders/symbolic-overlay.wgsl.js';
@@ -243,4 +245,23 @@ describe('SymbolicTextPipeline glyph halo margin (#5388)', () => {
     assert.ok(Math.abs(u0 + uvMargin) < 1e-6 && Math.abs(v0 + uvMargin) < 1e-6, `uv min ${u0},${v0}`);
     assert.ok(Math.abs(u1 - (0.25 + uvMargin)) < 1e-6 && Math.abs(v1 - (0.25 + uvMargin)) < 1e-6, `uv max ${u1},${v1}`);
   });
+});
+
+it('#8783 picking consumes the uploaded glyph layout including alignment, rotation and RTE anchor', () => {
+  const { device } = makeDevice();
+  const pipeline = new SymbolicTextPipeline(device, 'bgra8unorm', 1, makeAtlas());
+  const camera = new Camera();
+  camera.setPosition(5_000_010, 0, 0);
+  camera.setTarget(5_000_000, 0, 0);
+  pipeline.upload([{
+    ownerId: 93, origin: [5_000_000,0,0], worldPos: [0,0,0], dirX: 0, dirZ: 1,
+    height: .48, content: 'A', alignment: 'center', sectionClipped: true,
+  }]);
+  const picker = new AnnotationPicker();
+  picker.setGlyphs(pipeline.pickGlyphs);
+  assert.equal(resolveAnnotationPick(picker.pick(camera,100,100,200,200),null)?.expressId,93);
+  assert.equal(resolveAnnotationPick(picker.pick(camera,120,100,200,200),null),null);
+  pipeline.upload([]);
+  picker.setGlyphs(pipeline.pickGlyphs);
+  assert.equal(picker.pick(camera,100,100,200,200),null);
 });

@@ -43,6 +43,15 @@ export interface GaussianEncodeTarget {
   readonly height: number;
 }
 
+/**
+ * Per-sample split of one splat draw (#8564): keep samples whose depth is `greater`
+ * than `bound` (in front, reverse-Z) or its exact complement `less-equal`.
+ */
+export interface GaussianDepthInterval {
+  readonly bound: GPUTexture;
+  readonly compare: 'greater' | 'less-equal';
+}
+
 /** Camera expressed in the packed source's anchor-relative space. */
 export interface GaussianEncodeCamera {
   readonly modelViewProjection: Float64Array;
@@ -58,8 +67,11 @@ export interface GaussianBackendScene {
   updateRows(rowOffset: number, rows: GaussianRowUpdate): void;
   /** Draw only rows whose asset slot is in `include` and that pass `predicate`. */
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void;
-  /** Record one pass that loads the viewer colour, tests read-only depth and resolves if requested. */
-  encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera): void;
+  /**
+   * Record one pass that loads the viewer colour, tests read-only depth and resolves if requested.
+   * With `interval`, only the samples on its side of the bound are written (same sort, same colour).
+   */
+  encode(target: GaussianEncodeTarget, camera: GaussianEncodeCamera, interval?: GaussianDepthInterval): void;
   /** Internal opt-in evidence, called only after encoding a diagnostic frame. */
   captureDiagnostics?(): Record<string, unknown>;
   destroy(): void;
@@ -68,6 +80,8 @@ export interface GaussianBackendScene {
 export interface GaussianBackend {
   /** True only when upstream sorts reverse-Z depth back to front (luma.gl #3619). */
   readonly upstreamReverseZ: boolean;
+  /** True when upstream has the per-sample depth-interval hook the nearest-glass split needs (#8564). */
+  readonly upstreamDepthInterval?: boolean;
   createScene(): GaussianBackendScene;
 }
 

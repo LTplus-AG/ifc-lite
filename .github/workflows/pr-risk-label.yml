@@ -46,13 +46,18 @@ jobs:
     name: PR risk label
     if: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The BASE commit, never the PR's head. See the permissions note above.
           ref: ${{ github.event.pull_request.base.sha }}
           lfs: false
+          # Metadata gates do not need model/evidence blobs. Fetch on demand.
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            .github
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

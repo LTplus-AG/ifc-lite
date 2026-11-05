@@ -81,13 +81,14 @@ async function restore(saved: FederationSetupFile, files: File[], locale: 'en' |
 
 for (const locale of ['en', 'ru'] as const) {
   it(`all found captures refused: preserve each reason, never claim missing sources (${locale}, #8566)`, async () => {
+    env.VITE_GAUSSIAN_SPLATS = 'disabled'; // the kill-switch build (#8568)
     const a = gaussianPly('first.ply', [[1, 2, 3]]);
     const b = gaussianPly('second.ply', [[4, 5, 6]]);
     const message = await restore(setup([slot(a, 'first-tag', true), slot(b, 'second-tag')]), [a, b], locale);
     assert.match(message, /0\/2/);
     assert.ok(message.includes(locale === 'en' ? 'source files found but not loaded:' : 'исходные файлы найдены, но не загружены:'));
-    assert.match(message, /first\.ply \(Gaussian splat loading is disabled/);
-    assert.match(message, /second\.ply \(Gaussian splat loading is disabled/);
+    assert.match(message, /first\.ply \(Gaussian capture loading is turned off/);
+    assert.match(message, /second\.ply \(Gaussian capture loading is turned off/);
     assert.ok(!message.includes(locale === 'en' ? 'source files missing:' : 'исходные файлы не найдены:'));
     assert.ok(message.includes(locale === 'en' ? 'alignment anchor could not be restored' : 'не удалось восстановить опорную модель'));
     const state = useViewerStore.getState();
@@ -95,12 +96,12 @@ for (const locale of ['en', 'ru'] as const) {
     assert.equal(state.modelTagAssignments.size, 0);
     assert.equal(state.modelTags.size, 0);
     assert.equal(state.anchorModelIdOverride, null);
-    assert.equal(worker.stats.created, 0, 'public refusal occurs before decoding');
+    assert.equal(worker.stats.created, 0, 'kill-switch refusal occurs before decoding');
     assert.equal(gpu.renderer.gaussianSplats.getStats().assets, 0);
   });
 
   it(`mixed success, failed source and missing source retain only successful assignments (${locale}, #8566)`, async () => {
-    env.VITE_GAUSSIAN_SPLATS = 'internal-unqualified';
+    // The committed default admits (#8568).
     const good = gaussianPly('good.ply', [[1, 2, 3], [4, 5, 6]]);
     const broken = new File([new Uint8Array(31)], 'broken.splat');
     const missing = gaussianPly('missing.ply', [[1, 2, 3]]);

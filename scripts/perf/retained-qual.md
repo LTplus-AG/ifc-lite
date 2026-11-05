@@ -57,6 +57,21 @@ runner exit 1. There is no soft path.
   count object: `{"candidates": N, "published": M}`. Its `--summary` must name a
   fresh per-run path; an existing file is rejected before the command starts.
 
+## CLI and native sample deadlines
+
+Both `retained-qual-cli.mjs` and `retained-qual-native-memory.mjs` accept
+`--timeout-ms N` (positive integer milliseconds, default **2700000**, 45 minutes).
+This leaves more than three times the observed roughly 14-minute Holter CLI sample
+or 14-minute native model-set run. The CLI budget includes its `--version` startup
+control and export; native applies it to the entire command, including all models.
+Each row records `timeoutMs`. Expiry kills the command's POSIX process group
+(including `/usr/bin/time` and descendant workers), records `ok:false` with
+`error:"timeout"`, and excludes the row from summaries. Teardown has a further
+5-second bound. The CLI continues the next sample; native writes its single failed
+row and exits 1, so a cohort driver must continue subsequent invocations on failure.
+The CLI records the bounded final 8192 bytes of stderr as `stderrTail`, including
+on startup-control failure, process failure, timeout, or report-validation failure.
+
 ## The first retained frame
 
 All times are the page's `performance.now()`, reported as milliseconds from the file
@@ -150,6 +165,11 @@ Headless Chrome returns the NVIDIA adapter but loses the device on the first can
 present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), with
 `DISPLAY` set to it, and `--require-hardware-gpu`. `--gpu swiftshader` (default, the
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
+
+Pop has two GPUs (Intel iGPU and NVIDIA). The renderer asks for the default adapter, and
+Chrome's default changed between runs (NVIDIA on 2026-11-01, Intel on 2026-11-04), so
+`--gpu hardware` launches Chrome with `--use-webgpu-power-preference=default-high-performance`.
+Check `gpuAdapter` in the rows: every sample of one cohort should name the same adapter.
 
 Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
 Only unique successful samples from the same invocation (or the same `--pairing-id` on one

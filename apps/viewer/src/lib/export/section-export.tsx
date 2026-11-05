@@ -5,7 +5,8 @@
 import { useState } from 'react';
 import { exportSectionedStep, StepExporter, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
-import { federationFrameInfo, renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
+import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { useViewerStore } from '@/store';
 import { resolveClippingSectionInputs } from '@/lib/section/section-plane-inputs';
 import { resolveKeptHalfSpace } from './view-pdf/view-section-plane';
@@ -21,7 +22,7 @@ type State = ReturnType<typeof useViewerStore.getState>;
 export function sectionExportOptions(state: State, mode: 'trim' | 'whole', modelId?: string): SectionExportOptions | undefined {
   const inputs = resolveClippingSectionInputs(state);
   if (!inputs.length) return undefined;
-  const frame = federationFrameInfo(state.models.values(), state.geometryResult);
+  const frame = sharedRenderFrame(state.models.values(), state.geometryResult);
   const planes = inputs.map(input => {
     const half = resolveKeptHalfSpace(input);
     const n = viewerToIfcAxes(half.normal);

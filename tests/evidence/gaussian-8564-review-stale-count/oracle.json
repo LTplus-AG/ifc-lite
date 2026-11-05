@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-glass-split.ts",
+  "mutation": "tests/evidence/gaussian-8564-review-stale-count/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
+  "why": "#8564 review F1: reverse applying publishes a count read back for an earlier frame, so a frame whose own query is pending claims that frame's single layer; the camera-change witness must fail."
+}

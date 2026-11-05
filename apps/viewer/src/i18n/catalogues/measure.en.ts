@@ -65,6 +65,8 @@ export const measureEn = {
   'measure.mode.polyline': 'Polyline',
   'measure.mode.angle': 'Angle',
   'measure.mode.radius': 'Radius',
+  'measure.mode.point': 'Point',
+  'measure.mode.pointTitle': 'Click a point to read its X/Y/Z coordinates',
 
   'measure.snapToggle.title': 'Toggle snap (S key)',
   'measure.snap.label': 'Snap',
@@ -110,8 +112,10 @@ export const measureEn = {
   'measure.hint.radiusActive':
     'Click to add a point on the arc · dbl-click/Enter to finish · Esc to cancel',
   'measure.hint.radiusStart': 'Click 3+ points on a circular edge',
-  'measure.hint.dragActive': 'Release to complete',
-  'measure.hint.dragStart': 'Drag to measure',
+  'measure.hint.dragActive': 'Click to set the end point · Shift for axis · Esc to cancel',
+  'measure.hint.dragStart': 'Click to set the start point',
+  'measure.hint.pointStart': 'Click a point to read its coordinates',
+  'measure.hint.pointActive': 'Click another point · Esc to clear',
 
   'measure.readout.live': 'Live',
   'measure.readout.last': 'Last',

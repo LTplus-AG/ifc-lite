@@ -1,0 +1,12 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -125,8 +125,8 @@
+         pass.end();
+       }
+     } catch (error) {
++      if (isPendingVisibility(error)) throw error; // readiness: discard the frame without disabling the split
+       this.fail(recorder);
+-      if (isPendingVisibility(error)) throw error; // readiness: discard the frame without disabling the split
+       failed = true;
+       console.error('[Gaussian] transparent IFC replay failed; frame may be incomplete:', error);
+     }

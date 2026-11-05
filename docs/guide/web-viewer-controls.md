@@ -5,15 +5,17 @@ These controls apply to the first-party web viewer, with one model or a federati
 | Gesture | Action |
 | --- | --- |
 | Left drag | Orbit, except when the active tool claims the drag |
-| Shift + left drag | Pan in every tool, including Measure |
+| Shift + left drag | Pan in every tool, including Measure (except to finish a pending distance) |
 | Middle drag | Pan in every tool |
 | Right drag | Fly mode: look around while the button is held; use WASD and Q/E to move, and the wheel to change fly speed |
 | Wheel without right drag | Zoom |
 
 The Select tool uses Ctrl/⌘ + left drag for rectangle selection. In the Measure
-tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
+tool, Distance takes two clicks: the first sets the start, the second finishes
+(press-drag-release also works). While a start is pending, Shift + click
+finishes on an axis and Esc cancels; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
-place points. Shift + left drag always pans, even when a measurement is active.
+place points.
 
 In the Model workspace, plain left movement and dragging update the active
 command preview without moving the camera. Placement commands commit on
@@ -267,8 +269,11 @@ are assigned to several layers can appear in each; the viewer does not split
 its faces by layer or automatically apply authored layer visibility/style flags.
 Presentation layers are separate from the IFCX layer stack.
 
-Hiding a presentation layer also hides its curve-only IFC annotations. During
-isolation, symbolic annotation overlays continue to follow their global visibility setting.
+Hiding a presentation layer also hides its curve-only IFC annotations. Annotation
+overlays follow isolation and section clipping. Click an annotation curve, filled
+region or label in 3D to select its owning `IfcAnnotation`, including in large
+models. Thin curves have a four-pixel click tolerance; hidden and clipped portions
+do not select. Grid references remain a separate, unpickable overlay.
 
 ### Orthophoto backgrounds
 

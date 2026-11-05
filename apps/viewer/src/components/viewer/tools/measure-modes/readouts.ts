@@ -20,6 +20,8 @@ import {
   type AngleKind,
   type AngleMeasurement,
   type MeasureMode,
+  type MeasurePoint,
+  type Measurement,
 } from '@/store/types';
 import { formatDistance } from '../formatDistance';
 import { formatThreePointAngle, threePointAngle, type ThreePointAngle } from './three-point-angle';
@@ -35,12 +37,13 @@ export const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, TranslationKe
   ['faces', 'measure.angleKind.faces.label', 'measure.angleKind.faces.hint'],
 ];
 
-/** The four measure modes in UI order, with their label keys. */
+/** The five measure modes in UI order, with their label keys. */
 export const MEASURE_MODE_LABELS: ReadonlyArray<readonly [MeasureMode, TranslationKey]> = [
   ['drag', 'measure.mode.distance'],
   ['polyline', 'measure.mode.polyline'],
   ['angle', 'measure.mode.angle'],
   ['radius', 'measure.mode.radius'],
+  ['point', 'measure.mode.point'],
 ];
 
 /**
@@ -70,13 +73,14 @@ export interface MeasureHintState {
   activePolyline: ActivePolyline | null;
   activeRadius: ActiveRadius | null;
   activeMeasurement: ActiveMeasurement | null;
+  measurePointLast: MeasurePoint | null;
 }
 
 /**
  * The one hint line for the HUD's bottom-center region. In angle and radius
  * modes `activeMeasurement` is always null (the drag gate refuses to start
  * one), so those branches name the gesture that actually works instead of
- * falling through to "Drag to measure".
+ * falling through to "Click to set the start point".
  */
 export function measureHintKey(s: MeasureHintState): TranslationKey {
   switch (s.measureMode) {
@@ -88,7 +92,34 @@ export function measureHintKey(s: MeasureHintState): TranslationKey {
       return s.activeRadius ? 'measure.hint.radiusActive' : 'measure.hint.radiusStart';
     case 'drag':
       return s.activeMeasurement ? 'measure.hint.dragActive' : 'measure.hint.dragStart';
+    case 'point':
+      return s.measurePointLast ? 'measure.hint.pointActive' : 'measure.hint.pointStart';
   }
+}
+
+export interface MeasureLivePointState {
+  measureMode: MeasureMode;
+  activeMeasurement: ActiveMeasurement | null;
+  measurements: readonly Measurement[];
+  measurePointLive: MeasurePoint | null;
+  measurePointLast: MeasurePoint | null;
+}
+
+/**
+ * The point every coordinate readout shows, and whether it is still moving.
+ * Point mode reads its own hover/placed point (#8770) and nothing else, so a
+ * distance endpoint never shows up as a picked point there. Every other mode
+ * keeps the rule the readouts always had: the moving end of the current drag,
+ * else the end of the last finished distance.
+ */
+export function measureLivePoint(s: MeasureLivePointState): { point: MeasurePoint; live: boolean } | null {
+  if (s.measureMode === 'point') {
+    if (s.measurePointLive) return { point: s.measurePointLive, live: true };
+    return s.measurePointLast ? { point: s.measurePointLast, live: false } : null;
+  }
+  if (s.activeMeasurement) return { point: s.activeMeasurement.current, live: true };
+  const last = s.measurements[s.measurements.length - 1];
+  return last ? { point: last.end, live: false } : null;
 }
 
 /**

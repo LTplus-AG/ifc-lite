@@ -1219,17 +1219,20 @@ export function Viewport({
     };
   }, [sectionPlane.enabled, sectionPlane.axis, sectionPlane.position, sectionRange]);
 
+  const symbolicVisibility = useMemo(() => ({ hidden: hiddenEntities, isolated: isolatedEntities }), [hiddenEntities, isolatedEntities]);
   const symbolicLineChannels = useSymbolicAnnotations({ // two buffers, not one (issue #3359)
     enabled: ifcAnnotationsVisible,
     gridEnabled: ifcGridVisible,
     gridSectionClip,
     fallbackY: annotationFallbackY,
+    visibility: symbolicVisibility,
   });
   const { texts: annotationTexts3D, fills: annotationFills3D } = useSymbolicAnnotationsRichData({
     enabled: ifcAnnotationsVisible,
     gridEnabled: ifcGridVisible,
     gridSectionClip,
     fallbackY: annotationFallbackY,
+    visibility: symbolicVisibility,
   });
   // Each independent symbolic upload is contained and replayed on device recovery.
   const alignmentVertices3D = useAlignmentLines3D();

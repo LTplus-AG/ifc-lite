@@ -8,6 +8,7 @@ import type { DeviceLossContext } from './device-loss-context.js';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
+import { noteGaussianDeviceEvent } from '@/hooks/ingest/gaussianTelemetry';
 
 export function modelsWithoutOmittedPointCloudHandles(
   result: DeviceRecoveryResult,
@@ -55,6 +56,7 @@ export function reportDeviceRecovery(
   // a later replacement-device loss is visible instead of being hidden by the
   // original device's once-per-episode latch.
   if (result.ok) onRecovered();
+  noteGaussianDeviceEvent(result.ok ? 'recovered' : 'recovery_failed');
   try {
     posthog.capture(result.ok ? 'device_loss_recovered' : 'device_loss_recovery_failed', result.ok
       ? { omissions: [...result.omissions] }

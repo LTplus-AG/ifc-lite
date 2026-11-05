@@ -2582,3 +2582,225 @@ describe('the GPU picker allocates on its first pick', () => {
         assert.strictEqual(h.stats.textures.filter((t) => t.label.startsWith('pick-')).length, 2, 'a same-size pick reuses them');
     });
 });
+
+// #8564 option B: the nearest-glass split driven through the REAL renderFrame. The stub
+// pass log shows where transparent IFC draws: held out of the main pass, replayed
+// depth-only for P1 and the layer count, and drawn between the two splat passes.
+describe('#8564 nearest-glass split in the render loop', () => {
+    const GLASS: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+    const glassDescriptor = {
+        layout: {}, vertex: { module: {}, entryPoint: 'vs_main' },
+        fragment: { module: {}, entryPoint: 'fs_main', targets: [{ format: 'bgra8unorm' }, { format: 'rgba8unorm' }] },
+        depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: false, depthCompare: 'greater' }, multisample: { count: 1 },
+    } as unknown as GPURenderPipelineDescriptor;
+
+    async function splitHarness(options: { transparent?: boolean; splats?: boolean; depthInterval?: boolean } = {}) {
+        const h = makeHarness();
+        const fields = h.renderer as unknown as Record<string, unknown>;
+        fields.ready = true;
+        const stub = fields.pipeline as Record<string, unknown>;
+        fields.pipeline = new Proxy(stub, { get: (target, key) => key === 'getDepthFormat' ? () => 'depth24plus-stencil8' : Reflect.get(target, key) });
+        (stub.visibility as OpaqueVisibilityPass).register(TRANSPARENT_PIPELINE as unknown as GPURenderPipeline, glassDescriptor, mainShaderSource);
+        const layer = fields.gaussianLayer as Record<string, unknown>;
+        (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+            upstreamReverseZ: true, upstreamDepthInterval: options.depthInterval ?? true,
+            createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, destroy() {},
+                encode: (_target, _camera, interval) => { h.stats.commands.push({ op: `splats:${interval?.compare ?? 'all'}` }); } }),
+        });
+        const passes = h.stats.passes;
+        const push = passes.push.bind(passes);
+        passes.push = (...labels: string[]) => { for (const label of labels) h.stats.commands.push({ op: `pass:${label}` }); return push(...labels); };
+        const scene = sceneOf(h);
+        scene.appendToBatches([triangle(1, GREY), ...(options.transparent === false ? [] : [triangle(2, GLASS)])], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        if (options.splats !== false) {
+            const attributes = {
+                count: 1, positions: new Float32Array([0, 0, 0]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+        }
+        const named = (pipeline: unknown) => (pipeline as { label?: string } | undefined)?.label;
+        const frame = (options: RenderOptions = {}) => { h.stats.commands.length = 0; h.render(options); return h.stats.commands.map((c) => c.op === 'setPipeline'
+            ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : ['overlay', 'reference-image'].includes(named(c.pipeline) ?? '') ? named(c.pipeline)! : 'variant')
+            : c.op).filter((op) => op !== 'setBindGroup'); };
+        const report = () => h.renderer.gaussianSplats.getStats().compositionReport;
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+        return { h, frame, report, tick };
+    }
+    /** The ops from the main pass's first draw to its end, i.e. before any Gaussian pass. */
+    const mainPass = (ops: string[]) => ops.slice(0, ops.findIndex((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+
+    it('splits a splat frame around transparent IFC once the depth-only variants exist', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        try {
+            const first = frame();
+            assert.ok(mainPass(first).includes('glass'), 'while compiling, transparent IFC draws in the main pass as before');
+            assert.deepEqual(first.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'over-transparent-approximate');
+            assert.equal(report()?.fallback, 'pipelines-compiling');
+            await tick();
+            const ops = frame();
+            assert.ok(!mainPass(ops).includes('glass'), 'transparent IFC is held out of the main pass');
+            const at = (op: string) => ops.indexOf(op);
+            assert.deepEqual(['pass:ifc-lite-gaussian-nearest-transparent', 'pass:ifc-lite-gaussian-transparent-layers', 'splats:less-equal', 'pass:ifc-lite-gaussian-transparent', 'splats:greater'].map(at).every((index, i, all) => index >= 0 && (i === 0 || index > all[i - 1])), true, ops.join(' '));
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-nearest-transparent') + 1, at('pass:ifc-lite-gaussian-transparent-layers')), ['variant', 'drawIndexed'], 'P1 replays the glass draw depth-only');
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-transparent') + 1, at('splats:greater')), ['glass', 'drawIndexed'], 'the held draw replays between the splat passes');
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.transparentLayers, 'unknown');
+            await tick();
+            assert.equal(report()?.transparentLayers, 'single', 'the frame\'s own occlusion count read back as zero and was published');
+            assert.equal(h.renderer.getDiagnostics().errors, 0);
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    it('keeps the single splat pass, unchanged, without transparent IFC', async () => {
+        const { h, frame, report, tick } = await splitHarness({ transparent: false });
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian')));
+            assert.deepEqual(ops.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'no-transparent');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    /** Spy every pass descriptor, texture and pipeline compile of the stub device. */
+    function spyDevice(h: Harness) {
+        const wdev = h.renderer['device'] as unknown as Record<string, unknown>;
+        const raw = wdev['device'] as Record<string, unknown>;
+        const spy = { passes: [] as GPURenderPassDescriptor[], textures: [] as string[], compiles: 0, querySets: 0 };
+        wdev['device'] = new Proxy(raw, { get: (target, key) => {
+            const member = Reflect.get(target, key) as (...args: unknown[]) => unknown;
+            if (key === 'createCommandEncoder') return () => new Proxy(member() as Record<string, unknown>, { get: (encoder, method) => method === 'beginRenderPass'
+                ? (d: GPURenderPassDescriptor) => { spy.passes.push(d); return (encoder.beginRenderPass as (d: unknown) => unknown)(d); } : Reflect.get(encoder, method) });
+            if (key === 'createTexture') return (d: GPUTextureDescriptor) => { spy.textures.push(d.label ?? ''); return member(d); };
+            if (key === 'createRenderPipelineAsync') return (d: unknown) => { spy.compiles++; return member(d); };
+            if (key === 'createQuerySet') return (d: unknown) => { spy.querySets++; return member(d); };
+            return member;
+        } });
+        return spy;
+    }
+
+    // #8564 review: IFC-only scenes must provably pay nothing for the split.
+    for (const scene of ['no splats', 'hidden splats'] as const) {
+        it(`records no extra pass, attachment, texture, query or pipeline with ${scene}`, async () => {
+            const { h, frame } = await splitHarness({ splats: scene === 'hidden splats' });
+            try {
+                if (scene === 'hidden splats') {
+                    const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { records: Map<unknown, { handle: unknown }> };
+                    assert.equal(layer.records.size, 1, 'a resident asset exists, only hidden');
+                    for (const record of layer.records.values()) h.renderer.gaussianSplats.setVisible(record.handle as never, false);
+                }
+                const spy = spyDevice(h);
+                for (let i = 0; i < 3; i++) {
+                    const ops = frame();
+                    assert.ok(mainPass(ops).includes('glass') && ops.indexOf('glass') > ops.indexOf('opaque'), 'transparent IFC draws in the main pass');
+                    assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+                assert.deepEqual(spy.passes.filter((d) => d.label?.startsWith('ifc-lite-gaussian')), []);
+                const main = spy.passes.filter((d) => d.colorAttachments.length === 2);
+                assert.equal(main.length, 3, 'one main pass per frame');
+                for (const d of main) {
+                    const [colour, ids] = d.colorAttachments as GPURenderPassColorAttachment[];
+                    assert.equal(colour.loadOp, 'clear');
+                    assert.equal(colour.storeOp, 'store', 'the stub has no MSAA, so the swapchain is stored as before');
+                    assert.equal(ids.loadOp, 'clear');
+                    assert.equal(d.depthStencilAttachment?.stencilStoreOp, 'discard');
+                }
+                assert.deepEqual(spy.textures.filter((label) => label.includes('gaussian')), []);
+                assert.equal(spy.compiles, 0, 'no depth-only variant compiles');
+                assert.equal(spy.querySets, 0);
+                const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { glass: { split: unknown } };
+                assert.equal(layer.glass.split, null, 'the split never allocated its per-device state');
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    for (const [why, setup] of [
+        ['single-pass-mode', (h: Harness) => h.renderer.gaussianSplats.setCompositionMode('single-pass')],
+        ['upstream-interval-missing', () => {}],
+    ] as const) {
+        it(`reports ${why} and composites over transparent IFC in one pass`, async () => {
+            const { h, frame, report, tick } = await splitHarness({ depthInterval: why !== 'upstream-interval-missing' });
+            try {
+                setup(h);
+                frame();
+                await tick();
+                const ops = frame();
+                assert.ok(mainPass(ops).includes('glass'));
+                assert.deepEqual(ops.filter((op) => op.startsWith('splats:') || op.startsWith('pass:ifc-lite-gaussian')), ['splats:all']);
+                assert.equal(report()?.composition, 'over-transparent-approximate');
+                assert.equal(report()?.fallback, why);
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    it('#8564 review F3: split frames draw reference images and overlays after transparent IFC and before the splats in front, as single passes do', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        const fields = h.renderer as unknown as Record<string, Record<string, unknown>>;
+        const drawsWith = (label: string) => (pass: GPURenderPassEncoder) => { pass.setPipeline({ label } as unknown as GPURenderPipeline); pass.draw(3); };
+        fields.referenceImages.draw = drawsWith('reference-image');
+        fields.overlays.draw = drawsWith('overlay');
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            const at = (op: string, from = 0) => ops.indexOf(op, from);
+            const glassPass = at('pass:ifc-lite-gaussian-transparent');
+            assert.ok(glassPass > 0 && !mainPass(ops).includes('overlay') && !mainPass(ops).includes('reference-image'), ops.join(' '));
+            assert.deepEqual(ops.slice(glassPass + 1, at('splats:greater')), ['glass', 'drawIndexed', 'reference-image', 'draw', 'overlay', 'draw'],
+                'glass, then reference images and overlays in their established order, then the splats in front');
+            assert.ok(at('splats:less-equal') < glassPass);
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.laterOverBehindSplats, true, 'drawing them after the splats behind the glass is disclosed');
+            h.renderer.gaussianSplats.setCompositionMode('single-pass');
+            const single = frame();
+            assert.deepEqual(single.filter((op) => ['glass', 'reference-image', 'overlay', 'splats:all'].includes(op)), ['glass', 'reference-image', 'overlay', 'splats:all'],
+                'the single pass has the same relative order');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+});
+
+// #8564 review (Codex on 372b9ec): established draw order is preserved.
+describe('#8564 review: draw order around transparent IFC', () => {
+    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before selection hydration and transparent instances', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const glassColour: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, glassColour), triangle(4, glassColour)], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const hydrate = h.renderer.createMeshFromData.bind(h.renderer);
+        h.renderer.createMeshFromData = (piece) => { h.stats.commands.push({ op: 'hydrate' }); return hydrate(piece); };
+        try {
+            h.stats.commands.length = 0;
+            h.render({ hiddenIds: new Set([4]), selectedId: 1 }); // glass {3,4} with 4 hidden: one transparent sub-batch
+            const ops = h.stats.commands.map((c) => c.op === 'setPipeline' && c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.op);
+            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate');
+            assert.ok(glass >= 0 && hydration >= 0, ops.join(' '));
+            assert.equal(ops[glass + 1], 'setBindGroup');
+            assert.ok(ops.indexOf('drawIndexed', glass) < hydration, `transparent sub-batch draws before selection hydration, as at 750b33165a: ${ops.join(' ')}`);
+        } finally {
+            h.renderer.destroy();
+        }
+    });
+
+});

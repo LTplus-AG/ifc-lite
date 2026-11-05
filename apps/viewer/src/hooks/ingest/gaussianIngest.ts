@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
+import type { CaptureUpAxis } from './pointCloudFrame.js';
+import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -10,9 +13,6 @@ import {
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import { modelIndices } from '../../lib/model-placement/model-indices.js';
 import type { GaussianDecoded } from './gaussianDecoded.js';
-
-/** Raw source coordinates: no axis flip, unit, survey or measurement claim. */
-export const UNCALIBRATED_PLACEMENT: readonly number[] = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 /** Store record of one capture. `handle` is the renderer-issued object itself. */
 export interface GaussianSplatModel {
@@ -24,7 +24,13 @@ export interface GaussianSplatModel {
   readonly sourceCenterBounds: GaussianDecoded['centerBounds'];
   /** Column-major source-local -> viewer world matrix handed to the renderer. */
   readonly placement: readonly number[];
-  /** 'source': raw coordinates (identity). 'explicit': supplied by the caller or user. */
+  /** Source-coordinate centre subtracted from the CPU position arrays only. */
+  readonly decodeOrigin?: readonly [number, number, number];
+  /** Unbaked placement and axes for reload/portable restore (#8752). */
+  readonly sourcePlacement?: readonly number[];
+  readonly upAxis?: CaptureUpAxis;
+  readonly frameOffset?: { x: number; y: number; z: number };
+  /** 'source': default frame policy. 'explicit': a supplied placement matrix. */
   readonly placementOrigin: 'source' | 'explicit';
   readonly calibration: 'uncalibrated';
   /** Only an attribution the caller supplied; never inferred from file contents. */
@@ -34,13 +40,16 @@ export interface GaussianSplatModel {
 /** Renderer-boundary arrays plus the summary the store keeps. */
 export interface PreparedGaussianCapture extends Pick<GaussianDecoded, 'count' | 'shDegree' | 'centerBounds'> {
   attributes: NormalizedGaussianAttributes;
+  decodeOrigin: readonly [number, number, number];
 }
 
 /** Normalize once. The caller passes the decode result straight in and keeps no
  * reference, so the raw decoded columns are collectable during the upload. */
 export function prepareGaussianCapture(decoded: GaussianDecoded): PreparedGaussianCapture {
   const { count, shDegree, centerBounds } = decoded;
-  return { attributes: normalizeGaussianAttributes(decoded), count, shDegree, centerBounds };
+  const attributes = normalizeGaussianAttributes(decoded);
+  const decodeOrigin = decoded.decodeOrigin;
+  return { attributes, decodeOrigin, count, shDegree, centerBounds };
 }
 
 export interface GaussianUploadRequest {
@@ -55,8 +64,10 @@ export interface GaussianUploadRequest {
   visible: boolean;
   signal: AbortSignal;
   isCurrent(): boolean;
-  /** Explicit caller/user placement; absent means raw source coordinates. */
+  /** Caller placement before the shared render-frame offset is subtracted. */
   placement?: readonly number[];
+  upAxis?: CaptureUpAxis;
+  frame?: RenderFrameInfo | null;
   attribution?: string;
 }
 
@@ -64,6 +75,7 @@ export interface GaussianUploadRequest {
  * `commit` (the store now owns it) or `rollback` (remove it) must run. */
 export interface GaussianUpload {
   record: GaussianSplatModel;
+  attributes: NormalizedGaussianAttributes;
   commit(): void;
   rollback(): void;
 }
@@ -80,13 +92,15 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   if (request.currentGeneration() !== request.generation) {
     throw new Error('The viewer renderer was reinitialised while the capture decoded.');
   }
-  const placement = request.placement ?? UNCALIBRATED_PLACEMENT;
-  if (placement.length !== 16 || !placement.every(Number.isFinite)) throw new Error('A capture placement needs 16 finite matrix values.');
+  const framed = gaussianCaptureFrame(request.placement, request.upAxis, request.frame);
+  const { placement } = framed;
   const slot = modelIndices.reserve(request.modelId, request.models());
   let handle: GaussianSplatHandle;
   try {
+    // The adapter's acknowledgement literal is a renderer call detail, not the
+    // admission decision: that is the build's (`gaussianAdmissionEnabled`, #8568).
     handle = await splats.add({
-      attributes: capture.attributes, placement: { matrix: placement }, modelIndex: slot.index, visible: request.visible,
+      attributes: capture.attributes, placement: { matrix: gaussianUploadPlacement(placement, capture.decodeOrigin) }, modelIndex: slot.index, visible: request.visible,
     }, { qualification: 'internal-unqualified', signal });
   } catch (error) {
     slot.release(); // A rejected add retains nothing, including this index.
@@ -96,9 +110,10 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   if (!request.isCurrent() || signal.aborted) { rollback(); return null; }
   const { count, shDegree, centerBounds } = capture;
   return {
+    attributes: capture.attributes,
     record: {
       handle, format: request.format, count, shDegree, sourceCenterBounds: centerBounds,
-      placement, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
+      ...framed, decodeOrigin: capture.decodeOrigin, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',
       ...(request.attribution ? { attribution: request.attribution } : {}),
     },
     commit: () => slot.release(),

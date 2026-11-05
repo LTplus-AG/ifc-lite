@@ -302,7 +302,7 @@ export async function createCesiumBridge(
     heightsAreEllipsoidal, requested: placementMode,
   });
   const placement: GlobePlacementPlan = globe?.plan
-    ?? { requested: placementMode, mode: 'anchor', estimate: null, key: '' };
+    ?? { requested: placementMode, mode: 'anchor', estimate: null, prescribed: null, key: '' };
   const exactMapping = globe && placement.mode === 'exact' ? globe.mapping : null;
   const exactCameraFrame = exactMapping ? createExactCameraFrame(exactMapping, modelOrigin) : null;
   // ── Cache for ECEF objects ──

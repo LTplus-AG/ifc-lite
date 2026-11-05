@@ -1,0 +1,10 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -151,6 +151,7 @@
+   release(): void {
+     this.last = null;
+     this.report = NO_TRANSPARENT;
++    this.failed = false;
+     this.split?.split.destroy();
+     this.split = null;
+   }

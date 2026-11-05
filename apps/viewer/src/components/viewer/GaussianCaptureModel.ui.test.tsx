@@ -82,13 +82,37 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
   it('capture metadata states what is known and its limits, never IFC schema or statistics', () => {
     const container = render(<ModelMetadataPanel model={useViewerStore.getState().models.get('capture')!} />);
     const text = container.textContent ?? '';
-    for (const expected of ['Gaussian capture (internal preview)', 'Gaussian PLY', '914,000', 'Raw source coordinates',
-      'Uncalibrated: no units, alignment or measurement', 'cull whole Gaussians by centre', 'approximately', 'Seem Kirke by roedsgaard, CC BY 4.0']) {
+    for (const expected of ['Gaussian capture', 'Gaussian PLY', '914,000', 'Source coordinates in viewer frame',
+      'Uncalibrated: no units, alignment or measurement', 'Seem Kirke by roedsgaard, CC BY 4.0']) {
       assert.ok(text.includes(expected), `shows ${expected}`);
     }
+    assert.ok(!text.includes('internal preview'), 'a released capture is not labelled a preview (#8568)');
+    // #8568: every disclosed launch limitation, in the panel's limitations section.
+    const limitations = [...container.querySelectorAll('[data-limitation]')].map((node) => [node.getAttribute('data-limitation'), node.textContent]);
+    assert.deepEqual(limitations, [
+      ['composition', 'Exact behind one glass layer; approximate behind several layers and in X-ray.'],
+      ['clipping', 'Section planes and boxes cull whole Gaussians by centre; no section caps.'],
+      ['uncalibrated', 'Uncalibrated: shown in source units, with no metric scale or survey alignment.'],
+      ['picking', 'Not pickable: select the capture in the model list.'],
+      ['measurement', 'No measurement or snapping on captures.'],
+      ['export', 'Capture data is not included in exports (IFC, glTF, USD, KMZ, PDF and others). BCF snapshots can show visible captures.'],
+    ]);
     for (const absent of ['IFC Model', 'IFC4', 'Total Entities', 'Building Storeys', 'Max Express ID']) {
       assert.ok(!text.includes(absent), `does not claim ${absent}`);
     }
+  });
+
+  it('up-axis control shows the applied default for unplaced and explicitly placed captures (#8752)', () => {
+    const original = captureModel('source', 'source.ply');
+    const source = { ...original, gaussianSplat: { ...original.gaussianSplat!, sourcePlacement: IDENTITY } };
+    let container = render(<ModelMetadataPanel model={source} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'z');
+    cleanup();
+    const explicit = { ...source, gaussianSplat: {
+      ...source.gaussianSplat!, placementOrigin: 'explicit' as const, placement: IDENTITY,
+    } };
+    container = render(<ModelMetadataPanel model={explicit} />);
+    assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, 'y');
   });
 
   it('an IFC model keeps its IFC metadata panel', () => {

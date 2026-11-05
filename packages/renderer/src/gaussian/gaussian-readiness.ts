@@ -21,7 +21,9 @@ export type GaussianCapability =
   | 'rte-anchor'
   | 'centre-clipping'
   | 'non-pickable'
-  | 'generation-lifecycle';
+  | 'generation-lifecycle'
+  /** Splats split around the nearest transparent IFC layer: exact for one layer; between layers still approximate. */
+  | 'nearest-glass-split';
 
 /** No ready variant until the native shared-composition contract is qualified. */
 export type GaussianReadiness =
@@ -47,6 +49,7 @@ const blockers = Object.freeze([
 const capabilities = Object.freeze([
   'shared-device', 'viewer-frame', 'reverse-z-order', 'msaa', 'opaque-occlusion', 'packed-global-order',
   'similarity-placement', 'sh-rotation', 'rte-anchor', 'centre-clipping', 'non-pickable', 'generation-lifecycle',
+  'nearest-glass-split',
 ] as const satisfies readonly GaussianCapability[]);
 
 /** Uses the renderer's existing lifetime; no second device or readiness latch. */

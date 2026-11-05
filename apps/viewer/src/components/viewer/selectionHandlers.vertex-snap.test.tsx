@@ -269,6 +269,21 @@ describe('Angle edges: a double-click across the edge boundary is the shared cor
   });
 });
 
+describe('Angle edges: a press into the shared corner keeps its snap (#8866)', () => {
+  it('edge B started by a press 60px from pick 2 that snaps onto its corner starts at that corner', () => {
+    s().setMeasureMode('angle');
+    s().setAngleKind('edges');
+    const rig = mountSnapping();
+    const { shown, canvas } = rig;
+    click(canvas, shown.x - 30, shown.y + 100); // pick 1: plain surface
+    click(canvas, shown.x + 30, shown.y); // pick 2 snaps to the corner
+    click(canvas, shown.x - 30, shown.y); // edge B's start, pressed away but meant for the corner
+    const picks = s().activeAngle?.picks ?? [];
+    assert.equal(picks.length, 3, 'edge A and the start of edge B');
+    assert.ok(sameWorld(picks[2].point, CORNER), 'BUG: the shared corner was unsnapped to the surface');
+  });
+});
+
 describe('one vertex path for taps and clicks (#8866)', () => {
   it('a vertex tapped, then a click away from it that snaps onto it, adds the surface point', () => {
     s().setMeasureMode('polyline');

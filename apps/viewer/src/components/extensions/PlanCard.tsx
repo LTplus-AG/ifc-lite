@@ -74,12 +74,12 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
     <div className={cn(
       'rounded-lg border bg-card p-4 space-y-3',
       overall === 'red' && 'border-destructive/50',
-      overall === 'yellow' && 'border-amber-500/40',
+      overall === 'yellow' && 'border-warn-border',
     )}>
       <div className="flex items-start gap-2">
         <div className={cn(
           'mt-1 p-1.5 rounded-md',
-          overall === 'red' ? 'bg-destructive/20 text-destructive' : overall === 'yellow' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'bg-primary/20 text-primary',
+          overall === 'red' ? 'bg-destructive/20 text-destructive' : overall === 'yellow' ? 'bg-amber-500/20 text-warn' : 'bg-primary/20 text-primary',
         )}>
           {overall === 'red' ? <ShieldAlert className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
         </div>
@@ -222,8 +222,8 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
     <span className={cn(
       'inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide',
       tier === 'red' && 'bg-destructive/20 text-destructive',
-      tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
-      tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+      tier === 'yellow' && 'bg-amber-500/20 text-warn',
+      tier === 'green' && 'bg-emerald-500/20 text-ok',
     )}>
       {localizeRiskTier(tier, t)}
     </span>

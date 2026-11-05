@@ -107,3 +107,19 @@ horizontal positioning and left inherited vertical centering active. Fixed by
 removing inline transform and overriding vertical translation with `translate-y-0`.
 Browser bounding rectangles before/after filtering are still mandatory. Review
 found no further concrete ranking defects; this is static evidence only.
+
+Validation continuation: candidate `a6b232e26b6ca3b559f9f3e2fe6169f067857658`
+root typecheck plus full four-shard viewer suite submitted as
+`auto-5bde8b6be5344c46970384a8c98accd2`, PC job
+`faf298e8-1840-435d-bcc6-a086e802556f`, storage task
+`palette-ux-candidate-fd0b1714`. This tests the pre-positioning-fix checkpoint,
+not the final CSS fix `1d72380b1f`; final-head coverage remains required.
+Both requests are queued behind original fleet reservations; keep their identities.
+
+Git history was deepened by 220 commits for the silent-revert gate. Pre-handoff
+then exited 0: all evaluated gates passed, with retained-free viewer SKIPPED
+because `apps/viewer/dist` does not exist. That skip is not a built-viewer pass.
+No browser captures or full test verdict yet, and no round accepted.
+Coordinator escalated the concrete reservation recovery blocker to the parent
+for owner coordination. No source or foreign outputs removed; no bytes reclaimed.
+Owned tasks remain open while original job outcomes are pending.

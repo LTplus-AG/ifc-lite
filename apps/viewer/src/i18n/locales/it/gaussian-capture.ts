@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const gaussianCaptureIt = {
+  "positionedDownload.open": "Scarica il file posizionato…",
+  "positionedDownload.description": "Converte l’intera origine in PLY incorporando il posizionamento attualmente applicato. Il risultato usa le coordinate del progetto, con Z verso l’alto. Aprilo senza le precedenti impostazioni di posizionamento.",
+  "positionedDownload.scan": "Include posizioni decodificate, RGB, intensità, classificazione e normali valide, se disponibili. I valori RGB, di intensità o di classificazione mancanti nelle scansioni miste sono sostituiti con zero. Gli altri campi di origine, l’organizzazione della scansione e i metadati del sistema di coordinate non vengono conservati. I filtri di visualizzazione e il sottocampionamento non influiscono su questo download.",
+  "positionedDownload.gaussian": "Include tutti i centri, le dimensioni, gli orientamenti, l’opacità e i colori tramite armoniche sferiche delle gaussiane. Gli assi di origine e il posizionamento vengono incorporati. Le proprietà di origine aggiuntive non vengono conservate. L’acquisizione rimane non calibrata.",
+  "positionedDownload.limit": "Limite di esportazione nel browser: 256 MiB. Le esportazioni più grandi si interrompono senza scaricare un file parziale. File PCD/PTS/XYZ: fino a 16 MiB; PCD anche fino a 1 milione di punti / 64 MiB decodificati; file LAZ: fino a 64 MiB.",
+  "positionedDownload.unavailable": "Attendi il completamento del caricamento, applica o annulla ogni anteprima di posizionamento e verifica che l’origine originale sia disponibile prima del download.",
+  "positionedDownload.progress": "Preparazione di {count} punti…",
+  "positionedDownload.done": "File PLY posizionato scaricato.",
+  "positionedDownload.save": "Scarica PLY",
+  "positionedDownload.cancel": "Annulla",
   "gaussianCapture.kind": "Acquisizione gaussiana",
   "gaussianCapture.format.gaussianPly": "PLY gaussiano",
   "gaussianCapture.format.splat": ".splat",
@@ -39,7 +49,7 @@ export const gaussianCaptureIt = {
   "gaussianCapture.limitation.picking": "Non selezionabile nella vista: seleziona l'acquisizione nell'elenco dei modelli.",
   "gaussianCapture.limitation.measurement": "Nessuna misura o aggancio sulle acquisizioni.",
   "gaussianCapture.limitation.uncalibrated": "Non calibrata: visualizzata nelle unità di origine, senza scala metrica o allineamento topografico.",
-  "gaussianCapture.limitation.export": "I dati delle acquisizioni non sono inclusi nelle esportazioni (IFC, glTF, USD, KMZ, PDF e altre). Le istantanee BCF possono mostrare le acquisizioni visibili.",
+  "gaussianCapture.limitation.export": "I dati delle acquisizioni non sono inclusi nelle esportazioni IFC, glTF, USD, KMZ o PDF. Usa «Scarica il file posizionato» per il PLY gaussiano. Le istantanee BCF possono mostrare le acquisizioni visibili.",
   "gaussianCapture.error.disabled": "Il caricamento delle acquisizioni gaussiane è disattivato in questa versione del visualizzatore. Modelli IFC e nuvole di punti continuano a caricarsi.",
   "gaussianCapture.error.captureBytes": "Questa acquisizione occupa {size}. Le acquisizioni gaussiane possono occupare al massimo {limit}.",
   "gaussianCapture.error.captureSplats": "Questa acquisizione ha {count} splat. Una scena può contenere al massimo {limit} splat.",
@@ -49,11 +59,7 @@ export const gaussianCaptureIt = {
   "gaussianCapture.error.rendererUnavailable": "Il renderer del visualizzatore non può accettare acquisizioni gaussiane al momento; l'acquisizione non è stata decodificata.",
   "gaussianCapture.error.loadFailed": "Impossibile caricare l'acquisizione gaussiana: {reason}",
   "gaussianCapture.error.webgpu": "Le acquisizioni gaussiane richiedono la vista 3D WebGPU, qui non disponibile. L'acquisizione non è stata decodificata.",
-  "gaussianCapture.export.notice": {
-    "one": "{formatted} acquisizione gaussiana caricata. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili.",
-    "other": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili.",
-    "many": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili."
-  },
+  "gaussianCapture.export.notice": {"one": "{formatted} acquisizione gaussiana caricata. I dati delle acquisizioni non sono inclusi in questa esportazione. Usa «Scarica il file posizionato» per il PLY gaussiano. Le istantanee BCF possono mostrare le acquisizioni visibili.", "other": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi in questa esportazione. Usa «Scarica il file posizionato» per il PLY gaussiano. Le istantanee BCF possono mostrare le acquisizioni visibili.", "many": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi in questa esportazione. Usa «Scarica il file posizionato» per il PLY gaussiano. Le istantanee BCF possono mostrare le acquisizioni visibili."},
   "gaussianCapture.row.summary": {
     "one": "{formatted} splat · non calibrata",
     "other": "{formatted} splat · non calibrata",

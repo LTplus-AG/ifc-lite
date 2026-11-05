@@ -56,3 +56,14 @@ test('Italian copy summary composes counts and untouched model names without su 
     assert.equal(resolve('assistantReuse.openGraph'), `Apri in ${resolve('flowPanel.title')}`);
   } finally { setLocale('en'); }
 });
+
+// Italian round-4 visual regression: the chip supplies count as a string.
+test('Italian measurement chip count composes with one and multiple saved measurements', async () => {
+  const it = await requiredModule(() => import('./locales/it').then(module => module.default), 'Italian shipping catalogue must be available');
+  registerLocale('it', it); setLocale('it');
+  try {
+    for (const count of ['1', '2']) {
+      assert.equal(resolve('measure.chip.label', { count }), `Misure: ${count}`);
+    }
+  } finally { setLocale('en'); }
+});

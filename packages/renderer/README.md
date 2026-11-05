@@ -174,3 +174,15 @@ For a change to the entire Gaussian scene's render origin, the internal
 placements, bounds and the float64 anchor together. Packed local rows remain
 unchanged, preserving the precision envelope even for survey-scale offsets.
 Use `setPlacement` for an individual capture's placement or orientation edit.
+
+### Picking symbolic annotations
+
+`Renderer.pick(x, y, options)` includes owned annotation overlays on both mesh
+picking routes. Coordinates and the four-pixel line tolerance are in CSS pixels.
+For `setLineOverlay('annotation', vertices, options)`, anchored partitions may
+supply `ownerIds: Uint32Array`, one scene entity ID per segment (two vertices).
+`SymbolicFillInput` and `SymbolicTextInput` accept an optional `ownerId` in the
+same scene ID space. Omit ownership for reference layers. Clear or replace using
+the existing upload methods; `sectionClipped` and pick visibility filters apply.
+Labels use their laid-out glyph quads and clip with their anchor; fills retain
+holes. This ownership applies to single-point picks, not rectangle selection.

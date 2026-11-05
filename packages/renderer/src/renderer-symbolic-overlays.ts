@@ -49,6 +49,8 @@ export class SymbolicOverlays {
 
     constructor(private readonly host: SymbolicOverlayHost) {}
 
+    getPickGlyphs() { return this.textPipeline?.pickGlyphs ?? []; }
+
     hasGeometry(): boolean {
         return (this.fillPipeline?.hasGeometry() ?? false) || (this.textPipeline?.hasGeometry() ?? false);
     }

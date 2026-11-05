@@ -12,14 +12,14 @@ import type { Renderer } from '@ifc-lite/renderer';
 
 /** Exact payload accepted by Renderer.setLineOverlay; never a look-alike. */
 export type RendererLineVertices = Exclude<Parameters<Renderer['setLineOverlay']>[1], null>;
-export type AnchoredRendererLineVertices = { localVertices: Float32Array; origin: [number, number, number] };
+export type AnchoredRendererLineVertices = { localVertices: Float32Array; origin: [number, number, number]; ownerIds?: Uint32Array };
 
 const EMPTY_F32 = new Float32Array(0);
 /** One RTE partition's local f32 extent; larger line segments are split. */
 export const MAX_ANCHORED_LINE_EXTENT_METRES = 8_192;
 
 /** Convert non-empty f64 world line data into the renderer-owned RTE payload. */
-export function anchorWorldLineVertices(vertices: readonly number[]): RendererLineVertices {
+export function anchorWorldLineVertices(vertices: readonly number[], ownerIds?: readonly number[]): RendererLineVertices {
   if (vertices.length === 0) return EMPTY_F32;
   for (const coordinate of vertices) {
     if (!Number.isFinite(coordinate)) {
@@ -27,21 +27,22 @@ export function anchorWorldLineVertices(vertices: readonly number[]): RendererLi
     }
   }
   if (vertices.length < 3) return new Float32Array(vertices);
-  const partitions: Array<AnchoredRendererLineVertices & { values: number[] }> = [];
+  const partitions: Array<AnchoredRendererLineVertices & { values: number[]; owners: number[] }> = [];
 
   const fits = (origin: readonly number[], start: readonly number[], end: readonly number[]): boolean =>
     [start, end].every((point) => point.every((coordinate, axis) =>
       Math.abs(coordinate - origin[axis]!) <= MAX_ANCHORED_LINE_EXTENT_METRES,
     ));
-  const append = (start: readonly number[], end: readonly number[]): void => {
+  const append = (start: readonly number[], end: readonly number[], ownerId: number): void => {
     // A partition is a spatial batch, rather than a segment. The first fitting
     // anchor preserves source order within that batch while compact survey
     // polylines share one upload/uniform record.
     let partition = partitions.find((candidate) => fits(candidate.origin, start, end));
     if (!partition) {
-      partition = { localVertices: EMPTY_F32, origin: [start[0]!, start[1]!, start[2]!], values: [] };
+      partition = { localVertices: EMPTY_F32, origin: [start[0]!, start[1]!, start[2]!], values: [], owners: [] };
       partitions.push(partition);
     }
+    partition.owners.push(ownerId);
     for (const point of [start, end]) {
       partition.values.push(
         point[0]! - partition.origin[0],
@@ -68,12 +69,13 @@ export function anchorWorldLineVertices(vertices: readonly number[]): RendererLi
         start[1] + (end[1] - start[1]) * t1,
         start[2] + (end[2] - start[2]) * t1,
       ];
-      append(pieceStart, pieceEnd);
+      append(pieceStart, pieceEnd, ownerIds?.[index / 6] ?? 0);
     }
   }
-  const result: AnchoredRendererLineVertices[] = partitions.map(({ origin, values }) => ({
+  const result: AnchoredRendererLineVertices[] = partitions.map(({ origin, values, owners }) => ({
     origin,
     localVertices: new Float32Array(values),
+    ...(ownerIds ? { ownerIds: new Uint32Array(owners) } : {}),
   }));
   if (result.length === 1) return result[0];
   return result;

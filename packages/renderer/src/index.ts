@@ -550,6 +550,8 @@ export class Renderer {
 
         // Create composition managers
         this.pickingManager = new PickingManager(this.camera, this.scene, null, this.canvas, (meshData: MeshData) => this.createMeshFromData(meshData));
+        this.pickingManager.setAnnotationPickProvider((x, y, width, height, options, clip) =>
+            this.overlays.annotationPicker.pick(this.camera, x, y, width, height, options, clip));
         this.raycastEngine = new RaycastEngine(this.camera, this.scene, this.canvas);
     }
 
@@ -3135,8 +3137,6 @@ export class Renderer {
 
     /**
      * Pick object at screen coordinates
-     * Respects visibility filtering so users can only select visible elements
-     * Returns PickResult with expressId and modelIndex for multi-model support
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.

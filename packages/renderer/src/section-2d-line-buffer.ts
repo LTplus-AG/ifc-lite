@@ -47,6 +47,8 @@ export interface SectionLinePipelineResources {
 /** Opt-in canonical overlay geometry. Legacy f32 world lines must not claim this precision. */
 export interface AnchoredLineVertices {
   localVertices: Float32Array;
+  /** Scene owner id per segment, for annotation picking. Zero is unowned. */
+  ownerIds?: Uint32Array;
   origin: readonly [number, number, number];
 }
 

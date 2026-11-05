@@ -203,3 +203,6 @@ export const isSpatialContainer = (type: NodeType): boolean => SPATIAL_CONTAINER
 /** Rows muted because they represent known geometry-less physical objects. */
 export const isNoGeometryNode = (node: TreeNode): boolean =>
   node.noGeometry === true || node.type === 'other-group';
+
+/** Height of an ordinary tree row (#8802): 28 px, the inspector's data-row size. */
+export const HIERARCHY_ROW_HEIGHT = 28;

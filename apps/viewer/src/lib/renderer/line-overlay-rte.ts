@@ -12,7 +12,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 
 /** Exact payload accepted by Renderer.setLineOverlay; never a look-alike. */
 export type RendererLineVertices = Exclude<Parameters<Renderer['setLineOverlay']>[1], null>;
-export type AnchoredRendererLineVertices = { localVertices: Float32Array; origin: [number, number, number]; ownerIds?: Uint32Array };
+export type AnchoredRendererLineVertices = Extract<RendererLineVertices, { localVertices: Float32Array }>;
 
 const EMPTY_F32 = new Float32Array(0);
 /** One RTE partition's local f32 extent; larger line segments are split. */

@@ -43,6 +43,14 @@ function mountSnapping() {
     snapEnabledRef: { current: true },
     edgeLockStateRef: { get current() { return s().edgeLockState; }, set current(_v) { /* store-owned */ } },
     updateMeasurementScreenCoords: (project) => s().updateMeasurementScreenCoords(project),
+    // Distance's side, bound as Viewport.tsx binds it (see measureHandlers.distance-click.test.tsx).
+    activeMeasurementRef: { get current() { return s().activeMeasurement; }, set current(_v) { /* store-owned */ } },
+    measurementConstraintEdgeRef: { get current() { return s().measurementConstraintEdge; }, set current(_v) { /* store-owned */ } },
+    startMeasurement: (p) => s().startMeasurement(p),
+    updateMeasurement: (p) => s().updateMeasurement(p),
+    finalizeMeasurement: () => s().finalizeMeasurement(),
+    setMeasurementConstraintEdge: (edge) => s().setMeasurementConstraintEdge(edge),
+    clearEdgeLock: () => s().clearEdgeLock(),
   });
   const { params, canvas } = rig;
   const ctx = {

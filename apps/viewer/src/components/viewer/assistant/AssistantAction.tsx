@@ -5,6 +5,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
+import type { PanelHeaderAction } from '@/components/ui/panel-header';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
@@ -24,16 +25,28 @@ export function AssistantSourceContext({ panel, children }: { panel: WorkspacePa
  * Discuss with AI for the panel's current source, or for an explicit `source`
  * when a panel hosts a second one (Flow's last run beside its graph).
  */
-export function AssistantAction({ source: explicit, labelKey = 'assistant.explain' }: { source?: AssistantSource; labelKey?: TranslationKey } = {}) {
+export function AssistantAction({ source, labelKey = 'assistant.explain' }: { source?: AssistantSource; labelKey?: TranslationKey } = {}) {
+  const action = useAssistantAction({ source, labelKey });
+  if (!action) return null;
+  return <IconButton label={action.label} className="h-7 w-7" onClick={action.onSelect}>{action.icon}</IconButton>;
+}
+
+/** The same action as a shared panel header entry (`PanelHeader`); null while the panel has no source to discuss. */
+export function useAssistantAction({ source: explicit, labelKey = 'assistant.explain' }: { source?: AssistantSource; labelKey?: TranslationKey } = {}): PanelHeaderAction | null {
   const panel = useContext(PanelContext);
   const { t } = useTranslation();
   // Subscribed so a Data validation side switch re-resolves the panel's subject.
   useValidationSourceChoice(s => s.choice);
   const source = useViewerStore(s => explicit ?? panelSource(panel, s));
   if (!source) return null;
-  return <IconButton label={t(labelKey)} className="h-7 w-7" onClick={() => {
-    replaceEvidence(captureEvidence(source));
-    // The user's placement choice decides the host; the source panel stays visible or becomes the return target.
-    openAssistant(panel ?? adapterFor(source).panelIds[0]);
-  }}><Sparkles className="h-4 w-4" /></IconButton>;
+  return {
+    id: 'assistant',
+    label: t(labelKey),
+    icon: <Sparkles className="h-4 w-4" />,
+    onSelect: () => {
+      replaceEvidence(captureEvidence(source));
+      // The user's placement choice decides the host; the source panel stays visible or becomes the return target.
+      openAssistant(panel ?? adapterFor(source).panelIds[0]);
+    },
+  };
 }

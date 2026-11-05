@@ -22,6 +22,7 @@ import { cleanupMouseControls, mountMouseControls, mousePointer } from '@/test/m
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
 import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 const s = () => useViewerStore.getState();
@@ -386,6 +387,138 @@ describe('a start never inherits the edge lock of its own pick (#8771)', () => {
     click(canvas, 500, 300);
     assert.equal(s().measurements.length, 1, 'BUG: the start\'s own edge lock pulled the second click back onto it');
     assert.ok(near(s().measurements[0].distance, 3), `distance ${s().measurements[0].distance}, expected 3`);
+  });
+});
+
+/**
+ * The mobile journey's case (#8788): a vertex snap with a 60px pull and no edge
+ * lock. Both points sit near the corner at world (2,0,0), so a second tap or
+ * click 38px from the first snaps onto the start too.
+ */
+function snapToCorner(x: number, y: number) {
+  const edgeLock = { shouldRelease: false, shouldLock: false, edge: null };
+  if (Math.hypot(x - 200, y - 300) < 60) return { intersection: { point: { x: 2, y: 0, z: 0 } }, snapTarget: null, edgeLock };
+  return { intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } }, snapTarget: null, edgeLock };
+}
+/** The exact surface hit under the pointer: canvas x/100, (300 - y)/100. */
+const exactSurface = (x: number, y: number) => ({ intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } } });
+
+describe('a snap never swallows a second point placed away from the start (#8788)', () => {
+  const mountSnapping = () => {
+    const rig = mountMouseControls(storeBound);
+    Object.assign(rig.params.rendererRef.current!, { raycastSceneMagnetic: snapToCorner, raycastScene: exactSurface });
+    return rig;
+  };
+  const ctxOf = (params: UseMouseControlsParams, canvas: HTMLCanvasElement) => ({
+    ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),
+    mouseState: params.mouseStateRef.current,
+  }) as unknown as MouseHandlerContext;
+
+  it('a second tap 38px away that snaps onto the start measures to the surface it was tapped on', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first tap snaps to the corner');
+    act(() => handleMeasureTap(ctx, 240, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: the snap pulled the second tap onto the start and it was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('a second click with no hover that snaps onto the start measures to the surface it was clicked on', () => {
+    const { canvas } = mountSnapping();
+    click(canvas, 202, 300);
+    click(canvas, 240, 300);
+    assert.equal(s().measurements.length, 1, 'BUG: the snap pulled the second click onto the start and it was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('the start being reprojected between the taps (a camera frame) keeps the fallback', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    const before = s().activeMeasurement!.start;
+    // The animation loop's per-frame reprojection, nudged by a pixel so the store rebuilds the start.
+    act(() => s().updateMeasurementScreenCoords((p) => {
+      const at = projectToCssScreen(ctx.camera, canvas, p);
+      return at ? { x: at.x + 0.5, y: at.y } : null;
+    }));
+    assert.notEqual(s().activeMeasurement!.start, before, 'the reprojection rebuilds the start object');
+    act(() => handleMeasureTap(ctx, 240, 300));
+    assert.equal(s().measurements.length, 1, 'BUG: a reprojected start lost its press and the second tap was dropped');
+    assert.ok(near(s().measurements[0].distance, 0.4), `distance ${s().measurements[0].distance}, expected 0.4`);
+  });
+
+  it('the mobile journey\'s taps: a second tap near the vertex the first one snapped to still measures', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    // Snap anything within 60px of where the corner shows onto the corner, as the renderer does.
+    const corner = { x: 2, y: 0, z: 0 };
+    const shown = projectToCssScreen(ctx.camera, canvas, corner)!;
+    const edgeLock = { shouldRelease: false, shouldLock: false, edge: null };
+    Object.assign(params.rendererRef.current!, {
+      raycastSceneMagnetic: (x: number, y: number) => Math.hypot(x - shown.x, y - shown.y) < 60
+        ? { intersection: { point: corner }, snapTarget: null, edgeLock }
+        : { intersection: { point: { x: x / 100, y: (300 - y) / 100, z: 0 } }, snapTarget: null, edgeLock },
+    });
+    act(() => handleMeasureTap(ctx, shown.x + 30, shown.y));
+    assert.ok(s().activeMeasurement && near(s().activeMeasurement!.start.x, 2), 'the first tap snaps to the corner 30px away');
+    act(() => handleMeasureTap(ctx, shown.x + 5, shown.y));
+    assert.equal(s().measurements.length, 1, 'BUG: a tap 25px from the first, 5px from the snapped start, was dropped as a retap');
+    assert.ok(s().measurements[0].distance > 0, 'the measurement has length');
+  });
+
+  it('a double-tap with the camera drifting a few pixels between the taps is no measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 230, 300));
+    // Inertia pans the camera a little before the second tap of the double-tap lands; the
+    // animation loop reprojects the start, which moves a few pixels on screen.
+    const before = projectToCssScreen(ctx.camera, canvas, s().activeMeasurement!.start)!;
+    const camera = ctx.camera as unknown as { getPosition(): { x: number; y: number; z: number }; getTarget(): { x: number; y: number; z: number }; setPosition(x: number, y: number, z: number): void; setTarget(x: number, y: number, z: number): void };
+    const pos = camera.getPosition(); const target = camera.getTarget();
+    camera.setPosition(pos.x - 0.04, pos.y, pos.z); camera.setTarget(target.x - 0.04, target.y, target.z);
+    act(() => s().updateMeasurementScreenCoords((p) => projectToCssScreen(ctx.camera, canvas, p)));
+    const after = projectToCssScreen(ctx.camera, canvas, s().activeMeasurement!.start)!;
+    const drift = Math.hypot(after.x - before.x, after.y - before.y);
+    assert.ok(drift > 2 && drift < 8, `the start drifted ${drift}px; the test needs a few pixels`);
+    act(() => handleMeasureTap(ctx, 231, 300));
+    assert.equal(s().measurements.length, 0, 'BUG: a 3px camera drift let the second tap of a double-tap finish a measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
+  it('a double-tap near a vertex both taps snap to is no measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 230, 300));
+    act(() => handleMeasureTap(ctx, 231, 301));
+    assert.equal(s().measurements.length, 0, 'BUG: the second tap of a double-tap finished a measurement from the snap');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
+  it('a double-click near a vertex both clicks snap to is no measurement', () => {
+    const { canvas } = mountSnapping();
+    click(canvas, 230, 300);
+    click(canvas, 230, 300);
+    assert.equal(s().measurements.length, 0, 'BUG: the second click of a double-click finished a measurement from the snap');
+  });
+
+  it('a drag that returns to where it was pressed keeps the start pending', () => {
+    const { canvas } = mountSnapping();
+    fire(canvas, 'pointerdown', 230, 300);
+    fire(canvas, 'pointermove', 400, 300);
+    flushFrames();
+    fire(canvas, 'pointerup', 230, 300);
+    assert.equal(s().measurements.length, 0, 'BUG: a drag back onto its own press finished a measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
+  it('a retap on the start itself is still no 0 m measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 202, 300));
+    act(() => handleMeasureTap(ctx, 200, 300));
+    assert.equal(s().measurements.length, 0, 'a tap on the start finished a 0 m measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
   });
 });
 

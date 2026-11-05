@@ -36,6 +36,9 @@ export const propertiesEn = {
   'properties.spatialLocation.heightDisplay': '{value}m',
   'properties.spatialLocation.elevationTooltip': 'Elevation: {sign}{value}m from ground',
   'properties.spatialLocation.heightTooltip': 'Height: {value}m to next storey',
+  'properties.spatialLocation.storeyLabel': 'Storey',
+  'properties.spatialLocation.elevationLabel': 'Storey elevation',
+  'properties.spatialLocation.heightLabel': 'Storey height',
 
   // Shared field-row labels, reused across ClassificationCard, DocumentCard
   // and any other card rendering the same generic "label / value" row.

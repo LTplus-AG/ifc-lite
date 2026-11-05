@@ -28,6 +28,14 @@ function classContaining(markup: string, token: string): string {
   return found;
 }
 
+/** The class of the one rendered element whose whole text content is `text`. */
+function classOfElementWithText(markup: string, text: string): string {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hits = [...markup.matchAll(new RegExp(`<[a-z]+ class="([^"]+)"[^>]*>${escaped}</`, 'g'))].map((match) => match[1]);
+  assert.equal(hits.length, 1, `expected exactly one rendered element with text ${text}, found ${hits.length}`);
+  return hits[0];
+}
+
 function renderDocumentPreview(): string {
   return renderToStaticMarkup(createElement(DocumentPreview, {
     document: { version: DOCUMENT_VERSION, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
@@ -39,9 +47,11 @@ function renderDocumentPreview(): string {
   }));
 }
 
+const COORDINATE_LABEL = 'Position';
+
 function renderSecondaryCoordinate(): string {
   return renderToStaticMarkup(createElement(CoordRow, {
-    label: 'Position',
+    label: COORDINATE_LABEL,
     values: [{ axis: 'X', value: 1 }],
     primary: false,
   }));
@@ -102,7 +112,8 @@ describe('semantic text surfaces meet WCAG AA (#4792)', () => {
         EXECUTABLE_CODE_BLOCK,
         "result.status !== 'running' && (\n              <span ",
       ), 'bg-background'],
-      ['coordinate label', 'bg-background', () => classContaining(renderSecondaryCoordinate(), 'uppercase'), undefined],
+      // #8802 R2 retired the uppercase coordinate label; the label is found by its text.
+      ['coordinate label', 'bg-background', () => classOfElementWithText(renderSecondaryCoordinate(), COORDINATE_LABEL), undefined],
       ['coordinate value', 'bg-background', () => classContaining(renderSecondaryCoordinate(), 'tabular-nums'), undefined],
     ] as const) {
       it(`${name} clears AA on its surface in ${theme}`, async () => {

@@ -56,15 +56,14 @@ export function HierarchySortControl({ value, onChange }: HierarchySortControlPr
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-6 w-full justify-between gap-1 px-2 mt-1 text-2xs rounded-none uppercase tracking-wider"
+          className="h-6 gap-0.5 px-1.5 text-2xs font-normal text-muted-foreground hover:text-foreground"
           title={t('hierarchy.sortControl.tooltip')}
+          aria-label={t(active.triggerKey)}
         >
-          <span className="flex items-center gap-1 min-w-0">
-            <ActiveIcon className="h-3 w-3 shrink-0" />
-            <span className="truncate">{t(active.triggerKey)}</span>
-          </span>
+          <ActiveIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="sr-only">{t(active.triggerKey)}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>

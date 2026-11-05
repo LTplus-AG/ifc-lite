@@ -171,11 +171,12 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
           maximized: restore first. */}
       {!isMaximized && !isSide && (
         <div
-          className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
+          className="shell-splitter-h absolute inset-x-0 top-0 z-10 cursor-row-resize"
           onMouseDown={handleResizeStart}
         />
       )}
-      <div className={`h-full w-full overflow-hidden pt-1.5 flex flex-col ${isSide ? 'border-l' : 'border-t'}`}>
+      {/* Side-docked, the host's 1px splitter is this strip's edge (#8802 R1). */}
+      <div className={`h-full w-full overflow-hidden flex flex-col border-divider ${isSide ? '' : 'border-t'}`}>
         {/* Hidden for analysis extensions, which own their chrome. */}
         {!analysisExtension && dockedPanel && (
           <BottomStripHeader

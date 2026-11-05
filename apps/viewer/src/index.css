@@ -74,22 +74,160 @@
   /* Hierarchy panel - Dark mode */
   --hierarchy-selected-bg: #1f2335;
   --hierarchy-selected-text: #a9b1d6;
-  --hierarchy-text: #7982a9;
-  --hierarchy-hover-bg: rgba(31, 35, 53, 0.5);
+  --hierarchy-text: var(--ink-muted);
+  --hierarchy-hover-bg: var(--surface-raised);
   
-  /* Tabs - Dark mode */
-  --tabs-bg: #1f2335;
-  --tabs-border: #3b4261;
+  /* Tabs - Dark mode: on the neutral shell scale (#8802 R1). */
+  --tabs-bg: var(--surface-raised);
+  --tabs-border: var(--surface-divider);
   /* #565f89 (tokyo comment) was only 2.51:1 on --tabs-bg — below WCAG AA.
      #828bb8 keeps the Tokyo Night hue at 4.69:1 (issue #1107, item 1). */
-  --tab-text: #828bb8;
-  --tab-active-bg: #16161e;
-  --tab-active-text: #a9b1d6;
+  --tab-text: var(--ink-muted);
+  --tab-active-bg: var(--surface-panel);
+  --tab-active-text: var(--ink);
   /* No white-lift on the inactive trigger in dark mode: even an 18% lift takes
      the bg to ~#474b59 where --tab-text (#828bb8) drops to 2.6:1. Keep it flat
      on --tabs-bg so the muted label stays at 4.69:1 AA; the active tab is still
      distinct via its darker bg + accent border (issue #1107, item 1 review). */
   --tab-inactive-bg: var(--tabs-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHELL SURFACES (#8802 R1) — neutral elevation scale for the viewer chrome
+   ───────────────────────────────────────────────────────────────────────────
+   One structure in every theme:
+     canvas   the 3D / 2D viewport behind the model
+     panel    docked chrome: ribbon, rails, side panels, docks, status bar
+     raised   popovers, menus, hover and pressed tiles, inactive tab strips
+     input    field wells and scrollbar thumbs, one step above raised
+     divider  every 1px line between surfaces (borders, splitters)
+     ink / ink-muted  primary and secondary text
+   The canvas always sits one step from the panel toward mid-grey (darker
+   than white panels in light, lighter than the near-black panels in dark),
+   so the model area reads as the workspace and white walls stay legible.
+   Hues are neutral on purpose: Tokyo Night remains the accent and semantic
+   palette (selection, status, IFC class, clash A/B), never a surface.
+   The canvas values are mirrored by `getThemeClearColor` in
+   `utils/viewportUtils.ts` (`VIEWPORT_CANVAS_HEX`); change both together.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --surface-canvas: #e6e7ea;
+  --surface-panel: #ffffff;
+  --surface-raised: #f4f4f5;
+  --surface-input: #e4e4e7;
+  --surface-divider: hsl(240 5.9% 90%);
+  --ink: hsl(240 10% 3.9%);
+  --ink-muted: hsl(240 3.8% 44%);
+}
+
+:root.dark,
+.dark {
+  --surface-canvas: #222326;
+  --surface-panel: #18191b;
+  --surface-raised: #232427;
+  --surface-input: #303135;
+  --surface-divider: #2c2d31;
+  --ink: #d6d7db;
+  --ink-muted: #94959c;
+  /* `dark:bg-zinc-950(/n)` reads as a sunken strip below the panel (the
+     black toolbar band under Hierarchy); in the shell scale the deepest
+     structural surface IS the panel. `.dark .bg-zinc-950` already maps so. */
+  --color-zinc-950: var(--surface-panel);
+}
+
+/* Colorful mode maps the same scale inside its own `.colorful` token block. */
+
+@theme inline {
+  --color-canvas: var(--surface-canvas);
+  --color-panel: var(--surface-panel);
+  --color-raised: var(--surface-raised);
+  --color-divider: var(--surface-divider);
+  --color-ink-muted: var(--ink-muted);
+}
+
+/* Docked panels still draw the 2px outer edge they needed before the shell
+   had dividers; inside the docks the 1px splitter IS that edge, so a panel
+   root's own edge is dropped there (floating windows keep theirs). Unlayered
+   on purpose: it must beat the `border-*-2` utility on the panel root. */
+.shell-dock-left .h-full.border-r-2 {
+  border-right-width: 0;
+}
+
+.shell-dock-right .h-full.border-l-2 {
+  border-left-width: 0;
+}
+
+/* Component layer: Tailwind utilities on the same element (`absolute`,
+   `z-10`, …) still win over these shell classes. */
+@layer components {
+  /* Splitters: a 1px divider at rest that keeps a 9px pointer target and
+     shows the accent on hover / drag. `.shell-splitter-v` separates columns
+     (drag sideways), `.shell-splitter-h` separates rows (drag vertically).
+     react-resizable-panels separators report their state on `data-separator`
+     and enforce their own minimum hit size; hand-rolled ones (sidebar dock,
+     bottom dock, sidebar split) get the hit area from the pseudo-element. */
+  .shell-splitter-v,
+  .shell-splitter-h {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 1;
+    background-color: var(--surface-divider);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .shell-splitter-v {
+    width: 1px;
+    cursor: col-resize;
+  }
+
+  .shell-splitter-h {
+    height: 1px;
+    cursor: row-resize;
+  }
+
+  .shell-splitter-v::after,
+  .shell-splitter-h::after {
+    content: '';
+    position: absolute;
+  }
+
+  .shell-splitter-v::after {
+    inset: 0 -4px;
+  }
+
+  .shell-splitter-h::after {
+    inset: -4px 0;
+  }
+
+  .shell-splitter-v:hover,
+  .shell-splitter-v:focus-visible,
+  .shell-splitter-v[data-separator="hover"],
+  .shell-splitter-v[data-separator="active"],
+  .shell-splitter-v[data-dragging="true"] {
+    background-color: var(--color-primary);
+    box-shadow: 1px 0 0 var(--color-primary), -1px 0 0 var(--color-primary);
+  }
+
+  .shell-splitter-h:hover,
+  .shell-splitter-h:focus-visible,
+  .shell-splitter-h[data-dragging="true"] {
+    background-color: var(--color-primary);
+    box-shadow: 0 1px 0 var(--color-primary), 0 -1px 0 var(--color-primary);
+  }
+
+  .shell-splitter-v:focus-visible,
+  .shell-splitter-h:focus-visible {
+    outline: none;
+  }
+
+  /* Ribbon band: one monochrome icon family. The house icons paint their
+     accent through `--viewer-icon-accent`; inside the band that follows the
+     ink, so a duotone glyph no longer reads as "active". A latched command
+     tints its whole icon primary instead (`primitives.tsx`). */
+  .shell-ribbon-band {
+    --viewer-icon-accent: currentColor;
+    scrollbar-width: thin;
+  }
 }
 
 /* Custom theme configuration */
@@ -190,28 +328,28 @@
   --color-info: #7dcfff;
 
   --viewer-icon-accent: var(--tokyo-blue);
-  --color-background: var(--tokyo-storm) !important;
-  --color-foreground: var(--tokyo-fg) !important;
-  --color-card: var(--tokyo-night) !important;
-  --color-card-foreground: var(--tokyo-fg) !important;
-  --color-popover: var(--tokyo-night) !important;
-  --color-popover-foreground: var(--tokyo-fg) !important;
+  /* Structural surfaces come from the neutral shell scale (#8802 R1, see
+     SHELL SURFACES below); Tokyo Night stays the accent and semantic source. */
+  --color-background: var(--surface-panel) !important;
+  --color-foreground: var(--ink) !important;
+  --color-card: var(--surface-panel) !important;
+  --color-card-foreground: var(--ink) !important;
+  --color-popover: var(--surface-raised) !important;
+  --color-popover-foreground: var(--ink) !important;
   --color-primary: var(--tokyo-blue);
   --color-primary-foreground: var(--tokyo-night);
-  --color-secondary: var(--tokyo-bg-highlight);
-  --color-secondary-foreground: var(--tokyo-fg);
-  --color-muted: var(--tokyo-bg-highlight);
-  /* --tokyo-comment (#565f89) is ~2.5-2.9:1 on the dark surfaces this maps
-     onto (storm/night/highlight) — below WCAG AA. #828bb8 holds the Tokyo
-     Night hue at >=4.69:1. Kept separate from --tokyo-comment so the latter
-     stays usable for decorative fills (issue #1107, item 1). */
-  --color-muted-foreground: #828bb8;
-  --color-accent: var(--tokyo-bg-highlight);
-  --color-accent-foreground: var(--tokyo-fg);
+  --color-secondary: var(--surface-raised);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-raised);
+  /* Neutral muted ink, >= 4.7:1 on panel and raised (#1107 AA floor kept;
+     the old #828bb8 carried a lavender cast into every secondary label). */
+  --color-muted-foreground: var(--ink-muted);
+  --color-accent: var(--surface-raised);
+  --color-accent-foreground: var(--ink);
   --color-destructive: var(--tokyo-red);
-  --color-destructive-foreground: var(--tokyo-fg);
-  --color-border: var(--tokyo-dark3);
-  --color-input: var(--tokyo-bg-highlight);
+  --color-destructive-foreground: var(--ink);
+  --color-border: var(--surface-divider);
+  --color-input: var(--surface-input);
   --color-ring: var(--tokyo-blue);
 }
 
@@ -263,62 +401,62 @@ body {
 
 .dark body,
 .dark #root {
-  background-color: var(--tokyo-storm) !important;
+  background-color: var(--surface-panel) !important;
 }
 
 /* Panels and cards */
 .dark .bg-white,
 .dark .bg-card,
 .dark .bg-background {
-  background-color: var(--tokyo-night) !important;
+  background-color: var(--surface-panel) !important;
 }
 
 .dark .bg-zinc-50,
 .dark .bg-zinc-100 {
-  background-color: var(--tokyo-bg-highlight) !important;
+  background-color: var(--surface-raised) !important;
 }
 
 .dark .bg-zinc-900,
 .dark .bg-zinc-950,
 .dark .bg-black {
-  background-color: var(--tokyo-night) !important;
+  background-color: var(--surface-panel) !important;
 }
 
 /* Borders */
 .dark .border-zinc-200,
 .dark .border-zinc-700,
 .dark .border-zinc-800 {
-  border-color: var(--tokyo-dark3) !important;
+  border-color: var(--surface-divider) !important;
 }
 
 .dark .border-zinc-900,
 .dark .border-zinc-100 {
-  border-color: var(--tokyo-terminal-black) !important;
+  border-color: var(--surface-divider) !important;
 }
 
 /* Text colors */
 .dark .text-zinc-900,
 .dark .text-zinc-100 {
-  color: var(--tokyo-fg) !important;
+  color: var(--ink) !important;
 }
 
 .dark .text-zinc-500,
 .dark .text-zinc-400,
 .dark .text-zinc-600 {
-  /* Route muted utility text through the accessible muted-foreground token
-     (#828bb8) instead of raw --tokyo-comment (#565f89, ~2.5:1, fails WCAG AA).
-     issue #1107, item 1. */
-  color: var(--color-muted-foreground) !important;
+  /* Muted utility text rides the shell ink scale like its 200/300 and
+     700/800 neighbours (#8802 R1): --ink-muted clears AA on panel and
+     raised, where raw --tokyo-comment (#565f89, ~2.5:1) failed (#1107). */
+  color: var(--ink-muted) !important;
 }
 
 .dark .text-zinc-200,
 .dark .text-zinc-300 {
-  color: var(--tokyo-fg-dark) !important;
+  color: var(--ink-muted) !important;
 }
 
 .dark .text-zinc-700,
 .dark .text-zinc-800 {
-  color: var(--tokyo-fg) !important;
+  color: var(--ink) !important;
 }
 
 /* Primary accent */
@@ -348,15 +486,15 @@ body {
 
 /* Scrollbar Tokyo Night style */
 .dark .scrollbar-thin {
-  scrollbar-color: var(--tokyo-terminal-black) var(--tokyo-night);
+  scrollbar-color: var(--surface-input) var(--surface-panel);
 }
 
 .dark .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: var(--tokyo-terminal-black);
+  background-color: var(--surface-input);
 }
 
 .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: var(--tokyo-comment);
+  background-color: var(--ink-muted);
 }
 
 /* Interactive elements */
@@ -366,8 +504,8 @@ body {
 
 /* Force dark backgrounds on data-state active tabs */
 .dark [data-state="active"] {
-  background-color: var(--tokyo-night) !important;
-  color: var(--tokyo-fg) !important;
+  background-color: var(--surface-panel) !important;
+  color: var(--ink) !important;
 }
 
 /* Force dark hover backgrounds */
@@ -375,13 +513,13 @@ body {
 .dark .hover\:bg-zinc-100:hover,
 .dark .hover\:bg-zinc-200:hover,
 .dark .hover\:bg-white:hover {
-  background-color: var(--tokyo-bg-highlight) !important;
+  background-color: var(--surface-raised) !important;
 }
 
 /* Force dark selected/active backgrounds */
 .dark .data-\[state\=active\]\:bg-white[data-state="active"],
 .dark .data-\[state\=active\]\:bg-zinc-100[data-state="active"] {
-  background-color: var(--tokyo-night) !important;
+  background-color: var(--surface-panel) !important;
 }
 
 /* Hierarchy panel hover */
@@ -641,6 +779,15 @@ body {
   --color-border: rgba(0, 0, 0, 0.10) !important;
   --color-input: rgba(0, 0, 0, 0.06) !important;
   --color-ring: var(--cf-purple) !important;
+
+  /* Shell surfaces (#8802 R1): glass panels over the aurora canvas. */
+  --surface-canvas: transparent;
+  --surface-panel: var(--cf-glass);
+  --surface-raised: var(--cf-popover-solid);
+  --surface-input: rgba(0, 0, 0, 0.06);
+  --surface-divider: rgba(0, 0, 0, 0.10);
+  --ink: #1a1b2e;
+  --ink-muted: #555b78;
 
   /* Hierarchy — lavender tints */
   --hierarchy-selected-bg: rgba(157, 124, 216, 0.12);

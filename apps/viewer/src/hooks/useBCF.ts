@@ -259,7 +259,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       up, // Use actual camera up vector
       fov,
       isOrthographic: camera.getProjectionMode() === 'orthographic',
-      orthoScale: camera.getOrthoSize(),
+      orthoScale: camera.getOrthoSize() * 2,
       aspectRatio,
     };
   }, [getRenderer]);

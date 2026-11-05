@@ -45,7 +45,7 @@ function nearVec(actual: Vec3, expected: Vec3, tolerance: number, label: string)
 function source(orthographic: boolean): BCFViewpoint {
   return createViewpoint({ camera: {
     position: POSITION, target: TARGET, up: UP, fov: FOV,
-    isOrthographic: orthographic, orthoScale: ORTHO_SIZE, aspectRatio: 16 / 9,
+    isOrthographic: orthographic, orthoScale: ORTHO_SIZE * 2, aspectRatio: 16 / 9,
   } });
 }
 
@@ -121,11 +121,35 @@ describe('useBCF camera roundtrip (#8814)', () => {
         nearVec(roundtrip.cameraDirection, original.cameraDirection, 1e-9, 'direction');
         nearVec(roundtrip.cameraUpVector, original.cameraUpVector, 1e-9, 'up');
         if (orthographic) {
-          near(saved.orthogonalCamera!.viewToWorldScale, ORTHO_SIZE, 1e-6, 'scale');
+          near(saved.orthogonalCamera!.viewToWorldScale, ORTHO_SIZE * 2, 1e-6, 'full view height');
         } else {
           near(saved.perspectiveCamera!.fieldOfView, 61, 1e-6, 'FOV degrees');
         }
       });
     }
+  }
+
+  for (const orthographic of [false, true]) {
+    it(`does not restore stale ${orthographic ? 'ortho size' : 'FOV'} after another camera animation (#8814)`, async () => {
+      await act(async () => { api!.applyViewpoint(source(orthographic), true); });
+      assert.equal(camera.isTweening(), true);
+      camera.setFOV(0.5);
+      camera.setOrthoSize(7);
+
+      const replacementPosition = { x: -20, y: 4, z: 9 };
+      const replacementTarget = { x: -3, y: 1, z: 0 };
+      void camera.animateTo(replacementPosition, replacementTarget, 300);
+      now += 300;
+      camera.update(0);
+      const pending = frames;
+      frames = [];
+      for (const frame of pending) frame(now);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      nearVec(camera.getPosition(), replacementPosition, 1e-9, 'replacement eye');
+      nearVec(camera.getTarget(), replacementTarget, 1e-9, 'replacement target');
+      if (orthographic) near(camera.getOrthoSize(), 7, 1e-9, 'retained half-height');
+      else near(camera.getFOV(), 0.5, 1e-9, 'retained FOV');
+    });
   }
 });

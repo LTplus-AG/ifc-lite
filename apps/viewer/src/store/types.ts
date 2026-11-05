@@ -42,11 +42,13 @@ export interface ActiveMeasurement {
  * (#2735) accumulates a FIXED number of clicks and finishes itself. `'radius'`
  * (#2737 item 2) accumulates an UNBOUNDED number of clicks (three minimum)
  * and finishes on the same gesture polyline uses — double-click or Enter —
- * because there is no natural "last pick" the way angle has one. All four are
- * mutually exclusive so a sequence started in one can never leak state into
- * another (see `setMeasureMode` in measurementSlice.ts).
+ * because there is no natural "last pick" the way angle has one. `'point'`
+ * (#8770) takes ONE click and reads that point's coordinates; it records no
+ * measurement. All five are mutually exclusive so a sequence started in one
+ * can never leak state into another (see `setMeasureMode` in
+ * measurementSlice.ts).
  */
-export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius';
+export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius' | 'point';
 
 /** A multi-click sequence in progress, not yet finished or cancelled. */
 export interface ActivePolyline {

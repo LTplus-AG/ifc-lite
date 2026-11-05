@@ -467,6 +467,25 @@ describe('a snap never swallows a second point placed away from the start (#8788
     assert.ok(s().measurements[0].distance > 0, 'the measurement has length');
   });
 
+  it('a double-tap with the camera drifting a few pixels between the taps is no measurement', () => {
+    const { canvas, params } = mountSnapping();
+    const ctx = ctxOf(params, canvas);
+    act(() => handleMeasureTap(ctx, 230, 300));
+    // Inertia pans the camera a little before the second tap of the double-tap lands; the
+    // animation loop reprojects the start, which moves a few pixels on screen.
+    const before = projectToCssScreen(ctx.camera, canvas, s().activeMeasurement!.start)!;
+    const camera = ctx.camera as unknown as { getPosition(): { x: number; y: number; z: number }; getTarget(): { x: number; y: number; z: number }; setPosition(x: number, y: number, z: number): void; setTarget(x: number, y: number, z: number): void };
+    const pos = camera.getPosition(); const target = camera.getTarget();
+    camera.setPosition(pos.x - 0.04, pos.y, pos.z); camera.setTarget(target.x - 0.04, target.y, target.z);
+    act(() => s().updateMeasurementScreenCoords((p) => projectToCssScreen(ctx.camera, canvas, p)));
+    const after = projectToCssScreen(ctx.camera, canvas, s().activeMeasurement!.start)!;
+    const drift = Math.hypot(after.x - before.x, after.y - before.y);
+    assert.ok(drift > 2 && drift < 8, `the start drifted ${drift}px; the test needs a few pixels`);
+    act(() => handleMeasureTap(ctx, 231, 300));
+    assert.equal(s().measurements.length, 0, 'BUG: a 3px camera drift let the second tap of a double-tap finish a measurement');
+    assert.ok(s().activeMeasurement, 'the start stays pending');
+  });
+
   it('a double-tap near a vertex both taps snap to is no measurement', () => {
     const { canvas, params } = mountSnapping();
     const ctx = ctxOf(params, canvas);

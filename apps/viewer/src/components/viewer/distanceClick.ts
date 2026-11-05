@@ -86,9 +86,10 @@ function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at:
   const record = startPresses.get(ctx.mouseState);
   if (!record || record.world.x !== start.x || record.world.y !== start.y || record.world.z !== start.z) return false;
   const shown = projectToCssScreen(ctx.camera, ctx.canvas, start) ?? { x: start.screenX, y: start.screenY };
-  // Once the camera has moved, the raw press is no longer where the user pressed the start.
-  const cameraMoved = Math.hypot(shown.x - record.shown.x, shown.y - record.shown.y) > 1;
-  const nearPress = !cameraMoved && Math.hypot(at.x - record.press.x, at.y - record.press.y) <= REPRESS_SLOP_PX;
+  // The press moves on screen with the start when the camera does, so a repeated press still
+  // counts after a small drift (inertia, a reprojection) as well as after none.
+  const press = { x: record.press.x + shown.x - record.shown.x, y: record.press.y + shown.y - record.shown.y };
+  const nearPress = Math.hypot(at.x - press.x, at.y - press.y) <= REPRESS_SLOP_PX;
   // A press on the shown start itself stays a retap, as finishDistance's duplicate guard has it.
   return !nearPress && !isDuplicateClickPoint({ screenX: shown.x, screenY: shown.y }, { screenX: at.x, screenY: at.y });
 }

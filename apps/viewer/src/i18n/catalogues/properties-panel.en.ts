@@ -33,6 +33,10 @@ export const propertiesPanelEn = {
   'properties.panel.associatedTypeFallback': 'Type',
   'properties.panel.worldCoordinates': 'World',
   'properties.panel.worldCoordinatesDetails': 'details',
+  'properties.panel.positionLabel': 'Position',
+  'properties.panel.crsLabel': 'CRS',
+  'properties.panel.localCoordinates': 'Local',
+  'properties.panel.entityActionsLabel': 'Element actions',
   'properties.panel.sizeLabel': 'Size',
   'properties.panel.sizeDisplay': '{x} x {y} x {z}',
 

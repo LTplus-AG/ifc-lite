@@ -81,6 +81,9 @@ function doubleClick(canvas: HTMLCanvasElement, x: number, y: number): void {
   });
 }
 
+/** Vertices with consecutive duplicates collapsed: Polyline and Radius keep a double-click's twin until the finish drops it. */
+const distinctOf = (vertices: MeasurePoint[]) => vertices.filter((v, i) => i === 0 || !sameWorld(v, vertices[i - 1]));
+
 type Rig = ReturnType<typeof mountSnapping>;
 type Press = (rig: Rig, x: number, y: number) => void;
 const tap: Press = (rig, x, y) => act(() => handleMeasureTap(rig.ctx, x, y));
@@ -140,18 +143,33 @@ for (const mode of MODES) {
         assert.ok(!sameWorld(mode.vertices()[1], CORNER), 'the second vertex is not the corner again');
       });
 
-      it(`a double-${input} near the vertex both ${input}s snap to adds no new point`, () => {
+      it(`a double-${input} near the vertex both ${input}s snap to adds it once`, () => {
+        const rig = mountSnapping();
+        const { shown } = rig;
+        press(rig, shown.x - 30, shown.y + 100); // outside the snap radius: plain surface
+        press(rig, shown.x + 30, shown.y);
+        press(rig, shown.x + 31, shown.y + 1);
+        const distinct = distinctOf(mode.vertices());
+        assert.equal(distinct.length, 2, 'BUG: the second press of a double-press became a new vertex from the surface');
+        assert.ok(sameWorld(distinct[1], CORNER), 'the double-press placed the corner it snapped to');
+      });
+
+      it(`a double-${input} away from the previous vertex that both ${input}s snap onto adds one surface point`, () => {
         const rig = mountSnapping();
         const { shown } = rig;
         press(rig, shown.x + 30, shown.y);
-        press(rig, shown.x + 31, shown.y + 1);
-        const distinct = mode.vertices().filter((v, i, all) => i === 0 || !sameWorld(v, all[i - 1]));
-        assert.equal(distinct.length, 1, 'BUG: the second press of a double-press became a new vertex from the surface');
+        press(rig, shown.x - 30, shown.y);
+        press(rig, shown.x - 30, shown.y);
+        const distinct = distinctOf(mode.vertices());
+        assert.equal(distinct.length, 2, `BUG: the double-press left ${distinct.length} vertices, expected the corner and one surface point`);
+        assert.ok(sameWorld(distinct[1], surfaceAt(shown.x - 30, shown.y)), 'the double-press placed the surface point under it');
+        assert.ok(!mode.vertices().slice(1).some((v) => sameWorld(v, CORNER)), 'BUG: the second press snapped back onto the earlier corner');
       });
 
-      it(`a double-${input} with the camera drifting a few pixels between the ${input}s adds no new point`, () => {
+      it(`a double-${input} with the camera drifting a few pixels between the ${input}s adds it once`, () => {
         const rig = mountSnapping();
         const { shown, ctx, canvas } = rig;
+        press(rig, shown.x - 30, shown.y + 100);
         press(rig, shown.x + 30, shown.y);
         const camera = ctx.camera as unknown as { getPosition(): { x: number; y: number; z: number }; getTarget(): { x: number; y: number; z: number }; setPosition(x: number, y: number, z: number): void; setTarget(x: number, y: number, z: number): void };
         const pos = camera.getPosition(); const target = camera.getTarget();
@@ -161,8 +179,15 @@ for (const mode of MODES) {
         const drift = Math.hypot(after.x - shown.x, after.y - shown.y);
         assert.ok(drift > 2 && drift < 8, `the vertex drifted ${drift}px; the test needs a few pixels`);
         press(rig, shown.x + 31, shown.y);
-        const distinct = mode.vertices().filter((v, i, all) => i === 0 || !sameWorld(v, all[i - 1]));
-        assert.equal(distinct.length, 1, 'BUG: a small camera drift let the second press of a double-press add a vertex');
+        assert.equal(distinctOf(mode.vertices()).length, 2, 'BUG: a small camera drift let the second press of a double-press add a vertex');
+      });
+
+      it(`a ${input} 5px from a plain surface vertex is still a new vertex`, () => {
+        const rig = mountSnapping();
+        const { shown } = rig;
+        press(rig, shown.x - 30, shown.y + 100);
+        press(rig, shown.x - 25, shown.y + 100);
+        assert.equal(distinctOf(mode.vertices()).length, 2, 'BUG: a deliberate pick 5px away was taken for a double-press');
       });
 
       it(`a ${input} on the previous vertex as it shows is still a retap, not a new point`, () => {
@@ -170,8 +195,7 @@ for (const mode of MODES) {
         const { shown } = rig;
         press(rig, shown.x + 30, shown.y);
         press(rig, shown.x, shown.y);
-        const distinct = mode.vertices().filter((v, i, all) => i === 0 || !sameWorld(v, all[i - 1]));
-        assert.equal(distinct.length, 1, 'BUG: a retap on the previous vertex became a new vertex');
+        assert.equal(distinctOf(mode.vertices()).length, 1, 'BUG: a retap on the previous vertex became a new vertex');
       });
     });
   }
@@ -190,6 +214,19 @@ describe('Polyline and Radius still finish on a double-click (#8866)', () => {
       assert.equal(name === 'polyline' ? s().activePolyline : s().activeRadius, null, 'the double-click finished the sequence');
       assert.equal(finished.length, 1, 'one measurement recorded');
       assert.equal(finished[0].points.length, 3, 'the double-click added its point once');
+    });
+
+    it(`${name}: a double-click away from the last vertex that snaps onto it finishes on the surface point`, () => {
+      s().setMeasureMode(name);
+      const rig = mountSnapping();
+      const { shown, canvas } = rig;
+      click(canvas, shown.x - 30, shown.y + 100);
+      click(canvas, shown.x + 30, shown.y); // snaps to the corner
+      doubleClick(canvas, shown.x - 30, shown.y); // both clicks snap onto the corner
+      const finished = name === 'polyline' ? s().polylineMeasurements : s().radiusMeasurements;
+      assert.equal(finished.length, 1, 'one measurement recorded');
+      assert.equal(finished[0].points.length, 3, `BUG: the double-click left ${finished[0].points.length} vertices, expected 3`);
+      assert.ok(sameWorld(finished[0].points[2], surfaceAt(shown.x - 30, shown.y)), 'the double-click finished on the surface point under it');
     });
 
     it(`${name}: a double-click on a vertex both clicks snap to finishes without a stray surface point`, () => {

@@ -10,13 +10,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { cliSample } from './retained-qual-cli.mjs';
 import { nativeSample } from './retained-qual-native-memory.mjs';
 
-function fixture(t) {
+function fixture(t, timeoutMs = 500) {
   const dir = mkdtempSync(join(tmpdir(), 'qual-deadline-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, 'packages/cli/dist'), { recursive: true });
   const cli = join(dir, 'packages/cli/dist/index.js');
   const runCli = () => cliSample({ arm: { checkout: dir, side: 'branch', engine: dir, identity: { engine: {} } },
-    fixture: { path: join(dir, 'model.ifc') }, round: 1, options: { 'timeout-ms': 500 } });
+    fixture: { path: join(dir, 'model.ifc') }, round: 1, options: { 'timeout-ms': timeoutMs } });
   const runNative = () => nativeSample({ command: [process.execPath, cli, '--out', dir],
     summaryPath: join(dir, 'summary.json'), workerName: 'node', timeoutMs: 500 });
   return { dir, cli, runCli, runNative };
@@ -58,5 +58,32 @@ for (const stage of ['export', 'control']) {
     assert.equal(row.ok, false);
     assert.equal(row.stderrTail, stderr.slice(-8192));
     assert.match(row.error, /FINAL Holter error/);
+  });
+}
+
+for (const stage of ['export', 'control']) {
+  test(`8868: CLI ${stage} distinguishes SIGSEGV from exit 139 after scratch cleanup`, {
+    skip: process.platform === 'win32' && 'POSIX signal status contract',
+  }, async t => {
+    const f = fixture(t, 10000);
+    const prefix = stage === 'export' ? "if (process.argv.includes('--version')) process.exit(0);" : '';
+    for (const crashes of [false, true]) {
+      writeFileSync(f.cli, prefix + (crashes ? "process.kill(process.pid, 'SIGSEGV');" : 'process.exit(139);'));
+      const row = await f.runCli();
+      assert.equal(row.ok, false);
+      assert.equal(row.stderrTail, '');
+      const status = row.processes.at(-1);
+      assert.equal(status.stage, stage);
+      assert.ok(status.pid > 0);
+      assert.equal(status.terminationSignal, crashes ? 'SIGSEGV' : null);
+      if (status.timeWrapped) {
+        assert.equal(status.exitCode, 139);
+        assert.equal(status.signal, null);
+        assert.equal(status.timeDiagnostic, crashes ? 'Command terminated by signal 11' : 'Command exited with non-zero status 139');
+      } else {
+        assert.equal(status.signal, crashes ? 'SIGSEGV' : null);
+        assert.equal(status.exitCode, crashes ? null : 139);
+      }
+    }
   });
 }

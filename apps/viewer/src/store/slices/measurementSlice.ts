@@ -441,7 +441,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // Reproject a single point, returning it unchanged if the projector
     // can't place it (e.g. behind the camera) — same fallback the
     // measurements/activeMeasurement paths above use.
-    const reprojectPoint = (point: MeasurePoint): MeasurePoint => {
+    const reprojectPoint = <P extends MeasurePoint>(point: P): P => {
       const screen = projectToScreen(point);
       const newX = screen?.x ?? point.screenX;
       const newY = screen?.y ?? point.screenY;

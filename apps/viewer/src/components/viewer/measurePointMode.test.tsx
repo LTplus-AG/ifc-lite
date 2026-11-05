@@ -25,7 +25,7 @@ import { measureRu } from '@/i18n/locales/ru/measure';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { handleMeasureTap } from './touchRouting.js';
-import { handleMeasureHover } from './measureHandlers.js';
+import { handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
 import { endMeasurePointHover, hoverMeasurePoint, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
@@ -42,7 +42,10 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
   const locks: boolean[] = [];
   const snapOptions: SnapOpts[] = [];
   /** The camera pose; a test moves the camera by editing it. */
-  const pose = { position: { x: 0, y: 0, z: 10 }, rotation: { azimuth: 0, elevation: 0 }, distance: 10 };
+  const pose = {
+    position: { x: 0, y: 0, z: 10 }, rotation: { azimuth: 0, elevation: 0 }, distance: 10,
+    projectionMode: 'perspective' as 'perspective' | 'orthographic', orthoSize: 10,
+  };
   const ctx = {
     canvas: document.createElement('canvas'),
     camera: {
@@ -50,6 +53,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
       getPosition: () => ({ ...pose.position }),
       getRotation: () => ({ ...pose.rotation }),
       getDistance: () => pose.distance,
+      getProjectionMode: () => pose.projectionMode,
+      getOrthoSize: () => pose.orthoSize,
     },
     renderer: {
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
@@ -589,13 +594,27 @@ describe('Point mode readout staleness (#8828)', () => {
   it('a hover brings the camera pass up to the camera it picked under, so the next frame keeps it', () => {
     const { ctx, pose } = fakeCtx({ current: ON_WALL });
     ctx.lastCameraStateRef.current = {
-      position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1, canvasWidth: 1, canvasHeight: 1,
+      position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
+      projectionMode: 'perspective', orthoSize: 1, canvasWidth: 1, canvasHeight: 1,
     };
     hoverMeasurePoint(ctx, 3, 4);
     assert.deepEqual(xyz(useViewerStore.getState().measurePointLive), [3, 4, -5]);
     assert.deepEqual(ctx.lastCameraStateRef.current, {
       ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height,
     }, 'the next animation frame would count the camera as moved and drop the point just picked');
+  });
+
+  it('a projection toggle or an orthographic zoom ends "Live"; a pass with the camera unmoved keeps it', () => {
+    for (const move of ['projection', 'orthoSize'] as const) {
+      const { ctx, pose } = fakeCtx({ current: ON_WALL });
+      hoverMeasurePoint(ctx, 3, 4);
+      syncMeasureScreenCoords(ctx); // a clamped wheel step: nothing moved
+      assert.ok(useViewerStore.getState().measurePointLive !== null, `an unmoved camera ended Live (${move})`);
+      if (move === 'projection') pose.projectionMode = 'orthographic';
+      else pose.orthoSize = 5;
+      syncMeasureScreenCoords(ctx); // the camera pass, as the animation loop and wheel run it
+      assert.equal(useViewerStore.getState().measurePointLive, null, `Live outlived a ${move} change`);
+    }
   });
 
   it('a wheel zoom on the mounted canvas drops "Live" with no pointer move afterwards', () => {
@@ -664,6 +683,16 @@ describe('Point mode readout staleness (#8828)', () => {
     assert.match(hudRegion(), /Last\s*Model/);
     assert.doesNotMatch(hudRegion(), /Stale/, 'a point placed after the move is not stale');
     assert.doesNotMatch(container.textContent ?? '', /Stale/);
+  });
+
+  it('outside Point mode the last distance endpoint carries its own Stale badge too', () => {
+    useViewerStore.setState({ measureMode: 'drag', measurements: [{ id: 'm1', start: mp(ELSEWHERE), end: mp(ON_WALL), distance: 1 }] });
+    const container = render(<MeasurementsPanel />);
+    openPointTab(container);
+    assert.match(container.textContent ?? '', /Last point/);
+    assert.doesNotMatch(container.textContent ?? '', /Stale/);
+    act(() => useViewerStore.setState({ placementStaleMeasurements: new Set(['m1']) }));
+    assert.match(container.textContent ?? '', /Last point\s*·\s*Stale/);
   });
 
   it('ru: "Last" agrees with "Live" (neuter), as it labels a point and an E/N/H reading alike', () => {

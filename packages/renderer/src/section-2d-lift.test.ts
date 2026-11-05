@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
+  CAP_FILL_VERTEX_FLOATS,
   buildCapFillGeometry,
   buildDrawingOutlineVertices,
   capHighlightKey,
@@ -23,7 +24,7 @@ import {
  * changed without a single test going red.
  */
 
-const FLOATS_PER_VERTEX = 7; // x,y,z,r,g,b,a
+const FLOATS_PER_VERTEX = CAP_FILL_VERTEX_FLOATS; // x,y,z,r,g,b,a + per-polygon hatch (#8753)
 
 function poly(
   outer: Array<[number, number]>,

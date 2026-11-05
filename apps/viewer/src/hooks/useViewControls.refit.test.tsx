@@ -156,10 +156,15 @@ describe('useViewControls fits the docked drawing to its extents (#8802 R3b)', (
     await act(async () => { for (const cb of observers) cb(); });
     const short = latest!.t;
     close(short, fitOf(plan), 'after shrinking to 400x140');
+    // Hard numbers, not the helper: the 16 px floor (6% of 140 = 8.4) leaves
+    // 108 px for 10 m, so 10.8 px/m.
+    assert.ok(Math.abs(short.scale - 10.8) < 1e-9, `400x140 scale ${short.scale}`);
     assert.ok(short.scale < opened.scale, 'a shorter canvas fits at a smaller scale');
     size.width = 1500; size.height = 420;
     await act(async () => { for (const cb of observers) cb(); });
     close(latest!.t, fitOf(plan), 'after growing to 1500x420');
+    // 6% of 420 = 25.2 px per side: (420 - 50.4) / 10 m = 36.96 px/m.
+    assert.ok(Math.abs(latest!.t.scale - 36.96) < 1e-9, `1500x420 scale ${latest!.t.scale}`);
     assert.ok(latest!.t.scale > opened.scale, 'a larger canvas fits at a larger scale');
   });
 
@@ -169,8 +174,10 @@ describe('useViewControls fits the docked drawing to its extents (#8802 R3b)', (
     await act(async () => { latest!.set({ x: 5, y: 5, scale: 3 }); });
     await act(async () => { latestFit!(); });
     close(latest!.t, fitOf(plan), 'Fit');
-    size.width = 800; size.height = 500;
+    size.width = 1500; size.height = 1000;
     await act(async () => { for (const cb of observers) cb(); });
     close(latest!.t, fitOf(plan), 'resize after Fit refits');
+    // The 48 px cap (6% of 1000 = 60): (1500 - 96) / 20 m = 70.2 px/m.
+    assert.ok(Math.abs(latest!.t.scale - 70.2) < 1e-9, `1500x1000 scale ${latest!.t.scale}`);
   });
 });

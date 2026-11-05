@@ -8,14 +8,17 @@
  * or a script), and the Drawing's own, which until the user resizes the
  * strip while the Drawing shows is half of the layout container
  * (`drawingDefaultStripHeight`), so a docked section opens with room to be
- * read instead of in a 140 px band. The container's height is observed, so
- * that default follows a window resize until the user picks a height.
+ * read instead of in a 140 px band. The container's height is observed while
+ * the Drawing shows, so that default follows a window resize until the user
+ * picks a height, and a remembered height never exceeds the 0.7 resize cap
+ * of the container it reopens in.
  */
 
 import { useCallback, useEffect, useState, type RefObject } from 'react';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import {
   BOTTOM_STRIP_DEFAULT_HEIGHT,
+  capDrawingStripHeight,
   drawingDefaultStripHeight,
   loadBottomStripDrawingHeight,
   loadBottomStripHeight,
@@ -55,10 +58,11 @@ export function useBottomStripHeight(
   const isDrawing = dockedPanel === 'drawing';
   const [sharedHeight, setSharedHeight] = useState(() => loadBottomStripHeight());
   const [drawingHeight, setDrawingHeight] = useState<number | null>(() => loadBottomStripDrawingHeight());
-  const containerHeight = useContainerHeight(containerRef, isDrawing && drawingHeight === null);
+  const containerHeight = useContainerHeight(containerRef, isDrawing);
 
   const height = !isDrawing ? sharedHeight
-    : drawingHeight ?? (containerHeight > 0 ? drawingDefaultStripHeight(containerHeight) : sharedHeight);
+    : drawingHeight !== null ? capDrawingStripHeight(drawingHeight, containerHeight)
+      : containerHeight > 0 ? drawingDefaultStripHeight(containerHeight) : sharedHeight;
 
   const setHeight = useCallback((next: number) => {
     if (isDrawing) setDrawingHeight(next);

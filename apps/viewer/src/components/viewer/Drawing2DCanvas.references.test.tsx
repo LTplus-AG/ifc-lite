@@ -154,7 +154,8 @@ test('Fit includes a registered raster on an otherwise empty section without alt
   assert.ok(Math.abs((points[0][0]+points[2][0])/2-640)<1e-8);
   assert.ok(Math.abs((points[0][1]+points[2][1])/2-400)<1e-8);
   // The fit margin per side (#8802 R3b): 6% of the 800 px short side, capped at 48 px.
-  const margin=drawingFitMargin({width:1280,height:800});
+  const margin=48;
+  assert.equal(drawingFitMargin({width:1280,height:800}),margin);
   assert.ok(points.every(([x,y])=>x>=margin-1e-6 && x<=1280-margin+1e-6 && y>=margin-1e-6 && y<=800-margin+1e-6));
   assert.ok(Math.abs(points[2][1]-points[0][1]-(800-2*margin))<1e-8,'reference fills the available height inside the fit margin');
   assert.deepEqual(source.bounds,{min:{x:5000000,y:5000000},max:{x:5000001,y:5000001}});

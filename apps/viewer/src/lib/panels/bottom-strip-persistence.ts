@@ -34,10 +34,17 @@ export const BOTTOM_STRIP_MAX_RATIO = 0.7;
  *  bottom panels', whose 300 px default fits a table or a script. */
 export const BOTTOM_STRIP_DRAWING_DEFAULT_RATIO = 0.5;
 
-/** The Drawing's default strip height for a layout container this tall. */
+/** The Drawing's default strip height for a layout container this tall:
+ *  half of it, at least the shared 300 px default, and never more than the
+ *  0.7 resize cap (which wins in a short container). */
 export function drawingDefaultStripHeight(containerHeight: number): number {
-  const wanted = Math.round(containerHeight * BOTTOM_STRIP_DRAWING_DEFAULT_RATIO);
-  return Math.max(BOTTOM_STRIP_DEFAULT_HEIGHT, Math.min(containerHeight * BOTTOM_STRIP_MAX_RATIO, wanted));
+  const wanted = Math.max(BOTTOM_STRIP_DEFAULT_HEIGHT, Math.round(containerHeight * BOTTOM_STRIP_DRAWING_DEFAULT_RATIO));
+  return Math.min(Math.floor(containerHeight * BOTTOM_STRIP_MAX_RATIO), wanted);
+}
+
+/** A remembered Drawing height, kept within this container's 0.7 cap. */
+export function capDrawingStripHeight(height: number, containerHeight: number): number {
+  return containerHeight > 0 ? Math.min(height, Math.floor(containerHeight * BOTTOM_STRIP_MAX_RATIO)) : height;
 }
 
 /** Tab ids this build does not know (a newer build's panel), written back on

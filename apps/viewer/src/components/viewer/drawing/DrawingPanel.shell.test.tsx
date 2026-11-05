@@ -119,6 +119,10 @@ it('the status line counts the markup', () => {
   });
   assert.match(statusText(ui), /2 measurements/);
   assert.doesNotMatch(statusText(ui), /No markup/);
+  click(byLabel(ui, 'Select'));
+  assert.match(statusText(ui), /2 measurements/, 'idle Select still counts the markup');
+  const facts = ui.querySelector('output')?.lastElementChild?.className ?? '';
+  assert.equal(facts.includes('hidden'), false, 'with no hint, the counts show at every width');
 });
 
 function exportItems(): Array<{ label: string; disabled: boolean }> {

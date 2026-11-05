@@ -21,6 +21,8 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { bottomPanelFlags, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import {
   BOTTOM_STRIP_DEFAULT_HEIGHT,
+  capDrawingStripHeight,
+  drawingDefaultStripHeight,
   loadBottomStripDrawingHeight,
   loadBottomStripHeight,
 } from '@/lib/panels/bottom-strip-persistence';
@@ -68,6 +70,16 @@ it('a docked Drawing opens at half of the layout; other bottom panels keep the 3
   const ui2 = render(<Harness dockedPanel="lists" />);
   await act(async () => {});
   assert.equal(px(stripOf(ui2)), BOTTOM_STRIP_DEFAULT_HEIGHT, 'Lists keeps the shared default');
+});
+
+it('the Drawing default and a remembered height stay within the 0.7 resize cap', () => {
+  assert.equal(drawingDefaultStripHeight(1000), 500, 'half of a tall layout');
+  assert.equal(drawingDefaultStripHeight(500), 300, 'at least the shared 300 px default');
+  assert.equal(drawingDefaultStripHeight(400), 280, 'the 0.7 cap wins in a short layout');
+  assert.equal(drawingDefaultStripHeight(250), 175, 'never taller than the cap allows');
+  assert.equal(capDrawingStripHeight(560, 400), 280, 'a height saved in a tall window is capped in a short one');
+  assert.equal(capDrawingStripHeight(450, 800), 450, 'within the cap it is kept');
+  assert.equal(capDrawingStripHeight(450, 0), 450, 'unmeasured: kept as saved');
 });
 
 it("the Drawing's resized height is remembered apart from the shared one", async () => {

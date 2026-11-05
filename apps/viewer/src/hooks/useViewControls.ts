@@ -112,10 +112,10 @@ function useViewControls({
       const paperWidth = activeSheet.paper.widthMm;
       const paperHeight = activeSheet.paper.heightMm;
 
-      // Calculate scale to fit paper with padding (10% margin on each side)
-      const padding = 0.1;
-      const availableWidth = rect.width * (1 - 2 * padding);
-      const availableHeight = rect.height * (1 - 2 * padding);
+      // Fit the paper inside the same margin as the drawing (#8802 R3b).
+      const margin = drawingFitMargin(rect);
+      const availableWidth = Math.max(1, rect.width - 2 * margin);
+      const availableHeight = Math.max(1, rect.height - 2 * margin);
       const scaleX = availableWidth / paperWidth;
       const scaleY = availableHeight / paperHeight;
       const scale = Math.min(scaleX, scaleY);

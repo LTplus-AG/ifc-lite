@@ -82,7 +82,8 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
           {t('section2d.updating')}
         </span>
       )}
-      <span className="hidden shrink-0 sm:inline">{facts.join(' · ')}</span>
+      {/* Narrow hosts hide the facts beside a hint; with no hint they are the line. */}
+      <span className={cn('shrink-0', hint && 'hidden sm:inline')}>{facts.join(' · ')}</span>
     </output>
   );
 }

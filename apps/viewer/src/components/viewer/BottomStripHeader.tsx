@@ -114,7 +114,9 @@ export function BottomStripHeader({
           );
         })}
       </TabsList>
-      <div ref={slotRef} data-bottom-strip-header-slot className="flex min-w-0 flex-1 items-center" />
+      {/* Sized to its content (and growing into free space): a crowded tab
+          list scrolls rather than clipping the docked panel's actions. */}
+      <div ref={slotRef} data-bottom-strip-header-slot className="flex flex-auto items-center" />
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <DetachGrip id={activePanel} />
         {activePanel === 'drawing' && onToggleOrientation && (

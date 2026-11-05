@@ -1075,6 +1075,11 @@ jobs:
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/8308/behaviour.oracle.patch --test rust/geometry/src/router/transforms/operator_axis2_tests.rs --test rust/processing/tests/issue_8308_omitted_axis2.rs)
+          # #8753: a whole-change revert deletes the CAP_FILL_VERTEX_ATTRIBUTES /
+          # CAP_HATCH_OVERRIDE exports the new hatch test imports. Keep them; drop
+          # only the per-polygon hatch floats, so every cap falls back to capStyle.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8753/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8753/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/8753/behaviour.oracle.patch --test packages/renderer/src/section-cap-hatch.test.ts)
           # #7955 (#8475): the bounded check's measurement lives in the
           # retained_compare example, whose #[path] modules no cargo target owns.
           # Its integration witness drives that check directly; keep the

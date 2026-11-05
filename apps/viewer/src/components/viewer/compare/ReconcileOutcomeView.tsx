@@ -58,7 +58,7 @@ export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome })
             </span>
           ))}
         </span>
-        {outcome.partial && <span className="block text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.partial')}</span>}
+        {outcome.partial && <span className="block text-warn">{t('compareAnalysis.reconcile.partial')}</span>}
         {outcome.excluded > 0 && (
           <span className="block text-muted-foreground">{t('compareAnalysis.reconcile.excluded', { count: outcome.excluded })}</span>
         )}

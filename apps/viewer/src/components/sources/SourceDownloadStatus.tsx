@@ -27,7 +27,7 @@ export function SourceDownloadStatus({ name, state }: { name: string; state: Sou
   }
   if (state.phase === 'failed') {
     return (
-      <span className="flex shrink-0 items-center gap-1 text-xs text-red-600 dark:text-red-400">
+      <span className="flex shrink-0 items-center gap-1 text-xs text-danger">
         <AlertCircle className="h-3.5 w-3.5" aria-hidden />
         {t('sources.downloadStatus.failed')}
       </span>

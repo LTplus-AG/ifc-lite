@@ -198,7 +198,7 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
 
   if (error) {
     return (
-      <div className="p-3 text-xs text-rose-600 dark:text-rose-400">
+      <div className="p-3 text-xs text-danger">
         {error}
       </div>
     );

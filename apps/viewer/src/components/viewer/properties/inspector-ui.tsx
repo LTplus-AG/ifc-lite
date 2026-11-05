@@ -91,7 +91,7 @@ export function InspectorGroupLabel({ children, icon, title, as: Tag = 'div' }: 
  * copied text unless `copyValue` says otherwise); `children` replaces the
  * rendered value (an editor, highlighted search text) while keeping the row.
  */
-export function InspectorRow({ label, labelNode, labelCell, value, children, mono, copyValue, copy = true, className, valueClassName, rowProps }: {
+export function InspectorRow({ label, labelNode, labelCell, value, children, mono, copyValue, copy = true, copyLabel, className, valueClassName, rowProps }: {
   label: string;
   labelNode?: ReactNode;
   /** Replaces the whole key cell (a tooltip trigger that must be the cell itself). */
@@ -101,6 +101,8 @@ export function InspectorRow({ label, labelNode, labelCell, value, children, mon
   mono?: boolean;
   copyValue?: string;
   copy?: boolean;
+  /** Canonical action name for the copy button (#5858), when it has one. */
+  copyLabel?: string;
   className?: string;
   valueClassName?: string;
   rowProps?: Record<string, unknown>;
@@ -118,7 +120,7 @@ export function InspectorRow({ label, labelNode, labelCell, value, children, mon
       </span>
       {/* The copy slot is always a cell of its own, button or not. */}
       <span className="flex w-6 justify-center">
-        {copy && shown !== '' && <CopyValueButton name={label} value={copyValue ?? shown} />}
+        {copy && shown !== '' && <CopyValueButton name={label} value={copyValue ?? shown} actionLabel={copyLabel} />}
       </span>
     </div>
   );

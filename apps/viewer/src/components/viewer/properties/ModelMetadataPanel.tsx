@@ -20,6 +20,7 @@ import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { InspectorHeading, InspectorRow } from './inspector-ui';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
@@ -224,7 +225,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             <div className="pb-1">
               {projectData.name && <InspectorRow label={EXPRESS_NAME_ATTRIBUTE} value={projectData.name} />}
               {projectData.description && <InspectorRow label={EXPRESS_DESCRIPTION_ATTRIBUTE} value={projectData.description} />}
-              {projectData.globalId && <InspectorRow label={EXPRESS_GLOBAL_ID_ATTRIBUTE} value={projectData.globalId} mono />}
+              {projectData.globalId && <InspectorRow label={EXPRESS_GLOBAL_ID_ATTRIBUTE} value={projectData.globalId} mono copyLabel={t(ACTION_NAME_KEYS.copyGlobalId)} />}
             </div>
 
             {/* Project Properties */}

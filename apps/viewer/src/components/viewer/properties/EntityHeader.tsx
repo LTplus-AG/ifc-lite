@@ -17,6 +17,7 @@ import { Layers2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { EntityHeaderActions } from './EntityHeaderActions';
 import { UnitDisplayControl } from './UnitDisplayControl';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE } from './express-labels';
@@ -78,7 +79,7 @@ export function EntityHeader({ name, entityType, typeLine, layersMerged, globalI
         </div>
       </div>
       <div className="border-t border-border py-1">
-        {globalId && <InspectorRow label={EXPRESS_GLOBAL_ID_ATTRIBUTE} value={globalId} mono />}
+        {globalId && <InspectorRow label={EXPRESS_GLOBAL_ID_ATTRIBUTE} value={globalId} mono copyLabel={t(ACTION_NAME_KEYS.copyGlobalId)} />}
         {children}
       </div>
     </div>

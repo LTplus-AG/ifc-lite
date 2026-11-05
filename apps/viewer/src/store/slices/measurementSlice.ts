@@ -511,7 +511,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // was picked under. A moved camera puts something else there, so "Live"
     // ends here and the next hover frame reads the new spot (#8828).
     const measurePointLive = viewMoved ? null : state.measurePointLive;
-    if (measurePointLive !== state.measurePointLive) hasChanges = true;
+    const liveEnded = measurePointLive !== state.measurePointLive;
+    if (liveEnded) hasChanges = true;
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -535,7 +536,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       measurePointLast,
       measurePointLive,
     };
-    set(reprojected);
+    // The snap glyph marked that hover point; it goes with it.
+    set(liveEnded ? { ...reprojected, snapTarget: null, snapVisualization: null } : reprojected);
   },
 
   // Snap actions

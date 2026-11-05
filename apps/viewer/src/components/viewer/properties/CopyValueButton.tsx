@@ -44,7 +44,7 @@ export function CopyValueButton({ name, value, className, actionLabel }: {
       className={cn(
         'h-6 w-6 shrink-0 p-0 transition-opacity [&_svg]:size-3',
         copied
-          ? 'text-emerald-600 dark:text-emerald-400'
+          ? 'text-ok'
           : 'text-muted-foreground opacity-0 group-hover/copyrow:opacity-100 group-focus-within/copyrow:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
         className,
       )}

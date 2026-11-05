@@ -1,10 +1,10 @@
 {
   "version": 1,
   "totals": {
-    "arbitrary-value": 405,
-    "bw-class": 252,
-    "hex-literal": 272,
-    "native-control": 1060,
-    "palette-class": 3070
+    "arbitrary-value": 383,
+    "bw-class": 204,
+    "hex-literal": 270,
+    "native-control": 1056,
+    "palette-class": 1550
   }
 }

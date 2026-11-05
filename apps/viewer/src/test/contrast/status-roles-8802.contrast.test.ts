@@ -8,6 +8,7 @@ import {
   closeContrastBrowser,
   measureTextContrastOnSurface,
   warmContrastBrowser,
+  withThemedPage,
   type Theme,
 } from './render-harness';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
@@ -22,6 +23,29 @@ const ROLES = [
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
+
+// #8802: the role utilities must exist and paint their own colours. Without
+// this, an undefined `text-warn` would inherit the foreground and pass the
+// contrast checks below vacuously.
+describe('status role utilities resolve to their own colours (#8802)', () => {
+  for (const theme of THEMES) {
+    for (const [role, text, surface] of ROLES) {
+      it(`${role} text and surface are painted in ${theme}`, async () => {
+        const { roleColor, plainColor, surfaceColor } = await withThemedPage(
+          theme,
+          `<span id="plain">Plain</span><span id="role" class="${text}">Role</span><div id="surface" class="${surface}">Surface</div>`,
+          async (page) => ({
+            roleColor: await page.$eval('#role', (el) => getComputedStyle(el).color),
+            plainColor: await page.$eval('#plain', (el) => getComputedStyle(el).color),
+            surfaceColor: await page.$eval('#surface', (el) => getComputedStyle(el).backgroundColor),
+          }),
+        );
+        assert.notEqual(roleColor, plainColor, `${text} in ${theme} paints the inherited text colour`);
+        assert.notEqual(surfaceColor, 'rgba(0, 0, 0, 0)', `${surface} in ${theme} is transparent`);
+      });
+    }
+  }
+});
 
 // #8802: measure real compiled utilities in Chrome, including the translucent
 // status fill painted over the card. Token changes must preserve both pairs.

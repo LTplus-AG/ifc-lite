@@ -45,7 +45,20 @@ fn issue_8875_gross_preserves_material_layer_slicing() {
     let gross = process(content.as_bytes(), &ProcessingRequest::full_pass().skip_voids(true).layer_slicing(true), &mut ());
     let hosts: Vec<_> = gross.meshes.iter().filter(|m| m.express_id == 30).collect();
     assert_eq!(hosts.len(), 2, "both authored material layers survive");
-    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5, "gross volume: {}, parts: {:?}", volume(&gross, 30), gross.meshes.iter().filter(|m| m.express_id == 30).map(|m| signed_volume(&m.positions, &m.indices)).collect::<Vec<_>>());
+    // Layer slices are not guaranteed closed solids: signed-volume integration
+    // is not an oracle for them. Require exact parity with the same authored
+    // layer buildup without relationship cuts, including each slice's styling.
+    let authored_only = content.lines().filter(|line| !line.contains("= IFCRELVOIDSELEMENT("))
+        .collect::<Vec<_>>().join("\n");
+    let expected = process(authored_only.as_bytes(), &ProcessingRequest::full_pass().layer_slicing(true), &mut ());
+    let expected_hosts: Vec<_> = expected.meshes.iter().filter(|m| m.express_id == 30).collect();
+    assert_eq!(hosts.len(), expected_hosts.len());
+    for (actual, expected) in hosts.iter().zip(expected_hosts) {
+        assert_eq!(actual.positions, expected.positions);
+        assert_eq!(actual.indices, expected.indices);
+        assert_eq!(actual.color, expected.color);
+    }
+
 }
 
 #[test]

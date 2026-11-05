@@ -21,6 +21,15 @@
  * 703-836 and 933+ px panes, see the M2.4 PR.) Re-measure whenever the HUD's
  * widest bars change.
  *
+ * Re-measured for #8802 R1 over the current 25 states (the same sweep, 3D
+ * layout forced, window widths 1040-1420): the measure, section and align
+ * bars have grown since, and their min-content (the measure bar's mode
+ * group alone is 268 px) no longer fits the lane between the 14rem chip
+ * reserve and the ViewCube below a 602 px pane on Linux Chrome; 596-600 px
+ * panes collide with the storey chip and the cube. R1's thinner shell made
+ * the 1600 px split 881 px wide, enough for the old 560 px floor to open
+ * Plan ‖ 3D with a 566 px 3D pane, which the viewport-hud e2e caught.
+ *
  * - 'auto' (never picked): Plan ‖ 3D when both fit, else 3D alone, the plan
  *   one click away.
  * - an explicit 'split' / 'plan' is kept, but a split too narrow for both
@@ -32,15 +41,15 @@ import { useSyncExternalStore } from 'react';
 import type { ModelLayout, ModelLayoutPick } from '@/store/slices/authoringSessionSidebar';
 
 /** The narrowest 3D pane whose HUD shows every state without a collision (measured, see above). */
-export const MODEL_3D_MIN_PX = 560;
+export const MODEL_3D_MIN_PX = 620;
 /**
  * The narrowest plan pane: its header in one row (measured: the grid, Fit and
  * Plan | Split | 3D controls take 152 px, the storey chip 136 px with the
  * name truncated to about 40 px, plus padding; 308 px fits with no overflow).
  */
 export const PLAN_MIN_PX = 300;
-/** The resize handle between the panes (`w-1.5`). */
-const HANDLE_PX = 6;
+/** The resize handle between the panes: a 1px `.shell-splitter-v` (#8802 R1; its hit area is a pseudo-element). */
+export const HANDLE_PX = 1;
 /** The plan's share in Split when there is room to spare. */
 const SPLIT_PLAN_SHARE = 0.4;
 

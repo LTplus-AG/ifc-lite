@@ -79,6 +79,13 @@ function renderRibbonExports(): void {
   render(<RibbonExportGroup icons={STUB_ICONS} />);
 }
 
+/** No model yet, but the first one is loading: the whole registry is on
+ *  screen and gated off. (Nothing loaded AND nothing loading folds the
+ *  cluster into one control, #8802 R1.) */
+function startFirstLoad(): void {
+  useViewerStore.setState({ loading: true });
+}
+
 let exportEntitiesCsv: (() => Promise<void>) | null = null;
 function CsvExportHarness() {
   const { handleExportCSV } = useExportCommands('ribbon');
@@ -239,7 +246,7 @@ async function captureDownloads(run: () => Promise<void> | void): Promise<string
 }
 
 beforeEach(() => {
-  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map() });
+  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), loading: false });
 });
 
 afterEach(() => {
@@ -259,6 +266,7 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
   });
 
   it('the ribbon renders every registered export format', () => {
+    startFirstLoad();
     renderRibbonExports();
     assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS]);
   });
@@ -277,6 +285,7 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
           return <Dialog {...props} />;
         });
       }
+      startFirstLoad();
       renderRibbonExports();
       assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
         dialogs.map((command) => [command.id, ['ribbon']]));
@@ -287,6 +296,7 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
   });
 
   it('gates every format with no model loaded (#2511)', () => {
+    startFirstLoad();
     renderRibbonExports();
     const ribbonOff = renderedExportIds().filter((id) => {
       const el = exportControl(id);
@@ -294,6 +304,24 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
     });
 
     assert.deepEqual(ribbonOff, [...EXPORT_COMMAND_IDS], 'nothing is exportable with no model loaded');
+  });
+
+  it('folds into one inert Export control on an empty viewer, and unfolds when a load starts (#8802 R1)', () => {
+    renderRibbonExports();
+    assert.deepEqual(renderedExportIds(), [], 'no format row before there is a model');
+    const folded = document.querySelectorAll<HTMLButtonElement>('[data-export-folded]');
+    assert.equal(folded.length, 1, 'one folded export control');
+    // Inert but explained (#8802 R1 review): `aria-disabled` keeps it focusable
+    // and hoverable, so the "open a model" tooltip can open; activation runs nothing.
+    assert.equal(folded[0].getAttribute('aria-disabled'), 'true', 'the folded control is announced unavailable');
+    assert.equal(folded[0].disabled, false, 'a disabled button could never show its reason');
+    assert.equal(folded[0].tabIndex, 0, 'the reason is reachable by keyboard');
+    assert.equal(folded[0].getAttribute('aria-label'), 'Export');
+    const descriptionId = folded[0].getAttribute('aria-describedby') ?? '';
+    assert.match(document.getElementById(descriptionId)?.textContent ?? '', /Open a model to export/);
+    act(() => { startFirstLoad(); });
+    assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS], 'a load in flight shows the gated registry');
+    assert.equal(document.querySelectorAll('[data-export-folded]').length, 0);
   });
 
   it('the ribbon icon set covers every registered format', () => {

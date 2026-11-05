@@ -89,7 +89,8 @@ it('#8868 a missing report after clean exit cannot publish an otherwise valid OB
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it.each([false, true])('#8868 cancellation wins and reaps the child (ignore SIGTERM: %s)', async ignoresSignal => {
+it.each([false, true])('#8868 cancellation wins and reaps the child (ignore SIGTERM: %s)', async (ignoresSignal, context) => {
+  if (process.platform === 'win32') return context.skip();
   const f = await fixture(staged + `
     process.on('SIGTERM', () => { ${ignoresSignal ? '' : 'process.exit(0);'} });
     setInterval(() => {}, 100);
@@ -132,3 +133,32 @@ it('#8868 a missing child entry fails with bounded diagnostics and no artifacts'
   });
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
 });
+
+it('#8868 retains only the final 8 KiB of a failed child diagnostic', async () => {
+  const f = await fixture(`process.stderr.write('prefix' + 'x'.repeat(12000) + 'fatal tail', () => process.exit(1));`);
+  const failure = await exportRetainedIsolated(f.args, { entry: f.entry }).then(() => null, (error: unknown) => error);
+  expect(failure).toBeInstanceOf(RetainedProcessError);
+  expect(failure).toMatchObject({ stderr: 'x'.repeat(8192 - 'fatal tail'.length) + 'fatal tail' });
+});
+
+it.each([{ heapFlags: ['--max-old-space-size', '128'] }, { heapFlags: ['--max_old_space_size=128'] }])(
+  '#8868 explicit heap and diagnostic flags reach the actual child ($heapFlags)', async ({ heapFlags }) => {
+    const f = await fixture(staged + `
+      const { getHeapStatistics } = await import('node:v8');
+      await writeFile(flag('--runtime-observation'), JSON.stringify({
+        execArgv: process.execArgv, heap: getHeapStatistics().heap_size_limit,
+      }));
+    `);
+    const observation = join(f.directory, 'runtime.json');
+    const previous = process.execArgv;
+    try {
+      process.execArgv = ['--eval', "throw new Error('parent program must not execute in child')",
+        ...heapFlags, '--report-on-fatalerror'];
+      await exportRetainedIsolated([...f.args, '--runtime-observation', observation], { entry: f.entry });
+    } finally { process.execArgv = previous; }
+    const runtime = JSON.parse(await readFile(observation, 'utf8'));
+    expect(runtime.execArgv).toEqual([...heapFlags, '--report-on-fatalerror']);
+    expect(runtime.heap).toBeLessThan(512 * 1024 * 1024);
+    expect(await readFile(f.obj, 'utf8')).toBe('complete obj\n');
+  },
+);

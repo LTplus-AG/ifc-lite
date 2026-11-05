@@ -45,3 +45,10 @@ containment: all threads share the CLI process. It also required retaining
 GNU time's termination diagnosis before scratch cleanup, checking a real
 signal against explicit exit 139, and separating containment from proof of
 the underlying cause. Twenty successful attempts alone are not that proof.
+
+The next review found that one-shot signal listeners allowed a second Ctrl-C
+to escape cleanup. Listeners now remain installed until the child is reaped.
+Cancellation tests wait until the child has staged artifacts and installed its
+handler, then distinguish a successful exit on SIGTERM from forced SIGKILL.
+A further review identified lost explicit Node heap limits; selected heap and
+fatal-report flags now reach the child, with a runtime heap observation test.

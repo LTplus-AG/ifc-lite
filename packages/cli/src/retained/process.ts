@@ -22,10 +22,31 @@ export class RetainedProcessError extends Error {
   }
 }
 
+/** Preserve explicit heap limits and fatal-error diagnostics in the process
+ * doing the work. Eval programs, loaders and debugger ports belong to the parent. */
+function childRuntimeArgs(): string[] {
+  const valued = new Set(['--max-old-space-size', '--max-semi-space-size', '--stack-size',
+    '--report-directory', '--report-filename']);
+  const switches = new Set(['--report-on-fatalerror', '--report-compact', '--report-exclude-env',
+    '--report-exclude-network', '--enable-source-maps']);
+  const parentOperands = new Set(['-e', '--eval', '-p', '--print', '-r', '--require',
+    '--import', '--loader', '--experimental-loader', '--conditions']);
+  const forwarded: string[] = [];
+  for (let i = 0; i < process.execArgv.length; i++) {
+    const arg = process.execArgv[i], key = arg.split('=')[0].replaceAll('_', '-');
+    if (valued.has(key)) {
+      forwarded.push(arg);
+      if (!arg.includes('=') && i + 1 < process.execArgv.length) forwarded.push(process.execArgv[++i]);
+    } else if (switches.has(key)) forwarded.push(arg);
+    else if (parentOperands.has(key) && !arg.includes('=')) i++;
+  }
+  return forwarded;
+}
+
 /** Wait for process closure, including late native faults after staged writes.
  * Never treat a result message or a completed file as successful termination. */
 async function runChild(entry: URL, config: string, abort?: AbortSignal): Promise<string> {
-  const child = spawn(process.execPath, [fileURLToPath(entry), config], {
+  const child = spawn(process.execPath, [...childRuntimeArgs(), fileURLToPath(entry), config], {
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = Buffer.alloc(0), cancelled = false, spawnError: Error | undefined;

@@ -10,7 +10,9 @@
   not use the native SMLib executable. Native ASAN findings alone cannot
   explain a Node crash.
 - Repair the root cause or establish process containment with a typed failure,
-  no partial OBJ/report publication, no automatic retry and no exact fallback.
+  no OBJ/report publication on child failure, no automatic retry and no exact
+  fallback. Sequential final copies are not atomic: disk/write failures can
+  leave one artifact published without the other.
   Report containment separately from root-cause repair; an unresolved cause
   remains unresolved even if a repeated cohort succeeds.
 - Exercise a real signal, explicit exit 139, ordinary errors, cancellation,

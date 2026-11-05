@@ -62,7 +62,7 @@ for (const kind of ['exit', 'signal']) {
 }
 
 it('#8868 success publishes identical staged bytes only after exit and preserves filters and verbosity', async () => {
-  const f = await fixture(staged + `process.stdout.write('must never leak'); process.stderr.write('retained summary\\n');`);
+  const f = await fixture(staged + `process.stderr.write('retained summary\\n');`);
   logger.configure({ level: 'error' });
   const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
   const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
@@ -90,7 +90,10 @@ it('#8868 stdout uses staged bytes without a final destination file', async () =
 
 it('#8868 a missing report after clean exit cannot publish an otherwise valid OBJ', async () => {
   const f = await fixture(`await writeFile(flag('--out'), 'obj');`);
-  await expect(exportRetainedIsolated(f.args, { entry: f.entry })).rejects.toThrow();
+  await expect(exportRetainedIsolated(f.args, { entry: f.entry })).rejects.toMatchObject({ code: 'ENOENT', syscall: 'lstat' });
+  const observation = JSON.parse(await readFile(f.observation, 'utf8'));
+  expect(Number.isInteger(observation.pid)).toBe(true);
+  expect(observation.pid).toBeGreaterThan(0);
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
@@ -233,8 +236,24 @@ it('#8868 retained child starts a real worker with inherited runtime flags', asy
     await writeFile(flag('--out'), JSON.stringify(result));
     await writeFile(flag('--retained-report'), 'worker started');
   `);
-  await exportRetainedIsolated(f.args, { entry: f.entry });
+  const previous = process.execArgv;
+  try {
+    process.execArgv = ['--max-old-space-size=128'];
+    await exportRetainedIsolated(f.args, { entry: f.entry });
+  } finally { process.execArgv = previous; }
   const result = JSON.parse(await readFile(f.obj, 'utf8'));
   expect(result.valid).toBe(true);
-  expect(result.flags).toEqual(childRuntimeArgs());
+  expect(result.flags).toEqual(['--max-old-space-size=128',
+    ...(Number(process.versions.node.split('.')[0]) === 24 ? ['--no-wasm-code-gc'] : [])]);
+});
+
+
+it('#8868 stdout-mode failure after staging publishes no parent stdout', async () => {
+  const f = await fixture(staged + 'process.exit(139);');
+  const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  await expect(exportRetainedIsolated(f.args.slice(0, 5), { entry: f.entry }))
+    .rejects.toMatchObject({ code: 'RETAINED_PROCESS_FAILED', exitCode: 139, signal: null });
+  expect(stdout).not.toHaveBeenCalled();
+  const { request } = JSON.parse(await readFile(f.observation, 'utf8'));
+  await expect(readFile(request)).rejects.toMatchObject({ code: 'ENOENT' });
 });

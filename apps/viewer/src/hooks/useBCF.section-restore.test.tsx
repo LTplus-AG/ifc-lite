@@ -39,10 +39,16 @@ const renderer = {
     getTarget: () => ({ x: 1, y: 2, z: 3 }),
     getUp: () => ({ x: 0, y: 1, z: 0 }),
     getFOV: () => Math.PI / 4,
+    getProjectionMode: () => 'perspective',
+    getOrthoSize: () => 10,
     getAspect: () => 16 / 9,
     getDistance: () => 10,
     setPosition: () => {},
     setTarget: () => {},
+    setProjectionMode: () => {},
+    setUp: () => {},
+    setFOV: () => {},
+    setOrthoSize: () => {},
   }),
 } as unknown as Renderer;
 

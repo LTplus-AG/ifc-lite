@@ -23,6 +23,9 @@ const { AnnotationPicker, resolveAnnotationPick } = await load('packages/rendere
 const { Camera } = await load('packages/renderer/src/camera.ts');
 const { SymbolicTextPipeline } = await load('packages/renderer/src/symbolic-overlay-pipelines.ts');
 const { triangulateFillTo } = await load('packages/renderer/src/symbolic-overlay-geometry.ts');
+// Node cannot fetch file: URLs; initialize the same production module from bytes.
+const { default: initWasm } = await load('packages/wasm/pkg/ifc-lite.js');
+await initWasm({ module_or_path: readFileSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', root)) });
 const bytes = readFileSync(process.argv[2]);
 const cached = await parseSymbolicAnnotations({ source: bytes });
 const params = { enabled: true, effectiveGridEnabled: false, clipEnabled: false, clipPos: 0, clipDepth: 0, fallbackY: 0, theme: 'light' };

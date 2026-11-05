@@ -77,7 +77,6 @@ const RESET = {
   measureMode: 'point' as const,
   measurements: [],
   activeMeasurement: null,
-  pendingMeasurePoint: null,
   activePolyline: null,
   polylineMeasurements: [],
   activeAngle: null,
@@ -148,7 +147,7 @@ describe('Point mode click (#8770)', () => {
     handleMeasureTap(ctx, 3, 4);
     const s = useViewerStore.getState();
     assert.deepEqual(xyz(s.measurePointLast), [3, 4, -5]);
-    assert.equal(s.pendingMeasurePoint, null);
+    assert.equal(s.activeMeasurement, null);
     assert.equal(s.measurements.length, 0);
   });
 
@@ -449,7 +448,8 @@ describe('Point mode readouts (#8770)', () => {
   });
 
   it('the marker sits on the placed point, not on a Distance tap start left from before the switch', () => {
-    useViewerStore.setState({ measureMode: 'drag', pendingMeasurePoint: { x: 0, y: 0, z: 0, screenX: 11, screenY: 12 } });
+    useViewerStore.setState({ measureMode: 'drag' });
+    useViewerStore.getState().startMeasurement({ x: 0, y: 0, z: 0, screenX: 11, screenY: 12 });
     render(<><ViewportHud /><MeasureOverlay /></>);
     act(() => useViewerStore.getState().setMeasureMode('point'));
     const { ctx } = fakeCtx({ current: ON_WALL });

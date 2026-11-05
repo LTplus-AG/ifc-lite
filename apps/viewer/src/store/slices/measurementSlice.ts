@@ -44,7 +44,6 @@ let measurementCounter = 0;
 export interface MeasurementSlice extends MeasurePointSlice {
   // State
   measurements: Measurement[];
-  pendingMeasurePoint: MeasurePoint | null;
   activeMeasurement: ActiveMeasurement | null;
   snapTarget: SnapTarget | null;
   snapEnabled: boolean;
@@ -106,10 +105,6 @@ export interface MeasurementSlice extends MeasurePointSlice {
   /** Finished radius measurements. Picks only — the fit (or refusal) is
    *  derived on render by `fitRadius`. */
   radiusMeasurements: RadiusMeasurement[];
-
-  // Legacy measurement actions
-  addMeasurePoint: (point: MeasurePoint) => void;
-  completeMeasurement: (endPoint: MeasurePoint) => void;
 
   // Drag-based measurement actions
   startMeasurement: (point: MeasurePoint) => void;
@@ -301,7 +296,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   return {
   // Initial state
   measurements: [],
-  pendingMeasurePoint: null,
   activeMeasurement: null,
   snapTarget: null,
   snapEnabled: true,
@@ -319,25 +313,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   activeRadius: null,
   radiusMeasurements: [],
   ...createMeasurePointSlice(set),
-
-  // Legacy measurement actions
-  addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
-
-  completeMeasurement: (endPoint) => {
-    set((state) => {
-      if (!state.pendingMeasurePoint) return {};
-      const start = state.pendingMeasurePoint;
-      const distance = Math.sqrt(
-        Math.pow(endPoint.x - start.x, 2) +
-        Math.pow(endPoint.y - start.y, 2) +
-        Math.pow(endPoint.z - start.z, 2)
-      );
-      measurementCounter++; // combined with timestamp to guarantee unique IDs
-      const measurement: Measurement = { id: `m-${Date.now()}-${measurementCounter}`, start, end: endPoint, distance };
-      return { measurements: [...state.measurements, measurement], pendingMeasurePoint: null };
-    });
-    revealMeasurements();
-  },
 
   // Drag-based measurement actions
   startMeasurement: (point) => set({
@@ -392,7 +367,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   clearMeasurements: () => set({
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     // "Clear all" clears every kind of measurement the panel lists,
@@ -805,7 +779,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   resetAllMeasurementState: () => set({
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     snapVisualization: null,

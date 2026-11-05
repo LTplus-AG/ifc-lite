@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { SnapType } from '@ifc-lite/renderer';
 import { cleanup, click, press, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
@@ -588,9 +589,11 @@ describe('Point mode readout staleness (#8828)', () => {
     assert.equal(hasPendingMeasurementState(useViewerStore.getState()), true, 'a lone hover point never reaches the camera pass');
     useViewerStore.getState().placeMeasurePoint(mp(ON_WALL));
     useViewerStore.getState().setMeasurePointLive(mp(ELSEWHERE));
+    useViewerStore.setState({ snapTarget: { type: SnapType.VERTEX, position: ELSEWHERE, expressId: 1, confidence: 1 } });
     useViewerStore.getState().updateMeasurementScreenCoords((p) => ({ x: p.x * 10, y: p.y * 10 }));
     const s = useViewerStore.getState();
     assert.equal(s.measurePointLive, null, 'Live outlived a camera move');
+    assert.equal(s.snapTarget, null, 'the snap glyph stayed on the hover point the camera move ended');
     assert.deepEqual([s.measurePointLast?.screenX, s.measurePointLast?.screenY], [30, 40]);
   });
 

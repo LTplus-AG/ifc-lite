@@ -50,15 +50,25 @@ describe('activity rail overflow (#8802 R1)', () => {
     { id: 'lists', group: 'data' },
   ];
 
-  it('reserves More before the active Properties and tour-pinned Compare (#8802)', () => {
-    const fit = fitRail(shortEntries, 67, ['properties', 'compare']);
-    assert.ok(railHeight(shortEntries.filter((e) => fit.visible.includes(e.id))) + RAIL_ITEM_PX <= 67,
-      'the visible run plus More must fit the 67px list');
-    assert.ok(fit.overflow.includes('compare'));
-    // At 90px Properties fits alone beside More; Compare must yield first.
-    assert.deepEqual(fitRail(shortEntries, 90, ['properties', 'compare']), {
-      visible: ['properties'], overflow: ['compare', 'lists'],
-    });
+  it('keeps tour-pinned Compare before active Properties beside More at 90px (#8802)', () => {
+    // ActivityBar passes the tour anchor first, then the active panel.
+    const fit = fitRail(shortEntries, 90, ['compare', 'properties']);
+    assert.deepEqual(fit.visible, ['compare']);
+    assert.deepEqual(fit.overflow, ['properties', 'lists']);
+    assert.equal(railHeight(shortEntries.filter((e) => fit.visible.includes(e.id))) + RAIL_ITEM_PX, 90);
+  });
+
+  it('shows only More at 67px with active Properties and tour-pinned Compare (#8802)', () => {
+    const fit = fitRail(shortEntries, 67, ['compare', 'properties']);
+    assert.deepEqual(fit.visible, []);
+    assert.deepEqual(fit.overflow, ['properties', 'compare', 'lists']);
+    assert.ok(RAIL_PADDING_PX + RAIL_ITEM_PX <= 67);
+  });
+
+  it('keeps active Properties over unpinned Compare without a tour at 90px (#8802)', () => {
+    const fit = fitRail([...shortEntries].reverse(), 90, [null, 'properties']);
+    assert.deepEqual(fit.visible, ['properties']);
+    assert.deepEqual(fit.overflow, ['lists', 'compare']);
   });
 
   it('shows More alone when only its row fits (#8802)', () => {

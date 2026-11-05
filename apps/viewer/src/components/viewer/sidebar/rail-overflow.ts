@@ -8,8 +8,8 @@
  * dock cut icons and group captions in half with no hint that more existed.
  *
  * Pure layout arithmetic over the rail's fixed row sizes (`ActivityBar`'s
- * classes), so it is testable without a layout engine. The active panel takes
- * priority over a tour anchor, but both yield to the overflow control when
+ * classes), so it is testable without a layout engine. A tour anchor takes
+ * priority over the active panel, but both yield to the overflow control when
  * the window cannot fit them beside it.
  */
 
@@ -45,8 +45,8 @@ export function railHeight<Id extends string>(entries: readonly RailEntry<Id>[])
  * rest. An unknown height (0, e.g. before the first measurement or with no
  * layout engine) keeps every icon visible, matching the old scrolling rail.
  *
- * `pinned` icons take priority in array order (active panel first, then tour
- * anchor). Pins past the fold replace unpinned icons; when even the pins do
+ * `pinned` icons take priority in array order (tour anchor first, then active
+ * panel). Pins past the fold replace unpinned icons; when even the pins do
  * not fit beside More, the lowest-priority pin yields first.
  */
 export function fitRail<Id extends string>(
@@ -81,8 +81,8 @@ export function fitRail<Id extends string>(
   }
   while (shown.size > 0 && railHeight(run()) > budget) {
     if (dropLastUnpinned()) continue;
-    // Active comes first in `pinned`; shed the tour target before the active
-    // panel, and finally the active panel itself if only More fits.
+    // Tour anchor comes first in `pinned`; shed the active panel first
+    // (its pane stays open), then the tour anchor if only More fits.
     const victim = [...keep].reverse().find((id) => shown.has(id));
     if (!victim) break;
     shown.delete(victim);

@@ -16,8 +16,6 @@ import { cleanup, click, render } from '@/test/render';
 import { resolve } from '@/i18n/registry';
 import type { PanelLocation } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
-import { resolveAnchor } from '@/lib/tours/anchor-resolver';
-import { useViewerStore } from '@/store';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
 
 afterEach(cleanup);
@@ -80,16 +78,19 @@ it('names each listed panel with its location, like the rail icons', () => {
   assert.deepEqual(selected, [closed.id]);
 });
 
-it('opens More for the current tour target and resolves its live anchor (#8802)', async () => {
+it('keeps More closed until requested and closes it after selection (#8802)', () => {
   const selected: WorkspacePanelId[] = [];
-  render(<ActivityBarOverflow ids={['properties', 'compare']} tourTarget="compare"
+  const container = render(<ActivityBarOverflow ids={['properties', 'compare']}
     locationOf={() => 'closed'} onSelect={(id) => selected.push(id)} />);
-  const result = await resolveAnchor(useViewerStore, {
-    id: 'open-panel', kind: 'action', anchor: 'activity-compare',
-    title: 'Open Compare', body: 'Open Compare',
-  }, () => true);
-  assert.ok(result.el, 'the resolver finds Compare inside the mounted overflow menu');
-  assert.equal(result.el.dataset.panelId, 'compare');
-  click(result.el);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-rail-overflow]');
+  assert.ok(trigger);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.querySelector('[role="menu"]'), null);
+  openMenu(trigger);
+  const target = document.querySelector<HTMLElement>('[role="menuitem"][data-panel-id="compare"]');
+  assert.ok(target);
+  click(target);
   assert.deepEqual(selected, ['compare']);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.querySelector('[role="menu"]'), null);
 });

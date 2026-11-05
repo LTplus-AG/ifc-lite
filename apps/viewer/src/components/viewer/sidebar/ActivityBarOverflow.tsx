@@ -9,7 +9,7 @@
  * Opening one goes through the same handler as its rail icon.
  */
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import type { PanelLocation } from '@/hooks/usePanelControls';
 import { getPanelDef, panelGroupDefinition, type WorkspacePanelId } from '@/lib/panels/registry';
 
@@ -43,22 +42,16 @@ function locationText(t: T, location: PanelLocation, title: string): { name: str
   }
 }
 
-export function ActivityBarOverflow({ ids, locationOf, onSelect, tourTarget }: {
-  tourTarget?: WorkspacePanelId | null;
+export function ActivityBarOverflow({ ids, locationOf, onSelect }: {
   ids: readonly WorkspacePanelId[];
   locationOf: (id: WorkspacePanelId) => PanelLocation;
   onSelect: (id: WorkspacePanelId) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const overflowTarget = tourTarget && ids.includes(tourTarget) ? tourTarget : null;
-  useEffect(() => {
-    if (overflowTarget) setOpen(true);
-  }, [overflowTarget]);
   const anyOpen = ids.some((id) => locationOf(id) !== 'closed');
   const label = t(anyOpen ? 'shellChrome.activityBar.morePanelsSomeOpen' : 'shellChrome.activityBar.morePanels', { count: ids.length });
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
@@ -113,7 +106,6 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect, tourTarget }: {
                 </DropdownMenuLabel>
               )}
               <DropdownMenuItem
-                {...tourAnchor(activityAnchor(id))}
                 data-panel-id={id}
                 data-panel-location={location}
                 aria-label={hint ? name : undefined}

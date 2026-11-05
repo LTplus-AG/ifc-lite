@@ -145,7 +145,7 @@ export function ActivityBar() {
   const fit = useMemo(
     () => (customizing
       ? { visible: entries.map((e) => e.id), overflow: [] }
-      : fitRail(entries, listHeight, [primaryId, tourRailAnchor])),
+      : fitRail(entries, listHeight, [tourRailAnchor, primaryId])),
     [customizing, entries, listHeight, primaryId, tourRailAnchor],
   );
 
@@ -237,7 +237,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow tourTarget={tourRailAnchor} ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
+          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
         )}
       </div>
 

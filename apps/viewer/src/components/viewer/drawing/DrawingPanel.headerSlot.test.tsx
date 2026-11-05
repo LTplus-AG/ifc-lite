@@ -32,7 +32,8 @@ it('portals the cut menu and actions into the strip header slot', () => {
       <DrawingPanel />
     </BottomStripHeaderSlotContext.Provider>,
   );
-  assert.equal(ui.querySelector('[data-drawing-header]'), null, 'no title row inside the panel');
+  // Primitive asserts only: a failing assert on a happy-dom node inspects the whole DOM.
+  assert.equal(ui.querySelector('[data-drawing-header]') === null, true, 'no title row inside the panel');
   const header = slot.querySelector('[data-drawing-header]');
   assert.ok(header, 'the header is in the slot');
   const cut = header!.querySelector('[aria-label^="Section source:"]');

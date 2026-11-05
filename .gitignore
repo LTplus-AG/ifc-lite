@@ -96,6 +96,7 @@ tests/models/ara3d
 tests/models/issues
 tests/models/various
 tests/models/georeferencer
+tests/models/edinburgh
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 # Explicit case variants also work with the CI path auditor's basic globs.

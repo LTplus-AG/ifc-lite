@@ -98,7 +98,7 @@ export interface MouseHandlerContext {
   incrementEdgeLockStrength: () => void;
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
-  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
+  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
   handlePickForSelection: (pickResult: PickResult | null) => void;
   toggleSelection: (entityId: number) => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;

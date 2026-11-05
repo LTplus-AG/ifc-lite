@@ -38,7 +38,7 @@ function pickPoint(ctx: MouseHandlerContext, x: number, y: number) {
   return raycastForPolylinePoint({ ...ctx, edgeLockStateRef: { current: getDefaultEdgeLockState() } }, x, y);
 }
 
-/** Place the last point. A miss is a no-op and keeps the previous point, as a polyline miss does. */
+/** Place the last point. A miss keeps the previous point, as a polyline miss does, and ends a Live reading. */
 export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
   // The click's pick supersedes a trailing hover or a hover frame already
@@ -46,7 +46,11 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
   // spot just placed (#8828).
   cancelQueuedHover(ctx);
   const picked = pickPoint(ctx, x, y);
-  if (!picked) return;
+  if (!picked) {
+    // The cancelled hover frame would have read this miss too: nothing is under the cursor now.
+    useViewerStore.getState().setMeasurePointLive(null);
+    return;
+  }
   ctx.setSnapTarget(picked.snapTarget);
   useViewerStore.getState().placeMeasurePoint(picked.point);
 }

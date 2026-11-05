@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The camera pose the measurement reprojection pass last ran for. The
+ * The camera state the measurement reprojection pass last ran for. The
  * animation loop, wheel zoom and a Point-mode hover (#8828) all compare
- * against it, so they agree on when the camera counts as moved.
+ * against it, so they agree on when the view counts as changed.
  */
 
 export interface MeasureCameraState {
@@ -18,13 +18,9 @@ export interface MeasureCameraState {
   /** A viewpoint restore can change only these. */
   fov: number;
   up: { x: number; y: number; z: number };
-  /**
-   * The canvas's CSS box, the space `projectToCssScreen` lands in. Not the
-   * drawing buffer: that shrinks to pixel ratio 1 while the view is
-   * interacting and grows back once it settles, which moves no projected point.
-   */
-  cssWidth: number;
-  cssHeight: number;
+  /** The drawing buffer, which the camera's aspect follows. */
+  canvasWidth: number;
+  canvasHeight: number;
 }
 
 interface CameraPose {
@@ -37,7 +33,7 @@ interface CameraPose {
   getUp(): { x: number; y: number; z: number };
 }
 
-export function measureCameraState(camera: CameraPose, canvas: { clientWidth: number; clientHeight: number }): MeasureCameraState {
+export function measureCameraState(camera: CameraPose, canvas: { width: number; height: number }): MeasureCameraState {
   return {
     position: camera.getPosition(),
     rotation: camera.getRotation(),
@@ -46,12 +42,19 @@ export function measureCameraState(camera: CameraPose, canvas: { clientWidth: nu
     orthoSize: camera.getOrthoSize(),
     fov: camera.getFOV(),
     up: camera.getUp(),
-    cssWidth: canvas.clientWidth,
-    cssHeight: canvas.clientHeight,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
   };
 }
 
-export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
+/**
+ * The camera itself moved, so something else is now under the cursor. A
+ * drawing-buffer resize alone is not that: the buffer drops to pixel ratio 1
+ * while the view interacts and grows back once it settles, and still needs
+ * the markers reprojected (the camera's aspect follows it), but moves nothing
+ * under a resting cursor (#8828).
+ */
+export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
   return a !== null &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
@@ -64,7 +67,12 @@ export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureC
     a.fov === b.fov &&
     a.up.x === b.up.x &&
     a.up.y === b.up.y &&
-    a.up.z === b.up.z &&
-    a.cssWidth === b.cssWidth &&
-    a.cssHeight === b.cssHeight;
+    a.up.z === b.up.z;
+}
+
+/** Nothing the reprojection pass depends on changed. */
+export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
+  return sameMeasureCameraPose(a, b) && a !== null &&
+    a.canvasWidth === b.canvasWidth &&
+    a.canvasHeight === b.canvasHeight;
 }

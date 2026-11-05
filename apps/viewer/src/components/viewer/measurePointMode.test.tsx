@@ -598,25 +598,30 @@ describe('Point mode readout staleness (#8828)', () => {
     const { ctx, pose } = fakeCtx({ current: ON_WALL });
     ctx.lastCameraStateRef.current = {
       position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
-      projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, cssWidth: 1, cssHeight: 1,
+      projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, canvasWidth: 1, canvasHeight: 1,
     };
     hoverMeasurePoint(ctx, 3, 4);
     assert.deepEqual(xyz(useViewerStore.getState().measurePointLive), [3, 4, -5]);
     assert.deepEqual(ctx.lastCameraStateRef.current, {
-      ...pose, cssWidth: ctx.canvas.clientWidth, cssHeight: ctx.canvas.clientHeight,
+      ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height,
     }, 'the next animation frame would count the camera as moved and drop the point just picked');
   });
 
   it('a projection toggle, an orthographic zoom or a viewpoint restore ends "Live"; a pass with the camera unmoved keeps it', () => {
     for (const move of ['projection', 'orthoSize', 'fov', 'up'] as const) {
       const { ctx, pose } = fakeCtx({ current: ON_WALL });
+      const passes: boolean[] = [];
+      const update = ctx.updateMeasurementScreenCoords;
+      ctx.updateMeasurementScreenCoords = (project, viewMoved) => { passes.push(viewMoved ?? true); update(project, viewMoved); };
       hoverMeasurePoint(ctx, 3, 4);
+      passes.length = 0;
       syncMeasureScreenCoords(ctx); // a clamped wheel step: nothing moved
       assert.ok(useViewerStore.getState().measurePointLive !== null, `an unmoved camera ended Live (${move})`);
       // The drawing buffer drops to pixel ratio 1 while the view interacts: no point moves on screen.
       ctx.canvas.width = 37;
       syncMeasureScreenCoords(ctx);
       assert.ok(useViewerStore.getState().measurePointLive !== null, `a drawing-buffer resize ended Live (${move})`);
+      assert.deepEqual(passes, [false], 'a drawing-buffer resize must still reproject the markers (the aspect follows it)');
       if (move === 'projection') pose.projectionMode = 'orthographic';
       else if (move === 'orthoSize') pose.orthoSize = 5;
       else if (move === 'fov') pose.fov = 60;
@@ -670,6 +675,16 @@ describe('Point mode readout staleness (#8828)', () => {
       globalThis.requestAnimationFrame = raf;
       globalThis.cancelAnimationFrame = caf;
     }
+  });
+
+  it('a click that misses ends "Live" along with the hover frame it cancelled', () => {
+    const hit = { current: ON_WALL as Hit };
+    const { ctx } = fakeCtx(hit);
+    hoverMeasurePoint(ctx, 3, 4);
+    assert.ok(useViewerStore.getState().measurePointLive !== null);
+    hit.current = null;
+    handleMeasureClickAt(ctx, 50, 50);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live named a point no longer under the cursor');
   });
 
   it('a model move marks the placed point Stale on the HUD and the Point tab; the next click is current', () => {

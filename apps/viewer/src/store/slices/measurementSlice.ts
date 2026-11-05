@@ -122,8 +122,14 @@ export interface MeasurementSlice extends MeasurePointSlice {
   cancelMeasurement: () => void;
   deleteMeasurement: (id: string) => void;
   clearMeasurements: () => void;
+  /**
+   * Reproject every stored point for the current view. `viewMoved` (default
+   * true) says the camera itself moved, which also ends Point mode's Live
+   * reading; a drawing-buffer resize alone reprojects but keeps it (#8828).
+   */
   updateMeasurementScreenCoords: (
-    projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null
+    projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null,
+    viewMoved?: boolean,
   ) => void;
 
   // Snap actions
@@ -386,7 +392,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     ...NO_MEASURE_POINT,
   })),
 
-  updateMeasurementScreenCoords: (projectToScreen) => {
+  updateMeasurementScreenCoords: (projectToScreen, viewMoved = true) => {
     const state = get();
     let hasChanges = false;
 
@@ -509,7 +515,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // The hover point named whatever was under the cursor for the camera it
     // was picked under. A moved camera puts something else there, so "Live"
     // ends here and the next hover frame reads the new spot (#8828).
-    if (state.measurePointLive) hasChanges = true;
+    const measurePointLive = viewMoved ? null : state.measurePointLive;
+    if (measurePointLive !== state.measurePointLive) hasChanges = true;
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -531,7 +538,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       activeRadius: updatedActiveRadius,
       radiusMeasurements: updatedRadiusMeasurements,
       measurePointLast,
-      measurePointLive: null,
+      measurePointLive,
     };
     set(reprojected);
   },

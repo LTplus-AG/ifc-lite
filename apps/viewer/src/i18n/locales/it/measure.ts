@@ -185,7 +185,7 @@ export const measureIt = {
   "measure.source.modified": "Operando CSG: la geometria finale differisce da questa origine.",
   "measure.source.unplaced": "I valori di origine usano le unità del file convertite nelle unità di visualizzazione; le trasformazioni dell'occorrenza sono escluse.",
   "measure.visuals.polylineSoFar": "{basis} finora - {count} punti",
-  "measure.chip.label": "{count} misure",
+  "measure.chip.label": "Misure: {count}",
   "measure.chip.hideAria": "Nascondi le misure",
   "measure.chip.hideTitle": "Nascondi le misure senza eliminarle",
   "measure.chip.showAria": "Mostra le misure",

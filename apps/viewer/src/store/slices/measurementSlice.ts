@@ -501,6 +501,10 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     }));
 
     const measurePointLast = state.measurePointLast && reprojectPoint(state.measurePointLast); // its marker (#8770)
+    // The hover point named whatever was under the cursor for the camera it
+    // was picked under. A moved camera puts something else there, so "Live"
+    // ends here and the next hover frame reads the new spot (#8828).
+    if (state.measurePointLive) hasChanges = true;
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -522,6 +526,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       activeRadius: updatedActiveRadius,
       radiusMeasurements: updatedRadiusMeasurements,
       measurePointLast,
+      measurePointLive: null,
     };
     set(reprojected);
   },

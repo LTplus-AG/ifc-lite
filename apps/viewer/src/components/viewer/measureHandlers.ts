@@ -13,6 +13,7 @@ import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/ty
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { measureCameraState, sameMeasureCameraState } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
@@ -446,14 +447,12 @@ export function updateMeasureScreenCoords(ctx: MouseHandlerContext): void {
     return projectToCssScreen(camera, canvas, worldPos);
   });
   // Update camera state tracking to prevent duplicate update in animation loop
-  const cameraPos = camera.getPosition();
-  const cameraRot = camera.getRotation();
-  const cameraDist = camera.getDistance();
-  ctx.lastCameraStateRef.current = {
-    position: cameraPos,
-    rotation: cameraRot,
-    distance: cameraDist,
-    canvasWidth: canvas.width,
-    canvasHeight: canvas.height,
-  };
+  ctx.lastCameraStateRef.current = measureCameraState(camera, canvas);
+}
+
+/** {@link updateMeasureScreenCoords}, only when the camera moved since the last pass. */
+export function syncMeasureScreenCoords(ctx: MouseHandlerContext): void {
+  if (!sameMeasureCameraState(ctx.lastCameraStateRef.current, measureCameraState(ctx.camera, ctx.canvas))) {
+    updateMeasureScreenCoords(ctx);
+  }
 }

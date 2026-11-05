@@ -22,6 +22,7 @@ import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@i
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { measureCameraState, sameMeasureCameraState, type MeasureCameraState } from './measureCameraState';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
@@ -74,13 +75,7 @@ export interface UseAnimationLoopParams {
   clashHighlightColorsRef: MutableRefObject<Map<number, [number, number, number, number]> | null | undefined>;
   coordinateInfoRef: MutableRefObject<CoordinateInfo | undefined>;
   isInteractingRef: MutableRefObject<boolean>;
-  lastCameraStateRef: MutableRefObject<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>;
+  lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
   updateCameraRotationRealtime: (rotation: { azimuth: number; elevation: number }) => void;
   calculateScale: () => void;
   updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
@@ -298,28 +293,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
         hasPendingMeasurements()
       ) {
-        const cameraPos = camera.getPosition();
-        const cameraRot = camera.getRotation();
-        const cameraDist = camera.getDistance();
-        const currentCameraState = {
-          position: cameraPos,
-          rotation: cameraRot,
-          distance: cameraDist,
-          canvasWidth: canvas.width,
-          canvasHeight: canvas.height,
-        };
-
-        const lastState = lastCameraStateRef.current;
-        const cameraChanged =
-          !lastState ||
-          lastState.position.x !== currentCameraState.position.x ||
-          lastState.position.y !== currentCameraState.position.y ||
-          lastState.position.z !== currentCameraState.position.z ||
-          lastState.rotation.azimuth !== currentCameraState.rotation.azimuth ||
-          lastState.rotation.elevation !== currentCameraState.rotation.elevation ||
-          lastState.distance !== currentCameraState.distance ||
-          lastState.canvasWidth !== currentCameraState.canvasWidth ||
-          lastState.canvasHeight !== currentCameraState.canvasHeight;
+        const currentCameraState = measureCameraState(camera, canvas);
+        const cameraChanged = !sameMeasureCameraState(lastCameraStateRef.current, currentCameraState);
 
         if (cameraChanged) {
           lastCameraStateRef.current = currentCameraState;

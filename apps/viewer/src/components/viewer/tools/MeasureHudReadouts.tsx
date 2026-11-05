@@ -21,6 +21,7 @@ import { measureHintKey } from './measure-modes/readouts';
 import { projectedEnh, useProjectedLatLon } from './measure-modes/geo-readout';
 import { formatCoordinateTriple, pointCoordinates } from './measure-modes/coordinates';
 import { useMeasureLivePoint } from './measure-modes/useMeasureLivePoint';
+import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
 
 export function MeasureHint() {
   const { t } = useTranslation();
@@ -58,6 +59,7 @@ export function MeasurePointHud() {
           <Crosshair aria-hidden className="h-3 w-3 shrink-0 self-center text-overlay-accent" />
           <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             {tracked.live ? t('measure.readout.live') : t('measure.readout.last')}
+            {!tracked.live && <StaleMeasurementBadge id={tracked.id} />}
           </span>
           <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {frame.rebased ? t('measure.point.rowAnchor') : t('measure.point.rowModel')}
@@ -90,6 +92,7 @@ export function MeasureGeoReadout() {
           <Globe aria-hidden className="h-3 w-3 shrink-0 self-center text-overlay-accent" />
           <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             {tracked?.live ? t('measure.readout.live') : t('measure.readout.last')}
+            {tracked && !tracked.live && <StaleMeasurementBadge id={tracked.id} />}
           </span>
           {enh && <span className="font-mono tabular-nums">
             {t('measure.geo.easting')} {enh.e}

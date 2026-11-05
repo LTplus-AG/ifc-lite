@@ -207,10 +207,15 @@ it.each([{ heapFlags: ['--max-old-space-size=128'] }, { heapFlags: ['--max_old_s
 );
 
 
-it.each(['20.6.0', '22.23.0', '24.22.0', '26.10.0'])(
-  '#8868 scopes the V8 workaround to Node 24 (%s)', version => {
+it.each([
+  { version: '20.6.0', workaround: [] },
+  { version: '22.23.0', workaround: [] },
+  { version: '24.22.0', workaround: ['--no-wasm-code-gc'] },
+  { version: '26.10.0', workaround: [] },
+])(
+  '#8868 scopes the V8 workaround to Node 24 ($version)', ({ version, workaround }) => {
     expect(childRuntimeArgs(['--wasm-code-gc', '--max-old-space-size=256'], version))
-      .toEqual(['--max-old-space-size=256', ...(version.startsWith('24.') ? ['--no-wasm-code-gc'] : [])]);
+      .toEqual(['--max-old-space-size=256', ...workaround]);
   });
 
 it('#8868 retained child starts a real worker with inherited runtime flags', async () => {
@@ -231,5 +236,5 @@ it('#8868 retained child starts a real worker with inherited runtime flags', asy
   await exportRetainedIsolated(f.args, { entry: f.entry });
   const result = JSON.parse(await readFile(f.obj, 'utf8'));
   expect(result.valid).toBe(true);
-  expect(result.flags.includes('--no-wasm-code-gc')).toBe(process.versions.node.startsWith('24.'));
+  expect(result.flags).toEqual(childRuntimeArgs());
 });

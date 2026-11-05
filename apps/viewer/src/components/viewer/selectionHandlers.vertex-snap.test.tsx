@@ -21,7 +21,6 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore, type MeasurePoint } from '@/store';
 import { cleanupMouseControls, mountMouseControls, mousePointer } from '@/test/mouse-controls-fixture.js';
-import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';

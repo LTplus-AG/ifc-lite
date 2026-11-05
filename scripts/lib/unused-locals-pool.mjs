@@ -61,6 +61,7 @@ export async function measurePackages(root, dirs) {
           if (stderr) console.error(stderr);
           failed.push(dir);
         } else {
+          if (stderr) console.error(stderr);
           try { results.set(dir, decode(stdout, dir)); }
           catch (failure) {
             console.error(failure.message);

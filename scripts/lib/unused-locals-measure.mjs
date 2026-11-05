@@ -92,6 +92,7 @@ export function countViolations(repoRoot, dir) {
     // just the fully-unparseable one (#2634 review).
     const result = classifyTscOutput(output);
     if (result.kind === 'does-not-compile') {
+      console.error(`Unused-locals compile diagnostics for ${dir}:\n${output}`);
       // The package does not compile. That belongs to the typecheck lane, not
       // here — but it must not silently drop out of the ratchet either, or
       // breaking a build becomes a way to lose the guard. Reported, not skipped.
@@ -115,6 +116,7 @@ export function countViolations(repoRoot, dir) {
       process.exit(1);
     }
     if (result.kind === 'no-diagnostics') {
+      console.error(`Unused-locals compiler exited ${err.status} for ${dir} without TypeScript diagnostics:\n${output}`);
       // Non-zero exit, and nothing here explains it: no unused diagnostics, no
       // other `error TS####`, no TS diagnostic of any kind. The exit itself
       // was clean (a killed child, a truncated capture and a failed spawn all

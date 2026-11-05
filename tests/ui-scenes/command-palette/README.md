@@ -123,3 +123,30 @@ No browser captures or full test verdict yet, and no round accepted.
 Coordinator escalated the concrete reservation recovery blocker to the parent
 for owner coordination. No source or foreign outputs removed; no bytes reclaimed.
 Owned tasks remain open while original job outcomes are pending.
+
+## Admitted validation repair and browser setup
+
+Draft UX PR: https://github.com/LTplus-AG/ifc-lite/pull/8950. Queue gate reports
+`Mode: enforcing`; authenticated maintainer author is exempt. No ready label fabricated.
+
+Requests `auto-5bde8b6be5344c46970384a8c98accd2` and
+`auto-db9cbd907c054aebb28762aa0f3a0a94` are confirmed failed before checking code:
+the shell-wrapped commands had no installed dependencies (`turbo: not found`).
+The first also incorrectly forwarded `--filter` to `typecheck:tail`. These are
+known failures, not uncertain outcomes. Corrected request
+`auto-3266a6b51fb54c60bc8346fb806cadfd` targets production-equivalent commit
+`8ae26bb7c0`, explicitly installs frozen dependencies, runs unfiltered root
+`pnpm typecheck`, builds the viewer, then runs all four shards via root `pnpm test`.
+The root Turbo dry-run confirmed TEST_SHARD and TEST_SHARDS reach the viewer task.
+Failed-task closure was refused pending evidence verification; preserve original
+publication, no source workspaces forcibly removed.
+
+Frozen baseline build request: `auto-16416403da784015af3da6d5ee887e4e`, task
+`palette-ux-baseline-fd0b1714`, source `0f57524cfe`. The temporary coordinator-owned
+source worktree is `/home/louistrue/.t3/scratch/palette-baseline-fd0b1714`; remove it
+when captures and task evidence are complete. It contains no unique source edits.
+
+Ten browser scenarios are now discoverable in both viewer Playwright projects;
+see `browser-scenarios.md`. Discovery is not execution. Includes desktop/narrow/short
+light/dark bounds and input stability, native focus traversal, scroll-follow,
+empty recovery, Escape/reopen, and real Settings execution with a bundled IFC.

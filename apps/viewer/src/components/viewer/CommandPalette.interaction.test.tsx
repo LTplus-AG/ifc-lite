@@ -73,8 +73,9 @@ test('combobox owns stable unique options, including recents, and retains focus 
   assert.equal(homes.length, 2, 'recent and category occurrences both render');
   assert.notEqual(homes[0].id, homes[1].id);
   const categoryHomeId = homes[1].id;
+  assert.equal(active(input).id, initialRows[0].id, 'opening selects the first recent command');
   press(input, 'ArrowDown');
-  assert.equal(active(input), initialRows[1]);
+  assert.equal(active(input).id, initialRows[1].id);
   assert.equal(document.activeElement, input);
   hover(homes[1]);
   assert.equal(active(input), homes[1]);

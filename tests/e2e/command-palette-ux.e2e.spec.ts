@@ -212,6 +212,12 @@ test.describe('#8946 unloaded palette UX', () => {
     await expect(options.first()).toHaveAttribute('aria-selected', 'true');
     await expectActiveVisible(page);
     await openSettingsWithEnter(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeHidden();
+    await openPalette(page);
+    await expect(options.first()).toHaveAttribute('aria-label', 'Settings…');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    await expectActiveVisible(page);
   });
 });
 

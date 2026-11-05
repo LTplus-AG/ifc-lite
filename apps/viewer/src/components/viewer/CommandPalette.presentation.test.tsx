@@ -97,3 +97,19 @@ test('closing the palette preserves an existing transient toast (#8946)', () => 
       'closing the palette leaves the original toast and its lifecycle intact');
   } finally { act(dismiss); }
 });
+
+// Frozen UX query oracle: tests the mounted production command composition,
+// including ranking between commands rather than a synthetic ranking fixture.
+test('task queries put the intended command first (#8946)', () => {
+  const input = mount();
+  const oracle = {
+    sec: 'tool:section', fit: 'view:fit', hide: 'vis:hide', top: 'view:top',
+    wall: 'tool:wall', measure: 'tool:measure', grid: 'vis:ifcGrid', open: 'file:open',
+  };
+  for (const [query, expected] of Object.entries(oracle)) {
+    typeInto(input, query);
+    const first = document.querySelector('[role="option"]');
+    assert.equal(first?.getAttribute('data-command-id'), expected, query);
+    assert.equal(first?.getAttribute('aria-selected'), 'true', query);
+  }
+});

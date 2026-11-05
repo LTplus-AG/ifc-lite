@@ -193,3 +193,36 @@ Cleanup: failed task `palette-ux-final-fd0b1714` was evidence-verified and close
 Other original jobs and their locks remain protected while outcomes/publication are
 reconciled. No reclaimed disk amount is claimed. Separate #8947 source inventory is
 preserved outside this PR; no feature-access implementation round has started.
+
+### Round 2 validation correction
+
+Fresh Astra review of `7ff5de2..b65e950` found no concrete regression; it was static,
+not visual acceptance. Subsequent full-suite progress exposed two failures in the
+new recents tests and one old panel-entry assertion. Isolated root Turbo execution
+reproduced them. Opening selected Open File beneath the newly populated recents:
+the passive reconciliation effect overwrote the open effect's reset using the old
+list. Reconciliation now adjusts state conditionally in the same render, preserving
+the resolved identity before live insertions. Browser reopen coverage now verifies
+the actual last-used Settings command is selected first. The panel test now locates
+Cost/AI Chat by their accessible names, since mixed-result category text is intentional.
+
+Focused diagnostics on the corrected working source passed **19 tests, zero skipped**
+(interaction, presentation, entry and search). They use root `pnpm test --filter=@ifc-lite/viewer --only`
+with the exact task confirmed by dry run and unchanged sibling outputs already built
+by job6135. Temporary generated-output links are removed after diagnostics. A first
+attempt without `--only` unexpectedly re-entered dependency builds due to different
+Turbo environment hashes and was stopped via its owned root test process; it is not
+acceptance evidence. A missing WASM runtime on the first linked-output attempt was
+also a setup failure; the successful run used the real already-built runtime.
+
+Root typecheck/build/focused validation of checkpoint `b65e950` remains queued as
+`auto-f7b25554d55643998164c13bbaed7684`, PC job `bffbbdba-5ccd-4fa1-a09b-f5659181a215`.
+It does not certify the later recents correction. Original baseline and full-suite
+requests remain intact. The repository supports `ci:full` to request all PR lanes;
+the next push uses it to obtain final-head full CI and its real viewer-dist artifact
+without treating green fast CI as full coverage. The PR stays draft pending UI judgment.
+
+The mounted fixed eight-query oracle also passed (presentation suite 5/5, zero
+skipped). All 60 temporary dependency/runtime links were removed after diagnostics;
+no compiled outputs were copied and no references remain. Post-commit pre-handoff
+will re-evaluate cheap gates; absent local dist remains an explicit skip.

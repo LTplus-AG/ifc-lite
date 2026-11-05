@@ -163,8 +163,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const selectedIndex = Math.max(0, options.findIndex(item => item.optionId === selectedOptionId));
   const activeOption = options[selectedIndex];
   const activeOptionId = activeOption?.optionId;
-  // Reconcile removed commands so a later reappearance cannot steal selection.
-  useEffect(() => { setSelectedOptionId(activeOptionId ?? null); }, [activeOptionId, selectedOptionId]);
+  // Reconcile in this render: a passive effect can overwrite the open effect's
+  // reset using the old list, leaving Open File selected beneath new recents.
+  // Persist the resolved identity before any later live insertion can steal it.
+  if (selectedOptionId !== (activeOptionId ?? null)) {
+    setSelectedOptionId(activeOptionId ?? null);
+  }
 
   useEffect(() => {
     if (!navigatedByKeyboard.current || !listRef.current) return;

@@ -12,8 +12,8 @@ Verify discovery without starting a server/browser:
 pnpm exec playwright test tests/e2e/command-palette-ux.e2e.spec.ts --project=viewer-e2e-ci --list
 ```
 
-Expect 10 tests: six layout cases, three unloaded keyboard scenarios, one loaded
-sample scenario. After the coordinator's root build has produced this candidate's
+Expect 11 tests: six layout cases, three unloaded keyboard scenarios, one loaded
+sample scenario, and one first-visit privacy-notification stacking scenario. After the coordinator's root build has produced this candidate's
 viewer dist, run from the repository root through existing fleet admission:
 
 ```sh
@@ -58,3 +58,25 @@ No browser tests or builds were run by this test-authoring task. Discovery and
 syntax checks alone are not acceptance evidence. IME/recents/task-alias/pointer
 handoff scenarios from the hillclimb charter still need separate evidence; this
 focused suite does not claim complete #8946 acceptance or any #8947 inventory.
+
+## Durable iteration receipts
+
+For a reviewed candidate, record the exact Git SHA and dist index SHA256 before
+capture. Use the existing `tests/ui-scenes/capture.mjs` command-palette scene for
+loaded light/dark comparisons against the frozen baseline; its manifest records
+the adapter, viewport, errors and screenshot hashes. Keep baseline/candidate roles
+separate from file names when using the pair-review helper.
+
+The behavior suite also covers first-visit toast stacking and first-recent selection
+on reopen. Keep its screenshot attachments with the JSON reporter: set
+`PLAYWRIGHT_JSON_OUTPUT_FILE` to an owned scratch path and append `--reporter=json`.
+The report embeds PNG attachment bodies as base64. Extract only those PNGs and a
+compact status/skip/error summary, then remove the large intermediate JSON once
+verified; the normal list reporter does not retain passed screenshot attachments.
+No production UI mock or store mutation substitutes for the loaded sample scenario.
+
+A root Turbo focused check may use `--only` **only after** this source's unchanged
+sibling dependencies are already built and the dry run confirms exactly the test
+task. This is a lightweight diagnostic, not full root graph/typecheck coverage.
+Without that condition use normal fleet admission, since environment-dependent
+Turbo hashes can rebuild dependencies even in an apparently built checkout.

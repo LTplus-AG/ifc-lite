@@ -7,8 +7,8 @@
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Search } from 'lucide-react';
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { Search, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -29,7 +29,7 @@ import {
   type Category,
   type FlatItem,
   browseCommands,
-  rankCommand,
+  searchCommands,
   getRecentIds,
   recordUsage,
 } from './commandPaletteSearch';
@@ -138,13 +138,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     let idx = 0;
 
     // ── Searching: flat ranked list, no categories ──
-    const scored = commands
-      .map(cmd => ({ cmd, s: rankCommand(cmd, query.trim(), cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
-      .filter(x => x.s > 0);
-    scored.sort((a, b) => b.s - a.s);
+    const scored = searchCommands(commands, query, recentIds,
+      cmd => cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label,
+      cmd => t(CATEGORY_LABEL_KEY[cmd.category]));
 
     if (scored.length > 0) {
-      const items: FlatItem[] = scored.map(({ cmd }) => {
+      const items: FlatItem[] = scored.map(cmd => {
         const item = { cmd, flatIdx: idx++ };
         flat.push(item);
         return item;
@@ -165,7 +164,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const activeOption = options[selectedIndex];
   const activeOptionId = activeOption?.optionId;
   // Reconcile removed commands so a later reappearance cannot steal selection.
-  useEffect(() => { setSelectedOptionId(activeOptionId ?? null); }, [activeOptionId]);
+  useEffect(() => { setSelectedOptionId(activeOptionId ?? null); }, [activeOptionId, selectedOptionId]);
 
   useEffect(() => {
     if (!navigatedByKeyboard.current || !listRef.current) return;
@@ -209,9 +208,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden" aria-label={t('commandPalette.ariaLabel')} hideCloseButton>
+        <DialogContent className="flex flex-col p-0 gap-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
+          style={{ top: 'min(12dvh, 96px)', transform: 'translateX(-50%)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onEscapeKeyDown={event => {
+            if (event.isComposing || event.keyCode === 229) event.preventDefault();
+          }}>
           {/* Search */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+          <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <input
               ref={inputRef}
@@ -225,34 +228,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               aria-activedescendant={activeOptionId}
               aria-label={t('commandPalette.searchAriaLabel')}
               placeholder={t('commandPalette.searchPlaceholder')}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               autoComplete="off"
               spellCheck={false}
             />
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-              {t('commandPalette.escKey')}
-            </kbd>
+            <DialogClose className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t('viewerShell.dialog.close')}>
+              <X className="h-4 w-4" />
+            </DialogClose>
           </div>
 
           {/* Results */}
           {/* The command palette implements a custom listbox with keyboard-managed button options. */}
           {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
-            {flatItems.length === 0 && (
-              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                {t('commandPalette.noResults')}
-              </div>
-            )}
-
+          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="min-h-0 max-h-[420px] overflow-y-auto overscroll-contain py-1" role="listbox">
             {grouped.map((group) => (
               <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (
-                  <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
+                  <div className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}
                   </div>
                 )}
                 {group.items.map(({ cmd, flatIdx }) => {
                   const placement = {
+                    categoryLabel: query.trim() ? t(CATEGORY_LABEL_KEY[cmd.category]) : undefined,
                     id: optionId(cmd.id, group.category),
                     index: flatIdx,
                     selected: flatIdx === selectedIndex,
@@ -268,11 +267,22 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             ))}
           </div>
 
+          {flatItems.length === 0 && (
+            <div className="min-h-0 overflow-y-auto px-3 py-6 text-center text-sm text-muted-foreground">
+              <output className="block">{t('commandPalette.noResults')}</output>
+              <p className="mt-1">{t('commandPalette.noResultsHint')}</p>
+              <button type="button" className="mt-3 rounded border px-3 py-2 text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => { setQuery(''); setSelectedOptionId(null); inputRef.current?.focus(); }}>
+                {t('commandPalette.clearSearch')}
+              </button>
+            </div>
+          )}
+
           {/* Footer */}
-          <div className="flex items-center gap-4 px-3 py-1.5 border-t text-xs text-muted-foreground select-none">
-            <span><kbd className="font-mono">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-            <span><kbd className="font-mono">↵</kbd> {t('commandPalette.footer.run')}</span>
-            <span><kbd className="font-mono">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted-foreground select-none">
+            <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
+            <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>
+            <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
           </div>
         </DialogContent>
       </Dialog>

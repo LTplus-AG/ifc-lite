@@ -41,6 +41,7 @@ interface OptionPlacement {
   selected: boolean;
   onActivate: () => void;
   onHover: () => void;
+  categoryLabel?: string;
 }
 
 interface OptionChromeProps extends OptionPlacement {
@@ -51,7 +52,7 @@ interface OptionChromeProps extends OptionPlacement {
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, shortcut, id, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, shortcut, categoryLabel, id, index, selected, onActivate, onHover }: OptionChromeProps) {
   const fallbackId = useId();
   const registered = 'commandId' in owner;
   return (
@@ -68,8 +69,11 @@ function OptionChrome({ owner, icon: Icon, label, detail, shortcut, id, index, s
       onMouseDown={event => event.preventDefault()}
       onClick={onActivate} onMouseMove={onHover}>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {detail && <span className="text-xs text-muted-foreground shrink-0">{detail}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {categoryLabel && <span className="block truncate text-xs text-muted-foreground">{categoryLabel}</span>}
+      </span>
+      {detail && <span title={detail} className="max-w-[30%] truncate text-xs text-muted-foreground">{detail}</span>}
       {shortcut && <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
         {shortcutLabel(shortcut)}
       </kbd>}

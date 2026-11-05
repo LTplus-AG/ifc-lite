@@ -6,7 +6,7 @@ Do not combine their verdicts or claim completion from a numerical taste score.
 ## UX — #8946
 
 Goal: fast, predictable command discovery and execution with polished expert-tool density.
-Baseline source: the parent of the first implementation commit on `feat/command-palette`.
+Frozen baseline source: `0f57524cfe347d29d68f53df7fc97f0b1f80d61a`.
 Baseline screenshots and behavior receipts are pending; no accepted round yet.
 
 Fixed rubric: discoverability; search relevance; keyboard/pointer predictability;
@@ -61,3 +61,42 @@ real UI evidence, committed pre-handoff, required CI and resolved reviews preced
 Mergify readiness. Production must be verified after merge; never infer deployment.
 Keep compact receipts/screenshots and close owned generated storage tasks; preserve
 source, model fixtures, foreign work and unknown-outcome original receipts.
+
+## Research and round 1 objections
+
+Primary references: [PostHog Command K UX](https://github.com/PostHog/posthog/blob/master/frontend/src/lib/components/CommandKSearch/COMMAND_K_SEARCH_UX.md),
+[Theo's relevant video](https://www.youtube.com/watch?v=xq0eB8vxeqk),
+[tstack](https://github.com/t3dotgg/tstack), and the published experiments
+[t3code #24865](https://github.com/pingdotgg/t3code/pull/24865) and
+[#25251](https://github.com/pingdotgg/t3code/pull/25251).
+Opus verified the video metadata, not its audiovisual contents; no claim of watching it.
+The initially suggested video `5Bmp9cz1JN8` was not the relevant UI video.
+
+The applicable principles are stable layout/selection, tiered local search, contextual
+row labels, and fresh independent critique. PostHog's network search, AI handoff and
+filter syntax are outside this palette's scope. Preserve semantic colour; council
+preferences alone cannot establish correctness or justify removing useful state.
+
+Round 1 checkpoint: `4bbaa9f045886353902d413084f1e07dd3d3575a`.
+Astra's static review found selection reconciliation missing a dependency after a
+whitespace edit, composition Escape reaching Radix capture dismissal, and a Happy
+DOM Tab assertion that did not exercise native traversal. Coordinator corrected the
+first two and added behavioral regressions; removed the misleading Tab assertions.
+Real Tab traversal remains a required browser scenario. These fixes are not yet verified.
+
+Cheap checks at the checkpoint: module size, i18n literals, diff whitespace passed.
+The implementation agent's direct focused test stopped at missing built load-trace
+output before assertions; it is NOT acceptance coverage. Root Turbo typecheck was
+submitted through fleet as `auto-ff97536d4c494c23a2373d31e42ba82d`, storage task
+`palette-ux-r1-fd0b1714`, PC job `2854b4bf-8bcd-4f51-ac12-7d6fdc0c826c`.
+Its original receipt is pending; do not resubmit it to recover its outcome.
+
+The presentation candidate adds a palette-only top anchor, ranked search tiers with
+recency tie-breaking, localized mixed-result categories, clear-search recovery, and
+an explicit close control. Fresh taste judgment remains pending real captures.
+
+Fleet blocker inspection found dead recorded owners on PC. Supported original
+`job-recover-capture` for job `3d1c276d-ee46-4ce4-b5fe-f08b4737575a` refused with
+`active or queued resource owner`; no guard was bypassed and no foreign process or
+workspace was removed. Other stale ordinary reservations do not match the deployed
+service-only dead-owner recovery protocol. No bytes reclaimed by this inspection.

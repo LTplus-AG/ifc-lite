@@ -67,10 +67,8 @@ test('combobox owns stable unique options, including recents, and retains focus 
   const initialRows = rows();
   assert.equal(new Set(initialRows.map(row => row.id)).size, initialRows.length);
   assert.ok(initialRows.every(row => row.id && row.tabIndex === -1));
-  press(input, 'Tab');
-  assert.equal(document.activeElement, input, 'Tab stays in the modal without entering options');
-  press(input, 'Tab', { shiftKey: true });
-  assert.equal(document.activeElement, input, 'reverse Tab also skips options');
+  // Native Tab traversal is verified in the browser scenario; Happy DOM does
+  // not perform the browser's default traversal after a dispatched keydown.
   const homes = initialRows.filter(row => row.dataset.commandId === 'view:home');
   assert.equal(homes.length, 2, 'recent and category occurrences both render');
   assert.notEqual(homes[0].id, homes[1].id);
@@ -149,4 +147,26 @@ test('IME confirmation cannot run commands; ordinary Enter and click keep file a
   } finally {
     window.removeEventListener('ifc-lite:open-files', onFiles);
   }
+});
+
+
+test('whitespace preserves the resolved selection when a recent command appears (#8946)', () => {
+  localStorage.setItem(RECENT_KEY, JSON.stringify(['view:world', 'view:lighting']));
+  useViewerStore.setState({ cesiumAvailable: false });
+  const input = mount();
+  const initial = active(input).id;
+  typeInto(input, ' ');
+  assert.equal(active(input).id, initial);
+  act(() => useViewerStore.setState({ cesiumAvailable: true }));
+  assert.equal(active(input).id, initial);
+});
+
+test('Escape cancels IME composition without dismissing the palette (#8946)', () => {
+  let closes = 0;
+  const input = mount(() => { closes++; });
+  press(input, 'Escape', { isComposing: true });
+  press(input, 'Escape', { keyCode: 229 });
+  assert.equal(closes, 0);
+  press(input, 'Escape');
+  assert.equal(closes, 1);
 });

@@ -12,6 +12,7 @@
  * already shares with every other panel (`modelPlacement`, `models`,
  * `snapEnabled`).
  */
+import { PositionedDownload } from '../PositionedDownload';
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -211,6 +212,7 @@ export function LocalTab() {
       {runtime.selected.map((id) => (
         <p key={id} className="font-mono truncate">
           {t('repositionPanel.modelPositionRow', { name: models.get(id)?.name ?? '', values: displayedTranslation(placement, id).map((v) => v.toFixed(4)).join(', ') })}
+          <PositionedDownload modelId={id} />
         </p>
       ))}
 

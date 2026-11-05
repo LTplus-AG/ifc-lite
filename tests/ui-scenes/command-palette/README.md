@@ -100,3 +100,10 @@ Fleet blocker inspection found dead recorded owners on PC. Supported original
 `active or queued resource owner`; no guard was bypassed and no foreign process or
 workspace was removed. Other stale ordinary reservations do not match the deployed
 service-only dead-owner recovery protocol. No bytes reclaimed by this inspection.
+
+Combined-candidate Astra review found a blocking CSS composition error: Tailwind 4
+uses independent `translate`, so inline `transform: translateX(-50%)` compounded
+horizontal positioning and left inherited vertical centering active. Fixed by
+removing inline transform and overriding vertical translation with `translate-y-0`.
+Browser bounding rectangles before/after filtering are still mandatory. Review
+found no further concrete ranking defects; this is static evidence only.

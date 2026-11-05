@@ -147,7 +147,7 @@ export const section2dIt = {
   "section2d.savedCuts.applyTitle": "Usa questo taglio salvato come origine del disegno",
   "section2d.savedCuts.renameTitle": "Rinomina taglio salvato",
   "section2d.savedCuts.renamePrompt": "Rinomina questo taglio di sezione",
-  "section2d.savedCuts.deleteTitle": "Elimina taglio salvato"
+  "section2d.savedCuts.deleteTitle": "Elimina taglio salvato",
   "section2d.cutPlane": "Piano di taglio: {cut}",
   "section2d.drawers.activeTip": "{label} · in uso",
   "section2d.zoom.fitShort": "Adatta",

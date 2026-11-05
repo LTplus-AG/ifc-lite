@@ -412,7 +412,11 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
       visibility(true);
       assert.equal(splats().getState(handle).state, 'resident');
       visibility(false);
-      assert.equal(model('suspended')?.loadState, 'complete');
+      // A federated add sets no loadState (only the primary path does), so
+      // assert what holds for both: the model still carries its capture and
+      // did not fail.
+      assert.equal(model('suspended')?.gaussianSplat?.handle, handle);
+      assert.notEqual(model('suspended')?.loadState, 'error');
       assert.equal(splats().getStats().assets, 1);
     } finally {
       release();

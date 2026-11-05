@@ -139,6 +139,23 @@ pre-handoff gates passed; the retained-free viewer check skipped because
 the qualified real-model cohort. Final adversarial source/evidence review
 found no concrete correctness blocker; its validation gaps are now covered.
 
+The review-fixed head `e11c87c9c2548c7eee1f029f7af13f42e015a7eb`
+adds one stdout-mode failure regression and strengthens the missing-report
+and worker-argument assertions. Fleet job
+`3827ab1f-3004-4ff9-af5d-71b0cb339c8f` passed **1,607 CLI tests**, with
+the same 15 fixture-dependent skips, plus full root typecheck (134 tasks)
+and full lint (74 packages, 11,945 files, no errors). Its 12 applicable
+pre-handoff gates also passed, with the same absent-viewer-build skip.
+This is the 1,607-test result cited in the PR description; the 1,606-test
+results above belong to the earlier explicitly named heads.
+
+Compact reproduction evidence is published and verified in managed manifest
+`pop-os-issue-8868-engine-rebuild-selected`, SHA-256
+`29c49cd8a1e964e4e44aa9c67806e488f2265d4a0d79d36e4fa53192b775494b`.
+Generated engine cleanup is deferred: the storage safety guard cannot inspect
+some same-user infrastructure processes. Original outputs are preserved;
+the guard has not been bypassed.
+
 The mitigation applies this flag
 only to the isolated retained child on Node 24. Generated code stays alive
 until that child exits; this is not a general-purpose long-lived-process

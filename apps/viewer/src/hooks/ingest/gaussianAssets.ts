@@ -5,7 +5,7 @@
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
 import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
-import { GaussianSplatError, type GaussianSplatApi, type GaussianSplatBounds, type GaussianSplatHandle, type NormalizedGaussianAttributes, type Renderer } from '@ifc-lite/renderer';
+import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, NormalizedGaussianAttributes, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { appliedGaussianUpAxis, gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
@@ -296,7 +296,8 @@ export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis):
     try {
       if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
     } catch (error) {
-      if (upAxis === undefined || !(error instanceof GaussianSplatError) || error.code !== 'anchor-extent') throw error;
+      if (upAxis === undefined || !(error instanceof Error) || error.name !== 'GaussianSplatError'
+        || !('code' in error) || error.code !== 'anchor-extent') throw error;
       const oldPlacement = gaussianCaptureFrame(sourcePlacement, capture.upAxis, frame).placement;
       const handle = await reanchorGaussianCapture(modelId, asset, current, capture, framed.placement, oldPlacement, offset);
       if (!handle) return false;

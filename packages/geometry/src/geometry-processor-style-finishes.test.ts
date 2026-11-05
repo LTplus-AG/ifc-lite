@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const calls: string[] = [];
-  const parallel = vi.fn(async function* (..._args: unknown[]) {});
+  const parallel = vi.fn(async function* (..._args: unknown[]) { yield* []; });
   const buildPrePassOnce = vi.fn();
   const setSkipVoids = vi.fn();
   const setStyleFinishes = vi.fn((_ids: Uint32Array, _finishes: Float32Array) => {

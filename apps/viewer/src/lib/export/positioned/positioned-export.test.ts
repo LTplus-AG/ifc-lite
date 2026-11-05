@@ -55,7 +55,7 @@ it('cancellation and read failure always close the separate source and produce n
   source.close = () => { closed++; original(); };
   await assert.rejects(exportPositionedScan(source, identity, controller.signal, () => controller.abort()), { name: 'AbortError' });
   assert.ok(closed >= 2); // open closes old state; exporter releases its stream.
-  await assert.rejects(source.next(1), /open/i);
+  assert.equal(await source.next(1), null, 'closed sources yield no more points');
   const broken = new PlyStreamingSource(new Blob(['not a ply']));
   let released = false; const release = broken.close.bind(broken);
   broken.close = () => { released = true; release(); };
@@ -183,7 +183,7 @@ it('aligned and unaligned scan exports remove RTC offsets and keep per-axis alig
   const target={setPointCloudTransform(){}};
   const origin=[500000,6400000,100] as const;
   const bounds={min:{x:0,y:0,z:0},max:{x:1,y:1,z:1}};
-  const reference={...fixtureModel('ifc'),geometryResult:{meshes:[],totalTriangles:0,totalVertices:0,
+  const reference={...fixtureModel('ifc'),loadedAt:1,geometryResult:{meshes:[],totalTriangles:0,totalVertices:0,
     coordinateInfo:{...createCoordinateInfo(bounds),wasmRtcOffset:{x:1000,y:2000,z:3000}}}};
   const model={...fixtureModel('scan'),sourceFile:new File([sourcePly()],'scan.ply'),pointCloudHandleId:9843};
   useViewerStore.setState({...fixtureModels(reference,model),geometryResult:null,modelPlacement:emptyPlacementState()});

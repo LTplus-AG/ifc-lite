@@ -86,14 +86,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           />
         </RibbonSmallStack>
         {[[saveSetup, openSetup], [modelTags]].map((commands) => (
-          <RibbonSmallStack key={commands[0].id} className="gap-1">
+          <RibbonSmallStack key={commands[0].id}>
             {commands.map((command) => (
               <RibbonCommandSmallButton
                 key={command.id}
                 commandId={command.id}
                 icon={command.id === saveSetup.id ? SaveFederationSetup : undefined}
                 tooltip={t(command.labelKey)}
-                className="min-h-6"
                 disabled={!command.enabled({ canEditInSession })}
               />
             ))}

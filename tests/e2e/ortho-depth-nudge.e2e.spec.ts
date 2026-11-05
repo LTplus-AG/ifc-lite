@@ -281,6 +281,35 @@ const isYellow: Classify = (r, g, b) => r > 120 && g > 120 && b < Math.min(r, g)
 /** Annotation ink, blended into the face it lies on: well darker than any plate. */
 const isInk: Classify = (r, g, b) => r + g + b < 220;
 
+/**
+ * Columns of a thin line drawn across the capture-space box spanned by two
+ * points, over a plain backdrop. A one-pixel line lands on one row or, at
+ * another sub-pixel phase, splits its coverage over two (#8802 R1: a shorter
+ * ribbon moved the canvas so the clip-plane line straddled a row boundary
+ * and no single pixel read as `isInk` although the line was drawn). So each
+ * column sums how far its pixels fall below the column's brightest one (the
+ * backdrop), which is the same for either phase, and counts as drawn when
+ * that is at least half of a crisp line's 500-600 (a near-black line on the
+ * light canvas).
+ */
+const LINE_COLUMN_DARKENING = 300;
+function lineColumns(frame: Frame, corner: Point, opposite: Point): number {
+  const a = frame.px(corner), b = frame.px(opposite);
+  const x0 = Math.max(0, Math.ceil(Math.min(a.x, b.x))), x1 = Math.min(frame.width - 1, Math.floor(Math.max(a.x, b.x)));
+  const y0 = Math.max(0, Math.ceil(Math.min(a.y, b.y))), y1 = Math.min(frame.height - 1, Math.floor(Math.max(a.y, b.y)));
+  let drawn = 0;
+  for (let x = x0; x <= x1; x++) {
+    const sums: number[] = [];
+    for (let y = y0; y <= y1; y++) {
+      const i = (y * frame.width + x) * 4;
+      sums.push(frame.rgba[i]! + frame.rgba[i + 1]! + frame.rgba[i + 2]!);
+    }
+    const backdrop = Math.max(...sums);
+    if (sums.reduce((total, sum) => total + (backdrop - sum), 0) >= LINE_COLUMN_DARKENING) drawn++;
+  }
+  return drawn;
+}
+
 /** Classified pixel counts in the capture-space box spanned by two points, shrunk by `inset` px. */
 function count(frame: Frame, corner: Point, opposite: Point, inset: number, ...classes: Classify[]): number[] {
   const a = frame.px(corner), b = frame.px(opposite);
@@ -485,9 +514,9 @@ test.describe('clip planes', () => {
       const [nearGreen] = count(ahead, ...face(1, yNear + sliver, 0), 0, isGreen);
       expect(nearGreen, 'a top-hash plate just inside the near plane stays drawn').toBeGreaterThan(5000);
       const lineBand = (x0: number, x1: number, y: number): [Point, Point] => [[x0 + 0.05, y, 0.9 - 0.03], [x1 - 0.05, y, 0.9 + 0.03]];
-      const [farInk] = count(ahead, ...lineBand(-1.2, -0.4, yFar + sliver), 0, isInk);
+      const farInk = lineColumns(ahead, ...lineBand(-1.2, -0.4, yFar + sliver));
       expect(farInk, 'an annotation line just beyond the far plane stays clipped').toBe(0);
-      const [nearInk] = count(ahead, ...lineBand(0.4, 1.2, yNear + sliver), 0, isInk);
+      const nearInk = lineColumns(ahead, ...lineBand(0.4, 1.2, yNear + sliver));
       expect(nearInk, 'an annotation line just inside the near plane stays drawn').toBeGreaterThan(50);
       const [controlYellow] = count(ahead, ...face(0, 0, -1.2), 0, isYellow);
       expect(controlYellow, 'a plate mid-range is drawn').toBeGreaterThan(5000);

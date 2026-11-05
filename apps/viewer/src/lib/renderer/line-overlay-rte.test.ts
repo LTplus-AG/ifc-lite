@@ -52,3 +52,15 @@ describe('anchored line overlay bounds (#5049)', () => {
     assert.throws(() => anchorWorldLineVertices(invalid), /finite/);
   });
 });
+
+it('#8783 segment owners survive splitting and spatial regrouping', () => {
+  const payload = anchorWorldLineVertices([
+    5_000_000,0,0,5_009_000,0,0,
+    5_000_001,0,0,5_000_002,0,0,
+  ], [71, 82]);
+  assert.ok(Array.isArray(payload));
+  if (!Array.isArray(payload)) return;
+  assert.deepEqual(payload.map(p => Array.from(p.ownerIds ?? [])), [[71,82],[71]]);
+  assert.equal(payload[0].localVertices.length / 6, payload[0].ownerIds!.length);
+  assert.equal(payload[1].localVertices.length / 6, payload[1].ownerIds!.length);
+});

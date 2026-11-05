@@ -2179,6 +2179,8 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
       # THE ARTIFACT CLASS NOBODY REVIEWED. PR #3175 corrected twelve changesets
       # by hand that would have shipped breaking changes as `patch`, with the
       # release one command from publishing; its own body names the cause --

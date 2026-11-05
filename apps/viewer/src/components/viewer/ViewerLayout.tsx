@@ -311,7 +311,7 @@ export function ViewerLayout() {
                       if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
                     }}
                   >
-                    <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                    <div className="shell-dock-left h-full w-full overflow-hidden panel-container flex flex-col">
                       <div className="flex-1 min-h-0 overflow-hidden">
                         <HierarchyPanel />
                       </div>
@@ -321,7 +321,7 @@ export function ViewerLayout() {
                     </div>
                   </Panel>
 
-                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                  <PanelResizeHandle className="shell-splitter-v" />
 
                   {/* Center - Viewport */}
                   <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
@@ -343,7 +343,7 @@ export function ViewerLayout() {
                           <Panel id="viewport-3d-panel" defaultSize="60%" minSize="20%">
                             <ViewportContainer />
                           </Panel>
-                          <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                          <PanelResizeHandle className="shell-splitter-v" />
                           <Panel id="drawing-side-panel" defaultSize="40%" minSize="20%">
                             <BottomStrip
                               dockedPanel={dockedBottomPanel}

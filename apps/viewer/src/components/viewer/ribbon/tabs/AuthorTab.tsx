@@ -89,7 +89,6 @@ export function AuthorTab() {
         <RibbonCommandLargeButton
           commandId="panel:appearance"
           icon={Appearance}
-          className="w-20"
           tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
           activeClassName={EDIT_ACTIVE_CLASS}

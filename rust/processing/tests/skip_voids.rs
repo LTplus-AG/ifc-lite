@@ -37,3 +37,33 @@ fn issue_8875_gross_keeps_authored_boolean_difference() {
     // Authored opening A still removes 1 × 0.2 × 1.2 m³ from the 2.4 m³ wall.
     assert!((volume(&gross, 30) - 2.16).abs() < 1e-5);
 }
+
+#[test]
+fn issue_8875_gross_preserves_material_layer_slicing() {
+    let content = IFC.replace("ENDSEC;\nEND-ISO", "#140=IFCMATERIALLAYER($,0.1,$);\n#141=IFCMATERIALLAYER($,0.1,$);\n#142=IFCMATERIALLAYERSET((#140,#141),'layers');\n#143=IFCMATERIALLAYERSETUSAGE(#142,.AXIS2.,.POSITIVE.,0.);\n#144=IFCRELASSOCIATESMATERIAL('mat',$,$,$,(#30),#143);\nENDSEC;\nEND-ISO");
+    let gross = process(content.as_bytes(), &ProcessingRequest::full_pass().skip_voids(true).layer_slicing(true), &mut ());
+    let hosts: Vec<_> = gross.meshes.iter().filter(|m| m.express_id == 30).collect();
+    assert_eq!(hosts.len(), 2, "both authored material layers survive");
+    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5);
+}
+
+#[test]
+fn issue_8875_real_archicad_model_has_gross_hosts() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
+    if !path.exists() {
+        eprintln!("SKIP #8875 real Archicad geometry: run pnpm fixtures");
+        return;
+    }
+    let bytes = std::fs::read(path).expect("read Archicad fixture");
+    let net = process(&bytes, &ProcessingRequest::full_pass(), &mut ());
+    let gross = process(&bytes, &ProcessingRequest::full_pass().skip_voids(true), &mut ());
+    let changed = gross.meshes.iter().filter(|g| {
+        net.meshes.iter().any(|n| n.express_id == g.express_id && n.positions != g.positions)
+    }).count();
+    assert!(changed > 0, "real authored hosts must recover their opening volumes");
+    let net_volume: f64 = net.meshes.iter().map(|m| signed_volume(&m.positions, &m.indices).abs()).sum();
+    let gross_volume: f64 = gross.meshes.iter().map(|m| signed_volume(&m.positions, &m.indices).abs()).sum();
+    assert!(gross_volume > net_volume + 0.01, "gross model recovers removed volume");
+    eprintln!("#8875 Archicad: {changed} changed mesh records; net={net_volume} m³, gross={gross_volume} m³");
+}

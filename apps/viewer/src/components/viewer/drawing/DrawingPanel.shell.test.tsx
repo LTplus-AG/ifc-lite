@@ -89,9 +89,12 @@ it('IFC annotations are offered on plan cuts only, and projection never on a cus
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showIfcAnnotations, before.showIfcAnnotations, 'a disabled chip writes nothing');
 });
 
-it("the status line shows the active tool's hint", () => {
+it("the status line shows the active tool's hint, and idle Select keeps its pan hint in a tooltip", () => {
   const ui = render(<DrawingPanel />);
-  assert.match(statusText(ui), /Drag to pan/);
+  // #8802 R3b: no permanent tutorial row under the canvas while Select is idle.
+  assert.equal(ui.querySelector('output'), null, 'no status line while Select is idle with no markup');
+  act(() => (byLabel(ui, 'Select') as HTMLElement).focus());
+  assert.match(document.body.textContent ?? '', /Drag to pan/, "the pan hint is the Select tool's tooltip");
   click(byLabel(ui, 'Cloud'));
   assert.match(statusText(ui), /Click to place first corner/);
   click(byLabel(ui, 'Area'));
@@ -105,7 +108,9 @@ it("the status line shows the active tool's hint", () => {
 
 it('the status line counts the markup', () => {
   const ui = render(<DrawingPanel />);
-  assert.match(statusText(ui), /No markup/);
+  assert.equal(statusText(ui), '', 'idle Select with no markup draws no status line');
+  click(byLabel(ui, 'Distance'));
+  assert.match(statusText(ui), /No markup/, 'a markup tool says there is none yet');
   act(() => {
     const s = useViewerStore.getState();
     s.addMeasure2DResult({ id: 'm1', start: { x: 0, y: 0 }, end: { x: 1, y: 0 }, distance: 1 });

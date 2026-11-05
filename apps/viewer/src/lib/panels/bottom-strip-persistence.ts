@@ -15,6 +15,7 @@ import { isBottomPanel, type BottomPanelId } from './bottom-panels';
 const TABS_STORAGE_KEY = 'ifc-lite:bottom-strip-tabs-v1';
 const HEIGHT_STORAGE_KEY = 'ifc-lite:bottom-strip-height-v1';
 const ORIENTATION_STORAGE_KEY = 'ifc-lite:bottom-strip-orientation-v1';
+const DRAWING_HEIGHT_STORAGE_KEY = 'ifc-lite:bottom-strip-drawing-height-v1';
 
 /** Where the strip docks: below the viewport (default) or beside it — the
  *  side-by-side 2D/3D layout preset (#5515). Persisted regardless of which
@@ -26,6 +27,18 @@ export const BOTTOM_STRIP_MIN_HEIGHT = 120;
 export const BOTTOM_STRIP_DEFAULT_HEIGHT = 300;
 /** Max resize height, as a ratio of the layout container (#1208's cap). */
 export const BOTTOM_STRIP_MAX_RATIO = 0.7;
+/** The docked Drawing's default share of the layout height (#8802 R3b): a
+ *  section is read at a glance only with room for it, so until the user
+ *  resizes the strip while the Drawing shows, the two views split evenly.
+ *  The Drawing's own resized height is remembered apart from the other
+ *  bottom panels', whose 300 px default fits a table or a script. */
+export const BOTTOM_STRIP_DRAWING_DEFAULT_RATIO = 0.5;
+
+/** The Drawing's default strip height for a layout container this tall. */
+export function drawingDefaultStripHeight(containerHeight: number): number {
+  const wanted = Math.round(containerHeight * BOTTOM_STRIP_DRAWING_DEFAULT_RATIO);
+  return Math.max(BOTTOM_STRIP_DEFAULT_HEIGHT, Math.min(containerHeight * BOTTOM_STRIP_MAX_RATIO, wanted));
+}
 
 /** Tab ids this build does not know (a newer build's panel), written back on
  *  every persist by this preservation-aware build (#6927). */
@@ -86,6 +99,31 @@ export function persistBottomStripHeight(height: number): void {
     window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
   } catch (error) {
     console.warn('[bottom-strip] failed to persist height:', error);
+  }
+}
+
+/** The height the user resized the strip to while the Drawing showed, or
+ *  `null` when they have not (the Drawing then takes its default share). */
+export function loadBottomStripDrawingHeight(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DRAWING_HEIGHT_STORAGE_KEY);
+    const parsed = raw === null ? NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed >= BOTTOM_STRIP_MIN_HEIGHT ? parsed : null;
+  } catch (error) {
+    console.warn('[bottom-strip] ignoring malformed persisted drawing height:', error);
+    return null;
+  }
+}
+
+/** `null` forgets the Drawing's height (Reset layout). */
+export function persistBottomStripDrawingHeight(height: number | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (height === null) window.localStorage.removeItem(DRAWING_HEIGHT_STORAGE_KEY);
+    else window.localStorage.setItem(DRAWING_HEIGHT_STORAGE_KEY, String(height));
+  } catch (error) {
+    console.warn('[bottom-strip] failed to persist drawing height:', error);
   }
 }
 

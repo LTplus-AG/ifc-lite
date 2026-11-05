@@ -58,6 +58,9 @@ export interface BottomStripHeaderProps {
    *  (Drawing, #5515) — its presence alone gates the toggle button, so no
    *  extra "which panel" prop is needed here. */
   onToggleOrientation?: () => void;
+  /** Receives the tab row's slot element, which the docked panel may portal
+   *  its own header into (`bottom-strip-header-slot.ts`, #8802 R3b). */
+  slotRef?: (el: HTMLDivElement | null) => void;
 }
 
 export function BottomStripHeader({
@@ -69,13 +72,14 @@ export function BottomStripHeader({
   onToggleMaximize,
   orientation = 'bottom',
   onToggleOrientation,
+  slotRef,
 }: BottomStripHeaderProps) {
   const { t } = useTranslation();
   return (
     <Tabs value={activePanel} onValueChange={(value) => onSelectTab(value as BottomPanelId)} className="flex shrink-0 items-stretch border-b bg-muted/10">
       <TabsList
         aria-label={t('bottomStrip.tabListAriaLabel')}
-        className="properties-tabs-list min-w-0 h-auto flex-1 justify-start overflow-x-auto rounded-none bg-transparent p-0"
+        className="properties-tabs-list min-w-0 h-auto flex-initial justify-start overflow-x-auto rounded-none bg-transparent p-0"
       >
         {tabs.map((id) => {
           const def = getPanelDef(id);
@@ -110,6 +114,7 @@ export function BottomStripHeader({
           );
         })}
       </TabsList>
+      <div ref={slotRef} data-bottom-strip-header-slot className="flex min-w-0 flex-1 items-center" />
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <DetachGrip id={activePanel} />
         {activePanel === 'drawing' && onToggleOrientation && (

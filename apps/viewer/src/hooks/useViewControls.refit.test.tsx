@@ -13,7 +13,9 @@
  *  - a new plane (a face pick) is fitted even when pinned;
  *  - a pinned regeneration that lands entirely outside the view is fitted;
  *  - a pinned regeneration still in view keeps the user's framing;
- *  - a panel resize keeps the drawing centred.
+ *  - a panel resize keeps the user's framing centred once they have framed it;
+ *  - (#8802 R3b) the first fit fills the canvas up to a small margin, and a
+ *    panel resize before the user frames the view refits.
  */
 
 import '@/test/setup-dom.js';
@@ -23,7 +25,7 @@ import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
-import { useViewControls } from './useViewControls.js';
+import { drawingFitMargin, useViewControls } from './useViewControls.js';
 
 type Transform = { x: number; y: number; scale: number };
 type Plane = Parameters<typeof useViewControls>[0]['sectionPlane'];
@@ -48,10 +50,11 @@ function drawing(minX: number, minY: number, maxX: number, maxY: number): Drawin
   return { bounds: { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } } as unknown as Drawing2D;
 }
 
-/** What `fitToView` produces for a plan ('down') drawing: 15% padding, centred. */
+/** What `fitToView` produces for a plan ('down') drawing: the fit margin per side, centred. */
 function fitOf(d: Drawing2D): Transform {
   const { min, max } = d.bounds;
-  const scale = Math.min((size.width * 0.7) / (max.x - min.x), (size.height * 0.7) / (max.y - min.y));
+  const m = drawingFitMargin(size);
+  const scale = Math.min((size.width - 2 * m) / (max.x - min.x), (size.height - 2 * m) / (max.y - min.y));
   return { scale, x: size.width / 2 - ((min.x + max.x) / 2) * scale, y: size.height / 2 - ((min.y + max.y) / 2) * scale };
 }
 
@@ -59,14 +62,16 @@ const PLAN: Plane = { axis: 'down', position: 50, flipped: false };
 const ROOF: Plane = { ...PLAN, custom: { normal: [0, 0.866, 0.5], pickedAt: [1, 5, 2] } };
 
 let latest: { t: Transform; set: (t: Transform) => void } | null = null;
+let latestFit: (() => void) | null = null;
 function Harness({ d, plane }: { d: Drawing2D; plane: Plane }): null {
   const containerRef = useRef<HTMLDivElement | null>(containerEl);
   const cacheRef = useRef<CachedSheetTransform | null>(null);
-  const { viewTransform, setViewTransform } = useViewControls({
+  const { viewTransform, setViewTransform, fitToView } = useViewControls({
     drawing: d, sectionPlane: plane, containerRef, panelVisible: true, status: 'ready',
     sheetEnabled: false, activeSheet: null, isPinned: true, cachedSheetTransformRef: cacheRef,
   });
   latest = { t: viewTransform, set: setViewTransform };
+  latestFit = fitToView;
   return null;
 }
 
@@ -118,11 +123,54 @@ describe('useViewControls refits a stale pinned view (#5392)', () => {
     close(await show(drawing(0, 0, 20, 11), PLAN), zoomed, 'pinned in-view regeneration');
   });
 
-  it('keeps the drawing centred when the panel is resized', async () => {
+  it('keeps the user framing centred when the panel is resized after they zoomed', async () => {
     const plan = drawing(0, 0, 20, 10);
-    const fitted = await show(plan, PLAN);
+    await show(plan, PLAN);
+    const zoomed: Transform = { x: -100, y: -40, scale: 40 }; // the user zoomed into a detail
+    await act(async () => { latest!.set(zoomed); });
     size.width = 600; size.height = 360;
     await act(async () => { for (const cb of observers) cb(); });
-    close(latest!.t, { ...fitted, x: fitted.x + 100, y: fitted.y + 30 }, 'after a 200x60 px resize');
+    close(latest!.t, { ...zoomed, x: zoomed.x + 100, y: zoomed.y + 30 }, 'after a 200x60 px resize');
+  });
+});
+
+describe('useViewControls fits the docked drawing to its extents (#8802 R3b)', () => {
+  it('fits on open: the drawing fills the canvas up to the margin, centred', async () => {
+    const plan = drawing(0, 0, 20, 10);
+    const t = await show(plan, PLAN);
+    const m = drawingFitMargin(size);
+    assert.equal(m, 18, '6% of the 300 px short side');
+    // 20 x 10 m into 400 x 300 px: width-bound, (400 - 36) / 20 = 18.2 px/m.
+    assert.ok(Math.abs(t.scale - 18.2) < 1e-9, `scale ${t.scale}`);
+    const left = t.x + 0 * t.scale, right = t.x + 20 * t.scale;
+    assert.ok(Math.abs(left - 18) < 1e-9 && Math.abs(right - 382) < 1e-9, `spans ${left}..${right} px`);
+    const top = t.y + 0 * t.scale, bottom = t.y + 10 * t.scale;
+    assert.ok(Math.abs((top + bottom) / 2 - 150) < 1e-9, 'vertically centred');
+  });
+
+  it('refits when the dock is resized before the user has framed the view', async () => {
+    const plan = drawing(0, 0, 20, 10);
+    const opened = await show(plan, PLAN);
+    // A dock that opened short and then grew: the drawing must grow with it.
+    size.width = 400; size.height = 140;
+    await act(async () => { for (const cb of observers) cb(); });
+    const short = latest!.t;
+    close(short, fitOf(plan), 'after shrinking to 400x140');
+    assert.ok(short.scale < opened.scale, 'a shorter canvas fits at a smaller scale');
+    size.width = 1500; size.height = 420;
+    await act(async () => { for (const cb of observers) cb(); });
+    close(latest!.t, fitOf(plan), 'after growing to 1500x420');
+    assert.ok(latest!.t.scale > opened.scale, 'a larger canvas fits at a larger scale');
+  });
+
+  it('an explicit Fit after the user zoomed resumes refitting on resize', async () => {
+    const plan = drawing(0, 0, 20, 10);
+    await show(plan, PLAN);
+    await act(async () => { latest!.set({ x: 5, y: 5, scale: 3 }); });
+    await act(async () => { latestFit!(); });
+    close(latest!.t, fitOf(plan), 'Fit');
+    size.width = 800; size.height = 500;
+    await act(async () => { for (const cb of observers) cb(); });
+    close(latest!.t, fitOf(plan), 'resize after Fit refits');
   });
 });

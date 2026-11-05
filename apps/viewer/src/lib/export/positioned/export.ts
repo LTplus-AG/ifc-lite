@@ -3,18 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createDecodeWorkerSource } from '@ifc-lite/pointcloud';
 import { positionedGaussianChunks } from '@ifc-lite/renderer';
-import { detectPointCloudFormat } from '@/hooks/ingest/pointCloudIngest';
 import { decodeGaussianInWorker } from '@/hooks/ingest/gaussianWorker';
 import { restoreGaussianOrigin, type positionedExportSnapshot } from './frame';
 import { PositionedPly } from './ply';
 import { exportPositionedScan } from './scan';
-import { preflightPositionedScan } from './preflight';
+import { preflightPositionedScan, positionedScanFormat } from './preflight';
 
 export async function exportPositionedFile(snapshot: ReturnType<typeof positionedExportSnapshot>, signal: AbortSignal,
   progress: (count: number) => void): Promise<Blob> {
   signal.throwIfAborted();
   if (snapshot.kind === 'scan') {
-    const format = detectPointCloudFormat(snapshot.file.name, await snapshot.file.slice(0, 4096).arrayBuffer());
+    const format = positionedScanFormat(snapshot.file.name, await snapshot.file.slice(0, 4096).arrayBuffer());
     signal.throwIfAborted();
     if (!format) throw new Error('Unsupported scan source format.');
     await preflightPositionedScan(snapshot.file, format, signal);

@@ -6,7 +6,7 @@ import '@/test/download-capture';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render';
+import { render, cleanup, click, waitFor } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { gaussianPly, installInThreadGaussianWorker } from '@/test/gaussian-loader-harness';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -41,7 +41,7 @@ it('download action produces a positioned Gaussian file through real decoding an
     useViewerStore.getState().openReposition(['capture']);
     render(<PositionedDownload modelId="capture" />);
     click(button('Download positioned file…')); click(button('Download PLY'));
-    for (let i=0; i<100 && !downloadedNames().length; i++) await advance(20);
+    await waitFor(() => downloadedNames().length > 0, 'positioned PLY download');
     assert.deepEqual(downloadedNames(), ['My Capture-positioned.ply']);
     assert.ok(blob);
     const output = await decodeGaussianFile(new File([blob], 'positioned.ply'));
@@ -60,7 +60,7 @@ it('missing source is explained, and cancelling a held decoder cannot download l
   try {
     seed(); render(<PositionedDownload modelId="capture" />);
     click(button('Download positioned file…')); click(button('Download PLY'));
-    for (let i=0;i<100 && !worker.stats.created;i++) await advance(10);
+    await waitFor(() => worker.stats.created > 0, 'Gaussian export decoder starts');
     click(button('Cancel')); await act(async()=>{ release(); await new Promise(r=>setTimeout(r,20)); });
     assert.deepEqual(downloadedNames(),[]);
     assert.equal(worker.stats.created,worker.stats.terminated);

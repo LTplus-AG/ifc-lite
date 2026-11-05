@@ -51,3 +51,8 @@ test('Gaussian export chunks preserve every row, reject shear, and keep millimet
   matrix[4] = 0.5;
   await assert.rejects(collect(positionedGaussianChunks(input,matrix)), /shear|non-uniform/);
 });
+
+test('Gaussian export rejects inconsistent source lengths before yielding any records', async () => {
+  const input=source(1,0);input.columns.x=new Float32Array(2);
+  await assert.rejects(collect(positionedGaussianChunks(input,identity)), /source count/);
+});

@@ -1,7 +1,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { parsePcdHeader, type DecodeWorkerFormat } from '@ifc-lite/pointcloud';
+import { isCopcHeader, parsePcdHeader, type DecodeWorkerFormat } from '@ifc-lite/pointcloud';
+
+import { detectPointCloudFormat } from '@/hooks/ingest/pointCloudIngest';
+
+/** Compression is content, not a filename convention (including renamed COPC). */
+export function positionedScanFormat(name: string, header: ArrayBuffer): DecodeWorkerFormat | null {
+  const format = detectPointCloudFormat(name, header);
+  if (format !== 'las' && format !== 'laz') return format;
+  const bytes = new Uint8Array(header);
+  return isCopcHeader(bytes) || (bytes.length > 104 && (bytes[104] & 0x80) !== 0) ? 'laz' : 'las';
+}
 
 /** Existing PCD/text readers materialize their input; LAZ buffers compressed
  * bytes. Bound those allocations BEFORE opening the worker source. LAS, PLY

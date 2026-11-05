@@ -201,3 +201,15 @@ it('aligned and unaligned scan exports remove RTC offsets and keep per-axis alig
     assert.deepEqual([raw.x[0],raw.y[0],raw.z[0]],[500001,6400002,103]);
   } finally { unregisterPointCloudAlignment(9843);reframeRegisteredPointClouds(target,{x:0,y:0,z:0}); }
 });
+
+it('compressed LAS and renamed COPC choose a full-resolution LAZ reader by content', async () => {
+  const { positionedScanFormat } = await import('./preflight');
+  const header=new ArrayBuffer(589);const bytes=new Uint8Array(header);const data=new DataView(header);
+  bytes.set(new TextEncoder().encode('LASF'));bytes[104]=0x80|7;
+  assert.equal(positionedScanFormat('renamed.las',header),'laz');
+  bytes[104]=7;
+  assert.equal(positionedScanFormat('raw.laz',header),'las');
+  bytes[24]=1;bytes[25]=4;data.setUint16(94,375,true);
+  bytes.set(new TextEncoder().encode('copc'),377);data.setUint16(393,1,true);
+  assert.equal(positionedScanFormat('renamed.las',header),'laz');
+});

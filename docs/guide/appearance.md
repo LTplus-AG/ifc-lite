@@ -362,7 +362,8 @@ source is read at full resolution independently of the displayed sample.
 The result is binary PLY in project coordinates, Z up, with the active scan
 alignment and applied model translation baked in. Reopen it without the old
 placement settings. Supported decoded RGB, intensity, classification and valid
-normals are included when present. Other source fields, scan organization and
+normals are included when present. Missing RGB, intensity or classification in
+mixed scans is filled with zero. Other source fields, scan organization and
 CRS metadata are not retained. PLY conversion does not preserve the original
 LAS/LAZ/E57/PCD format. Display clipping, visibility and classification filters do
 not remove points from the download.

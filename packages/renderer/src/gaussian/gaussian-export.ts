@@ -10,6 +10,9 @@ export async function* positionedGaussianChunks(
   source: GaussianAttributeSource, matrix: readonly number[],
 ): AsyncGenerator<Readonly<Record<string, Float32Array | Float64Array>>> {
   if (!Number.isSafeInteger(source.count) || source.count < 1) throw new Error('Invalid Gaussian export count.');
+  if (Object.values(source.columns).some(column => !(column instanceof Float32Array) || column.length !== source.count)) {
+    throw new Error('Gaussian export columns disagree with the source count.');
+  }
   const { decomposeSimilarity, shRotationFor, transformGaussianRows } = await import('./gaussian-placement.js');
   const placement = decomposeSimilarity(matrix);
   const sh = shRotationFor(placement, source.shDegree);

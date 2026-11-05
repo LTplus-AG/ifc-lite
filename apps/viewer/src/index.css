@@ -95,16 +95,16 @@
 /* Custom theme configuration */
 @theme {
   /* #8802 status roles */
-  --color-warn: #8c6c3e;
+  --color-warn: #806239;
   --color-warn-surface: color-mix(in srgb, var(--color-warn) 10%, transparent);
   --color-warn-border: color-mix(in srgb, var(--color-warn) 40%, transparent);
-  --color-ok: #587539;
+  --color-ok: #536e36;
   --color-ok-surface: color-mix(in srgb, var(--color-ok) 10%, transparent);
   --color-ok-border: color-mix(in srgb, var(--color-ok) 40%, transparent);
   --color-danger: #c4194d;
   --color-danger-surface: color-mix(in srgb, var(--color-danger) 10%, transparent);
   --color-danger-border: color-mix(in srgb, var(--color-danger) 40%, transparent);
-  --color-info: #007197;
+  --color-info: #006f94;
   --color-info-surface: color-mix(in srgb, var(--color-info) 10%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   /* Smallest viewer text step; replace sub-11px arbitrary utilities (#5821). */

@@ -114,7 +114,7 @@ export function SourceFileRow({
         {isLoadedInHierarchy && (
           <span className="flex shrink-0 items-center gap-1">
             <span
-              className="rounded border border-ok-border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-ok text-ok"
+              className="rounded border border-ok-border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-ok"
               title={
                 loadedModelNames.length > 0
                   ? t('sources.sourceFileRow.loadedTooltip', { names: loadedModelNames.join(', ') })

@@ -363,7 +363,7 @@ export function PlaygroundChat({
       </div>
 
       {error && (
-        <div className="mx-5 mb-2 rounded-md border border-danger-border bg-danger-surface px-3 py-2 text-xs text-danger">
+        <div className="mx-5 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {errorText}
         </div>
       )}
@@ -669,7 +669,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
     <div
       className={cn(
         'rounded-md border text-xs',
-        isErr ? 'border-danger-border bg-red-500/[0.04]' : 'border-white/10 bg-white/[0.025]',
+        isErr ? 'border-red-500/40 bg-red-500/[0.04]' : 'border-white/10 bg-white/[0.025]',
       )}
     >
       <button
@@ -677,7 +677,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Wrench size={12} className={isErr ? 'text-danger' : 'text-[#d6ff3f]'} />
+        <Wrench size={12} className={isErr ? 'text-red-400' : 'text-[#d6ff3f]'} />
         <code className="font-mono text-xs" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
           {call.name}
         </code>
@@ -690,7 +690,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
               <span
                 className={cn(
                   'rounded px-1 py-px uppercase tracking-[0.15em]',
-                  isErr ? 'bg-red-500/15 text-danger' : 'bg-[#d6ff3f]/15 text-[#d6ff3f]',
+                  isErr ? 'bg-red-500/15 text-red-300' : 'bg-[#d6ff3f]/15 text-[#d6ff3f]',
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
@@ -728,7 +728,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
               <pre
                 className={cn(
                   'overflow-x-auto whitespace-pre-wrap rounded p-2 text-2xs leading-snug',
-                  isErr ? 'bg-danger-surface text-danger' : 'bg-black/40 text-white/85',
+                  isErr ? 'bg-red-500/10 text-red-200' : 'bg-black/40 text-white/85',
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >

@@ -88,7 +88,7 @@ function Item({ item, block, origin, props, lineBreak, children }: { item: Drawn
       end = mark.end;
       const content = item.text.slice(mark.start, mark.end);
       return <span key={index}>{prefix}{mark.unresolved
-        ? <mark data-unresolved title={mark.tooltip} className="bg-amber-200/70 text-warn">{content}</mark>
+        ? <mark data-unresolved title={mark.tooltip} className="bg-amber-200/70 text-amber-950">{content}</mark>
         : <span title={mark.tooltip} className="bg-sky-100/70">{content}</span>}</span>;
     });
     return <>{nodes}{item.text.slice(end)}</>;

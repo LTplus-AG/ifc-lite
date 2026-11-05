@@ -33,14 +33,14 @@ export function RecipeRunCard() {
         return <li key={i} aria-current={current ? 'step' : undefined} className="space-y-1">
           <button type="button" onClick={() => goToStep(i)}
             className="flex w-full items-start gap-1.5 rounded text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <Icon className={finished ? 'mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600' : 'mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground'} aria-hidden="true" />
+            <Icon className={finished ? 'mt-0.5 h-3.5 w-3.5 shrink-0 text-ok' : 'mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground'} aria-hidden="true" />
             <span className={current ? 'font-medium break-words' : 'break-words'}>{label(step)}</span>
           </button>
           {current && <div className="ml-5 space-y-1">
-            {!availability.available && <p className="text-amber-700 dark:text-amber-400">
+            {!availability.available && <p className="text-warn">
               {t('assistantRecipes.unavailable', { reasons: availability.missing.map(requirement => t(REQUIREMENT_KEY[requirement])).join(' ') })}
             </p>}
-            {stepProduced(step, host) && <p className="text-emerald-700 dark:text-emerald-400">{t('assistantRecipes.resultReady')}</p>}
+            {stepProduced(step, host) && <p className="text-ok">{t('assistantRecipes.resultReady')}</p>}
             <div className="flex flex-wrap gap-1">
               <Button size="sm" className="h-7" disabled={!availability.available} onClick={() => runStep(step)}>{t('assistantRecipes.doStep')}</Button>
               <Button size="sm" variant="outline" className="h-7" onClick={() => completeStep(i)}>{t('assistantRecipes.markDone')}</Button>

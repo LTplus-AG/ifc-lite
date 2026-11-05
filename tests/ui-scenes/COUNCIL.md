@@ -103,7 +103,10 @@ Then write one JSON file to the path you were given, with nothing else in it:
     }
   ],
   "crossScene": [
-    { "image": "X", "problem": "…", "scenes": ["lists", "bcf"], "fix": "…" }
+    { "problem": "…", "fix": "…", "occurrences": [
+      { "scene": "lists", "theme": "dark", "image": "X" },
+      { "scene": "bcf", "theme": "light", "image": "Y" }
+    ] }
   ]
 }
 ```
@@ -112,6 +115,24 @@ Then write one JSON file to the path you were given, with nothing else in it:
 misleads). `crossScene` holds patterns you saw across several scenes in the
 same image set (X and Y are re-randomised per scene, so name the image per
 scene).
+
+### Solo rounds
+
+In a solo packet every item has only an **X** image. Read every item and
+provide `scores.X` on all six axes and `defects`, all with `"image": "X"`.
+Omit `preferred`, `confidence`, `axes` and `scores.Y`. Keep `scene` and
+`theme` on every verdict. Include `crossScene` using the occurrence schema
+above (every occurrence has `"image": "X"`).
+
+Also include a top-level `recommendations` array with exactly 10 entries,
+ranked 1–10 by expected user benefit. Each entry has this shape:
+
+```json
+{ "rank": 1, "change": "…", "why": "…", "affects": ["loaded", "lists"], "effort": "S" }
+```
+
+`affects` lists scene ids; `effort` is `"S"`, `"M"` or `"L"`. Solo tallies
+report absolute scores, defects, cross-scene patterns and recommendations.
 
 Do not read any other file in the packet directory, the repository, or
 earlier rounds. Do not guess which image is newer.

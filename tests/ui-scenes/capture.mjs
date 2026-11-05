@@ -28,7 +28,7 @@
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the council loop, not CI.
  */
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -59,6 +59,12 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument ${key}`);
   }
   if (!args.dist || !args.out) throw new Error('usage: capture.mjs --dist <dir> --out <dir> [--scenes a,b] [--themes light,dark] [--cdp url]');
+  for (const theme of args.themes) {
+    if (!['light', 'dark'].includes(theme)) throw new Error(`invalid theme ${JSON.stringify(theme)}; expected light or dark`);
+  }
+  for (const id of args.scenes ?? []) {
+    if (!SCENES.some((scene) => scene.id === id)) throw new Error(`unknown scene ${JSON.stringify(id)}`);
+  }
   return args;
 }
 
@@ -66,16 +72,17 @@ const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
 
 async function waitForHttp(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  let lastError;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url);
       if (response.ok) return;
-    } catch {
-      // not listening yet; retried until the deadline below
+    } catch (error) {
+      lastError = error;
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error(`timed out waiting for ${url}`);
+  throw new Error(`timed out waiting for ${url}${lastError ? `: ${lastError.message}` : ''}`, { cause: lastError });
 }
 
 function startPreview(dist) {
@@ -92,23 +99,41 @@ async function launchWindowsChrome() {
   if (!existsSync(WIN_CHROME)) throw new Error(`Windows Chrome not found at ${WIN_CHROME}; pass --cdp <url> instead`);
   const port = randomPort();
   const profile = `ifclite-ui-scenes-${process.pid}-${port}`;
-  const winProfile = `C:\\Users\\louistrue\\AppData\\Local\\Temp\\${profile}`;
+  let winProfile; let wslProfile;
+  try {
+    const temp = execFileSync('powershell.exe', ['-NoProfile', '-Command', '[IO.Path]::GetTempPath()'], { encoding: 'utf8' }).trim();
+    if (!temp) throw new Error('Windows temp path is empty');
+    winProfile = `${temp.replace(/[\\/]+$/, '')}\\${profile}`;
+    wslProfile = execFileSync('wslpath', ['-u', winProfile], { encoding: 'utf8' }).trim();
+    if (!wslProfile.startsWith('/')) throw new Error('wslpath did not return an absolute path');
+  } catch (error) {
+    throw new Error(`cannot resolve Windows temp directory: ${error.message}`, { cause: error });
+  }
   const child = spawn(WIN_CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${winProfile}`,
     '--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--force-color-profile=srgb', '--hide-scrollbars',
     '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore', detached: true });
   const cdp = `http://127.0.0.1:${port}`;
-  await waitForHttp(`${cdp}/json/version`, 30000);
-  return {
+  const chrome = {
     cdp,
     async close() {
       try { process.kill(-child.pid); } catch (error) { if (error.code !== 'ESRCH') console.warn(`chrome kill: ${error.message}`); }
       // Windows Chrome outlives the WSL interop process; kill it by its profile path.
       await new Promise((r) => spawn('powershell.exe', ['-NoProfile', '-Command',
         `Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*${profile}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`],
-        { stdio: 'ignore' }).on('exit', r));
-      await rm(`/mnt/c/Users/louistrue/AppData/Local/Temp/${profile}`, { recursive: true, force: true }).catch((error) => console.warn(`profile cleanup: ${error.message}`));
+        { stdio: 'ignore' }).on('exit', r).on('error', (error) => { console.warn(`chrome cleanup: ${error.message}`); r(); }));
+      await rm(wslProfile, { recursive: true, force: true }).catch((error) => console.warn(`profile cleanup: ${error.message}`));
     },
   };
+  let launchError;
+  child.on('error', (error) => { launchError = error; });
+  try {
+    await waitForHttp(`${cdp}/json/version`, 30000);
+    if (launchError) throw launchError;
+    return chrome;
+  } catch (error) {
+    await chrome.close();
+    throw error;
+  }
 }
 
 const FREEZE_CSS = `*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }`;
@@ -128,7 +153,7 @@ async function waitForModelReady(page) {
 
 async function dismissToasts(page) {
   for (const button of await page.getByRole('button', { name: 'Dismiss notification' }).all()) {
-    await button.click({ timeout: 2000 }).catch(() => { /* toast already gone */ });
+    await button.click({ timeout: 2000 }).catch((error) => console.warn(`dismiss toast: ${error.message}`));
   }
 }
 
@@ -225,14 +250,14 @@ async function captureScene(context, baseUrl, scene, theme, outDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const scenes = args.scenes ? SCENES.filter((s) => args.scenes.includes(s.id)) : SCENES;
-  if (args.scenes && scenes.length !== args.scenes.length) throw new Error(`unknown scene in ${args.scenes.join(',')}`);
   await mkdir(args.out, { recursive: true });
 
   const preview = startPreview(args.dist);
-  const chrome = args.cdp ? null : await launchWindowsChrome();
+  let chrome;
   const results = [];
   const failures = [];
   try {
+    chrome = args.cdp ? null : await launchWindowsChrome();
     await waitForHttp(preview.url, 90000).catch((error) => { throw new Error(`${error.message}\n${preview.log()}`); });
     const browser = await chromium.connectOverCDP(args.cdp ?? chrome.cdp);
     const probeContext = await browser.newContext();

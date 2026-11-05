@@ -7,7 +7,7 @@
  * Build a blind council packet from two captures (#8802).
  *
  *   node tests/ui-scenes/pair.mjs --a <candidate capture> --b <reference capture> \
- *     --out <packet dir> --key <key.json> [--controls 2] [--seed <n>]
+ *     --out <packet dir> --key <key.json> [--controls 2] [--seed <n>] [--partial]
  *   node tests/ui-scenes/pair.mjs --solo <capture> --out <packet dir> --key <key.json>
  *
  * Each scene/theme becomes an item with images `X` and `Y`; which capture is
@@ -33,6 +33,7 @@ function parseArgs(argv) {
   const args = { controls: 2, seed: Date.now() };
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
+    if (key === '--partial') { args.partial = true; continue; }
     const v = argv[++i];
     if (v === undefined) throw new Error(`${key} needs a value`);
     if (key === '--a') args.a = resolve(v);
@@ -81,7 +82,7 @@ async function main() {
   await copyFile(join(HERE, 'COUNCIL.md'), join(args.out, 'COUNCIL.md'));
 
   const items = [];
-  const key = { version: 1, seed: args.seed, mode: args.solo ? 'solo' : 'pair', items: {} };
+  const key = { version: 1, seed: args.seed, mode: args.solo ? 'solo' : 'pair', ...(args.partial ? { partial: true } : {}), items: {} };
 
   if (args.solo) {
     const m = await manifest(args.solo);
@@ -97,9 +98,15 @@ async function main() {
     key.a = { dir: args.a, label: ma.label };
     key.b = { dir: args.b, label: mb.label };
     const byId = new Map(mb.results.map((r) => [itemId(r), r]));
+    const aIds = new Set(ma.results.map(itemId));
+    const missingA = mb.results.map(itemId).filter((id) => !aIds.has(id));
+    const missingB = ma.results.map(itemId).filter((id) => !byId.has(id));
+    if (!args.partial && (missingA.length || missingB.length)) {
+      throw new Error(`capture item sets differ; missing in A: ${missingA.join(', ') || 'none'}; missing in B: ${missingB.join(', ') || 'none'}; use --partial for a diagnostic packet`);
+    }
     for (const ra of ma.results) {
       const rb = byId.get(itemId(ra));
-      if (!rb) throw new Error(`reference has no ${itemId(ra)}`);
+      if (!rb) continue;
       const aIsX = random() < 0.5;
       const x = `${itemId(ra)}.X.png`; const y = `${itemId(ra)}.Y.png`;
       await copyFile(join(aIsX ? args.a : args.b, (aIsX ? ra : rb).file), join(args.out, x));

@@ -1,0 +1,70 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const gaussianCaptureIt = {
+  "gaussianCapture.kind": "Acquisizione gaussiana",
+  "gaussianCapture.format.gaussianPly": "PLY gaussiano",
+  "gaussianCapture.format.splat": ".splat",
+  "gaussianCapture.heading.capture": "Acquisizione",
+  "gaussianCapture.heading.limitations": "Limitazioni",
+  "gaussianCapture.upAxis": "Asse verticale di origine",
+  "gaussianCapture.upAxis.z": "Z verticale (come le scansioni)",
+  "gaussianCapture.upAxis.y": "Y verticale",
+  "gaussianCapture.upAxis.failed": "Impossibile cambiare l’orientamento dell’acquisizione. Verifica lo stato del renderer dell’acquisizione.",
+  "gaussianCapture.splats": "Splat",
+  "gaussianCapture.shDegree": "Grado delle armoniche sferiche",
+  "gaussianCapture.placement": "Posizionamento",
+  "gaussianCapture.placement.source": "Coordinate di origine nel sistema del visualizzatore",
+  "gaussianCapture.placement.explicit": "Posizionamento fornito esplicitamente",
+  "gaussianCapture.calibration": "Calibrazione",
+  "gaussianCapture.calibration.uncalibrated": "Non calibrata: senza unità, allineamento o misura",
+  "gaussianCapture.rendererState": "Stato del renderer",
+  "gaussianCapture.state.resident": "Residente",
+  "gaussianCapture.state.pending": "In attesa del dispositivo grafico",
+  "gaussianCapture.state.failedReload": "Caricamento sulla GPU non riuscito. Ricarica l'acquisizione.",
+  "gaussianCapture.state.failedAnchor": "Il posizionamento supera il limite di coordinate del renderer di 8.192 rispetto all'ancoraggio gaussiano condiviso, quindi non viene più disegnata. Correggi il posizionamento del modello, poi ricarica l'acquisizione.",
+  "gaussianCapture.state.failedOther": "Operazione non riuscita ({reason}). Ricarica l'acquisizione.",
+  "gaussianCapture.state.replaced": "Il renderer del visualizzatore si è riavviato. Ricarica l'acquisizione.",
+  "gaussianCapture.state.invalid": "Non presente su questo renderer. Ricarica l'acquisizione.",
+  "gaussianCapture.scale": "Scala",
+  "gaussianCapture.scale.unknown": "Sconosciuta: unità di origine, non metri",
+  "gaussianCapture.scale.captureOnly": "Acquisizione non calibrata: senza scala metrica.",
+  "gaussianCapture.scale.mixed": "La scala si applica alla geometria IFC. Le acquisizioni non sono calibrate.",
+  "gaussianCapture.attribution": "Attribuzione",
+  "gaussianCapture.limitation.clipping": "Piani e riquadri di sezione eliminano intere gaussiane in base al centro; nessuna chiusura delle sezioni.",
+  "gaussianCapture.limitation.composition": "Esatta dietro un solo strato di vetro; approssimata dietro più strati e in modalità raggi X.",
+  "gaussianCapture.limitation.picking": "Non selezionabile nella vista: seleziona l'acquisizione nell'elenco dei modelli.",
+  "gaussianCapture.limitation.measurement": "Nessuna misura o aggancio sulle acquisizioni.",
+  "gaussianCapture.limitation.uncalibrated": "Non calibrata: visualizzata nelle unità di origine, senza scala metrica o allineamento topografico.",
+  "gaussianCapture.limitation.export": "I dati delle acquisizioni non sono inclusi nelle esportazioni (IFC, glTF, USD, KMZ, PDF e altre). Le istantanee BCF possono mostrare le acquisizioni visibili.",
+  "gaussianCapture.error.disabled": "Il caricamento delle acquisizioni gaussiane è disattivato in questa versione del visualizzatore. Modelli IFC e nuvole di punti continuano a caricarsi.",
+  "gaussianCapture.error.captureBytes": "Questa acquisizione occupa {size}. Le acquisizioni gaussiane possono occupare al massimo {limit}.",
+  "gaussianCapture.error.captureSplats": "Questa acquisizione ha {count} splat. Una scena può contenere al massimo {limit} splat.",
+  "gaussianCapture.error.shDegree": "Questa acquisizione usa armoniche sferiche di grado {degree}. È supportato un grado pari o inferiore a {limit}.",
+  "gaussianCapture.error.sceneSplats": "Aprire questa acquisizione porterebbe la scena a {total} splat, oltre il limite di {limit}. Rimuovi un'acquisizione, poi riprova.",
+  "gaussianCapture.error.deviceLost": "Il dispositivo grafico è stato perso; ricarica la pagina e apri di nuovo l'acquisizione.",
+  "gaussianCapture.error.rendererUnavailable": "Il renderer del visualizzatore non può accettare acquisizioni gaussiane al momento; l'acquisizione non è stata decodificata.",
+  "gaussianCapture.error.loadFailed": "Impossibile caricare l'acquisizione gaussiana: {reason}",
+  "gaussianCapture.error.webgpu": "Le acquisizioni gaussiane richiedono la vista 3D WebGPU, qui non disponibile. L'acquisizione non è stata decodificata.",
+  "gaussianCapture.export.notice": {
+    "one": "{formatted} acquisizione gaussiana caricata. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili.",
+    "other": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili.",
+    "many": "{formatted} acquisizioni gaussiane caricate. I dati delle acquisizioni non sono inclusi nelle esportazioni. Le istantanee BCF possono mostrare le acquisizioni visibili."
+  },
+  "gaussianCapture.row.summary": {
+    "one": "{formatted} splat · non calibrata",
+    "other": "{formatted} splat · non calibrata",
+    "many": "{formatted} splat · non calibrata"
+  },
+  "gaussianCapture.row.inspect": "Mostra dettagli dell'acquisizione",
+  "gaussianCapture.row.hide": "Nascondi acquisizione",
+  "gaussianCapture.row.show": "Mostra acquisizione",
+  "gaussianCapture.row.fit": "Inquadra acquisizione nella vista",
+  "gaussianCapture.row.remove": "Rimuovi acquisizione",
+  "gaussianCapture.row.reload": "Ricarica acquisizione",
+  "gaussianCapture.reload.sourceUnavailable": "Il file dell'acquisizione non è più disponibile. Aprilo di nuovo.",
+  "gaussianCapture.reload.notLoaded": "L'acquisizione non si è caricata di nuovo."
+} satisfies Catalogue;

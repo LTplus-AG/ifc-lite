@@ -314,8 +314,6 @@ jobs:
               # a hand-edit or stale regeneration of them must trigger the check.
               - 'packages/ifcx/src/generated/**'
               - 'tests/models/manifest.json'
-              - 'tests/models/edinburgh'
-              - 'tests/models/edinburgh/**'
               # #7955: committed synthetic IFC/oracle/sidecar changes must run
               # their Rust consumers and the Node path-coverage mirror.
               - 'tests/fixtures/synthetic-retained/**'

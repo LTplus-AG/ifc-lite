@@ -23,12 +23,23 @@ export function runSkipVoidsContracts({ test, skip, IfcAPI }) {
   test('#8875: actual WASM gross/net toggle preserves authored booleans and restores net bytes', () => {
     const api = new IfcAPI();
     const source = readFileSync(new URL('../../rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc', import.meta.url), 'utf8');
+    let previous, bytes, pre;
     const run = (content) => {
-      const collection = parseMeshesViaPrePass(api, content);
+      if (content !== previous) {
+        api.clearPrePassCache();
+        bytes = new TextEncoder().encode(content);
+        pre = api.buildPrePassOnce(bytes);
+        previous = content;
+      }
+      // Reuse the SAME prepass, source and warm worker caches for net/gross/net.
+      const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
       try {
         return Array.from({ length: collection.length }, (_, i) => {
           const m = collection.get(i);
-          return { expressId: m.expressId, positions: m.positions, indices: m.indices, color: m.color };
+          try { return { expressId: m.expressId, positions: m.positions, indices: m.indices, color: m.color }; }
+          finally { m.free(); }
         });
       } finally { collection.free(); }
     };
@@ -38,6 +49,9 @@ export function runSkipVoidsContracts({ test, skip, IfcAPI }) {
       const gross = run(source);
       assert.ok(Math.abs(volume(gross, 30) - 2.4) < 1e-5);
       assert.ok(volume(net, 30) < 2.2);
+      api.setSkipVoids(false);
+      assert.deepEqual(run(source), net);
+      api.setSkipVoids(true);
       const boolean = source.replace("'SweptSolid',(#26)", "'CSG',(#130)")
         .replace('ENDSEC;\nEND-ISO', '#130=IFCBOOLEANRESULT(.DIFFERENCE.,#26,#46);\nENDSEC;\nEND-ISO');
       const authored = run(boolean);

@@ -16,6 +16,7 @@ export type { DecodedPointChunk, PointCloudBBox, PointNormalState } from './type
 
 // Inline / IFCx decoders (Phase 0)
 export { decodePcd } from './formats/pcd.js';
+export { parseHeader as parsePcdHeader } from './formats/pcd-header.js';
 export {
   decodePointsArray,
   decodePointsBase64,

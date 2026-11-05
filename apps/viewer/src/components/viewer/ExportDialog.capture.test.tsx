@@ -35,7 +35,7 @@ function captureModel(id: string): FederatedModel {
   } as FederatedModel;
 }
 
-const NOTICE = '1 Gaussian capture is loaded. Capture data is not included in exports. BCF snapshots can show visible captures.';
+const NOTICE = '1 Gaussian capture is loaded. Capture data is not included in this export. Use Download positioned file for Gaussian PLY. BCF snapshots can show visible captures.';
 const notice = () => document.querySelector('[data-testid="capture-export-notice"]')?.textContent ?? null;
 const choices = () => [...document.querySelectorAll('[role="combobox"]')].map(node => node.textContent ?? '');
 const openDialog = (ui: HTMLElement, label: string) =>

@@ -24,6 +24,7 @@ import { cleanupMouseControls, mountMouseControls, mousePointer } from '@/test/m
 import { handleMeasureTap } from './touchRouting.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { unsnapFromPrevious } from './measurePress.js';
 
 const s = () => useViewerStore.getState();
 const initial = useViewerStore.getState();
@@ -293,5 +294,61 @@ describe('one vertex path for taps and clicks (#8866)', () => {
     const points = s().activePolyline?.points ?? [];
     assert.equal(points.length, 2, 'two vertices');
     assert.ok(sameWorld(points[1], surfaceAt(shown.x - 30, shown.y)), 'BUG: the click after a tap lost the tap\'s press and kept the snap');
+  });
+});
+
+describe('a Measure gesture reset leaves no remembered press (#8866, #8786)', () => {
+  // A press after Esc, a mode switch or a tool switch is never a repeat of, or an unsnap from, a vertex
+  // placed before it: the reset that clears the sequence clears the press record with it, in every mode.
+  const RESETS: [string, () => void][] = [
+    ['Esc', () => s().resetMeasureGesture()],
+    ['a mode switch', () => s().setMeasureMode(s().measureMode === 'radius' ? 'angle' : 'radius')],
+    ['a tool switch', () => s().setActiveTool('select')],
+  ];
+  const SETUPS: [string, () => void][] = [
+    ['drag', () => s().setMeasureMode('drag')],
+    ['polyline', () => s().setMeasureMode('polyline')],
+    ['angle', () => { s().setMeasureMode('angle'); s().setAngleKind('points'); }],
+    ['radius', () => s().setMeasureMode('radius')],
+  ];
+  for (const [modeName, setup] of SETUPS) {
+    for (const [resetName, reset] of RESETS) {
+      it(`${modeName}: ${resetName} between two presses forgets the first one's press`, () => {
+        setup();
+        const rig = mountSnapping();
+        const { shown, ctx } = rig;
+        // Distance's start, or a second vertex that took the surface (an unsnapped vertex, the strongest record).
+        tap(rig, shown.x + 30, shown.y);
+        if (modeName !== 'drag') tap(rig, shown.x - 30, shown.y);
+        const prev = modeName === 'drag' ? s().activeMeasurement!.start : (s().activePolyline?.points ?? s().activeRadius?.points ?? s().activeAngle!.picks.map((p) => p.point)).at(-1)!;
+        const corner = { ...CORNER, screenX: shown.x, screenY: shown.y };
+        const at = modeName === 'drag' ? { x: shown.x + 30, y: shown.y } : { x: shown.x - 30, y: shown.y };
+        // Before the reset the record is live: the repeated press is the previous vertex (or, for a
+        // Distance start, an away press that snapped onto it is unsnapped).
+        const live = modeName === 'drag'
+          ? unsnapFromPrevious(ctx, prev, prev, { x: shown.x - 30, y: shown.y })
+          : unsnapFromPrevious(ctx, prev, corner, at);
+        assert.ok(!sameWorld(live, modeName === 'drag' ? prev : corner), 'the record is live before the reset (control)');
+        act(reset);
+        const picked = modeName === 'drag' ? prev : corner;
+        const after = modeName === 'drag'
+          ? unsnapFromPrevious(ctx, prev, prev, { x: shown.x - 30, y: shown.y })
+          : unsnapFromPrevious(ctx, prev, corner, at);
+        assert.equal(after, picked, `BUG: after ${resetName} a press still repeated or unsnapped from a vertex placed before it`);
+      });
+    }
+  }
+
+  it('a new polyline after Esc starts at the snapped corner, not a surface point from the old press', () => {
+    s().setMeasureMode('polyline');
+    const rig = mountSnapping();
+    const { shown } = rig;
+    tap(rig, shown.x + 30, shown.y);
+    tap(rig, shown.x - 30, shown.y); // unsnapped onto the surface
+    act(() => s().cancelPolyline());
+    tap(rig, shown.x - 30, shown.y); // the same spot, now a fresh first press
+    const points = s().activePolyline?.points ?? [];
+    assert.equal(points.length, 1, 'a new sequence with one vertex');
+    assert.ok(sameWorld(points[0], CORNER), 'the first vertex keeps its snap');
   });
 });

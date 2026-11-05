@@ -36,7 +36,7 @@ function FindingItem({ finding, openPanel }: { finding: ReviewFinding; openPanel
       </div>
       <p className="text-xs font-medium break-words">{finding.title}</p>
       <p className="text-muted-foreground">{t('reviewWorkspace.nativeStatus', { status: finding.nativeStatus || t('reviewWorkspace.noStatus') })} · {finding.run.label}</p>
-      {finding.run.incomplete.length > 0 && <p className="text-amber-600 dark:text-amber-400">{t('reviewWorkspace.incompleteRun', { reasons: gapText(t, finding.run.incomplete) })}</p>}
+      {finding.run.incomplete.length > 0 && <p className="text-warn">{t('reviewWorkspace.incompleteRun', { reasons: gapText(t, finding.run.incomplete) })}</p>}
       {finding.detail.map((line, index) => <p key={index} className="text-muted-foreground break-words">{line}</p>)}
       {finding.notes?.map((note, index) => <p key={`note-${index}`} className="text-muted-foreground break-words">{t(note.labelKey, note.params)}</p>)}
       <Button size="sm" variant="outline" aria-label={t('reviewWorkspace.openLabel', { source: t(SOURCE_KEY[finding.source]), title: finding.title })}
@@ -77,7 +77,7 @@ export function ReviewCard({ card, titles, decision, expanded, selected, onToggl
       {expanded && (
         <div className="space-y-2 px-3 pb-3 pl-9">
           <p className="text-2xs text-muted-foreground">{t(STATE_HELP_KEY[card.state])}</p>
-          {card.identity === 'unvalidated' && <p className="text-2xs text-amber-600 dark:text-amber-400">{t('reviewWorkspace.unvalidatedCard')}</p>}
+          {card.identity === 'unvalidated' && <p className="text-2xs text-warn">{t('reviewWorkspace.unvalidatedCard')}</p>}
           <section aria-label={t('reviewWorkspace.card.elements')}>
             <h4 className="text-xs font-medium">{t('reviewWorkspace.card.elements')}</h4>
             <ul className="text-2xs text-muted-foreground">

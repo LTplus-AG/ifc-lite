@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LineVertices } from './section-2d-line-buffer.js';
 import { sectionExclusions } from './section-exclusions.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
@@ -550,6 +551,8 @@ export class Renderer {
 
         // Create composition managers
         this.pickingManager = new PickingManager(this.camera, this.scene, null, this.canvas, (meshData: MeshData) => this.createMeshFromData(meshData));
+        this.pickingManager.setAnnotationPickProvider((x, y, width, height, options, clip) =>
+            this.overlays.annotationPicker.pick(this.camera, x, y, width, height, options, clip));
         this.raycastEngine = new RaycastEngine(this.camera, this.scene, this.canvas);
     }
 
@@ -3135,8 +3138,6 @@ export class Renderer {
 
     /**
      * Pick object at screen coordinates
-     * Respects visibility filtering so users can only select visible elements
-     * Returns PickResult with expressId and modelIndex for multi-model support
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.
@@ -3429,7 +3430,7 @@ export class Renderer {
      * `options.sectionClipped` (#8767) clips this upload like the model: by the section plane, the
      * extra cutting planes and the clip box. Off by default, so a channel draws whole unless asked.
      */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[] | null, options?: LineOverlayOptions): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null, options?: LineOverlayOptions): void {
         this.overlays.setLineOverlay(channel, vertices, options);
     }
 
@@ -3457,7 +3458,7 @@ export class Renderer {
      * shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color?: [number, number, number, number] } | null,
+        lines: { vertices: LineVertices; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }

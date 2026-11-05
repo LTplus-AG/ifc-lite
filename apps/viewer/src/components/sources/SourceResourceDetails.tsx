@@ -36,7 +36,7 @@ export function SourceResourceDetails({ provider, ctx, projectId, file, selected
           ? t('sources.resourceDetails.exchange') : t('sources.resourceDetails.file')}</p>
         {file.kind === 'exchange' && <p>{t('sources.resourceDetails.exchangeVersions')}</p>}
         {file.kind === 'proposal' && <p>{t('sources.resourceDetails.proposalFidelity')}</p>}
-        {error && <p role="alert" className="text-red-600">{error}</p>}
+        {error && <p role="alert" className="text-danger">{error}</p>}
         {!provider.listRevisions && <p>{t('sources.workspace.noVersions')}</p>}
         {versions.loading && <output>{t('sources.resourceDetails.loading')}</output>}
         <ul className="max-h-48 space-y-1 overflow-y-auto" aria-label={t('sources.resourceDetails.versions')}>

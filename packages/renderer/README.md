@@ -184,3 +184,15 @@ Positions are returned as `Float64Array`; other columns retain Gaussian PLY
 log-scale, logit-opacity and channel-major SH encoding. The viewer consumes this
 API for positioned capture downloads. It shares covariance/SH math with rendering
 and does not read GPU buffers. It does not apply an implicit axis conversion.
+
+### Picking symbolic annotations
+
+`Renderer.pick(x, y, options)` includes owned annotation overlays on both mesh
+picking routes. Coordinates and the four-pixel line tolerance are in CSS pixels.
+For `setLineOverlay('annotation', vertices, options)`, anchored partitions may
+supply `ownerIds: Uint32Array`, one scene entity ID per segment (two vertices).
+`SymbolicFillInput` and `SymbolicTextInput` accept an optional `ownerId` in the
+same scene ID space. Omit ownership for reference layers. Clear or replace using
+the existing upload methods; `sectionClipped` and pick visibility filters apply.
+Labels use their laid-out glyph quads and clip with their anchor; fills retain
+holes. This ownership applies to single-point picks, not rectangle selection.

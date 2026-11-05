@@ -58,6 +58,11 @@ function drawingIntersectsView(
   return Math.max(...xs) > 0 && Math.min(...xs) < rect.width && Math.max(...ys) > 0 && Math.min(...ys) < rect.height;
 }
 
+/** The fit margin per side, in px: 6% of the canvas's shorter side, between 16 and 48. */
+export function drawingFitMargin(rect: { width: number; height: number }): number {
+  return Math.min(48, Math.max(16, Math.min(rect.width, rect.height) * 0.06));
+}
+
 function useViewControls({
   drawing,
   sectionPlane,
@@ -69,7 +74,7 @@ function useViewControls({
   isPinned,
   cachedSheetTransformRef,
 }: UseViewControlsParams): UseViewControlsResult {
-  const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [viewTransform, setRawViewTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and on a new plane
   const planeKey = sectionPlaneKey(sectionPlane);
   const prevPlaneKeyRef = useRef(planeKey);
@@ -77,17 +82,26 @@ function useViewControls({
   // auto-fit effect on every pan (a deliberate pan must never snap back).
   const viewTransformRef = useRef(viewTransform);
   viewTransformRef.current = viewTransform;
+  // Has the user framed the view themselves (pan, wheel/pinch, +/-) since the
+  // last fit? Until they have, a resize of the panel refits (#8802 R3b), so a
+  // dock that opens or grows shows the whole drawing; after it, a resize only
+  // keeps their framing centred. Every fit clears it.
+  const userFramedRef = useRef(false);
+  const setViewTransform = useCallback<React.Dispatch<React.SetStateAction<{ x: number; y: number; scale: number }>>>((next) => {
+    userFramedRef.current = true;
+    setRawViewTransform(next);
+  }, []);
 
   useDrawingWheelNavigation(containerRef, panelVisible, setViewTransform);
 
   // Zoom controls - unlimited zoom
   const zoomIn = useCallback(() => {
     setViewTransform((prev) => ({ ...prev, scale: prev.scale * 1.2 })); // No upper limit
-  }, []);
+  }, [setViewTransform]);
 
   const zoomOut = useCallback(() => {
     setViewTransform((prev) => ({ ...prev, scale: Math.max(0.01, prev.scale / 1.2) }));
-  }, []);
+  }, [setViewTransform]);
 
   const fitToView = useCallback(() => {
     if (!drawing || !containerRef.current) return;
@@ -98,16 +112,17 @@ function useViewControls({
       const paperWidth = activeSheet.paper.widthMm;
       const paperHeight = activeSheet.paper.heightMm;
 
-      // Calculate scale to fit paper with padding (10% margin on each side)
-      const padding = 0.1;
-      const availableWidth = rect.width * (1 - 2 * padding);
-      const availableHeight = rect.height * (1 - 2 * padding);
+      // Fit the paper inside the same margin as the drawing (#8802 R3b).
+      const margin = drawingFitMargin(rect);
+      const availableWidth = Math.max(1, rect.width - 2 * margin);
+      const availableHeight = Math.max(1, rect.height - 2 * margin);
       const scaleX = availableWidth / paperWidth;
       const scaleY = availableHeight / paperHeight;
       const scale = Math.min(scaleX, scaleY);
 
       // Center the paper in the view
-      setViewTransform({
+      userFramedRef.current = false;
+      setRawViewTransform({
         scale,
         x: (rect.width - paperWidth * scale) / 2,
         y: (rect.height - paperHeight * scale) / 2,
@@ -122,10 +137,12 @@ function useViewControls({
 
     if (width < 0.001 || height < 0.001) return;
 
-    // Calculate scale to fit with padding (15% margin on each side)
-    const padding = 0.15;
-    const availableWidth = rect.width * (1 - 2 * padding);
-    const availableHeight = rect.height * (1 - 2 * padding);
+    // Fit with a margin of 6% of the shorter side, kept between 16 and 48 px
+    // (#8802 R3b): the old 15% per side left a docked drawing using under
+    // half of a short canvas.
+    const margin = drawingFitMargin(rect);
+    const availableWidth = Math.max(1, rect.width - 2 * margin);
+    const availableHeight = Math.max(1, rect.height - 2 * margin);
     const scaleX = availableWidth / width;
     const scaleY = availableHeight / height;
     // No artificial cap - let it zoom to fit the content
@@ -145,7 +162,8 @@ function useViewControls({
     const adjustedCenterX = flipX ? -centerX : centerX;
     const adjustedCenterY = flipY ? -centerY : centerY;
 
-    setViewTransform({
+    userFramedRef.current = false;
+    setRawViewTransform({
       scale,
       x: rect.width / 2 - adjustedCenterX * scale,
       y: rect.height / 2 - adjustedCenterY * scale,
@@ -170,9 +188,13 @@ function useViewControls({
     }
   }, [planeKey]);
 
-  // Panel resize keeps the drawing centred (#5392): the canvas grows or
-  // shrinks around its centre, so shift the pan by half the size change.
-  // Before, only the canvas size updated and the drawing slid toward a corner.
+  // A panel resize (#8802 R3b): until the user frames the view themselves,
+  // refit, so a dock that opens short and then grows, or is dragged taller,
+  // shows the whole drawing. After they have panned or zoomed, keep their
+  // framing centred instead (#5392): the canvas grows or shrinks around its
+  // centre, so shift the pan by half the size change.
+  const fitToViewRef = useRef(fitToView);
+  fitToViewRef.current = fitToView;
   useEffect(() => {
     const container = containerRef.current;
     if (!panelVisible || !container) return;
@@ -180,9 +202,13 @@ function useViewControls({
     const observer = new ResizeObserver(() => {
       const { width, height } = container.getBoundingClientRect();
       if (prev && (width !== prev.width || height !== prev.height)) {
-        const dx = (width - prev.width) / 2;
-        const dy = (height - prev.height) / 2;
-        setViewTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }));
+        if (!userFramedRef.current) {
+          fitToViewRef.current();
+        } else {
+          const dx = (width - prev.width) / 2;
+          const dy = (height - prev.height) / 2;
+          setRawViewTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }));
+        }
       }
       prev = { width, height };
     });

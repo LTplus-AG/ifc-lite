@@ -6,11 +6,17 @@ import assert from 'node:assert/strict';
 // #8890: production reverts must reach an assertion, including newly added modules.
 export async function requiredModule<T>(load: () => Promise<T>, behavior: string): Promise<T> {
   let loaded: T | undefined;
+  let missing: unknown;
   try { loaded = await load(); }
   catch (error) {
     if (!(error instanceof Error) || !('code' in error)
       || !['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND'].includes(String(error.code))) throw error;
+    missing = error;
   }
-  assert.ok(loaded, behavior);
+  if (!loaded) {
+    const failure = new assert.AssertionError({ message: behavior, stackStartFn: requiredModule });
+    Object.assign(failure, { cause: missing });
+    throw failure;
+  }
   return loaded;
 }

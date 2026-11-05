@@ -15,3 +15,13 @@ test('#8890 loader preserves implementation failures rather than hiding them as 
   await assert.rejects(requiredModule(async () => { throw failure; }, 'shipping locale must load'),
     error => error === failure);
 });
+
+
+test('#8896 missing transitive dependencies retain the original diagnostic cause', async () => {
+  const missing = Object.assign(new Error('Missing dependency of the shipping catalogue'), {
+    code: 'ERR_MODULE_NOT_FOUND',
+  });
+  await assert.rejects(requiredModule(async () => { throw missing; }, 'shipping locale must load'),
+    error => error instanceof assert.AssertionError
+      && error.message === 'shipping locale must load' && error.cause === missing);
+});

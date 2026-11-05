@@ -86,6 +86,18 @@ function matrixFor(
   return nativeMatrix(entry.origin, offset);
 }
 
+/** Snapshot the exact displayed scan frame, excluding user translation. The
+ * exporter reads source points relative to this same decode origin. */
+export function pointCloudExportFrame(handleId: number): {
+  origin: readonly [number, number, number]; matrix: Float64Array;
+} {
+  const entry = registry.get(handleId);
+  if (!entry) throw new Error('The scan placement is unavailable. Reload the scan before exporting.');
+  const matrix = matrixFor(entry);
+  if (!matrix) throw new Error('The scan has no exportable placement.');
+  return { origin: [...(entry.origin ?? [0, 0, 0])], matrix: new Float64Array(matrix) };
+}
+
 /** Reapply native scan placement when the IFC render frame changes. */
 export function reframeRegisteredPointClouds(renderer: PointCloudTransformTarget | null | undefined, offset: PointCloudRenderOffset): void {
   if (!renderer || (offset.x === renderOffset.x && offset.y === renderOffset.y && offset.z === renderOffset.z)) return;

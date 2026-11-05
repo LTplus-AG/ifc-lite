@@ -209,3 +209,13 @@ GPU. Explicit `originOffset` takes precedence; the default remains unchanged.
 Opening may perform an extra decode pass for formats without header bounds.
 A local origin preserves nearby detail but cannot repair a source whose
 coordinates were already quantized or an extremely large spatial extent.
+
+`parsePcdHeader(bytes)` reads the bounded PCD header without decoding point data.
+The viewer export preflight uses its record count, stride and compression kind
+to reject oversized whole-file allocations before starting a reader.
+
+PLY readers preserve a single scalar `uchar`/`uint8` classification property.
+Other classification declarations (including float, list and duplicate fields)
+remain ignored so optional metadata does not prevent loading legacy geometry.
+Malformed ASCII byte-class values become class 0 (unclassified) rather than
+rejecting geometry or wrapping into another class. Valid byte classes are unchanged.

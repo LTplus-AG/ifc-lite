@@ -69,7 +69,8 @@ test('Gaussian capture load → inspect → clip → select → save/reopen → 
 
   const row = page.getByRole('treeitem').filter({ has: page.getByRole('button', { name: 'Remove model plant.splat', exact: true }) });
   await expect(row).toBeVisible();
-  await row.click();
+  // #8915: the row centre may be an action button; select its model-name label.
+  await row.getByText('plant.splat', { exact: true }).click();
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedModelId)).toBe(capture.id);
   const metadata = page.getByTestId('gaussian-capture-metadata');
   await expect(metadata).toBeVisible();
@@ -87,7 +88,8 @@ test('Gaussian capture load → inspect → clip → select → save/reopen → 
   await page.getByRole('button', { name: 'Show model plant.splat', exact: true }).click();
   expect(await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().models.get(id)?.visible, capture.id)).toBe(true);
   await expect.poll(async () => (await stats()).visibleAssetSplats).toBe(COUNT);
-  await row.click();
+  // #8915: the row centre may be an action button; select its model-name label.
+  await row.getByText('plant.splat', { exact: true }).click();
   // Select a real IFC row through the hierarchy; GPU picking is outside this lane.
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('type'));
   const group = page.locator('[data-hierarchy-node-type="type-group"]').filter({ hasText: 'IfcWall' }).first();

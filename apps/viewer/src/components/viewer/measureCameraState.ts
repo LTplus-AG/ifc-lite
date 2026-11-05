@@ -80,7 +80,10 @@ export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCa
  * a pixel of rounding, so a ratio tolerance tells the two apart.
  */
 function sameAspect(a: MeasureCameraState, b: MeasureCameraState): boolean {
-  if (!a.canvasHeight || !b.canvasHeight) return a.canvasHeight === b.canvasHeight;
+  // A collapsed side has no shape to compare (0/0 is NaN): compare exactly.
+  if (!a.canvasWidth || !b.canvasWidth || !a.canvasHeight || !b.canvasHeight) {
+    return a.canvasWidth === b.canvasWidth && a.canvasHeight === b.canvasHeight;
+  }
   return Math.abs(a.canvasWidth / a.canvasHeight / (b.canvasWidth / b.canvasHeight) - 1) < ASPECT_TOLERANCE;
 }
 const ASPECT_TOLERANCE = 0.01;

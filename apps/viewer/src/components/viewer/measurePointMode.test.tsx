@@ -647,6 +647,19 @@ describe('Point mode readout staleness (#8828)', () => {
     assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a canvas reshape');
   });
 
+  it('a collapsed (zero-width) canvas is no view change: no pass, and "Live" is kept', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    ctx.canvas.width = 0;
+    ctx.canvas.height = 150;
+    hoverMeasurePoint(ctx, 3, 4);
+    const passes: boolean[] = [];
+    const update = ctx.updateMeasurementScreenCoords;
+    ctx.updateMeasurementScreenCoords = (project, viewMoved) => { passes.push(viewMoved ?? true); update(project, viewMoved); };
+    syncMeasureScreenCoords(ctx);
+    assert.deepEqual(passes, [], 'an unchanged zero-width canvas counted as a view change (0/0 aspect)');
+    assert.ok(useViewerStore.getState().measurePointLive !== null);
+  });
+
   it('a wheel zoom on the mounted canvas drops "Live" with no pointer move afterwards', () => {
     const raf = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 1; }) as typeof requestAnimationFrame;
@@ -736,8 +749,12 @@ describe('Point mode readout staleness (#8828)', () => {
     assert.match(container.textContent ?? '', /Last point\s*·\s*Stale/);
   });
 
-  it('ru: "Last" agrees with "Live" (neuter), as it labels a point and an E/N/H reading alike', () => {
+  it('ru: every Live/Last pair agrees in gender with what it labels', () => {
+    // HUD point line and geo E/N/H readout: a bare reading, neuter, the pair agreeing.
     assert.equal(measureRu['measure.readout.live'], 'Текущее');
     assert.equal(measureRu['measure.readout.last'], 'Последнее');
+    // The Point tab names the point itself ("точка", feminine).
+    assert.equal(measureRu['measure.point.live'], 'Текущая точка');
+    assert.equal(measureRu['measure.point.last'], 'Последняя точка');
   });
 });

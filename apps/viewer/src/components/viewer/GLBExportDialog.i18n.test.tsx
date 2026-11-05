@@ -43,7 +43,7 @@ const STRINGS: Record<string, string> = {
   // the trigger is opened, so it is intentionally not asserted here.
   'geometryExport.glb.colorSourceRendering': 'Rendering (apparent colour)',
   'geometryExport.glb.colorSourceRenderingHint':
-    'Uses IfcSurfaceStyleRendering.DiffuseColour when authored, otherwise SurfaceColour. Matches most IFC viewers.',
+    'Uses SurfaceColour, including a numeric DiffuseColour factor. A separate DiffuseColour RGB colour does not replace SurfaceColour.',
   'geometryExport.glb.outputLabel': 'Output',
   'geometryExport.glb.outputFormat': 'glTF Binary',
   'geometryExport.glb.fileExtension': '.glb',

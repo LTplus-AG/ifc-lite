@@ -11,8 +11,8 @@ import type { CheckedClaim } from '@/lib/assistant/report-claims';
 import { formatFactValue } from '@/lib/assistant/report-facts';
 
 const STATUS = {
-  supported: ['aiReports.statusSupported', 'border-emerald-500/40 bg-emerald-500/10'],
-  unverifiable: ['aiReports.statusUnverifiable', 'border-amber-500/40 bg-amber-500/10'],
+  supported: ['aiReports.statusSupported', 'border-ok-border bg-ok-surface'],
+  unverifiable: ['aiReports.statusUnverifiable', 'border-warn-border bg-warn-surface'],
   contradicted: ['aiReports.statusContradicted', 'border-destructive/40 bg-destructive/10 text-destructive'],
 } as const satisfies Record<AiClaimStatus, readonly [string, string]>;
 

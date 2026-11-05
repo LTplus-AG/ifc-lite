@@ -59,7 +59,7 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
     <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-1.5 font-mono text-2xs">{proposal.query}</pre>
     <p className="text-muted-foreground">{proposal.expected.form === 'select'
       ? t('semanticAssist.queryExpectedSelect', { columns: proposal.expected.columns.join(', ') }) : t('semanticAssist.queryExpectedConstruct')}</p>
-    {lint.ok ? <p className="text-emerald-700 dark:text-emerald-400">{t('semanticAssist.queryLintOk', { form: lint.form.toUpperCase(), limit: lint.limit })}</p>
+    {lint.ok ? <p className="text-ok">{t('semanticAssist.queryLintOk', { form: lint.form.toUpperCase(), limit: lint.limit })}</p>
       : <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">
         <p>{t('semanticAssist.queryLintRefused')}</p><ul className="list-disc pl-4">{lint.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
       </div>}
@@ -69,7 +69,7 @@ export function SemanticQueryReview({ proposal }: { proposal: SemanticQueryPropo
       <dt className="text-muted-foreground">{t('semanticAssist.grantLoopback')}</dt><dd>{t(disclosure.loopback ? 'semanticAssist.yes' : 'semanticAssist.no')}</dd>
       {disclosure.relay && <><dt className="text-muted-foreground">{t('semanticAssist.grantRelay')}</dt><dd className="font-mono text-2xs">{disclosure.relay}</dd></>}
       <dt className="text-muted-foreground">{t('semanticAssist.grantCredential')}</dt><dd>{t(disclosure.credential ? 'semanticAssist.credentialHidden' : 'semanticAssist.credentialNone')}</dd>
-    </dl> : <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1">
+    </dl> : <div className="rounded border border-warn-border bg-warn-surface p-2 space-y-1">
       <p>{t('semanticAssist.grantMissing')}</p>
       <Button size="sm" variant="outline" className="h-7" onClick={() => panels.openInHome('semantic')}><ArrowUpRight className="h-3 w-3 mr-1" />{t('semanticAssist.openLinkedRecords')}</Button>
     </div>}

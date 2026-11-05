@@ -17,7 +17,7 @@
 
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { handleMeasureHover, raycastForPolylinePoint } from './measureHandlers.js';
+import { handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 
@@ -38,14 +38,21 @@ function pickPoint(ctx: MouseHandlerContext, x: number, y: number) {
   return raycastForPolylinePoint({ ...ctx, edgeLockStateRef: { current: getDefaultEdgeLockState() } }, x, y);
 }
 
-/** Place the last point. A miss is a no-op and keeps the previous point, as a polyline miss does. */
+/** Place the last point. A miss keeps the previous point, as a polyline miss does, and ends a Live reading. */
 export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
-  // The click's pick supersedes a trailing hover, which would turn the
-  // readout back to "Live" for the spot just placed.
-  cancelTrailingHover(ctx);
+  // The click's pick supersedes a trailing hover or a hover frame already
+  // queued, either of which would turn the readout back to "Live" for the
+  // spot just placed (#8828).
+  cancelQueuedHover(ctx);
   const picked = pickPoint(ctx, x, y);
-  if (!picked) return;
+  if (!picked) {
+    // The cancelled hover frame would have read this miss too: nothing is under the cursor now.
+    ctx.setSnapTarget(null);
+    updateSnapViz(ctx, null);
+    useViewerStore.getState().setMeasurePointLive(null);
+    return;
+  }
   ctx.setSnapTarget(picked.snapTarget);
   useViewerStore.getState().placeMeasurePoint(picked.point);
 }
@@ -56,6 +63,11 @@ export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number
   const picked = pickPoint(ctx, x, y);
   ctx.setSnapTarget(picked?.snapTarget ?? null);
   updateSnapViz(ctx, picked?.snapTarget ?? null);
+  // A live point holds only for the camera it was picked under: the camera
+  // reprojection pass drops it on any camera change (#8828). Bring that pass
+  // up to this camera first, so the next frame does not count the camera as
+  // moved since some older reading and drop the point just picked.
+  if (picked) syncMeasureScreenCoords(ctx);
   useViewerStore.getState().setMeasurePointLive(picked?.point ?? null);
 }
 
@@ -89,13 +101,18 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
   handleMeasureHover(ctx, x, y, hoverMeasurePoint);
 }
 
-/** The cursor left the canvas: drop a queued hover frame and the preview, so the readout falls back to the last point. */
-export function endMeasurePointHover(ctx: MouseHandlerContext): void {
+/** Drop a trailing hover pick and a hover frame already queued. */
+function cancelQueuedHover(ctx: MouseHandlerContext): void {
   cancelTrailingHover(ctx);
   if (ctx.measureRaycastFrameRef.current !== null) {
     cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
     ctx.measureRaycastFrameRef.current = null;
     ctx.measureRaycastPendingRef.current = false;
   }
+}
+
+/** The cursor left the canvas: drop a queued hover frame and the preview, so the readout falls back to the last point. */
+export function endMeasurePointHover(ctx: MouseHandlerContext): void {
+  cancelQueuedHover(ctx);
   useViewerStore.getState().setMeasurePointLive(null);
 }

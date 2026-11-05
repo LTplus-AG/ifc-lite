@@ -14,16 +14,19 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { SnapType } from '@ifc-lite/renderer';
 import { cleanup, click, press, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { cleanupMouseControls, mountMouseControls, mousePointer } from '@/test/mouse-controls-fixture';
 import type { MeasurePoint } from '@/store/types.js';
 import { hasPendingMeasurementState } from '@/utils/viewportUtils.js';
+import { staleMeasurementIds } from '@/lib/model-placement/spatial-invalidation';
+import { measureRu } from '@/i18n/locales/ru/measure';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { handleMeasureTap } from './touchRouting.js';
-import { handleMeasureHover } from './measureHandlers.js';
+import { handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
 import { endMeasurePointHover, hoverMeasurePoint, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
@@ -39,9 +42,24 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
   /** Per raycast: was an edge lock passed in, and which snap options? */
   const locks: boolean[] = [];
   const snapOptions: SnapOpts[] = [];
+  /** The camera pose; a test moves the camera by editing it. */
+  const pose = {
+    position: { x: 0, y: 0, z: 10 }, rotation: { azimuth: 0, elevation: 0 }, distance: 10,
+    projectionMode: 'perspective' as 'perspective' | 'orthographic', orthoSize: 10,
+    fov: 45, up: { x: 0, y: 1, z: 0 },
+  };
   const ctx = {
     canvas: document.createElement('canvas'),
-    camera: { projectToScreen: (p: { x: number; y: number }) => ({ x: p.x, y: p.y }) },
+    camera: {
+      projectToScreen: (p: { x: number; y: number }) => ({ x: p.x, y: p.y }),
+      getPosition: () => ({ ...pose.position }),
+      getRotation: () => ({ ...pose.rotation }),
+      getDistance: () => pose.distance,
+      getProjectionMode: () => pose.projectionMode,
+      getOrthoSize: () => pose.orthoSize,
+      getFOV: () => pose.fov,
+      getUp: () => ({ ...pose.up }),
+    },
     renderer: {
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
         locks.push(lock.edge !== null), snapOptions.push(opts.snapOptions), {
@@ -60,17 +78,21 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     HOVER_SNAP_THROTTLE_MS: 0,
     measureRaycastPendingRef: { current: false },
     measureRaycastFrameRef: { current: null as number | null },
+    lastCameraStateRef: { current: null },
+    // The real store action, as Viewport passes it in.
+    updateMeasurementScreenCoords: (...args: Parameters<ReturnType<typeof useViewerStore.getState>['updateMeasurementScreenCoords']>) =>
+      useViewerStore.getState().updateMeasurementScreenCoords(...args),
     setSnapTarget: (t: unknown) => { snapTargets.push(t); },
     // Like the store action: the ref only catches up on the next render.
     clearEdgeLock: () => {},
     setSnapVisualization: () => {},
   } as unknown as MouseHandlerContext;
-  return { ctx, snapTargets, locks, snapOptions };
+  return { ctx, snapTargets, locks, snapOptions, pose };
 }
 
 const ON_WALL = { x: 3, y: 4, z: -5 };
 const ELSEWHERE = { x: 7, y: 1, z: -2 };
-const mp = (p: { x: number; y: number; z: number }): MeasurePoint => ({ ...p, screenX: p.x, screenY: p.y });
+const mp = (p: { x: number; y: number; z: number }): MeasurePoint & { id: string } => ({ ...p, screenX: p.x, screenY: p.y, id: `p-${p.x}` });
 
 const RESET = {
   activeTool: 'measure',
@@ -558,5 +580,164 @@ describe('Point on the Measure mode strip (#8770)', () => {
     assert.equal(useViewerStore.getState().measureMode, 'point');
     assert.equal(point.getAttribute('aria-checked'), 'true');
     assert.match(hudRegion(), /Click a point to read its coordinates/);
+  });
+});
+
+describe('Point mode readout staleness (#8828)', () => {
+  it('a camera move ends "Live": the reprojection pass drops the hover point and keeps the placed one', () => {
+    useViewerStore.setState({ measurePointLive: mp(ELSEWHERE) });
+    assert.equal(hasPendingMeasurementState(useViewerStore.getState()), true, 'a lone hover point never reaches the camera pass');
+    useViewerStore.getState().placeMeasurePoint(mp(ON_WALL));
+    useViewerStore.getState().setMeasurePointLive(mp(ELSEWHERE));
+    useViewerStore.setState({ snapTarget: { type: SnapType.VERTEX, position: ELSEWHERE, expressId: 1, confidence: 1 } });
+    useViewerStore.getState().updateMeasurementScreenCoords((p) => ({ x: p.x * 10, y: p.y * 10 }));
+    const s = useViewerStore.getState();
+    assert.equal(s.measurePointLive, null, 'Live outlived a camera move');
+    assert.equal(s.snapTarget, null, 'the snap glyph stayed on the hover point the camera move ended');
+    assert.deepEqual([s.measurePointLast?.screenX, s.measurePointLast?.screenY], [30, 40]);
+  });
+
+  it('a hover brings the camera pass up to the camera it picked under, so the next frame keeps it', () => {
+    const { ctx, pose } = fakeCtx({ current: ON_WALL });
+    ctx.lastCameraStateRef.current = {
+      position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
+      projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, canvasWidth: 1, canvasHeight: 1,
+    };
+    hoverMeasurePoint(ctx, 3, 4);
+    assert.deepEqual(xyz(useViewerStore.getState().measurePointLive), [3, 4, -5]);
+    assert.deepEqual(ctx.lastCameraStateRef.current, {
+      ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height,
+    }, 'the next animation frame would count the camera as moved and drop the point just picked');
+  });
+
+  it('a projection toggle, an orthographic zoom or a viewpoint restore ends "Live"; a pass with the camera unmoved keeps it', () => {
+    for (const move of ['projection', 'orthoSize', 'fov', 'up'] as const) {
+      const { ctx, pose } = fakeCtx({ current: ON_WALL });
+      ctx.canvas.width = 1601;
+      ctx.canvas.height = 801;
+      const passes: boolean[] = [];
+      const update = ctx.updateMeasurementScreenCoords;
+      ctx.updateMeasurementScreenCoords = (project, viewMoved) => { passes.push(viewMoved ?? true); update(project, viewMoved); };
+      hoverMeasurePoint(ctx, 3, 4);
+      passes.length = 0;
+      syncMeasureScreenCoords(ctx); // a clamped wheel step: nothing moved
+      assert.ok(useViewerStore.getState().measurePointLive !== null, `an unmoved camera ended Live (${move})`);
+      // The drawing buffer drops to pixel ratio 1 while the view interacts: no point moves on screen.
+      ctx.canvas.width = 800;
+      ctx.canvas.height = 400;
+      syncMeasureScreenCoords(ctx);
+      assert.ok(useViewerStore.getState().measurePointLive !== null, `a drawing-buffer resize ended Live (${move})`);
+      assert.deepEqual(passes, [false], 'a drawing-buffer resize must still reproject the markers (the aspect follows it)');
+      if (move === 'projection') pose.projectionMode = 'orthographic';
+      else if (move === 'orthoSize') pose.orthoSize = 5;
+      else if (move === 'fov') pose.fov = 60;
+      else pose.up = { x: 0, y: 0, z: 1 };
+      syncMeasureScreenCoords(ctx); // the camera pass, as the animation loop and wheel run it
+      assert.equal(useViewerStore.getState().measurePointLive, null, `Live outlived a ${move} change`);
+    }
+  });
+
+  it('a canvas that changes shape under a resting cursor ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    ctx.canvas.width = 1600;
+    ctx.canvas.height = 800;
+    hoverMeasurePoint(ctx, 3, 4);
+    ctx.canvas.width = 1200; // a side panel opened
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a canvas reshape');
+  });
+
+  it('a wheel zoom on the mounted canvas drops "Live" with no pointer move afterwards', () => {
+    const raf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { cb(0); return 1; }) as typeof requestAnimationFrame;
+    try {
+      const ui = mountMouseControls({
+        activeToolRef: { current: 'measure' },
+        hasPendingMeasurements: () => hasPendingMeasurementState(useViewerStore.getState()),
+        updateMeasurementScreenCoords: (project, viewMoved) => useViewerStore.getState().updateMeasurementScreenCoords(project, viewMoved),
+      });
+      (ui.params.rendererRef.current as unknown as Record<string, unknown>).raycastSceneMagnetic = () => ({
+        intersection: { point: ON_WALL }, snapTarget: null,
+        edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: true, isCorner: false, cornerValence: 0 },
+      });
+      act(() => { ui.canvas.dispatchEvent(mousePointer('pointermove', 0, 30, 40, { buttons: 0 })); });
+      assert.ok(useViewerStore.getState().measurePointLive !== null);
+      act(() => { ui.canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, deltaMode: 0, clientX: 30, clientY: 40, bubbles: true, cancelable: true })); });
+      assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a wheel zoom');
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+      cleanupMouseControls();
+    }
+  });
+
+  it('a hover frame already queued when the click lands does not flip "Last" back to "Live"', () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let next = 0;
+    const raf = globalThis.requestAnimationFrame;
+    const caf = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { frames.set(++next, cb); return next; }) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: number) => { frames.delete(id); }) as typeof cancelAnimationFrame;
+    try {
+      const { ctx } = fakeCtx({ current: ON_WALL });
+      assert.equal(handleMeasureHover(ctx, 3, 4, hoverMeasurePoint), true);
+      assert.equal(frames.size, 1);
+      handleMeasureClickAt(ctx, 3, 4);
+      for (const frame of [...frames.values()]) frame(0);
+      const s = useViewerStore.getState();
+      assert.equal(s.measurePointLive, null, 'the late hover frame turned the readout back to Live');
+      assert.deepEqual(xyz(s.measurePointLast), [3, 4, -5]);
+      assert.equal(ctx.measureRaycastPendingRef.current, false, 'the cancelled frame left the hover throttle shut');
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+      globalThis.cancelAnimationFrame = caf;
+    }
+  });
+
+  it('a click that misses ends "Live" along with the hover frame it cancelled', () => {
+    const hit = { current: ON_WALL as Hit };
+    const { ctx, snapTargets } = fakeCtx(hit);
+    hoverMeasurePoint(ctx, 3, 4);
+    assert.ok(useViewerStore.getState().measurePointLive !== null);
+    hit.current = null;
+    handleMeasureClickAt(ctx, 50, 50);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live named a point no longer under the cursor');
+    assert.equal(snapTargets.at(-1), null, 'the snap target of the point no longer under the cursor stayed up');
+  });
+
+  it('a model move marks the placed point Stale on the HUD and the Point tab; the next click is current', () => {
+    const container = render(<><ViewportHud /><MeasureOverlay /><MeasurementsPanel /></>);
+    openPointTab(container);
+    const hit = { current: ON_WALL as Hit };
+    const { ctx } = fakeCtx(hit);
+    act(() => handleMeasureClickAt(ctx, 3, 4));
+    assert.doesNotMatch(hudRegion(), /Stale/);
+    // What useModelPlacementSync writes when a model moves.
+    act(() => useViewerStore.setState({ placementStaleMeasurements: staleMeasurementIds(useViewerStore.getState()) }));
+    assert.match(hudRegion(), /Last\s*·\s*Stale\s*Model/);
+    assert.match(container.textContent ?? '', /Last point\s*·\s*Stale/);
+
+    act(() => hoverMeasurePoint(ctx, 3, 4));
+    assert.doesNotMatch(hudRegion(), /Stale/, 'a live reading is current geometry');
+
+    hit.current = ELSEWHERE;
+    act(() => handleMeasureClickAt(ctx, 7, 1));
+    assert.match(hudRegion(), /Last\s*Model/);
+    assert.doesNotMatch(hudRegion(), /Stale/, 'a point placed after the move is not stale');
+    assert.doesNotMatch(container.textContent ?? '', /Stale/);
+  });
+
+  it('outside Point mode the last distance endpoint carries its own Stale badge too', () => {
+    useViewerStore.setState({ measureMode: 'drag', measurements: [{ id: 'm1', start: mp(ELSEWHERE), end: mp(ON_WALL), distance: 1 }] });
+    const container = render(<MeasurementsPanel />);
+    openPointTab(container);
+    assert.match(container.textContent ?? '', /Last point/);
+    assert.doesNotMatch(container.textContent ?? '', /Stale/);
+    act(() => useViewerStore.setState({ placementStaleMeasurements: new Set(['m1']) }));
+    assert.match(container.textContent ?? '', /Last point\s*·\s*Stale/);
+  });
+
+  it('ru: "Last" agrees with "Live" (neuter), as it labels a point and an E/N/H reading alike', () => {
+    assert.equal(measureRu['measure.readout.live'], 'Текущее');
+    assert.equal(measureRu['measure.readout.last'], 'Последнее');
   });
 });

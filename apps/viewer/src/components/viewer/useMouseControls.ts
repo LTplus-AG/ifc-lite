@@ -27,12 +27,13 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
-import { handleMeasureDrag, handleMeasureHover, updateMeasureScreenCoords } from './measureHandlers.js';
+import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
 import { forgetDistancePress, handleMeasureDown, handleMeasureUp } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
+import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
 import { routeCommandPointer } from './commandPointer.js';
@@ -110,13 +111,7 @@ export interface UseMouseControlsParams {
   lastClickPosRef: MutableRefObject<{ x: number; y: number } | null>;
 
   // Camera tracking
-  lastCameraStateRef: MutableRefObject<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>;
+  lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
@@ -142,7 +137,7 @@ export interface UseMouseControlsParams {
   incrementEdgeLockStrength: () => void;
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
-  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
+  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
   updateCameraRotationRealtime: (rotation: { azimuth: number; elevation: number }) => void;
   toggleSelection: (entityId: number) => void;
   calculateScale: () => void;
@@ -828,8 +823,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       // Update measurement screen coordinates immediately during zoom (only in measure mode)
       if (activeToolRef.current === 'measure') {
+        // Only when the camera moved: a clamped or refused wheel step must not end a Live reading (#8828).
         if (hasPendingMeasurements()) {
-          updateMeasureScreenCoords(ctx);
+          syncMeasureScreenCoords(ctx);
         }
       }
     };

@@ -161,5 +161,252 @@
     },
     "scope": "Shared preview, unloaded, no WebGPU adapter. No loaded-model claim."
   },
-  "visualReview": "pending fresh Opus judgment; no acceptance yet"
+  "visualReview": "pending fresh Opus judgment; no acceptance yet",
+  "round3": {
+    "head": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3",
+    "tree": "63f8396b08b2271c02364336e14f8f8acd0b41a4",
+    "run": 42127421737,
+    "viewerArtifact": 13462775595,
+    "testedTreeArtifact": 13461248722,
+    "distIndexSha256": "22ebaec78936058cf5224c61b4243c0265f75ab00c7cb3230735543f4b386190",
+    "verdict": "ACCEPT UX only",
+    "browserStats": {
+      "startTime": "2026-11-05T23:24:26.970Z",
+      "duration": 47928.82,
+      "expected": 11,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "captureManifest": {
+      "version": 1,
+      "label": "candidate-9d476f01-tree-63f839",
+      "capturedAt": "2026-11-05T23:24:22.205Z",
+      "distIndexSha256": "22ebaec78936058cf5224c61b4243c0265f75ab00c7cb3230735543f4b386190",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "description": ""
+      },
+      "results": [
+        {
+          "scene": "command-palette",
+          "title": "Command palette searching \"wall\"",
+          "theme": "light",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "command-palette.light.png",
+          "sha256": "254d34c62ab6ed20211996103d371c317bdfcba0f9d774ae2bf019e1b77974c4",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 158
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "command-palette",
+          "title": "Command palette searching \"wall\"",
+          "theme": "dark",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "command-palette.dark.png",
+          "sha256": "f649314c306bf4bfdbafe66ab4afa7af290fda9cff91beb90b22ce2e91bd0d8d",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 158
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-browse",
+          "title": "palette-browse: browse",
+          "theme": "light",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "palette-browse.light.png",
+          "sha256": "7315dfc6495e3c8e76b44c2469cf80ab580dff73f41dbf9f360f3bb6f6fdc780",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 143
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-browse",
+          "title": "palette-browse: browse",
+          "theme": "dark",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "palette-browse.dark.png",
+          "sha256": "8ac55fb61fb8111bdc353ce9fba4b5f0717f199a00f616357e14069737aa9709",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 143
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-annot",
+          "title": "palette-annot: annot",
+          "theme": "light",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "palette-annot.light.png",
+          "sha256": "190bca738ad950f4b5acdd3bd4956136be3240b5b820424dbcc9e4d73b992b47",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 118
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-annot",
+          "title": "palette-annot: annot",
+          "theme": "dark",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "file": "palette-annot.dark.png",
+          "sha256": "8336c86a7d858332a235f2e1916496e8dde127c50ef2763538cbfdfa4fe02905",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 118
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-narrow",
+          "title": "palette-narrow: annot",
+          "theme": "light",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "file": "palette-narrow.light.png",
+          "sha256": "8327ab3393fcac06774f832fb2a6dfa3a750305c1506c809268616552dd5d2f3",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 20
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-narrow",
+          "title": "palette-narrow: annot",
+          "theme": "dark",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "file": "palette-narrow.dark.png",
+          "sha256": "fed04e6a0f91be6696c034a3129d4d1a573477dc12f2079b4442ea85610b217e",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 20
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-empty",
+          "title": "palette-empty: zzzz-no-palette-command-8946",
+          "theme": "light",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "file": "palette-empty.light.png",
+          "sha256": "3894631c7c6ef72f9f551fb25b1158018c674fd5ec70f2270c65bf9c8cab0249",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 18
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-empty",
+          "title": "palette-empty: zzzz-no-palette-command-8946",
+          "theme": "dark",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "file": "palette-empty.dark.png",
+          "sha256": "fc49c0ed0ee8111cda439e1893be04060a8f9481af7d8d84bb7f2b1bf51290ae",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 18
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-short",
+          "title": "palette-short: zzzz-no-palette-command-8946",
+          "theme": "light",
+          "viewport": {
+            "width": 800,
+            "height": 400
+          },
+          "file": "palette-short.light.png",
+          "sha256": "ec528afbf4cfbca90b7fc516d5a2497761ad0c79c13b21890a0740331c95c5e9",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 51
+          },
+          "pageErrors": []
+        },
+        {
+          "scene": "palette-short",
+          "title": "palette-short: zzzz-no-palette-command-8946",
+          "theme": "dark",
+          "viewport": {
+            "width": 800,
+            "height": 400
+          },
+          "file": "palette-short.dark.png",
+          "sha256": "bf279150a36f8d9bc885c6ebfa9f6e170f1d60318bbffd27a725ef7d5def5aa1",
+          "metrics": {
+            "modelVisibleFraction": 0,
+            "minFontPx": 11,
+            "smallTextShare": 0,
+            "visibleTextNodes": 51
+          },
+          "pageErrors": []
+        }
+      ],
+      "failures": []
+    }
+  }
 }

@@ -7,7 +7,7 @@ Do not combine their verdicts or claim completion from a numerical taste score.
 
 Goal: fast, predictable command discovery and execution with polished expert-tool density.
 Frozen baseline source: `0f57524cfe347d29d68f53df7fc97f0b1f80d61a`.
-Baseline screenshots remain queued; candidate behavior receipts are recorded below. No accepted round yet.
+UX accepted at round 3 on source `9d476f01e7`; full CI and PR review remain release gates.
 
 Fixed rubric: discoverability; search relevance; keyboard/pointer predictability;
 accessible focus and selected-item announcement; legibility and hierarchy;
@@ -30,7 +30,7 @@ taste reviews; Codex implementation; Astra reasoning/behavior review. Existing
 | --- | --- | --- | --- |
 | 1 | Rejected for visual defects | Stable combobox focus, top anchoring and tiered search improve execution predictability | Ten browser scenarios passed at `8ae26bb7c0`; Opus found fuzzy noise, toast overlap and weak light selection contrast |
 | 2 | Rejected for theme inconsistency | Suppress fuzzy noise when direct hits exist; distinguish selection and keep modal above notifications | All prior defects fixed, 11/11 browser pass; fresh Opus found a bright native scrollbar in dark mode |
-| 3 | Candidate, validation pending | Use the existing themed scrollbar and restore desktop search density | Preserve two-line narrow labels and category context; fresh captures/verdict required |
+| 3 | Accepted | Use the existing themed scrollbar and restore desktop search density | 11/11 browser scenarios passed on exact-tree CI artifact; twelve light/dark captures and Russian desktop evidence complete; fresh Opus inspected all 29 images and accepted every rubric axis, with no veto |
 
 ## Complete feature access — #8947
 
@@ -266,7 +266,8 @@ recovery/footer controls. Its screenshot is unloaded shared-preview evidence.
 | Loaded, narrow dark, annot | ![Baseline narrow](evidence/baseline-narrow-dark.png) | ![Candidate narrow](evidence/candidate-narrow-dark.png) |
 
 ![Short empty recovery](evidence/candidate-short-empty.png)
-![Russian narrow search](evidence/candidate-russian-narrow.png)
+![Russian desktop search, round 3](evidence/candidate-russian-desktop.png)
+![Accepted dark browse and themed scrollbar](evidence/candidate-browse-dark.png)
 
 [Machine-readable receipt](evidence/receipt.json). Original full-suite and queued
 intermediate jobs remain recorded separately; these images do not convert them
@@ -285,3 +286,66 @@ Narrow widths retain two-line categories for label space. The existing real
 Settings/reopen browser scenario now also retains a Recent-group screenshot.
 These changes do not alter ranking, action dispatch or context availability.
 Round-2 screenshots/receipt remain historical evidence, not proof of this source.
+
+## Round 3 exact-tree browser receipt
+
+Candidate `9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3`, tree
+`63f8396b08b2271c02364336e14f8f8acd0b41a4`: CI run `42127421737`,
+viewer artifact `13462775595`, tested-tree artifact `13461248722`.
+The downloaded index SHA-256 is
+`22ebaec78936058cf5224c61b4243c0265f75ab00c7cb3230735543f4b386190`.
+
+The original GPU capture command completed twelve scenes with zero failures or
+page errors. The original root browser command completed **11/11 passed**, zero
+skipped, unexpected or flaky tests (47.9 seconds; correctness run, not a benchmark).
+Sixteen passed-test screenshots include real Settings activation and the Recent
+group after reopening. Compact receipts, image hashes and source provenance live
+in the session evidence directory under `round3-browser-result.json`,
+`round3-build-provenance.json` and `round3-matrix/manifest.json`.
+
+An additional T3 shared-browser check at 1440×900 in Russian verified English
+`section` finds `Сечение`, 36px single-line rows, retained combobox focus and the
+dark thin scrollbar (`rgb(48,49,53)` on `rgb(24,25,27)`). This check was unloaded
+because that browser has no GPU adapter; the loaded captures above use the real
+NVIDIA GPU runner. Its owned tab was closed after capture.
+
+Fresh Opus round-3 verdict and full CI remain pending. These receipts do not
+certify complete feature access (#8947), merge readiness or production deployment.
+
+The original intermediate round-2 fleet job `bffbbdba-5ccd-4fa1-a09b-f5659181a215`
+settled with exit 1 on source `b65e950dd941130f62e44878e1f5d664ae109a5f`.
+Root typecheck (134 tasks, audit 4514 test files) and build (58 tasks) passed.
+Focused tests failed on the known recents selection assertion fixed later in
+`a4d9e777`; this run cannot certify current source. Its original receipt/log were
+published and verified as manifest
+`pc-wsl-bffbbdba-5ccd-4fa1-a09b-f5659181a215-65dc6f515a0c`. Storage closure refused
+because a live process or T3 task still references output. The shared resources
+were preserved; no forced release and zero bytes reclaimed by that close.
+
+The original baseline build `fd328fb1-c37b-460d-a4a0-5cc9d35bdc10` subsequently
+passed (58 root Turbo tasks) at frozen source `0f57524cfe347d29d68f53df7fc97f0b1f80d61a`.
+Its receipt/log publication is verified as
+`pc-wsl-fd328fb1-c37b-460d-a4a0-5cc9d35bdc10-fd1911efbcc2`. After this original
+producer completed, supported storage closure succeeded for baseline, round 2
+and validated round 1 tasks. Managed outputs are released, not claimed deleted.
+The clean coordinator-owned temporary baseline source copy was removed through
+Git worktree removal after checking ignored files and live cwd references; its
+895,042,482 apparent bytes were redundant committed source. All unique evidence
+and model fixtures remain preserved.
+
+## UX acceptance — round 3
+
+Fresh Opus accepted source `9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3`
+after directly inspecting all twelve matrix images, the Russian desktop capture,
+and sixteen browser captures. The themed scrollbar resolves the round-2 blocker;
+desktop density returns to eleven complete rows while narrow layouts retain
+two-line labels. All seven frozen rubric axes meet acceptance, with no veto.
+See [the independent verdict](evidence/round3-review.md) and
+[exact-source browser receipt](evidence/round3-browser-result.json).
+
+The gallery candidate images now show round 3; baseline images remain unchanged.
+The retained Russian narrow image is historical round-2 evidence.
+File-picker activation was not rerun in this styling-only round; the earlier
+mounted synchronous activation regressions passed. Full CI, public review and
+production verification are separate release gates. No complete-feature-access
+claim is made here: #8947 now starts from this independently accepted UX baseline.

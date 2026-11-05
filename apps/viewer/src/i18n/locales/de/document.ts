@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const documentDe = {
   "document.selection.block": "Block {number}: {name}",
   "document.selection.count": "{count} ausgewählt",
-  "document.selection.moveBefore": "Vorher ausgewählte Bewegung…",
+  "document.selection.moveBefore": "Ausgewählte Blöcke verschieben vor…",
   "document.selection.moveBottom": "Nach unten bewegen",
   "document.selection.movedBottom": "Ausgewählte Blöcke werden an das Ende des Dokuments verschoben.",
   "document.selection.movedBefore": "Ausgewählte Blöcke wurden vor {block} verschoben.",
@@ -275,7 +275,7 @@ export const documentDe = {
   "document.block.tableRuleLabel": "Regel",
   "document.block.tableRuleAriaLabel": "Filtern Sie nach einer Regel",
   "document.block.tableRuleAll": "Jede Regel",
-  "document.block.tableColumnsLabel": "Stützen",
+  "document.block.tableColumnsLabel": "Spalten",
   "document.table.noReport": "Noch kein Validierungsbericht – führen Sie eine Validierung durch, um die Ergebnisse einzubeziehen.",
   "document.table.ruleNotFound": "Die Regel, auf die sich diese Tabelle bezieht, ist nicht im aktuellen Validierungsbericht enthalten.",
   "document.table.validationNoRows": "Keine Zeilen entsprechen dieser Regel.",

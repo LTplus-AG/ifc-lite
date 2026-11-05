@@ -42,8 +42,8 @@ async function runChild(entry: URL, config: string, abort?: AbortSignal): Promis
     escalation.unref();
   };
   const killOnExit = () => { child.kill('SIGKILL'); };
-  process.once('SIGINT', terminate);
-  process.once('SIGTERM', terminate);
+  process.on('SIGINT', terminate);
+  process.on('SIGTERM', terminate);
   process.once('exit', killOnExit);
   abort?.addEventListener('abort', terminate, { once: true });
   // Register before testing abort so even immediate cancellation is reaped.

@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { exportRetainedIsolated, RetainedProcessError } from './process.js';
 import { logger } from '../logger.js';
@@ -37,8 +37,8 @@ const staged = `
   if (args.includes('--retained-report')) await writeFile(flag('--retained-report'), 'complete report\\n');
 `;
 
-it.each(['exit', 'signal'])('#8868 %s after staging cannot overwrite destinations or publish stdout', async kind => {
-  if (kind === 'signal' && process.platform === 'win32') return;
+it.each(['exit', 'signal'])('#8868 %s after staging cannot overwrite destinations or publish stdout', async (kind, context) => {
+  if (kind === 'signal' && process.platform === 'win32') return context.skip();
   const f = await fixture(staged + (kind === 'signal' ? "process.kill(process.pid, 'SIGSEGV');" : 'process.exit(139);'));
   await writeFile(f.obj, 'original obj');
   await writeFile(f.report, 'original report');
@@ -68,10 +68,9 @@ it('#8868 success publishes identical staged bytes only after exit and preserves
   expect(stderr).toHaveBeenCalledWith('retained summary\n');
   const { config, request } = JSON.parse(await readFile(f.observation, 'utf8'));
   expect(config.level).toBe('error');
-  expect(config.args).toContain('input.ifc');
-  expect(config.args.slice(5, 9)).toEqual(['--type', 'IfcWall', '--limit', '3']);
-  expect(config.args.filter((arg: string) => arg === '--out')).toHaveLength(1);
-  expect(config.args).not.toContain('/unused-duplicate');
+  expect(config.args).toEqual(['input.ifc', '--kernel', 'retained', '--format', 'obj',
+    '--type', 'IfcWall', '--limit', '3', '--out', join(dirname(request), 'model.obj'),
+    '--retained-report', join(dirname(request), 'report.json')]);
   await expect(readFile(request)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
@@ -90,23 +89,40 @@ it('#8868 a missing report after clean exit cannot publish an otherwise valid OB
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it('#8868 cancellation wins over a child that stages output and exits successfully on SIGTERM', async () => {
-  const f = await fixture(staged + `process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 100);`);
+it.each([false, true])('#8868 cancellation wins and reaps the child (ignore SIGTERM: %s)', async ignoresSignal => {
+  const f = await fixture(staged + `
+    process.on('SIGTERM', () => { ${ignoresSignal ? '' : 'process.exit(0);'} });
+    setInterval(() => {}, 100);
+    await writeFile(process.argv[2] + '.ready', 'ready');
+  `);
   const controller = new AbortController();
   const operation = exportRetainedIsolated(f.args, { entry: f.entry, signal: controller.signal });
-  const rejected = expect(operation).rejects.toMatchObject({ code: 'RETAINED_PROCESS_FAILED', cancelled: true });
-  // The observation is written by the child; wait for that real process to run.
-  for (let n = 0; n < 100; n++) {
-    try { await readFile(f.observation); break; }
-    catch (error) {
-      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
-      await new Promise(resolve => setTimeout(resolve, 10));
+  const settled = operation.then(() => null, (error: unknown) => error);
+  let ready = false, pid: number | undefined;
+  try {
+    for (let n = 0; n < 300; n++) {
+      try {
+        const observation = JSON.parse(await readFile(f.observation, 'utf8'));
+        pid = observation.pid;
+        await readFile(observation.request + '.ready');
+        ready = true;
+        break;
+      } catch (error) {
+        if (!(error instanceof SyntaxError) && (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT')) throw error;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
     }
+  } finally {
+    controller.abort();
   }
-  controller.abort();
-  await rejected;
+  const failure = await settled;
+  expect(ready).toBe(true);
+  expect(failure).toMatchObject({ code: 'RETAINED_PROCESS_FAILED', cancelled: true,
+    exitCode: ignoresSignal ? null : 0, signal: ignoresSignal ? 'SIGKILL' : null });
   await expect(readFile(f.obj)).rejects.toMatchObject({ code: 'ENOENT' });
   await expect(readFile(f.report)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(pid).toBeGreaterThan(0);
+  expect(() => process.kill(pid!, 0)).toThrow();
 });
 
 it('#8868 a missing child entry fails with bounded diagnostics and no artifacts', async () => {

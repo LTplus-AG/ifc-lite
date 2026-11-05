@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { MutableRefObject } from 'react';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
+
 /**
  * The camera state the measurement reprojection pass last ran for. The
  * animation loop, wheel zoom and a Point-mode hover (#8828) all compare
@@ -24,6 +27,7 @@ export interface MeasureCameraState {
 }
 
 interface CameraPose {
+  projectToScreen(p: { x: number; y: number; z: number }, w: number, h: number): { x: number; y: number } | null;
   getPosition(): { x: number; y: number; z: number };
   getRotation(): { azimuth: number; elevation: number };
   getDistance(): number;
@@ -55,7 +59,7 @@ export function measureCameraState(camera: CameraPose, canvas: { width: number; 
  * under a resting cursor (#8828).
  */
 export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
-  return a !== null &&
+  return a !== null && sameAspect(a, b) &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
     a.position.z === b.position.z &&
@@ -70,9 +74,41 @@ export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCa
     a.up.z === b.up.z;
 }
 
+/**
+ * A canvas whose box changed shape (a panel opened, the window resized) shows
+ * something else under the cursor. The pixel-ratio swap keeps the shape up to
+ * a pixel of rounding, so a ratio tolerance tells the two apart.
+ */
+function sameAspect(a: MeasureCameraState, b: MeasureCameraState): boolean {
+  if (!a.canvasHeight || !b.canvasHeight) return a.canvasHeight === b.canvasHeight;
+  return Math.abs(a.canvasWidth / a.canvasHeight / (b.canvasWidth / b.canvasHeight) - 1) < ASPECT_TOLERANCE;
+}
+const ASPECT_TOLERANCE = 0.01;
+
 /** Nothing the reprojection pass depends on changed. */
 export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
   return sameMeasureCameraPose(a, b) && a !== null &&
     a.canvasWidth === b.canvasWidth &&
     a.canvasHeight === b.canvasHeight;
+}
+
+/**
+ * The measurement reprojection pass, run by the animation loop every frame and
+ * by wheel zoom and a Point-mode hover on demand: reproject every stored point
+ * when the view changed since the last pass, telling the store whether the
+ * camera itself moved, which ends Point mode's Live reading (#8828).
+ */
+export function reprojectMeasurementsForCamera(
+  camera: CameraPose,
+  canvas: HTMLCanvasElement,
+  lastStateRef: MutableRefObject<MeasureCameraState | null>,
+  update: (project: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved: boolean) => void,
+): void {
+  const last = lastStateRef.current;
+  const current = measureCameraState(camera, canvas);
+  if (sameMeasureCameraState(last, current)) return;
+  lastStateRef.current = current;
+  // CSS-space coords so the measure line/labels track the geometry under the
+  // cursor (raw coords are drawing-buffer device px, not CSS px — #1107, #5383).
+  update((worldPos) => projectToCssScreen(camera, canvas, worldPos), !sameMeasureCameraPose(last, current));
 }

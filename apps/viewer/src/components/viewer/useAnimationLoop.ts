@@ -21,8 +21,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
-import { projectToCssScreen } from '../../utils/projectScreen.js';
-import { measureCameraState, sameMeasureCameraPose, sameMeasureCameraState, type MeasureCameraState } from './measureCameraState';
+import { reprojectMeasurementsForCamera, type MeasureCameraState } from './measureCameraState';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
@@ -293,18 +292,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
         hasPendingMeasurements()
       ) {
-        const lastState = lastCameraStateRef.current;
-        const currentCameraState = measureCameraState(camera, canvas);
-
-        if (!sameMeasureCameraState(lastState, currentCameraState)) {
-          lastCameraStateRef.current = currentCameraState;
-          updateMeasurementScreenCoords((worldPos) => {
-            // CSS-space coords so the measure line/labels track the geometry
-            // under the cursor (raw coords are drawing-buffer device px, not
-            // CSS px — issues #1107, #5383).
-            return projectToCssScreen(camera, canvas, worldPos);
-          }, !sameMeasureCameraPose(lastState, currentCameraState));
-        }
+        reprojectMeasurementsForCamera(camera, canvas, lastCameraStateRef, updateMeasurementScreenCoords);
       }
 
       animationFrameRef.current = requestAnimationFrame(animate);

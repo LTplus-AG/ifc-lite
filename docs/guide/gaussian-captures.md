@@ -27,6 +27,8 @@ Ingest subtracts the current IFC/federation render-frame offset after orientatio
 
 For loader callers, `gaussianUpAxis` selects `z` or `y`. `gaussianPlacement` is an optional column-major adjustment after axis conversion and before automatic origin subtraction. An explicit matrix without an axis option retains its own axis mapping for compatibility with earlier saved placements. Callers must not include the IFC origin subtraction themselves. Saved setups and capture reload preserve the source axes and original placement, then recompute the origin offset on ingest rather than applying the saved render shift twice.
 
+Explicit `gaussianPlacement` matrices saved before #8778 may already include the IFC origin shift. Those matrices now shift the capture twice. Remove the baked origin shift from the saved matrix before reopening it.
+
 ## Limits
 
 These limits are checked before a capture is decoded, so an oversized file is refused straight away with a message saying which limit it exceeds.

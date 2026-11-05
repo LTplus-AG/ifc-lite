@@ -23,7 +23,7 @@ export function DrawingProjectionSettings({ available }: { available: boolean })
   const label = t('section2d.projection.settings');
   return <Popover>
     <PopoverTrigger asChild>
-      <IconButton variant="ghost" size="icon-xs" label={label} disabled={!available}>
+      <IconButton variant="ghost" size="icon-xs" className="h-6 w-6 text-muted-foreground" label={label} disabled={!available}>
         <Settings2 className="h-3.5 w-3.5" />
       </IconButton>
     </PopoverTrigger>

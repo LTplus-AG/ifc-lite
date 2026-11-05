@@ -147,11 +147,12 @@ test('#8564 readiness keeps the published blocker tuple and adds the nearest-gla
 });
 
 /** A device that records pipeline descriptors, passes and readbacks. */
-function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?: boolean; readFailure?: 'range' | 'conversion' | 'unmap' } = {}) {
+function fakeDevice(options: { failCompile?: boolean; deferPipelines?: boolean; count?: bigint; deferMaps?: boolean; readFailure?: 'range' | 'conversion' | 'unmap' } = {}) {
   const log: Log = [];
   const descriptors: GPURenderPipelineDescriptor[] = [];
   const counts = new BigUint64Array([options.count ?? 0n]), read = counts.buffer;
-  const parked: Array<() => void> = [];
+  const parked: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+  const parkedPipelines: Array<{ reject: (error: Error) => void }> = [];
   let mapped = 0, fault = true;
   const buffers: Array<{ mapped: boolean; destroyed: boolean }> = [];
   const device = {
@@ -160,6 +161,7 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?
     createShaderModule: (d: GPUShaderModuleDescriptor) => ({ code: d.code }),
     createRenderPipelineAsync: async (d: GPURenderPipelineDescriptor) => {
       descriptors.push(d);
+      if (options.deferPipelines) return new Promise<GPURenderPipeline>((_resolve, reject) => parkedPipelines.push({ reject }));
       if (options.failCompile) throw new Error('compile failed');
       return pipeline(d.label ?? 'variant');
     },
@@ -183,7 +185,7 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?
           assert.equal(state.mapped, false, 'a previously mapped buffer must be unmapped or replaced');
           assert.equal(state.destroyed, false, 'destroyed buffers cannot be reused');
           mapped++;
-          return (options.deferMaps ? new Promise<void>((resolve) => parked.push(resolve)) : Promise.resolve())
+          return (options.deferMaps ? new Promise<void>((resolve, reject) => parked.push({ resolve, reject })) : Promise.resolve())
             .then(() => { state.mapped = true; });
         },
       };
@@ -196,8 +198,15 @@ function fakeDevice(options: { failCompile?: boolean; count?: bigint; deferMaps?
     copyBufferToBuffer: (...a: unknown[]) => log.push(['copyBufferToBuffer', ...a]),
   } as unknown as GPUCommandEncoder;
   /** Complete the oldest pending readback with `count` samples beyond one layer. */
-  const resolveMap = async (count: bigint) => { counts[0] = count; parked.shift()!(); await new Promise((resolve) => setTimeout(resolve, 0)); };
-  return { device, encoder, log, descriptors, buffers, mapped: () => mapped, resolveMap, pendingMaps: () => parked.length };
+  const settleMap = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); };
+  const resolveMap = async (count: bigint) => { counts[0] = count; parked.shift()!.resolve(); await settleMap(); };
+  const rejectMap = async (error: Error) => { parked.shift()!.reject(error); await settleMap(); };
+  const rejectPipelines = async (error: Error) => {
+    for (const pending of parkedPipelines.splice(0)) pending.reject(error);
+    await settleMap();
+  };
+  return { device, encoder, log, descriptors, buffers, mapped: () => mapped, resolveMap, rejectMap, pendingMaps: () => parked.length,
+    pendingPipelines: () => parkedPipelines.length, rejectPipelines };
 }
 
 const registration = (label: string): { descriptor: GPURenderPipelineDescriptor; source: string } => ({
@@ -279,6 +288,83 @@ test('#8564 P1 clears to the far plane; two or more surfaces at any sample repor
     assert.equal(split.layers, 'unknown', 'a new frame starts unknown');
     assert.equal(split.layerSamples, null);
   }
+});
+
+test('#8566 destroying a split during mapAsync contains the AbortError without logging', async () => {
+  const fake = fakeDevice({ deferMaps: true });
+  const split = new GaussianGlassSplit(fake.device, () => {});
+  const errors: unknown[][] = [], original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    split.prepare(new Set([GLASS, GHOST]), () => registration('glass'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    split.beginFrame();
+    split.encodeNearest(frame(fake.encoder), recorded());
+    split.submitted();
+    assert.equal(fake.pendingMaps(), 1, 'the readback is in flight before teardown');
+    split.destroy();
+    await fake.rejectMap(Object.assign(new Error('GPUBuffer destroyed before mapping was resolved'), { name: 'AbortError' }));
+    assert.deepEqual(errors, [], 'an expected teardown abort is silent');
+    assert.equal(split.layers, 'unknown');
+    assert.equal(split.layerSamples, null);
+  } finally { split.destroy(); console.error = original; }
+});
+
+test('#8566 a mapAsync rejection while active still logs once and clears the count', async () => {
+  const fake = fakeDevice({ deferMaps: true });
+  const split = new GaussianGlassSplit(fake.device, () => {});
+  const errors: unknown[][] = [], original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    split.prepare(new Set([GLASS, GHOST]), () => registration('glass'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    split.beginFrame();
+    split.encodeNearest(frame(fake.encoder), recorded());
+    split.submitted();
+    assert.equal(fake.pendingMaps(), 1);
+    split.layers = 'multiple';
+    split.layerSamples = 7;
+    const failure = new Error('injected map failure');
+    await fake.rejectMap(failure);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0], '[Gaussian] glass layer readback failed; count stays unknown:');
+    assert.equal(errors[0][1], failure);
+    assert.equal(split.layers, 'unknown');
+    assert.equal(split.layerSamples, null);
+  } finally { split.destroy(); console.error = original; }
+});
+
+test('#8825 destroying a split during pipeline build contains the rejection without logging', async () => {
+  const fake = fakeDevice({ deferPipelines: true });
+  let ready = 0;
+  const split = new GaussianGlassSplit(fake.device, () => { ready++; });
+  const errors: unknown[][] = [], original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    assert.equal(split.prepare(new Set([GLASS]), () => registration('glass')), 'pipelines-compiling');
+    assert.equal(fake.pendingPipelines(), 2, 'both depth variants are compiling before teardown');
+    split.destroy();
+    await fake.rejectPipelines(new Error('renderer destroyed'));
+    assert.deepEqual(errors, [], 'an expected teardown rejection is silent');
+    assert.equal(ready, 0, 'teardown does not request another frame');
+  } finally { split.destroy(); console.error = original; }
+});
+
+test('#8825 a pipeline build rejection while active still logs once', async () => {
+  const fake = fakeDevice({ deferPipelines: true });
+  const split = new GaussianGlassSplit(fake.device, () => {});
+  const errors: unknown[][] = [], original = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    assert.equal(split.prepare(new Set([GLASS]), () => registration('glass')), 'pipelines-compiling');
+    assert.equal(fake.pendingPipelines(), 2);
+    const failure = new Error('injected pipeline failure');
+    await fake.rejectPipelines(failure);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0], '[Gaussian] glass depth variant failed; frames using it keep the single splat pass:');
+    assert.equal(errors[0][1], failure);
+    assert.equal(split.prepare(new Set([GLASS]), () => registration('glass')), 'unsupported-draw');
+  } finally { split.destroy(); console.error = original; }
 });
 
 test('#8564 a variant that fails to compile makes its frames fall back, permanently and visibly', async () => {

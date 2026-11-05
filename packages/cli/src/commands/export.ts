@@ -146,10 +146,14 @@ export function exportFilePath(args: string[]): string | undefined {
   return undefined;
 }
 
-export async function exportCommand(args: string[]): Promise<void> {
+export async function exportCommand(args: string[], internal?: { retainedChild: true }): Promise<void> {
   const filePath = exportFilePath(args);
   const format = getFlag(args, '--format') ?? 'csv';
   const retainedEngine = await exportKernel(args, format);
+  if (retainedEngine && !internal?.retainedChild) {
+    const { exportRetainedIsolated } = await import('../retained/process.js');
+    return exportRetainedIsolated(args);
+  }
   const outPath = getFlag(args, '--out');
   let type = getFlag(args, '--type');
   const columnsStr = getFlag(args, '--columns');

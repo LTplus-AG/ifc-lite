@@ -6,5 +6,12 @@
   "viewerArtifact": 13462775595,
   "testedTreeArtifact": 13461248722,
   "coverageVerdict": "not evaluated",
-  "scope": "Presentation inherited from accepted UX; separate feature inventory and U/L/S behavior evidence required"
+  "scope": "Presentation inherited from accepted UX; separate feature inventory and U/L/S behavior evidence required",
+  "contextCaptureCount": 12,
+  "contextCaptureFailures": 0,
+  "pageErrors": 0,
+  "observations": "evidence/baseline-context-observations.json",
+  "manifest": "evidence/baseline-manifest.json",
+  "behavior": "Selected real wall expressId/globalId262 hidden by canonical palette click; targetHidden=true in both themes. U/L hide offers no disabled explanation. Undo query lacks Undo; privacy query yields anonymized export, no Settings destination.",
+  "remaining": "These six scenes establish representative baseline defects, not exhaustive feature coverage."
 }

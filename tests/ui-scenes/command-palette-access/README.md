@@ -58,3 +58,77 @@ reviewable PR layers for #8947 if the implementation exceeds roughly 1500 lines.
 Release requires full root Turbo coverage, real UI evidence, post-commit pre-handoff,
 required CI and resolved reviews. Mergify only, after base is main. Parent handles
 watching and production verification; never claim a merge is a deployment.
+
+## Reproducible context captures
+
+`capture-contexts.mjs` extends the existing real-model GPU capture protocol. Freeze
+its six scenes for this campaign and run them against both accepted baseline and
+candidate artifacts, in light and dark. The selected fixture is an actual parsed
+wall from `/samples/building-architecture.ifc`; setup uses the canonical renderer
+selection action. The execution scene clicks the actual Hide Selection option and
+requires that the selected wall enters the renderer hidden set before capture.
+Other scenes record command labels, availability, selection and context without
+asserting that a known baseline omission is correct. Observations are not coverage
+credit for unvisited child tools.
+
+```sh
+~/build-workers/ifc-gpu-check --limit 10 -- bash -c '
+  node tests/ui-scenes/command-palette-access/capture-contexts.mjs \
+    --dist "$PALETTE_DIST" --out "$PALETTE_EVIDENCE" --label "$PALETTE_SOURCE" \
+    --scenes access-unloaded-hide,access-loaded-hide,access-selected-hide,access-selected-hide-run,access-history,access-settings-privacy \
+    --themes light,dark --cdp "$IFC_GPU_CDP_URL"
+'
+```
+
+Set the three `PALETTE_*` variables to the exact-tree verified built artifact,
+owned evidence directory and source identity; export them for the runner. This
+is bounded correctness evidence, not a performance benchmark. The helper closes
+its own pages and preview server. Preserve `context-observations.json`, image
+hashes and `manifest.json`; record failures and never count absent captures as a
+pass. Release regenerable downloads after their evidence and all uses settle.
+
+## Baseline observations (accepted UX source, separate access judgment)
+
+Twelve captures passed on the matching `9d476f01` artifact, using the real NVIDIA
+GPU and public IFC fixture; zero scene failures or page errors. The same action
+shows **Hide Selection enabled with no explanation** both unloaded and loaded
+without selection. Selecting the parsed wall (global ID 262 in this single-model
+fixture) then clicking Hide Selection actually hides it in both themes. This
+working route must survive the new eligibility layer.
+
+Searching `undo` returns unrelated commands, with no Undo destination. Searching
+`privacy` returns anonymized export, with no Settings privacy destination. These
+are observed access gaps, not failures of the already accepted general UX scope.
+Raw observation `theme: null` means the light theme's absent HTML class; the
+manifest explicitly identifies light/dark for every capture.
+
+![Unloaded selection action lacks a reason](evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](evidence/baseline-access-settings-privacy.light.png)
+
+[Recorded contexts and outcomes](evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](evidence/baseline-manifest.json) retain the facts.
+No candidate access verdict has been issued yet.
+
+## Round 1 foundation checkpoint
+
+One static projection now receives the complete command context. Palette-only
+availability keeps blocked rows discoverable with translated reasons and known
+toggle state. Activation checks current prerequisites both on input and inside
+the deferred frame before recording usage or telemetry. Renderer scalar Hide
+selection remains supported; workspace target resolution is shared with entry.
+No missing callback-only command is exposed before its real host is wired.
+
+Seven mounted interaction regressions and registered-row metadata coverage were
+added; composition/export/i18n expectations were updated. Focused lint, module
+size, i18n-literal, source-test and whitespace guards passed. Tests and typecheck
+were **not executed**: the root Turbo dry run confirmed selector forwarding but
+requires 58 missing dependency builds. An accidentally started unused-locals
+compiler check was aborted by its owner, with no verdict claimed; its own process
+tree and 2,447,178 bytes of generated files were retired.
+
+Next: admitted root validation, then real file/activity and author/filter hosts,
+canonical omitted actions, modeling/subflows and runtime owners. This checkpoint
+is neither complete feature access nor a round-1 acceptance verdict.

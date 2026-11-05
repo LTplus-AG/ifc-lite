@@ -45,6 +45,10 @@ interface CommandBase {
   /** Translated counterpart of `detail` — e.g. a tour's "{minutes} min". */
   detailKey?: TranslationKey;
   detailKeyParams?: TranslationParameters;
+  availability?: import('./palette-availability').PaletteAvailability;
+  /** Reads current prerequisites again at activation, including deferred frames. */
+  checkAvailability?: () => import('./palette-availability').PaletteAvailability;
+  stateKey?: TranslationKey;
   action: () => void;
   /**
    * Run the action synchronously in the click handler instead of deferring to the
@@ -58,11 +62,11 @@ interface CommandBase {
 /**
  * A static command has a registry id/name; runtime content declares its owner.
  * A registered row renders only its registry label (`RegisteredPaletteOption`),
- * so it cannot carry label parameters or a detail it would silently drop.
+ * while projected detail, toggle state and availability remain palette-owned.
  */
 export type Command = CommandBase & (
   | { registryOwned: true; labelKey: TranslationKey; runtimeSource?: never;
-      labelKeyParams?: never; detail?: never; detailKey?: never; detailKeyParams?: never }
+      labelKeyParams?: never }
   | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
       labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
 );

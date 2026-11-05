@@ -14,6 +14,7 @@
  * the palette records as recent usage, so they stay stable.
  */
 
+import { paletteExportAvailability } from './palette-export-availability';
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Mountain, Puzzle } from 'lucide-react';
@@ -125,7 +126,14 @@ export function buildExportCommands(
     detail: exporter.extension,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));
-  const registryRows = EXPORT_SURFACE_COMMANDS.map((command) =>
-    commandRowFromDefinition(command, { surface, runExport }));
+  const registryRows = EXPORT_SURFACE_COMMANDS.map((command) => {
+    const row = commandRowFromDefinition(command, { surface, runExport });
+    if (surface !== 'palette') return row;
+    const sourceId = command.id.startsWith('export:csv-') ? 'csv' : command.id.slice(7);
+    const definition = EXPORT_COMMANDS.find(entry => entry.id === sourceId);
+    if (!definition) throw new Error(`Missing export definition: ${command.id}`);
+    const checkAvailability = () => paletteExportAvailability(definition);
+    return { ...row, availability: checkAvailability(), checkAvailability };
+  });
   return [...registryRows, ...extensionRows];
 }

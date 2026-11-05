@@ -39,6 +39,8 @@ export interface Camera {
   getPosition(): { x: number; y: number; z: number };
   getRotation(): { azimuth: number; elevation: number };
   getDistance(): number;
+  getProjectionMode(): string;
+  getOrthoSize(): number;
 }
 
 /**

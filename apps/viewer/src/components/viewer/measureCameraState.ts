@@ -8,23 +8,32 @@
  * against it, so they agree on when the camera counts as moved.
  */
 
-import type { Camera } from '@ifc-lite/renderer';
-
 export interface MeasureCameraState {
   position: { x: number; y: number; z: number };
   rotation: { azimuth: number; elevation: number };
   distance: number;
+  /** A projection toggle or an orthographic zoom moves nothing above, yet re-frames the view. */
+  projectionMode: string;
+  orthoSize: number;
   canvasWidth: number;
   canvasHeight: number;
 }
 
-type CameraPose = Pick<Camera, 'getPosition' | 'getRotation' | 'getDistance'>;
+interface CameraPose {
+  getPosition(): { x: number; y: number; z: number };
+  getRotation(): { azimuth: number; elevation: number };
+  getDistance(): number;
+  getProjectionMode(): string;
+  getOrthoSize(): number;
+}
 
 export function measureCameraState(camera: CameraPose, canvas: { width: number; height: number }): MeasureCameraState {
   return {
     position: camera.getPosition(),
     rotation: camera.getRotation(),
     distance: camera.getDistance(),
+    projectionMode: camera.getProjectionMode(),
+    orthoSize: camera.getOrthoSize(),
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,
   };
@@ -38,6 +47,8 @@ export function sameMeasureCameraState(a: MeasureCameraState | null, b: MeasureC
     a.rotation.azimuth === b.rotation.azimuth &&
     a.rotation.elevation === b.rotation.elevation &&
     a.distance === b.distance &&
+    a.projectionMode === b.projectionMode &&
+    a.orthoSize === b.orthoSize &&
     a.canvasWidth === b.canvasWidth &&
     a.canvasHeight === b.canvasHeight;
 }

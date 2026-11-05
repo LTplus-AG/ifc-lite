@@ -36,7 +36,8 @@ node tests/ui-scenes/tally.mjs --key <round>/key-vs-prev.json --behaviour <round
 
 A round is accepted when the vs-prev weighted pooled win rate is at least
 0.5, both tallies are eligible and have no vetoes, the vs-base tally shows
-no regressions, and `pnpm ui-drift` did not go up. `pooledWin` is the weighted
+no regressions, and `node scripts/check-ui-drift.mjs` passes (drift did not go up;
+the gate lands with #8803). `pooledWin` is the weighted
 mean of complete reviewers' win rates: weight = controlAccuracy (weight 1
 when the packet has no controls); reviewers with controlAccuracy < 0.5 get
 weight 0 and are excluded. Incomplete reviewers are excluded from all pooled

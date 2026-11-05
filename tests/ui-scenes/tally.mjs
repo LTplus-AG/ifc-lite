@@ -91,7 +91,10 @@ function tallyReviewer(key, verdict) {
       for (const d of v.defects ?? []) defects.push({ ...d, item: id });
       continue;
     }
-    sides.push(side(v.preferred, item.x));
+    const preferred = side(v.preferred, item.x);
+    // An invalid choice must not silently leave the denominator: it makes the reviewer incomplete.
+    if (preferred === null) { missing.push(`invalid preferred ${JSON.stringify(v.preferred)} for ${id}`); continue; }
+    sides.push(preferred);
     for (const axis of AXES) axisSides[axis].push(side(v.axes?.[axis], item.x));
     for (const label of ['X', 'Y']) {
       const capture = side(label, item.x);

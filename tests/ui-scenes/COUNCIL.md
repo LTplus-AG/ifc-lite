@@ -4,7 +4,7 @@ The UI overhaul is a hill climb against three numbers. Two are measured by
 scripts and only one asks a model for its taste. This file is the council's
 brief, and reviewers receive it verbatim.
 
-1. **Drift**: `pnpm ui-drift` counts off-system styling (raw palette classes,
+1. **Drift**: `node scripts/check-ui-drift.mjs` (the gate added by #8803) counts off-system styling (raw palette classes,
    hex literals, arbitrary Tailwind values, native controls). It may only go
    down.
 2. **Council win rate**: blind pairwise preference of the candidate over a

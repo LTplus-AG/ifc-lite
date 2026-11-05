@@ -144,7 +144,7 @@ async function decodeAndPublish(
     upload.rollback(); // Finalization declined: superseded before publication.
     return ctx.isCurrent() ? 'failed' : 'cancelled';
   }
-  adoptGaussianAsset(ctx.modelId, upload.record.handle, splats);
+  adoptGaussianAsset(ctx.modelId, upload.record.handle, splats, upload.attributes);
   upload.commit();
   releaseBudget(); // The store now counts this capture's splats.
   if (!ctx.isCurrent()) return 'cancelled';

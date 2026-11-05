@@ -46,7 +46,7 @@ export type AnnotationPickProvider = (
 /** Overlay pipelines don't write depth: the last drawable hit wins, subject to mesh occlusion. */
 export function resolveAnnotationPick(snapshot: AnnotationPickSnapshot | null, mesh: PickResult | null, meshPoint = mesh?.worldXYZ): PickResult | null {
   if (!snapshot) return mesh;
-  if (!snapshot.isCurrent()) return null;
+  if (!snapshot.isCurrent()) return mesh;
   const depth = meshPoint ? snapshot.depth(meshPoint) : mesh ? Infinity : 0;
   for (let i = snapshot.hits.length - 1; i >= 0; i--) {
     if (snapshot.hits[i].depth >= depth) return snapshot.hits[i].result;

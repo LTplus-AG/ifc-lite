@@ -46,11 +46,20 @@ for (const overBudget of [false,true]) test(`#8783 annotation selection reaches 
   assert.equal((await h.manager.pick(100,100))?.expressId,800,'foreground surface occludes annotation');
 });
 
-test('#8783 replacing annotations during delayed GPU readback discards the stale pick', async () => {
-  const h = harness(false);
-  let finish!: (result: PickResult | null)=>void;
-  h.setReadback(()=>new Promise(resolve=>{finish=resolve;}));
-  const pending = h.manager.pick(100,100);
-  h.annotations.clear(); finish(null);
-  assert.equal(await pending,null);
-});
+for (const update of ['clear', 'replace'] as const) {
+  for (const mesh of [null, { expressId: 800, modelIndex: 2, worldXYZ: { x: 0, y: 0, z: -1 } }] satisfies (PickResult | null)[]) {
+    test(`#8783 annotation ${update} during GPU readback preserves ${mesh ? 'current mesh hit' : 'mesh miss'}`, async () => {
+      const h = harness(false);
+      let finish!: (result: PickResult | null) => void;
+      h.setReadback(() => new Promise(resolve => { finish = resolve; }));
+      const pending = h.manager.pick(100, 100);
+      if (update === 'clear') h.annotations.clear();
+      else h.annotations.setLines({ origin: [0, 0, 0], localVertices: new Float32Array([-1, 0, 0, 1, 0, 0]), ownerIds: new Uint32Array([82]) }, true);
+      finish(mesh);
+      // The overlay snapshot is stale, but the manager validated this mesh readback.
+      // Neither the old owner (71) nor the replacement owner (82) can win this request.
+      assert.deepEqual(await pending, mesh);
+      assert.equal(h.readbacks(), 1);
+    });
+  }
+}

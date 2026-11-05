@@ -72,9 +72,9 @@ export function ClashGroupReview() {
         setAdjusted(null); setReceipt(null); setError(null);
       }} />}
       {review && <>
-        {adjusted && review.preview && <p role="note" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.clashGroupAdjusted', {
+        {adjusted && review.preview && <p role="note" className="rounded border border-warn-border bg-warn-surface p-2">{t('assistant.clashGroupAdjusted', {
           repeats: adjusted.removedRepeats, unknown: adjusted.removedUnknown, groups: adjusted.droppedGroups })}</p>}
-        {stale && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.stale')}</p>}
+        {stale && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t('assistant.stale')}</p>}
         {receipt ? <ClashGroupApplicationCard receipt={receipt} /> : <>
           <ClashGroupDraftEditor draft={review.draft} onChange={draft => setReview({ ...review, draft })} resolve={resolve}
             focusClash={focusClash} focusClashes={clashes => focusClashes(clashes)} />

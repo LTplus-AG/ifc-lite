@@ -51,7 +51,7 @@ function Progress() {
     <p className="text-muted-foreground">{t('idsAgent.running')}</p>
     {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
     <ul className="pl-2 space-y-0.5 text-2xs">
-      {progress.slice(-8).map((line, index) => <li key={index} className={line.ok === false ? 'text-amber-700 dark:text-amber-400 break-words' : 'text-muted-foreground break-words'}>{line.text}</li>)}
+      {progress.slice(-8).map((line, index) => <li key={index} className={line.ok === false ? 'text-warn break-words' : 'text-muted-foreground break-words'}>{line.text}</li>)}
     </ul>
   </div>;
 }
@@ -84,7 +84,7 @@ export function IdsAgentReview() {
       <Button size="sm" variant="outline" className="h-7" onClick={cancelIdsAgentRun}><Square className="h-3 w-3 mr-1" />{t('idsAgent.cancel')}</Button>
     </>}
     {state.phase === 'done' && run && <>
-      <p className={stopped ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+      <p className={stopped ? 'text-warn' : 'text-muted-foreground'}>
         {stopped ? t('idsAgent.status.stopped', { reason: run.message ?? stopped }) : t('idsAgent.status.completed')}</p>
       <IdsAgentProposal proposal={run.proposal} selection={state.selection} onSelection={setIdsAgentSelection} />
       <IdsAgentPrivacy run={run} />

@@ -68,7 +68,7 @@ export function ClashGroupApplicationCard({ receipt, focusRequest = null }: { re
     if (focused) { original.current?.focus(); original.current?.scrollIntoView?.({ block: 'nearest' }); }
   }, [focused, focusRequest]);
   const undone = live.status === 'undone';
-  return <div ref={original} tabIndex={focused ? -1 : undefined} aria-current={focused ? true : undefined} aria-live="polite" className={cn('rounded border p-2 space-y-1.5', undone ? 'border-border bg-muted/40' : 'border-emerald-500/40 bg-emerald-500/10')}>
+  return <div ref={original} tabIndex={focused ? -1 : undefined} aria-current={focused ? true : undefined} aria-live="polite" className={cn('rounded border p-2 space-y-1.5', undone ? 'border-border bg-muted/40' : 'border-ok-border bg-ok-surface')}>
     <p className="font-medium">{undone
       ? t(live.created ? 'clashApply.receiptUndoneCreated' : 'clashApply.receiptUndone', { workspace: live.workspaceName })
       : t('clashApply.receiptApplied', { groups: live.addedGroupIds.length, findings, workspace: live.workspaceName })}</p>

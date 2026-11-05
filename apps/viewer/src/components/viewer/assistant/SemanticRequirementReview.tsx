@@ -35,7 +35,7 @@ export function SemanticRequirementReview({ proposal, origin, passages }: { prop
   };
   return <ReviewFrame label={t('semanticAssist.requirementsTitle')} title={proposal.title}>
     <p className="text-muted-foreground">{t('semanticAssist.requirementsVerified', { verified: review.verified, count: review.requirements.length })}</p>
-    {!passages.length && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.requirementsNoSources')}</p>}
+    {!passages.length && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t('semanticAssist.requirementsNoSources')}</p>}
     <ol className="space-y-2">{review.requirements.map(({ requirement, check }) => <li key={requirement.id} className="rounded border border-border p-1.5 space-y-1">
       <p><span className="font-mono font-semibold">{requirement.id}</span> {requirement.statement}</p>
       {structured(requirement) && <p className="font-mono text-2xs text-muted-foreground break-all">{structured(requirement)}</p>}
@@ -51,7 +51,7 @@ export function SemanticRequirementReview({ proposal, origin, passages }: { prop
     </div>}
     <RequirementDispatch proposal={proposal} review={review} passages={passages} />
     <Button size="sm" className="h-7" disabled={saved} onClick={() => void save()}>{t('semanticAssist.requirementsSave')}</Button>
-    {saved && <p aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2">{t('semanticAssist.saved')}</p>}
+    {saved && <p aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2">{t('semanticAssist.saved')}</p>}
     {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
     <ContentStorageNotice status={status} retry={semanticReviewLibrary.retry} restore={semanticReviewLibrary.restore} />
   </ReviewFrame>;

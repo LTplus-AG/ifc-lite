@@ -167,7 +167,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
           <ExternalLink className="h-3 w-3 mr-1" aria-hidden="true" />{t('assistantArtifacts.openFilterUnsaved')}
         </Button>}
       </div>}
-      {saved && preview && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
+      {saved && preview && <div aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2 space-y-2">
         <p className="flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           {saved.kind === 'chart.proposal' ? t('assistantArtifacts.savedChart', { name: saved.name, dashboard: saved.dashboardName }) : t('assistantArtifacts.saved', { name: saved.name })}</p>
         <Button size="sm" variant="outline" className="h-7" onClick={() => openSavedArtifact(saved, preview.artifact)}>

@@ -21,6 +21,7 @@ import {
 } from './express-labels';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { associationDisclosureId } from './associationDisclosureId';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, InspectorRow } from './inspector-ui';
 
 export function DocumentCard({ document, sectionId }: { document: DocumentInfo; sectionId?: string }) {
   const { t } = useTranslation();
@@ -28,74 +29,58 @@ export function DocumentCard({ document, sectionId }: { document: DocumentInfo; 
   const isUrl = document.location?.startsWith('http://') || document.location?.startsWith('https://');
 
   return (
-    <PersistentCollapsible id={sectionId ?? associationDisclosureId('document', document, [document], 0)} className="border-2 border-sky-200 dark:border-sky-800 bg-sky-50/20 dark:bg-sky-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-sky-50 dark:hover:bg-sky-900/30 text-left transition-colors overflow-hidden">
-        <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-        <span className="font-bold text-xs text-sky-700 dark:text-sky-400 truncate flex-1 min-w-0">
+    <PersistentCollapsible id={sectionId ?? associationDisclosureId('document', document, [document], 0)} className={INSPECTOR_SECTION}>
+      <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
+        <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className={INSPECTOR_TITLE}>
           {displayName}
         </span>
         {document.revision && (
-          <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
+          <span className={INSPECTOR_COUNT}>
             {document.revision}
           </span>
         )}
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+        <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t-2 border-sky-200 dark:border-sky-800 divide-y divide-sky-100 dark:divide-sky-900/30">
-          {document.unresolved && <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{t('properties.document.unresolved')}</output>}
+        <div className="pb-1">
+          {document.unresolved && <output className="block px-3 py-1.5 text-xs text-status-warn">{t('properties.document.unresolved')}</output>}
           {document.identification && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.identification}</span>
-            </div>
+            <InspectorRow label={EXPRESS_IDENTIFICATION_ATTRIBUTE} value={String(document.identification)} />
           )}
           {document.name && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_NAME_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.name}</span>
-            </div>
+            <InspectorRow label={EXPRESS_NAME_ATTRIBUTE} value={String(document.name)} />
           )}
           {document.description && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_DESCRIPTION_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.description}</span>
-            </div>
+            <InspectorRow label={EXPRESS_DESCRIPTION_ATTRIBUTE} value={String(document.description)} />
           )}
           {document.location && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_LOCATION_ATTRIBUTE}</span>
+            <div className="inspector-kv group/copyrow min-h-7 gap-x-2 pl-3 pr-1 text-xs">
+              <span className="min-w-0 truncate text-muted-foreground">{EXPRESS_LOCATION_ATTRIBUTE}</span>
               {isUrl ? (
                 <a
                   href={document.location}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-sky-600 dark:text-sky-400 underline hover:text-sky-800 dark:hover:text-sky-300 break-all"
+                  className="min-w-0 truncate text-primary underline"
+                  title={document.location}
                 >
                   {document.location}
                 </a>
               ) : (
-                <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.location}</span>
+                <span className="min-w-0 truncate" title={document.location}>{document.location}</span>
               )}
+              <span className="w-6" aria-hidden="true" />
             </div>
           )}
           {document.purpose && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_PURPOSE_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.purpose}</span>
-            </div>
+            <InspectorRow label={EXPRESS_PURPOSE_ATTRIBUTE} value={String(document.purpose)} />
           )}
           {document.intendedUse && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_INTENDED_USE_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.intendedUse}</span>
-            </div>
+            <InspectorRow label={EXPRESS_INTENDED_USE_ATTRIBUTE} value={String(document.intendedUse)} />
           )}
           {document.revision && (
-            <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
-              <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_REVISION_ATTRIBUTE}</span>
-              <span className="font-mono text-sky-700 dark:text-sky-400 select-all break-words">{document.revision}</span>
-            </div>
+            <InspectorRow label={EXPRESS_REVISION_ATTRIBUTE} value={String(document.revision)} />
           )}
         </div>
       </CollapsibleContent>

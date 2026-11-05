@@ -514,6 +514,9 @@ jobs:
               # The path-coverage regression harness mirrors tracked evidence,
               # and conservative gate inputs include the committed archive tree.
               - 'tests/evidence/**'
+              # The UI overhaul's scene/council tooling (#8802) is walked by the
+              # same conservative gate inputs as every other tests/ subtree.
+              - 'tests/ui-scenes/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.

@@ -193,6 +193,24 @@ describe('a Measure gesture reset clears the lock and the snap glyph (#8786)', (
     assertNoGestureLeft('a frame queued before a model reposition');
   });
 
+  it('Clear all mid-gesture', () => {
+    const { canvas } = mount();
+    lockedRubberBand(canvas);
+    fire(canvas, 'pointermove', 450, 300);
+    act(() => s().clearMeasurements());
+    flushFrames();
+    assertNoGestureLeft('Clear all');
+  });
+
+  it('Esc with nothing placed yet still drops a hover lock and glyph', async () => {
+    act(() => s().setMeasureMode('polyline'));
+    mount();
+    act(() => { s().setEdgeLock(EDGE, 1, 0.5); s().setSnapVisualization({ slidingDot: { t: 0.5 } }); });
+    await pressEscape();
+    assert.equal(s().edgeLockState.edge === null, true, 'Esc left the hover lock behind');
+    assert.equal(s().snapVisualization === null, true, 'Esc left the hover glyph behind');
+  });
+
   it('switching the angle kind mid-gesture', () => {
     act(() => s().setMeasureMode('angle'));
     mount();
@@ -271,6 +289,16 @@ describe('a press that began before a reset places no point (#8786)', () => {
     fire(canvas, 'pointerup', 200, 300);
     fire(canvas, 'click', 200, 300);
     assert.equal(s().activePolyline === null, true, 'BUG: a press from before the reposition placed a point');
+  });
+
+  it('a first Polyline press, Esc while held, then release, adds no point', async () => {
+    act(() => s().setMeasureMode('polyline'));
+    const { canvas } = mount();
+    fire(canvas, 'pointerdown', 200, 300);
+    await pressEscape();
+    fire(canvas, 'pointerup', 200, 300);
+    fire(canvas, 'click', 200, 300);
+    assert.equal(s().activePolyline === null, true, 'BUG: a press held through Esc placed the first point');
   });
 
   it('a Point press, Esc while held, then release, places no point', async () => {

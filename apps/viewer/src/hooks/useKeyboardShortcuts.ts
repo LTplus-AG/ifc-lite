@@ -73,13 +73,13 @@ function finishMeasurement(): boolean {
 
 function cancelMeasurement(): boolean {
   const state = useViewerStore.getState();
-  if (state.activeMeasurement) { state.cancelMeasurement(); return true; }
-  if (state.activePolyline) { state.cancelPolyline(); return true; }
-  if (state.activeAngle) { state.cancelAngle(); return true; }
-  if (state.activeRadius) { state.cancelRadius(); return true; }
+  const inProgress = !!(state.activeMeasurement || state.activePolyline || state.activeAngle || state.activeRadius);
+  // Esc is a gesture reset in every mode, even with nothing placed yet: it drops the
+  // lock, the snap glyph and a press still held (#8786). It holds Esc only if it cancelled something.
+  state.resetMeasureGesture();
+  if (inProgress) return true;
   // The hover preview alone does not hold Esc: it is cursor feedback, like the snap glyph.
-  // Esc is a gesture reset in every mode, Point included (#8786).
-  if (state.measurePointLast) { state.resetMeasureGesture(); state.clearMeasurePoint(); return true; }
+  if (state.measurePointLast) { state.clearMeasurePoint(); return true; }
   return false;
 }
 

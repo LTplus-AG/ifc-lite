@@ -14,6 +14,7 @@ import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 import { pickMeasurePoint, pickSurfacePoint } from './measurePick.js';
+import { cancelTrailingHover } from './measurePointMode.js';
 import { isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
@@ -62,7 +63,7 @@ function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
  * with the command tool's preview, so only a Measure frame is dropped.
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
-  if (ctx.activeToolRef.current === 'measure') cancelMeasureRaycast(ctx);
+  if (ctx.activeToolRef.current === 'measure') { cancelMeasureRaycast(ctx); cancelTrailingHover(ctx); }
   startingPresses.delete(ctx.mouseState);
   startPresses.delete(ctx.mouseState);
   forgetDistancePress(ctx.mouseState);

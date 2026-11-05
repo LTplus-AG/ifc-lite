@@ -392,7 +392,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     measurements: state.measurements.filter((m) => m.id !== id),
   })),
 
-  clearMeasurements: () => set({
+  // "Clear all" is a gesture reset too (#8786).
+  clearMeasurements: () => set((state) => ({
+    ...gestureReset(state),
     measurements: [],
     activeMeasurement: null,
     snapTarget: null,
@@ -406,7 +408,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activeRadius: null,
     radiusMeasurements: [],
     ...NO_MEASURE_POINT,
-  }),
+  })),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
     const state = get();
@@ -790,7 +792,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   resetMeasureGesture,
 
-  resetAllMeasurementState: () => set({
+  resetAllMeasurementState: () => set((state) => ({
+    ...gestureReset(state),
     measurements: [],
     activeMeasurement: null,
     snapTarget: null,
@@ -809,6 +812,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activeRadius: null,
     radiusMeasurements: [],
     ...NO_MEASURE_POINT,
-  }),
+  })),
   };
 };

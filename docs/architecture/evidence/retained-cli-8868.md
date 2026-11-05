@@ -128,15 +128,21 @@ long-lived processes, and carry no timing/performance claim.
 
 That branch job also passed 1,606 CLI tests (15 skipped: eight AB22 gym,
 six structural-analysis and one cost fixture test lacked their model files) and the full root
-typecheck (134 Turbo tasks). The subsequent change at `3dd65f9d25` changes
-only test assertions; its test/typecheck/lint job remains pending.
+typecheck (134 Turbo tasks). After integrating main, head `55840c014f74`
+passed the same 1,606 CLI tests (15 fixture skips), full root typecheck
+(134 tasks), and full lint (74 packages measured, 11,945 files linted, no
+errors), job `cd43d9f2-0e72-4d4f-b28b-84fb6ffa8645`. All 12 applicable
+pre-handoff gates passed; the retained-free viewer check skipped because
+`apps/viewer/dist` was absent. The retained implementation is unchanged from
+the qualified real-model cohort. Final adversarial source/evidence review
+found no concrete correctness blocker; its validation gaps are now covered.
 
 The mitigation applies this flag
 only to the isolated retained child on Node 24. Generated code stays alive
 until that child exits; this is not a general-purpose long-lived-process
 recommendation. Twenty successes support the workaround but do not establish
-that the race is impossible. Latest-head gates and evidence storage closure
-remain required before final acceptance.
+that the race is impossible. Compact evidence publication and managed storage
+closure are tracked separately from the code and runtime verdict.
 
 
 ### CI lint diagnosis
@@ -147,4 +153,5 @@ JavaScript heap out of memory` at approximately 2 GiB. The lint measurement
 classified the failed compiler as unmeasurable and suppressed its raw output;
 the separate Typecheck lane already grants an 8 GiB heap. The lint workflow
 now applies that same allowance without changing its checks or baselines.
-A full lint rerun with the allowance is pending.
+Full lint passed with the allowance. Main independently shipped the same fix
+in #8909; the merge preserves that upstream workflow without a separate CI diff.

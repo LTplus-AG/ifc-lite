@@ -34,7 +34,9 @@
   `3c822eed72ab588697f3f4d4c2b074d1bb888802f877218c769845180f2b7ad2`.
 - The original runner discarded GNU time's termination diagnosis. Its
   persisted exit code cannot distinguish SIGSEGV from explicit exit 139.
-  No original core is available; the engine and cohort records are preserved.
+  No original core is available. The cohort records and engine inventory are
+  preserved, but the generated engine binaries were released. Reproduction
+  requires rebuilding the frozen engine and comparing its asset identities.
 
 ## Adversarial review findings
 

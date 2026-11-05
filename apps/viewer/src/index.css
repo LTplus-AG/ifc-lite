@@ -94,6 +94,19 @@
 
 /* Custom theme configuration */
 @theme {
+  /* #8802 status roles */
+  --color-warn: #8c6c3e;
+  --color-warn-surface: color-mix(in srgb, var(--color-warn) 10%, transparent);
+  --color-warn-border: color-mix(in srgb, var(--color-warn) 40%, transparent);
+  --color-ok: #587539;
+  --color-ok-surface: color-mix(in srgb, var(--color-ok) 10%, transparent);
+  --color-ok-border: color-mix(in srgb, var(--color-ok) 40%, transparent);
+  --color-danger: #c4194d;
+  --color-danger-surface: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  --color-danger-border: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  --color-info: #007197;
+  --color-info-surface: color-mix(in srgb, var(--color-info) 10%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   /* Smallest viewer text step; replace sub-11px arbitrary utilities (#5821). */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.875rem;
@@ -170,6 +183,12 @@
 /* Dark mode - Tokyo Night Storm */
 :root.dark,
 .dark {
+  /* #8802 status roles */
+  --color-warn: #e0af68;
+  --color-ok: #9ece6a;
+  --color-danger: #f7768e;
+  --color-info: #7dcfff;
+
   --viewer-icon-accent: var(--tokyo-blue);
   --color-background: var(--tokyo-storm) !important;
   --color-foreground: var(--tokyo-fg) !important;
@@ -571,6 +590,12 @@ body {
 @custom-variant colorful (&:where(.colorful, .colorful *));
 
 .colorful {
+  /* #8802 status roles */
+  --color-warn: #5c4729;
+  --color-ok: #3e5228;
+  --color-danger: #93193d;
+  --color-info: #00516d;
+
   /* Tokyo Night accent palette — used only where colour already exists */
   --cf-blue: #7aa2f7;
   --cf-cyan: #7dcfff;

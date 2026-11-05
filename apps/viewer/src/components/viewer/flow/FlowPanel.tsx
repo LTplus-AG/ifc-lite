@@ -239,10 +239,10 @@ export function FlowPanel() {
           </>
         )}
         {contributed.diagnostics.length > 0 && (
-          <span className="text-amber-300">{t('flowPanel.contributed.diagnostics', { count: contributed.diagnostics.length })}</span>
+          <span className="text-warn">{t('flowPanel.contributed.diagnostics', { count: contributed.diagnostics.length })}</span>
         )}
-        {storageError && <output className="text-amber-300">{t('automationEditor.graphStorageError', { reason: storageError })}</output>}
-        {notice && <span className="text-amber-300">{notice}</span>}
+        {storageError && <output className="text-warn">{t('automationEditor.graphStorageError', { reason: storageError })}</output>}
+        {notice && <span className="text-warn">{notice}</span>}
       </div>
 
       {flowDoc ? (
@@ -268,14 +268,14 @@ export function FlowPanel() {
 
       {(lastRun || lastError) && (
         <div className="flex flex-wrap items-center gap-x-3 border-t border-border px-3 py-1 text-2xs" data-flow-run-bar>
-          {lastError && <span className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</span>}
-          {lastError?.includes('backend feature "ai"') && <span className="text-amber-300">{t('flowReview.needsModel')}</span>}
+          {lastError && <span className="text-danger">{t('flowPanel.run.failed')}: {lastError}</span>}
+          {lastError?.includes('backend feature "ai"') && <span className="text-warn">{t('flowReview.needsModel')}</span>}
           {lastRun && (
             <>
-              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{!lastRun.ok ? t('flowPanel.run.failed') : lastRun.review.length ? t('flowPanel.run.awaitingReview') : t('flowPanel.run.ok')}</span>
+              <span className={lastRun.ok ? 'text-ok' : 'text-danger'}>{!lastRun.ok ? t('flowPanel.run.failed') : lastRun.review.length ? t('flowPanel.run.awaitingReview') : t('flowPanel.run.ok')}</span>
               <span className="text-muted-foreground">{t('flowPanel.run.summary', statusCounts)}</span>
               {lastRun.writes > 0 && <span className="text-muted-foreground">{t('flowPanel.run.writes', { count: lastRun.writes })}</span>}
-              {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-red-400">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}
+              {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-danger">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}
             </>
           )}
           {!flowRunning && <span className="ml-auto"><AssistantAction source="flowRun" labelKey="assistantSources.flowRun.discussRun" /></span>}

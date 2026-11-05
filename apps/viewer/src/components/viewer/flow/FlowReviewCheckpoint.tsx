@@ -101,7 +101,7 @@ export function FlowReviewCheckpoint({ doc, onResume }: {
         );
       })}
       {shown && <output className="mt-2 block">{t(STATE_KEY[shown.state], { reason: shown.outcome?.message ?? '' })}</output>}
-      {problem && <p role="alert" className="mt-1 text-red-400">{problemText(t, problem)}</p>}
+      {problem && <p role="alert" className="mt-1 text-danger">{problemText(t, problem)}</p>}
       {(shown?.state === 'prepared' || shown?.state === 'reviewed') && (
         <div className="mt-2 flex gap-2">
           <button type="button" className={`${button} border-[#7aa2f7] text-[#7aa2f7]`} disabled={busy || running} onClick={() => void approve()}>

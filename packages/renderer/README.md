@@ -174,3 +174,13 @@ For a change to the entire Gaussian scene's render origin, the internal
 placements, bounds and the float64 anchor together. Packed local rows remain
 unchanged, preserving the precision envelope even for survey-scale offsets.
 Use `setPlacement` for an individual capture's placement or orientation edit.
+
+### Positioned Gaussian data
+
+`positionedGaussianChunks(source, matrix)` is an async iterator of bounded PLY
+attribute batches for CPU export. `source` uses `GaussianAttributeSource` columns;
+`matrix` is a column-major similarity transform into the chosen output frame.
+Positions are returned as `Float64Array`; other columns retain Gaussian PLY
+log-scale, logit-opacity and channel-major SH encoding. The viewer consumes this
+API for positioned capture downloads. It shares covariance/SH math with rendering
+and does not read GPU buffers. It does not apply an implicit axis conversion.

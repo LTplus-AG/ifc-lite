@@ -12,6 +12,7 @@
  * already shares with every other panel (`modelPlacement`, `models`,
  * `snapEnabled`).
  */
+import { PositionedDownload } from '../PositionedDownload';
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -225,6 +226,7 @@ export function LocalTab() {
           onClick={() => useViewerStore.getState().resetModelTranslations(runtime.selected)}>{t('repositionPanel.resetButton')}</Button>
       </div>
 
+      {runtime.selected.map(id => <PositionedDownload key={id} modelId={id} />)}
       <PlacementFiles />
     </section>
   );

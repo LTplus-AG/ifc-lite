@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { plyClassification } from './ply-scalar.js';
 import type { PlyPropertyOrderEntry } from './ply.js';
 import { readPlyScalar } from './ply-scalar.js';
 
@@ -43,7 +44,7 @@ export function parseBinaryVariableRow(view: DataView, start: number, order: rea
 }
 
 export interface VariablePlyOutputs {
-  positions: Float32Array; colors?: Float32Array; normals?: Float32Array; intensities?: Uint16Array;
+  positions: Float32Array; colors?: Float32Array; normals?: Float32Array; intensities?: Uint16Array; classifications?: Uint8Array;
   originOffset?: readonly [number, number, number];
 }
 
@@ -62,6 +63,7 @@ export function writeVariablePlyRow(values: ReadonlyMap<string, number>, row: nu
     output.normals[row * 3 + 1] = values.get('ny') ?? Number.NaN;
     output.normals[row * 3 + 2] = values.get('nz') ?? Number.NaN;
   }
+  if (output.classifications) output.classifications[row] = plyClassification(values.get('classification') ?? Number.NaN);
   if (output.intensities) {
     const value = values.get('intensity') ?? values.get('scalar_Intensity') ?? 0;
     output.intensities[row] = Math.min(65535, Math.max(0, value | 0));

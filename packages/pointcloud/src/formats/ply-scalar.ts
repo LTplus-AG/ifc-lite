@@ -30,3 +30,9 @@ export function readPlyScalar(
     default: throw new Error(`PLY: cannot read scalar of type "${prop.type}"`);
   }
 }
+
+/** LAS-style class ids are unsigned bytes; never wrap malformed input. */
+export function plyClassification(value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error('PLY: classification must be an integer from 0 to 255');
+  return value;
+}

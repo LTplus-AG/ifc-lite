@@ -94,7 +94,7 @@ export class PlyStreamingSource implements StreamingPointSource {
       totalPointCount: Math.ceil(layout.vertex.count / stride),
       bbox: offsetBounds(scan.bbox, this.originOffset),
       hasColor: has('red', 'r') && has('green', 'g') && has('blue', 'b'),
-      hasClassification: false,
+      hasClassification: has('classification'),
       hasIntensity: has('intensity', 'scalar_Intensity'),
       label: this.label,
     };

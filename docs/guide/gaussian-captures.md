@@ -60,3 +60,22 @@ If the browser loses the GPU device, captures wait and upload again once the 3D 
 ## Privacy
 
 The viewer's anonymous usage diagnostics record only the outcome of a capture load (completed, failed, cancelled or refused), a fixed failure code, the format, coarse size and splat-count ranges, and how often the GPU device was lost or recovered while a capture was loaded. They never include file names, paths, URLs, coordinates or capture contents. See [Privacy](privacy.md).
+
+## Download a positioned capture
+
+Use **Download positioned file…** on the model row or in the Local placement
+panel, then **Download PLY**. Apply or cancel a placement preview first. The
+original source must remain available; reload it if the action reports otherwise.
+
+The download is a new binary Gaussian PLY in project coordinates, **Z up**.
+It bakes the source-axis choice, explicit placement and applied model translation
+into centres, Gaussian orientation/size and spherical-harmonic colour. All splats
+are included, including hidden captures; display filters do not change the file.
+Opacity and DC colour retain their source encoding. Extra source properties are
+not retained, and exporting does not calibrate an uncalibrated capture.
+
+Open the new file with Z-up selected, without replaying the old placement JSON or
+explicit transform. Source coordinates may be large: positions are written as
+64-bit doubles. The output is limited to 256 MiB and can be cancelled. An error or
+cancellation never downloads a partial file. IFC/mesh exporters still exclude
+Gaussian captures; this dedicated download exports the actual capture data.

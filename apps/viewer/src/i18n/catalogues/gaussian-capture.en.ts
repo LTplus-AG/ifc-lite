@@ -11,6 +11,16 @@ import type { TranslationValue } from '../types';
  * units, alignment or measurement: captures are uncalibrated.
  */
 export const gaussianCaptureEn = {
+  'positionedDownload.open': 'Download positioned file…',
+  'positionedDownload.description': 'Convert the full source to PLY with the current applied placement baked in. Output uses project coordinates, Z up. Open it without the old placement settings.',
+  'positionedDownload.scan': 'Includes decoded positions, RGB, intensity, classification and valid normals where available. Other source fields, scan organization and CRS metadata are not retained. Display filters and downsampling do not affect this download.',
+  'positionedDownload.gaussian': 'Includes all Gaussian centres, sizes, orientations, opacity and spherical-harmonic colour. Source axes and placement are baked in. Extra source properties are not retained. The capture remains uncalibrated.',
+  'positionedDownload.limit': 'Browser export limit: 256 MiB. Larger exports stop without downloading a partial file. PCD/PTS/XYZ inputs: up to 16 MiB; PCD also up to 1 million points / 64 MiB decoded; LAZ inputs: up to 64 MiB.',
+  'positionedDownload.unavailable': 'Finish loading, apply or cancel any placement preview, and ensure the original source is available before downloading.',
+  'positionedDownload.progress': 'Preparing {count} points…',
+  'positionedDownload.done': 'Positioned PLY downloaded.',
+  'positionedDownload.save': 'Download PLY',
+  'positionedDownload.cancel': 'Cancel',
   'gaussianCapture.kind': 'Gaussian capture',
   'gaussianCapture.format.gaussianPly': 'Gaussian PLY',
   'gaussianCapture.format.splat': '.splat',

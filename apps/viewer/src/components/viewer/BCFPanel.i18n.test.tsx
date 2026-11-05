@@ -15,6 +15,7 @@ import type { TranslationValue } from '@/i18n/types';
 import type { bcfEn as BcfEnType } from '@/i18n/catalogues/bcf.en';
 import { BCFPanel } from './BCFPanel.js';
 import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
+import { click, press } from '@/test/render.js';
 
 let bcfEn: typeof BcfEnType | undefined;
 try {
@@ -167,5 +168,28 @@ describe('BCFPanel 3D markers toggle (#8802)', () => {
     assert.equal(stateOf(on), 'true');
     assert.equal(document.body.textContent?.includes('Hide 3D markers'), false);
     act(() => useViewerStore.setState({ bcfOverlayVisible: false }));
+  });
+});
+
+describe('BCFPanel Import (#8802)', () => {
+  it('opens the file picker inside the click, with no await before it (Safari drops a deferred input.click())', async () => {
+    const container = renderPanel();
+    const label = CATALOGUE['bcf.panel.importTitle'] as string;
+    const control = await findPanelAction(container, label);
+    assert.ok(control, `expected an "${label}" action`);
+
+    const original = HTMLInputElement.prototype.click;
+    let pickerOpens = 0;
+    HTMLInputElement.prototype.click = function (this: HTMLInputElement) {
+      if (this.type === 'file') pickerOpens += 1;
+    };
+    try {
+      if (control.tagName === 'BUTTON') click(control);
+      else press(control, 'Enter');
+      // Read synchronously: a picker opened after any await has not run yet.
+      assert.equal(pickerOpens, 1, 'the Import action opens the hidden file input within the same click');
+    } finally {
+      HTMLInputElement.prototype.click = original;
+    }
   });
 });

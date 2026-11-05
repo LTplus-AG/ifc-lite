@@ -35,7 +35,7 @@ fn issue_8875_gross_keeps_authored_boolean_difference() {
         .replace("ENDSEC;\nEND-ISO", "#130=IFCBOOLEANRESULT(.DIFFERENCE.,#26,#46);\nENDSEC;\nEND-ISO");
     let gross = process(content.as_bytes(), &ProcessingRequest::full_pass().skip_voids(true), &mut ());
     // Authored opening A still removes 1 × 0.2 × 1.2 m³ from the 2.4 m³ wall.
-    assert!((volume(&gross, 30) - 2.16).abs() < 1e-5);
+    assert!((volume(&gross, 30) - 2.16).abs() < 1e-5, "authored cut volume: {}", volume(&gross, 30));
 }
 
 #[test]

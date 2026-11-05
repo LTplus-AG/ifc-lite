@@ -115,7 +115,7 @@ for (const mode of MODES) {
         if (mode.name === 'angle') s().setAngleKind('points');
       });
 
-      it(`a ${input} 60px from the last one that snaps onto its vertex adds the surface point ${input}ped`, () => {
+      it(`a ${input} 60px from the last one that snaps onto its vertex adds the surface point ${input === 'tap' ? 'tapped' : 'clicked'}`, () => {
         const rig = mountSnapping();
         const { shown } = rig;
         press(rig, shown.x + 30, shown.y);

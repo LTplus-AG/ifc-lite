@@ -50,6 +50,21 @@ These are integration points to verify, not assertions that the current modules 
 - **Viewport scale.** When only captures are visible, the overlay reports that metric scale is unknown instead of showing metres. Mixed IFC/capture scenes retain the IFC scale with an uncalibrated-capture notice. Explicit placement does not establish calibration. Hidden captures do not add a notice.
 - **Workflow limits.** Captures frame by their Gaussian centres, refuse whole-model rotation, are not GPU-pickable and get no IFC entity ids; selection is through the model list. Clipping culls whole Gaussians by centre (no caps; footprints can cross the plane). No measurement, snapping, export or restore of capture contents is offered; a federation setup restores a capture by re-reading its source file.
 
+## Resilience outcomes (#8567)
+
+The mounted loader tests use real admission, decoding, store reconciliation,
+model-index allocation and the Gaussian renderer layer. The worker transport and
+GPU upload use the recording seams in `apps/viewer/src/test/gaussian-loader-harness.ts`.
+
+| Case | Expected outcome | Test file: test name |
+| --- | --- | --- |
+| Malformed PLY and .splat | Truncated payloads, wrong header/count, list properties and empty or partial .splat records refuse as `gaussian_invalid_input`; non-finite decoded values fail as `gaussian_load_failed`. No capture asset or model remains. | `apps/viewer/src/hooks/useIfcLoader.gaussianLaunch.test.tsx`: `malformed Gaussian captures leave no renderer asset or model and report a fixed refusal code (#8567)`; `apps/viewer/src/hooks/ingest/gaussianDecode.test.ts`: `rejects upstream-preserved … before publication (#8565)` |
+| Resource exhaustion | Files above 500 MB, scenes above 1,000,000 splats and SH above degree 3 refuse before decoding with the published limit message. Removal returns the scene budget to zero. | `apps/viewer/src/hooks/useIfcLoader.gaussianLaunch.test.tsx`: `a capture over 500 MB`, `a capture with more splats than a scene can hold`, `a capture with spherical harmonics above degree 3`, `a load that would take the scene past 1,000,000 splats, counting loads still decoding`; `apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx`: `fifty load and remove cycles release every Gaussian owner, index and scene share (#8567)` |
+| Repeated load/remove | Fifty cycles leave no model, registry owner, renderer asset, live handle, held model-index slot or scene-budget share. | `apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx`: `fifty load and remove cycles release every Gaussian owner, index and scene share (#8567)` |
+| Rapid replacement | Several overlapping primary loads leave exactly one resident asset and model; the last requested capture wins and all decoder workers terminate. | `apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx`: `overlapping primary replacements leave only the final capture and its handle (#8567)` |
+| Tab suspension | Hidden/visible `visibilitychange` during decoding and after publication leaves a valid resident capture when the tab resumes. | `apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx`: `visibility changes during decoding and after publication preserve the capture (#8567)` |
+| Device loss | A recoverable loss makes assets pending and re-uploads them; a cleared recovery reports `reload-required`. Reloading from the retained source restores placement and up axis. | `packages/renderer/src/gaussian-splat-layer.test.ts`: `#8564 loss drops residency at once; recovery re-uploads under the same handle`, `#8564 failed re-upload or a cleared scene marks assets reload-required`; `apps/viewer/src/hooks/useIfcLoader.gaussian.test.tsx`: `device recovery requiring reload restores the source placement and up axis (#8567)` |
+
 ## Qualification journey
 
 Run the journey in a fresh browser session for each supported device/antialiasing combination and pin the deployed commit and dependency versions in the receipt:

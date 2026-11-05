@@ -17,7 +17,7 @@ fn issue_8875_gross_hosts_preserve_fillings_and_restore_net() {
     let run = |skip| process(content.as_bytes(), &ProcessingRequest::full_pass().skip_voids(skip), &mut ());
     let net = run(false);
     let gross = run(true);
-    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5);
+    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5, "gross volume: {}, parts: {:?}", volume(&gross, 30), gross.meshes.iter().filter(|m| m.express_id == 30).map(|m| signed_volume(&m.positions, &m.indices)).collect::<Vec<_>>());
     assert!(volume(&net, 30) < 2.2);
     assert_eq!(volume(&net, 120), volume(&gross, 120));
     let again = run(false);
@@ -45,7 +45,7 @@ fn issue_8875_gross_preserves_material_layer_slicing() {
     let gross = process(content.as_bytes(), &ProcessingRequest::full_pass().skip_voids(true).layer_slicing(true), &mut ());
     let hosts: Vec<_> = gross.meshes.iter().filter(|m| m.express_id == 30).collect();
     assert_eq!(hosts.len(), 2, "both authored material layers survive");
-    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5);
+    assert!((volume(&gross, 30) - 2.4).abs() < 1e-5, "gross volume: {}, parts: {:?}", volume(&gross, 30), gross.meshes.iter().filter(|m| m.express_id == 30).map(|m| signed_volume(&m.positions, &m.indices)).collect::<Vec<_>>());
 }
 
 #[test]

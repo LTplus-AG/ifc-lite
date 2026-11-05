@@ -45,6 +45,7 @@ const wasmMocks = vi.hoisted(() => {
     setStyleFinishes = setStyleFinishes;
     processGeometryBatch = processGeometryBatch;
     clearPrePassCache = vi.fn();
+    free = vi.fn();
   }
   return { init: vi.fn(async () => undefined), calls, buildPrePassOnce, setSkipVoids, setStyleFinishes, processGeometryBatch, MockIfcAPI };
 });

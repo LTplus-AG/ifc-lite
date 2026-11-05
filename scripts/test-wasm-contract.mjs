@@ -87,7 +87,7 @@ const api = new IfcAPI();
 let passed = 0;
 let failed = 0;
 let skipped = 0;
-runSkipVoidsContracts({ test, IfcAPI });
+runSkipVoidsContracts({ test, skip, IfcAPI });
 
 /**
  * A test (or a whole fixture-gated block of them) that did NOT run.

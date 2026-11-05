@@ -1,0 +1,13 @@
+diff --git b/scripts/lib/ui-drift.mjs a/scripts/lib/ui-drift.mjs
+index 0cb92fbe22..8275cc0248 100644
+--- b/scripts/lib/ui-drift.mjs
++++ a/scripts/lib/ui-drift.mjs
+@@ -64,7 +64,7 @@ function stripComments(text) {
+ 
+ /** Count occurrences, including repeats, in one source file. */
+ export function scanSource(text, { path }) {
+-  const source = text;
++  const source = stripComments(text);
+   const counts = emptyCounts();
+   for (const [category, pattern] of Object.entries(patterns)) {
+     if (!path.endsWith('.tsx') && ['hex-literal', 'native-control'].includes(category)) continue;

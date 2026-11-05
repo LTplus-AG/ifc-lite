@@ -410,7 +410,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         bcfServer.server,
         bcfServer.drafts,
         {
-          id: 'bcf-markers', label: bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers'),
+          // One constant name; `pressed` alone says whether markers are shown (#8802).
+          id: 'bcf-markers', label: t('bcf.panel.showMarkers'),
           icon: <MapPin className="h-4 w-4" />, pressed: bcfOverlayVisible, onSelect: toggleBcfOverlay,
         },
         {

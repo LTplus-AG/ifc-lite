@@ -24,9 +24,10 @@ import '@/test/setup-dom.js';
 import { waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { IDSDocument } from '@ifc-lite/ids';
+import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
 import { advance, cleanup, click, mouseDown, press, render, type as typeInput } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
@@ -229,6 +230,44 @@ describe('ValidationPanel wiring (#5138)', () => {
     // header + toggle is the only chrome) — its EMPTY-STATE BODY still is.
     assert.match(ui.textContent ?? '', /No IDS loaded/);
     assert.match(ui.textContent ?? '', /Load IDS file/);
+  });
+
+  it('#8802 Load IDS file opens its picker inside the click, and the IDS side loads the picked file', async () => {
+    const ui = render(<ValidationPanel />);
+    const entry = ui.querySelector('[data-testid="validation-entry-ids"]');
+    const picker = ui.querySelector<HTMLInputElement>('[data-testid="validation-entry-ids-input"]');
+    assert.ok(entry && picker, 'expected the IDS entry action and its picker');
+    // Safari opens a picker only from inside the user's click. Count the
+    // picker's clicks made while the entry click is still being dispatched:
+    // the capture listener on window runs first, the bubble one last.
+    let dispatching = false;
+    let clicksInsideEntryClick = 0;
+    let clicksTotal = 0;
+    const enter = (event: Event) => { if (event.target === entry) dispatching = true; };
+    const leave = (event: Event) => { if (event.target === entry) dispatching = false; };
+    window.addEventListener('click', enter, true);
+    window.addEventListener('click', leave);
+    picker.click = () => {
+      clicksTotal += 1;
+      if (dispatching) clicksInsideEntryClick += 1;
+    };
+    try {
+      click(entry);
+    } finally {
+      window.removeEventListener('click', enter, true);
+      window.removeEventListener('click', leave);
+    }
+    assert.equal(clicksInsideEntryClick, 1);
+    assert.equal(clicksTotal, 1);
+    // The picker outlives the switch to the IDS side, so its change still lands.
+    assert.equal(picker.isConnected, true);
+    assert.match(ui.textContent ?? '', /No IDS loaded/);
+
+    const xml = readFileSync(new URL('../../../../public/samples/building-architecture.ids', import.meta.url), 'utf8');
+    await selectFile(picker, new File([xml], 'building-architecture.ids', { type: 'application/xml' }));
+    const title = parseIDS(xml).info.title;
+    await waitFor(() => useViewerStore.getState().idsDocument?.info.title === title);
+    assert.equal(useViewerStore.getState().idsDocument?.info.title, title);
   });
 
   it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {

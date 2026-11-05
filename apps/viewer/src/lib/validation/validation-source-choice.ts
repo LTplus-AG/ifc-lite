@@ -20,9 +20,9 @@ import { create } from 'zustand';
 
 export type ValidationSourceChoice = 'ids' | 'rules' | 'manual';
 
-export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null; idsPickRequested: boolean }>()(() => ({
+export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null; pendingIdsFile: File | null }>()(() => ({
   choice: null,
-  idsPickRequested: false,
+  pendingIdsFile: null,
 }));
 
 export function setValidationSourceChoice(choice: ValidationSourceChoice | null): void {
@@ -30,17 +30,18 @@ export function setValidationSourceChoice(choice: ValidationSourceChoice | null)
 }
 
 /**
- * The IDS entry card's "Load IDS file" (#8802): switch to the IDS side and
- * ask its panel to open the file picker once it mounts. The picker belongs
- * to the IDS panel, which owns loading; the card only starts it.
+ * The IDS entry card's "Load IDS file" (#8802) opens its file picker inside
+ * the click itself (Safari drops a deferred `input.click()`), then hands the
+ * picked file here. Loading stays the IDS panel's job: it takes the file once
+ * it is on screen and loads it through the same path as its own picker.
  */
-export function requestIdsFilePick(): void {
-  useValidationSourceChoice.setState({ choice: 'ids', idsPickRequested: true });
+export function handIdsFileToPanel(file: File): void {
+  useValidationSourceChoice.setState({ choice: 'ids', pendingIdsFile: file });
 }
 
-/** Consumes a pending `requestIdsFilePick`; true when one was waiting. */
-export function takeIdsFilePickRequest(): boolean {
-  if (!useValidationSourceChoice.getState().idsPickRequested) return false;
-  useValidationSourceChoice.setState({ idsPickRequested: false });
-  return true;
+/** Consumes a file from `handIdsFileToPanel`; null when none is waiting. */
+export function takePendingIdsFile(): File | null {
+  const file = useValidationSourceChoice.getState().pendingIdsFile;
+  if (file) useValidationSourceChoice.setState({ pendingIdsFile: null });
+  return file;
 }

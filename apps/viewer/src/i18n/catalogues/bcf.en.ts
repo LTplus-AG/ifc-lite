@@ -191,7 +191,6 @@ export const bcfEn = {
   'bcf.panel.title': 'BCF Topics',
   'bcf.panel.importTitle': 'Import BCF',
   'bcf.panel.exportTitle': 'Export BCF',
-  'bcf.panel.hideMarkers': 'Hide 3D markers',
   'bcf.panel.showMarkers': 'Show 3D markers',
   'bcf.panel.setAuthorTitle': 'Set author',
   'bcf.panel.setAuthorHeading': 'Set Author Email',

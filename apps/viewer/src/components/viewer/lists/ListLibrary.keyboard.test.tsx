@@ -35,3 +35,25 @@ it('#5823 opens a list from its row with the keyboard while actions stay indepen
   assert.deepEqual(executed, ['saved', 'saved']);
   assert.deepEqual(edited, ['saved']);
 });
+
+it('#8802 a long saved-list name truncates instead of running into the row actions', () => {
+  const longName = 'Ground floor external wall fire ratings by storey and type for the tender package';
+  const ui = render(
+    <ListLibrary definitions={[{ ...saved, name: longName, description: 'Walls with Pset_WallCommon' }]}
+      activeListId={null} executing={false} hasData onExecute={() => {}} onEdit={() => {}}
+      onCreateNew={() => {}} onDuplicate={() => {}} onDelete={() => {}} onExport={() => {}} />,
+  );
+  const name = [...ui.querySelectorAll<HTMLElement>('[data-list-name]')].find((el) => el.textContent === longName);
+  assert.ok(name, 'the saved list renders its name');
+  // The name may shrink below its text width and clips with an ellipsis.
+  assert.equal(name.classList.contains('min-w-0'), true);
+  assert.equal(name.classList.contains('truncate'), true);
+  assert.equal(name.classList.contains('shrink-0'), false);
+  assert.equal(name.getAttribute('title'), longName);
+  // The description takes only the space left; the actions never shrink.
+  const description = name.nextElementSibling;
+  assert.equal(description?.classList.contains('flex-1'), true);
+  assert.equal(description?.classList.contains('truncate'), true);
+  const actions = name.closest('button')?.nextElementSibling;
+  assert.equal(actions?.classList.contains('shrink-0'), true);
+});

@@ -6,6 +6,7 @@ import type React from 'react';
 import { FileText, Upload } from 'lucide-react';
 import type { UseIDSResult } from '@/hooks/useIDS';
 import { Button } from '@/components/ui/button';
+import { HiddenFileInput } from '@/components/ui/hidden-file-input';
 import { useTranslation } from '@/i18n';
 import { loadDemoIdsWithProject } from '@/lib/tours/demo-kit';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -54,7 +55,7 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
     return (
       <div className="flex flex-col">
         {hasAuditIssues && <div className="px-4 pt-4"><IDSAuditSummary report={auditReport} auditing={auditing} /></div>}
-        <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={onFileSelect} />
+        <HiddenFileInput ref={fileInputRef} accept=".ids,.xml" onChange={onFileSelect} />
         <AnalysisEmptyState
           align="start"
           icon={<FileText />}

@@ -145,3 +145,27 @@ describe('BCFPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', new RegExp(marked(CATALOGUE['bcf.createForm.saveChangesSubmitLabel'] as string)));
   });
 });
+
+describe('BCFPanel 3D markers toggle (#8802)', () => {
+  /** The toggle's state as assistive tech reads it, inline or in More actions. */
+  const stateOf = (control: HTMLElement): string | null =>
+    control.getAttribute(control.tagName === 'BUTTON' ? 'aria-pressed' : 'aria-checked');
+
+  it('keeps one name and reports shown or hidden through its pressed state only', async () => {
+    act(() => useViewerStore.setState({ bcfOverlayVisible: false }));
+    const container = renderPanel();
+    const label = CATALOGUE['bcf.panel.showMarkers'] as string;
+
+    const off = await findPanelAction(container, label);
+    assert.ok(off, `expected a "${label}" action while markers are hidden`);
+    assert.equal(stateOf(off), 'false');
+    await runPanelAction(container, label);
+    assert.equal(useViewerStore.getState().bcfOverlayVisible, true);
+
+    const on = await findPanelAction(container, label);
+    assert.ok(on, `expected the same "${label}" action while markers are shown`);
+    assert.equal(stateOf(on), 'true');
+    assert.equal(document.body.textContent?.includes('Hide 3D markers'), false);
+    act(() => useViewerStore.setState({ bcfOverlayVisible: false }));
+  });
+});

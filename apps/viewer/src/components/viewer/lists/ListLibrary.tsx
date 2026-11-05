@@ -114,10 +114,12 @@ function ListItem({ definition, activeListId, executing: anyExecuting, hasData, 
     >
       <button type="button" disabled={!hasData} className="flex flex-1 min-w-0 items-center gap-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed" onClick={() => onExecute(definition)}>
         <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 font-medium">{definition.name}</span>
-        {definition.description && <span className="min-w-0 truncate text-muted-foreground">{definition.description}</span>}
+        {/* The name keeps its width until it alone overflows, then truncates
+            (full name on hover); the description takes what is left (#8802). */}
+        <span className="min-w-0 truncate font-medium" title={definition.name} data-list-name>{definition.name}</span>
+        {definition.description && <span className="min-w-0 flex-1 truncate text-muted-foreground">{definition.description}</span>}
       </button>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {executing ? (
           <Spinner size="sm" />
         ) : (

@@ -7,7 +7,7 @@ Do not combine their verdicts or claim completion from a numerical taste score.
 
 Goal: fast, predictable command discovery and execution with polished expert-tool density.
 Frozen baseline source: `0f57524cfe347d29d68f53df7fc97f0b1f80d61a`.
-Baseline screenshots and behavior receipts are pending; no accepted round yet.
+Baseline screenshots remain queued; candidate behavior receipts are recorded below. No accepted round yet.
 
 Fixed rubric: discoverability; search relevance; keyboard/pointer predictability;
 accessible focus and selected-item announcement; legibility and hierarchy;
@@ -28,7 +28,8 @@ taste reviews; Codex implementation; Astra reasoning/behavior review. Existing
 
 | Round | Status | Hypothesis | Evidence / decision |
 | --- | --- | --- | --- |
-| 1 | In progress | Coherent combobox focus and bounded navigation remove execution ambiguity | Implementation and primary-source research pending; not accepted |
+| 1 | Rejected for visual defects | Stable combobox focus, top anchoring and tiered search improve execution predictability | Ten browser scenarios passed at `8ae26bb7c0`; Opus found fuzzy noise, toast overlap and weak light selection contrast |
+| 2 | Candidate, validation pending | Suppress fuzzy noise when direct hits exist; distinguish selection and keep modal above notifications | Fresh browser execution and independent visual verdict required |
 
 ## Complete feature access — #8947
 
@@ -150,3 +151,45 @@ Ten browser scenarios are now discoverable in both viewer Playwright projects;
 see `browser-scenarios.md`. Discovery is not execution. Includes desktop/narrow/short
 light/dark bounds and input stability, native focus traversal, scroll-follow,
 empty recovery, Escape/reopen, and real Settings execution with a bundled IFC.
+
+## Round 1 measured outcome and round 2 candidate
+
+This section supersedes earlier pending statuses; historical failures above remain receipts.
+The corrected PC job `6135be97-00aa-4dbf-89e4-7647f3b8ba33` completed root
+`pnpm typecheck` and `pnpm build:e2e` successfully at `8ae26bb7c0`; its full four-shard
+viewer suite is still running. No complete suite pass is claimed.
+
+The actual browser suite passed **10/10, zero skipped**, using the managed Windows
+GPU helper and root `pnpm test:e2e:ci` at the same source. Scenarios cover all six
+viewport/theme combinations, stable input position, native Tab/Shift+Tab, arrow
+scroll-follow, clear recovery, Escape/reopen and Enter opening real Settings with
+and without the bundled IFC loaded. The initial Linux-browser attempt timed out
+capturing a screenshot; its owned test process was stopped before using the GPU
+runner. Timing is incidental, not a performance benchmark.
+
+Evidence root: `/home/louistrue/.t3/scratch/palette-ux-evidence-fd0b1714`.
+`gpu-browser-result.json` records the runner and scope; `preview-observations.json`
+records actual DOM rectangles and five unloaded captures. `candidate-loaded/manifest.json`
+records two loaded light/dark captures, dist hash, NVIDIA adapter and no page errors.
+The shared preview browser had no GPU adapter: its unloaded captures do not prove
+loaded-model behavior. The separate existing GPU runner does.
+
+Fresh Opus review `opus-round1-visual.md` rejected round 1 based on the unloaded
+captures: unrelated fuzzy rows after `annot`, privacy notification over the footer
+at 800×400, and a weak light-theme selected row. It preserved stable anchoring,
+narrow margins, empty recovery and dark presentation. Loaded captures were produced
+later and were not part of that review. No invented score or acceptance is recorded.
+
+Round 2 removes fuzzy-only matches when any direct label, keyword or category hit
+exists; preserves typo fallback; adds a semantic primary selection stripe; raises
+only the palette and its scrim above toasts without dismissing them; and hides empty
+navigation/run hints. New regression coverage tests translated search, annotation
+results, preserved transient notifications and actual privacy-toast hit testing at
+short viewport heights. Eleven browser scenarios are discoverable, not yet executed
+on this revised source. Targeted lint, module size, source-text and whitespace gates
+passed. Local focused tests stopped before assertions at missing sibling build output.
+
+Cleanup: failed task `palette-ux-final-fd0b1714` was evidence-verified and closed.
+Other original jobs and their locks remain protected while outcomes/publication are
+reconciled. No reclaimed disk amount is claimed. Separate #8947 source inventory is
+preserved outside this PR; no feature-access implementation round has started.

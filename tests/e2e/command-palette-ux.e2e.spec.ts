@@ -98,6 +98,13 @@ test.describe('#8946 unloaded palette UX', () => {
         else await expect(page.locator('html')).not.toHaveClass(/\b(dark|colorful)\b/);
         const { dialog, search, options } = await openPalette(page);
         await expect(options.first()).toBeVisible();
+        // A semantic leading stripe remains visible in both light and dark themes.
+        const indicator = await options.first().evaluate(element => {
+          const style = getComputedStyle(element, '::before');
+          return { width: parseFloat(style.width), color: style.backgroundColor };
+        });
+        expect(indicator.width).toBeGreaterThanOrEqual(2);
+        expect(indicator.color).not.toBe('rgba(0, 0, 0, 0)');
         const initial = await search.boundingBox();
         expect(initial).not.toBeNull();
         const initialCount = await options.count();
@@ -105,6 +112,15 @@ test.describe('#8946 unloaded palette UX', () => {
         await expectWithinViewport(dialog);
         await expectWithinViewport(search);
         await testInfo.attach('browse.png', { body: await page.screenshot(), contentType: 'image/png' });
+
+        await search.fill('annot');
+        await expect(options).toHaveCount(2);
+        await expect(options.nth(0)).toHaveAttribute('aria-label', 'Annotate');
+        await expect(options.nth(1)).toHaveAttribute('aria-label', 'Annotations');
+        await expectSearchTop(search, initial!.y);
+        await search.fill('secton');
+        await expect(options.first()).toContainText('Section');
+        await expectSearchTop(search, initial!.y);
 
         await search.fill('Settings');
         await expect(dialog.getByRole('option', { name: 'Settings…', exact: true })).toBeVisible();
@@ -115,6 +131,8 @@ test.describe('#8946 unloaded palette UX', () => {
         await search.fill('zzzz-no-palette-command-8946');
         await expect(options).toHaveCount(0);
         await expect(dialog.getByRole('status')).toHaveText('No results');
+        await expect(dialog.getByText('navigate', { exact: false })).toHaveCount(0);
+        await expect(dialog.getByText('run', { exact: false })).toHaveCount(0);
         await expectWithinViewport(dialog);
         await expectWithinViewport(dialog.getByRole('button', { name: 'Clear search', exact: true }));
         await expectSearchTop(search, initial!.y);
@@ -223,4 +241,52 @@ test('#8946 loaded bundled IFC: keyboard command reaches real Settings UI', asyn
   await expectWithinViewport(controls(page).dialog);
   await testInfo.attach('loaded-palette.png', { body: await page.screenshot(), contentType: 'image/png' });
   await openSettingsWithEnter(page);
+});
+
+// Separate from the acknowledged-disclosure fixtures above: reproduce the real
+// first-visit toast and test rendered stacking, rather than just z-index values.
+test('#8946 short viewport: privacy notice stays below palette and survives close', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 800, height: 400 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
+    localStorage.removeItem('ifclite.extensions.privacy-disclosure.v2');
+  });
+  await page.goto('/?lang=en');
+  const notice = page.locator('[data-toast-seq]').filter({ hasText: 'IFClite stores an action log' });
+  await expect(notice).toBeVisible({ timeout: 20_000 });
+  const noticeSequence = await notice.getAttribute('data-toast-seq');
+  // The disclosure hook records its own timestamp when shown; palette actions
+  // must neither acknowledge it again nor dismiss the pending notification.
+  const acknowledgement = await page.evaluate(() => localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'));
+  const { dialog, search, options } = await openPalette(page);
+  for (const query of ['', 'annot', 'zzzz-no-palette-command-8946']) {
+    await search.fill(query);
+    if (query.startsWith('zzzz')) await expect(options).toHaveCount(0);
+    else await expect(options.first()).toBeVisible();
+    const footer = dialog.locator('div').filter({ has: page.locator('kbd') }).last();
+    await expectWithinViewport(footer);
+    expect(await footer.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return [0.1, 0.5, 0.9].every(fraction => {
+        const hit = document.elementFromPoint(rect.left + rect.width * fraction, rect.top + rect.height / 2);
+        return !!hit && element.contains(hit);
+      });
+    }), 'footer remains above the toast at every result height').toBe(true);
+    expect(await notice.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return !!hit && !element.contains(hit);
+    }), 'palette scrim/content covers the notice').toBe(true);
+  }
+  await testInfo.attach('unacknowledged-notice-palette.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute('data-toast-seq', noticeSequence!);
+  expect(await page.evaluate(() => localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'))).toBe(acknowledgement);
+  expect(await notice.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return !!hit && element.contains(hit);
+  }), 'original notice is exposed again after closing').toBe(true);
 });

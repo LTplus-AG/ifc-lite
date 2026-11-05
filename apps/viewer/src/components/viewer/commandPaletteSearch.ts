@@ -167,9 +167,13 @@ export function searchCommands(
   displayCategory: (command: Command) => string = command => command.category,
 ): Command[] {
   const recent = new Map(recentIds.map((id, index) => [id, index]));
-  return commands.map((cmd, index) => ({
+  const ranked = commands.map((cmd, index) => ({
     cmd, index, rank: rankCommand(cmd, query, displayLabel(cmd), displayCategory(cmd)),
-  })).filter(item => item.rank > 0).sort((a, b) =>
+  }));
+  // Direct label/metadata hits answer the query; loose subsequences only help
+  // recover a typo when there are no direct hits (#8946). Category hits start at 200.
+  const minimumRank = ranked.some(item => item.rank >= 200) ? 200 : 1;
+  return ranked.filter(item => item.rank >= minimumRank).sort((a, b) =>
     b.rank - a.rank
     || (recent.get(a.cmd.id) ?? Infinity) - (recent.get(b.cmd.id) ?? Infinity)
     || a.index - b.index,

@@ -6,7 +6,8 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { act } from 'react';
+import { act, useState } from 'react';
+import { toast, Toaster } from '@/components/ui/toast.js';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { registerLocale, setLocale } from '@/i18n';
@@ -37,6 +38,9 @@ test('no-results recovery is localized and returns focus and browse options (#89
   act(() => setLocale('palette-presentation'));
   typeInto(input, 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz');
   assert.equal(document.querySelectorAll('[role="option"]').length, 0);
+  assert.ok(!document.body.textContent?.includes('navigate'));
+  assert.ok(!document.body.textContent?.includes('run'));
+  assert.ok(document.body.textContent?.includes('close'));
   assert.ok(document.body.textContent?.includes(pseudo['commandPalette.noResultsHint']));
   const clear = [...document.querySelectorAll('button')].find(button => button.textContent === 'Suche löschen');
   assert.ok(clear);
@@ -63,4 +67,33 @@ test('mixed search results show translated categories and explicit close works (
   assert.ok(close);
   click(close);
   assert.equal(closed, true);
+});
+
+test('annot search shows the actual annotation commands without fuzzy noise (#8946)', () => {
+  const input = mount();
+  typeInto(input, 'annot');
+  assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(row => row.getAttribute('aria-label')),
+    ['Annotate', 'Annotations']);
+});
+
+test('closing the palette preserves an existing transient toast (#8946)', () => {
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return <BimReactContext.Provider value={{} as BimContext}>
+      <Toaster /><CommandPalette open={open} onOpenChange={setOpen} />
+    </BimReactContext.Provider>;
+  }
+  render(<Harness />);
+  let dismiss = () => {};
+  act(() => { dismiss = toast.transientError('Palette transient regression', 3000); });
+  try {
+    const notification = document.querySelector('[data-toast-seq]');
+    assert.ok(notification);
+    const close = document.querySelector('button[aria-label="Close"]');
+    assert.ok(close);
+    click(close);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.querySelector('[data-toast-seq]'), notification,
+      'closing the palette leaves the original toast and its lifecycle intact');
+  } finally { act(dismiss); }
 });

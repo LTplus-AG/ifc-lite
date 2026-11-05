@@ -64,8 +64,8 @@ function OptionChrome({ owner, icon: Icon, label, detail, shortcut, categoryLabe
       data-runtime-command-id={registered ? undefined : owner.runtimeCommandId}
       aria-label={registered ? label : undefined}
       aria-selected={selected}
-      className={cn('flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50')}
+      className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
+        selected ? 'bg-accent text-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary' : 'text-foreground hover:bg-accent/50')}
       onMouseDown={event => event.preventDefault()}
       onClick={onActivate} onMouseMove={onHover}>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />

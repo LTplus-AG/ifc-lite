@@ -56,3 +56,33 @@ describe('command palette search tiers (#8946)', () => {
     assert.deepEqual(searchCommands(commands, 'no-such-command', []), []);
   });
 });
+
+// #8946 round 2: irrelevant subsequences must not crowd out clear answers.
+describe('command palette fuzzy fallback (#8946)', () => {
+  const make = (id: string, label: string, keywords = ''): Command => ({ ...command(), id, label, keywords });
+  const commands = [
+    make('annotate', 'Annotate'), make('annotations', 'Annotations'),
+    make('validation', 'Data validation', 'validation annotation checking'),
+    make('noise', 'Export anonymized subset', 'anonymization output'),
+    make('section', 'Section plane'),
+  ];
+
+  it('keeps direct labels and metadata and suppresses fuzzy-only matches for annot', () => {
+    assert.ok(rankCommand(commands[3], 'annot') > 0, 'fixture exercises the fuzzy noise');
+    assert.deepEqual(searchCommands(commands, 'annot', ['noise']).map(cmd => cmd.id),
+      ['annotate', 'annotations', 'validation']);
+  });
+
+  it('keeps the secton typo fallback when no direct hit exists', () => {
+    assert.deepEqual(searchCommands(commands, 'secton', []).map(cmd => cmd.id), ['section']);
+  });
+
+  it('applies the same suppression to translated labels and categories', () => {
+    const rows = [make('translated', 'Section plane'), make('noise', 'Sicherheit')];
+    assert.ok(rankCommand(rows[1], 'sicht') > 0, 'translated search has a fuzzy alternative');
+    assert.deepEqual(searchCommands(rows, 'sicht', [],
+      cmd => cmd.id === 'translated' ? 'Sicht' : cmd.label).map(cmd => cmd.id), ['translated']);
+    assert.deepEqual(searchCommands(rows, 'sicht', [], undefined,
+      cmd => cmd.id === 'translated' ? 'Sicht' : 'Tools').map(cmd => cmd.id), ['translated']);
+  });
+});

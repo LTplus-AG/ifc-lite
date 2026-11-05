@@ -6,9 +6,12 @@ none are copied into this release. Bulk audit inventories, per-file hash lists
 and translation-shard inputs are excluded: runtime object contracts provide the
 maintained coverage guard; exact-value identical-word allowances remain.
 
-Integration adds 15 current-main keys and updated measurement/capture guidance.
-Each shipping locale owns all 10,622 current English keys; bounded loaded-object
-audit found no missing/unknown keys or stale identical-word exceptions.
+The original integration added 15 English keys and updated measurement/capture
+guidance; its source-specific audit covered 10,622 keys. Main has since added
+positioned PLY downloads: German, French and Italian now include those ten keys
+and the revised capture-export guidance. The batch contracts compare runtime
+catalogue keys against the matching English modules; historical key totals do
+not certify a later head.
 Shared test-only coverage/plural/startup helpers remove repeated contracts.
 German browser acceptance now requires the exact ten unique all-pass checks,
 rejects inspection and every page error, including fresh negotiation.

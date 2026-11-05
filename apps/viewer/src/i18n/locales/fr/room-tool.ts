@@ -1,0 +1,46 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const roomToolFr = {
+  "roomTool.options.minArea": "Surface minimale (m²)",
+  "roomTool.options.namePattern": "Modèle de nom",
+  "roomTool.options.nameHint": "Le jeton {token} insère le numéro de la pièce.",
+  "roomTool.options.classification": "IfcSpace.{attribute}",
+  "roomTool.options.objectType": "IfcSpace.ObjectType",
+  "roomTool.options.invalid": "Saisissez une surface minimale positive et un modèle de nom de pièce non vide",
+  "roomTool.options.objectTypeRequired": "Saisissez IfcSpace.ObjectType pour une pièce USERDEFINED",
+  "roomTool.preview.total": { one: "{countDisplay} nouvelle pièce · {area} m² au total", other: "{countDisplay} nouvelles pièces · {area} m² au total", many: "{countDisplay} de nouvelles pièces · {area} m² au total" },
+  "roomTool.preview.graph": "{walls} murs · {vertices} sommets de tracé · {edges} arêtes de tracé",
+  "roomTool.preview.leaks": "{openEnds} extrémités de mur ouvertes · {unboundedWalls} murs n'entourent aucune pièce",
+  "roomTool.label": "Pièce",
+  "commands.model.room": "Créer des pièces à partir des murs ou les dessiner (espace de travail Modèle)",
+  "roomTool.hint.pick": "Cliquez à l'intérieur des murs pour créer une pièce · Auto crée toutes les pièces de cet étage",
+  "roomTool.hint.taken": "Cette zone a déjà une pièce",
+  "roomTool.hint.drawCorner": "Cliquez sur les coins de la pièce",
+  "roomTool.hint.drawClose": "Entrée, un double-clic ou un clic sur le premier coin ferme la pièce",
+  "roomTool.mode.label": "Comment créer une pièce",
+  "roomTool.mode.pick": "Choisir",
+  "roomTool.mode.draw": "Dessiner",
+  "roomTool.boundary.label": "Face de mur suivie par la pièce",
+  "roomTool.boundary.inner": "Intérieure",
+  "roomTool.boundary.center": "Axe",
+  "roomTool.boundary.outer": "Extérieure",
+  "roomTool.auto.label": "Auto · {countDisplay}",
+  "roomTool.auto.title": "Transformer en pièce, en une seule étape d'annulation, chaque zone de cet étage entourée de murs qui n'a pas encore de pièce",
+  "roomTool.auto.none": "Chaque zone de cet étage entourée de murs a déjà une pièce",
+  "roomTool.update.label": "Mettre à jour les pièces",
+  "roomTool.update.title": "Recalculer les contours des pièces sélectionnées à partir des murs dans leur état actuel",
+  "roomTool.update.noSelection": "Sélectionnez d'abord les pièces à mettre à jour",
+  "roomTool.update.none": "Aucune des pièces sélectionnées n'a pu être mise à jour : chacune doit être une extrusion en plan sur un étage, à l'intérieur de murs",
+  "roomTool.update.skipped": { one: "{countDisplay} pièce sélectionnée a été laissée telle quelle : ce n'est pas une extrusion en plan sur un étage, ou aucun mur ne l'entoure", other: "{countDisplay} pièces sélectionnées ont été laissées telles quelles : ce ne sont pas des extrusions en plan sur un étage, ou aucun mur ne les entoure", many: "{countDisplay} de pièces sélectionnées ont été laissées telles quelles : ce ne sont pas des extrusions en plan sur un étage, ou aucun mur ne les entoure" },
+  "roomTool.wasmFailed": "Le moteur des pièces n'a pas été chargé ; les pièces ne peuvent donc pas être calculées : rechargez la page et réessayez",
+  "roomTool.palette": "Créer des pièces",
+  "roomTool.loading": "Lecture des murs… réessayez dans un instant",
+  "roomTool.noWalls": "Aucun mur de cet étage n'entoure une pièce : dessinez les murs, ou passez à Dessiner",
+  "roomTool.pick.none": "Aucun mur n'entoure ce point : cliquez à l'intérieur d'une pièce, ou passez à Dessiner",
+  "roomTool.pick.taken": "Cette zone a déjà une pièce",
+  "roomTool.draw.needThree": "Une pièce doit avoir au moins trois coins",
+} satisfies Catalogue;

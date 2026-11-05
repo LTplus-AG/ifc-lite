@@ -4,6 +4,21 @@
 
 # Performance diagnosis kit
 
+## Opt-in gross host geometry (#8875)
+
+**Inconclusive; not performance-qualified.** Native paired base/branch cohorts
+for the default path completed with unchanged mesh, vertex and triangle counts,
+but both failed the existing Haus noise guard. Increasing the cohort from five
+to ten rounds did not resolve the variance. The sampled guards found no external
+build activity, artifact drift, CPU-policy change or throttling; that does not
+make the rejected timings valid. No speedup or regression verdict is claimed.
+
+Lesson: more rounds alone do not qualify a noisy short-model measurement. Keep
+the acceptance threshold and preserve rejected evidence instead of retrying to
+obtain a pass. The [reports and qualification records](../../tests/evidence/skip-voids-8875/performance.json)
+identify the pre-merge source, fixtures and native-only scope. Browser worker-pool
+and heavy-CSG performance remain unqualified; the PR stays draft.
+
 ## Retained qualification runners (#7955)
 
 Viewer first retained frame, built-CLI retained export, browser and native memory

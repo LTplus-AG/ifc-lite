@@ -31,12 +31,12 @@
     "@ifc-lite/encoding": "workspace:^"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@mergifyio/vitest": "^2026.11.1",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.1",
     "proj4": "^2.22.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

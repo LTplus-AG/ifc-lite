@@ -6,6 +6,9 @@
 set -euo pipefail
 export NODE_OPTIONS=--max-old-space-size=8192
 export TURBO_CONCURRENCY=1
+pnpm install --frozen-lockfile --prefer-offline
+pnpm typecheck
+pnpm test --filter=@ifc-lite/renderer
 pnpm build --filter=@ifc-lite/viewer
 validation_logs="$(mktemp -d -t issue-8783-viewer.XXXXXX)"
 export VALIDATION_LOGS="$validation_logs"

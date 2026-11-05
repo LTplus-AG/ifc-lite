@@ -54,31 +54,18 @@ export function liftTo3DLineList(
   y: number,
   out: number[],
   isHidden?: (ownerId: number) => boolean,
+  owners?: number[],
+  toGlobalId?: (ownerId: number) => number,
 ): void {
   for (const line of lines) {
     if (isHidden && line.ownerId !== undefined && isHidden(line.ownerId)) continue;
+    owners?.push(line.ownerId === undefined ? 0 : (toGlobalId?.(line.ownerId) ?? line.ownerId));
     out.push(line.line.start.x, y, line.line.start.y);
     out.push(line.line.end.x,   y, line.line.end.y);
   }
 }
 
-/**
- * Returns IFC annotation segments as a single Float32Array of pre-lifted 3D
- * line-list vertices in world space, ready to feed
- * `renderer.setLineOverlay('annotation', …)`.
- *
- * Each annotation is lifted to its containing storey's elevation. Annotations
- * with no resolvable storey fall back to `fallbackY` (typically the mid-Y of
- * the scene bounds) so the overlay stays visible even when the IFC file's
- * spatial hierarchy doesn't link annotations to a storey — common when the
- * authoring tool encodes the storey Z directly on the placement point
- * instead of on `IfcBuildingStorey.Elevation`.
- *
- * When `enabled` is false (toggle off, no models, etc.) the hook does no
- * parse work and returns a stable empty Float32Array. Parsing is lazy —
- * the WASM `parseSymbolicRepresentations` call only runs after the toggle
- * is turned on, and the result is cached per model source.
- */
+/** Source-cached annotation lines, lifted into the renderer’s anchored frame. */
 const EMPTY_F32 = new Float32Array(0);
 
 /** One active model's data store plus the identity needed to map a parsed
@@ -210,7 +197,7 @@ export function useSymbolicAnnotations(params: {
     const entries: SymbolicLineChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
-      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated) });
+      if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated) });
       else if (debugEnabled()) console.log(`[annotations] store not yet ready: ${entry.modelId}`);
     }
 
@@ -440,7 +427,7 @@ export function useSymbolicAnnotationsRichData(params: {
     const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
-      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
+      if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
     }
 
     return buildSymbolicRichChannels(entries, {

@@ -335,9 +335,20 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   // density to distinguish that isolated scan from an empty canvas. Those
   // controls live in the Point Cloud side panel (#5507), and Reposition just
   // docked the Placement panel in its place (#5505): bring it back the way a
-  // user would, from the activity bar.
-  const pointCloudsPanel = page.getByRole('button', { name: 'Point Cloud', exact: true });
-  if ((await pointCloudsPanel.getAttribute('aria-pressed')) !== 'true') await pointCloudsPanel.click();
+  // user would, from the activity bar. A rail too short for every icon folds
+  // the rest into its "More" menu (#8802 R1; the open panel stays pinned on
+  // the rail), and at this size Point Cloud is one of them: pick it there.
+  const rail = page.locator('[data-activity-bar]');
+  const pointCloudsPanel = rail.getByRole('button', { name: 'Point Cloud', exact: true });
+  const railOverflow = rail.locator('[data-rail-overflow]');
+  await expect(pointCloudsPanel.or(railOverflow).first()).toBeVisible();
+  if (await pointCloudsPanel.count()) {
+    if ((await pointCloudsPanel.getAttribute('aria-pressed')) !== 'true') await pointCloudsPanel.click();
+  } else {
+    await railOverflow.click();
+    await page.getByRole('menuitem', { name: 'Point Cloud', exact: true }).click();
+  }
+  await expect(rail.getByRole('button', { name: 'Point Cloud', exact: true }), 'the opened panel is pinned on the rail').toHaveAttribute('aria-pressed', 'true');
   await page.locator('input[type="range"]').first().fill('20');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudPointSize)).toBe(20);
   // Edge shading intentionally amplifies continuous scan depth. Disable it through

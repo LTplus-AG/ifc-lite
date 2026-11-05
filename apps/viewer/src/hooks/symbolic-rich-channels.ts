@@ -82,6 +82,7 @@ function gridFillKey(f: AnnotationFill2D): string {
  * `height` is in world units.
  */
 export interface AnnotationText3D {
+  ownerId?: number;
   /** Canonical f64 anchor; the renderer projects this separately from glyph-local offsets. */
   origin: [number, number, number];
   /** Small local label offset from `origin` (currently zero for parsed labels). */
@@ -117,6 +118,7 @@ export interface AnnotationText3D {
  * via `holesOffsets` (vertex indices into `points`); the renderer triangulates.
  */
 export interface AnnotationFill3D {
+  ownerId?: number;
   points: Float32Array;
   holesOffsets: Uint32Array;
   worldY: number;
@@ -140,6 +142,7 @@ export interface SymbolicRichChannels {
  *  in a test. */
 export interface SymbolicRichChannelsEntry {
   cached: ParseResult;
+  toGlobalId?: (ownerId: number) => number;
   isHidden?: (ownerId: number) => boolean;
   /** Annotation-only isolation; grid references bypass it (#8767). */
   isIsolatedOut?: (ownerId: number) => boolean;
@@ -180,7 +183,7 @@ export function buildSymbolicRichChannels(
   const texts: AnnotationText3D[] = [];
   const fills: AnnotationFill3D[] = [];
 
-  for (const { cached, isHidden, isIsolatedOut, isMeshedFill } of entries) {
+  for (const { cached, isHidden, isIsolatedOut, isMeshedFill, toGlobalId } of entries) {
     // `annotation` is false for grid content. It decides `definesExtent` (see
     // [`AnnotationText3D.definesExtent`] for why the channel routing does not
     // reach bubbles, #3359), `sectionClipped` and isolation (#8767): grids are
@@ -194,6 +197,7 @@ export function buildSymbolicRichChannels(
       // here puts line 1 below line 0 on screen for any side/oblique
       // 3D view of the floor plan.
       texts.push({
+        ownerId: annotation ? (toGlobalId?.(t.ownerId) ?? t.ownerId) : undefined,
         // One source label gets one canonical anchor. Keeping its local
         // position at zero prevents a 5,000-km source coordinate from ever
         // entering the f32 instance origin, while preserving f64 parser
@@ -221,6 +225,7 @@ export function buildSymbolicRichChannels(
       // omitted, and only for an exact owner/item match in this model.
       if (f.geometryItemId !== undefined && isMeshedFill?.(f.ownerId, f.geometryItemId)) return false;
       fills.push({
+        ownerId: annotation ? (toGlobalId?.(f.ownerId) ?? f.ownerId) : undefined,
         points: f.rteLocalPoints ?? f.points,
         holesOffsets: f.holesOffsets,
         worldY: f.rteOrigin ? y - f.rteOrigin[1] : y,

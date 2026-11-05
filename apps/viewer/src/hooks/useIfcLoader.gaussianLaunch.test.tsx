@@ -159,6 +159,35 @@ describe('Gaussian launch limits refuse before decoding (#8568)', () => {
   });
 });
 
+it('malformed Gaussian captures leave no renderer asset or model and report a fixed refusal code (#8567)', async () => {
+  const valid = gaussianPly('valid.ply', [[1, 2, 3]]);
+  const bytes = new Uint8Array(await valid.arrayBuffer());
+  const header = new TextDecoder().decode(bytes).split('end_header\n')[0] + 'end_header\n';
+  const body = bytes.slice(new TextEncoder().encode(header).byteLength);
+  const nonFinite = body.slice();
+  new DataView(nonFinite.buffer).setFloat32(0, Number.NaN, true);
+  const cases: Array<{ name: string; file: File; code: string; worker: boolean }> = [
+    { name: 'truncated PLY', file: new File([header, body.slice(0, -1)], 'truncated.ply'), code: 'gaussian_invalid_input', worker: false },
+    { name: 'wrong vertex count', file: new File([header.replace('vertex 1', 'vertex 2'), body], 'count.ply'), code: 'gaussian_invalid_input', worker: false },
+    { name: 'wrong header', file: new File([header.replace('property float x', 'property mystery x'), body], 'header.ply'), code: 'gaussian_invalid_input', worker: false },
+    { name: 'unsupported list property', file: new File([header.replace('property float x', 'property list uchar float x'), body], 'list.ply'), code: 'gaussian_invalid_input', worker: false },
+    { name: 'non-finite coordinate', file: new File([header, nonFinite], 'nan.ply'), code: 'gaussian_load_failed', worker: true },
+    { name: 'empty .splat', file: new File([], 'empty.splat'), code: 'gaussian_invalid_input', worker: false },
+    { name: 'partial .splat record', file: new File([new Uint8Array(33)], 'partial.splat'), code: 'gaussian_invalid_input', worker: false },
+  ];
+  for (const [index, entry] of cases.entries()) {
+    const workersBefore = worker.stats.created;
+    const id = `bad-${index}`;
+    await load(entry.file, { kind: 'federated', modelId: id });
+    const last = captureEvents('gaussian_capture_load').at(-1);
+    assert.equal(last?.code, entry.code, entry.name);
+    assert.equal(worker.stats.created - workersBefore, Number(entry.worker), entry.name);
+    assert.equal(gpu.renderer.gaussianSplats.getStats().assets, 0, entry.name);
+    assert.equal(useViewerStore.getState().models.has(id), false, entry.name);
+    assert.equal(useViewerStore.getState().loading, false, entry.name);
+  }
+});
+
 describe('Gaussian capture diagnostics are content-free (#8568)', () => {
   const ALLOWED: Record<string, readonly string[]> = {
     outcome: ['completed', 'failed', 'cancelled', 'refused'],

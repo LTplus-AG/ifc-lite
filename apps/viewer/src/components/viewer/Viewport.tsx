@@ -295,9 +295,9 @@ export function Viewport({
     return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
   }, [coordinateInfo, sectionCoordinateInfo, sectionPlane.axis]);
 
-  // Theme-aware clear color ref (updated when theme changes)
-  // Tokyo Night storm: #1a1b26 = rgb(26, 27, 38)
-  const clearColorRef = useRef<[number, number, number, number]>([0.102, 0.106, 0.149, 1]);
+  // Theme-aware clear color ref (updated when theme changes); starts on the
+  // dark canvas shell token until the theme effect runs.
+  const clearColorRef = useRef<[number, number, number, number]>(getThemeClearColor('dark'));
   const visualEnhancement = useMemo<VisualEnhancementOptions>(() => ({
     enabled: isMobile ? false : visualEnhancementsEnabled,
     contactShading: {

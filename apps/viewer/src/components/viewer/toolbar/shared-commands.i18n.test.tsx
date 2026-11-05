@@ -98,6 +98,9 @@ const STATE = {
   mergeLayers: true,
   geometryMode: 'fast',
   geomTierOverride: 'high',
+  // A first load in flight: the export cluster shows every gated format
+  // instead of its folded empty-viewer control (#8802 R1).
+  loading: true,
 } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>;
 
 const RESET = {
@@ -113,6 +116,7 @@ const RESET = {
   hasTypeGeometry: false,
   mergeLayers: false,
   geomTierOverride: undefined,
+  loading: false,
 } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>;
 
 /**

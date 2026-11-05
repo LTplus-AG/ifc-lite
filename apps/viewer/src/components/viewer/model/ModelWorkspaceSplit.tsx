@@ -85,7 +85,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
           </Panel>
         )}
         {showPlan && (
-          <PanelResizeHandle className="w-1.5 bg-border transition-colors hover:bg-primary/50 active:bg-primary/70 cursor-col-resize" />
+          <PanelResizeHandle className="shell-splitter-v" />
         )}
         {/* Never narrower than its HUD needs (measured, `model-layout.ts`); bare numbers are px in v4, so sizes carry units. */}
         <Panel id="model-3d-panel" minSize={showPlan ? `${MODEL_3D_MIN_PX}px` : undefined}>

@@ -42,7 +42,6 @@ function ownedBy(tab: RibbonTabId, key: RibbonKey): boolean {
  * else in the catalogue must land on its control.
  */
 const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
-  'ribbon.themeTooltip', // Radix tooltip content, only mounted on hover
   'ribbon.infoTooltip', // Radix tooltip content, only mounted on hover
   'ribbon.expand', // ribbon is expanded
   'ribbon.file.addModelTooltip', // small-button tooltip, only mounted on hover

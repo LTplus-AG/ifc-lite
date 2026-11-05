@@ -183,12 +183,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             <kbd className="rounded border border-divider px-1 font-sans text-2xs text-muted-foreground">{t('ribbon.commandsShortcut')}</kbd>
           </Button>
           <RibbonCommandSmallButton commandId="pref:settings" icon={Settings} className="h-7 w-auto shrink-0 whitespace-nowrap px-2 text-xs" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ThemeSwitch />
-            </TooltipTrigger>
-            <TooltipContent>{t('ribbon.themeTooltip')}</TooltipContent>
-          </Tooltip>
+          <ThemeSwitch />
 
           <Tooltip>
             <TooltipTrigger asChild>

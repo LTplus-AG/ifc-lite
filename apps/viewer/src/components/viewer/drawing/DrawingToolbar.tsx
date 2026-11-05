@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Drawing panel's toolbar row (#5494): the markup tools as one segmented
- * control, the display toggles as chips, the settings drawers as labelled
- * toggles, and the zoom cluster. Replaces the icon row and its ~20-item
- * overflow menu. Width tiers: `wide` shows labels, `compact` collapses them
- * to icons, `narrow` moves only the rarest items (drawers, pin, clear) into
- * one short menu and drops the +/- zoom steps (wheel and pinch still zoom).
+ * The Drawing panel's toolbar row (#5494, #8802 R3b), in three groups split
+ * by dividers: the markup tools (a radio group, the active one filled), the
+ * display toggles (checkbox-marked, tinted when on), and the settings
+ * drawers; the view cluster (zoom, Fit, pin) sits at the right. Width tiers:
+ * `wide` shows labels, `compact` collapses them to icons, `narrow` moves
+ * only the rarest items (drawers, pin, clear) into one short menu and drops
+ * the +/- zoom steps (wheel and pinch still zoom).
  */
 
 import { DrawingProjectionSettings } from './DrawingProjectionSettings';
@@ -42,6 +43,8 @@ export interface DrawingToolbarProps {
   tier: DrawingWidthTier;
   activeTool: Annotation2DTool;
   onSelectTool: (tool: Annotation2DTool) => void;
+  /** The Select tool's tooltip: how to pan and zoom (was a permanent hint line). */
+  selectHint: string;
   hasMarkup: boolean;
   onClearMarkup: () => void;
   display: { symbolic: boolean; ifcAnnotations: boolean; projection: boolean; overlay3D: boolean; printPreview: boolean };
@@ -76,7 +79,10 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
     <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b px-2 py-1">
       <div role="radiogroup" aria-label={t('section2d.tools.group')} className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5">
         {TOOLS.map(({ tool, icon, labelKey }) => (
-          <ToolSegment key={tool} icon={icon} label={t(labelKey)} active={p.activeTool === tool} showLabel={showLabels} onSelect={() => p.onSelectTool(tool)} />
+          <ToolSegment
+            key={tool} icon={icon} label={t(labelKey)} tip={tool === 'none' ? p.selectHint : undefined}
+            active={p.activeTool === tool} showLabel={showLabels} onSelect={() => p.onSelectTool(tool)}
+          />
         ))}
       </div>
       {p.hasMarkup && !narrow && (
@@ -85,7 +91,7 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
 
       <ToolbarDivider />
 
-      <fieldset aria-label={t('section2d.display.group')} className="inline-flex items-center gap-1">
+      <fieldset aria-label={t('section2d.display.group')} className="inline-flex items-center gap-0.5">
         <ToggleChip
           icon={p.display.symbolic ? Shapes : Box} label={t('section2d.display.symbolic')}
           tip={p.display.symbolic ? t('section2d.symbolic.planTitle') : t('section2d.symbolic.cutTitle')}
@@ -120,7 +126,11 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
           <ToolbarDivider />
           <fieldset aria-label={t('section2d.drawers.group')} className="inline-flex items-center gap-0.5">
             {DRAWERS.map(({ id, icon, labelKey }) => (
-              <DrawerToggle key={id} icon={icon} label={t(labelKey)} open={p.openDrawer === id} dot={p.drawerActivity[id]} showLabel={showLabels} onToggle={() => p.onToggleDrawer(id)} />
+              <DrawerToggle
+                key={id} icon={icon} label={t(labelKey)}
+                tip={p.drawerActivity[id] ? t('section2d.drawers.activeTip', { label: t(labelKey) }) : t(labelKey)}
+                open={p.openDrawer === id} active={p.drawerActivity[id]} showLabel={showLabels} onToggle={() => p.onToggleDrawer(id)}
+              />
             ))}
           </fieldset>
         </>
@@ -134,12 +144,12 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
           </span>
         )}
         {!narrow && <IconAction icon={ZoomIn} label={t('section2d.zoom.in')} onClick={p.onZoomIn} />}
-        <IconAction icon={Maximize2} label={t('section2d.zoom.fit')} onClick={p.onFit} />
+        <IconAction icon={Maximize2} label={t('section2d.zoom.fit')} text={showLabels ? t('section2d.zoom.fitShort') : undefined} onClick={p.onFit} />
         {!narrow && <IconAction icon={p.pinned ? Pin : PinOff} label={pinLabel} pressed={p.pinned} onClick={p.onTogglePinned} />}
         {narrow && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-muted-foreground" aria-label={t('section2d.more')}>
+              <Button variant="ghost" size="icon-xs" className="h-6 w-6 text-muted-foreground [&_svg]:size-3.5" aria-label={t('section2d.more')}>
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>

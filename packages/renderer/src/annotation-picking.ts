@@ -61,8 +61,10 @@ export class AnnotationPicker {
   private glyphs: readonly AnnotationPickGlyph[] = [];
   private revision = 0;
 
+  /** Drop all uploaded targets and invalidate snapshots held by pending readbacks. */
   clear(): void { this.lines = []; this.fills = []; this.glyphs = []; this.revision++; }
 
+  /** Retain segment owners in their upload partitions; unowned reference lines cannot be picked. */
   setLines(vertices: LineVertices | null, clipped: boolean): void {
     this.lines = [];
     this.revision++;
@@ -80,6 +82,7 @@ export class AnnotationPicker {
     }
   }
 
+  /** Use the render triangulation, including holes, and ignore fully transparent fills. */
   setFills(fills: readonly SymbolicFillInput[]): void {
     this.fills = [];
     this.revision++;
@@ -91,8 +94,10 @@ export class AnnotationPicker {
     }
   }
 
+  /** Replace targets with the actual atlas layout produced by the text upload. */
   setGlyphs(glyphs: readonly AnnotationPickGlyph[]): void { this.glyphs = glyphs; this.revision++; }
 
+  /** Capture hits in CSS pixels, using the current camera and the rendering visibility rules. */
   pick(camera: Camera, x: number, y: number, width: number, height: number, options?: PickOptions, clip?: PickClipState | null): AnnotationPickSnapshot | null {
     // No camera work, allocation or scene walk for annotation-free models.
     if (!(this.lines.length || this.fills.length || this.glyphs.length)) return null;

@@ -26,14 +26,18 @@ const { triangulateFillTo } = await load('packages/renderer/src/symbolic-overlay
 // Node cannot fetch file: URLs; initialize the same production module from bytes.
 const { default: initWasm } = await load('packages/wasm/pkg/ifc-lite.js');
 await initWasm({ module_or_path: readFileSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', root)) });
+const baseline = JSON.parse(readFileSync(new URL('./model-result.json', import.meta.url), 'utf8'));
 const bytes = readFileSync(process.argv[2]);
+const sha256 = createHash('sha256').update(bytes).digest('hex');
+assert.equal(sha256, baseline.sha256, 'oracle requires the recorded authoring-tool fixture');
+assert.equal(bytes.length, baseline.bytes);
 const cached = await parseSymbolicAnnotations({ source: bytes });
 const params = { enabled: true, effectiveGridEnabled: false, clipEnabled: false, clipPos: 0, clipDepth: 0, fallbackY: 0, theme: 'light' };
 const lines = buildSymbolicLineChannels([{cached}],params).annotation;
 const rich = buildSymbolicRichChannels([{cached}],params);
 const camera = new Camera();
 const picker = new AnnotationPicker();
-const result = { sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length,
+const result = { sha256, bytes: bytes.length,
   lineOwners: [], fillOwners: [], textOwners: [], textGlyphs: 0 };
 const hit = (x=200,y=200,options,clip) => resolveAnnotationPick(picker.pick(camera,x,y,400,400,options,clip),null);
 const verify = (owner,x=200,y=200) => {
@@ -91,5 +95,9 @@ for (const text of rich.texts) {
 }
 pipeline.destroy();picker.clear();
 assert.equal(hit(),null);
-assert.ok(result.lineOwners.length && result.fillOwners.length && result.textOwners.length,'all primitive families must be exercised');
+for (const family of ['lineOwners', 'fillOwners', 'textOwners']) {
+  assert.equal(result[family].length, 10, `${family}: all ten owners must be exercised`);
+  assert.deepEqual(result[family], baseline[family], `${family}: recorded owners must remain selectable`);
+}
+assert.equal(result.textGlyphs, baseline.textGlyphs, 'recorded glyph coverage must remain intact');
 console.log(JSON.stringify(result,null,2));

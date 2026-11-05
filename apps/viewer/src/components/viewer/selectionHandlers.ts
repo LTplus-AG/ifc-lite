@@ -182,17 +182,16 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
   if (!picked) return;
 
   const state = useViewerStore.getState();
-  ctx.setSnapTarget(picked.snapTarget);
-
   const active = state.activePolyline;
+  // A press away from the last vertex that snapped back onto it takes the surface hit (#8866).
+  const point = active ? unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y }) : picked.point;
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
   if (!active) {
-    state.startPolyline(picked.point);
-    rememberVertexPress(ctx, picked.point, { x, y });
+    state.startPolyline(point);
+    rememberVertexPress(ctx, point, { x, y });
     return;
   }
 
-  // A press away from the last vertex that snapped back onto it takes the surface hit (#8866).
-  const point = unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y });
   const first = active.points[0];
   if (active.points.length >= 3 && isNearPolylineStart(point, first)) {
     state.finishPolyline(true);
@@ -223,11 +222,10 @@ export function handleRadiusClick(ctx: MouseHandlerContext, x: number, y: number
   if (!picked) return;
 
   const state = useViewerStore.getState();
-  ctx.setSnapTarget(picked.snapTarget);
-
   const active = state.activeRadius;
   // As for polyline: a press away from the last vertex that snapped back onto it takes the surface hit (#8866).
   const point = active ? unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y }) : picked.point;
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
   if (active) state.addRadiusPoint(point);
   else state.startRadius(point);
   rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
@@ -327,12 +325,14 @@ export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number)
   // pick 4 to coincide with pick 3, and that is still caught below.
   const prior = state.activeAngle?.picks ?? [];
   const startsNewShape = kind === 'edges' && prior.length % 2 === 0;
-  const last = !startsNewShape && prior.length > 0 ? prior[prior.length - 1].point : null;
-  // A press away from the last pick that snapped back onto it takes the surface hit (#8866).
-  const point = last ? unsnapFromPrevious(ctx, last, picked.point, { x, y }) : picked.point;
+  const previous = prior.length > 0 ? prior[prior.length - 1].point : null;
+  const last = !startsNewShape ? previous : null;
+  // A press away from the last pick that snapped back onto it takes the surface hit (#8866). Across
+  // the edge boundary only a double-press is caught, so a shared corner keeps its snap.
+  const point = previous ? unsnapFromPrevious(ctx, previous, picked.point, { x, y }, startsNewShape) : picked.point;
   if (last && isDuplicateClickPoint(last, point)) return;
 
-  ctx.setSnapTarget(picked.snapTarget);
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
   state.addAnglePick({ kind, point });
   rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }

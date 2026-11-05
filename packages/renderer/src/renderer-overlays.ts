@@ -273,6 +273,7 @@ export class RendererOverlays {
     /** See `Renderer.setLineOverlay` for the published contract. */
     setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null, options?: LineOverlayOptions): void {
         if (!this.section2DOverlayRenderer) return;
+        if (channel === 'annotation') this.annotationPicker.setLines(null, false);
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
         if (channel === 'annotation') this.annotationPicker.setLines(vertices, options?.sectionClipped === true);
         // The flag belongs to this upload: a later upload without it, or a clear, draws unclipped again.
@@ -343,12 +344,16 @@ export class RendererOverlays {
 
     /** See `Renderer.uploadAnnotationFills3D` for the published contract. */
     uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.annotationPicker.setFills([]);
         this.symbolic.uploadFills(fills);
         this.annotationPicker.setFills(fills);
     }
 
     /** See `Renderer.uploadAnnotationTexts3D` for the published contract. */
     uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.annotationPicker.setGlyphs([]);
         this.symbolic.uploadTexts(texts);
         this.annotationPicker.setGlyphs(this.symbolic.getPickGlyphs());
     }

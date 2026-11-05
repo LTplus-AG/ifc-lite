@@ -1230,6 +1230,241 @@
         "source_method": "DJI drone photographs, RealityScan alignment, LichtFeld Studio training; publisher SOG export splat-transform v2.0.6; offline PLY derivative v3.10.3",
         "metadata_url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json"
       }
+    },
+    {
+      "path": "edinburgh/model.ifc",
+      "size": 47032,
+      "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "edinburgh/cloud_coloured.e57",
+      "size": 51633152,
+      "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "edinburgh/scan-vox12mm.laz",
+      "size": 19686282,
+      "sha256": "c1f4932233dde4fb90ea0de7f5f647b69f4786e8217c2dac05b73b3a2281a57b",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "modified",
+          "description": "12 mm voxel-averaged XYZ/RGB16 LAZ, LAS 1.4 point format 7; recipe: examples/gaussian-splat-spike/derive-edinburgh-triple.py"
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/derive-edinburgh-triple.py",
+      "point_count": 2899130,
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "gaussian/edinburgh-scan-sh3.ply",
+      "size": 102469179,
+      "sha256": "de8072e003e67535ac522be5318abcf250040bc66dc3f387ad220349b07062c1",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "modified",
+          "description": "48 mm voxel-averaged scan points encoded as isotropic Gaussian SH3 PLY; 45 higher-order coefficients are zero. Recipe: examples/gaussian-splat-spike/derive-edinburgh-triple.py"
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/derive-edinburgh-triple.py",
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      },
+      "gaussian": {
+        "count": 413176,
+        "sh_degree": 3,
+        "nonzero_sh": false,
+        "units": "metres, E57/IFC shared identity frame",
+        "up_axis": "Z",
+        "source_method": "Synthetic E57 point cloud; scan-derived isotropic Gaussian proxy, not photogrammetric training",
+        "metadata_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4"
+      }
+    },
+    {
+      "path": "gaussian/qualification-32-batch-sh3.ply",
+      "size": 2041136,
+      "sha256": "ad8fb87d654f180aebf4f5d7cb66028fecf38ae05281820ee00048dce0e5436b",
+      "provenance": {
+        "source": {
+          "commit": "baecf8adf82c53038c61c83b7b225b586f09c2eb",
+          "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/baecf8adf82c53038c61c83b7b225b586f09c2eb/examples/gaussian-splat-spike/qualification-fixtures.mjs",
+          "sha256": "9b897542b8a54409129803c2388f9084edfa383b5d7a3c9c3735107e0b68656e",
+          "fetched_at": "2026-11-05"
+        },
+        "license": {
+          "spdx": "MPL-2.0",
+          "url": "https://www.mozilla.org/en-US/MPL/2.0/",
+          "attribution": "ifc-lite contributors, qualification-fixtures.mjs analytic 32-batch Gaussian control, generated for #8567."
+        },
+        "modification": {
+          "status": "modified",
+          "description": "Generated with qualificationPly({batches:32, perBatch:257}) from examples/gaussian-splat-spike/qualification-fixtures.mjs; deterministic 8,224-row SH3 PLY."
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/qualification-fixtures.mjs qualificationPly({batches:32,perBatch:257})",
+      "gaussian": {
+        "count": 8224,
+        "sh_degree": 3,
+        "nonzero_sh": true,
+        "units": "analytic unitless control, no survey calibration",
+        "up_axis": "analytic z",
+        "source_method": "Deterministic generated 32-batch depth-order witness",
+        "metadata_url": "https://github.com/LTplus-AG/ifc-lite/blob/baecf8adf82c53038c61c83b7b225b586f09c2eb/examples/gaussian-splat-spike/qualification-fixtures.mjs"
+      }
     }
   ]
 }

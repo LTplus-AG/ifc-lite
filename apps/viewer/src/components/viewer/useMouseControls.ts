@@ -137,7 +137,7 @@ export interface UseMouseControlsParams {
   incrementEdgeLockStrength: () => void;
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
-  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
+  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
   updateCameraRotationRealtime: (rotation: { azimuth: number; elevation: number }) => void;
   toggleSelection: (entityId: number) => void;
   calculateScale: () => void;

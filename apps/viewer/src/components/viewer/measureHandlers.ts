@@ -13,7 +13,7 @@ import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/ty
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
-import { measureCameraState, sameMeasureCameraState } from './measureCameraState.js';
+import { measureCameraState, sameMeasureCameraPose, sameMeasureCameraState } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
@@ -443,11 +443,12 @@ export function isDuplicateClickPoint(
  */
 export function updateMeasureScreenCoords(ctx: MouseHandlerContext): void {
   const { canvas, camera } = ctx;
+  const current = measureCameraState(camera, canvas);
   ctx.updateMeasurementScreenCoords((worldPos) => {
     return projectToCssScreen(camera, canvas, worldPos);
-  });
+  }, !sameMeasureCameraPose(ctx.lastCameraStateRef.current, current));
   // Update camera state tracking to prevent duplicate update in animation loop
-  ctx.lastCameraStateRef.current = measureCameraState(camera, canvas);
+  ctx.lastCameraStateRef.current = current;
 }
 
 /** {@link updateMeasureScreenCoords}, only when the camera moved since the last pass. */

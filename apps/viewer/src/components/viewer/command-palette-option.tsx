@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
+import { useId } from 'react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
@@ -35,6 +36,7 @@ function paletteDefinition(id: RegisteredPaletteId): SurfaceCommandDefinition {
 }
 
 interface OptionPlacement {
+  id?: string;
   index: number;
   selected: boolean;
   onActivate: () => void;
@@ -49,12 +51,13 @@ interface OptionChromeProps extends OptionPlacement {
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, shortcut, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, shortcut, id, index, selected, onActivate, onHover }: OptionChromeProps) {
+  const fallbackId = useId();
   const registered = 'commandId' in owner;
   return (
-    // The option remains a button so Enter and click use the same command action.
+    // Focus stays on the combobox; pointer activation still uses the native click.
     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-    <button type="button" role="option" data-index={index}
+    <button id={id ?? fallbackId} type="button" role="option" tabIndex={-1} data-index={index}
       data-command-id={registered ? owner.commandId : undefined}
       data-runtime-source={registered ? undefined : owner.runtimeSource}
       data-runtime-command-id={registered ? undefined : owner.runtimeCommandId}
@@ -62,6 +65,7 @@ function OptionChrome({ owner, icon: Icon, label, detail, shortcut, index, selec
       aria-selected={selected}
       className={cn('flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
         selected ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50')}
+      onMouseDown={event => event.preventDefault()}
       onClick={onActivate} onMouseMove={onHover}>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
       <span className="flex-1 truncate">{label}</span>

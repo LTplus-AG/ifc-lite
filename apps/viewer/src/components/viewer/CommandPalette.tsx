@@ -6,7 +6,7 @@
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Search } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -78,7 +78,8 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const listId = useId();
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +98,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       setRecentFiles(getRecentFiles());
       void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
       setQuery('');
+      setSelectedOptionId(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
@@ -130,14 +132,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
   const { grouped, flatItems } = useMemo(() => {
-    if (!query) return browseCommands(commands, recentIds);
+    if (!query.trim()) return browseCommands(commands, recentIds);
     const groups: { category: string; items: FlatItem[] }[] = [];
     const flat: FlatItem[] = [];
     let idx = 0;
 
     // ── Searching: flat ranked list, no categories ──
     const scored = commands
-      .map(cmd => ({ cmd, s: rankCommand(cmd, query, cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
+      .map(cmd => ({ cmd, s: rankCommand(cmd, query.trim(), cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
       .filter(x => x.s > 0);
     scored.sort((a, b) => b.s - a.s);
 
@@ -152,14 +154,25 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return { grouped: groups, flatItems: flat };
   }, [commands, query, recentIds, t]);
 
-  useEffect(() => { setSelectedIndex(0); }, [query, open]);
+  // Recent and category rows may contain the same command; each occurrence needs
+  // its own stable id, independent of filtering, ordering, or another palette.
+  const optionId = (commandId: string, category: string) =>
+    `${listId}-${category === 'Recent' ? 'recent' : 'command'}-${encodeURIComponent(commandId)}`;
+  const options = grouped.flatMap(group => group.items.map(item => ({
+    ...item, optionId: optionId(item.cmd.id, group.category),
+  })));
+  const selectedIndex = Math.max(0, options.findIndex(item => item.optionId === selectedOptionId));
+  const activeOption = options[selectedIndex];
+  const activeOptionId = activeOption?.optionId;
+  // Reconcile removed commands so a later reappearance cannot steal selection.
+  useEffect(() => { setSelectedOptionId(activeOptionId ?? null); }, [activeOptionId]);
 
   useEffect(() => {
     if (!navigatedByKeyboard.current || !listRef.current) return;
     navigatedByKeyboard.current = false;
     const el = listRef.current.querySelector(`[data-index="${selectedIndex}"]`) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [selectedIndex]);
+  }, [selectedIndex, activeOptionId]);
 
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
@@ -177,18 +190,21 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [onOpenChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Enter confirms an IME candidate, not a command (#8946). keyCode 229
+    // covers engines that clear isComposing on the final composition keydown.
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault(); navigatedByKeyboard.current = true;
-      setSelectedIndex(i => Math.min(i + 1, flatItems.length - 1));
+      setSelectedOptionId(options[Math.min(selectedIndex + 1, options.length - 1)]?.optionId ?? null);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault(); navigatedByKeyboard.current = true;
-      setSelectedIndex(i => Math.max(i - 1, 0));
+      setSelectedOptionId(options[Math.max(selectedIndex - 1, 0)]?.optionId ?? null);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const item = flatItems[selectedIndex];
+      const item = activeOption;
       if (item) runCommand(item.cmd);
     }
-  }, [flatItems, selectedIndex, runCommand]);
+  }, [options, selectedIndex, activeOption, runCommand]);
 
   return (
     <>
@@ -200,8 +216,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <input
               ref={inputRef}
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => { setQuery(e.target.value); setSelectedOptionId(null); }}
               onKeyDown={handleKeyDown}
+              role="combobox"
+              aria-controls={listId}
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-activedescendant={activeOptionId}
               aria-label={t('commandPalette.searchAriaLabel')}
               placeholder={t('commandPalette.searchPlaceholder')}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -216,7 +237,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {/* Results */}
           {/* The command palette implements a custom listbox with keyboard-managed button options. */}
           {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-          <div ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
+          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
             {flatItems.length === 0 && (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                 {t('commandPalette.noResults')}
@@ -232,10 +253,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 )}
                 {group.items.map(({ cmd, flatIdx }) => {
                   const placement = {
+                    id: optionId(cmd.id, group.category),
                     index: flatIdx,
                     selected: flatIdx === selectedIndex,
                     onActivate: () => runCommand(cmd),
-                    onHover: () => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); },
+                    onHover: () => setSelectedOptionId(optionId(cmd.id, group.category)),
                   };
                   const key = `${group.category}:${cmd.id}`;
                   return cmd.registryOwned

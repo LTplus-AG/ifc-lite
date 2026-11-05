@@ -200,7 +200,7 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
   }
 
   state.addPolylinePoint(point);
-  rememberVertexPress(ctx, point, { x, y });
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**
@@ -230,7 +230,7 @@ export function handleRadiusClick(ctx: MouseHandlerContext, x: number, y: number
   const point = active ? unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y }) : picked.point;
   if (active) state.addRadiusPoint(point);
   else state.startRadius(point);
-  rememberVertexPress(ctx, point, { x, y });
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**
@@ -334,7 +334,7 @@ export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number)
 
   ctx.setSnapTarget(picked.snapTarget);
   state.addAnglePick({ kind, point });
-  rememberVertexPress(ctx, point, { x, y });
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**

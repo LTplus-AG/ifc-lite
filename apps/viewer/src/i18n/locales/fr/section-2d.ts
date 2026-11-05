@@ -128,4 +128,7 @@ export const section2dFr = {
   "section2d.savedCuts.renameTitle": "Renommer la coupe enregistrée",
   "section2d.savedCuts.renamePrompt": "Renommer cette coupe",
   "section2d.savedCuts.deleteTitle": "Supprimer la coupe enregistrée",
+  "section2d.cutPlane": "Plan de coupe : {cut}",
+  "section2d.drawers.activeTip": "{label} · en cours d’utilisation",
+  "section2d.zoom.fitShort": "Ajuster",
 } satisfies Catalogue;

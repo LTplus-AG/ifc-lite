@@ -119,4 +119,11 @@ export const shellChromeFr = {
   "shellChrome.mobileToolbar.export": "Exporter",
   "shellChrome.mobileToolbar.lightMode": "Mode clair",
   "shellChrome.mobileToolbar.darkMode": "Mode sombre",
+  "shellChrome.activityBar.iconAriaLabelOpen": "{title} (ouvert)",
+  "shellChrome.activityBar.openHint": "ouvert",
+  "shellChrome.activityBar.needsModelHint": "Ouvrir d’abord un modèle",
+  "shellChrome.activityBar.morePanels": "Autres panneaux ({count})",
+  "shellChrome.activityBar.morePanelsSomeOpen": "Autres panneaux ({count}), certains ouverts",
+  "shellChrome.activityBar.morePanelsHint": "Panneaux qui ne tiennent pas dans la barre latérale",
+  "shellChrome.activityBar.moreCaption": "Plus",
 } satisfies Catalogue;

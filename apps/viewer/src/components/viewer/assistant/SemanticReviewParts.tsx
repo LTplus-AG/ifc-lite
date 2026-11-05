@@ -12,8 +12,8 @@ const SPAN_LABEL: Record<SpanCheck['status'], TranslationKey> = {
   verified: 'semanticAssist.spanVerified', mismatch: 'semanticAssist.spanMismatch', 'not-captured': 'semanticAssist.spanNotCaptured',
 };
 const SPAN_TONE: Record<SpanCheck['status'], string> = {
-  verified: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  mismatch: 'bg-destructive/10 text-destructive', 'not-captured': 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  verified: 'bg-ok-surface text-ok',
+  mismatch: 'bg-destructive/10 text-destructive', 'not-captured': 'bg-amber-500/15 text-warn',
 };
 
 /** A quoted source span with its exact verification result; a mismatch shows what the source actually says. */

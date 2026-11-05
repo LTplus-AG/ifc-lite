@@ -72,7 +72,7 @@ function FlowPatchReview() {
           <label className="flex items-start gap-2"><input type="checkbox" checked={review.trackingAcknowledged}
             disabled={!isFlowProposalCurrent(review.proposal)} onChange={event => useFlowReview.setState({ trackingAcknowledged: event.target.checked })} />{t('flowAssistant.trackingAcknowledge')}</label>
         </>}
-        {!isFlowProposalCurrent(review.proposal) && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.flowProposalStale')}</p>}
+        {!isFlowProposalCurrent(review.proposal) && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t('assistant.flowProposalStale')}</p>}
         <details><summary className="cursor-pointer py-1">{t('assistant.flowBefore')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.beforeJson}</pre></details>
         <details><summary className="cursor-pointer py-1">{t('assistant.flowAfter')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.afterJson}</pre></details>
         <details><summary className="cursor-pointer py-1">{t('assistant.evidenceDetails')}</summary>
@@ -89,7 +89,7 @@ function FlowPatchReview() {
           useFlowReview.setState({ receipts: [...review.receipts, receipt].slice(-20), proposal: null, approved: false, trackingAcknowledged: false });
         })}>{t('assistant.applyFlow')}</Button>
       </>}
-      {receipt && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
+      {receipt && <div aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2 space-y-2">
         <p>{t('assistant.flowApplied')}</p>
         {isFlowReceiptCurrent(receipt) && <FlowPreflight />}
         <Button size="sm" variant="outline" className="h-7" disabled={!isFlowReceiptCurrent(receipt)} onClick={() => run(() => {

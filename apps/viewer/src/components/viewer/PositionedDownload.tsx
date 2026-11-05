@@ -52,9 +52,9 @@ export function PositionedDownload({ modelId }: { modelId: string }) {
         <p className="text-sm">{model.name}</p>
         <p className="text-sm">{t(model.gaussianSplat ? 'positionedDownload.gaussian' : 'positionedDownload.scan')}</p>
         <p className="text-sm">{t('positionedDownload.limit')}</p>
-        {unavailable && <p role="status">{t('positionedDownload.unavailable')}</p>}
-        {busy && <p role="status">{t('positionedDownload.progress', { count })}</p>}
-        {done && <p role="status">{t('positionedDownload.done')}</p>}
+        {unavailable && <output>{t('positionedDownload.unavailable')}</output>}
+        {busy && <output>{t('positionedDownload.progress', { count })}</output>}
+        {done && <output>{t('positionedDownload.done')}</output>}
         {error && <p role="alert">{error}</p>}
         <div className="flex gap-2">
           <Button disabled={busy || unavailable} onClick={() => void start()}>{t('positionedDownload.save')}</Button>

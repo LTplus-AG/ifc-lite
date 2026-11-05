@@ -1,0 +1,1882 @@
+{
+  "activityTray.announce": {
+    "value": "{title}: {status}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "activityTray.announceSubject": {
+    "value": "{title} ({subject}): {status}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "activityTray.job.export": {
+    "value": "Export",
+    "reason": "Same-spelling German label or established UI term (Export); placeholders retain runtime content."
+  },
+  "alignmentSection.axisFallback": {
+    "value": "IfcAlignment #{id}",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcAlignment #{id}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "anonymizedExport.dialog.ifcExtensionSuffix": {
+    "value": ".ifc",
+    "reason": "Preserved technical syntax/identifier or proper name: .ifc. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "anonymizedExport.options.globalIdsLabel": {
+    "value": "GUIDs",
+    "reason": "Preserved technical syntax/identifier or proper name: GUIDs. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "anonymizedExport.relatedList.groupLabel": {
+    "value": "{relationship} ({role})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.annotationFields.containerFallbackName": {
+    "value": "#{expressId}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.annotationFields.nameLabel": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "appearance.assignments.queryFilter": {
+    "value": "Filter: {name}",
+    "reason": "Same-spelling German label or established UI term (Filter); placeholders retain runtime content."
+  },
+  "appearance.assignments.reviewRowSummaryClass": {
+    "value": "{modelName} · {ifcClass}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.assignments.reviewRowSummaryFilter": {
+    "value": "{modelName} · Filter: {name}",
+    "reason": "Same-spelling German label or established UI term (Filter); placeholders retain runtime content."
+  },
+  "appearance.calibration.letterA": {
+    "value": "A",
+    "reason": "Preserved technical syntax/identifier or proper name: A. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "appearance.calibration.letterB": {
+    "value": "B",
+    "reason": "Preserved technical syntax/identifier or proper name: B. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "appearance.capture.containerFallbackName": {
+    "value": "#{expressId}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.capture.containerLabel": {
+    "value": "Container",
+    "reason": "Same-spelling German label or established UI term (Container); placeholders retain runtime content."
+  },
+  "appearance.capture.nameLabel": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "appearance.mapping.offsetUUv": {
+    "value": "Offset U (UV)",
+    "reason": "Preserved technical syntax/identifier or proper name: Offset U (UV). Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "appearance.mapping.offsetVUv": {
+    "value": "Offset V (UV)",
+    "reason": "Preserved technical syntax/identifier or proper name: Offset V (UV). Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "appearance.mapping.planeXy": {
+    "value": "XY · horizontal",
+    "reason": "Preserved technical syntax/identifier or proper name: XY · horizontal. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "appearance.pdfFidelity.omissionRowSimple": {
+    "value": "{itemCount} × {label}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.pdfFidelity.regionExtent": {
+    "value": "x {x0}–{x1}, y {y0}–{y1} pt",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.pdfFidelity.row.unknown": {
+    "value": "{itemCount} × {kind}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.pdfFields.qualityCustomDpi": {
+    "value": "{dpi} dpi",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.pdfFields.qualityStandard": {
+    "value": "Standard · 144 dpi",
+    "reason": "Same-spelling German label or established UI term (Standard); placeholders retain runtime content."
+  },
+  "appearance.pdfFields.rotation180": {
+    "value": "180°",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.pdfFields.rotationOriginal": {
+    "value": "Original",
+    "reason": "Same-spelling German label or established UI term (Original); placeholders retain runtime content."
+  },
+  "appearance.scan.metresEmpty": {
+    "value": "—",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.scan.metresValue": {
+    "value": "{value} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.scanTransfer.exclusionRow": {
+    "value": "#{productId}: {reason}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearance.sourceFields.dimensionsPx": {
+    "value": "{width} × {height} px",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "appearanceAssignmentList.summary": {
+    "value": "{products} · {excluded} · {overridden}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "assistantArtifacts.sampleName": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "bcf.createForm.assigneePlaceholder": {
+    "value": "name@example.com",
+    "reason": "Preserved technical syntax/identifier or proper name: name@example.com. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "bcf.createForm.statusLabel": {
+    "value": "Status",
+    "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
+  },
+  "bcf.panel.formatBcfzip": {
+    "value": "BCF",
+    "reason": "Preserved technical syntax/identifier or proper name: BCF. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "bcf.serverConnect.emailPlaceholder": {
+    "value": "you@example.com",
+    "reason": "Preserved technical syntax/identifier or proper name: you@example.com. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "bcf.serverConnect.serverLabel": {
+    "value": "Server",
+    "reason": "Same-spelling German label or established UI term (Server); placeholders retain runtime content."
+  },
+  "bcf.serverConnect.serverUrlPlaceholder": {
+    "value": "https://example.com/bcf",
+    "reason": "Preserved technical syntax/identifier or proper name: https://example.com/bcf. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "bcf.shared.emailPlaceholder": {
+    "value": "your@email.com",
+    "reason": "Preserved technical syntax/identifier or proper name: your@email.com. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "bcfDrafts.topic.status": {
+    "value": "Status",
+    "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
+  },
+  "bulkPropertyEditor.psetOptional": {
+    "value": "Pset (optional)",
+    "reason": "Same-spelling German label or established UI term (optional); placeholders retain runtime content."
+  },
+  "bulkPropertyEditor.type.proxy": {
+    "value": "Proxy",
+    "reason": "Preserved technical syntax/identifier or proper name: Proxy. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "cesiumGeo.axisHelper.labelX": {
+    "value": "X",
+    "reason": "Preserved technical syntax/identifier or proper name: X. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "cesiumGeo.axisHelper.labelY": {
+    "value": "Y",
+    "reason": "Preserved technical syntax/identifier or proper name: Y. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "cesiumGeo.axisHelper.labelZ": {
+    "value": "Z",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.basemap.attributionLinkPlaceholder": {
+    "value": "https://…/licence",
+    "reason": "Preserved technical syntax/identifier or proper name: https://…/licence. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "cesiumGeo.basemap.urlPlaceholder": {
+    "value": "https://example.org/tiles/{z}/{x}/{y}.png",
+    "reason": "Preserved technical syntax/identifier or proper name: https://example.org/tiles/{z}/{x}/{y}.png. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "cesiumGeo.placement.deltaELabel": {
+    "value": "Delta E",
+    "reason": "Same-spelling German label or established UI term (Delta); placeholders retain runtime content."
+  },
+  "cesiumGeo.placement.deltaNLabel": {
+    "value": "Delta N",
+    "reason": "Same-spelling German label or established UI term (Delta); placeholders retain runtime content."
+  },
+  "cesiumGeo.placement.deltaRLabel": {
+    "value": "Delta R",
+    "reason": "Same-spelling German label or established UI term (Delta); placeholders retain runtime content."
+  },
+  "cesiumGeo.placement.deltaZLabel": {
+    "value": "Delta Z",
+    "reason": "Same-spelling German label or established UI term (Delta); placeholders retain runtime content."
+  },
+  "cesiumGeo.placement.nudgeEastLabel": {
+    "value": "E+",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.nudgeHeightDownLabel": {
+    "value": "Z-",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.nudgeHeightUpLabel": {
+    "value": "Z+",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.nudgeNorthLabel": {
+    "value": "N+",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.nudgeSouthLabel": {
+    "value": "N-",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.nudgeWestLabel": {
+    "value": "E-",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.rotateNegLabel": {
+    "value": "R-",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.placement.rotatePosLabel": {
+    "value": "R+",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "cesiumGeo.tileset.urlPlaceholder": {
+    "value": "https://example.org/tileset.json",
+    "reason": "Preserved technical syntax/identifier or proper name: https://example.org/tileset.json. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "changeSets.contents.entity": {
+    "value": "{type} #{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "changesPanel.entity": {
+    "value": "{type} #{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "chartsPanel.dashboardAriaLabel": {
+    "value": "Dashboard",
+    "reason": "Same-spelling German label or established UI term (Dashboard); placeholders retain runtime content."
+  },
+  "chat.codeBlock.languageFallback": {
+    "value": "js",
+    "reason": "Preserved technical syntax/identifier or proper name: js. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chat.modelSelector.anthropic": {
+    "value": "Anthropic",
+    "reason": "Preserved technical syntax/identifier or proper name: Anthropic. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chat.modelSelector.openai": {
+    "value": "OpenAI",
+    "reason": "Preserved technical syntax/identifier or proper name: OpenAI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chat.panel.providerAnthropic": {
+    "value": "Anthropic",
+    "reason": "Preserved technical syntax/identifier or proper name: Anthropic. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chat.panel.providerOpenai": {
+    "value": "OpenAI",
+    "reason": "Preserved technical syntax/identifier or proper name: OpenAI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chatByok.credentialForm.workspaceOptionalSuffix": {
+    "value": "— optional",
+    "reason": "Same-spelling German label or established UI term (optional); placeholders retain runtime content."
+  },
+  "chatByok.credentialForm.workspacePlaceholder": {
+    "value": "wrkspc_...",
+    "reason": "Preserved technical syntax/identifier or proper name: wrkspc_.... Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chatByok.keyModal.trustBulletLocalStorage": {
+    "value": "localStorage",
+    "reason": "Preserved technical syntax/identifier or proper name: localStorage. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chatByok.keyModal.walkthroughStep2CodeName": {
+    "value": "ifc-lite",
+    "reason": "Preserved technical syntax/identifier or proper name: ifc-lite. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chatByok.keyModal.walkthroughStep2CreateKey": {
+    "value": "Create Key",
+    "reason": "Exact Create Key control label in the external provider console; users must find this control."
+  },
+  "chatByok.provider.anthropic": {
+    "value": "Anthropic",
+    "reason": "Preserved technical syntax/identifier or proper name: Anthropic. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "chatByok.provider.openai": {
+    "value": "OpenAI",
+    "reason": "Preserved technical syntax/identifier or proper name: OpenAI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "checkAuthoring.auditIssue": {
+    "value": "{path}: {message}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "checkAuthoring.cardinality.optional": {
+    "value": "Optional",
+    "reason": "Same-spelling German label or established UI term (Optional); placeholders retain runtime content."
+  },
+  "checkAuthoring.cardinalityModel": {
+    "value": "{model}: {message}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "checkAuthoring.textBlock": {
+    "value": "Text",
+    "reason": "Same-spelling German label or established UI term (Text); placeholders retain runtime content."
+  },
+  "checkAuthoring.unitPair": {
+    "value": "{authored} {unit} → {si} {siUnit}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "checkAuthoring.unsupportedReason": {
+    "value": "({reason})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "checkAuthoring.unsupportedReasonFor": {
+    "value": "({reason}; {name})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "clashGroups.clashSummary": {
+    "value": "{clashes}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "clashGroups.clashSummaryIssues": {
+    "value": "{clashes} · {issues}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "clashGroups.groupPairs": {
+    "value": "{groups} · {pairs}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "clashGroups.issuePairs": {
+    "value": "{issues} · {pairs}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "clashGroups.severity.info": {
+    "value": "Info",
+    "reason": "Same-spelling German label or established UI term (Info); placeholders retain runtime content."
+  },
+  "clashPanel.severity.info": {
+    "value": "Info",
+    "reason": "Same-spelling German label or established UI term (Info); placeholders retain runtime content."
+  },
+  "clashTools.export.formatBcf": {
+    "value": "BCF",
+    "reason": "Preserved technical syntax/identifier or proper name: BCF. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.export.formatCsv": {
+    "value": "CSV",
+    "reason": "Preserved technical syntax/identifier or proper name: CSV. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.ruleEditor.selectorAPlaceholder": {
+    "value": "IfcDuct*|IfcPipe*",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcDuct*|IfcPipe*. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.ruleEditor.selectorBPlaceholder": {
+    "value": "IfcWall*|IfcSlab",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcWall*|IfcSlab. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.ruleEditor.selectorExampleNotSpace": {
+    "value": "!IfcSpace",
+    "reason": "Preserved technical syntax/identifier or proper name: !IfcSpace. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.ruleEditor.selectorExamplePipe": {
+    "value": "IfcPipe*",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcPipe*. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "clashTools.ruleEditor.selectorExampleWallSlab": {
+    "value": "IfcWall|IfcSlab",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcWall|IfcSlab. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "commandPalette.category.export": {
+    "value": "Export",
+    "reason": "Same-spelling German label or established UI term (Export); placeholders retain runtime content."
+  },
+  "commandPalette.escKey": {
+    "value": "Esc",
+    "reason": "Preserved technical syntax/identifier or proper name: Esc. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "commandPalette.view.spacemouse.label": {
+    "value": "SpaceMouse",
+    "reason": "Preserved technical syntax/identifier or proper name: SpaceMouse. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "compareAnalysis.reconcile.runLabel": {
+    "value": "{time} · {models}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "compareAnalysis.side.base": {
+    "value": "A",
+    "reason": "Preserved technical syntax/identifier or proper name: A. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "compareAnalysis.side.head": {
+    "value": "B",
+    "reason": "Preserved technical syntax/identifier or proper name: B. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "compareKeyProperty.globalId": {
+    "value": "GlobalId",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.changeDetail.movedLine": {
+    "value": "{distance} m (Δx {dx}, Δy {dy}, Δz {dz})",
+    "reason": "Preserved technical syntax/identifier or proper name: {distance} m (Δx {dx}, Δy {dy}, Δz {dz}). Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.exportBar.formatCsv": {
+    "value": "CSV",
+    "reason": "Preserved technical syntax/identifier or proper name: CSV. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.exportBar.formatJson": {
+    "value": "JSON",
+    "reason": "Preserved technical syntax/identifier or proper name: JSON. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.filters.container": {
+    "value": "Container",
+    "reason": "Same-spelling German label or established UI term (Container); placeholders retain runtime content."
+  },
+  "comparePanel.runControls.baseLabel": {
+    "value": "A",
+    "reason": "Preserved technical syntax/identifier or proper name: A. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.runControls.headLabel": {
+    "value": "B",
+    "reason": "Preserved technical syntax/identifier or proper name: B. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "comparePanel.saved.dependencies.dashboard": {
+    "value": "Dashboard",
+    "reason": "Same-spelling German label or established UI term (Dashboard); placeholders retain runtime content."
+  },
+  "copyArray.mode.linear": {
+    "value": "Linear",
+    "reason": "Same-spelling German label or established UI term (Linear); placeholders retain runtime content."
+  },
+  "copyArray.mode.polar": {
+    "value": "Polar",
+    "reason": "Same-spelling German label or established UI term (Polar); placeholders retain runtime content."
+  },
+  "costPanel.identification": {
+    "value": "ID {value}",
+    "reason": "Preserved technical syntax/identifier or proper name: ID {value}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "dataConnector.matchTypeExpressId": {
+    "value": "EXPRESS ID",
+    "reason": "Preserved technical syntax/identifier or proper name: EXPRESS ID. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "dataConnector.matchTypeGlobalId": {
+    "value": "GlobalId",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationPanel.sliderValueLabel": {
+    "value": "±{value}mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "deviationStats.assetGlobalId": {
+    "value": "GlobalId",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationStats.notAvailable": {
+    "value": "—",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "deviationStats.p50Abs": {
+    "value": "P50 |d|",
+    "reason": "Preserved technical syntax/identifier or proper name: P50 |d|. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationStats.p95Abs": {
+    "value": "P95 |d|",
+    "reason": "Preserved technical syntax/identifier or proper name: P95 |d|. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationStats.p99Abs": {
+    "value": "P99 |d|",
+    "reason": "Preserved technical syntax/identifier or proper name: P99 |d|. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationStats.rms": {
+    "value": "RMS",
+    "reason": "Preserved technical syntax/identifier or proper name: RMS. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "deviationStats.unitMm": {
+    "value": "mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "deviationStats.valueMm": {
+    "value": "{value} mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "document.block.fontCourier": {
+    "value": "Courier",
+    "reason": "Preserved technical syntax/identifier or proper name: Courier. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.block.fontHelvetica": {
+    "value": "Helvetica",
+    "reason": "Preserved technical syntax/identifier or proper name: Helvetica. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.block.fontTimes": {
+    "value": "Times",
+    "reason": "Preserved technical syntax/identifier or proper name: Times. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.block.idsReportVariantLabel": {
+    "value": "Layout",
+    "reason": "Same-spelling German label or established UI term (Layout); placeholders retain runtime content."
+  },
+  "document.block.kindText": {
+    "value": "Text",
+    "reason": "Same-spelling German label or established UI term (Text); placeholders retain runtime content."
+  },
+  "document.panel.pageSizeA3": {
+    "value": "A3",
+    "reason": "Preserved technical syntax/identifier or proper name: A3. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.panel.pageSizeA4": {
+    "value": "A4",
+    "reason": "Preserved technical syntax/identifier or proper name: A4. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.selection.block": {
+    "value": "Block {number}: {name}",
+    "reason": "Same-spelling German label or established UI term (Block); placeholders retain runtime content."
+  },
+  "document.table.column.globalId": {
+    "value": "GlobalId",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "document.table.column.name": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "drawingUnderlay.dxf.badge2D": {
+    "value": "2D",
+    "reason": "Preserved technical syntax/identifier or proper name: 2D. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "drawingUnderlay.settings.millimetersUnit": {
+    "value": "mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "elementFieldPicker.filterLabel": {
+    "value": "Filter",
+    "reason": "Same-spelling German label or established UI term (Filter); placeholders retain runtime content."
+  },
+  "exportChangesReviewDialog.entityIdLabel": {
+    "value": "#{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportChangesReviewDialog.entityTypeIdLabel": {
+    "value": "{type} #{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportChangesReviewDialog.entityTypeIdNameLabel": {
+    "value": "{type} #{id} — {name}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportCommands.csv.label": {
+    "value": "CSV",
+    "reason": "Preserved technical syntax/identifier or proper name: CSV. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.glb.label": {
+    "value": "GLB",
+    "reason": "Preserved technical syntax/identifier or proper name: GLB. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.ifc.label": {
+    "value": "IFC",
+    "reason": "Preserved technical syntax/identifier or proper name: IFC. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.ion.label": {
+    "value": "Cesium ion",
+    "reason": "Preserved technical syntax/identifier or proper name: Cesium ion. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.json.label": {
+    "value": "JSON",
+    "reason": "Preserved technical syntax/identifier or proper name: JSON. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.kmz.label": {
+    "value": "KMZ",
+    "reason": "Preserved technical syntax/identifier or proper name: KMZ. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.pdf.label": {
+    "value": "PDF",
+    "reason": "Preserved technical syntax/identifier or proper name: PDF. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportCommands.usd.label": {
+    "value": "USD",
+    "reason": "Preserved technical syntax/identifier or proper name: USD. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "exportDialog.schemaLabel": {
+    "value": "Schema",
+    "reason": "Same-spelling German label or established UI term (Schema); placeholders retain runtime content."
+  },
+  "exportDialog.schemaOption.ifc5Alpha": {
+    "value": "IFC5 (Alpha)",
+    "reason": "Preserved technical syntax/identifier or proper name: IFC5 (Alpha). Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "extensionsFlavors.flavorImportPreview.idLabel": {
+    "value": "ID:",
+    "reason": "Preserved technical syntax/identifier or proper name: ID:. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "extensionsFlavors.flavorImportPreview.nameLabel": {
+    "value": "Name:",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "extensionsPanels.auditLogPanel.metadataDate": {
+    "value": "{date}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "extensionsPanels.auditLogPanel.metadataDetail": {
+    "value": "{date} · {detail}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "extensionsPanels.auditLogPanel.metadataVersion": {
+    "value": "{date} · v{version}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "extensionsPanels.auditLogPanel.metadataVersionDetail": {
+    "value": "{date} · v{version} · {detail}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "extensionsPanels.auditLogPanel.reasonSuffix": {
+    "value": "{reason}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "extensionsPanels.planCard.testsLabel": {
+    "value": "Tests",
+    "reason": "Same-spelling German label or established UI term (Tests); placeholders retain runtime content."
+  },
+  "extensionsPanels.promoteToolDialog.hotkeyPlaceholder": {
+    "value": "Ctrl+Alt+F",
+    "reason": "Preserved technical syntax/identifier or proper name: Ctrl+Alt+F. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "extensionsPanels.promoteToolDialog.nameLabel": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "federationSetupControls.result.failedSlot": {
+    "value": "{name} ({reason})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.eq": {
+    "value": "=",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.gt": {
+    "value": ">",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.gte": {
+    "value": "≥",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.lt": {
+    "value": "<",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.lte": {
+    "value": "≤",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "filterOperators.ne": {
+    "value": "≠",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "flowAssistant.codeParam": {
+    "value": "{node} · {param} ({language})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "flowAssistant.inputOptional": {
+    "value": "optional",
+    "reason": "Same-spelling German label or established UI term (optional); placeholders retain runtime content."
+  },
+  "flowAssistant.preflightNative": {
+    "value": "{message}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "flowPanel.player.tablePlaceholder": {
+    "value": "{\"columns\":[…],\"rows\":[…],\"key\":\"GlobalId\"}",
+    "reason": "Preserved technical syntax/identifier or proper name: {\"columns\":[…],\"rows\":[…],\"key\":\"GlobalId\"}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "flowPanel.status.ok": {
+    "value": "ok",
+    "reason": "Preserved technical syntax/identifier or proper name: ok. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "flowPanel.title": {
+    "value": "Flow",
+    "reason": "Flow/Flows is the application workflow feature name, retained consistently as product terminology."
+  },
+  "flowPanel.view.editor": {
+    "value": "Editor",
+    "reason": "Same-spelling German label or established UI term (Editor); placeholders retain runtime content."
+  },
+  "flowPanel.view.player": {
+    "value": "Player",
+    "reason": "Same-spelling German label or established UI term (Player); placeholders retain runtime content."
+  },
+  "flowReview.node": {
+    "value": "{node} ({type})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "gaussianCapture.format.gaussianPly": {
+    "value": "Gaussian PLY",
+    "reason": "Preserved technical syntax/identifier or proper name: Gaussian PLY. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "gaussianCapture.format.splat": {
+    "value": ".splat",
+    "reason": "Preserved technical syntax/identifier or proper name: .splat. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "gaussianCapture.splats": {
+    "value": "Splats",
+    "reason": "Preserved technical syntax/identifier or proper name: Splats. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.editCard.axisX": {
+    "value": "X",
+    "reason": "Preserved technical syntax/identifier or proper name: X. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.editCard.axisY": {
+    "value": "Y",
+    "reason": "Preserved technical syntax/identifier or proper name: Y. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.editCard.axisZ": {
+    "value": "Z",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "geometryExport.editCard.nudgeStepOption": {
+    "value": "±{step} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "geometryExport.energy.formatLabel": {
+    "value": "Format",
+    "reason": "Same-spelling German label or established UI term (Format); placeholders retain runtime content."
+  },
+  "geometryExport.glb.fileExtension": {
+    "value": ".glb",
+    "reason": "Preserved technical syntax/identifier or proper name: .glb. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.kmz.fileExtension": {
+    "value": ".kmz",
+    "reason": "Preserved technical syntax/identifier or proper name: .kmz. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.kmz.outputFormat": {
+    "value": "Google Earth",
+    "reason": "Preserved technical syntax/identifier or proper name: Google Earth. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "geometryExport.usd.fileExtension": {
+    "value": ".usda",
+    "reason": "Preserved technical syntax/identifier or proper name: .usda. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "grid.tags.letters": {
+    "value": "A, B, C",
+    "reason": "Preserved technical syntax/identifier or proper name: A, B, C. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "grid.tags.numbers": {
+    "value": "1, 2, 3",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "hierarchy.node.actionAriaLabel": {
+    "value": "{action} {name}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "hierarchy.node.elevationBadge": {
+    "value": "{sign}{value}m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "hierarchy.node.nameAndSecondaryTitle": {
+    "value": "{name} - {secondaryName}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "hierarchy.panel.escHint": {
+    "value": "ESC",
+    "reason": "Preserved technical syntax/identifier or proper name: ESC. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "hierarchy.panel.grouping.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "idsAgent.answer": {
+    "value": "{question} → {answer}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "idsAgent.unresolvedItem": {
+    "value": "{statement} ({category}: {reason})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "idsPanel.audit.details": {
+    "value": "Details",
+    "reason": "Same-spelling German label or established UI term (Details); placeholders retain runtime content."
+  },
+  "idsPanel.reportExport.format.bcf": {
+    "value": "BCF",
+    "reason": "Preserved technical syntax/identifier or proper name: BCF. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsPanel.reportExport.format.html": {
+    "value": "HTML",
+    "reason": "Preserved technical syntax/identifier or proper name: HTML. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsPanel.reportExport.format.json": {
+    "value": "JSON",
+    "reason": "Preserved technical syntax/identifier or proper name: JSON. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsPanel.version": {
+    "value": "v{version}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "idsStudio.badge.optional": {
+    "value": "O",
+    "reason": "Preserved technical syntax/identifier or proper name: O. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsStudio.cardinality.optional": {
+    "value": "Optional",
+    "reason": "Same-spelling German label or established UI term (Optional); placeholders retain runtime content."
+  },
+  "idsStudio.diagnostics.severity.info": {
+    "value": "Info",
+    "reason": "Same-spelling German label or established UI term (Info); placeholders retain runtime content."
+  },
+  "idsStudio.facet.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "idsStudio.field.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "idsStudio.header.xml": {
+    "value": "XML",
+    "reason": "Preserved technical syntax/identifier or proper name: XML. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsStudio.info.copyright": {
+    "value": "Copyright",
+    "reason": "Same-spelling German label or established UI term (Copyright); placeholders retain runtime content."
+  },
+  "idsStudio.info.version": {
+    "value": "Version",
+    "reason": "Same-spelling German label or established UI term (Version); placeholders retain runtime content."
+  },
+  "idsStudio.spec.name": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "idsStudio.title": {
+    "value": "IDS Studio",
+    "reason": "Preserved technical syntax/identifier or proper name: IDS Studio. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "idsStudio.value.max": {
+    "value": "Maximum",
+    "reason": "Same-spelling German label or established UI term (Maximum); placeholders retain runtime content."
+  },
+  "idsStudio.value.min": {
+    "value": "Minimum",
+    "reason": "Same-spelling German label or established UI term (Minimum); placeholders retain runtime content."
+  },
+  "idsStudio.value.unitSi": {
+    "value": "SI",
+    "reason": "Preserved technical syntax/identifier or proper name: SI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "influx.bucket": {
+    "value": "Bucket",
+    "reason": "Preserved technical syntax/identifier or proper name: Bucket. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "influx.title": {
+    "value": "InfluxDB 2",
+    "reason": "Preserved technical syntax/identifier or proper name: InfluxDB 2. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.about.appName": {
+    "value": "ifc-lite",
+    "reason": "Preserved technical syntax/identifier or proper name: ifc-lite. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.about.githubLink": {
+    "value": "GitHub",
+    "reason": "Preserved technical syntax/identifier or proper name: GitHub. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.about.homepageLink": {
+    "value": "ifclite.dev",
+    "reason": "Preserved technical syntax/identifier or proper name: ifclite.dev. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.about.license": {
+    "value": "MPL-2.0",
+    "reason": "Preserved technical syntax/identifier or proper name: MPL-2.0. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.about.versionLabel": {
+    "value": "v{version}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "keyboardShortcuts.header.title": {
+    "value": "Info",
+    "reason": "Same-spelling German label or established UI term (Info); placeholders retain runtime content."
+  },
+  "keyboardShortcuts.privacy.verifyKey": {
+    "value": "F12",
+    "reason": "Preserved technical syntax/identifier or proper name: F12. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.privacy.wasmLink": {
+    "value": "WebAssembly (WASM)",
+    "reason": "Preserved technical syntax/identifier or proper name: WebAssembly (WASM). Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.shortcuts.homepageLink": {
+    "value": "ifclite.dev",
+    "reason": "Preserved technical syntax/identifier or proper name: ifclite.dev. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "keyboardShortcuts.whatsNew.releaseVersionLabel": {
+    "value": "v{version}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "landXml.unitsPrompt.unit.kilometer": {
+    "value": "Kilometer",
+    "reason": "Same-spelling German label or established UI term (Kilometer); placeholders retain runtime content."
+  },
+  "landXml.unitsPrompt.unit.meter": {
+    "value": "Meter",
+    "reason": "Same-spelling German label or established UI term (Meter); placeholders retain runtime content."
+  },
+  "landXml.unitsPrompt.unit.millimeter": {
+    "value": "Millimeter",
+    "reason": "Same-spelling German label or established UI term (Millimeter); placeholders retain runtime content."
+  },
+  "landXmlTerrainExport.fileExtension": {
+    "value": ".xml",
+    "reason": "Preserved technical syntax/identifier or proper name: .xml. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "landXmlTerrainExport.outputFormat": {
+    "value": "LandXML 1.2",
+    "reason": "Preserved technical syntax/identifier or proper name: LandXML 1.2. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "layersPanel.merge.bulkCount": {
+    "value": "×{count}:",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "layersPanel.panel.authorAgent": {
+    "value": "Agent",
+    "reason": "Same-spelling German label or established UI term (Agent); placeholders retain runtime content."
+  },
+  "layersPanel.panel.authorHybrid": {
+    "value": "Hybrid",
+    "reason": "Same-spelling German label or established UI term (Hybrid); placeholders retain runtime content."
+  },
+  "layersPanel.provenance.authorLine": {
+    "value": "{kind} · {principal}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "layersPanel.provenance.authorToolSuffix": {
+    "value": " · {tool}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "layersPanel.review.exportButtonLabel": {
+    "value": ".bcf",
+    "reason": "Preserved technical syntax/identifier or proper name: .bcf. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "layersPanel.review.topicMeta": {
+    "value": "{tail} · {author} · {date}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "layersPanel.review.topicMetaComponent": {
+    "value": "{tail} · {componentKey} · {author} · {date}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "lensPanel.autoColor.nameLabel": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "lensPanel.autoColor.psetLabel": {
+    "value": "Pset",
+    "reason": "Preserved technical syntax/identifier or proper name: Pset. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lensPanel.autoColor.qsetLabel": {
+    "value": "Qset",
+    "reason": "Preserved technical syntax/identifier or proper name: Qset. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lensPanel.autoColor.systemLabel": {
+    "value": "System",
+    "reason": "Same-spelling German label or established UI term (System); placeholders retain runtime content."
+  },
+  "lensPanel.card.sortNameAsc": {
+    "value": "A→Z",
+    "reason": "Preserved technical syntax/identifier or proper name: A→Z. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lensPanel.card.sortNameDesc": {
+    "value": "Z→A",
+    "reason": "Preserved technical syntax/identifier or proper name: Z→A. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lensPanel.type.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "lists.builder.operatorAriaLabel": {
+    "value": "Operator",
+    "reason": "Same-spelling German label or established UI term (Operator); placeholders retain runtime content."
+  },
+  "lists.builder.propertyNamePlaceholder": {
+    "value": "FireRating",
+    "reason": "Preserved technical syntax/identifier or proper name: FireRating. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lists.builder.psetPlaceholder": {
+    "value": "Pset_…",
+    "reason": "Preserved technical syntax/identifier or proper name: Pset_…. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lists.builder.qtoPlaceholder": {
+    "value": "Qto_…",
+    "reason": "Preserved technical syntax/identifier or proper name: Qto_…. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lists.builder.quantityNamePlaceholder": {
+    "value": "NetVolume",
+    "reason": "Preserved technical syntax/identifier or proper name: NetVolume. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lists.builder.source.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "lists.builder.source.zone": {
+    "value": "Zone",
+    "reason": "Same-spelling German label or established UI term (Zone); placeholders retain runtime content."
+  },
+  "lists.builder.spatial.container": {
+    "value": "Container",
+    "reason": "Same-spelling German label or established UI term (Container); placeholders retain runtime content."
+  },
+  "lists.builder.sumIcon": {
+    "value": "Σ",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "lists.builder.valuePlaceholder.boolean": {
+    "value": "true / false",
+    "reason": "Preserved technical syntax/identifier or proper name: true / false. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "lists.builder.zoneOption": {
+    "value": "Zone",
+    "reason": "Same-spelling German label or established UI term (Zone); placeholders retain runtime content."
+  },
+  "lists.resultsTable.sumIcon": {
+    "value": "Σ",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "lists.rowActions.actionAriaLabel": {
+    "value": "{action}: {name}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "lists.scheduleTable.sumIcon": {
+    "value": "Σ",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "mcp.mcpLanding.brand": {
+    "value": "ifc-lite",
+    "reason": "Preserved technical syntax/identifier or proper name: ifc-lite. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpLanding.bsddWallBadge": {
+    "value": "bSDD · IfcWall",
+    "reason": "Preserved technical syntax/identifier or proper name: bSDD · IfcWall. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpLanding.footerBrand": {
+    "value": "ifc-lite/mcp · v{version} · MPL-2.0",
+    "reason": "Preserved technical syntax/identifier or proper name: ifc-lite/mcp · v{version} · MPL-2.0. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpLanding.ifcTypeLabel": {
+    "value": "Ifc{type}",
+    "reason": "Preserved technical syntax/identifier or proper name: Ifc{type}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpLanding.navBadge": {
+    "value": "/ mcp · {version}",
+    "reason": "Preserved technical syntax/identifier or proper name: / mcp · {version}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpLanding.navViewer": {
+    "value": "Viewer",
+    "reason": "Same-spelling German label or established UI term (Viewer); placeholders retain runtime content."
+  },
+  "mcp.mcpLanding.statTransportsSublabel": {
+    "value": "stdio · http",
+    "reason": "Preserved technical syntax/identifier or proper name: stdio · http. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpPlayground.footerNpm": {
+    "value": "npm",
+    "reason": "Preserved technical syntax/identifier or proper name: npm. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.mcpPlayground.playgroundPath": {
+    "value": "/mcp/playground",
+    "reason": "Preserved technical syntax/identifier or proper name: /mcp/playground. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "mcp.playgroundChat.msSuffix": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "mcp.playgroundChat.statusOk": {
+    "value": "ok",
+    "reason": "Preserved technical syntax/identifier or proper name: ok. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "measure.geo.easting": {
+    "value": "E",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "measure.geo.height": {
+    "value": "H",
+    "reason": "Preserved technical syntax/identifier or proper name: H. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "measure.geo.label": {
+    "value": "Geo XYZ",
+    "reason": "Preserved technical syntax/identifier or proper name: Geo XYZ. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "measure.geo.northing": {
+    "value": "N",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "measure.geo.unitMeters": {
+    "value": "m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "measure.mode.radius": {
+    "value": "Radius",
+    "reason": "Same-spelling German label or established UI term (Radius); placeholders retain runtime content."
+  },
+  "measure.radius.indexLabel": {
+    "value": "Radius #{index}",
+    "reason": "Same-spelling German label or established UI term (Radius); placeholders retain runtime content."
+  },
+  "measure.source.extrusionSolid": {
+    "value": "{modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}",
+    "reason": "Preserved technical syntax/identifier or proper name: {modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "measure.source.product": {
+    "value": "{modelId} · #{productId}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "measure.source.sweptDiskSolid": {
+    "value": "{modelId} · #{productId} · IfcSweptDiskSolid #{solidId}",
+    "reason": "Preserved technical syntax/identifier or proper name: {modelId} · #{productId} · IfcSweptDiskSolid #{solidId}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "modelInspector.header.selection": {
+    "value": "{ifcClass} #{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelInspector.header.selectionOnStorey": {
+    "value": "{ifcClass} #{id} · {storey}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelInspector.name.label": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "modelWorkspace.layout.3d": {
+    "value": "3D",
+    "reason": "Preserved technical syntax/identifier or proper name: 3D. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "modelWorkspace.layout.aria": {
+    "value": "Layout",
+    "reason": "Same-spelling German label or established UI term (Layout); placeholders retain runtime content."
+  },
+  "modelWorkspace.storey.elevation": {
+    "value": "{elevation} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelWorkspace.storey.withModel": {
+    "value": "{model} · {storey}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelWorkspace.tool.shortcutHint": {
+    "value": "· {key}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelingCommand.slab.polygon": {
+    "value": "Polygon",
+    "reason": "Preserved technical syntax/identifier or proper name: Polygon. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "modelingCommand.unit.count": {
+    "value": "",
+    "reason": "Intentionally empty unit suffix for dimensionless count; matches English contract."
+  },
+  "modelingCommand.unit.deg": {
+    "value": "°",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "modelingCommand.unit.m": {
+    "value": "m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "pointCloudPanel.colorMode.rgb.label": {
+    "value": "RGB",
+    "reason": "Preserved technical syntax/identifier or proper name: RGB. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "presentationPanel.transitionSuffix": {
+    "value": " · {duration}s",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "profileSection.field.radius": {
+    "value": "Radius",
+    "reason": "Same-spelling German label or established UI term (Radius); placeholders retain runtime content."
+  },
+  "profileSection.kind.I": {
+    "value": "I / H",
+    "reason": "Preserved technical syntax/identifier or proper name: I / H. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.epsgLookup.triggerButton": {
+    "value": "EPSG",
+    "reason": "Preserved technical syntax/identifier or proper name: EPSG. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.extrusion.profile": {
+    "value": "SweptArea",
+    "reason": "Preserved technical syntax/identifier or proper name: SweptArea. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.extrusion.profileType": {
+    "value": "ProfileType",
+    "reason": "Preserved technical syntax/identifier or proper name: ProfileType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.extrusion.solid": {
+    "value": "IfcExtrudedAreaSolid #{id}",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcExtrudedAreaSolid #{id}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.extrusion.status": {
+    "value": "Status",
+    "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
+  },
+  "properties.field.revision": {
+    "value": "Revision",
+    "reason": "Preserved technical syntax/identifier or proper name: Revision. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.field.system": {
+    "value": "System",
+    "reason": "Same-spelling German label or established UI term (System); placeholders retain runtime content."
+  },
+  "properties.georef.eastingNorthingSummary": {
+    "value": "E {easting} N {northing}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.georef.epsgButton": {
+    "value": "EPSG",
+    "reason": "Preserved technical syntax/identifier or proper name: EPSG. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.georef.heightMeters": {
+    "value": "{value} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.georef.hint.one": {
+    "value": "1.0",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.georef.hint.zero": {
+    "value": "0.0",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.landXmlAlignment.navigationSegment": {
+    "value": "Segment {ordinal}: {kind}",
+    "reason": "Same-spelling German label or established UI term (Segment); placeholders retain runtime content."
+  },
+  "properties.landXmlAlignment.segmentName": {
+    "value": "Segment {ordinal}",
+    "reason": "Same-spelling German label or established UI term (Segment); placeholders retain runtime content."
+  },
+  "properties.landXmlSource.geometryName": {
+    "value": "{kind} {ordinal}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.landXmlSource.parcelStatus": {
+    "value": "Status: {status}",
+    "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
+  },
+  "properties.locationMap.elevationMeters": {
+    "value": "{value} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.locationMap.googleEarth": {
+    "value": "Google Earth",
+    "reason": "Preserved technical syntax/identifier or proper name: Google Earth. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.locationMap.googleMaps": {
+    "value": "Google Maps",
+    "reason": "Preserved technical syntax/identifier or proper name: Google Maps. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.locationMap.openStreetMap": {
+    "value": "OpenStreetMap",
+    "reason": "Preserved technical syntax/identifier or proper name: OpenStreetMap. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.material.materialLabel": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "properties.material.materialN": {
+    "value": "Material {n}",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "properties.material.typeLabel.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "properties.materialTotals.fallbackName": {
+    "value": "Material #{id}",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "properties.modelMetadata.globalIdLabel": {
+    "value": "GlobalId",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.modelMetadata.lengthUnitValue": {
+    "value": "{unitName} ({scale})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.modelMetadata.parseTimeValue": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.panel.crsLabel": {
+    "value": "CRS",
+    "reason": "Standard coordinate reference system abbreviation."
+  },
+  "properties.panel.multiEntity.elevationMeters": {
+    "value": "{sign}{value}m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.panel.positionLabel": {
+    "value": "Position",
+    "reason": "Standard German coordinate label."
+  },
+  "properties.panel.sizeDisplay": {
+    "value": "{x} x {y} x {z}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.panel.tab.bsdd": {
+    "value": "bSDD",
+    "reason": "Preserved technical syntax/identifier or proper name: bSDD. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.spatialLocation.elevationDisplay": {
+    "value": "{sign}{value}m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.spatialLocation.heightDisplay": {
+    "value": "{value}m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.structural.componentValue": {
+    "value": "{name}: {value}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.structural.configurationAt": {
+    "value": "{components} @ {location}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "properties.sweptDisk.innerRadius": {
+    "value": "InnerRadius",
+    "reason": "Preserved technical syntax/identifier or proper name: InnerRadius. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.sweptDisk.radius": {
+    "value": "Radius",
+    "reason": "Same-spelling German label or established UI term (Radius); placeholders retain runtime content."
+  },
+  "properties.sweptDisk.segment": {
+    "value": "Segment {index}",
+    "reason": "Same-spelling German label or established UI term (Segment); placeholders retain runtime content."
+  },
+  "properties.sweptDisk.solid": {
+    "value": "IfcSweptDiskSolid #{id}",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcSweptDiskSolid #{id}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "properties.taskEdit.detailsToggle": {
+    "value": "Details",
+    "reason": "Same-spelling German label or established UI term (Details); placeholders retain runtime content."
+  },
+  "propertyEditor.classification.name": {
+    "value": "Name (optional)",
+    "reason": "Same-spelling German label or established UI term (Name, optional); placeholders retain runtime content."
+  },
+  "propertyEditor.material.category.aluminium": {
+    "value": "Aluminium",
+    "reason": "Same-spelling German label or established UI term (Aluminium); placeholders retain runtime content."
+  },
+  "propertyEditor.valueType.identifierShort": {
+    "value": "ID",
+    "reason": "Preserved technical syntax/identifier or proper name: ID. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "pushPull.bar.readout": {
+    "value": "{face} {delta} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "reportExportDialog.pageSizeA3": {
+    "value": "A3",
+    "reason": "Preserved technical syntax/identifier or proper name: A3. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "reportExportDialog.pageSizeA4": {
+    "value": "A4",
+    "reason": "Preserved technical syntax/identifier or proper name: A4. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "repositionPanel.axisFieldDeltaAriaLabel": {
+    "value": "Delta {axis}",
+    "reason": "Same-spelling German label or established UI term (Delta); placeholders retain runtime content."
+  },
+  "repositionPanel.deltaPrefix": {
+    "value": "Δ",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "repositionPanel.gizmo.deltaLabel": {
+    "value": "{distance} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "repositionPanel.hoverDetail": {
+    "value": "{kind} · {name}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "repositionPanel.modelPositionRow": {
+    "value": "{name}: {values} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "repositionPanel.toggleLockAriaLabel": {
+    "value": "{action} {name}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "retainedGeometry.panel.column.code": {
+    "value": "Code",
+    "reason": "Same-spelling German label or established UI term (Code); placeholders retain runtime content."
+  },
+  "retainedGeometry.panel.column.id": {
+    "value": "ID",
+    "reason": "Preserved technical syntax/identifier or proper name: ID. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "retainedGeometry.panel.filterCode": {
+    "value": "{code} ({count})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "retainedGeometry.panel.rowId": {
+    "value": "#{id}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "reviewWorkspace.card.element": {
+    "value": "{type} {name} · {globalId} · {model}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "reviewWorkspace.decision.status": {
+    "value": "Status",
+    "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
+  },
+  "reviewWorkspace.facetOption": {
+    "value": "{label} ({cards})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "reviewWorkspace.runIncomplete": {
+    "value": "{run}: {reasons}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "ribbon.analyze.appsGroup": {
+    "value": "Apps",
+    "reason": "Same-spelling German label or established UI term (Apps); placeholders retain runtime content."
+  },
+  "ribbon.elements.filter": {
+    "value": "Filter",
+    "reason": "Same-spelling German label or established UI term (Filter); placeholders retain runtime content."
+  },
+  "ribbon.file.exportGroup": {
+    "value": "Export",
+    "reason": "Same-spelling German label or established UI term (Export); placeholders retain runtime content."
+  },
+  "ribbon.infoTooltip": {
+    "value": "Info (?)",
+    "reason": "Same-spelling German label or established UI term (Info); placeholders retain runtime content."
+  },
+  "ribbon.view.spaceMouse": {
+    "value": "SpaceMouse",
+    "reason": "Preserved technical syntax/identifier or proper name: SpaceMouse. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "roomReview.ObjectType": {
+    "value": "ObjectType",
+    "reason": "Preserved technical syntax/identifier or proper name: ObjectType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "roomReview.PredefinedType": {
+    "value": "PredefinedType",
+    "reason": "Preserved technical syntax/identifier or proper name: PredefinedType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "roomTool.options.classification": {
+    "value": "IfcSpace.{attribute}",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcSpace.{attribute}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "roomTool.options.objectType": {
+    "value": "IfcSpace.ObjectType",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcSpace.ObjectType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "scanToBim.confidence": {
+    "value": "{value} %",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "scanToBim.filter.class": {
+    "value": "{label} ({count})",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "scanToBim.filter.minConfidenceValue": {
+    "value": "{value} %",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "scanToBim.scanLabel": {
+    "value": "Scan",
+    "reason": "Same-spelling German label or established UI term (Scan); placeholders retain runtime content."
+  },
+  "sceneActions.appliedCount": {
+    "value": "{action}: {count}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "schedule.animation.minimalLabel": {
+    "value": "Minimal",
+    "reason": "Same-spelling German label or established UI term (Minimal); placeholders retain runtime content."
+  },
+  "schedule.animation.taskType.installation": {
+    "value": "Installation",
+    "reason": "Same-spelling German label or established UI term (Installation); placeholders retain runtime content."
+  },
+  "schedule.generateAdvanced.predefinedTypeLabel": {
+    "value": "PredefinedType",
+    "reason": "Preserved technical syntax/identifier or proper name: PredefinedType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "schedule.heightStrategy.optionName": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "schedule.heightStrategy.sliceHeightValue": {
+    "value": "{value} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "schedule.toolbar.pause": {
+    "value": "Pause",
+    "reason": "Same-spelling German label or established UI term (Pause); placeholders retain runtime content."
+  },
+  "schedule.workPlanSummary.planTitle": {
+    "value": "IfcWorkPlan {globalId}",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcWorkPlan {globalId}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "scriptPanel.output.bimCode": {
+    "value": "bim.*",
+    "reason": "Preserved technical syntax/identifier or proper name: bim.*. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "scriptPanel.output.fetchCode": {
+    "value": "fetch",
+    "reason": "Preserved technical syntax/identifier or proper name: fetch. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.filterEditors.attributeNamePlaceholder": {
+    "value": "Description, ObjectType, Tag, …",
+    "reason": "Preserved technical syntax/identifier or proper name: Description, ObjectType, Tag, …. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.filterEditors.siUnits": {
+    "value": "SI",
+    "reason": "Preserved technical syntax/identifier or proper name: SI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.filterSelector.placeholder": {
+    "value": "IfcWall, Pset_WallCommon.FireRating=/REI.*/",
+    "reason": "Preserved technical syntax/identifier or proper name: IfcWall, Pset_WallCommon.FireRating=/REI.*/. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.inline.cycleNextKey": {
+    "value": "n",
+    "reason": "Preserved technical syntax/identifier or proper name: n. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.inline.cyclePrevKey": {
+    "value": "N",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "searchModal.library.family.flows": {
+    "value": "Flows",
+    "reason": "Flow/Flows is the application workflow feature name, retained consistently as product terminology."
+  },
+  "searchModal.shell.escKey": {
+    "value": "Esc",
+    "reason": "Preserved technical syntax/identifier or proper name: Esc. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.shell.filterTab": {
+    "value": "Filter",
+    "reason": "Same-spelling German label or established UI term (Filter); placeholders retain runtime content."
+  },
+  "searchModal.text.fieldGuid": {
+    "value": "GUID",
+    "reason": "Preserved technical syntax/identifier or proper name: GUID. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "searchModal.text.fieldName": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "searchModal.text.fieldObjectType": {
+    "value": "ObjectType",
+    "reason": "Preserved technical syntax/identifier or proper name: ObjectType. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "section2d.cutNamed": {
+    "value": "{name} · {cut}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "section2d.drawers.scan": {
+    "value": "Scan",
+    "reason": "Same-spelling German label or established UI term (Scan); placeholders retain runtime content."
+  },
+  "section2d.tools.text": {
+    "value": "Text",
+    "reason": "Same-spelling German label or established UI term (Text); placeholders retain runtime content."
+  },
+  "section2d.zoom.level": {
+    "value": "Zoom {percent}%",
+    "reason": "Same-spelling German label or established UI term (Zoom); placeholders retain runtime content."
+  },
+  "sectionCap.pattern.diagonal": {
+    "value": "Diagonal",
+    "reason": "Same-spelling German label or established UI term (Diagonal); placeholders retain runtime content."
+  },
+  "sectionCap.pattern.horizontal": {
+    "value": "Horizontal",
+    "reason": "Same-spelling German label or established UI term (Horizontal); placeholders retain runtime content."
+  },
+  "sectionPlanes.zoom.label": {
+    "value": "Zoom",
+    "reason": "Same-spelling German label or established UI term (Zoom); placeholders retain runtime content."
+  },
+  "sectionTool.box.size": {
+    "value": "{x} × {y} × {z} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.distance.percentUnit": {
+    "value": "%",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.distance.unit": {
+    "value": "m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.header.axis": {
+    "value": "{axis} {position}%",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.parked.label": {
+    "value": "{axis} · {distance} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.parked.labelPercent": {
+    "value": "{axis} · {position}%",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sectionTool.storeys.elevation": {
+    "value": "{elevation} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "semantic.validationEngines": {
+    "value": "JSON Schema / SHACL",
+    "reason": "Same-spelling German label or established UI term (Schema); placeholders retain runtime content."
+  },
+  "semanticAssist.projectionValues": {
+    "value": "{previous} → {value} {unit}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "semanticAssist.spanAt": {
+    "value": "{source} [{start}–{end}]",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "settings.display.navigationTitle": {
+    "value": "Navigation",
+    "reason": "Same-spelling German label or established UI term (Navigation); placeholders retain runtime content."
+  },
+  "settings.display.preset.trackpad": {
+    "value": "Trackpad",
+    "reason": "Preserved technical syntax/identifier or proper name: Trackpad. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "settings.display.spaceMouseTitle": {
+    "value": "SpaceMouse",
+    "reason": "Preserved technical syntax/identifier or proper name: SpaceMouse. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "shareDialog.linkLabel": {
+    "value": "Link",
+    "reason": "Same-spelling German label or established UI term (Link); placeholders retain runtime content."
+  },
+  "sheetsPdf.sheetSetup.drawingAreaValue": {
+    "value": "{width} × {height} mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sheetsPdf.sheetSetup.frameStyleMinimal": {
+    "value": "Minimal",
+    "reason": "Same-spelling German label or established UI term (Minimal); placeholders retain runtime content."
+  },
+  "sheetsPdf.sheetSetup.layoutLabel": {
+    "value": "Layout",
+    "reason": "Same-spelling German label or established UI term (Layout); placeholders retain runtime content."
+  },
+  "sheetsPdf.sheetSetup.paperDimensions": {
+    "value": "{width} × {height} mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sheetsPdf.sheetSetup.paperOption": {
+    "value": "{name} ({width}×{height}mm)",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sheetsPdf.sheetSetup.titleBlockDimensions": {
+    "value": "{width} × {height}mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sheetsPdf.titleBlock.datePlaceholder": {
+    "value": "2024-01-15",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sheetsPdf.titleBlock.logoAlt": {
+    "value": "Logo",
+    "reason": "Same-spelling German label or established UI term (Logo); placeholders retain runtime content."
+  },
+  "sheetsPdf.titleBlock.revisionNumberPlaceholder": {
+    "value": "A, B, 01...",
+    "reason": "Preserved technical syntax/identifier or proper name: A, B, 01.... Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "shellChrome.activityBar.altShortcutHint": {
+    "value": "Alt+{key}",
+    "reason": "Preserved technical syntax/identifier or proper name: Alt+{key}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "shellChrome.layout.panelsLabel": {
+    "value": "Panels",
+    "reason": "Same-spelling German label or established UI term (Panels); placeholders retain runtime content."
+  },
+  "shellChrome.statusBar.appVersion": {
+    "value": "v{version}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "shellChrome.statusBar.fpsUnit": {
+    "value": "FPS",
+    "reason": "Preserved technical syntax/identifier or proper name: FPS. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "shellChrome.statusBar.ifcliteLinkLabel": {
+    "value": "ifclite.dev →",
+    "reason": "Preserved technical syntax/identifier or proper name: ifclite.dev →. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "shellChrome.statusBar.webgpuLabel": {
+    "value": "WebGPU",
+    "reason": "Preserved technical syntax/identifier or proper name: WebGPU. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "sources.sourcesPanel.downloadFailedWithMessage": {
+    "value": "{name}: {message}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "sources.workspace.kilobytes": {
+    "value": "{size} KB",
+    "reason": "Preserved technical syntax/identifier or proper name: {size} KB. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "spaceMousePanel.deviceNameFallback": {
+    "value": "SpaceMouse",
+    "reason": "Preserved technical syntax/identifier or proper name: SpaceMouse. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "spaceMousePanel.sensitivityValue": {
+    "value": "{value}x",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "splitTool.unitMetres": {
+    "value": "m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "tableChanges.matchTypeTag": {
+    "value": "Tag",
+    "reason": "Preserved technical syntax/identifier or proper name: Tag. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "tableMapping.name": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "tableMapping.valueType.text": {
+    "value": "Text",
+    "reason": "Same-spelling German label or established UI term (Text); placeholders retain runtime content."
+  },
+  "terrainImagery.tiles.kindWms": {
+    "value": "WMS",
+    "reason": "Preserved technical syntax/identifier or proper name: WMS. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "terrainImagery.tiles.templatePlaceholder": {
+    "value": "https://tile.example.org/{z}/{x}/{y}.png",
+    "reason": "Preserved technical syntax/identifier or proper name: https://tile.example.org/{z}/{x}/{y}.png. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "terrainImagery.tiles.wmsPlaceholder": {
+    "value": "https://wms.example.org/service",
+    "reason": "Preserved technical syntax/identifier or proper name: https://wms.example.org/service. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "validationEditor.subjectKind.material": {
+    "value": "Material",
+    "reason": "Same-spelling German label or established UI term (Material); placeholders retain runtime content."
+  },
+  "validationEditor.subjectKind.name": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "validationEditor.unit.unitPlaceholder": {
+    "value": "mm",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "validationPanel.history.globalId": {
+    "value": "GlobalId: {value}",
+    "reason": "Preserved technical syntax/identifier or proper name: GlobalId: {value}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "viewportLighting.container.emptyState.footer.discoverLink": {
+    "value": "ifclite.dev →",
+    "reason": "Preserved technical syntax/identifier or proper name: ifclite.dev →. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "viewportLighting.container.emptyState.scene.metres": {
+    "value": "{value} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+",
+    "reason": "Preserved technical syntax/identifier or proper name: Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.timezone.utc": {
+    "value": "UTC",
+    "reason": "Preserved technical syntax/identifier or proper name: UTC. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.disabledCaption.cliLink": {
+    "value": "CLI",
+    "reason": "Preserved technical syntax/identifier or proper name: CLI. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.firefox.aboutConfig": {
+    "value": "about:config",
+    "reason": "Preserved technical syntax/identifier or proper name: about:config. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.firefox.arrowTrue": {
+    "value": "→ true",
+    "reason": "Preserved technical syntax/identifier or proper name: → true. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.firefox.domWebgpuEnabled": {
+    "value": "dom.webgpu.enabled",
+    "reason": "Preserved technical syntax/identifier or proper name: dom.webgpu.enabled. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.firefox.heading": {
+    "value": "Firefox",
+    "reason": "Preserved technical syntax/identifier or proper name: Firefox. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpLocalhost": {
+    "value": "http://localhost",
+    "reason": "Preserved technical syntax/identifier or proper name: http://localhost. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpsScheme": {
+    "value": "https://",
+    "reason": "Preserved technical syntax/identifier or proper name: https://. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.insecureOrigin.localhostWord": {
+    "value": "localhost",
+    "reason": "Preserved technical syntax/identifier or proper name: localhost. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.noApi.chromePolicyPath": {
+    "value": "chrome://policy",
+    "reason": "Preserved technical syntax/identifier or proper name: chrome://policy. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.noApi.defaultWebGpuAccess": {
+    "value": "DefaultWebGPUAccess",
+    "reason": "Preserved technical syntax/identifier or proper name: DefaultWebGPUAccess. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.noApi.navigatorGpu": {
+    "value": "navigator.gpu",
+    "reason": "Preserved technical syntax/identifier or proper name: navigator.gpu. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.noGpu.flagIgnoreBlocklist": {
+    "value": "chrome://flags/#ignore-gpu-blocklist",
+    "reason": "Preserved technical syntax/identifier or proper name: chrome://flags/#ignore-gpu-blocklist. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.noGpu.flagUnsafeWebgpu": {
+    "value": "chrome://flags/#enable-unsafe-webgpu",
+    "reason": "Preserved technical syntax/identifier or proper name: chrome://flags/#enable-unsafe-webgpu. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.restOfToolkit.cliCommand": {
+    "value": "npx @ifc-lite/cli query model.ifc --type IfcWall",
+    "reason": "Preserved technical syntax/identifier or proper name: npx @ifc-lite/cli query model.ifc --type IfcWall. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.safari.heading": {
+    "value": "Safari",
+    "reason": "Preserved technical syntax/identifier or proper name: Safari. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.verifyStatus.aboutSupportPath": {
+    "value": "about:support",
+    "reason": "Preserved technical syntax/identifier or proper name: about:support. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.verifyStatus.chromeEdgeLabel": {
+    "value": "Chrome/Edge:",
+    "reason": "Preserved technical syntax/identifier or proper name: Chrome/Edge:. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.verifyStatus.chromeGpuPath": {
+    "value": "chrome://gpu",
+    "reason": "Preserved technical syntax/identifier or proper name: chrome://gpu. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "webgpuTroubleshooting.verifyStatus.firefoxLabel": {
+    "value": "Firefox:",
+    "reason": "Preserved technical syntax/identifier or proper name: Firefox:. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "zonesPanel.apportionSummary.globalId": {
+    "value": " · GlobalId: {value}",
+    "reason": "Preserved technical syntax/identifier or proper name:  · GlobalId: {value}. Required for exact control, schema, format, shortcut or product recognition."
+  },
+  "zonesPanel.roomPanel.status.live": {
+    "value": "Live",
+    "reason": "Same-spelling German label or established UI term (Live); placeholders retain runtime content."
+  },
+  "zonesPanel.roomPanel.status.offline": {
+    "value": "Offline",
+    "reason": "Same-spelling German label or established UI term (Offline); placeholders retain runtime content."
+  }
+}

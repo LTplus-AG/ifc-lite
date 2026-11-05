@@ -77,3 +77,20 @@ it('names each listed panel with its location, like the rail icons', () => {
   click(target);
   assert.deepEqual(selected, [closed.id]);
 });
+
+it('keeps More closed until requested and closes it after selection (#8802)', () => {
+  const selected: WorkspacePanelId[] = [];
+  const container = render(<ActivityBarOverflow ids={['properties', 'compare']}
+    locationOf={() => 'closed'} onSelect={(id) => selected.push(id)} />);
+  const trigger = container.querySelector<HTMLButtonElement>('[data-rail-overflow]');
+  assert.ok(trigger);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.querySelector('[role="menu"]'), null);
+  openMenu(trigger);
+  const target = document.querySelector<HTMLElement>('[role="menuitem"][data-panel-id="compare"]');
+  assert.ok(target);
+  click(target);
+  assert.deepEqual(selected, ['compare']);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.querySelector('[role="menu"]'), null);
+});

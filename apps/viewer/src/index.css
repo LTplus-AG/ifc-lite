@@ -1204,3 +1204,123 @@ body {
   border-radius: 0.25rem;
   animation: skeleton-pulse 2s ease-in-out infinite;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   R2 inspection surfaces (#8802): the properties panel and the model tree.
+   New tokens and component rules only; no existing token value changes.
+   ══════════════════════════════════════════════════════════════════════ */
+@theme {
+  /* 13 px row text: the tree's names and the inspector's element title. */
+  --text-row: 0.8125rem;
+  --text-row--line-height: 1.125rem;
+}
+
+:root {
+  /* The tree's selection tint speaks the same language as the 3D selection:
+     the primary hue at low strength, plus a 2 px primary bar on the row. */
+  --tree-selected-bg: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  --tree-selected-hover-bg: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  /* Inspector key column: wide enough for "ObjectType" and "LoadBearing",
+     never more than 40% of the panel. */
+  --inspector-key-min: 4.5rem;
+}
+
+.dark {
+  --tree-selected-bg: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  --tree-selected-hover-bg: color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+/* Two-column key/value row (plus a trailing copy slot) used by every
+   inspector table: attributes, property sets, materials, identity rows. */
+.inspector-kv {
+  display: grid;
+  grid-template-columns: minmax(var(--inspector-key-min), 2fr) minmax(0, 3fr) auto;
+  align-items: center;
+}
+
+/* Two-column variant without the copy slot (nested material layers,
+   structure readouts). */
+.inspector-kv-sub {
+  grid-template-columns: minmax(var(--inspector-key-min), 2fr) minmax(0, 3fr);
+}
+
+/* Disclosure chevron of inspector sections and grouping headers. */
+.inspector-chevron {
+  transition: transform 120ms ease;
+}
+
+[data-state="closed"] > .inspector-chevron {
+  transform: rotate(-90deg);
+}
+
+/* Model tree rows: the selected row is tinted, not greyed. */
+.hierarchy-item.selected {
+  background-color: var(--tree-selected-bg);
+}
+
+.hierarchy-item.selected:hover {
+  background-color: var(--tree-selected-hover-bg);
+}
+
+/* Properties tabs: a quiet underline tab bar in sentence case instead of
+   the 44 px raised uppercase strip. Overrides the rules further up. */
+.properties-tabs-list {
+  height: 2rem;
+  background-color: var(--color-background) !important;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.properties-tab-trigger,
+.properties-tab-trigger:first-child {
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  background-color: transparent !important;
+  color: var(--color-muted-foreground) !important;
+  font-weight: 500;
+}
+
+.properties-tab-trigger:hover {
+  background-color: color-mix(in srgb, var(--color-muted) 70%, transparent) !important;
+  color: var(--color-foreground) !important;
+}
+
+.properties-tab-trigger[data-state="active"] {
+  background-color: transparent !important;
+  color: var(--color-foreground) !important;
+  transform: none;
+  box-shadow: inset 0 -2px 0 var(--color-primary) !important;
+}
+
+.properties-tab-trigger.raw-step-tab-trigger {
+  border-left: 1px solid var(--color-border);
+}
+
+.colorful .properties-tab-trigger[data-state="active"] {
+  background: transparent !important;
+  box-shadow: inset 0 -2px 0 var(--cf-orange) !important;
+}
+
+/* Grouping-mode switch of the model tree: a neutral raised tile marks the
+   active mode, so primary blue stays reserved for selection. */
+.hierarchy-grouping-tabs [aria-pressed="true"] {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  box-shadow: 0 0 0 1px var(--color-border), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.dark .hierarchy-grouping-tabs [aria-pressed="true"] {
+  background-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+/* The tile's shadow replaces Button's `focus-visible:ring-1 ring-ring`, so the
+   active mode keeps a keyboard indicator here: the same 1px ring in place of
+   the border hairline, with the raised tile's drop shadow kept. */
+.hierarchy-grouping-tabs [aria-pressed="true"]:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-ring), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.dark .hierarchy-grouping-tabs [aria-pressed="true"]:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-ring);
+}

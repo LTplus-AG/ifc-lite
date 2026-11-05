@@ -166,7 +166,7 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
         className={`text-xs font-mono tabular-nums break-all text-right ${
           isMutated
             ? 'text-foreground font-semibold'
-            : 'text-teal-700 dark:text-teal-400'
+            : 'text-foreground'
         }`}
         title={displayValue}
       >
@@ -323,7 +323,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const rowClassName = 'flex flex-wrap items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
   const valueCellContent = (
     <>
-      <span className="text-xs font-mono tabular-nums text-teal-700 dark:text-teal-400">
+      <span className="text-xs font-mono tabular-nums text-foreground">
         {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
         <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
       </span>

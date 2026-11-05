@@ -105,6 +105,8 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
   // cluster folds into one quiet control instead of filling the File tab
   // with a wall of disabled formats before there is a model (#8802 R1). It
   // unfolds the moment a load starts; extension exporters keep their rows.
+  // It is `aria-disabled`, not `disabled`: a disabled button fires no pointer
+  // or focus events, so its "open a model" tooltip could never be read.
   const empty = useViewerStore(isViewerEmpty);
   const folded = empty && commands.every((resolved) => resolved.disabled);
 
@@ -116,8 +118,9 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
           contentLabel={t('ribbon.file.exportGroup')}
           contentSource="export"
           contentId="export-folded"
+          aria-label={t('ribbon.file.exportGroup')}
           tooltip={t('ribbon.file.exportFoldedTooltip')}
-          disabled
+          aria-disabled
           data-export-folded=""
         />
       )}

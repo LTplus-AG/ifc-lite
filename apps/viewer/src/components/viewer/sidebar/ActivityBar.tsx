@@ -237,7 +237,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow ids={fit.overflow} isOpen={isOpen} onSelect={onIconClick} />
+          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
         )}
       </div>
 

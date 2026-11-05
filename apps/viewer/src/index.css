@@ -424,10 +424,10 @@ body {
 .dark .text-zinc-500,
 .dark .text-zinc-400,
 .dark .text-zinc-600 {
-  /* Route muted utility text through the accessible muted-foreground token
-     (#828bb8) instead of raw --tokyo-comment (#565f89, ~2.5:1, fails WCAG AA).
-     issue #1107, item 1. */
-  color: var(--color-muted-foreground) !important;
+  /* Muted utility text rides the shell ink scale like its 200/300 and
+     700/800 neighbours (#8802 R1): --ink-muted clears AA on panel and
+     raised, where raw --tokyo-comment (#565f89, ~2.5:1) failed (#1107). */
+  color: var(--ink-muted) !important;
 }
 
 .dark .text-zinc-200,

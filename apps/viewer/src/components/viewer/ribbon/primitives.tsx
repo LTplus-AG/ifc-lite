@@ -28,6 +28,32 @@ export const RIBBON_ACTIVE_CLASS =
 /** Icon tint of a latched command that uses the shared active state. */
 const RIBBON_ACTIVE_ICON_CLASS = 'text-primary';
 
+/** A control that is unavailable but must explain why (#8802 R1): it keeps
+ *  `aria-disabled` instead of `disabled`, so it stays in the tab order and
+ *  under the pointer and its tooltip opens on hover and on focus, while
+ *  `ribbonActivate` drops the activation. Looks like `disabled:`. */
+const RIBBON_ARIA_DISABLED_CLASS =
+  'aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent';
+
+function isAriaDisabled(value: React.AriaAttributes['aria-disabled']): boolean {
+  return value === true || value === 'true';
+}
+
+/** Click handler shared by both button sizes: blur to close the tooltip
+ *  after a click (house pattern); an aria-disabled control runs nothing. */
+function ribbonActivate(
+  e: React.MouseEvent<HTMLButtonElement>,
+  ariaDisabled: React.AriaAttributes['aria-disabled'],
+  onClick: React.MouseEventHandler<HTMLButtonElement> | undefined,
+) {
+  if (isAriaDisabled(ariaDisabled)) {
+    e.preventDefault();
+    return;
+  }
+  e.currentTarget.blur();
+  onClick?.(e);
+}
+
 interface RibbonTooltipProps {
   label: string;
   /** Keyboard command whose keys the tooltip names (`lib/commands`). */
@@ -93,17 +119,14 @@ export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonCont
           aria-label={tooltip ?? label}
           aria-describedby={description ? descriptionId : undefined}
           aria-pressed={active === undefined ? undefined : active}
-          onClick={(e) => {
-            // Blur to close the tooltip after click (house pattern).
-            (e.currentTarget as HTMLButtonElement).blur();
-            onClick?.(e);
-          }}
+          onClick={(e) => ribbonActivate(e, rest['aria-disabled'], onClick)}
           className={cn(
             // One line, never clipped: the label keeps its natural width
             // (#5395's "Orthographic" lesson) and the band scrolls instead.
             'relative flex h-11 min-w-12 shrink-0 select-none flex-col items-center justify-center gap-0.5 self-center rounded-md px-1.5',
             'text-2xs font-medium text-foreground/90 transition-colors',
             'hover:bg-muted disabled:pointer-events-none disabled:opacity-40',
+            RIBBON_ARIA_DISABLED_CLASS,
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,
@@ -142,14 +165,12 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
           type="button"
           aria-label={tooltip ?? label}
           aria-pressed={active === undefined ? undefined : active}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            onClick?.(e);
-          }}
+          onClick={(e) => ribbonActivate(e, rest['aria-disabled'], onClick)}
           className={cn(
             'relative flex h-6 w-full min-w-0 select-none items-center gap-1.5 rounded px-1.5',
             'text-2xs leading-none text-foreground/90 transition-colors',
             'hover:bg-muted disabled:pointer-events-none disabled:opacity-40',
+            RIBBON_ARIA_DISABLED_CLASS,
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,

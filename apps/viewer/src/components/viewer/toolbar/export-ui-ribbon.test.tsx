@@ -311,8 +311,14 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
     assert.deepEqual(renderedExportIds(), [], 'no format row before there is a model');
     const folded = document.querySelectorAll<HTMLButtonElement>('[data-export-folded]');
     assert.equal(folded.length, 1, 'one folded export control');
-    assert.ok(folded[0].disabled, 'the folded control is inert');
-    assert.match(folded[0].getAttribute('aria-label') ?? '', /Open a model to export/);
+    // Inert but explained (#8802 R1 review): `aria-disabled` keeps it focusable
+    // and hoverable, so the "open a model" tooltip can open; activation runs nothing.
+    assert.equal(folded[0].getAttribute('aria-disabled'), 'true', 'the folded control is announced unavailable');
+    assert.equal(folded[0].disabled, false, 'a disabled button could never show its reason');
+    assert.equal(folded[0].tabIndex, 0, 'the reason is reachable by keyboard');
+    assert.equal(folded[0].getAttribute('aria-label'), 'Export');
+    const descriptionId = folded[0].getAttribute('aria-describedby') ?? '';
+    assert.match(document.getElementById(descriptionId)?.textContent ?? '', /Open a model to export/);
     act(() => { startFirstLoad(); });
     assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS], 'a load in flight shows the gated registry');
     assert.equal(document.querySelectorAll('[data-export-folded]').length, 0);

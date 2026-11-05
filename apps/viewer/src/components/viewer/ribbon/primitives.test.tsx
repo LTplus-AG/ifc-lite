@@ -15,11 +15,11 @@
  * `tests/e2e/ribbon-labels.e2e.spec.ts`.
  */
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { Box } from 'lucide-react';
-import { cleanup, render } from '@/test/render.js';
-import { RibbonContentLargeButton, type RibbonContentButtonProps } from './primitives.js';
+import { cleanup, click, render } from '@/test/render.js';
+import { RibbonContentLargeButton, RibbonContentSmallButton, type RibbonContentButtonProps } from './primitives.js';
 
 // @ts-expect-error #5878: the content primitive cannot take a free-form command label.
 const rawCommandLabel: RibbonContentButtonProps = { icon: Box, label: 'Foo', contentSource: 'export', contentId: 'fake' };
@@ -41,5 +41,36 @@ describe('RibbonContentLargeButton sizing (#5395)', () => {
     assert.ok(label?.classList.contains('whitespace-nowrap'), 'one line: the label never wraps or clamps');
     // The full label is in the DOM (nothing truncated in the markup either).
     assert.equal(container.querySelector('[data-ribbon-label]')?.textContent, 'Orthographic');
+  });
+});
+
+// #8802 R1 review: a disabled button fires no pointer or focus events, so the
+// tooltip that explains WHY it is unavailable could never open. An explained
+// unavailable control is `aria-disabled` instead: still focusable and hoverable,
+// announced as unavailable, and its activation runs nothing.
+describe('aria-disabled ribbon content buttons (#8802)', () => {
+  for (const [size, Button] of [['large', RibbonContentLargeButton], ['small', RibbonContentSmallButton]] as const) {
+    it(`a ${size} button stays reachable but ignores activation`, () => {
+      const onClick = mock.fn();
+      const container = render(
+        <Button icon={Box} contentLabel="Export" contentSource="export" contentId="test" tooltip="Open a model first" aria-disabled onClick={onClick} />,
+      );
+      const button = container.querySelector('button');
+      assert.ok(button, 'the button rendered');
+      assert.equal(button.disabled, false, 'not natively disabled, so hover and focus still reach it');
+      assert.equal(button.tabIndex, 0, 'in the tab order');
+      assert.equal(button.getAttribute('aria-disabled'), 'true');
+      click(button);
+      assert.equal(onClick.mock.callCount(), 0, 'activation runs nothing');
+    });
+  }
+
+  it('an enabled button still runs its handler', () => {
+    const onClick = mock.fn();
+    const container = render(<RibbonContentSmallButton icon={Box} contentLabel="Export" contentSource="export" contentId="test" onClick={onClick} />);
+    const button = container.querySelector('button');
+    assert.ok(button);
+    click(button);
+    assert.equal(onClick.mock.callCount(), 1);
   });
 });

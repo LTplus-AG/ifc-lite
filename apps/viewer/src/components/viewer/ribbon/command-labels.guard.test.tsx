@@ -138,8 +138,10 @@ it('#5870/#5878 mounts every ribbon command with its registry name across the he
       if (button.dataset.exportFolded !== undefined) {
         assert.equal(tab, 'file', 'the folded export control belongs to File');
         assert.equal(button.dataset.ribbonContentSource, 'export');
-        assert.ok(button.disabled, 'the folded export control is inert');
-        assert.equal(button.getAttribute('aria-label'), resolve('ribbon.file.exportFoldedTooltip'));
+        assert.equal(button.getAttribute('aria-disabled'), 'true', 'the folded export control is inert');
+        assert.equal(button.getAttribute('aria-label'), resolve('ribbon.file.exportGroup'));
+        const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+        assert.equal(reason, resolve('ribbon.file.exportFoldedTooltip'), 'the folded control describes why it is inert');
         continue;
       }
       const exportId = button.dataset.exportCommand;

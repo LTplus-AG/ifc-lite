@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { retainedCatalogueShape } from './retained-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
 type ReviewKey = keyof typeof flowReviewEn extends `flowReview.${infer Key}` ? Key : never;
 /** Exact lazy keys and parameters validate contributed locales before feature code loads. */
@@ -332,6 +333,9 @@ const ifcFederationShape = {
 } as const satisfies Record<IfcFederationKey, readonly string[]>;
 
 export function lazyMessageParameters(key: string): readonly string[] | null {
+  if (Object.hasOwn(retainedCatalogueShape, key)) {
+    return retainedCatalogueShape[key as keyof typeof retainedCatalogueShape];
+  }
   if (key.startsWith('flowReview.')) {
     const tail = key.slice('flowReview.'.length);
     return Object.hasOwn(flowReviewShape, tail) ? flowReviewShape[tail as ReviewKey] : null;

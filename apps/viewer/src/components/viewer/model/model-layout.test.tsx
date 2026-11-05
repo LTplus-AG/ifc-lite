@@ -20,11 +20,11 @@ import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
-import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
+import { HANDLE_PX, MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
 import { ModelToolRail } from './ModelToolRail';
 
-const NEED = MODEL_3D_MIN_PX + PLAN_MIN_PX + 6;
+const NEED = MODEL_3D_MIN_PX + PLAN_MIN_PX + HANDLE_PX;
 
 describe('effectiveModelLayout (#6232 M2.4)', () => {
   it("'auto' opens Plan ‖ 3D only when both panes fit, else 3D alone", () => {
@@ -45,12 +45,12 @@ describe('effectiveModelLayout (#6232 M2.4)', () => {
     for (const width of [NEED, 1200, 1600, 2400]) {
       for (const layout of ['split', 'plan'] as const) {
         const plan = planPaneWidth(layout, width);
-        assert.ok(width - plan - 6 >= MODEL_3D_MIN_PX, `${layout}@${width}: 3D gets ${width - plan - 6}`);
+        assert.ok(width - plan - HANDLE_PX >= MODEL_3D_MIN_PX, `${layout}@${width}: 3D gets ${width - plan - HANDLE_PX}`);
         assert.ok(plan >= PLAN_MIN_PX, `${layout}@${width}: plan gets ${plan}`);
       }
     }
     assert.equal(planPaneWidth('split', 2400), 960, 'Split is 40/60 when there is room');
-    assert.equal(planPaneWidth('plan', 2400), 2400 - MODEL_3D_MIN_PX - 6, 'Plan: the 3D pane at its minimum');
+    assert.equal(planPaneWidth('plan', 2400), 2400 - MODEL_3D_MIN_PX - HANDLE_PX, 'Plan: the 3D pane at its minimum');
   });
 });
 

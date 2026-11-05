@@ -104,13 +104,14 @@ export function SidebarDock() {
           {/* Resize handle */}
           <div
             onMouseDown={onResizeStart}
-            className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors"
+            className="shell-splitter-v"
+            data-dragging={dragPct !== null}
             role="separator"
             aria-orientation="vertical"
             aria-label={t('shellChrome.sidebarDock.resizeAriaLabel')}
           />
           <div
-            className="h-full min-w-0 overflow-hidden panel-container flex flex-col"
+            className="shell-dock-right h-full min-w-0 overflow-hidden panel-container flex flex-col"
             style={{ width: contentPx ?? `${effectivePct}%` }}
           >
             <div className="min-h-0 flex-1"><SidebarPanelHost /></div>

@@ -46,7 +46,8 @@ import { VimCycleHint, RecentsPopoverBody, SearchPopoverBody } from './SearchInl
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
 
-export function SearchInline() {
+/** `compact`: the 28px field the ribbon's 32px tab strip hosts (#8802 R1). */
+export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -416,7 +417,7 @@ export function SearchInline() {
             }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
-            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9', compact && 'h-7 bg-raised text-xs shadow-none')}
             // Input renders a native input; the combobox role permits its expanded state.
             // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="combobox"

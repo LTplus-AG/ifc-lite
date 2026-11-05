@@ -12,6 +12,7 @@ try {
   routeConsoleDiagnosticsToStderr();
   await exportCommand(args, { retainedChild: true });
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
+  // Match the CLI's fatal path: failed engine cleanup can leave a worker alive.
+  // Flush the diagnostic, then end this owned process and all its threads.
+  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`, () => process.exit(1));
 }

@@ -113,15 +113,8 @@ export interface MeasurementSlice extends MeasurePointSlice {
   cancelMeasurement: () => void;
   deleteMeasurement: (id: string) => void;
   clearMeasurements: () => void;
-  /**
-   * Reproject every stored point for the current view. `viewMoved` (default
-   * true) says the camera itself moved, which also ends Point mode's Live
-   * reading; a drawing-buffer resize alone reprojects but keeps it (#8828).
-   */
-  updateMeasurementScreenCoords: (
-    projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null,
-    viewMoved?: boolean,
-  ) => void;
+  /** Reproject stored points; `viewMoved` (default true): the camera moved, which ends Point mode's Live (#8828). */
+  updateMeasurementScreenCoords: (projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
 
   // Snap actions
   setSnapTarget: (target: SnapTarget | null) => void;
@@ -507,16 +500,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     }));
 
     const measurePointLast = state.measurePointLast && reprojectPoint(state.measurePointLast); // its marker (#8770)
-    // The hover point named whatever was under the cursor for the camera it
-    // was picked under. A moved camera puts something else there, so "Live"
-    // ends here and the next hover frame reads the new spot (#8828).
-    const measurePointLive = viewMoved ? null : state.measurePointLive;
+    const measurePointLive = viewMoved ? null : state.measurePointLive; // a moved camera puts another point under the cursor (#8828)
     const liveEnded = measurePointLive !== state.measurePointLive;
-    if (liveEnded) hasChanges = true;
-    // Early exit if nothing changed
-    if (!hasChanges) {
-      return;
-    }
+    if (!hasChanges && !liveEnded) return; // nothing changed
 
     // Typed as an EXHAUSTIVE map over the shared field registry, which is the
     // same registry `hasPendingMeasurementState` (utils/viewportUtils.ts)
@@ -533,11 +519,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       angleMeasurements: updatedAngleMeasurements,
       activeRadius: updatedActiveRadius,
       radiusMeasurements: updatedRadiusMeasurements,
-      measurePointLast,
-      measurePointLive,
+      measurePointLast, measurePointLive,
     };
-    // The snap glyph marked that hover point; it goes with it.
-    set(liveEnded ? { ...reprojected, snapTarget: null, snapVisualization: null } : reprojected);
+    set(liveEnded ? { ...reprojected, snapTarget: null, snapVisualization: null } : reprojected); // the snap glyph goes with an ended Live
   },
 
   // Snap actions

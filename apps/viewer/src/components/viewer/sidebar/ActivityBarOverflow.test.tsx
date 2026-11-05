@@ -16,6 +16,8 @@ import { cleanup, click, render } from '@/test/render';
 import { resolve } from '@/i18n/registry';
 import type { PanelLocation } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resolveAnchor } from '@/lib/tours/anchor-resolver';
+import { useViewerStore } from '@/store';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
 
 afterEach(cleanup);
@@ -76,4 +78,18 @@ it('names each listed panel with its location, like the rail icons', () => {
   assert.ok(target);
   click(target);
   assert.deepEqual(selected, [closed.id]);
+});
+
+it('opens More for the current tour target and resolves its live anchor (#8802)', async () => {
+  const selected: WorkspacePanelId[] = [];
+  render(<ActivityBarOverflow ids={['properties', 'compare']} tourTarget="compare"
+    locationOf={() => 'closed'} onSelect={(id) => selected.push(id)} />);
+  const result = await resolveAnchor(useViewerStore, {
+    id: 'open-panel', kind: 'action', anchor: 'activity-compare',
+    title: 'Open Compare', body: 'Open Compare',
+  }, () => true);
+  assert.ok(result.el, 'the resolver finds Compare inside the mounted overflow menu');
+  assert.equal(result.el.dataset.panelId, 'compare');
+  click(result.el);
+  assert.deepEqual(selected, ['compare']);
 });

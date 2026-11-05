@@ -44,7 +44,32 @@ describe('activity rail overflow (#8802 R1)', () => {
     assert.ok(railHeight(entries.filter((e) => fit.visible.includes(e.id))) <= RAIL_PADDING_PX + 4 * RAIL_ITEM_PX + 2 * RAIL_DIVIDER_PX);
   });
 
-  it('always shows at least one icon', () => {
-    assert.equal(fitRail(entries, 10).visible.length, 1);
+  const shortEntries = [
+    { id: 'properties', group: 'inspect' },
+    { id: 'compare', group: 'review' },
+    { id: 'lists', group: 'data' },
+  ];
+
+  it('reserves More before the active Properties and tour-pinned Compare (#8802)', () => {
+    const fit = fitRail(shortEntries, 67, ['properties', 'compare']);
+    assert.ok(railHeight(shortEntries.filter((e) => fit.visible.includes(e.id))) + RAIL_ITEM_PX <= 67,
+      'the visible run plus More must fit the 67px list');
+    assert.ok(fit.overflow.includes('compare'));
+    // At 90px Properties fits alone beside More; Compare must yield first.
+    assert.deepEqual(fitRail(shortEntries, 90, ['properties', 'compare']), {
+      visible: ['properties'], overflow: ['compare', 'lists'],
+    });
+  });
+
+  it('shows More alone when only its row fits (#8802)', () => {
+    assert.deepEqual(fitRail(shortEntries, RAIL_PADDING_PX + RAIL_ITEM_PX, ['properties', 'compare']), {
+      visible: [], overflow: ['properties', 'compare', 'lists'],
+    });
+  });
+
+  it('preserves the normal-height pinned layout (#8802)', () => {
+    assert.deepEqual(fitRail(entries, RAIL_PADDING_PX + 5 * RAIL_ITEM_PX + 2 * RAIL_DIVIDER_PX, ['f', 'd']), {
+      visible: ['a', 'b', 'd', 'f'], overflow: ['c', 'e'],
+    });
   });
 });

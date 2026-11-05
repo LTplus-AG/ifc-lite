@@ -8,9 +8,9 @@
  * dock cut icons and group captions in half with no hint that more existed.
  *
  * Pure layout arithmetic over the rail's fixed row sizes (`ActivityBar`'s
- * classes), so it is testable without a layout engine. The panel shown in
- * the right pane is never hidden: when it falls past the fold it takes the
- * last visible slot, so the one active item is always on the rail.
+ * classes), so it is testable without a layout engine. The active panel takes
+ * priority over a tour anchor, but both yield to the overflow control when
+ * the window cannot fit them beside it.
  */
 
 /** Row pitch of one icon: `h-9` plus the list's `gap-0.5`. */
@@ -45,9 +45,9 @@ export function railHeight<Id extends string>(entries: readonly RailEntry<Id>[])
  * rest. An unknown height (0, e.g. before the first measurement or with no
  * layout engine) keeps every icon visible, matching the old scrolling rail.
  *
- * `pinned` icons always stay on the rail (the right pane's active panel, a
- * running tour's rail anchor): one past the fold takes the place of the last
- * unpinned visible icon, in rail order.
+ * `pinned` icons take priority in array order (active panel first, then tour
+ * anchor). Pins past the fold replace unpinned icons; when even the pins do
+ * not fit beside More, the lowest-priority pin yields first.
  */
 export function fitRail<Id extends string>(
   entries: readonly RailEntry<Id>[],
@@ -79,7 +79,14 @@ export function fitRail<Id extends string>(
     dropLastUnpinned();
     shown.add(id);
   }
-  while (run().length > 1 && railHeight(run()) > budget && dropLastUnpinned()) { /* trim */ }
+  while (shown.size > 0 && railHeight(run()) > budget) {
+    if (dropLastUnpinned()) continue;
+    // Active comes first in `pinned`; shed the tour target before the active
+    // panel, and finally the active panel itself if only More fits.
+    const victim = [...keep].reverse().find((id) => shown.has(id));
+    if (!victim) break;
+    shown.delete(victim);
+  }
 
   return { visible: all.filter((id) => shown.has(id)), overflow: all.filter((id) => !shown.has(id)) };
 }

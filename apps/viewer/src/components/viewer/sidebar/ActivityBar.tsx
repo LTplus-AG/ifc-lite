@@ -125,8 +125,8 @@ export function ActivityBar() {
     : detached('properties') ? null : 'properties';
   const primaryId = mode === 'expanded' && !paneFolded ? paneShown : null;
 
-  // A running tour step that points at a rail icon must find it on the rail,
-  // not in the overflow menu (the anchor resolver queries the live DOM).
+  // Prefer the current tour anchor on the rail. If a short window forces it
+  // into More, the menu opens so the resolver still finds its live anchor.
   const tourRailAnchor = useTourStore((s) => {
     if (!s.tourId || s.status === 'idle') return null;
     const anchor = getTour(s.tourId)?.steps[s.stepIndex]?.anchor;
@@ -237,7 +237,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
+          <ActivityBarOverflow tourTarget={tourRailAnchor} ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
         )}
       </div>
 

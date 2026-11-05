@@ -130,11 +130,11 @@ export function FlowPlayer({ doc, registry, lastRun, lastError, onDocChange }: F
 
       {running && <button type="button" className={button} onClick={cancel}>{t('automationEditor.cancel')}</button>}
       {progress && <output aria-live="polite">{progress}</output>}
-      {storageError && <output className="text-amber-500">{t('automationEditor.storageError', { reason: storageError })}</output>}
+      {storageError && <output className="text-warn">{t('automationEditor.storageError', { reason: storageError })}</output>}
       {warnings.length > 0 && <ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {artifacts.map((artifact) => <button key={artifact.id} type="button" className={button}
         onClick={() => downloadBlob(artifact.blob, artifact.name)}>{t('automationEditor.download', { name: artifact.name })}</button>)}
-      {lastError && <div className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</div>}
+      {lastError && <div className="text-danger">{t('flowPanel.run.failed')}: {lastError}</div>}
 
       {doc.outputs.length > 0 && (
         <div>

@@ -232,7 +232,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
               </ul>
             )}
             {inference.observations.some((o) => o.unknown) && (
-              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              <div className="mt-2 text-xs text-warn">
                 {t('extensionsPanels.promoteToolDialog.unknownCallsWarning')}
               </div>
             )}

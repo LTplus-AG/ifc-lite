@@ -69,7 +69,7 @@ export function AssistantRecipeIdeas() {
   };
   return <div>
     <div className="px-4 pt-4 pb-1 text-2xs uppercase tracking-wide font-semibold text-muted-foreground">{t('assistantRecipes.ideasHeading')}</div>
-    {refusal && <p role="alert" className="mx-4 my-1 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs">{refusal}</p>}
+    {refusal && <p role="alert" className="mx-4 my-1 rounded border border-warn-border bg-warn-surface p-2 text-xs">{refusal}</p>}
     <ul className="divide-y">{saved.map(item)}{curated.map(item)}</ul>
   </div>;
 }

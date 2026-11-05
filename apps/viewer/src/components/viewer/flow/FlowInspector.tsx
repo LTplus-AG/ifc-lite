@@ -55,7 +55,7 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
         <div>
           <textarea
             aria-label={def.name}
-            className={`${input} font-mono ${invalid ? 'border-red-400' : ''}`}
+            className={`${input} font-mono ${invalid ? 'border-danger-border' : ''}`}
             rows={2}
             value={text}
             onChange={(e) => {
@@ -64,7 +64,7 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
             }}
             onBlur={() => setJsonText(null)}
           />
-          {invalid && <div className="text-2xs text-red-400">{invalidLabel}</div>}
+          {invalid && <div className="text-2xs text-danger">{invalidLabel}</div>}
         </div>
       );
     }
@@ -96,7 +96,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
       <div>
         <div className="font-medium">{def?.title ?? node.type}</div>
         <div className="font-mono text-2xs text-muted-foreground">{node.id} · {node.type}</div>
-        {!def && <div className="text-red-400">{t('flowPanel.inspector.unknownType', { type: node.type })}</div>}
+        {!def && <div className="text-danger">{t('flowPanel.inspector.unknownType', { type: node.type })}</div>}
         {/* The palette only shows the doc as a tooltip, which is unreachable once the node is on the canvas. */}
         {def?.doc && <div className="mt-1 text-2xs leading-snug text-muted-foreground">{def.doc}</div>}
         {def && def.capabilities.length > 0 && <div className="text-2xs text-muted-foreground">{t('flowPanel.inspector.capabilities')}: {def.capabilities.join(', ')}</div>}
@@ -191,7 +191,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
         <div className="text-2xs text-muted-foreground">
           <div>{t('flowPanel.inspector.lastRun')}: {t(`flowPanel.status.${report.status}` as const)} · {t('flowPanel.inspector.lanes', { count: report.lanes })}{report.laneErrors > 0 ? ` · ${t('flowPanel.inspector.laneErrors', { count: report.laneErrors })}` : ''}</div>
           {report.tracking && <div>{t('flowPanel.inspector.tracked', report.tracking)}</div>}
-          {report.error && <div className="text-red-400">{report.error}</div>}
+          {report.error && <div className="text-danger">{report.error}</div>}
         </div>
       )}
 

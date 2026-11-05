@@ -86,3 +86,44 @@ test('publisher Gaussian artifacts retain hash provenance and release hosting (#
   assert.ok(validateManifest({ version: 1, files: [landxml] }).some(e => e.includes('commit')),
     'publisher source does not relax LandXML Git provenance');
 });
+
+test('the release corpus carries a public metric IFC/scan/splat triple and a pinned batch witness (#8567)', () => {
+  const byPath = new Map(catalogue.files.map(entry => [entry.path, entry]));
+  const triple = ['edinburgh/model.ifc', 'edinburgh/cloud_coloured.e57', 'edinburgh/scan-vox12mm.laz', 'gaussian/edinburgh-scan-sh3.ply'];
+  for (const path of triple) {
+    const entry = byPath.get(path);
+    assert.ok(entry, `${path} is in the corpus`);
+    assert.equal(entry.provenance?.license?.spdx, 'CC-BY-4.0', `${path} is publicly licensed`);
+    assert.match(entry.sha256, /^[0-9a-f]{64}$/, `${path} is hash-pinned`);
+    assert.ok(entry.size > 0, `${path} has a pinned size`);
+  }
+  // Metric co-registration is measured, not assumed: the splat must sit on the
+  // scan, and the scan on the IFC, at centimetre scale in one shared frame.
+  const alignment = byPath.get('gaussian/edinburgh-scan-sh3.ply').alignment;
+  assert.ok(alignment.scan_to_ifc_wall_slab_band_median_m < 0.05, 'scan lies on the IFC walls and slabs');
+  assert.ok(alignment.scan_to_nearest_splat_center_median_m < 0.05, 'splat centres lie on the scan');
+  assert.ok(alignment.ifc_scan_aabb_iou > 0.8, 'IFC and scan share one frame');
+  const witness = byPath.get('gaussian/qualification-32-batch-sh3.ply');
+  assert.ok(witness, 'the interleaved-batch witness is in the corpus');
+  assert.match(witness.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(witness.gaussian.sh_degree, 3);
+  assert.deepEqual(validateManifest({ version: catalogue.version, files: [...triple.map(path => byPath.get(path)), witness] }), []);
+});
+
+test('the metric triple manifest matches its committed measurement receipt (#8567)', () => {
+  // The alignment numbers in the manifest are measured, not hand-typed: they
+  // must equal the receipt the derivation script wrote, and the derivative
+  // pins must name the files that receipt measured.
+  const receipt = JSON.parse(readFileSync(new URL('../../examples/gaussian-splat-spike/edinburgh-measurement.json', import.meta.url), 'utf8'));
+  const byPath = new Map(catalogue.files.map(entry => [entry.path, entry]));
+  const splat = byPath.get('gaussian/edinburgh-scan-sh3.ply');
+  const laz = byPath.get('edinburgh/scan-vox12mm.laz');
+  assert.equal(splat.alignment.scan_to_ifc_wall_slab_band_median_m, receipt.alignment.wall_slab_band_lt_0_15m.median_m);
+  assert.equal(splat.alignment.scan_to_nearest_splat_center_median_m, receipt.alignment.scan_to_nearest_splat_center_m.median_m);
+  assert.equal(splat.alignment.ifc_scan_aabb_iou, receipt.alignment.ifc_scan_aabb_iou);
+  assert.equal(splat.sha256, receipt.derivatives['edinburgh-synthetic-scan-sh3.ply'].sha256);
+  assert.equal(splat.gaussian.count, receipt.derivatives['edinburgh-synthetic-scan-sh3.ply'].count);
+  assert.equal(laz.sha256, receipt.derivatives['edinburgh-synthetic-scan-vox12mm.laz'].sha256);
+  assert.equal(byPath.get('edinburgh/model.ifc').sha256, receipt.sources['model.ifc'].sha256);
+  assert.equal(byPath.get('edinburgh/cloud_coloured.e57').sha256, receipt.sources['cloud_coloured.e57'].sha256);
+});

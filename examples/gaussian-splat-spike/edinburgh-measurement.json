@@ -1,0 +1,83 @@
+{
+  "recipe": {
+    "laz_voxel_m": 0.012,
+    "splat_voxel_m": 0.048,
+    "splat_kind": "scan-derived isotropic SH3 container; zero higher-order coefficients"
+  },
+  "sources": {
+    "model.ifc": {
+      "size": 47032,
+      "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+    },
+    "cloud_coloured.e57": {
+      "size": 51633152,
+      "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+    }
+  },
+  "derivatives": {
+    "edinburgh-synthetic-scan-vox12mm.laz": {
+      "size": 19686282,
+      "sha256": "c1f4932233dde4fb90ea0de7f5f647b69f4786e8217c2dac05b73b3a2281a57b",
+      "count": 2899130
+    },
+    "edinburgh-synthetic-scan-sh3.ply": {
+      "size": 102469179,
+      "sha256": "de8072e003e67535ac522be5318abcf250040bc66dc3f387ad220349b07062c1",
+      "count": 413176
+    }
+  },
+  "alignment": {
+    "frame": "source identity; IFC millimetres resolved to metres by IfcOpenShell; E57 metres, Z-up",
+    "ifc_measurement_schema_substitution": "IFC4X1 to IFC4 in memory only",
+    "sample_seed": 8567,
+    "sample_count": 50000,
+    "ifc_triangles": 264,
+    "ifc_wall_slab_bounds_m": [
+      [
+        0.0,
+        0.0,
+        -0.30000001192092896
+      ],
+      [
+        12.5,
+        8.0,
+        3.299999952316284
+      ]
+    ],
+    "scan_bounds_m": [
+      [
+        -0.07239469140768051,
+        -0.07287543267011642,
+        -0.09222280979156494
+      ],
+      [
+        12.582499504089355,
+        8.071646690368652,
+        3.088257074356079
+      ]
+    ],
+    "splat_bounds_m": [
+      [
+        -0.07239469140768051,
+        -0.07287543267011642,
+        -0.09222280979156494
+      ],
+      [
+        12.582499504089355,
+        8.071646690368652,
+        3.088257074356079
+      ]
+    ],
+    "ifc_scan_aabb_iou": 0.860151926528336,
+    "wall_slab_band_lt_0_15m": {
+      "count": 50000,
+      "fraction": 1.0,
+      "median_m": 0.0051721930503845215,
+      "p90_m": 0.019445668905973434
+    },
+    "scan_to_nearest_splat_center_m": {
+      "median_m": 0.01840291418321477,
+      "p90_m": 0.026712929624050436
+    }
+  }
+}

@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Section2DOverlayRenderer } from './section-2d-overlay.js';
 import { CAP_CLIP_FLOATS } from './extra-clip-planes.js';
+import { CAP_FILL_VERTEX_FLOATS } from './section-2d-lift.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_CAP_LINE_WGSL,
@@ -229,8 +230,9 @@ describe('cap highlight (#7950)', () => {
     { polygon: { outer: [{ x: 3, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 1 }], holes: [] }, ifcType: 'IfcSlab', expressId: 2, color: [0.5, 0.5, 0.5, 1] as [number, number, number, number] },
   ];
   const lastFill = (writes: Rec[], created: Array<{ __size: number }>) =>
-    [...writes].reverse().find((w) => created[w.buffer.__id].__size === w.data.byteLength && w.data.length === 6 * 7);
-  const colorAt = (data: Float32Array, vertex: number) => Array.from(data.slice(vertex * 7 + 3, vertex * 7 + 7));
+    [...writes].reverse().find((w) => created[w.buffer.__id].__size === w.data.byteLength && w.data.length === 6 * CAP_FILL_VERTEX_FLOATS);
+  const colorAt = (data: Float32Array, vertex: number) =>
+    Array.from(data.slice(vertex * CAP_FILL_VERTEX_FLOATS + 3, vertex * CAP_FILL_VERTEX_FLOATS + 7));
 
   it('recolours only the highlighted element, restores on clear, and survives a re-upload', () => {
     const { renderer, writes, created } = newRenderer();

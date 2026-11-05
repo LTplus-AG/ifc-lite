@@ -36,7 +36,7 @@ export function LearnTab({ onClose }: { onClose: () => void }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-sm font-medium">
                   {tour.title}
-                  {done && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-500" aria-label={t('tours.learnTab.completedAriaLabel')} />}
+                  {done && <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-label={t('tours.learnTab.completedAriaLabel')} />}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">{tour.description}</div>
               </div>

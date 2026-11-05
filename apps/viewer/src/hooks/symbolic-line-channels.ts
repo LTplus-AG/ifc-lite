@@ -39,6 +39,7 @@ export interface SymbolicLineChannels {
  *  in a test. */
 export interface SymbolicLineChannelsEntry {
   cached: ParseResult;
+  toGlobalId?: (ownerId: number) => number;
   isHidden?: (ownerId: number) => boolean;
   /** Annotation-only isolation; grids remain a reference layer (#8767). */
   isIsolatedOut?: (ownerId: number) => boolean;
@@ -60,8 +61,8 @@ interface SymbolicLineChannelsParams {
  * hidden precision cliff for ordinary sites between 8,192 m and a larger
  * arbitrary threshold.
  */
-function lineVerticesForRenderer(vertices: number[]): SymbolicLineVertices {
-  return anchorWorldLineVertices(vertices);
+function lineVerticesForRenderer(vertices: number[], owners?: number[]): SymbolicLineVertices {
+  return anchorWorldLineVertices(vertices, owners);
 }
 
 /** Return the local float data for inspection and legacy empty checks. */
@@ -79,16 +80,17 @@ export function buildSymbolicLineChannels(
   if (!enabled && !effectiveGridEnabled) return { annotation: EMPTY_F32, grid: EMPTY_F32 };
 
   const annotationVerts: number[] = [];
+  const annotationOwners: number[] = [];
   const gridVerts: number[] = [];
-  for (const { cached, isHidden, isIsolatedOut } of entries) {
+  for (const { cached, isHidden, isIsolatedOut, toGlobalId } of entries) {
     const annotationHidden = isIsolatedOut
       ? (id: number) => !!isHidden?.(id) || isIsolatedOut(id)
       : isHidden;
     if (enabled) {
       for (const bucket of cached.byStorey.values()) {
-        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), annotationVerts, annotationHidden);
+        liftTo3DLineList(bucket.lines, resolveBucketY(bucket.storeyElevation, fallbackY), annotationVerts, annotationHidden, annotationOwners, toGlobalId);
       }
-      liftTo3DLineList(cached.loose, fallbackY, annotationVerts, annotationHidden);
+      liftTo3DLineList(cached.loose, fallbackY, annotationVerts, annotationHidden, annotationOwners, toGlobalId);
     }
 
     if (effectiveGridEnabled) {
@@ -120,7 +122,7 @@ export function buildSymbolicLineChannels(
     );
   }
   return {
-    annotation: lineVerticesForRenderer(annotationVerts),
+    annotation: lineVerticesForRenderer(annotationVerts, annotationOwners),
     grid: lineVerticesForRenderer(gridVerts),
   };
 }

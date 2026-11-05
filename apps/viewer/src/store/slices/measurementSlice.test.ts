@@ -32,60 +32,12 @@ describe('MeasurementSlice', () => {
       assert.deepStrictEqual(state.measurements, []);
     });
 
-    it('should have null pending measure point', () => {
-      assert.strictEqual(state.pendingMeasurePoint, null);
-    });
-
     it('should have null active measurement', () => {
       assert.strictEqual(state.activeMeasurement, null);
     });
 
     it('should have snap enabled by default', () => {
       assert.strictEqual(state.snapEnabled, true);
-    });
-  });
-
-  describe('addMeasurePoint', () => {
-    it('should set pending measure point', () => {
-      const point = { x: 1, y: 2, z: 3, screenX: 0, screenY: 0 };
-      state.addMeasurePoint(point);
-      assert.deepStrictEqual(state.pendingMeasurePoint, point);
-    });
-  });
-
-  describe('completeMeasurement', () => {
-    it('should create measurement when pending point exists', () => {
-      const startPoint = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
-      const endPoint = { x: 3, y: 4, z: 0, screenX: 0, screenY: 0 };
-
-      state.addMeasurePoint(startPoint);
-      state.completeMeasurement(endPoint);
-
-      assert.strictEqual(state.measurements.length, 1);
-      assert.deepStrictEqual(state.measurements[0].start, startPoint);
-      assert.deepStrictEqual(state.measurements[0].end, endPoint);
-      assert.strictEqual(state.measurements[0].distance, 5); // 3-4-5 triangle
-      assert.strictEqual(state.pendingMeasurePoint, null);
-    });
-
-    it('should not create measurement when no pending point', () => {
-      const endPoint = { x: 1, y: 1, z: 1, screenX: 0, screenY: 0 };
-      state.completeMeasurement(endPoint);
-      assert.strictEqual(state.measurements.length, 0);
-    });
-
-    it('should generate unique IDs for rapid measurements', () => {
-      const point1 = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
-      const point2 = { x: 1, y: 0, z: 0, screenX: 0, screenY: 0 };
-
-      state.addMeasurePoint(point1);
-      state.completeMeasurement(point2);
-
-      state.addMeasurePoint(point1);
-      state.completeMeasurement(point2);
-
-      assert.strictEqual(state.measurements.length, 2);
-      assert.notStrictEqual(state.measurements[0].id, state.measurements[1].id);
     });
   });
 
@@ -139,6 +91,19 @@ describe('MeasurementSlice', () => {
       state.finalizeMeasurement();
       assert.strictEqual(state.measurements.length, 0);
     });
+
+    it('should generate unique IDs for rapid measurements', () => {
+      const point1 = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+      const point2 = { x: 1, y: 0, z: 0, screenX: 0, screenY: 0 };
+      for (let i = 0; i < 2; i++) {
+        state.startMeasurement(point1);
+        state.updateMeasurement(point2);
+        state.finalizeMeasurement();
+      }
+
+      assert.strictEqual(state.measurements.length, 2);
+      assert.notStrictEqual(state.measurements[0].id, state.measurements[1].id);
+    });
   });
 
   describe('cancelMeasurement', () => {
@@ -191,12 +156,11 @@ describe('MeasurementSlice', () => {
       state.updateMeasurement({ x: 1, y: 0, z: 0, screenX: 0, screenY: 0 });
       state.finalizeMeasurement();
 
-      state.addMeasurePoint({ x: 5, y: 5, z: 5, screenX: 0, screenY: 0 });
+      state.startMeasurement({ x: 5, y: 5, z: 5, screenX: 0, screenY: 0 });
 
       state.clearMeasurements();
 
       assert.deepStrictEqual(state.measurements, []);
-      assert.strictEqual(state.pendingMeasurePoint, null);
       assert.strictEqual(state.activeMeasurement, null);
     });
   });

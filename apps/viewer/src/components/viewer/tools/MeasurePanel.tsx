@@ -28,7 +28,6 @@ import { MeasureGeoReadout, MeasureHint, MeasurePointHud } from './MeasureHudRea
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
   const finishedVisible = useViewerStore((s) => s.sceneState.measurements.visible);
-  const pendingMeasurePoint = useViewerStore((s) => s.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const snapTarget = useViewerStore((s) => s.snapTarget);
   const snapVisualization = useViewerStore((s) => s.snapVisualization);
@@ -98,10 +97,9 @@ export function MeasureOverlay() {
       <MeasureHint />
       <MeasurementOverlays
         measurements={finishedVisible ? measurements : []}
-        // Point mode's placed point reuses the pending-point mark. Chosen by
-        // mode: a Distance touch start (pendingMeasurePoint) survives a mode
-        // switch, and must not stand in for the point placed here.
-        pending={measureMode === 'point' ? measurePointLast : pendingMeasurePoint}
+        // Point mode's placed point, drawn with the pending-point mark. Only in
+        // Point mode, so a placed point never shows up in another mode.
+        pending={measureMode === 'point' ? measurePointLast : null}
         activeMeasurement={activeMeasurement}
         snapTarget={snapTarget}
         snapVisualization={snapVisualization}

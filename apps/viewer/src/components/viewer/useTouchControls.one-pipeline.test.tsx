@@ -151,7 +151,7 @@ afterEach(() => {
   cleanup();
   for (const canvas of document.querySelectorAll('canvas')) canvas.remove();
   useViewerStore.getState().clearMeasurements();
-  useViewerStore.setState({ measureMode: 'drag', pendingMeasurePoint: null, activeMeasurement: null });
+  useViewerStore.setState({ measureMode: 'drag', activeMeasurement: null });
 });
 
 describe('touch long press (#5859)', () => {
@@ -266,9 +266,9 @@ describe('Measure by tap (#5856)', () => {
     const { canvas } = rig('measure');
     await tap(canvas, 200, 300);
     await tap(canvas, 500, 300);
-    const { measurements, pendingMeasurePoint } = useViewerStore.getState();
+    const { measurements, activeMeasurement } = useViewerStore.getState();
     assert.equal(measurements.length, 1, 'two taps did not produce a measurement');
-    assert.equal(pendingMeasurePoint, null);
+    assert.equal(activeMeasurement, null);
     assert.ok(Math.abs(measurements[0].distance - 3) < 1e-9, `distance ${measurements[0].distance}, expected 3`);
   });
 });

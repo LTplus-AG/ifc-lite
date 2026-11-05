@@ -13,7 +13,7 @@ import type { MeasurePoint } from '@/store';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
-import { pickMeasurePoint } from './measurePick.js';
+import { pickMeasurePoint, pickSurfacePoint } from './measurePick.js';
 import { isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
@@ -22,10 +22,23 @@ const startingPresses = new WeakSet<MouseState>();
 const finishingPresses = new WeakSet<MouseState>();
 /** The last press set a start right after a finish: a dblclick on it drops that start. */
 const startsAfterFinish = new WeakSet<MouseState>();
+/**
+ * Where the pending start was pressed, before snapping, and where it showed then (#8788).
+ * Matched to the start by world position: a camera move rebuilds the start object.
+ */
+const startPresses = new WeakMap<MouseState, { world: { x: number; y: number; z: number }; press: { x: number; y: number }; shown: { x: number; y: number } }>();
+/** A second press within this far (CSS px) of the start's own press is that press repeated (#8788). */
+const REPRESS_SLOP_PX = 8;
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
-export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint): void {
+export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
   ctx.startMeasurement(measurePoint);
+  if (at) {
+    const { x, y, z, screenX, screenY } = measurePoint;
+    startPresses.set(ctx.mouseState, { world: { x, y, z }, press: at, shown: { x: screenX, y: screenY } });
+  } else {
+    startPresses.delete(ctx.mouseState);
+  }
 
   // Set up orthogonal constraint for Shift - always use world axes
   ctx.setMeasurementConstraintEdge({
@@ -48,15 +61,37 @@ export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoi
  * on top of the start (the second half of a double-click) is ignored, so it
  * cannot finish a zero-length measurement.
  */
-export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint): boolean {
+export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?: { x: number; y: number }): boolean {
   const active = ctx.activeMeasurementRef.current;
   if (!active) return false;
   // Finished or rejected, this pick's edge lock must not pull the next one (see beginDistance).
   ctx.clearEdgeLock();
+  // Pressed away from the start but snapped back onto it (a vertex or edge both points are near):
+  // measure to the exact surface under the pointer instead of dropping the press (#8788).
+  if (at && isDuplicateClickPoint(active.start, end) && pressedAwayFromStart(ctx, active.start, at)) {
+    end = pickSurfacePoint(ctx, at.x, at.y) ?? end;
+  }
   if (isDuplicateClickPoint(active.start, end)) return false;
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
   return true;
+}
+
+/**
+ * Whether a press at `at` is clearly a new point: away from where the start was
+ * pressed (so not a double-click or double-tap snapping to the same target) and
+ * not on the start as it now shows (so not a retap on it after the camera moved).
+ */
+function pressedAwayFromStart(ctx: MouseHandlerContext, start: MeasurePoint, at: { x: number; y: number }): boolean {
+  const record = startPresses.get(ctx.mouseState);
+  if (!record || record.world.x !== start.x || record.world.y !== start.y || record.world.z !== start.z) return false;
+  const shown = projectToCssScreen(ctx.camera, ctx.canvas, start) ?? { x: start.screenX, y: start.screenY };
+  // The press moves on screen with the start when the camera does, so a repeated press still
+  // counts after a small drift (inertia, a reprojection) as well as after none.
+  const press = { x: record.press.x + shown.x - record.shown.x, y: record.press.y + shown.y - record.shown.y };
+  const nearPress = Math.hypot(at.x - press.x, at.y - press.y) <= REPRESS_SLOP_PX;
+  // A press on the shown start itself stays a retap, as finishDistance's duplicate guard has it.
+  return !nearPress && !isDuplicateClickPoint({ screenX: shown.x, screenY: shown.y }, { screenX: at.x, screenY: at.y });
 }
 
 /** Any other press (navigation, another tool) breaks the finish-then-start chain a dblclick may drop. */
@@ -93,9 +128,10 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
 
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
-  const measurePoint = pickMeasurePoint(ctx, e.clientX - rect.left, e.clientY - rect.top);
+  const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
   if (measurePoint) {
-    beginDistance(ctx, measurePoint);
+    beginDistance(ctx, measurePoint, at);
     startingPresses.add(mouseState);
     if (afterFinish) startsAfterFinish.add(mouseState);
   }
@@ -185,7 +221,9 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   // The second click, or a press dragged past the click slop, finishes where it is released (#8771).
   // A release on background or back on the start keeps the start pending; a first click leaves it so.
   const finishing = !startingPresses.has(mouseState) || mouseState.didDrag;
-  if (finishing && end && finishDistance(ctx, end)) finishingPresses.add(mouseState);
+  // On the Shift axis an end projected onto the start is the constrained answer, not a stray snap.
+  const at = useOrthogonalConstraint ? undefined : { x: mx, y: my };
+  if (finishing && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
   startingPresses.delete(mouseState);
   mouseState.isDragging = false;
   mouseState.didDrag = false;

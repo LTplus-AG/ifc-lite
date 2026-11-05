@@ -240,7 +240,7 @@ export function RawStepRow({
               data-raw-step-action="save"
               onMouseDown={(e) => e.preventDefault()}
               onClick={saveEdit}
-              className="h-6 w-6 p-0 hover:bg-emerald-100 dark:hover:bg-ok-surface"
+              className="h-6 w-6 p-0 hover:bg-ok-surface"
             >
               <Check className="h-3.5 w-3.5 text-ok" />
             </IconButton>
@@ -249,7 +249,7 @@ export function RawStepRow({
               data-raw-step-action="cancel"
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancelEdit}
-              className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-danger-surface"
+              className="h-6 w-6 p-0 hover:bg-danger-surface"
             >
               <X className="h-3.5 w-3.5 text-danger" />
             </IconButton>

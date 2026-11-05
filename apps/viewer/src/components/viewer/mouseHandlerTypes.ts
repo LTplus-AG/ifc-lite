@@ -18,6 +18,7 @@ import type {
   SectionPlane,
 } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
+import type { MeasureCameraState } from './measureCameraState.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -75,13 +76,7 @@ export interface MouseHandlerContext {
   lastHoverSnapTimeRef: MutableRefObject<number>;
 
   // Camera tracking
-  lastCameraStateRef: MutableRefObject<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>;
+  lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
 
   // Click detection refs
   lastClickTimeRef: MutableRefObject<number>;

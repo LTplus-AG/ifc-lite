@@ -60,8 +60,11 @@ async function visibleFaces(page: Page): Promise<Array<{ globalId: number; x: nu
     for (const [modelId, model] of state.models) for (const mesh of model.geometryResult?.meshes ?? []) {
       const globalId = state.toGlobalId(modelId, mesh.expressId);
       for (const { screen } of globalThis.__ifc_lite_scene_face_hits__(globalId)) {
+        // A face under viewport UI (the mobile Home/zoom stack, the Measure HUD) is not tappable:
+        // the tap lands on the UI and never reaches the canvas.
         if (screen.x > rect.left + 20 && screen.x < rect.right - 20 &&
-          screen.y > rect.top + 20 && screen.y < rect.bottom - 20) {
+          screen.y > rect.top + 20 && screen.y < rect.bottom - 20 &&
+          document.elementFromPoint(screen.x, screen.y) === canvas) {
           faces.push({ globalId, x: screen.x, y: screen.y });
         }
       }
@@ -175,8 +178,6 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
 
     const faces = await requireRenderer('visible-face projection', () => visibleFaces(page));
     const first = faces[0];
-    const second = faces.find((face) => Math.hypot(face.x - first.x, face.y - first.y) > 25);
-    if (!second) throw new Error('two distinct visible face points are required for Measure');
     await page.touchscreen.tap(first.x, first.y);
     await requireRenderer('tap selection', () => expect.poll(
       () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId),
@@ -184,8 +185,13 @@ test('one finger orbits, two fingers pinch, taps select and measure, and hold op
     ).toBe(first.globalId));
 
     await page.getByRole('button', { name: 'Measure', exact: true }).click();
-    await page.touchscreen.tap(first.x, first.y);
-    await page.touchscreen.tap(second.x, second.y);
+    // Pick the two taps with the Measure UI on screen, so neither lands on it.
+    const measureFaces = await requireRenderer('visible-face projection', () => visibleFaces(page));
+    const start = measureFaces[0];
+    const end = measureFaces.find((face) => Math.hypot(face.x - start.x, face.y - start.y) > 25);
+    if (!end) throw new Error('two distinct visible face points are required for Measure');
+    await page.touchscreen.tap(start.x, start.y);
+    await page.touchscreen.tap(end.x, end.y);
     await requireRenderer('two-tap measurement', () => expect.poll(
       () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().measurements.length),
       { timeout: PICK_SETTLE_MS },

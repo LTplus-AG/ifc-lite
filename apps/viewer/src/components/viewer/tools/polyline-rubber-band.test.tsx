@@ -62,7 +62,6 @@ beforeEach(() => {
     measurements: [],
     polylineMeasurements: [],
     activeMeasurement: null,
-    pendingMeasurePoint: null,
     activePolyline: { points: [PLACED] },
     snapTarget: null,
     snapVisualization: null,

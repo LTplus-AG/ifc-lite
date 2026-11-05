@@ -151,7 +151,7 @@ describe('ComparePanel secondary text contrast (#4792, #6205)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PropertiesPanel: world-coordinates section, opened, "Size" row
+// PropertiesPanel: Position disclosure, opened, "Size" row
 // ---------------------------------------------------------------------------
 
 const MODEL_ID = 'm1';
@@ -172,7 +172,11 @@ END-ISO-10303-21;
 const SIZE_LABEL = resolve('properties.panel.sizeLabel');
 const SIZE_VALUE = resolve('properties.panel.sizeDisplay', { x: '2.00', y: '3.00', z: '4.00' });
 
-/** The wall selected, with a 2x3x4 mesh, and the world-coordinates section opened by a click. */
+/**
+ * The wall selected, with a 2x3x4 mesh, and the Position disclosure opened by
+ * a click (#8802 R2 replaced the "World" chip with a labelled Position row
+ * whose disclosure holds the Size row).
+ */
 async function mountPropertiesSize(): Promise<void> {
   const store = await parseStep(WALL_STEP);
   seedModel(MODEL_ID, ID_OFFSET, store, 42);
@@ -182,7 +186,7 @@ async function mountPropertiesSize(): Promise<void> {
     models: new Map([[MODEL_ID, { ...model, geometryResult: { meshes: [boxMesh(42 + ID_OFFSET, [0, 0, 0], [2, 3, 4])] } } as unknown as FederatedModel]]),
   });
   render(<PropertiesPanel />);
-  click(elementWithText(resolve('properties.panel.worldCoordinates')));
+  click(elementWithText(resolve('properties.panel.positionLabel')));
 }
 
 describe('PropertiesPanel "Size" row contrast (#4792, #6205)', () => {

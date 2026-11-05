@@ -95,3 +95,33 @@ describe('measurement labels on the scene kernel (#5502)', () => {
     assert.equal(labels()[0].style.display, 'none');
   });
 });
+
+describe('a just-set Distance start (#8785)', () => {
+  const at = (x: number, y: number) => ({ x, y, z: 0, screenX: x, screenY: y });
+  const marks = () => [...document.querySelectorAll('circle')].map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')},${c.getAttribute('r')}`);
+
+  it('draws the start mark only: no "0 mm" label, no line, no pulsing end', () => {
+    const scene = renderScene(<MeasurementOverlays {...BASE} activeMeasurement={{ start: at(30, 40), current: at(30, 40), distance: 0 }} />);
+    scene.source.dirty = true;
+    scene.flush();
+    assert.equal(labels().length, 0, 'a zero-length live label is drawn');
+    assert.equal(document.querySelectorAll('line').length, 0, 'a zero-length live line is drawn');
+    assert.equal(document.querySelectorAll('circle.animate-pulse').length, 0, 'the pulsing end marker is drawn on the start');
+    assert.deepEqual(marks(), ['30,40,5', '30,40,2.5']);
+  });
+
+  it('becomes the live line and label once the end leaves the start', () => {
+    const scene = renderScene(<MeasurementOverlays {...BASE} activeMeasurement={{ start: at(30, 40), current: at(36, 48), distance: 10 }} />);
+    scene.source.dirty = true;
+    scene.flush();
+    assert.equal(labels().length, 1);
+    assert.match(card(labels()[0]).textContent ?? '', /10\.000 m/);
+    assert.equal(document.querySelectorAll('line').length, 1);
+    assert.ok(!marks().includes('30,40,2.5'), 'the start-only mark outlives the first move');
+  });
+
+  it('Point mode\'s placed point keeps the mark', () => {
+    renderScene(<MeasurementOverlays {...BASE} pending={{ screenX: 7, screenY: 9 }} />);
+    assert.deepEqual(marks(), ['7,9,5', '7,9,2.5']);
+  });
+});

@@ -13,7 +13,7 @@ export const gaussianCaptureRu = {
   "gaussianCapture.upAxis": "Вертикальная ось источника",
   "gaussianCapture.upAxis.z": "Z вверх (как у сканов)",
   "gaussianCapture.upAxis.y": "Y вверх",
-  "gaussianCapture.upAxis.failed": "Не удалось изменить ориентацию съёмки. Перезагрузите съёмку и повторите попытку.",
+  "gaussianCapture.upAxis.failed": "Не удалось изменить ориентацию съёмки. Проверьте состояние визуализации съёмки.",
   "gaussianCapture.splats": "Сплаты",
   "gaussianCapture.shDegree": "Степень сферических гармоник",
   "gaussianCapture.placement": "Размещение",

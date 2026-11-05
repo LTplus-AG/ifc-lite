@@ -75,6 +75,7 @@ export interface GaussianUploadRequest {
  * `commit` (the store now owns it) or `rollback` (remove it) must run. */
 export interface GaussianUpload {
   record: GaussianSplatModel;
+  attributes: NormalizedGaussianAttributes;
   commit(): void;
   rollback(): void;
 }
@@ -109,6 +110,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   if (!request.isCurrent() || signal.aborted) { rollback(); return null; }
   const { count, shDegree, centerBounds } = capture;
   return {
+    attributes: capture.attributes,
     record: {
       handle, format: request.format, count, shDegree, sourceCenterBounds: centerBounds,
       ...framed, decodeOrigin: capture.decodeOrigin, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',

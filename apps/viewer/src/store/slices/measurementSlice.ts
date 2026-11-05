@@ -33,6 +33,7 @@ import type {
   ReprojectedMeasurementField,
 } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
+import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
 import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
@@ -40,10 +41,9 @@ import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radiu
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
 
-export interface MeasurementSlice {
+export interface MeasurementSlice extends MeasurePointSlice {
   // State
   measurements: Measurement[];
-  pendingMeasurePoint: MeasurePoint | null;
   activeMeasurement: ActiveMeasurement | null;
   snapTarget: SnapTarget | null;
   snapEnabled: boolean;
@@ -105,10 +105,6 @@ export interface MeasurementSlice {
   /** Finished radius measurements. Picks only — the fit (or refusal) is
    *  derived on render by `fitRadius`. */
   radiusMeasurements: RadiusMeasurement[];
-
-  // Legacy measurement actions
-  addMeasurePoint: (point: MeasurePoint) => void;
-  completeMeasurement: (endPoint: MeasurePoint) => void;
 
   // Drag-based measurement actions
   startMeasurement: (point: MeasurePoint) => void;
@@ -252,7 +248,7 @@ export interface MeasurementSlice {
   resetAllMeasurementState: () => void;
 }
 
-const getDefaultEdgeLockState = (): EdgeLockState => ({
+export const getDefaultEdgeLockState = (): EdgeLockState => ({
   edge: null,
   meshExpressId: null,
   edgeT: 0,
@@ -300,7 +296,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   return {
   // Initial state
   measurements: [],
-  pendingMeasurePoint: null,
   activeMeasurement: null,
   snapTarget: null,
   snapEnabled: true,
@@ -317,25 +312,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   angleMeasurements: [],
   activeRadius: null,
   radiusMeasurements: [],
-
-  // Legacy measurement actions
-  addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
-
-  completeMeasurement: (endPoint) => {
-    set((state) => {
-      if (!state.pendingMeasurePoint) return {};
-      const start = state.pendingMeasurePoint;
-      const distance = Math.sqrt(
-        Math.pow(endPoint.x - start.x, 2) +
-        Math.pow(endPoint.y - start.y, 2) +
-        Math.pow(endPoint.z - start.z, 2)
-      );
-      measurementCounter++; // combined with timestamp to guarantee unique IDs
-      const measurement: Measurement = { id: `m-${Date.now()}-${measurementCounter}`, start, end: endPoint, distance };
-      return { measurements: [...state.measurements, measurement], pendingMeasurePoint: null };
-    });
-    revealMeasurements();
-  },
+  ...createMeasurePointSlice(set),
 
   // Drag-based measurement actions
   startMeasurement: (point) => set({
@@ -390,7 +367,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   clearMeasurements: () => set({
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     // "Clear all" clears every kind of measurement the panel lists,
@@ -402,6 +378,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     angleMeasurements: [],
     activeRadius: null,
     radiusMeasurements: [],
+    ...NO_MEASURE_POINT,
   }),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
@@ -523,6 +500,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       points: m.points.map(reprojectPoint),
     }));
 
+    const measurePointLast = state.measurePointLast && reprojectPoint(state.measurePointLast); // its marker (#8770)
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -543,6 +521,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       angleMeasurements: updatedAngleMeasurements,
       activeRadius: updatedActiveRadius,
       radiusMeasurements: updatedRadiusMeasurements,
+      measurePointLast,
     };
     set(reprojected);
   },
@@ -618,6 +597,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       ...(leaving === 'polyline' ? { activePolyline: null } : {}),
       ...(leaving === 'angle' ? { activeAngle: null } : {}),
       ...(leaving === 'radius' ? { activeRadius: null } : {}),
+      ...(leaving === 'point' ? NO_MEASURE_POINT : {}),
       ...(mode !== 'drag'
         ? { activeMeasurement: null, snapTarget: null, measurementConstraintEdge: null }
         : {}),
@@ -792,13 +772,13 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activePolyline: null,
     activeAngle: null,
     activeRadius: null,
+    measurePointLive: null, // the placed point stays readable, like the last distance
     snapTarget: null,
     measurementConstraintEdge: null,
   }),
 
   resetAllMeasurementState: () => set({
     measurements: [],
-    pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
     snapVisualization: null,
@@ -815,6 +795,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     angleMeasurements: [],
     activeRadius: null,
     radiusMeasurements: [],
+    ...NO_MEASURE_POINT,
   }),
   };
 };

@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import { GaussianSplatError, type Renderer } from '@ifc-lite/renderer';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '@/store';
 import { render, cleanup } from '@/test/render.js';
@@ -18,7 +18,7 @@ import { useFederationSetup } from '../useFederationSetup.js';
 import { setGlobalRendererRef } from '../useBCF.js';
 import { gaussianModelShell } from './gaussianIngest.js';
 import { convergeFederationRtcFrame } from './federationRtcRebase.js';
-import { rebindGaussianAssets, reframeGaussianCapture, setGaussianCaptureUpAxis } from './gaussianAssets.js';
+import { gaussianModelState, rebindGaussianAssets, reframeGaussianCapture, setGaussianCaptureUpAxis } from './gaussianAssets.js';
 
 const FRAME = { originShift: { x: 10, y: 20, z: 30 }, wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 } };
 const WORLD: [number, number, number] = [2_600_012, 1_200_003, 524];
@@ -110,6 +110,93 @@ it('an in-flight frame edit is serialized with the next frame and axis edit (#87
       await settled({ min: centre, max: centre });
       assert.deepEqual(capture().frameOffset, { x: 0, y: 0, z: 0 });
     } finally { release(); }
+  });
+});
+
+for (const withIfc of [false, true]) {
+  it(`survey-scale capture changes z→y→z with${withIfc ? '' : 'out'} an IFC frame (#8858)`, async () => {
+    await act(async () => {
+      if (withIfc) addIfc();
+      await loadCapture();
+      const offset = withIfc ? totalYupOffset(FRAME) : { x: 0, y: 0, z: 0 };
+      const z = [WORLD[0] - offset.x, WORLD[2] - offset.y, -WORLD[1] - offset.z];
+      const y = [WORLD[0] - offset.x, WORLD[1] - offset.y, WORLD[2] - offset.z];
+      assert.deepEqual(bounds(), { min: z, max: z });
+      const first = capture().handle;
+      assert.equal(await setGaussianCaptureUpAxis('capture', 'y'), true);
+      assert.equal(capture().upAxis, 'y');
+      assert.notEqual(capture().handle, first, 'the old anchor was replaced');
+      assert.deepEqual(bounds(), { min: y, max: y });
+      const second = capture().handle;
+      assert.equal(await setGaussianCaptureUpAxis('capture', 'z'), true);
+      assert.equal(capture().upAxis, 'z');
+      assert.notEqual(capture().handle, second);
+      assert.deepEqual(bounds(), { min: z, max: z });
+      assert.equal(gpu.renderer.gaussianSplats.getStats().assets, 1);
+    });
+  });
+}
+
+it('a failed survey-scale re-add restores the old axis, placement and resident rows (#8858)', async () => {
+  await act(async () => {
+    await loadCapture();
+    const before = capture();
+    const oldBounds = bounds();
+    const splats = gpu.renderer.gaussianSplats;
+    const add = splats.add.bind(splats);
+    let failNext = true;
+    splats.add = async (...args) => {
+      if (failNext) { failNext = false; throw new GaussianSplatError('resource-limit', 'forced re-add failure'); }
+      return add(...args);
+    };
+    try {
+      await assert.rejects(setGaussianCaptureUpAxis('capture', 'y'), /forced re-add failure/);
+      assert.equal(capture().upAxis, 'z');
+      assert.deepEqual(capture().placement, before.placement);
+      assert.notEqual(capture().handle, before.handle, 'rollback publishes the restored handle');
+      assert.deepEqual(bounds(), oldBounds);
+      assert.equal(splats.getState(capture().handle).state, 'resident');
+    } finally { splats.add = add; }
+  });
+});
+
+it('a failed rollback leaves a visible reload-required capture state (#8858)', async () => {
+  await act(async () => {
+    await loadCapture();
+    const splats = gpu.renderer.gaussianSplats;
+    const add = splats.add.bind(splats);
+    splats.add = async () => { throw new GaussianSplatError('resource-limit', 'forced add failure'); };
+    try {
+      await assert.rejects(setGaussianCaptureUpAxis('capture', 'y'), /forced add failure/);
+      assert.equal(capture().upAxis, 'z');
+      assert.equal(gaussianModelState(useViewerStore.getState().models.get('capture')!).state, 'invalid');
+    } finally { splats.add = add; }
+  });
+});
+
+it('a survey-scale axis re-anchor stays serialized with an incoming IFC frame (#8858)', async () => {
+  await act(async () => {
+    await loadCapture();
+    const splats = gpu.renderer.gaussianSplats;
+    const place = splats.setPlacement.bind(splats);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let entered = false;
+    splats.setPlacement = async (...args) => { entered = true; await gate; return place(...args); };
+    try {
+      const axis = setGaussianCaptureUpAxis('capture', 'y');
+      for (let i = 0; i < 100 && !entered; i++) await tick();
+      assert.ok(entered);
+      assert.equal(capture().upAxis, 'z', 'the store changes only after upload');
+      addIfc();
+      release();
+      assert.equal(await axis, true);
+      await reframeGaussianCapture('capture');
+      const offset = totalYupOffset(FRAME);
+      const expected = [WORLD[0] - offset.x, WORLD[1] - offset.y, WORLD[2] - offset.z];
+      await settled({ min: expected, max: expected });
+      assert.equal(capture().upAxis, 'y');
+    } finally { release(); splats.setPlacement = place; }
   });
 });
 

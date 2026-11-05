@@ -19,7 +19,7 @@ export const gaussianCaptureEn = {
   'gaussianCapture.upAxis': 'Source up-axis',
   'gaussianCapture.upAxis.z': 'Z up (like scans)',
   'gaussianCapture.upAxis.y': 'Y up',
-  'gaussianCapture.upAxis.failed': 'Could not change capture orientation. Reload the capture and try again.',
+  'gaussianCapture.upAxis.failed': 'Could not change capture orientation. Check the capture renderer state.',
   'gaussianCapture.splats': 'Splats',
   'gaussianCapture.shDegree': 'Spherical harmonics degree',
   'gaussianCapture.placement': 'Placement',

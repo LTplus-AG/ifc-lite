@@ -14,6 +14,7 @@
  * the result is ear-clipped.
  */
 
+import type { AnnotationPickGlyph } from './annotation-picking.js';
 import { haloGlyphQuad, SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import {
   SYMBOLIC_TEXT_WGSL,
@@ -50,6 +51,8 @@ const DEFAULT_TEXT_TARGET_PX = 14;
 // ─── Text input ─────────────────────────────────────────────────────────────
 
 export interface SymbolicTextInput {
+  /** Scene owner id for annotation picking; omitted reference layers remain unpickable. */
+  ownerId?: number;
   worldPos: [number, number, number];
   /**
    * Opt-in canonical f64 label anchor. When supplied, `worldPos` is a small
@@ -95,6 +98,7 @@ export interface SymbolicTextInput {
 // ─── Text pipeline ──────────────────────────────────────────────────────────
 
 export class SymbolicTextPipeline {
+  pickGlyphs: AnnotationPickGlyph[] = [];
   private readonly device: GPUDevice;
   private readonly format: GPUTextureFormat;
   private readonly sampleCount: number;
@@ -314,6 +318,7 @@ export class SymbolicTextPipeline {
       this.rteDeltaBuffer = null;
     }
     this.instanceCount = 0;
+    this.pickGlyphs = [];
     this.rteDeltaData = null;
     this.instanceAnchors = [];
     this.instanceClipAnchors = [];
@@ -347,10 +352,6 @@ export class SymbolicTextPipeline {
       const tint: [number, number, number, number] =
         text.color ?? [0.05, 0.05, 0.05, 1.0];
 
-      // The IFC text direction (dirX, dirZ) is the baseline X axis in world
-      // space. We want a 3D right-axis = baseline direction, up-axis = scene
-      // up (0, 1, 0). The glyph is scaled by the world-height and the per-
-      // glyph atlas-pixel size relative to the atlas-pixel cap height.
       const heightWorld = text.height;
       const heightAtlas = this.atlas.glyphPx;
       const dirLen = Math.hypot(text.dirX, text.dirZ) || 1;
@@ -362,18 +363,9 @@ export class SymbolicTextPipeline {
       const baselineOffset = align.vertical * this.atlas.glyphPx;
       const horizontalOffset = align.horizontal * layout.totalAdvancePx;
 
-      // Detect "true visual center" alignment so a single-line label
-      // anchors the GLYPH's geometric centre on the anchor (rather than
-      // the atlas-slot midline — the canonical `parseBoxAlignment` output
-      // assumes the slot height equals the visual glyph which is rarely
-      // true for sans-serif digits and produces noticeable top-bias on
-      // grid bubble tags).
       const isCenterH = align.horizontal === -0.5;
       const isCenterV = align.vertical === -0.5;
 
-      // For horizontal centring across a multi-glyph label, the row's
-      // visual width is (lastXOffset + lastGlyphWidth) - firstXOffset.
-      // For a single-glyph label this collapses to the glyph's widthPx.
       let visualWidthPx = layout.totalAdvancePx;
       if (isCenterH && layout.glyphs.length > 0) {
         const first = layout.glyphs[0];
@@ -411,6 +403,12 @@ export class SymbolicTextPipeline {
         const ox = anchored ? ux * qx0 * wScale : ax + ux * qx0 * wScale;
         const oy = anchored ? qyBottom * wScale : ay + qyBottom * wScale;
         const oz = anchored ? uz * qx0 * wScale : az + uz * qx0 * wScale;
+        if (text.ownerId && tint[3] > 0 && text.content.trim()) this.pickGlyphs.push({
+          ownerId: text.ownerId, anchor: [ax, ay, az], right: [ux, 0, uz],
+          offsetSize: [qx0*wScale, qyBottom*wScale, widthWorld, heightGlyphWorld],
+          capHeight: heightWorld, targetPx: text.targetPx && text.targetPx > 0 ? text.targetPx : DEFAULT_TEXT_TARGET_PX,
+          anchored, billboard: text.billboard === true, sectionClipped: text.sectionClipped === true,
+        });
         layouts.push({
           origin: [ox, oy, oz],
           rightAxis: [ux * widthWorld, 0, uz * widthWorld],
@@ -582,6 +580,7 @@ export class SymbolicTextPipeline {
     this.bindGroupLayout = null;
     this.pipeline = null;
     this.instanceCount = 0;
+    this.pickGlyphs = [];
     this.uploadedAtlasVersion = -1;
   }
 }

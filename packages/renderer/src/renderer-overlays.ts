@@ -2,45 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * The renderer's overlay layer, lifted verbatim out of `Renderer` (issue
- * #2425): the section-plane gizmo, the 2D section drawing / cut cap, and the
- * standalone 3D line overlays (IfcAnnotation lines, IfcAlignment centrelines,
- * IfcGridAxis, the DXF reference layer, and the focused clash's box / contact
- * lines).
- *
- * These were already one unit in everything but location: created together in
- * `init()`, destroyed together in `destroy()`, drawn one after another at the
- * tail of the render pass, and fed by a facade of upload/clear methods that
- * touches nothing else. Owning them here follows the `PickingManager` /
- * `RaycastEngine` precedent — a cohesive chunk of state plus its behaviour,
- * composed by `Renderer` rather than inlined into it.
- *
- * The boundary is GPU-object ownership, not subject matter. Every 3D line
- * layer above lives on the SAME `Section2DOverlayRenderer` instance as the
- * section cap, so "section rendering" and "standalone line overlays" cannot be
- * separate modules without giving one nullable, init-created / destroy-disposed
- * object two owners in two files. The symbolic fill/text pipelines ARE separate
- * GPU objects, so they live in `renderer-symbolic-overlays.ts` and are composed
- * here — this class keeps only the draw ORDER, which is the one thing the two
- * families share.
- *
- * Behaviour that needs those objects but does not own them can still leave:
- * `render-section-draw.ts` holds the section gizmo + cut-cap draw, receiving
- * both renderers as arguments. Passing a GPU object costs nothing; co-owning
- * one is what the paragraph above rules out.
- *
- * Doc comments for the published methods live on the matching `Renderer`
- * delegates, which are what consumers see in the emitted `.d.ts`; they are not
- * duplicated here.
- *
- * What stayed on `Renderer` is what genuinely couples: model bounds. Several
- * uploads grow the scene AABB so an annotation-only or alignment-only model can
- * still be framed, and those bounds are read by the camera, the section slider
- * and `getDiagnostics()`. Rather than give one AABB two owners, this reaches the
- * renderer's copy through the narrow `OverlayHost` seam below.
- */
+/** Owns the section, line and symbolic overlay GPU resources and their draw order. */
 
+import { AnnotationPicker } from './annotation-picking.js';
 import type { Camera } from './camera.js';
 import { SectionPlaneRenderer } from './section-plane.js';
 import {
@@ -146,6 +110,7 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
 };
 
 export class RendererOverlays {
+    readonly annotationPicker = new AnnotationPicker();
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
     // The overlay theme (#5484) — see overlay-theme-uniforms.ts.
@@ -189,6 +154,7 @@ export class RendererOverlays {
 
     /** Release every overlay GPU resource. Idempotent, like `Renderer.destroy()`. */
     destroy(): void {
+        this.annotationPicker.clear();
         this.sectionPlaneRenderer?.destroy();
         this.sectionPlaneRenderer = null;
         this.section2DOverlayRenderer?.dispose();
@@ -307,7 +273,9 @@ export class RendererOverlays {
     /** See `Renderer.setLineOverlay` for the published contract. */
     setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null, options?: LineOverlayOptions): void {
         if (!this.section2DOverlayRenderer) return;
+        if (channel === 'annotation') this.annotationPicker.setLines(null, false);
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
+        if (channel === 'annotation') this.annotationPicker.setLines(vertices, options?.sectionClipped === true);
         // The flag belongs to this upload: a later upload without it, or a clear, draws unclipped again.
         if (vertices && options?.sectionClipped === true) this.sectionClippedChannels.add(channel);
         else this.sectionClippedChannels.delete(channel);
@@ -376,12 +344,18 @@ export class RendererOverlays {
 
     /** See `Renderer.uploadAnnotationFills3D` for the published contract. */
     uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.annotationPicker.setFills([]);
         this.symbolic.uploadFills(fills);
+        this.annotationPicker.setFills(fills);
     }
 
     /** See `Renderer.uploadAnnotationTexts3D` for the published contract. */
     uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.annotationPicker.setGlyphs([]);
         this.symbolic.uploadTexts(texts);
+        this.annotationPicker.setGlyphs(this.symbolic.getPickGlyphs());
     }
 
     /** See `Renderer.hasSection2DOverlay` for the published contract. */

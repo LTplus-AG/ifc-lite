@@ -12,10 +12,12 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Mesh, Renderer } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
+import { AsciiPointsStreamingSource } from '@ifc-lite/pointcloud';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { addIfcModel } from '@/test/scan-federation';
+import { addIfcModel, loadScan, scanTestRenderer } from '@/test/scan-federation';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
 import { render, cleanup } from '@/test/render.js';
@@ -94,6 +96,95 @@ afterEach(async () => {
 });
 
 describe('Gaussian captures through the canonical loader (#8565)', () => {
+  it('keeps IFC and point-cloud measure/snap picks unchanged (#8566)', async () => {
+    const ifc = addIfcModel('ifc', [{ expressId: 7, type: 'IfcWall' }]);
+    const mesh: MeshData = {
+      expressId: 7, modelIndex: 0,
+      positions: new Float32Array([-2.5, -0.5, 0, -1.5, -0.5, 0, -2, 0.5, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1],
+    };
+    useViewerStore.getState().updateModel('ifc', {
+      geometryResult: { ...ifc.geometryResult!, meshes: [mesh], totalVertices: 3, totalTriangles: 1 },
+    });
+    const internals = gpu.renderer as unknown as {
+      scene: { addMeshData(mesh: MeshData): void; addMesh(mesh: Mesh): void };
+      pointCloudRenderer: ReturnType<typeof scanTestRenderer>['points'];
+      raycastEngine: { setPointCloudProvider(provider: () => ReturnType<ReturnType<typeof scanTestRenderer>['points']['getRayQuerySources']>): void };
+    };
+    internals.scene.addMeshData(mesh);
+    internals.scene.addMesh({
+      expressId: 7, modelIndex: 0, vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer,
+      indexCount: 3, transform: { m: new Float32Array(16) }, color: mesh.color,
+    });
+    const { points } = scanTestRenderer();
+    internals.pointCloudRenderer = points;
+    internals.raycastEngine.setPointCloudProvider(() => points.getRayQuerySources());
+    const scanText = new Blob([new TextEncoder().encode('2 0 0\n')]);
+    const { model: scan } = await loadScan(gpu.renderer, 'scan', {
+      format: 'xyz', blob: scanText,
+      createSource: (options) => new AsciiPointsStreamingSource(options.blob, 'xyz', { downsample: { stride: 1 } }),
+    });
+    assert.ok(scan.pointCloudHandleId);
+    assert.equal(points.getRayQuerySources().length, 1);
+
+    const camera = gpu.renderer.getCamera();
+    camera.setAspect(1);
+    camera.setProjectionMode('orthographic');
+    camera.setOrthoSize(10);
+    camera.setPosition(0, 0, 50);
+    camera.setTarget(0, 0, 0);
+    camera.setUp(0, 1, 0);
+    const pick = (worldX: number) => {
+      const screen = camera.projectToScreen({ x: worldX, y: 0, z: 0 }, 256, 256);
+      assert.ok(screen);
+      const result = gpu.renderer.raycastSceneMagnetic(screen.x, screen.y,
+        { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 0 } });
+      const hit = result.snapTarget ?? result.intersection;
+      return hit && {
+        expressId: hit.expressId,
+        modelIndex: ('modelIndex' in hit ? hit.modelIndex : undefined)
+          ?? (result.intersection?.expressId === hit.expressId ? result.intersection.modelIndex : undefined)
+          ?? points.getRayQuerySources().find(source => source.expressId === hit.expressId)?.modelIndex,
+        position: 'position' in hit ? hit.position : hit.point,
+      };
+    };
+    const beforeIfc = pick(-2);
+    const beforeScan = pick(4);
+    assert.equal(beforeIfc?.expressId, 7, 'IFC mesh is picked before the capture');
+    assert.equal(beforeIfc?.modelIndex, 0);
+    assert.equal(beforeScan?.expressId, points.getRayQuerySources()[0].expressId, 'streamed scan point is picked');
+    assert.equal(beforeScan?.modelIndex, modelIndices(useViewerStore.getState().models).get('scan'));
+    assert.equal(pick(0), null, 'the empty gap has no pick');
+
+    await load(gaussianPly('overlap.ply', [[-5, -5, -1], [5, 5, 5]]),
+      { kind: 'federated', modelId: 'capture' }, { gaussianUpAxis: 'y' });
+    const capture = model('capture');
+    assert.ok(capture?.gaussianSplat, 'canonical federated load publishes the capture');
+    assert.equal(capture.geometryResult?.meshes.length, 0, 'capture publishes no pickable mesh');
+    assert.equal(capture.ifcDataStore?.entityCount, 0, 'capture publishes no entity rows');
+    assert.equal(capture.pointCloudHandleId, undefined, 'capture has no point-cloud handle');
+    assert.equal(capture.geometryResult?.pointClouds?.length ?? 0, 0, 'capture has no point-cloud asset');
+    assert.equal(points.getRayQuerySources().length, 1, 'capture has no point-cloud ray source');
+    const captureIndex = modelIndices(useViewerStore.getState().models).get('capture');
+    assert.ok(captureIndex !== undefined);
+    assert.equal(points.getRayQuerySources().some(source => source.modelIndex === captureIndex), false,
+      'capture has no point-cloud registry entry');
+    for (const [x, expected] of [[-2, beforeIfc], [4, beforeScan]] as const) {
+      const actual = pick(x);
+      assert.ok(actual && expected);
+      assert.equal(actual.expressId, expected.expressId);
+      assert.equal(actual.modelIndex, expected.modelIndex);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        assert.ok(Math.abs(actual.position[axis] - expected.position[axis]) <= 1e-9, `${axis} drifted after capture load`);
+      }
+      assert.notEqual(actual.modelIndex, captureIndex);
+    }
+    const captureOnly = pick(0);
+    assert.equal(captureOnly, null, 'capture bounds alone never create a magnetic hit');
+  });
+
   it('the kill-switch build refuses before any worker, renderer asset or model slot exists (#8568)', async () => {
     setGaussianBuild('disabled');
     await load(gaussianPly('capture.ply', CENTRES), { kind: 'primary', modelId: 'public' });
@@ -242,6 +333,98 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
     assert.deepEqual(splats().getBounds(), { min: [9, 9, -9], max: [9, 9, -9] });
   });
 
+  it('fifty load and remove cycles release every Gaussian owner, index and scene share (#8567)', async () => {
+    const { residentSceneSplats, reserveSceneSplats } = await import('./ingest/gaussianSceneBudget.js');
+    const registry = (globalThis as typeof globalThis & {
+      __ifc_lite_gaussian_assets__?: { owned: Map<string, unknown>; replaced: Set<string> };
+    }).__ifc_lite_gaussian_assets__;
+    assert.ok(registry);
+    for (let cycle = 0; cycle < 50; cycle++) {
+      const id = `cycle-${cycle}`;
+      await load(gaussianPly(`${id}.ply`, [[cycle, 2, 3]]), { kind: 'federated', modelId: id });
+      const handle = model(id)?.gaussianSplat?.handle;
+      assert.ok(handle, `load ${cycle} published a handle`);
+      assert.equal(splats().getStats().assets, 1);
+      useViewerStore.getState().removeModel(id);
+      assert.equal(useViewerStore.getState().models.size, 0, `model ${cycle} removed`);
+      assert.equal(registry.owned.size, 0, `registry owner ${cycle} released`);
+      assert.equal(registry.replaced.size, 0, `registry replacement ${cycle} released`);
+      assert.equal(splats().getState(handle).state, 'invalid', `handle ${cycle} invalidated`);
+      assert.equal(splats().getStats().assets, 0, `renderer ${cycle} released`);
+      assert.equal(residentSceneSplats(useViewerStore.getState().models), 0);
+      const fullBudget = reserveSceneSplats(1_000_000, useViewerStore.getState().models);
+      assert.ok(fullBudget.ok, `budget ${cycle} returned to zero`);
+      fullBudget.release();
+      assertNoHeldSlot();
+    }
+    assert.deepEqual([worker.stats.created, worker.stats.terminated], [50, 50]);
+  });
+
+  it('overlapping primary replacements leave only the final capture and its handle (#8567)', async () => {
+    const release = gpu.backend.hold();
+    await act(async () => {
+      const requests = [hookApi!.loadFile(gaussianPly('first.ply', [[1, 0, 0]]), { kind: 'primary', modelId: 'first' })];
+      await new Promise(resolve => setTimeout(resolve, 50));
+      for (let index = 2; index <= 5; index++) {
+        requests.push(hookApi!.loadFile(gaussianPly(`${index}.ply`, [[index, 0, 0]]),
+          { kind: 'primary', modelId: `replacement-${index}` }));
+      }
+      release();
+      await Promise.all(requests);
+    });
+    const models = useViewerStore.getState().models;
+    assert.deepEqual([...models.keys()], ['replacement-5']);
+    const final = model('replacement-5')?.gaussianSplat;
+    assert.ok(final);
+    assert.equal(splats().getState(final.handle).state, 'resident');
+    assert.equal(splats().getStats().assets, 1);
+    assert.deepEqual(splats().getBounds(), { min: [5, 0, 0], max: [5, 0, 0] });
+    assert.equal((globalThis as typeof globalThis & {
+      __ifc_lite_gaussian_assets__?: { owned: Map<string, unknown> };
+    }).__ifc_lite_gaussian_assets__?.owned.size, 1);
+    assert.equal(worker.stats.created, worker.stats.terminated, 'every decoder request terminated');
+    useViewerStore.getState().removeModel('replacement-5');
+    assertNoHeldSlot();
+  });
+
+  it('visibility changes during decoding and after publication preserve the capture (#8567)', async () => {
+    const release = worker.hold();
+    let hidden = false;
+    const original = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+    const visibility = (value: boolean) => {
+      hidden = value;
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    try {
+      await act(async () => {
+        const pending = hookApi!.loadFile(gaussianPly('suspended.ply', CENTRES),
+          { kind: 'federated', modelId: 'suspended' });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        visibility(true);
+        visibility(false);
+        release();
+        await pending;
+      });
+      const handle = model('suspended')?.gaussianSplat?.handle;
+      assert.ok(handle);
+      assert.equal(splats().getState(handle).state, 'resident');
+      visibility(true);
+      assert.equal(splats().getState(handle).state, 'resident');
+      visibility(false);
+      // A federated add sets no loadState (only the primary path does), so
+      // assert what holds for both: the model still carries its capture and
+      // did not fail.
+      assert.equal(model('suspended')?.gaussianSplat?.handle, handle);
+      assert.notEqual(model('suspended')?.loadState, 'error');
+      assert.equal(splats().getStats().assets, 1);
+    } finally {
+      release();
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
   it('a lost device refuses before decoding; a rejected upload retains nothing', async () => {
     gpu.loseDevice();
     await load(gaussianPly('lost.ply', CENTRES), { kind: 'primary', modelId: 'lost' });
@@ -270,6 +453,38 @@ describe('Gaussian captures through the canonical loader (#8565)', () => {
 });
 
 describe('Gaussian capture lifecycle across renderers and reloads (#8566)', () => {
+  it('device recovery requiring reload restores the source placement and up axis (#8567)', async () => {
+    const { gaussianModelState, rebindGaussianAssets } = await import('./ingest/gaussianAssets.js');
+    const { reloadGaussianCapture } = await import('./ingest/gaussianReload.js');
+    const placement = [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 12, 20, 30, 1];
+    await load(gaussianPly('recovery.ply', CENTRES),
+      { kind: 'federated', modelId: 'recovery', name: 'recovery.ply' },
+      { gaussianPlacement: placement, gaussianUpAxis: 'y' });
+    const before = model('recovery')!.gaussianSplat!;
+    assert.equal(before.upAxis, 'y');
+    gpu.loseDevice();
+    assert.equal(splats().getState(before.handle).state, 'pending');
+    // The renderer's documented cleared-scene recovery cannot re-upload rows.
+    const old = gpu;
+    (old.renderer.gaussianSplats as typeof old.renderer.gaussianSplats & { release(clear: boolean, dispose: boolean): void }).release(true, false);
+    assert.deepEqual(gaussianModelState(model('recovery')!), { state: 'failed', reason: 'reload-required' });
+    gpu = gaussianTestRenderer();
+    setGlobalRendererRef({ current: gpu.renderer as Renderer });
+    rebindGaussianAssets(gpu.renderer.gaussianSplats);
+    const result = await act(async () => reloadGaussianCapture('recovery', federation));
+    assert.ok(result.ok);
+    const restored = model(result.modelId)?.gaussianSplat;
+    assert.ok(restored);
+    assert.equal(restored.upAxis, before.upAxis);
+    assert.deepEqual(restored.sourcePlacement, before.sourcePlacement);
+    assert.deepEqual(restored.placement, before.placement);
+    assert.equal(splats().getState(restored.handle).state, 'resident');
+    assert.equal(model('recovery'), undefined);
+    assert.equal(old.renderer.gaussianSplats.getStats().assets, 0);
+    useViewerStore.getState().removeModel(result.modelId);
+    assertNoHeldSlot();
+  });
+
   it('before rebinding, a capture on a replaced renderer reports replaced and has no fit bounds', async () => {
     const { rebindGaussianAssets, gaussianModelState, gaussianModelBounds } = await import('./ingest/gaussianAssets.js');
     await load(gaussianPly('stale.ply', CENTRES), { kind: 'federated', modelId: 'stale', name: 'stale.ply' });

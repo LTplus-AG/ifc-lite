@@ -90,11 +90,11 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning, note 
   return (
     <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-semibold'}`} data-ids-report-row>
       <span className="w-2/5 min-w-0 truncate" title={name}>
-        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
+        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-warn" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
         {name}
       </span>
       {error !== undefined ? (
-        <span className="min-w-0 flex-1 truncate text-2xs text-red-700" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-danger" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
       ) : note !== undefined ? (
         <span className="min-w-0 flex-1 truncate text-2xs text-neutral-500" data-ids-report-not-checked>{note}</span>
       ) : (
@@ -199,13 +199,13 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
                 <div className="flex items-baseline justify-between gap-2">
                   <span className={`min-w-0 ${cut} text-xs font-semibold`} title={check.shortDescription}>{check.shortDescription}</span>
                   {check.error !== undefined ? (
-                    <span className="min-w-0 truncate text-2xs text-red-700" title={check.error} data-ids-report-error>
+                    <span className="min-w-0 truncate text-2xs text-danger" title={check.error} data-ids-report-error>
                       {t('document.preview.idsReportError', { error: check.error })}
                     </span>
                   ) : (
                     <span className="shrink-0 text-2xs text-neutral-600">
                       {check.severity === 'warning' && (
-                        <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>
+                        <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-warn" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>
                       )}
                       {unmatched ? t('manualValidation.verdict.unanswered') : <>
                         {check.checked.toLocaleString(locale)} · {check.passed.toLocaleString(locale)} / {check.failed.toLocaleString(locale)} · {checks

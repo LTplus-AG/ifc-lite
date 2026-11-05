@@ -30,6 +30,7 @@ import type {
 } from '@ifc-lite/parser';
 import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON } from './inspector-ui';
 
 interface StructuralCardProps {
   /** Structural read model for the current model (or null if none/unextracted). */
@@ -69,11 +70,11 @@ export function StructuralCard({
   return (
     <PersistentCollapsible
       id="structural"
-      className="border-2 border-violet-200 dark:border-violet-800 bg-violet-50/20 dark:bg-violet-950/20 w-full max-w-full overflow-hidden"
+      className={INSPECTOR_SECTION}
     >
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-violet-50 dark:hover:bg-violet-900/30 text-left transition-colors overflow-hidden">
-        <Boxes className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
-        <span className="font-bold text-xs text-violet-700 dark:text-violet-400 truncate flex-1 min-w-0">
+      <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
+        <Boxes className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className={INSPECTOR_TITLE}>
           {t('properties.structural.heading')}
         </span>
         {structuralData?.loadsTruncated && (
@@ -85,15 +86,15 @@ export function StructuralCard({
             {t('properties.structural.truncatedBadge')}
           </span>
         )}
-        <span className="text-2xs font-mono bg-violet-100 dark:bg-violet-900/50 px-1.5 py-0.5 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 shrink-0">
+        <span className={INSPECTOR_COUNT}>
           {member.type.replace(/^Ifc/, '')}
         </span>
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+        <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         {sourceUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</output>}
         {relatedUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.relatedUnavailable')}</output>}
-        <div className="border-t-2 border-violet-200 dark:border-violet-800 divide-y divide-violet-100 dark:divide-violet-900/30">
+        <div className="pb-1">
           <div className="px-3 py-2 text-xs">
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
               {member.predefinedType && (

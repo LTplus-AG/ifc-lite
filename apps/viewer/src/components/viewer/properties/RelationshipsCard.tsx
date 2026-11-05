@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, INSPECTOR_SUBHEADING } from './inspector-ui';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationshipsData;
@@ -49,23 +50,23 @@ export function RelationshipsCard({ relationships, populationUnavailable = false
   if (totalCount === 0 && !populationUnavailable) return null;
 
   return (
-    <PersistentCollapsible id="relationships" className="border-2 border-zinc-300 dark:border-zinc-700 bg-zinc-50/20 dark:bg-zinc-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 text-left transition-colors overflow-hidden">
-        <Link2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400 shrink-0" />
-        <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 min-w-0">
+    <PersistentCollapsible id="relationships" className={INSPECTOR_SECTION}>
+      <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
+        <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className={INSPECTOR_TITLE}>
           {t('properties.relationships.heading')}
         </span>
-        <span className="text-2xs font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
+        <span className={INSPECTOR_COUNT}>
           {populationUnavailable ? '?' : formatLocaleNumber(locale, totalCount)}
         </span>
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+        <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {populationUnavailable && <p className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">{t('properties.relationships.unavailableMembership')}</p>}
-        <div className="border-t-2 border-zinc-300 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-800">
+        {populationUnavailable && <p className="px-3 py-2 text-xs text-foreground">{t('properties.relationships.unavailableMembership')}</p>}
+        <div className="pb-1">
           {voids.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className={INSPECTOR_SUBHEADING}>
                 {t('properties.relationships.openings', { count: voids.length, countDisplay: formatLocaleNumber(locale, voids.length) })}
               </div>
               {voids.map((item) => (
@@ -75,7 +76,7 @@ export function RelationshipsCard({ relationships, populationUnavailable = false
           )}
           {fills.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className={INSPECTOR_SUBHEADING}>
                 {t('properties.relationships.fills', { count: fills.length, countDisplay: formatLocaleNumber(locale, fills.length) })}
               </div>
               {fills.map((item) => (
@@ -85,7 +86,7 @@ export function RelationshipsCard({ relationships, populationUnavailable = false
           )}
           {groups.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className={INSPECTOR_SUBHEADING}>
                 {t('properties.relationships.groupsAndZones', { count: groups.length, countDisplay: formatLocaleNumber(locale, groups.length) })}
               </div>
               {groups.map((item) => (
@@ -100,7 +101,7 @@ export function RelationshipsCard({ relationships, populationUnavailable = false
           )}
           {connections.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className={INSPECTOR_SUBHEADING}>
                 {t('properties.relationships.connections', { count: connections.length, countDisplay: formatLocaleNumber(locale, connections.length) })}
               </div>
               {connections.map((item) => (
@@ -110,7 +111,7 @@ export function RelationshipsCard({ relationships, populationUnavailable = false
           )}
           {exactRelations.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className={INSPECTOR_SUBHEADING}>
                 {t('relationshipCard.exactRecords', { count: exactRelations.length })}
               </div>
               {visibleExactRelations.map((relation, index) => (
@@ -153,13 +154,13 @@ function RelationshipEdgeItem({ relation, onSelect }: {
       type="button"
       title={`#${relation.relationshipId} ${relation.relationshipType}`}
     >
-      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">
+      <span className="font-mono text-muted-foreground text-2xs">
         {relation.direction === 'forward' ? '→' : '←'} #{relation.entity.id}
       </span>
-      <span className="text-zinc-600 dark:text-zinc-400 truncate">
+      <span className="text-foreground truncate">
         {relation.entity.name || relation.entity.type}
       </span>
-      <span className="text-2xs text-zinc-400 ml-auto shrink-0">{relation.relationshipType}</span>
+      <span className="text-2xs text-muted-foreground ml-auto shrink-0">{relation.relationshipType}</span>
     </button>
   );
 }
@@ -174,9 +175,9 @@ function RelItem({ item, onSelect }: {
       onClick={() => onSelect?.(item.id)}
       type="button"
     >
-      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">#{item.id}</span>
-      <span className="text-zinc-600 dark:text-zinc-400 truncate">{item.name || item.type}</span>
-      <span className="text-2xs text-zinc-400 ml-auto shrink-0">{item.type}</span>
+      <span className="font-mono text-muted-foreground text-2xs">#{item.id}</span>
+      <span className="text-foreground truncate">{item.name || item.type}</span>
+      <span className="text-2xs text-muted-foreground ml-auto shrink-0">{item.type}</span>
     </button>
   );
 }
@@ -198,15 +199,15 @@ function GroupItem({ item, onSelect, onIsolateMembers }: {
         type="button"
         title={t('properties.relationships.showGroupAttributesTooltip')}
       >
-        <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">#{item.id}</span>
-        <span className="text-zinc-600 dark:text-zinc-400 truncate">
+        <span className="font-mono text-muted-foreground text-2xs">#{item.id}</span>
+        <span className="text-foreground truncate">
           {item.name || t('properties.relationships.groupFallbackName', { id: item.id })}
         </span>
-        {item.type && <span className="text-2xs text-zinc-400 ml-auto shrink-0">{item.type}</span>}
+        {item.type && <span className="text-2xs text-muted-foreground ml-auto shrink-0">{item.type}</span>}
       </button>
       {onIsolateMembers && (
         <button
-          className="shrink-0 p-0.5 text-zinc-400 hover:text-primary transition-colors"
+          className="shrink-0 p-0.5 text-muted-foreground hover:text-primary transition-colors"
           onClick={() => onIsolateMembers(item.id)}
           type="button"
           title={t('properties.relationships.isolateGroupMembersTooltip')}

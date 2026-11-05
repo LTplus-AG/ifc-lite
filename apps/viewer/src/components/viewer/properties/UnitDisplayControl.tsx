@@ -72,7 +72,7 @@ export function UnitDisplayControl() {
         <IconButton
           label={t('properties.unitDisplay.trigger')}
           size="icon-xs"
-          className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${hasOverrides ? 'text-primary' : ''}`}
+          className={hasOverrides ? 'text-primary' : undefined}
         >
           <Ruler className="h-3.5 w-3.5" />
         </IconButton>

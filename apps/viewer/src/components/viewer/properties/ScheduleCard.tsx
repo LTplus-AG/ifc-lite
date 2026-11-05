@@ -77,7 +77,7 @@ export function ScheduleCard({
         </span>
         {isGenerated && (
           <span
-            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-warn-border text-warn shrink-0"
             title={t('properties.schedule.pendingTooltip')}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
@@ -94,7 +94,7 @@ export function ScheduleCard({
       </CollapsibleTrigger>
       <CollapsibleContent>
         {isGenerated && (
-          <p className="px-3 py-1.5 text-2xs text-amber-700 dark:text-amber-300">
+          <p className="px-3 py-1.5 text-2xs text-warn">
             {t('properties.schedule.generatedLocallyNote')}
           </p>
         )}
@@ -134,7 +134,7 @@ function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
           <Flag className="h-3 w-3 text-red-500 fill-red-500 shrink-0" />
         ) : null}
         <span
-          className={cn('min-w-0 flex-1 truncate font-medium', isCritical ? 'text-red-600 dark:text-red-400' : 'text-foreground')}
+          className={cn('min-w-0 flex-1 truncate font-medium', isCritical ? 'text-danger' : 'text-foreground')}
           title={task.name}
         >
           {task.name || task.identification || task.globalId.slice(0, 12)}

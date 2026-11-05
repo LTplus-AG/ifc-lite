@@ -168,7 +168,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           {t('properties.taskEdit.heading')}
         </span>
         {scheduleIsEdited && (
-          <span className="text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0">
+          <span className="text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-warn-border text-warn shrink-0">
             {t('properties.taskEdit.pendingBadge')}
           </span>
         )}

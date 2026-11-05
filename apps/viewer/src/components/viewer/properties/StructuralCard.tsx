@@ -79,7 +79,7 @@ export function StructuralCard({
         </span>
         {structuralData?.loadsTruncated && (
           <span
-            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-warn-border text-warn shrink-0"
             title={t('properties.structural.loadsTruncatedTooltip')}
           >
             <TriangleAlert className="h-2.5 w-2.5" aria-hidden />
@@ -92,8 +92,8 @@ export function StructuralCard({
         <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {sourceUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</output>}
-        {relatedUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.relatedUnavailable')}</output>}
+        {sourceUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.sourceUnavailable')}</output>}
+        {relatedUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.relatedUnavailable')}</output>}
         <div className="pb-1">
           <div className="px-3 py-2 text-xs">
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">

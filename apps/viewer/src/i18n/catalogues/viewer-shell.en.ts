@@ -11,6 +11,10 @@
  * accessible name (#5603).
  */
 export const viewerShellEn = {
+  'viewerShell.star.title': 'Enjoying IFC Lite?',
+  'viewerShell.star.detail': 'A GitHub star helps others discover it.',
+  'viewerShell.star.action': 'Star on GitHub',
+  'viewerShell.star.dismiss': 'Dismiss GitHub invitation permanently',
   'viewerShell.chunkError.loadFailed': '{label} could not be loaded',
   'viewerShell.chunkError.crashed': '{label} stopped working',
   'viewerShell.chunkError.loadFailedDetail': 'This usually means the app was updated while your tab was open.',

@@ -65,6 +65,7 @@ function Breakdown({ components, unitDisplayOverrides }: { components: ReturnTyp
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
+  /** Point mode's placed point, drawn as the pending-point mark (as is a just-set Distance start). */
   pending: { screenX: number; screenY: number } | null;
   // `current` carries world x/y/z (the store's ActiveMeasurement uses a full
   // MeasurePoint) so the live label can show the same axis breakdown.
@@ -113,6 +114,12 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     hoverPosition?.x,
     hoverPosition?.y,
   ]);
+
+  // A just-set Distance start (#8785): the end has not left the start yet (a
+  // tap, which has no hover, or a click before the first move). It draws as the
+  // pending-point mark, not a zero-length line with a "0 mm" label.
+  const startOnly = activeMeasurement?.distance === 0;
+  const pendingMark = pending ?? (startOnly ? activeMeasurement.start : null);
 
   return (
     <>
@@ -248,7 +255,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       })()}
 
       {/* Active measurement (live preview while dragging) */}
-      {activeMeasurement && (
+      {activeMeasurement && !startOnly && (
         <div className="pointer-events-none">
           <svg
             className="absolute inset-0 pointer-events-none"
@@ -543,26 +550,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         />
       )}
 
-      {/* Pending point (legacy - keep for backward compatibility) */}
-      {pending && !activeMeasurement && (
+      {/* Pending point: a just-set Distance start, or Point mode's placed point */}
+      {pendingMark && (
         <svg
           className="absolute inset-0 pointer-events-none"
           style={{ overflow: 'visible', pointerEvents: 'none' }}
         >
-          <circle
-            cx={pending.screenX}
-            cy={pending.screenY}
-            r="5"
-            fill="none"
-            stroke={ACCENT}
-            strokeWidth="1.5"
-          />
-          <circle
-            cx={pending.screenX}
-            cy={pending.screenY}
-            r="2.5"
-            fill={ACCENT}
-          />
+          <circle cx={pendingMark.screenX} cy={pendingMark.screenY} r="5" fill="none" stroke={ACCENT} strokeWidth="1.5" />
+          <circle cx={pendingMark.screenX} cy={pendingMark.screenY} r="2.5" fill={ACCENT} />
         </svg>
       )}
     </>

@@ -30,7 +30,6 @@ const RESET = {
   angleKind: 'points' as const,
   measurements: [],
   activeMeasurement: null,
-  pendingMeasurePoint: null,
   angleMeasurements: [],
   activeAngle: null,
   activePolyline: null,

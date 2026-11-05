@@ -1262,7 +1262,8 @@
           "url": "https://creativecommons.org/licenses/by/4.0/",
           "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
           "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
-          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723"
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
         },
         "modification": {
           "status": "unmodified"
@@ -1308,7 +1309,8 @@
           "url": "https://creativecommons.org/licenses/by/4.0/",
           "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
           "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
-          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723"
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
         },
         "modification": {
           "status": "unmodified"
@@ -1354,7 +1356,8 @@
           "url": "https://creativecommons.org/licenses/by/4.0/",
           "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
           "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
-          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723"
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
         },
         "modification": {
           "status": "modified",
@@ -1403,7 +1406,8 @@
           "url": "https://creativecommons.org/licenses/by/4.0/",
           "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
           "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
-          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723"
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
         },
         "modification": {
           "status": "modified",

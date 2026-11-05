@@ -28,7 +28,7 @@ import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { handleMeasureDrag, handleMeasureHover, updateMeasureScreenCoords } from './measureHandlers.js';
-import { beginMeasurePress, forgetDistancePress, handleMeasureDown, handleMeasureUp, resetMeasurePress } from './distanceClick.js';
+import { beginMeasurePress, forgetDistancePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
@@ -722,7 +722,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // Handle measure tool completion
-      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2) {
+      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2 && !pressOutlivedReset(mouseState)) {
         if (handleMeasureUp(ctx, e)) return;
       }
 

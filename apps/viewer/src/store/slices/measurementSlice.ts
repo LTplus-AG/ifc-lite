@@ -628,8 +628,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   setAngleKind: (kind) => set((state) => {
     if (kind === state.angleKind) return {};
     // Switching kind mid-sequence discards it: picks already taken mean
-    // something different under the new kind.
-    return { angleKind: kind, activeAngle: null };
+    // something different under the new kind. It is a gesture reset (#8786).
+    return { angleKind: kind, ...gestureReset(state) };
   }),
 
   addAnglePick: (pick) => {

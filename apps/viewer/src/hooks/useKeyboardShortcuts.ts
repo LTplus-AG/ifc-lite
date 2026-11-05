@@ -78,7 +78,8 @@ function cancelMeasurement(): boolean {
   if (state.activeAngle) { state.cancelAngle(); return true; }
   if (state.activeRadius) { state.cancelRadius(); return true; }
   // The hover preview alone does not hold Esc: it is cursor feedback, like the snap glyph.
-  if (state.measurePointLast) { state.clearMeasurePoint(); return true; }
+  // Esc is a gesture reset in every mode, Point included (#8786).
+  if (state.measurePointLast) { state.resetMeasureGesture(); state.clearMeasurePoint(); return true; }
   return false;
 }
 

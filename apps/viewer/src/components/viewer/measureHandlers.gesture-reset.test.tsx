@@ -184,6 +184,24 @@ describe('a Measure gesture reset clears the lock and the snap glyph (#8786)', (
     assertNoGestureLeft('a frame queued before a mode switch');
   });
 
+  it('a model reposition (resetMeasureGesture) drops a queued frame too', () => {
+    const { canvas } = mount();
+    lockedRubberBand(canvas);
+    fire(canvas, 'pointermove', 450, 300);
+    act(() => s().resetMeasureGesture());
+    flushFrames();
+    assertNoGestureLeft('a frame queued before a model reposition');
+  });
+
+  it('switching the angle kind mid-gesture', () => {
+    act(() => s().setMeasureMode('angle'));
+    mount();
+    act(() => { s().setEdgeLock(EDGE, 1, 0.5); s().setSnapVisualization({ slidingDot: { t: 0.5 } }); });
+    act(() => s().setAngleKind(s().angleKind === 'edges' ? 'points' : 'edges'));
+    assert.equal(s().edgeLockState.edge === null, true, 'switching the angle kind left the edge lock behind');
+    assert.equal(s().snapVisualization === null, true, 'switching the angle kind left the snap glyph behind');
+  });
+
   it('with Snap off, the next first click is not pulled by the lock Esc dropped', async () => {
     const { canvas } = mount();
     lockedRubberBand(canvas);
@@ -243,6 +261,39 @@ describe('a press that began before a reset places no point (#8786)', () => {
     click(canvas, 600, 300);
     fire(canvas, 'dblclick', 600, 300);
     assert.ok(s().activeMeasurement, 'BUG: a start after a reset was dropped as a stray double-click press');
+  });
+
+  it('a Polyline press, a model reposition while held, then release, adds no point', () => {
+    act(() => s().setMeasureMode('polyline'));
+    const { canvas } = mount();
+    fire(canvas, 'pointerdown', 200, 300);
+    act(() => s().resetMeasureGesture());
+    fire(canvas, 'pointerup', 200, 300);
+    fire(canvas, 'click', 200, 300);
+    assert.equal(s().activePolyline === null, true, 'BUG: a press from before the reposition placed a point');
+  });
+
+  it('a Point press, Esc while held, then release, places no point', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    assert.equal(s().measurePointLast !== null, true, 'setup: the click placed a point');
+    fire(canvas, 'pointerdown', 300, 300);
+    await pressEscape();
+    assert.equal(s().measurePointLast === null, true, 'Esc dropped the placed point');
+    fire(canvas, 'pointerup', 300, 300);
+    fire(canvas, 'click', 300, 300);
+    assert.equal(s().measurePointLast === null, true, 'BUG: a press from before Esc placed a new point');
+  });
+
+  it('an Angle press, an angle-kind switch while held, then release, adds no pick', () => {
+    act(() => { s().setMeasureMode('angle'); s().setAngleKind('edges'); });
+    const { canvas } = mount();
+    fire(canvas, 'pointerdown', 200, 300);
+    act(() => s().setAngleKind('points'));
+    fire(canvas, 'pointerup', 200, 300);
+    fire(canvas, 'click', 200, 300);
+    assert.equal(s().activeAngle === null, true, 'BUG: a press from under the old kind added a pick under the new one');
   });
 
   it('a click still works normally without a reset (control)', () => {

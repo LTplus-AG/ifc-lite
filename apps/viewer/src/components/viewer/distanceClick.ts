@@ -58,10 +58,11 @@ function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
  * The pointer side of a Measure gesture reset (#8786), run whenever the store's
  * `resetMeasureGesture` bumps the epoch: the queued raycast frame would set the
  * snap target, edge lock and glyph the reset just cleared, and this press
- * state's records belong to the gesture that is gone.
+ * state's records belong to the gesture that is gone. The frame ref is shared
+ * with the command tool's preview, so only a Measure frame is dropped.
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
-  cancelMeasureRaycast(ctx);
+  if (ctx.activeToolRef.current === 'measure') cancelMeasureRaycast(ctx);
   startingPresses.delete(ctx.mouseState);
   startPresses.delete(ctx.mouseState);
   forgetDistancePress(ctx.mouseState);

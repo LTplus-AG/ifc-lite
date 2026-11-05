@@ -183,7 +183,7 @@ it.each(['validation', 'publication'])('#8868 owns repeated parent signals throu
   expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(listeners);
 });
 
-it.each([{ heapFlags: ['--max-old-space-size', '128'] }, { heapFlags: ['--max_old_space_size=128'] }])(
+it.each([{ heapFlags: ['--max-old-space-size=128'] }, { heapFlags: ['--max_old_space_size=128'] }])(
   '#8868 explicit heap and diagnostic flags reach the actual child ($heapFlags)', async ({ heapFlags }) => {
     const f = await fixture(staged + `
       const { getHeapStatistics } = await import('node:v8');

@@ -25,6 +25,6 @@ export function EntryHeading({ icon, title, description }: { icon: ReactNode; ti
   );
 }
 
-/** The row of a card's actions: the first is the card's main way in, the rest are quieter. */
+/** The row of a card's actions: the first (with its glyph) is the card's main way in; the rest are quieter text buttons. */
 export const ENTRY_ACTIONS = 'mt-3 flex flex-wrap items-center gap-1';
 export const ENTRY_BUTTON = 'h-7 gap-1 px-2 text-xs';

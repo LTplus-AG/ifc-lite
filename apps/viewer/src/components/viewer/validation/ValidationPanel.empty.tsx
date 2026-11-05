@@ -17,7 +17,7 @@
  */
 
 import { useRef } from 'react';
-import { ClipboardCheck, FileInput, FileJson, ListChecks, Plus, Upload } from 'lucide-react';
+import { ClipboardCheck, FileJson, ListChecks, Plus, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
@@ -67,7 +67,6 @@ export function InformationValidationEntry({
           {t('validationPanel.entry.newRuleSet')}
         </Button>
         <Button type="button" size="sm" variant="ghost" className={ENTRY_BUTTON} onClick={() => fileInputRef.current?.click()}>
-          <Upload className="h-3.5 w-3.5" />
           {t('validationPanel.entry.openRuleSet')}
         </Button>
         <input
@@ -78,7 +77,6 @@ export function InformationValidationEntry({
           onChange={(e) => { void handleFileSelect(e); }}
         />
         <Button type="button" size="sm" variant="ghost" className={ENTRY_BUTTON} onClick={() => idsInputRef.current?.click()}>
-          <FileInput className="h-3.5 w-3.5" />
           {t('validationPanel.entry.importIds')}
         </Button>
         <input

@@ -7,7 +7,7 @@
  *  card on the Data validation panel's empty state. */
 
 import { useRef } from 'react';
-import { ClipboardList, FileJson, Plus, Upload } from 'lucide-react';
+import { ClipboardList, FileJson, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EntryHeading, ENTRY_ACTIONS, ENTRY_BUTTON } from './ValidationEntryHeading';
 import { useTranslation } from '@/i18n';
@@ -40,7 +40,6 @@ export function ManualValidationEntry({ onNew, onOpenFile, onLoadRecent, recent,
           {t('manualValidation.entry.new')}
         </Button>
         <Button type="button" size="sm" variant="ghost" className={ENTRY_BUTTON} onClick={() => fileInputRef.current?.click()}>
-          <Upload className="h-3.5 w-3.5" />
           {t('manualValidation.entry.open')}
         </Button>
         <input

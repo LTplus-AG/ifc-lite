@@ -103,7 +103,7 @@ test('comparison impact and run reconciliation on the demo revision pair', async
   expect(axe.violations.map(v => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 
   // The assistant's comparison evidence carries both sections.
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await clickPanelAction(page, panelHeader(page, 'Compare models'), 'Discuss with AI');
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();

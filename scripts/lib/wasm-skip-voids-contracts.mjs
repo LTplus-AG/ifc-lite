@@ -39,8 +39,14 @@ export function runSkipVoidsContracts({ test, IfcAPI }) {
       assert.ok(volume(net, 30) < 2.2);
       const boolean = source.replace("'SweptSolid',(#26)", "'CSG',(#130)")
         .replace('ENDSEC;\nEND-ISO', '#130=IFCBOOLEANRESULT(.DIFFERENCE.,#26,#46);\nENDSEC;\nEND-ISO');
-      assert.ok(Math.abs(volume(run(boolean), 30) - 2.16) < 1e-5);
+      const authored = run(boolean);
+      const authoredVolume = volume(authored, 30);
+      assert.ok(Math.abs(authoredVolume - 2.16) < 32 / 65536, `authored cut volume: ${authoredVolume}`);
       api.setSkipVoids(false);
+      // Independent oracle: removing relationship records leaves exactly the same
+      // authored boolean geometry. Numeric tolerance above covers the kernel grid.
+      const authoredOnly = boolean.split("\n").filter(line => !line.includes("= IFCRELVOIDSELEMENT(")).join("\n");
+      assert.deepEqual(run(authoredOnly), authored);
       assert.deepEqual(run(source), net);
     } finally { api.free(); }
   });

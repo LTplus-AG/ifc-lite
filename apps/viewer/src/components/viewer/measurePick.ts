@@ -132,3 +132,19 @@ export function pickMeasurePoint(ctx: MouseHandlerContext, x: number, y: number)
   const screenPos = projectToCssScreen(camera, canvas, pos);
   return { x: pos.x, y: pos.y, z: pos.z, screenX: screenPos?.x ?? x, screenY: screenPos?.y ?? y };
 }
+
+/**
+ * The exact visible-surface hit at canvas CSS coordinates, with no snapping.
+ * A Distance end that snapping would pull back onto its start falls back to
+ * this, so a deliberate second tap or click is never dropped (#8788).
+ */
+export function pickSurfacePoint(ctx: MouseHandlerContext, x: number, y: number): MeasurePoint | null {
+  const hit = ctx.renderer.raycastScene(x, y, {
+    hiddenIds: ctx.hiddenEntitiesRef.current,
+    isolatedIds: ctx.isolatedEntitiesRef.current,
+  });
+  const pos = hit?.intersection?.point;
+  if (!pos) return null;
+  const screenPos = projectToCssScreen(ctx.camera, ctx.canvas, pos);
+  return { x: pos.x, y: pos.y, z: pos.z, screenX: screenPos?.x ?? x, screenY: screenPos?.y ?? y };
+}

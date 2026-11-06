@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/components/ui/match-highlight.tsx b/apps/viewer/src/components/ui/match-highlight.tsx
+index 0b573bb..5b05605 100644
+--- a/apps/viewer/src/components/ui/match-highlight.tsx
++++ b/apps/viewer/src/components/ui/match-highlight.tsx
+@@ -16,7 +16,6 @@ export interface MatchHighlightProps {
+ }
+ 
+ export function MatchHighlight({ text, query }: MatchHighlightProps) {
+-  return <>{text}</>;
+   const needle = query.trim().toLocaleLowerCase();
+   const at = needle ? text.toLocaleLowerCase().indexOf(needle) : -1;
+   // Lower-casing can change length (e.g. 'İ'), so a slice by the needle's

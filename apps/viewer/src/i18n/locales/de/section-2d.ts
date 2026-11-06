@@ -5,7 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const section2dDe = {
-  "section2d.tip.trackpad": "Ziehen oder scrollen zum Verschieben · Zwei Finger oder Ctrl/Cmd+Scrollen zum Zoomen · Markierung zum Auswählen anklicken",
+  "section2d.tip.trackpad": "Ziehen oder scrollen zum Verschieben · Zwei Finger zusammen- oder auseinanderziehen oder Ctrl/Cmd+Scrollen zum Zoomen · Markierung zum Auswählen anklicken",
   "section2d.projection.settings": "Projektionseinstellungen",
   "section2d.projection.depth": "Sichttiefe hinter dem Schnitt",
   "section2d.projection.auto": "Automatische Tiefe",

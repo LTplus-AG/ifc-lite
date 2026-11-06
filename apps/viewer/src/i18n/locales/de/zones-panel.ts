@@ -98,7 +98,7 @@ export const zonesPanelDe = {
   "zonesPanel.volumeBreakdown.outsideZoneLabel": "in keiner Zone",
   "zonesPanel.volumeBreakdown.noGeometryMessage": "Für dieses Bauteil ist keine Geometrie geladen; sein Volumen kann daher nicht aufgeteilt werden.",
   "zonesPanel.volumeBreakdown.unprovedSolidMessage": "Sein Netz ist nicht nachweislich ein geschlossener Volumenkörper; daher kann kein Volumen angegeben und erst recht nicht aufgeteilt werden.",
-  "zonesPanel.volumeBreakdown.rescaledMessage": "Die Föderationsausrichtung hat das Modell dieses Bauteils neu skaliert; sein nachgewiesenes Volumen beschreibt daher nicht mehr die sichtbare Geometrie. Setzen Sie dieses Modell als Föderationsanker, um es aufzuteilen.",
+  "zonesPanel.volumeBreakdown.rescaledMessage": "Die Föderationsausrichtung hat das Modell dieses Bauteils neu skaliert; sein nachgewiesenes Volumen beschreibt daher nicht mehr die sichtbare Geometrie. Setzen Sie dieses Modell als Föderationsanker, um das Volumen dieses Bauteils aufzuteilen.",
   "zonesPanel.volumeBreakdown.inheritedUnavailable": "Geerbte Typmengen sind nicht verfügbar ({reason}).",
   "zonesPanel.volumeBreakdown.quantityUnitsUnavailable": "Aktuelle Mengeneinheiten sind nicht verfügbar ({reason}).",
   "zonesPanel.volumeBreakdown.unknownReasonMessage": "Sein Volumen konnte nicht aufgeteilt werden ({reason}).",

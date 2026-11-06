@@ -36,7 +36,7 @@ export const semanticAssistDe = {
   "semanticAssist.cancel": "Abbrechen",
   "semanticAssist.queryCancelled": "Die Abfrage wurde abgebrochen oder ihre Freigabe widerrufen; nichts wurde behalten.",
   "semanticAssist.queryRan": "Gegen {source} ausgeführt um {time}",
-  "semanticAssist.queryStatements": {"one": "{count} Anweisung abgerufen", "other": "{count} Anweisungen abgerufen"},
+  "semanticAssist.queryStatements": {"one": "{count} Aussage abgerufen", "other": "{count} Aussagen abgerufen"},
   "semanticAssist.queryGraph": "Abgerufene Aussagen",
   "semanticAssist.queryHistorical": "{count} Zeilen wurden gegen die um {time} geladenen Modelle aufgelöst. Der Revisionskontext hat sich seitdem geändert; führen Sie erneut aus, um gegen die aktuellen Modelle aufzulösen.",
   "semanticAssist.historical": "Historisch",

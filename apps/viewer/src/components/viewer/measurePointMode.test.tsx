@@ -1012,7 +1012,7 @@ describe('Point mode "Live" and the pick inputs a resting cursor does not move (
 function realPoints(ctx: MouseHandlerContext) {
   const real = realGeometry(ctx);
   const device = {
-    limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 }, createBindGroupLayout: () => ({}),
+    limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28, maxComputeWorkgroupsPerDimension: 65535 }, createBindGroupLayout: () => ({}),
     createPipelineLayout: () => ({}), createShaderModule: () => ({}), createRenderPipeline: () => ({}), createBindGroup: () => ({}),
     createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }), queue: { writeBuffer() {} },
   } as unknown as GPUDevice;

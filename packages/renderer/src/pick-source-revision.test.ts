@@ -21,7 +21,7 @@ import type { SourceSnapCurve } from './source-curve-snap.js';
 };
 
 function pointDevice(): GPUDevice {
-  return { limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 }, createBindGroupLayout: () => ({}),
+  return { limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28, maxComputeWorkgroupsPerDimension: 65535 }, createBindGroupLayout: () => ({}),
     createPipelineLayout: () => ({}), createShaderModule: () => ({}), createRenderPipeline: () => ({}), createBindGroup: () => ({}),
     createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }), queue: { writeBuffer() {} },
   } as unknown as GPUDevice;

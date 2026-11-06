@@ -8,26 +8,23 @@
  * hands this module one lazy loader per file; nothing here knows which
  * locales exist, so adding one never touches viewer code.
  *
- * Selection order: `?lang=<tag>` (remembered on this browser), then the
- * remembered choice, then `navigator.languages`, then English. A locale is
- * loaded only when selected, registered as an overlay on English (missing
- * keys fall back per key), and `<html lang>` follows the active locale so
- * screen readers and hyphenation pick the right language.
+ * Selection order: the choice made in Settings → Language (remembered on this
+ * browser), then `navigator.languages`, then English. A locale is loaded only
+ * when selected, registered as an overlay on English (missing keys fall back
+ * per key), and `<html lang>` follows the active locale so screen readers and
+ * hyphenation pick the right language. There is no URL override (#9061).
  */
 import { checkCatalogue, isCatalogueRecord } from './catalogue-problems';
 import { negotiateLocale } from './negotiate-locale';
 import { getLocale, registerLocale, setLocale, type Locale } from './registry';
 
-export const LOCALE_QUERY_PARAM = 'lang';
 export const LOCALE_STORAGE_KEY = 'ifc-lite:locale';
 
 /** Module defaults are untrusted translator data until `checkCatalogue` accepts them. */
 export type CatalogueLoader = () => Promise<unknown>;
 
 export interface LocaleEnvironment {
-  /** `location.search`, e.g. `?lang=de`. */
-  search: string;
-  storage: Pick<Storage, 'getItem' | 'setItem'> | null;
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   languages: readonly string[];
 }
 
@@ -44,7 +41,15 @@ function storeLocale(storage: LocaleEnvironment['storage'], locale: Locale): voi
   try {
     storage?.setItem(LOCALE_STORAGE_KEY, locale);
   } catch (error) {
-    console.warn('[i18n] Could not remember the chosen locale.', error);
+    console.warn('[i18n] Could not remember the chosen locale; it applies to this session only.', error);
+  }
+}
+
+function forgetLocale(storage: LocaleEnvironment['storage']): void {
+  try {
+    storage?.removeItem(LOCALE_STORAGE_KEY);
+  } catch (error) {
+    console.warn('[i18n] Could not forget the stored locale.', error);
   }
 }
 
@@ -104,20 +109,61 @@ export function createLocaleActivator(
   };
 }
 
-/**
- * Pick the startup locale from the environment. An explicit `?lang=` choice
- * is remembered, so a shared link or a one-time switch sticks across reloads.
- */
+/** Pick the startup locale: the stored Settings choice, then browser languages. */
 export async function activateStartupLocale(
   activator: LocaleActivator,
   environment: LocaleEnvironment,
 ): Promise<Locale> {
-  const fromQuery = new URLSearchParams(environment.search).get(LOCALE_QUERY_PARAM);
-  const requested = [fromQuery, readStoredLocale(environment.storage), ...environment.languages]
+  const requested = [readStoredLocale(environment.storage), ...environment.languages]
     .filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '');
-  const active = await activator.activate(requested);
-  if (fromQuery !== null && negotiateLocale([fromQuery], activator.available) === active) {
-    storeLocale(environment.storage, active);
-  }
-  return active;
+  return activator.activate(requested);
+}
+
+/** Settings → Language (#9061): an explicit choice, or Auto (browser languages). */
+export interface LocaleChoice {
+  /** English first, then every discovered locale. */
+  readonly available: readonly Locale[];
+  /** The chosen locale, or `null` for Auto. */
+  chosen(): Locale | null;
+  /** Remember `locale` on this browser and switch to it without a reload. */
+  choose(locale: Locale): Promise<Locale>;
+  /** Forget the choice and follow the browser languages again. */
+  clear(): Promise<Locale>;
+}
+
+export function createLocaleChoice(activator: LocaleActivator, environment: LocaleEnvironment): LocaleChoice {
+  // Set once the user decides on this page, so a choice storage refused
+  // still shows as chosen for the rest of the session.
+  let session: { locale: Locale | null } | null = null;
+  return {
+    available: activator.available,
+    chosen() {
+      if (session) return session.locale;
+      const stored = readStoredLocale(environment.storage);
+      return stored === null ? null : negotiateLocale([stored], activator.available);
+    },
+    choose(locale) {
+      if (!activator.available.includes(locale)) return Promise.reject(new Error(`[i18n] Unknown locale "${locale}"`));
+      session = { locale };
+      storeLocale(environment.storage, locale);
+      return activator.activate([locale]);
+    },
+    clear() {
+      session = { locale: null };
+      forgetLocale(environment.storage);
+      return activator.activate(environment.languages);
+    },
+  };
+}
+
+let installedChoice: LocaleChoice | null = null;
+
+/** Called once by `locales.boot.ts`; tests install their own. */
+export function installLocaleChoice(choice: LocaleChoice | null): void {
+  installedChoice = choice;
+}
+
+/** The running viewer's locale choice, or `null` before startup wiring ran. */
+export function getLocaleChoice(): LocaleChoice | null {
+  return installedChoice;
 }

@@ -16,21 +16,26 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
   );
 }
 
-export function SettingsRow({ label, hint, htmlFor, children }: {
+export function SettingsRow({ label, hint, htmlFor, icon, children }: {
   label: string;
   hint?: string;
   /** The control's id, so clicking the label focuses / toggles it. Omit for
    *  a `SettingsChoice`, which names itself with its own legend. */
   htmlFor?: string;
+  /** Decorative; the label carries the meaning. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-4">
-      <div className="min-w-0">
-        {htmlFor
-          ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
-          : <span className="text-sm" aria-hidden="true">{label}</span>}
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      <div className="flex min-w-0 items-start gap-2">
+        {icon && <span className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true">{icon}</span>}
+        <div className="min-w-0">
+          {htmlFor
+            ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
+            : <span className="text-sm" aria-hidden="true">{label}</span>}
+          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+        </div>
       </div>
       <div className="max-w-full shrink-0">{children}</div>
     </div>

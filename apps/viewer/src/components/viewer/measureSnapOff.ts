@@ -5,7 +5,7 @@
 import { useViewerStore } from '@/store';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { cancelMeasureRaycast, moveRubberBand } from './measureHandlers.js';
+import { cancelMeasureRaycast, moveRubberBand, syncMeasureScreenCoords } from './measureHandlers.js';
 import { hoverMeasurePoint } from './measurePointMode.js';
 import { measureCursor } from './measureCursor.js';
 
@@ -22,12 +22,16 @@ export function measureSnapOff(ctx: MouseHandlerContext): void {
   cancelMeasureRaycast(ctx);
   const cursor = measureCursor(ctx);
   if (!cursor) return;
+  // Bring the reprojection pass up to the view now: it ends a Live reading the
+  // view no longer shows, and keeps the state the rubber band was noted under
+  // only while nothing under the cursor changed (#8886).
+  syncMeasureScreenCoords(ctx);
   const s = useViewerStore.getState();
   // The refs catch up with the store only on the next render: pick as Snap off does, with no lock to slide along.
   const unsnapped = { ...ctx, snapEnabledRef: { current: false }, edgeLockStateRef: { current: getDefaultEdgeLockState() } };
   if (s.measureMode === 'point') {
     if (s.measurePointLive) hoverMeasurePoint(unsnapped, cursor.x, cursor.y);
-  } else if (s.activeMeasurement) {
+  } else if (s.activeMeasurement && cursor.view !== null && cursor.view === ctx.lastCameraStateRef.current) {
     moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
   }
 }

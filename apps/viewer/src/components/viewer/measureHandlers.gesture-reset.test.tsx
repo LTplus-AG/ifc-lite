@@ -553,6 +553,19 @@ describe('turning Snap off re-picks the live preview unsnapped at the cursor (#8
     assert.equal(locksSeen.length, 0, 'Snap off picked under a moved view');
   });
 
+  it('Distance, the canvas resized since the cursor left: the toolbar toggle does not re-pick at the old pixel', () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    fire(canvas, 'mouseleave', 400, 250);
+    ctx.lastCameraStateRef.current = null; // what the canvas box watch does on a same-shape resize (#8886)
+    locksSeen.length = 0;
+    act(() => s().toggleSnap());
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked at a pixel the resize moved');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a resize');
+  });
+
   it('a rubber band from before a tool switch: Snap off after a fresh start does not pull the end back there', async () => {
     const { canvas } = mount();
     click(canvas, 200, 300);

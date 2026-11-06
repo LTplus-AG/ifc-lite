@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { measureCameraState, sameMeasureCameraPose, type MeasureCameraState } from './measureCameraState.js';
+import type { MeasureCameraState } from './measureCameraState.js';
 
 /** Where a pointer move last drew the Measure preview: the rubber band, or Point mode's hover. */
 export interface MeasureCursor {
@@ -11,10 +11,17 @@ export interface MeasureCursor {
   y: number;
   /** The rubber band followed Shift's orthogonal constraint. */
   orthogonal: boolean;
+  /**
+   * The rubber band's: the view the reprojection pass last ran for when the
+   * cursor was noted (`lastCameraStateRef`), so a re-pick happens only while the
+   * pass still holds it, as Point's Live reading does (#8828, #8886). Point
+   * notes none: the pass ends its Live on a view change.
+   */
+  view: MeasureCameraState | null;
 }
 
-/** Per canvas, keyed by its stable frame ref, with the view the cursor was noted under. */
-const cursors = new WeakMap<object, MeasureCursor & { view: MeasureCameraState }>();
+/** Per canvas, keyed by its stable frame ref. */
+const cursors = new WeakMap<object, MeasureCursor>();
 
 /**
  * Noted by the preview's own move handlers; forgotten by any other Measure
@@ -24,17 +31,11 @@ const cursors = new WeakMap<object, MeasureCursor & { view: MeasureCameraState }
  * the cursor reaches the toolbar's Snap toggle, and Point mode drops its Live
  * reading on leave anyway.
  */
-export function noteMeasureCursor(ctx: MouseHandlerContext, cursor: MeasureCursor | null): void {
-  if (cursor) cursors.set(ctx.measureRaycastFrameRef, { ...cursor, view: measureCameraState(ctx.camera, ctx.canvas, ctx) });
+export function noteMeasureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef'>, cursor: MeasureCursor | null): void {
+  if (cursor) cursors.set(ctx.measureRaycastFrameRef, cursor);
   else cursors.delete(ctx.measureRaycastFrameRef);
 }
 
-/**
- * The noted cursor, while a pick there still returns what it did: like Point
- * mode's Live reading, it holds only for the view and scene it was noted under
- * (#8828, #8886).
- */
-export function measureCursor(ctx: MouseHandlerContext): MeasureCursor | null {
-  const cursor = cursors.get(ctx.measureRaycastFrameRef);
-  return cursor && sameMeasureCameraPose(cursor.view, measureCameraState(ctx.camera, ctx.canvas, ctx)) ? cursor : null;
+export function measureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef'>): MeasureCursor | null {
+  return cursors.get(ctx.measureRaycastFrameRef) ?? null;
 }

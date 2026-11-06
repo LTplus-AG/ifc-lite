@@ -92,7 +92,7 @@ function cancelTrailingHover(ctx: MouseHandlerContext): void {
  */
 export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: number): void {
   cancelTrailingHover(ctx);
-  noteMeasureCursor(ctx, { x, y, orthogonal: false });
+  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: null });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
     trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {

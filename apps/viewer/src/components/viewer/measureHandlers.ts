@@ -96,7 +96,9 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
 
   // Check if shift is held for orthogonal constraint
   const useOrthogonalConstraint = e.shiftKey && !!ctx.measurementConstraintEdgeRef.current;
-  noteMeasureCursor(ctx, { x, y, orthogonal: useOrthogonalConstraint });
+  // The view this cursor sees, for a Snap-off re-pick here (#8992)
+  syncMeasureScreenCoords(ctx);
+  noteMeasureCursor(ctx, { x, y, orthogonal: useOrthogonalConstraint, view: ctx.lastCameraStateRef.current });
 
   // Throttle raycasting to 60fps max using requestAnimationFrame
   if (!ctx.measureRaycastPendingRef.current) {

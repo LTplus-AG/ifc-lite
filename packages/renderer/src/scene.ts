@@ -320,6 +320,9 @@ export class Scene {
   private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
   private warmOnlyRestores: Set<string> = new Set();           // queued keys only a subset wants: CPU pieces, no GPU rebuild (#9050)
   private subsetOnlyParents: Set<BatchedMesh> = new Set();     // evicted batches with sub-batches cut from them (#9050)
+  private subsetRebuildBudgetMs = 32;                          // per frame for restoreSubsetParentNow; the rest go to the queue
+  private subsetRebuildFrame = -1;
+  private subsetRebuildSpentMs = 0;
   private residencyOverBudgetWarned = false;
   // Cold tier (issue #1682 phase 3b): warm buckets (GPU-evicted, CPU kept)
   // can additionally drop their CPU meshData when a HOST budget is set and a
@@ -920,8 +923,10 @@ export class Scene {
    * An evicted batch whose subset was on screen last frame is now drawn whole
    * (hide or isolate cleared). Rebuild it now rather than through the
    * time-sliced queue, or the elements on screen would vanish for the frames
-   * the rebuild takes (#9050). Returns the rebuilt batch to draw, or null
-   * when the caller should skip it and queue the usual restore.
+   * the rebuild takes (#9050). Capped per frame, so clearing isolate over a
+   * whole model cannot stall one frame on every batch: past the cap the rest
+   * pop back through the queue as usual. Returns the rebuilt batch to draw,
+   * or null when the caller should skip it and queue the usual restore.
    */
   restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null {
     if (batch.gpuResident !== false || this.geometryReleased || this.ephemeralStreamingMode) return null;
@@ -929,7 +934,15 @@ export class Scene {
     if (lastUse === undefined || lastUse < this.residencyFrame - 1) return null;
     const bucket = this.buckets.get(batch.colorKey);
     if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return null;
-    return this.rebuildEvictedBucket(bucket, batch, device, pipeline);
+    if (this.subsetRebuildFrame !== this.residencyFrame) {
+      this.subsetRebuildFrame = this.residencyFrame;
+      this.subsetRebuildSpentMs = 0;
+    }
+    if (this.subsetRebuildSpentMs >= this.subsetRebuildBudgetMs) return null;
+    const start = performance.now();
+    const rebuilt = this.rebuildEvictedBucket(bucket, batch, device, pipeline);
+    this.subsetRebuildSpentMs += performance.now() - start;
+    return rebuilt;
   }
 
   /** Free the sub-batches of evicted parents once no frame has drawn a subset

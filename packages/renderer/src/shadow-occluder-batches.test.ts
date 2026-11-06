@@ -12,7 +12,7 @@ function batch(id: number, expressIds: number[], gpuResident?: boolean): Batched
   return { id, colorKey: `c${id}`, expressIds, color: [0.5, 0.5, 0.5, 1], gpuResident } as unknown as BatchedMesh;
 }
 
-function fakeScene(batches: BatchedMesh[], subsetIndexCount: number) {
+function fakeScene(batches: BatchedMesh[], subsetIndexCount: number, rebuildsNow = false) {
   const recorded: number[] = [];          // own GPU buffers drawn
   const subsetRecorded: number[] = [];    // drawn only as a subset of its pieces
   const requested: number[] = [];         // own GPU buffers wanted back
@@ -23,6 +23,7 @@ function fakeScene(batches: BatchedMesh[], subsetIndexCount: number) {
     recordBatchSubsetDrawn: (b) => { subsetRecorded.push(b.id); },
     requestBatchResidency: (b) => { requested.push(b.id); },
     requestBatchPieces: (b) => { piecesRequested.push(b.id); },
+    restoreSubsetParentNow: (b) => (rebuildsNow ? batch(b.id + 100, b.expressIds) : null),
     getOrCreatePartialBatch: () => (subsetIndexCount > 0 ? ({ id: 999, indexCount: subsetIndexCount } as unknown as BatchedMesh) : undefined),
   };
   return { scene, recorded, subsetRecorded, requested, piecesRequested };
@@ -66,6 +67,24 @@ describe('shadow occluder residency (#9034, #9050)', () => {
       assert.deepEqual([...subsetRecorded, ...piecesRequested], []);
     });
   }
+
+  for (const filtered of [true, false]) {
+    it(`${filtered ? 'filtered' : 'unfiltered'}: an evicted parent whose subset was on screen casts from its rebuild in this frame (#9050)`, () => {
+      const { scene, recorded, requested } = fakeScene([batch(1, [1, 2], false)], 3, true);
+      const out = shadowOccluderBatches(scene, filtered ? { hiddenIds: new Set([7]) } : {}, DEVICE, filtered, PIPELINE, 0);
+      assert.deepEqual(out.map((b) => b.id), [101], 'the rebuild casts, not the shell');
+      assert.deepEqual(recorded, [101]);
+      assert.deepEqual(requested, [], 'nothing left for the queue');
+    });
+  }
+
+  it('without a pipeline an evicted whole batch is only queued', () => {
+    const { scene, recorded, requested } = fakeScene([batch(1, [1, 2], false)], 3, true);
+    const out = shadowOccluderBatches(scene, {}, DEVICE, false, null, 0);
+    assert.deepEqual(out.map((b) => b.id), [1]);
+    assert.deepEqual(recorded, []);
+    assert.deepEqual(requested, [1]);
+  });
 
   it('a fully hidden batch is neither recorded nor requested', () => {
     const { scene, recorded, subsetRecorded, requested, piecesRequested } = fakeScene([batch(1, [1, 2])], 3);

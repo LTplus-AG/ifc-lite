@@ -1065,7 +1065,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
         const oldSlot = subBatchKeys(h)[0];
-        const oldSub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(oldSlot)) as BatchedMesh;
+        const oldSub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(oldSlot)!) as BatchedMesh;
 
         // Hide only red: grey is fully visible again (filtering stays active,
         // so the show-all drop of every partial cache does not run). Its subset
@@ -1248,7 +1248,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         scene.setHostResidencyBudget(1);
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
-        const sub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(subBatchKeys(h)[0])) as BatchedMesh;
+        const sub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(subBatchKeys(h)[0])!) as BatchedMesh;
         // Grey leaves the view entirely (only red is isolated): nothing asks for
         // its slot again, so only the cold demotion can free it.
         for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([3]) });
@@ -1290,6 +1290,21 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
         assert.strictEqual(scene['partialBatchCache'].size, 0);
         assert.strictEqual(scene['subsetOnlyParents'].size, 0);
+    });
+
+    it('past the per-frame cap, a subset parent shown whole falls back to the queue, which keeps frames coming', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene['subsetRebuildBudgetMs'] = 0;
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt past the cap');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'queued: the app loop rebuilds it and requests a render');
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) >= 1); // red, undrawn under isolate, too
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
     });
 
     it('an evicted batch whose subset was NOT on screen is still restored through the time-sliced queue', () => {

@@ -5,6 +5,23 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteDe = {
+  "commandPalette.availability.camera": "Warten, bis die Viewer-Kamera bereit ist",
+  "commandPalette.availability.editor": "Bearbeitungsrechte erforderlich",
+  "commandPalette.availability.entity": "Zuerst ein IFC-Element auswählen",
+  "commandPalette.availability.feature": "In dieser Konfiguration nicht verfügbar",
+  "commandPalette.availability.gpu": "WebGPU ist nicht verfügbar – Hilfe auf der Startseite",
+  "commandPalette.availability.gpuChecking": "Warten, bis die WebGPU-Prüfung abgeschlossen ist",
+  "commandPalette.availability.host": "Dieses Werkzeug ist in der aktuellen Ansicht nicht verfügbar",
+  "commandPalette.availability.ifc": "Zuerst ein Modell mit IFC-Daten laden",
+  "commandPalette.availability.loading": "Warten, bis das Modell vollständig geladen ist",
+  "commandPalette.availability.model": "Zuerst ein Modell laden",
+  "commandPalette.availability.refresh": "Modelle erneut mit Dateizugriff öffnen, um sie zu aktualisieren",
+  "commandPalette.availability.reopen": "Datei erneut vom Datenträger öffnen; die gespeicherte Kopie ist nicht mehr verfügbar",
+  "commandPalette.availability.schedule": "Zuerst einen Zeitplan erstellen oder importieren",
+  "commandPalette.availability.selection": "Zuerst Elemente im Viewer auswählen",
+  "commandPalette.availability.workplane": "Zuerst eine gültige Arbeitsebene wählen",
+  "commandPalette.state.off": "Aus",
+  "commandPalette.state.on": "Ein",
   'commandPalette.file.open.label': 'Datei öffnen',
   'commandPalette.file.saveFederationSetup.label': 'Föderationseinrichtung speichern',
   'commandPalette.file.openFederationSetup.label': 'Föderationseinrichtung öffnen',

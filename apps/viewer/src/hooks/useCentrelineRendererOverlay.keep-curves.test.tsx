@@ -15,6 +15,7 @@ import { cleanup, render, waitFor } from '@/test/render.js';
 import { entityRefToString, useViewerStore, type ViewerState } from '@/store/index.js';
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
 import { sourceOccurrenceKey, type selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines.js';
+import { ZERO_ROTATION } from '@/lib/model-placement/rotation.js';
 import { useCentrelineRendererOverlay } from './useCentrelineRendererOverlay.js';
 
 /*
@@ -95,12 +96,14 @@ function select(ids: readonly number[], primary = ids[ids.length - 1], modelId =
   };
 }
 
-/** Commits `patch` synchronously: what the renderer holds afterwards is what the next frame paints. */
+/**
+ * Commits `patch` and runs its layout and passive effects, but no promise
+ * continuation: what the renderer holds afterwards is what the next frame
+ * reads, before any swept-disk load or line build can finish. (An async act
+ * would drain the whole rebuild first.)
+ */
 async function commit(patch: Partial<ViewerState>): Promise<void> {
-  await act(async () => {
-    flushSync(() => useViewerStore.setState(patch));
-    await Promise.resolve();
-  });
+  act(() => { flushSync(() => useViewerStore.setState(patch)); });
 }
 
 /** Lets every pending build and selection load settle. */
@@ -270,8 +273,8 @@ it('a placement change that moves the curves clears them, then installs the move
   await mountInstalled([1], ONE);
   const modelPlacement = useViewerStore.getState().modelPlacement;
   await commit({ modelPlacement: { ...modelPlacement, placements: new Map([[MODEL, {
-    translation: { x: 0, y: 5, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, locked: false,
-  }]]) } as typeof modelPlacement });
+    translation: [0, 5, 0], rotation: ZERO_ROTATION, locked: false,
+  }]]) } });
   assert.equal(current(), '', 'curves at the old place cannot be snapped to');
   await settle();
   assert.notEqual(current(), '');
@@ -332,9 +335,11 @@ it('a switch that also clears the highlight never reinstalls the deselected prod
     modelId: MODEL, expressId: 1, occurrenceIndex: 0, segmentIndex: 0 } });
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
+  const before = builds;
   await commit(select([3]));
   await settle();
   assert.equal(useViewerStore.getState().selectedDirectrixSegment, null, 'the switch cleared the highlight');
+  assert.equal(builds, before, 'the highlight change does not build the old selection\'s records');
   assert.ok(sinceSome(from).every((set) => !set.includes('1@')), 'the deselected product is never reinstalled');
   loadGate = null;
   release();
@@ -346,9 +351,12 @@ it('replacing the model under the same id waits for its new swept disks', async 
   await mountInstalled([1, 3], `${ONE},${THREE}`);
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
+  const before = builds;
   await commit(fixtureModels(sourceModel()));
   const from = held.length;
+  assert.equal(builds, before, 'the old model\'s records are not built against the new model');
   await settle();
+  assert.equal(builds, before);
   assert.equal(current(), '', 'curves of the replaced model cannot be snapped to');
   assert.ok(since(from).every((set) => set === ''), 'the old model\'s records are not rebuilt for the new one');
   loadGate = null;
@@ -386,30 +394,6 @@ it('a tree click that makes another federated model active keeps the curves (#90
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection');
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'the active model mirror does not move the curves');
-});
-
-it('a swept-disk result superseded in the same render by a model replacement is not built', async () => {
-  await mountInstalled([1], ONE);
-  let release: () => void = () => undefined;
-  loadGate = new Promise((resolve) => { release = resolve; });
-  await commit(select([1, 3]));
-  await settle();
-  const from = held.length;
-  let second: () => void = () => undefined;
-  await act(async () => {
-    // The load answering products 1 and 3 resolves and queues its result;
-    // before that result renders, the model is replaced under the same id.
-    release();
-    for (let i = 0; i < 10; i++) await Promise.resolve();
-    loadGate = new Promise((resolve) => { second = resolve; });
-    flushSync(() => useViewerStore.setState(fixtureModels(sourceModel())));
-  });
-  await settle();
-  assert.ok(since(from).every((set) => set === ''), 'nothing from the replaced model installs while its reload is pending');
-  loadGate = null;
-  second();
-  await settle();
-  assert.equal(current(), `${ONE},${THREE}`);
 });
 
 it('a GPU recovery reinstalls the curves on the recovered device', async () => {

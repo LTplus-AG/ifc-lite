@@ -5,8 +5,9 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { resolveTreeGlobalId } from './productTree';
+import { overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
 
 export type HierarchyVisibilityAction = 'show' | 'hide';
@@ -44,6 +45,7 @@ const NO_IDS: readonly number[] = [];
 export function createStoreySubtreeResolver(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
+  overlay?: TreeOverlay,
 ): (node: TreeNode) => readonly number[] {
   const cache = new Map<string, readonly number[]>();
   return (node) => {
@@ -55,7 +57,7 @@ export function createStoreySubtreeResolver(
       const modelId = node.modelIds[i];
       const store = models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? ifcDataStore : null);
       if (!store?.spatialHierarchy) return;
-      const relationships = store.relationships as AggregationRelationships | undefined;
+      const relationships = ownedAggregationRelationships(store, overlayViewFor(overlay, modelId));
       for (const id of collectIfcBuildingStoreyElementsWithIfcSpace(store.spatialHierarchy, storeyId, relationships) ?? []) {
         ids.push(resolveTreeGlobalId(modelId, id, models));
       }

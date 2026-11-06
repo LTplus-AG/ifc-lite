@@ -136,6 +136,20 @@ describe('drawing2DSlice persistence', () => {
       }
     });
 
+    it('keeps a stored Projection choice and round-trips "not chosen" (#8802)', () => {
+      // A saved drawing keeps its stored setting: an explicit off stays off on a
+      // plan, an explicit on stays on; `null` (follow the cut) stays `null`.
+      for (const stored of [false, true, null]) {
+        saveDrawing2DEntry('hash-p', sampleEntry({ drawing2DDisplayOptions: { ...DEFAULT_DISPLAY_OPTIONS, showConstructionProjection: stored } }));
+        assert.strictEqual(loadDrawing2DEntry('hash-p', DEFAULT_DISPLAY_OPTIONS)!.drawing2DDisplayOptions.showConstructionProjection, stored);
+      }
+      // A field missing or corrupt in storage falls back to the default: not chosen.
+      const entry = { ...sampleEntry(), version: 1, savedAt: Date.now(),
+        drawing2DDisplayOptions: { ...DEFAULT_DISPLAY_OPTIONS, showConstructionProjection: 'yes' } };
+      localStorage.setItem(keyFor('hash-q'), JSON.stringify(entry));
+      assert.strictEqual(loadDrawing2DEntry('hash-q', DEFAULT_DISPLAY_OPTIONS)!.drawing2DDisplayOptions.showConstructionProjection, null);
+    });
+
     it('round-trips custom display options', () => {
       const options = { ...DEFAULT_DISPLAY_OPTIONS, scale: 50, showHiddenLines: false };
       saveDrawing2DEntry('hash-a', sampleEntry({ drawing2DDisplayOptions: options }));

@@ -85,9 +85,25 @@ for (const federated of [false, true]) test(`#8947 selected entity destination o
   typeInto(input, 'Copy GlobalId');
   const destination = option('elements:entity-actions');
   assert.match(destination.textContent ?? '', /Selected entity actions/);
+  assert.equal(destination.getAttribute('aria-selected'), 'true');
+  assert.notEqual(destination.getAttribute('aria-disabled'), 'true');
+  const transitions: { open: boolean; entityId: number | null }[] = [];
+  const unsubscribe = useViewerStore.subscribe((state, previous) => {
+    if (state.contextMenu !== previous.contextMenu && transitions.length < 12) {
+      transitions.push({ open: state.contextMenu.isOpen, entityId: state.contextMenu.entityId });
+    }
+  });
   press(input, 'Enter');
   // Activation runs in a frame after palette close; Radix then mounts and focuses its menu.
-  await waitFor(() => document.querySelector('[role="menu"]') !== null, 'real entity menu mounts after palette close');
+  try {
+    await waitFor(() => document.querySelector('[role="menu"]') !== null, 'real entity menu mounts after palette close');
+  } catch (cause) {
+    const state = useViewerStore.getState();
+    throw new Error(`Entity menu did not mount: ${JSON.stringify({ transitions,
+      currentTarget: selectedEntityActionTarget(), contextMenu: state.contextMenu,
+      recent: localStorage.getItem(RECENT_KEY), focusedRole: document.activeElement?.getAttribute('role'),
+      paletteOpen: Boolean(document.querySelector('input[role="combobox"]')) })}`, { cause });
+  } finally { unsubscribe(); }
   await waitFor(() => document.querySelector('[role="menu"]')?.contains(document.activeElement) === true,
     'focus enters the real entity menu');
   const menu = document.querySelector<HTMLElement>('[role="menu"]');

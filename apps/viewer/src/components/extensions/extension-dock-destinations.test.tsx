@@ -118,6 +118,8 @@ test('#8947 invalid widget has visible error, and closing/reopening after repair
   }
   render(<Switch />);
   click(button('alpha · dock.left')); await settle();
+  await waitFor(() => /Widget/.test(document.querySelector('[role="alert"]')?.textContent ?? ''),
+    'invalid widget finishes loading and displays its real validation error');
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Widget/);
   click(button('Close')); await settle();
   act(() => add(host, 'alpha')); await settle();

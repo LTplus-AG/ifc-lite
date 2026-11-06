@@ -14,6 +14,8 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { bcfEn as BcfEnType } from '@/i18n/catalogues/bcf.en';
 import { BCFPanel } from './BCFPanel.js';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
+import { click, press } from '@/test/render.js';
 
 let bcfEn: typeof BcfEnType | undefined;
 try {
@@ -106,7 +108,7 @@ describe('BCFPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', /BCF Topics/);
   });
 
-  it('updates the panel header titles and dialogs when the active locale changes', () => {
+  it('updates the panel header titles and dialogs when the active locale changes', async () => {
     assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
     const container = renderPanel();
     registerLocale('bcf-panel-pseudo', pseudoLocale());
@@ -116,15 +118,9 @@ describe('BCFPanel localization (#4918)', () => {
     const titles = [...container.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label'));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.importTitle'] as string)));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.exportTitle'] as string)));
-    assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string)));
-
-    const setAuthorButton = [...container.querySelectorAll('button')].find(
-      (b) => b.getAttribute('aria-label') === marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string),
-    );
-    assert.ok(setAuthorButton, 'expected a Set author button');
-    act(() => {
-      setAuthorButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
+    // Set author is a header action; the shared header (#8802) lists it in More actions.
+    assert.ok(await findPanelAction(container, marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string)), 'expected a Set author action');
+    await runPanelAction(container, marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string));
     assert.match(document.body.textContent ?? '', /⟦Set Author Email⟧/);
     const authorInput = container.querySelector<HTMLInputElement>('input[aria-label]');
     assert.equal(authorInput?.getAttribute('aria-label'), marked(CATALOGUE['bcf.panel.authorEmailLabel'] as string));
@@ -148,5 +144,52 @@ describe('BCFPanel localization (#4918)', () => {
 
     assert.match(container.textContent ?? '', new RegExp(marked(CATALOGUE['bcf.createForm.editTopicHeading'] as string)));
     assert.match(container.textContent ?? '', new RegExp(marked(CATALOGUE['bcf.createForm.saveChangesSubmitLabel'] as string)));
+  });
+});
+
+describe('BCFPanel 3D markers toggle (#8802)', () => {
+  /** The toggle's state as assistive tech reads it, inline or in More actions. */
+  const stateOf = (control: HTMLElement): string | null =>
+    control.getAttribute(control.tagName === 'BUTTON' ? 'aria-pressed' : 'aria-checked');
+
+  it('keeps one name and reports shown or hidden through its pressed state only', async () => {
+    act(() => useViewerStore.setState({ bcfOverlayVisible: false }));
+    const container = renderPanel();
+    const label = CATALOGUE['bcf.panel.showMarkers'] as string;
+
+    const off = await findPanelAction(container, label);
+    assert.ok(off, `expected a "${label}" action while markers are hidden`);
+    assert.equal(stateOf(off), 'false');
+    await runPanelAction(container, label);
+    assert.equal(useViewerStore.getState().bcfOverlayVisible, true);
+
+    const on = await findPanelAction(container, label);
+    assert.ok(on, `expected the same "${label}" action while markers are shown`);
+    assert.equal(stateOf(on), 'true');
+    assert.equal(document.body.textContent?.includes('Hide 3D markers'), false);
+    act(() => useViewerStore.setState({ bcfOverlayVisible: false }));
+  });
+});
+
+describe('BCFPanel Import (#8802)', () => {
+  it('opens the file picker inside the click, with no await before it (Safari drops a deferred input.click())', async () => {
+    const container = renderPanel();
+    const label = CATALOGUE['bcf.panel.importTitle'] as string;
+    const control = await findPanelAction(container, label);
+    assert.ok(control, `expected an "${label}" action`);
+
+    const original = HTMLInputElement.prototype.click;
+    let pickerOpens = 0;
+    HTMLInputElement.prototype.click = function (this: HTMLInputElement) {
+      if (this.type === 'file') pickerOpens += 1;
+    };
+    try {
+      if (control.tagName === 'BUTTON') click(control);
+      else press(control, 'Enter');
+      // Read synchronously: a picker opened after any await has not run yet.
+      assert.equal(pickerOpens, 1, 'the Import action opens the hidden file input within the same click');
+    } finally {
+      HTMLInputElement.prototype.click = original;
+    }
   });
 });

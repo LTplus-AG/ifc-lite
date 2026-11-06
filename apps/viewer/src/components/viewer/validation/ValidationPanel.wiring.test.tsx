@@ -24,9 +24,10 @@ import '@/test/setup-dom.js';
 import { waitForValidationReportsCommit } from '@/test/content-fixture.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { IDSDocument } from '@ifc-lite/ids';
+import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
 import { advance, cleanup, click, mouseDown, press, render, type as typeInput } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
@@ -195,7 +196,7 @@ describe('ValidationPanel wiring (#5138)', () => {
         ['Fire rating set', 'Unique name'],
       );
 
-      const close = reopened.querySelector('button[aria-label="Data validation"]');
+      const close = reopened.querySelector('[data-panel-header] button[data-panel-close]');
       assert.ok(close);
       click(close);
       cleanup();
@@ -227,8 +228,46 @@ describe('ValidationPanel wiring (#5138)', () => {
     click(entry as Element);
     // IDSPanel's own title is suppressed when embedded (ValidationPanel's
     // header + toggle is the only chrome) — its EMPTY-STATE BODY still is.
-    assert.match(ui.textContent ?? '', /No IDS Loaded/);
-    assert.match(ui.textContent ?? '', /Load an IDS/);
+    assert.match(ui.textContent ?? '', /No IDS loaded/);
+    assert.match(ui.textContent ?? '', /Load IDS file/);
+  });
+
+  it('#8802 Load IDS file opens its picker inside the click, and the IDS side loads the picked file', async () => {
+    const ui = render(<ValidationPanel />);
+    const entry = ui.querySelector('[data-testid="validation-entry-ids"]');
+    const picker = ui.querySelector<HTMLInputElement>('[data-testid="validation-entry-ids-input"]');
+    assert.ok(entry && picker, 'expected the IDS entry action and its picker');
+    // Safari opens a picker only from inside the user's click. Count the
+    // picker's clicks made while the entry click is still being dispatched:
+    // the capture listener on window runs first, the bubble one last.
+    let dispatching = false;
+    let clicksInsideEntryClick = 0;
+    let clicksTotal = 0;
+    const enter = (event: Event) => { if (event.target === entry) dispatching = true; };
+    const leave = (event: Event) => { if (event.target === entry) dispatching = false; };
+    window.addEventListener('click', enter, true);
+    window.addEventListener('click', leave);
+    picker.click = () => {
+      clicksTotal += 1;
+      if (dispatching) clicksInsideEntryClick += 1;
+    };
+    try {
+      click(entry);
+    } finally {
+      window.removeEventListener('click', enter, true);
+      window.removeEventListener('click', leave);
+    }
+    assert.equal(clicksInsideEntryClick, 1);
+    assert.equal(clicksTotal, 1);
+    // The picker outlives the switch to the IDS side, so its change still lands.
+    assert.equal(picker.isConnected, true);
+    assert.match(ui.textContent ?? '', /No IDS loaded/);
+
+    const xml = readFileSync(new URL('../../../../public/samples/building-architecture.ids', import.meta.url), 'utf8');
+    await selectFile(picker, new File([xml], 'building-architecture.ids', { type: 'application/xml' }));
+    const title = parseIDS(xml).info.title;
+    await waitFor(() => useViewerStore.getState().idsDocument?.info.title === title);
+    assert.equal(useViewerStore.getState().idsDocument?.info.title, title);
   });
 
   it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {
@@ -329,7 +368,7 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     // No rule set loaded yet on this side — the New/Open entry, not a blank pane.
     assert.match(ui.textContent ?? '', /New rule set/);
-    assert.match(ui.textContent ?? '', /Open \.rules\.json/);
+    assert.match(ui.textContent ?? '', /Open rule set/);
     assert.doesNotMatch(ui.textContent ?? '', /Wiring IDS fixture/, 'the IDS document title must not leak into the rules side');
 
     const idsToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'IDS validation');

@@ -68,6 +68,8 @@ describe('Renderer.getPickGeometryRevision (#8998)', () => {
       ['geometry streams in', ({ scene, device, pipeline }) => scene.appendToBatches([triangle(9, 9)], device, pipeline, true)],
       ['a model is placed', ({ renderer }) => renderer.setModelTranslation(0, [3, 0, 0])],
       ['the scene is cleared', ({ scene }) => scene.clear()],
+      ['the device is lost', ({ scene }) => (scene as unknown as Scene).discardGpuResourcesForRecovery()],
+      ['the device comes back', ({ scene, device, pipeline }) => (scene as unknown as Scene).restoreGpuResourcesAfterRecovery(device, pipeline)],
     ];
     for (const [name, change] of changes) {
       const s = setup();

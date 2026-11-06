@@ -403,8 +403,8 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
-  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.pickGeometryRevision++; }
 
   /**
    * Add mesh to scene
@@ -698,7 +698,7 @@ export class Scene {
           if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
         }
       }
-      bucket.meshData = []; // keeps the pick-geometry revision: only buckets no frame drew go cold (#8998)
+      bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }

@@ -6,9 +6,9 @@
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Search } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { Search, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -29,7 +29,7 @@ import {
   type Category,
   type FlatItem,
   browseCommands,
-  rankCommand,
+  searchCommands,
   getRecentIds,
   recordUsage,
 } from './commandPaletteSearch';
@@ -78,7 +78,8 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const listId = useId();
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +98,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       setRecentFiles(getRecentFiles());
       void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
       setQuery('');
+      setSelectedOptionId(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
@@ -130,19 +132,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
   const { grouped, flatItems } = useMemo(() => {
-    if (!query) return browseCommands(commands, recentIds);
+    if (!query.trim()) return browseCommands(commands, recentIds);
     const groups: { category: string; items: FlatItem[] }[] = [];
     const flat: FlatItem[] = [];
     let idx = 0;
 
     // ── Searching: flat ranked list, no categories ──
-    const scored = commands
-      .map(cmd => ({ cmd, s: rankCommand(cmd, query, cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
-      .filter(x => x.s > 0);
-    scored.sort((a, b) => b.s - a.s);
+    const scored = searchCommands(commands, query, recentIds,
+      cmd => cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label,
+      cmd => t(CATEGORY_LABEL_KEY[cmd.category]));
 
     if (scored.length > 0) {
-      const items: FlatItem[] = scored.map(({ cmd }) => {
+      const items: FlatItem[] = scored.map(cmd => {
         const item = { cmd, flatIdx: idx++ };
         flat.push(item);
         return item;
@@ -152,14 +153,29 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return { grouped: groups, flatItems: flat };
   }, [commands, query, recentIds, t]);
 
-  useEffect(() => { setSelectedIndex(0); }, [query, open]);
+  // Recent and category rows may contain the same command; each occurrence needs
+  // its own stable id, independent of filtering, ordering, or another palette.
+  const optionId = (commandId: string, category: string) =>
+    `${listId}-${category === 'Recent' ? 'recent' : 'command'}-${encodeURIComponent(commandId)}`;
+  const options = grouped.flatMap(group => group.items.map(item => ({
+    ...item, optionId: optionId(item.cmd.id, group.category),
+  })));
+  const selectedIndex = Math.max(0, options.findIndex(item => item.optionId === selectedOptionId));
+  const activeOption = options[selectedIndex];
+  const activeOptionId = activeOption?.optionId;
+  // Reconcile in this render: a passive effect can overwrite the open effect's
+  // reset using the old list, leaving Open File selected beneath new recents.
+  // Persist the resolved identity before any later live insertion can steal it.
+  if (selectedOptionId !== (activeOptionId ?? null)) {
+    setSelectedOptionId(activeOptionId ?? null);
+  }
 
   useEffect(() => {
     if (!navigatedByKeyboard.current || !listRef.current) return;
     navigatedByKeyboard.current = false;
     const el = listRef.current.querySelector(`[data-index="${selectedIndex}"]`) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [selectedIndex]);
+  }, [selectedIndex, activeOptionId]);
 
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
@@ -177,65 +193,74 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [onOpenChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Enter confirms an IME candidate, not a command (#8946). keyCode 229
+    // covers engines that clear isComposing on the final composition keydown.
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault(); navigatedByKeyboard.current = true;
-      setSelectedIndex(i => Math.min(i + 1, flatItems.length - 1));
+      setSelectedOptionId(options[Math.min(selectedIndex + 1, options.length - 1)]?.optionId ?? null);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault(); navigatedByKeyboard.current = true;
-      setSelectedIndex(i => Math.max(i - 1, 0));
+      setSelectedOptionId(options[Math.max(selectedIndex - 1, 0)]?.optionId ?? null);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const item = flatItems[selectedIndex];
+      const item = activeOption;
       if (item) runCommand(item.cmd);
     }
-  }, [flatItems, selectedIndex, runCommand]);
+  }, [options, selectedIndex, activeOption, runCommand]);
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden" aria-label={t('commandPalette.ariaLabel')} hideCloseButton>
+        <DialogContent overlayClassName="z-(--z-command-palette)" className="z-(--z-command-palette) flex flex-col p-0 gap-0 translate-y-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
+          style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onEscapeKeyDown={event => {
+            if (event.isComposing || event.keyCode === 229) event.preventDefault();
+          }}>
           {/* Search */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+          <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <input
               ref={inputRef}
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => { setQuery(e.target.value); setSelectedOptionId(null); }}
               onKeyDown={handleKeyDown}
+              role="combobox"
+              aria-controls={listId}
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-activedescendant={activeOptionId}
               aria-label={t('commandPalette.searchAriaLabel')}
               placeholder={t('commandPalette.searchPlaceholder')}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               autoComplete="off"
               spellCheck={false}
             />
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground">
-              {t('commandPalette.escKey')}
-            </kbd>
+            <DialogClose className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t('viewerShell.dialog.close')}>
+              <X className="h-4 w-4" />
+            </DialogClose>
           </div>
 
           {/* Results */}
           {/* The command palette implements a custom listbox with keyboard-managed button options. */}
           {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-          <div ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
-            {flatItems.length === 0 && (
-              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                {t('commandPalette.noResults')}
-              </div>
-            )}
-
+          <div id={listId} aria-label={t('commandPalette.searchAriaLabel')} ref={listRef} className="min-h-0 max-h-[420px] overflow-y-auto overscroll-contain scrollbar-thin py-1" role="listbox">
             {grouped.map((group) => (
               <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (
-                  <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
+                  <div className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}
                   </div>
                 )}
                 {group.items.map(({ cmd, flatIdx }) => {
                   const placement = {
+                    categoryLabel: query.trim() ? t(CATEGORY_LABEL_KEY[cmd.category]) : undefined,
+                    id: optionId(cmd.id, group.category),
                     index: flatIdx,
                     selected: flatIdx === selectedIndex,
                     onActivate: () => runCommand(cmd),
-                    onHover: () => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); },
+                    onHover: () => setSelectedOptionId(optionId(cmd.id, group.category)),
                   };
                   const key = `${group.category}:${cmd.id}`;
                   return cmd.registryOwned
@@ -246,11 +271,24 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             ))}
           </div>
 
+          {flatItems.length === 0 && (
+            <div className="min-h-0 overflow-y-auto px-3 py-6 text-center text-sm text-muted-foreground">
+              <output className="block">{t('commandPalette.noResults')}</output>
+              <p className="mt-1">{t('commandPalette.noResultsHint')}</p>
+              <button type="button" className="mt-3 rounded border px-3 py-2 text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => { setQuery(''); setSelectedOptionId(null); inputRef.current?.focus(); }}>
+                {t('commandPalette.clearSearch')}
+              </button>
+            </div>
+          )}
+
           {/* Footer */}
-          <div className="flex items-center gap-4 px-3 py-1.5 border-t text-xs text-muted-foreground select-none">
-            <span><kbd className="font-mono">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-            <span><kbd className="font-mono">↵</kbd> {t('commandPalette.footer.run')}</span>
-            <span><kbd className="font-mono">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted-foreground select-none">
+            {flatItems.length > 0 && <>
+              <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
+              <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>
+            </>}
+            <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
           </div>
         </DialogContent>
       </Dialog>

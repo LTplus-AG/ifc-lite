@@ -308,7 +308,7 @@
   --color-paper-ink: var(--overlay-paper-ink);
 
   /* Z scale for everything over the viewport. Use `z-(--z-hud)`; never a
-     literal. scene < hud < hud popover < floating panel < chrome < modal < toast. */
+     literal. scene < hud < hud popover < floating panel < chrome < modal < toast < command palette. */
   --z-scene: 10;
   --z-hud: 20;
   --z-hud-popover: 30;
@@ -316,6 +316,7 @@
   --z-chrome: 50;
   --z-modal: 60;
   --z-toast: 70;
+  --z-command-palette: 80;
 }
 
 /* Dark mode - Tokyo Night Storm */

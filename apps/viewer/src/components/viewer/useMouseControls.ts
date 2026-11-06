@@ -43,7 +43,7 @@ import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
-import { flyLook } from './flyNavigation.js';
+import { applyDragNavigation, dragNavigationFor } from './dragNavigation.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -631,16 +631,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           return; // fly's onChange signals the render only when the look actually turned the view
         }
 
-        // Always update camera state immediately (feels responsive)
-        if (mouseState.isPanning) {
-          camera.pan(dx, dy, false);
-        } else if (activeToolRef.current === 'walk') {
-          // Walk mode looks around the eye; the walker owns where it stands.
-          const look = flyLook({ position: camera.getPosition(), target: camera.getTarget() }, dx, dy);
-          if (look) camera.setTarget(look.target.x, look.target.y, look.target.z);
-        } else {
-          camera.orbit(dx, dy, false);
-        }
+        // Always update camera state immediately (feels responsive); the touch controls share this (#9042)
+        applyDragNavigation(camera, dragNavigationFor(activeToolRef.current, mouseState.isPanning), dx, dy);
 
         mouseState.lastX = e.clientX;
         mouseState.lastY = e.clientY;

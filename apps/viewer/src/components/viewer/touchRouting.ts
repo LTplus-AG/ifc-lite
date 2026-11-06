@@ -230,3 +230,8 @@ export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number)
   if (ctx.activeMeasurementRef.current) finishDistance(ctx, point, { x, y });
   else beginDistance(ctx, point, { x, y });
 }
+
+/** The mouse controls' handler context, while registered: a touch tap in Section or the command tool runs through it (#9042). */
+export function viewportHandlerContext(canvas: HTMLCanvasElement): MouseHandlerContext | null {
+  return measureContexts.get(canvas)?.ctx ?? null;
+}

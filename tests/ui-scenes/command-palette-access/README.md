@@ -1069,3 +1069,32 @@ The original job's execution is complete, but worker evidence publication report
 `pending`; generated storage remains protected until supported publication and
 closure succeed. Compact final receipts and compressed logs are retained locally
 and on Pop. No cleanup bypass or physical space-reclamation claim.
+
+
+### Foundation release-blocker correction (R4, no scope expansion)
+
+The recovered Claude finding on foundation `723039d` was valid: runtime rows
+without a live extension host, or during an extension export, could record
+usage before refusing. The qualified leaf already contained the correction.
+The owning foundation now supplies live host/contribution eligibility, rechecks
+provider identity after deferred activation, and shares the export host's busy
+lock across surfaces. Static local commands retain their existing availability
+default; runtime providers supply the missing checks.
+
+Exact corrected foundation `646d2e40c2599dfa988ef42fe76f8d4cd45cf9c4` passed
+root typecheck 134/134 (4,523 test sources) and all 231 focused tests with zero
+failures, cancellations or skips in 265.84 seconds. Four new mounted cases
+prove removed/replaced providers and a pending ribbon export refuse before
+recents/telemetry; fresh activation and the accepted first export still work.
+Existing exporter and localized-catalogue contracts were backported with the
+implementation. [Original receipt and passed cases](evidence/round4/foundation-runtime-refusal/646d-summary.json)
+qualify this owning layer independently from the earlier full `930beb9` run.
+
+[Serial propagation proof](evidence/round4/foundation-runtime-refusal/propagation-proof.json)
+shows the integrated leaf differs from the prior final leaf only by the new
+regression file, byte-identical to the qualified foundation test. All production
+code and all earlier tests remain unchanged. No later feature or correction was
+lost. The 930 full-suite and 98d3 GPU/Opus evidence retain their exact identities;
+the new regression was executed on the foundation, not falsely attributed to
+the old full-suite run. Applicable main-base CI/reviews and Mergify remain the
+release gate; no production deployment is claimed here.

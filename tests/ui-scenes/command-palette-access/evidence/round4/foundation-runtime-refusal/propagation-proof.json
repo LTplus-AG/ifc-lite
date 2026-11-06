@@ -1,0 +1,98 @@
+{
+  "leaf": "34b5c9beabc6063f211a72e7bf6da5d778d52557",
+  "priorLeaf": "8c080180413a950d136a302150bd7051279f92e8",
+  "changedPaths": [
+    "apps/viewer/src/components/viewer/CommandPalette.runtime-refusal.test.tsx"
+  ],
+  "productionTreeUnchanged": true,
+  "newTestIdenticalToQualifiedFoundation": true,
+  "newTestSha256": "781dba9b4a524e57424658f75c8ef629d64d954e7e15aa61c228c70cd0ef2c03",
+  "foundationQualified": "646d2e40c2599dfa988ef42fe76f8d4cd45cf9c4",
+  "foundationBefore": "723039da70d87e830482fd6b944525ec797cfac1",
+  "layers": [
+    {
+      "pr": 8956,
+      "head": "646d2e40c2599dfa988ef42fe76f8d4cd45cf9c4"
+    },
+    {
+      "pr": 8961,
+      "head": "74c56235312038f3d092f3b6f42ebb25b92f4351"
+    },
+    {
+      "pr": 8962,
+      "head": "9857edf0e6af0c4117ab951614fdc52c97dbcc64"
+    },
+    {
+      "pr": 8963,
+      "head": "a34a4fea4e51b80dc005bac373394eb4d27b5a56"
+    },
+    {
+      "pr": 8964,
+      "head": "b6f8aef25683e052cf9570b6fd6244f0f3a63154"
+    },
+    {
+      "pr": 8965,
+      "head": "f671935cefd935cb488d4bb6eb0e6f4b28c8705b"
+    },
+    {
+      "pr": 8967,
+      "head": "b527456943501302eb50894362078271fe219873"
+    },
+    {
+      "pr": 8969,
+      "head": "b70115d9b69c9cc05bca8de853c9b496c9c20f00"
+    },
+    {
+      "pr": 8972,
+      "head": "2cecba3f29607844874e68e3eac3d4be7f19b2f2"
+    },
+    {
+      "pr": 8973,
+      "head": "9757b041a4d05be35d9dbb21cc0f4e97d5500469"
+    },
+    {
+      "pr": 8974,
+      "head": "ded97afe37b31b993ac569f99f1fc71e12476240"
+    },
+    {
+      "pr": 8975,
+      "head": "7cd36c678d7b22e6fbde3a688c42342c9d2bc105"
+    },
+    {
+      "pr": 8978,
+      "head": "096fa21825ed688fcf9d1d4ec4577978e6ee989c"
+    },
+    {
+      "pr": 8982,
+      "head": "b77890c3d60ea0da99217eeb6256ba8214336eed"
+    },
+    {
+      "pr": 8983,
+      "head": "df90dfc56c113b18df89ed5a7d6a7fd4995d2687"
+    },
+    {
+      "pr": 8986,
+      "head": "4480ea670e637e6a45d36d4e23934e238b882e83"
+    },
+    {
+      "pr": 8988,
+      "head": "8da65f74d0e8d7e22c07e347a85442c3003797db"
+    },
+    {
+      "pr": 9005,
+      "head": "af2df35e0bedbab1ab1a382d3b150b545934cd30"
+    },
+    {
+      "pr": 9012,
+      "head": "5d5a2542fc8b9b85f9ab25cd560c883d192b7845"
+    },
+    {
+      "pr": 9015,
+      "head": "b0bbf981bdbd20289ebd392e91688ad66aec9f1d"
+    },
+    {
+      "pr": 9024,
+      "head": "34b5c9beabc6063f211a72e7bf6da5d778d52557"
+    }
+  ]
+}

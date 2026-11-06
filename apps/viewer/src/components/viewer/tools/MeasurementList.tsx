@@ -42,7 +42,9 @@ const DELETE = `h-5 w-5 shrink-0 hover:bg-destructive/20 ${HIT_SLOP}`;
 // live row that held it goes away (#9041); a ring shows a keyboard user where
 // they landed.
 const FOCUS_TARGET = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring';
-const ROW_TARGET = `${ROW} ${FOCUS_TARGET}`;
+// A recorded row is a native group (`fieldset`: its delete button under the
+// row's name). `min-w-0` undoes a fieldset's min-content width in a narrow panel.
+const ROW_TARGET = `${ROW} min-w-0 ${FOCUS_TARGET}`;
 
 /** An open sequence whose live row has Finish and Cancel. */
 type LiveKind = 'polyline' | 'radius';
@@ -152,7 +154,7 @@ export function MeasurementList() {
         </div>
       )}
       {polylineMeasurements.map((pl, i) => (
-        <div key={pl.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={pl.id} role="group" aria-labelledby={`${rowName}${pl.id}-label ${rowName}${pl.id}-value`}>
+        <fieldset key={pl.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={pl.id} aria-labelledby={`${rowName}${pl.id}-label ${rowName}${pl.id}-value`}>
           <div className="flex items-center gap-2">
             <span id={`${rowName}${pl.id}-label`} className="text-muted-foreground">
               {t('measure.polyline.indexLabel', { index: i + 1 })} · {t(polylineBasisLabelKey(pl.closed))}
@@ -163,7 +165,7 @@ export function MeasurementList() {
               <X className="h-3 w-3" />
             </IconButton>
           </div>
-        </div>
+        </fieldset>
       ))}
 
       {angleMeasurements.map((a, i) => (
@@ -195,7 +197,7 @@ export function MeasurementList() {
       )}
 
       {radiusMeasurements.map((r, i) => (
-        <div key={r.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={r.id} role="group" aria-labelledby={`${rowName}${r.id}-label ${rowName}${r.id}-value`}>
+        <fieldset key={r.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={r.id} aria-labelledby={`${rowName}${r.id}-label ${rowName}${r.id}-value`}>
           <div className="flex items-center gap-2">
             <span id={`${rowName}${r.id}-label`} className="shrink-0 text-muted-foreground">
               {t('measure.radius.indexLabel', { index: i + 1 })}
@@ -206,7 +208,7 @@ export function MeasurementList() {
               <X className="h-3 w-3" />
             </IconButton>
           </div>
-        </div>
+        </fieldset>
       ))}
       {activeRadius && (
         <div className={ROW_LIVE}>

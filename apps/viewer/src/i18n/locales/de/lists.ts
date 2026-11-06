@@ -69,6 +69,8 @@ export const listsDe = {
   'lists.library.import': 'Importieren',
   'lists.library.savedLists': 'Gespeicherte Listen',
   'lists.library.templates': 'Vorlagen',
+  'lists.library.emptyTitle': 'Noch keine gespeicherten Listen',
+  'lists.library.emptyDescription': 'Beginnen Sie mit einer Vorlage oder erstellen Sie eine eigene.',
   'lists.library.run': 'Ausführen',
   'lists.library.runListAriaLabel': 'Liste {name} ausführen',
   'lists.library.edit': 'Bearbeiten',

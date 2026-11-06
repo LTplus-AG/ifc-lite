@@ -774,3 +774,42 @@ clears it. This tests successful application without claiming the pre-existing
 error message clears. The three new workflow files and this correction still need
 actual execution. The unchanged production tree retains the pinned R3 visual
 evidence; integrated-main runtime and complete access acceptance are separate gates.
+
+## R3 access closure and validation repairs
+
+Observed UX is accepted on 15bd; complete feature access remains unaccepted.
+The historical four-shard ef550 run finished with 19,770 passed, 109 failed,
+150 cancelled and 338 skipped tests (20,367 total). Its 382 focused cases passed.
+The original receipt and lossless shard logs are preserved; this is a failed
+full-suite result, not certification of a newer head.
+
+Six failures expose the read-only planner's unintended effect on actual cold
+Align/Move/Rotate initialization. Their owning tools layer now registers the edit
+target only after a valid command selection; palette eligibility remains read-only.
+The six original single/federated native tests and their graph/history assertions
+are unchanged. A loading-only i18n fixture separately accounts for ion's unavailable
+reason and adds an actual parsed-STEP tooltip translation test in its owning layer.
+Both repairs require execution. Serial merges preserve every unrelated leaf file.
+
+The report workflow's already-qualified RAM/profile correction is now backported
+where the workflow was introduced. Later-layer mounted passes did not qualify the
+old owning layer; matching corrected CI is still required. See the compact owner
+propagation receipts in `evidence/`.
+
+Pop's contrast failures reported a missing system Chrome channel. The candidate
+protocol now checks browser availability before building and can explicitly use
+its already-installed full Chrome for Testing. The contrast harness preserves
+its ordinary Chrome-channel default. Turbo forwards the explicit path. No browser
+assertion, shard, native fixture or acceptance gate is omitted. The focused phase
+also includes cold modeling transforms, view ordering, shared command localization
+and one real contrast file, before all four required shards.
+
+Eight new tests join the actual palette to entity Copy GlobalId, same-storey
+selection, anonymized subset options/cancel, and installed owner-qualified QuickJS
+exporters through browser publication. They are authored, not yet executed.
+`inventory/historical-child-bindings.jsonl` preserves 115 exact historical passed
+child witnesses across twelve bindings. Three support explicitly historical
+composed proof; the remaining palette-to-real-body joins stay open in
+`inventory/remaining-access.md`. No source count or unrelated child pass closes
+an unobserved user route. The two proposed dormant controls retain their IDs and
+must be reassessed if an ordinary production entry becomes available.

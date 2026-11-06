@@ -213,7 +213,9 @@ function coalesceDisplayOptions(
     scale: num('scale'),
     useSymbolicRepresentations: bool('useSymbolicRepresentations'),
     showIfcAnnotations: bool('showIfcAnnotations'),
-    showConstructionProjection: bool('showConstructionProjection'),
+    // `null` (follow the cut) round-trips; a stored boolean is an explicit choice and wins.
+    showConstructionProjection: typeof o.showConstructionProjection === 'boolean' || o.showConstructionProjection === null
+      ? o.showConstructionProjection : fallback.showConstructionProjection,
     constructionProjectionDepth: isManualProjectionDepth(o.constructionProjectionDepth) ? o.constructionProjectionDepth : null,
     showScanSection: bool('showScanSection'),
     scanSectionThickness: num('scanSectionThickness'),

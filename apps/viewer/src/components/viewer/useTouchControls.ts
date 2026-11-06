@@ -18,7 +18,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
-import { beginMeasurePress, routeMeasureTap } from './touchRouting.js';
+import { beginMeasurePress, notePenTouches, routeMeasureTap } from './touchRouting.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress } from './touchLongPress.js';
 
@@ -141,7 +141,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
-      invalidateSelectionPick(canvas);
+      notePenTouches(canvas, e); invalidateSelectionPick(canvas); // #9000: a Pencil press is this side's alone
       useViewerStore.getState().setPointerInput('touch'); // the Measure hint follows the last input (#8879)
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
@@ -269,7 +269,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     };
 
     const handleTouchEnd = async (e: TouchEvent) => {
-      e.preventDefault();
+      notePenTouches(canvas, e); e.preventDefault();
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
@@ -353,8 +353,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     // Also reset interaction on touchcancel — mobile browsers can cancel
     // gestures (system gestures, tab switch, lost focus) without touchend.
-    const handleTouchCancel = () => {
-      longPress.cancel();
+    const handleTouchCancel = (e: TouchEvent) => {
+      notePenTouches(canvas, e); longPress.cancel();
       invalidateSelectionPick(canvas);
       if (isInteractingRef.current) {
         isInteractingRef.current = false;

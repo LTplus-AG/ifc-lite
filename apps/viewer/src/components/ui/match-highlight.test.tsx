@@ -42,3 +42,16 @@ it('highlights IFC for the query ifc even when the locale is Turkish', () => {
     String.prototype.toLocaleLowerCase = original;
   }
 });
+
+// Claude review on #9044: 'İ' lower-cases to two code units, so a guard on
+// the lower-cased copy dropped the highlight for any name containing one.
+it('highlights a name whose lower-cased form changes length', () => {
+  assert.deepEqual(marked('İstanbul', 'İ'), { text: 'İstanbul', mark: 'İ' });
+  assert.deepEqual(marked('İstanbul office', 'OFFICE'), { text: 'İstanbul office', mark: 'office' });
+});
+
+it('treats regular-expression characters in the query literally', () => {
+  assert.deepEqual(marked('Export (IFC) a.b-c/d', '(ifc)'), { text: 'Export (IFC) a.b-c/d', mark: '(IFC)' });
+  assert.deepEqual(marked('Export (IFC) a.b-c/d', 'a.b-c/d'), { text: 'Export (IFC) a.b-c/d', mark: 'a.b-c/d' });
+  assert.deepEqual(marked('Model inspector', '.*'), { text: 'Model inspector', mark: null });
+});

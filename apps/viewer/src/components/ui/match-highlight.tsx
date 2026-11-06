@@ -16,20 +16,21 @@ export interface MatchHighlightProps {
 }
 
 export function MatchHighlight({ text, query }: MatchHighlightProps) {
-  // Locale-free case folding, as the palette's own matcher does
-  // (`commandPaletteSearch.ts`): a Turkish locale would fold 'I' to 'ı' and
-  // lose the highlight on every label containing an 'I'.
-  const needle = query.trim().toLowerCase();
-  const lowered = text.toLowerCase();
-  const at = needle ? lowered.indexOf(needle) : -1;
-  // Lower-casing can change length (e.g. 'İ'), so a slice by the needle's
-  // length is only safe when the haystack kept its length.
-  if (at < 0 || lowered.length !== text.length) return <>{text}</>;
+  const needle = query.trim();
+  if (!needle) return <>{text}</>;
+  // Match the source text itself rather than a lower-cased copy: lower-casing
+  // can change a string's length ('İ' becomes two code units), which would
+  // shift every offset after it. The `iu` flags use Unicode's locale-free case
+  // folding, so a Turkish locale cannot lose the 'I' in 'IFC' either.
+  const hit = new RegExp(needle.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&'), 'iu').exec(text);
+  if (!hit) return <>{text}</>;
+  const at = hit.index;
+  const end = at + hit[0].length;
   return (
     <>
       {text.slice(0, at)}
-      <mark data-match="" className="bg-transparent font-semibold text-active">{text.slice(at, at + needle.length)}</mark>
-      {text.slice(at + needle.length)}
+      <mark data-match="" className="bg-transparent font-semibold text-active">{text.slice(at, end)}</mark>
+      {text.slice(end)}
     </>
   );
 }

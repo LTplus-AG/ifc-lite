@@ -229,8 +229,17 @@ test('persistent bulk editor reconciles a removed model before querying and appl
   assert.ok([...document.querySelectorAll('[role="combobox"]')].some(p => p.textContent === 'b'));
   click(button('Construction stage preset')); await advance(0);
   const value = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(value); typeInto(value, '6');
-  // Reopening first reconciles selectedModelId, then resolves B's query and clears computing.
+  // The stage preset intentionally switches to Selection. With nothing selected
+  // it must refuse; use the real source control to resume this Query scenario.
   const applyButton = () => [...document.querySelectorAll('button')].find(p => p.textContent?.includes('Apply to'));
+  const source = document.querySelector<HTMLElement>('[role="combobox"][aria-label="Target source"]');
+  assert.ok(source); assert.equal(source.textContent, 'Selection');
+  assert.equal(applyButton()?.disabled, true);
+  activate(source); await advance(0);
+  const query = [...document.querySelectorAll('[role="option"]')].find(p => p.textContent === 'Query');
+  assert.ok(query); click(query); await advance(0);
+  assert.equal(source.textContent, 'Query');
+  // Reopening first reconciles selectedModelId, then resolves B's query and clears computing.
   await waitFor(() => applyButton()?.disabled === false, 'B query resolves and enables Apply');
   const apply = applyButton(); assert.ok(apply && !apply.disabled);
   assert.match(apply.textContent ?? '', /Apply to 1 entit/);

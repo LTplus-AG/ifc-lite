@@ -119,7 +119,8 @@ test('#8947 invalid widget has visible error, and closing/reopening after repair
   render(<Switch />);
   click(button('alpha · dock.left')); await settle();
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Widget/);
-  click(button('Close')); await settle(); add(host, 'alpha');
+  click(button('Close')); await settle();
+  act(() => add(host, 'alpha')); await settle();
   click(button('alpha · dock.left')); await settle();
   assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Body alpha/);
   act(() => changeHost?.()); await settle();

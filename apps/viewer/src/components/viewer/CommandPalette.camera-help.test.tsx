@@ -29,6 +29,8 @@ const previousConstants = new Map(Object.keys(buildConstants).map(key =>
   [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 const initial = useViewerStore.getState();
 const hosts: ReturnType<typeof mountDestinations>[] = [];
+const cameras: Camera[] = [];
+function createCamera() { const camera = new Camera(); cameras.push(camera); return camera; }
 beforeEach(async () => {
   for (const [key, value] of Object.entries(buildConstants)) {
     Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
@@ -38,6 +40,10 @@ beforeEach(async () => {
 afterEach(async () => {
   try {
     cleanup();
+    // #8947: these tests own cameras without a viewport update loop. The
+    // availability case starts a real tween; retire it so its RAF completion
+    // waiter cannot outlive the test after the component has unmounted.
+    for (const camera of cameras.splice(0)) camera.reset();
     await advance(0); // Drain Radix deferred focus cleanup before disposing hosts.
     for (const host of hosts.splice(0)) await host.dispose();
   } finally {
@@ -53,7 +59,7 @@ for (const [name, direction] of [
   ['front-top', { x: 0, y: 1, z: 1 }],
   ['back-left-bottom', { x: -1, y: -1, z: -1 }],
 ] as const) test(`#8947 palette ${name} preset reaches the real renderer camera`, async () => {
-  const camera = new Camera();
+  const camera = createCamera();
   const bounds = { min: { x: -5, y: 0, z: -5 }, max: { x: 5, y: 10, z: 5 } };
   let now = 1_000;
   mock.method(Date, 'now', () => now);
@@ -84,7 +90,7 @@ test('#8947 edge presets explain missing model and camera, then recover while pa
   act(() => useViewerStore.setState({ models, ifcDataStore: data }));
   assert.equal(destinationOption(id).getAttribute('aria-disabled'), 'true');
   assert.match(destinationOption(id).textContent ?? '', /camera/i);
-  const camera = new Camera();
+  const camera = createCamera();
   act(() => useViewerStore.setState({ cameraCallbacks: {
     setPresetDirection: value => camera.setPresetDirection(value, { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }),
   } }));

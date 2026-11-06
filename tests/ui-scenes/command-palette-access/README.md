@@ -586,3 +586,35 @@ now read the actual chooser input attribute and assert the same file type;
 activation, chooser events, and real install flow remain required. The original
 run is preserved. A passing initial adapter probe does not prove all subsequent
 viewer contexts work. R2 remains unaccepted.
+
+### Runtime repair diagnosis, 6 November
+
+The original NVIDIA sequence finished **8 passed / 14 failed / 0 skipped**.
+Matrix, context, and flow capture phases did not run after the failed E2E gate.
+The owned Chrome profile was removed and no cleanup error was recorded. Ten
+failures were identified as test-contract defects: three chooser assertions,
+one bulk-editor role, and six exact-result counts that predated the new real
+class-visibility destination. The revised `annot` oracle still requires exact
+membership and ordering: Annotate, Annotations, then `elements:class-filter`;
+it does not permit unrelated fuzzy matches. The remaining four failures need
+GPU/context diagnosis. No visual acceptance follows from this run.
+
+On source `e59ec98acb`, the actual two-second CPU diagnostic of the verified
+camera/help test child identified the recurring `camera-animation.ts` →
+`requestAnimationFrame` completion waiter. The availability test owned a Camera
+without a viewport update loop and never retired its active tween. Test cleanup
+now calls the real Camera reset on every owned camera, then drains deferred
+callbacks. This disposes a specific owner; it does not globally cancel timers
+or force successful process exit. The original child was terminated after
+532 seconds (declared test timeout: 120 seconds), freeing its 1,201,684,480-byte
+RSS and allowing the unchanged root runner to continue. The original run stays
+failed; natural completion must be proven on the corrected source. Compact
+evidence: `palette-camera-e59-cpu-diagnostic-fd0b1714.json` and
+`palette-camera-e59-timeout-fd0b1714.json` in coordinator scratch.
+
+Fresh Astra review also established that Construction stage preset switches
+to Selection. The removed-model query regression now asserts empty-selection
+refusal, explicitly chooses Query through the real source control, then keeps
+its one-target integer mutation and old-model nonmutation oracles. Dock repair
+now commits the subscribed registry refresh inside React act before activating
+the new launcher. All these corrections await runtime qualification.

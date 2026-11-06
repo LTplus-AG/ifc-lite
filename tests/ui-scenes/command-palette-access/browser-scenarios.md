@@ -8,12 +8,13 @@ Status: authored, browser execution UNRUN. This finite representative set is not
 ALL-feature acceptance, a substitute for semantic inventory reconciliation, or
 proof of the existing unit cases. The unchanged #8946 general UX spec has 11
 previously accepted scenarios on the earlier source; all 11 must run again on
-the candidate alongside these eight access scenarios and the installed-extension scenario.
+the candidate alongside these ten access scenarios and the installed-extension scenario.
 
 | Access case | Context | Observable contract |
 | --- | --- | --- |
 | Refusal and Settings (2) | unloaded desktop/light and narrow/dark | Hide has a described reason, clicking it keeps palette open; keyboard Privacy and Display requests select actual tabs; privacy switch changes |
 | Open and Add (2) | desktop keyboard and narrow pointer | actual native filechooser event for each command, multi-file IFC accept; cancel without substituted files |
+| Quick search (2) | desktop/light and narrow/dark | native Tab/Space/Enter, parsed-model selection cycling, recent query reuse/clear, advanced Filter, colorful theme on/off |
 | Loaded tools (1) | bundled building-architecture IFC, desktop/light, unselected then selected | disabled Hide becomes executable with canonical selection; resident real wall hidden in renderer visibility; Bulk target-source UI, class switch, Angle toolbar, Point/List/Qty tabs |
 | Blank (1) | empty desktop/light with real WebGPU | canonical parser creates project/storey; actual Model wall rail pressed and wall.place session; replacement refused |
 | Camera (1) | real IFC desktop/light | edge/corner/edge changes actual renderer view-projection; returning to edge reproduces matrix after animation settles |
@@ -107,33 +108,92 @@ pnpm exec playwright test --project=viewer-e2e-ci --list \
   tests/e2e/command-palette-access-extension.e2e.spec.ts
 ```
 
-Expect 22 tests (11 frozen UX + 10 access + 1 extension). After the matching
-artifact is available, coordinator owns the preview and browser lifetimes. Choose a free PLAYWRIGHT_PORT and verify server
-ownership and dist hash: the standard config may reuse an existing server.
-For PC real GPU correctness use ifc-gpu-check, never a plain WSL browser launch.
-Both new access specs attach directly when IFC_GPU_CDP_URL is present. The old UX
-spec is unchanged and needs the existing attaching preload too:
-`/home/louistrue/.t3/scratch/palette-ux-evidence-fd0b1714/attach-gpu-root.mjs`.
-It imports this checkout's Playwright and redirects launch to the managed CDP
-endpoint. Verify that path/dependency identity before use; its sibling attach-gpu
-points to an older managed checkout and must not be borrowed blindly.
+Expect 22 tests (11 frozen UX + 10 access + 1 extension). The portable runner
+below replaces the machine-specific scratch preload recipe. It does not build,
+install dependencies, enter admission, modify specs or change assertions.
+Browser execution and physical GPU qualification remain **UNRUN** by its author.
+Access R2 remains **UNACCEPTED** until the coordinator runs and reviews it.
 
-From this checkout, after the coordinator has arranged the matching preview:
+### Portable runner: matching root artifacts required
 
-```sh
-~/build-workers/ifc-gpu-check -- bash -c '
-  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import=/home/louistrue/.t3/scratch/palette-ux-evidence-fd0b1714/attach-gpu-root.mjs"
-  pnpm exec playwright test --project=viewer-e2e-ci --workers=1 \
-    tests/e2e/command-palette-ux.e2e.spec.ts tests/e2e/command-palette-access.e2e.spec.ts \
-    tests/e2e/command-palette-access-extension.e2e.spec.ts \
-    --reporter=json
-'
+Use the root validation script above first. Reconcile its original receipt,
+including failures and skips; never replay a queued/unknown job. On the execution
+host, provide a JSON build receipt with these fields, transcribed from the actual
+successful root build and linked validation evidence:
+
+```json
+{
+  "sourceSha": "FULL_40_CHARACTER_SOURCE_SHA",
+  "sourceTree": "GIT_HEAD_TREE",
+  "command": ["pnpm", "build:e2e"],
+  "exit": 0,
+  "dist": "/absolute/current-workspace/apps/viewer/dist",
+  "distIndexSha256": "SHA256_OF_ACTUAL_INDEX_HTML",
+  "rootValidationReceipt": "/absolute/original/root-validation-receipt.json"
+}
 ```
 
-Set PLAYWRIGHT_JSON_OUTPUT_FILE to an owned evidence path beforehand. Do not
-nest GPU helpers, inherit another owner's browser, or run this against a stale
-artifact. Report host, source/artifact hash, adapter, exits, all 22 outcomes,
-skips and pageerrors; GPU checks are untimed correctness, never perf proof.
+This is a checked evidence link, not proof inferred from a filename: preserve the
+original receipt/logs establishing that the root build produced this artifact.
+The runner checks the exact expected SHA against Git HEAD, tree, actual dist path
+and index bytes against this receipt, and hashes both receipts. It records the
+observed worktree/diff and rejects unrelated dirty files. Commit the candidate
+before building; only these runner/setup documentation files may be dirty.
+The runner does not interpret the entire fleet receipt schema or certify the
+root validation gates. An external `--dist` is allowed only with the same matching
+receipt checks; never borrow an older similarly named artifact.
+
+Run inside **one** existing `ifc-gpu-check` invocation. If already inside the
+helper, execute only the `node ...` command; never nest admission. Use `--limit 30`
+or `--limit 60` for bounded untimed correctness, not benchmarks. Choose a new
+absolute evidence directory outside the checkout (the runner creates it
+exclusively). Root dependencies and built extension packer/loader must exist.
+
+```sh
+~/build-workers/ifc-gpu-check --limit 60 -- \
+  node tests/ui-scenes/command-palette-access/run-browser.mjs \
+  --expected-source "$ACCESS_SOURCE" --build-receipt "$ACCESS_BUILD_RECEIPT" \
+  --out "$ACCESS_EVIDENCE" --mode all
+```
+
+Modes `e2e`, `matrix`, `contexts`, and `flows` can run separately with different
+owned output directories so the coordinator can inspect failures before the next
+step. `all` runs in that order and stops on the first failed required step. A
+capture process retains its existing per-scene behavior, including recording its
+own failures. Neither a failed step nor an omitted mode counts as acceptance.
+
+On PC, the runner uses helper-provided `IFC_GPU_CDP_URL`. It disconnects clients;
+the helper retains browser ownership. On Pop without that URL, it starts its own
+persistent Linux browser/profile with CDP port zero, reads DevToolsActivePort,
+and removes only that profile after closing its owner context. It discovers the
+newest executable under `$HOME/.t3/tools/chrome-headless-shell/linux64/*/`, or
+accepts `--chrome /absolute/executable` / `IFC_GPU_CHROME_PATH`. Helper-provided
+`IFC_GPU_CHROME_ARGS` is required (whitespace-separated flags or a JSON array);
+software-renderer and profile/CDP-ownership overrides are rejected. A secure
+loopback-origin probe checks the actual adapter information, non-fallback status
+and GPU green-pixel readback before acceptance starts. This must succeed on the
+coordinator's actual host before reporting physical GPU success.
+
+`attach-gpu.mjs` resolves this checkout's Playwright and redirects the unchanged
+UX spec's `chromium.launch` to the exact CDP endpoint. The runner appends this
+preload to inherited `NODE_OPTIONS`. In installed Playwright 1.64, CDP
+`browser.close()` closes the connection transport; it does not terminate the
+helper browser. No existing scratch helper or hardcoded PC checkout is used.
+
+The temporary Playwright config imports the root config, keeps `viewer-e2e-ci`,
+uses workers=1 and the JSON reporter, preserves attachments/failure traces, and
+lets Playwright own preview startup/teardown. It selects an unused port, enforces
+`--strictPort` and `reuseExistingServer: false`, and serves the exact receipt's
+dist. A port race fails instead of borrowing a foreign server. Capture commands
+use their unchanged strict-port preview lifecycle and receive explicit `--cdp`
+on both hosts. No build graph is invoked by the runner.
+
+Retain `manifest.json`, `e2e.json`, `test-results/`, command logs, and each capture
+subdirectory. The compact runner manifest records host, observed source/tree/diff,
+artifact/receipt hashes, adapter proof, argv/exits, all test outcomes/attachments,
+skips, completed modes, not-run modes and partial failure. Exactly 22 passing
+cases without skips and 12 exact scene/theme pairs in each requested capture mode
+are required. A discovery or syntax pass is not a browser acceptance result.
 
 ## Frozen comparisons and new flow captures
 
@@ -179,3 +239,13 @@ They do not prove withheld-consent enforcement or same-frame stale callback reje
 Two additional desktop/light and narrow/dark journeys cover search:inline from
 the actual palette, native Tab/Space/Enter, real model selection cycling, recent
 query reuse/clear, advanced Filter and pref:colorful on/off. Both remain UNRUN.
+
+When using a managed built checkout that still has an original validation owner,
+keep its source untouched. Run these three runner files from a separate owned
+helper directory and pass `--checkout /absolute/managed/checkout`. The checkout's
+HEAD/tree must match the recorded root build; runner file hashes and location are
+recorded independently. This allows read-only browser evidence after the build
+phase while full tests continue, without copying new source into an active job.
+The helper directory still needs access to this toolchain's installed Playwright;
+use the registered workspace dependency, never install a second version ad hoc.
+The generated Playwright preview explicitly uses the checkout as its cwd.

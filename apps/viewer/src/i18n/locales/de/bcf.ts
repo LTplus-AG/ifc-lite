@@ -139,6 +139,8 @@ export const bcfDe = {
   "bcf.resultChrome.filtered": "Keine Themen entsprechen diesem Statusfilter",
   "bcf.topicList.newTopicAria": "Neues Thema",
   "bcf.topicList.noTopics": "Keine Themen",
+  "bcf.topicList.emptyDescription": "Ein Thema hält ein Problem mit Ansichtspunkt, Kommentaren und Status fest.",
+  "bcf.topicList.authorNotSet": "Nicht festgelegt",
   "bcf.topicList.emailAuthorshipLabel": "Ihre E-Mail für die BCF-Autorschaft",
   "bcf.topicList.authorLabel": "Autor",
   "bcf.topicList.editAuthorEmailAria": "E-Mail des Autors bearbeiten",

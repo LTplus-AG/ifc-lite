@@ -79,7 +79,7 @@ export function MeasurementList() {
   // nothing left to finish, and on a focused button it would delete the
   // measurement just taken. A row that goes away without focus (Enter or Esc
   // from the canvas, a click that did not focus the button) moves nothing.
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLFieldSetElement>(null);
   // A focused row is a named group, "Poly #2 · Length 5.000 m", so a screen
   // reader says what Finish recorded. Named by its own label and value.
   const rowName = useId();

@@ -54,12 +54,14 @@ function stream(scene: Scene, meshes: MeshData[]): void {
   scene.appendToBatches(meshes, device, pipeline, true);
 }
 
+/** The streaming fragment that draws `expressId`. */
 function fragmentHolding(scene: Scene, expressId: number): BatchedMesh {
   const fragment = scene.getBatchedMeshes().find((batch) => batch.expressIds.includes(expressId));
   assert.ok(fragment, `a streaming fragment draws entity ${expressId}`);
   return fragment;
 }
 
+/** The ids the partial batch for `visible` would draw, as the render loop requests it. */
 function partialIds(scene: Scene, fragment: BatchedMesh, visible: number[]): number[] {
   const partial = scene.getOrCreatePartialBatch(
     `${fragment.colorKey}:${fragment.id}`, fragment.colorKey, new Set(visible), device, pipeline,
@@ -67,6 +69,7 @@ function partialIds(scene: Scene, fragment: BatchedMesh, visible: number[]): num
   return partial ? [...new Set(partial.expressIds)].sort((a, b) => a - b) : [];
 }
 
+/** Isolate one id, then hide it and keep its same-fragment neighbour. */
 function assertSubsetsDraw(scene: Scene, isolated: number, neighbour: number): void {
   assert.strictEqual(scene.hasStreamingFragments(), true, 'still streaming: the fragment path is live');
   const fragment = fragmentHolding(scene, isolated);

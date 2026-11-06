@@ -49,6 +49,7 @@ function rig(tool: string, pickedId: number | null = null) {
     pick: async () => pickedId === null ? null : { expressId: pickedId },
     pickRect: async () => [],
     raycastScene: () => null,
+    getPickClipRevision: () => 0, // the measure pass reads it on a rubber-band move (#8886, #8992)
     raycastSceneMagnetic: (x: number) => ({
       intersection: { point: { x: x / 100, y: 0, z: 0 } },
       snapTarget: null,

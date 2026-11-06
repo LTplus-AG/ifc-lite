@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 
 /** Point mode is live: the Measure tool is open in Point mode. A hover frame queued before a mode or tool switch lands as a no-op. */
@@ -91,6 +92,7 @@ function cancelTrailingHover(ctx: MouseHandlerContext): void {
  */
 export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: number): void {
   cancelTrailingHover(ctx);
+  noteMeasureCursor(ctx, { x, y, orthogonal: false });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
     trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {

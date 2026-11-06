@@ -59,12 +59,14 @@ interface Painted {
   background: string;
   backgroundImage: string;
   borderLeft: string;
+  /** The `::before` fill (the palette row's focus bar is a pseudo-element). */
+  before: string;
   /** Opaque composited colours, [r, g, b]. */
   surface: number[];
   ink: number[];
   /** The composited surface behind the element (its parent's paint). */
   behind: number[];
-  /** The left border composited over the element's own surface. */
+  /** The `::before` bar composited over the surface behind the element. */
   bar: number[];
 }
 
@@ -113,16 +115,18 @@ async function paint(theme: Theme, bodyHtml: string, selectors: Record<string, s
         const el = document.querySelector(selector);
         if (!el) throw new Error(`no element for ${name} (${selector})`);
         const style = getComputedStyle(el);
+        const before = getComputedStyle(el, '::before').backgroundColor;
         const surface = surfaceOf(el);
         out[name] = {
           color: style.color,
           background: style.backgroundColor,
           backgroundImage: style.backgroundImage,
           borderLeft: style.borderLeftColor,
+          before,
           surface,
           ink: over(style.color, surface),
           behind: surfaceOf(el.parentElement),
-          bar: over(style.borderLeftColor, surfaceOf(el.parentElement)),
+          bar: over(before, surfaceOf(el.parentElement)),
         };
       }
       return out as Record<string, Painted>;
@@ -263,7 +267,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       });
       assertTokensPaint(p, theme);
       assert.equal(p.row.background, p.refActiveSurface.background, `focused row in ${theme} paints the active surface`);
-      assert.equal(p.row.borderLeft, p.refActive.borderLeft, `focused row in ${theme} paints the active bar`);
+      assert.equal(p.row.before, p.refActive.borderLeft, `focused row's leading bar in ${theme} paints the active ink`);
       assert.equal(p.match.color, p.refActive.color, `matched text in ${theme} paints the active ink`);
       assertClears('focused row active bar', ratio(p.row.bar, p.row.behind), AA_NON_TEXT, theme);
       assertClears('matched text on the focused row', ratio(p.match.ink, p.match.surface), AA_TEXT, theme);

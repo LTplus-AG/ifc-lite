@@ -30,7 +30,8 @@ const cursors = new WeakMap<object, MeasureCursor>();
  * cursor leaving the canvas keeps it: the rubber band stays drawn there while
  * the cursor reaches the toolbar's Snap toggle, and Point mode drops its Live
  * reading on leave anyway. So does a navigation press's move within its click
- * slop, which moves neither the view nor the preview.
+ * slop, which has not panned or orbited; a fly look under it turns the view,
+ * which the re-pick's view check catches.
  */
 export function noteMeasureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef'>, cursor: MeasureCursor | null): void {
   if (cursor) cursors.set(ctx.measureRaycastFrameRef, cursor);

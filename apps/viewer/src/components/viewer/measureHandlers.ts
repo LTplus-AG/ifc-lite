@@ -135,7 +135,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     ? { edge: null, meshExpressId: null, lockStrength: 0 }
     : ctx.edgeLockStateRef.current;
 
-  const result = renderer.raycastSceneMagnetic(x, y, {
+  const pick = (reduced: boolean) => renderer.raycastSceneMagnetic(x, y, {
     edge: currentLock.edge,
     meshExpressId: currentLock.meshExpressId,
     lockStrength: currentLock.lockStrength,
@@ -143,8 +143,11 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
     // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
-    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced: reduceComplexity }),
+    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced }),
   });
+  let result = pick(reduceComplexity);
+  // The release picks with the full options: a miss is shown only where a click would miss too (#9049)
+  if (reduceComplexity && !result.intersection && !result.snapTarget) result = pick(false);
 
   // Track raycast duration for adaptive throttling
   ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;

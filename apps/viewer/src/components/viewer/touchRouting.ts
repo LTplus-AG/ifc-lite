@@ -120,8 +120,9 @@ export function routeMousePointers(
       else gate.held = { e, timer: setTimeout(runHeld, 0) };
     },
     move: (e) => {
-      // A Measure preview follows only the moves its own handlers note again (#8992); a press within
-      // its click slop has moved neither the view nor the preview (#9022)
+      // A Measure preview follows only the moves its own handlers note again (#8992). A navigation press
+      // within its click slop has not panned or orbited (#9022); a fly look that turned the view is
+      // caught by the re-pick's view check
       const measure = measureContexts.get(canvas)?.ctx;
       const press = measure?.mouseState;
       if (measure && !(press?.isDragging && !press.didDrag && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
@@ -222,7 +223,8 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
     // A command's preview frame is its own
     else if (prev.snapEnabled !== state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapToggle(ctx, state.snapEnabled);
   });
-  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.type === 'keydown'); };
+  // The event's modifier state, so releasing one Shift key with the other held keeps the axis
+  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.shiftKey); };
   window.addEventListener('keydown', onShift);
   window.addEventListener('keyup', onShift);
   const stop = () => {

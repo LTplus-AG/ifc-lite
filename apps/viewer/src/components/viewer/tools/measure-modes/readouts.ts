@@ -81,8 +81,8 @@ export interface MeasureHintState {
 
 /**
  * Tap wording for the hints a tap can act on (#8879): no click, Shift, Esc or
- * Enter, none of which a touch user has. Polyline and Radius in progress keep
- * their mouse wording until touch has a way to finish them.
+ * Enter, none of which a touch user has. Polyline and Radius in progress name
+ * the ✓ in List, touch's finish (#8991).
  */
 const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
   'measure.hint.dragStart': 'measure.hint.dragStartTouch',
@@ -91,6 +91,8 @@ const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
   'measure.hint.pointActive': 'measure.hint.pointActiveTouch',
   'measure.hint.polylineStart': 'measure.hint.polylineStartTouch',
   'measure.hint.radiusStart': 'measure.hint.radiusStartTouch',
+  'measure.hint.polylineActive': 'measure.hint.polylineActiveTouch',
+  'measure.hint.radiusActive': 'measure.hint.radiusActiveTouch',
   'measure.hint.faces.first': 'measure.hint.faces.firstTouch',
   'measure.hint.faces.second': 'measure.hint.faces.secondTouch',
   'measure.hint.edges.firstStart': 'measure.hint.edges.firstStartTouch',

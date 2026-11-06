@@ -11,7 +11,7 @@
  * not part of the viewer's boot bundle.
  */
 
-import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory, suggestStorey } from '@ifc-lite/create';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, type StoreyOp } from '@/store/slices/mutation-storey';
@@ -22,7 +22,7 @@ import { normalizeMutationModelId } from './mutation-view.js';
 type Methods = ReturnType<typeof createModellingStoreBackend>;
 
 export type StoreyMethods = Required<Pick<Methods,
-  'listStoreyLevels' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'>>;
+  'listStoreyLevels' | 'suggestStorey' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'>>;
 
 export function storeyMethods(store: StoreApi): StoreyMethods {
   const inventory = (modelId: string) => {
@@ -42,6 +42,7 @@ export function storeyMethods(store: StoreApi): StoreyMethods {
   const refs = (modelId: string, ids: readonly number[]): EntityRef[] => [...new Set(ids)].map((expressId) => ({ modelId, expressId }));
   return {
     listStoreyLevels: (modelId) => storeyRows(store.getState(), normalizeMutationModelId(store.getState(), modelId)),
+    suggestStorey: (modelId, referenceStoreyId, side) => suggestStorey(inventory(modelId), referenceStoreyId, side, (index) => `Level ${index}`),
     addStorey(modelId, params) {
       const { normalized, outcome } = commit('addStorey', modelId, { kind: 'add', params });
       if (outcome.storeyId === null) throw new Error('bim.store.addStorey: the storey was not written');

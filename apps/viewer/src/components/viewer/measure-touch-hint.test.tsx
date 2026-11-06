@@ -79,6 +79,22 @@ describe('the input assumed before any is seen (#8879)', () => {
     assert.equal(initialPointerInput(media(false)), 'mouse');
   });
 
+  it('by default it asks the global matchMedia for a coarse pointer', () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, 'matchMedia');
+    const asked: string[] = [];
+    Object.defineProperty(globalThis, 'matchMedia', {
+      configurable: true, writable: true,
+      value: (query: string) => { asked.push(query); return { matches: true }; },
+    });
+    try {
+      assert.equal(initialPointerInput(), 'touch');
+      assert.deepEqual(asked, ['(pointer: coarse)']);
+    } finally {
+      if (real) Object.defineProperty(globalThis, 'matchMedia', real);
+      else delete (globalThis as { matchMedia?: unknown }).matchMedia;
+    }
+  });
+
   it('no matchMedia, or one that throws, starts as mouse', () => {
     assert.equal(initialPointerInput(undefined), 'mouse');
     assert.equal(initialPointerInput(() => { throw new Error('unsupported'); }), 'mouse');

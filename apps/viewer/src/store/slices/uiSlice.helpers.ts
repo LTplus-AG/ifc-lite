@@ -15,7 +15,7 @@ const PERFORMANCE_STATS_KEY = 'ifc-lite:show-performance-stats';
  * the last input actually used replaces it, so a hybrid device follows use.
  */
 export function initialPointerInput(media: ((query: string) => { matches: boolean }) | undefined =
-  typeof matchMedia === 'function' ? matchMedia : undefined): PointerInput {
+  typeof matchMedia === 'function' ? (query) => matchMedia(query) : undefined): PointerInput {
   try {
     return media?.('(pointer: coarse)').matches ? 'touch' : 'mouse';
   } catch {

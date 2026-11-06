@@ -12,7 +12,7 @@ import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines';
 import { selectedCentrelineSnapCurves } from '@/lib/analytic/selected-centreline-snaps';
 import { setSourceSegmentScreenProbe } from '@/lib/viewport-debug-hooks';
-import { selectedSweptDiskProducts, useSelectedSweptDisks, type SelectedSweptDisksState } from './useSelectedSweptDisks';
+import { selectedSweptDiskProducts, useSelectedSweptDisks } from './useSelectedSweptDisks';
 
 /**
  * The selection order moves the primary product first, so the same curves can
@@ -44,7 +44,8 @@ export function useCentrelineRendererOverlay(
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
   const models = useViewerStore((state) => state.models);
-  const legacyStore = useViewerStore((state) => state.ifcDataStore);
+  // In a federation `ifcDataStore` only mirrors the active model; it is the curves' source only without one.
+  const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
   const placement = useViewerStore((state) => state.modelPlacement);
   const georefMutations = useViewerStore((state) => state.georefMutations);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
@@ -64,10 +65,6 @@ export function useCentrelineRendererOverlay(
   const installedCurves = useRef<readonly SourceSnapCurve[]>([]);
   /** The inputs that place the curves, as the last layout pass saw them (#9086). */
   const lastFrame = useRef<readonly unknown[] | null>(null);
-  /** The swept-disk query inputs `selected` answers; see the build below. */
-  const selectedQuery = useRef<{ selected: SelectedSweptDisksState; query: readonly unknown[] } | null>(null);
-  const query = [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
-    hidden, isolated, classFilter, lensHidden];
   const installCurves = (renderer: Renderer | null | undefined, curves: readonly SourceSnapCurve[]) => {
     const next = [...curves].sort(bySourceIdentity);
     const held = installedCurves.current;
@@ -108,14 +105,13 @@ export function useCentrelineRendererOverlay(
     let active = true;
     const epoch = sourceEpoch.current;
     renderer.setLineOverlay('centreline', null);
-    // This effect also re-runs for a highlight, model, placement or georef
-    // change while `selected` still answers an older selection; a newer
-    // `selected` is on its way, so building the old products would install
-    // curves the selection dropped or a model replaced.
-    if (selectedQuery.current?.selected !== selected) selectedQuery.current = { selected, query };
-    const current = sameValues(selectedQuery.current.query, query);
+    // This effect also re-runs for a highlight or model change while
+    // `selected` still answers an older query; a newer `selected` is on its
+    // way, so building the old records would install curves the selection
+    // dropped or a model replaced.
+    const current = () => selected.current?.() ?? true;
     // A pending rebuild keeps the curves the selection still shows (#9086).
-    if (!enabled || (current && !selected.loading && selected.items.length === 0)) installCurves(renderer, []);
+    if (!enabled || (current() && !selected.loading && selected.items.length === 0)) installCurves(renderer, []);
     if (!enabled) lastNotice.current = null;
     const report = (messages: readonly string[]) => {
       if (messages.length === 0) return;
@@ -126,15 +122,15 @@ export function useCentrelineRendererOverlay(
       if (messages.length > 10) console.warn(`[ifc-lite] ${messages.length - 10} additional centreline diagnostics omitted from the console`);
       toast.error(t('ribbon.view.centrelineOmitted', { reason: messages[0]?.slice(0, 240) ?? '' }));
     };
-    if (enabled && current && !selected.loading && selected.items.length > 0) {
+    if (enabled && current() && !selected.loading && selected.items.length > 0) {
       const state = useViewerStore.getState();
       void lineBuilder(selected.items, state, highlightedSegment).then(async ({ vertices, diagnostics, renderedOccurrences }) => {
-        if (!active || epoch !== sourceEpoch.current) return;
+        if (!active || epoch !== sourceEpoch.current || !current()) return;
         const snapDiagnostics: string[] = [];
         const curves = vertices.length > 0
           ? await selectedCentrelineSnapCurves(selected.items, state, highlightedSegment, renderedOccurrences,
             (message) => snapDiagnostics.push(message)) : [];
-        if (!active || epoch !== sourceEpoch.current) return;
+        if (!active || epoch !== sourceEpoch.current || !current()) return;
         report(selected.error ? [selected.error, ...diagnostics, ...snapDiagnostics] : [...diagnostics, ...snapDiagnostics]);
         if (vertices.length === 0) { installCurves(renderer, []); return; }
         const uploaded = runGpuUpload('setLineOverlay:centreline', () => {
@@ -155,11 +151,11 @@ export function useCentrelineRendererOverlay(
         }
         else renderer.setLineOverlay('centreline', null);
       }).catch((error: unknown) => {
-        if (!active || epoch !== sourceEpoch.current) return;
+        if (!active || epoch !== sourceEpoch.current || !current()) return;
         installCurves(renderer, []);
         report([`Could not draw selected centreline: ${String(error)}`]);
       });
-    } else if (enabled && current && selected.error) {
+    } else if (enabled && current() && selected.error) {
       report([selected.error]);
     }
     return () => {

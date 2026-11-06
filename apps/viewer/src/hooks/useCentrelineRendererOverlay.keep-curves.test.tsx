@@ -5,10 +5,11 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { RefObject } from 'react';
 import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
+import { toast } from '@/components/ui/toast.js';
 import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
 import { entityRefToString, useViewerStore, type ViewerState } from '@/store/index.js';
@@ -50,6 +51,7 @@ const curveKey = (curves: readonly SourceSnapCurve[]) => curves
 
 let prior: ViewerState;
 const originalGet = selectedSweptDiskCache.get;
+const originalToast = toast.error;
 /** Every curve set the overlay handed the renderer, in order. */
 let held: string[];
 let builds: number;
@@ -58,6 +60,10 @@ let gate: Promise<void> | null;
 let emptyBuild: boolean;
 /** A swept-disk load that includes product 3 waits on this gate when one is set. */
 let loadGate: Promise<void> | null;
+/** Failure injection: the line build rejects, the GPU upload throws, the swept-disk load rejects. */
+let fail: { build: boolean; upload: boolean; load: boolean };
+/** Bumps the overlay's recoveryEpoch, as a GPU device recovery does. */
+let recover: () => void;
 
 const current = () => held[held.length - 1];
 /** The curve sets the renderer held from `from` on. */
@@ -76,6 +82,7 @@ const lineBuilder: typeof selectedCentrelineWorldLines = async (items) => {
   builds++;
   const wait = gate;
   if (wait) await wait;
+  if (fail.build) throw new Error('line build failed');
   return lines(items);
 };
 
@@ -126,12 +133,16 @@ function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
   useViewerStore.setState({ ...fixtureModels(sourceModel()), centrelineOverlayEnabled: true, ...select(ids),
     toGlobalId: (_modelId, expressId) => OFFSET + expressId, ...patch });
   const renderer = {
-    setLineOverlay: () => undefined,
+    setLineOverlay: (_channel: string, value: unknown) => {
+      if (fail.upload && value !== null) throw new Error('device lost');
+    },
     setSourceSnapCurves: (curves: readonly SourceSnapCurve[]) => { held.push(curveKey(curves)); },
   } as unknown as Renderer;
   const ref: RefObject<Renderer | null> = { current: renderer };
   const Overlay = () => {
-    useCentrelineRendererOverlay(ref, true, 0, lineBuilder);
+    const [epoch, setEpoch] = useState(0);
+    recover = () => setEpoch((value) => value + 1);
+    useCentrelineRendererOverlay(ref, true, epoch, lineBuilder);
     return null;
   };
   render(<Overlay />);
@@ -147,11 +158,15 @@ beforeEach(() => {
   gate = null;
   emptyBuild = false;
   loadGate = null;
+  fail = { build: false, upload: false, load: false };
+  recover = () => { throw new Error('the overlay is not mounted'); };
+  toast.error = () => undefined;
   selectedSweptDiskCache.get = async (_model, ids) => {
     const wait = ids.includes(3) ? loadGate : null;
     if (wait) await wait;
+    if (fail.load) throw new Error('swept-disk decode failed');
     return new Map(ids.flatMap((id) => {
-    const source = SOURCES.get(id);
+      const source = SOURCES.get(id);
       return [[id, source ?? { occurrences: [], diagnostics: [] }] as const];
     }));
   };
@@ -160,6 +175,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   selectedSweptDiskCache.get = originalGet;
+  toast.error = originalToast;
   useViewerStore.setState(prior);
 });
 
@@ -308,7 +324,7 @@ it('a late build for a superseded selection never installs its dropped product (
   assert.ok(sinceSome(from).every((set) => set === ONE), 'product 3 was never snappable once deselected');
 });
 
-it('a highlight cleared by a switch does not rebuild the old product from the old query', async () => {
+it('a switch that also clears the highlight never reinstalls the deselected product', async () => {
   // Switching away from a highlighted product clears the highlight in a second
   // commit, which re-runs the build while the swept-disk query still answers
   // the old selection.
@@ -353,4 +369,94 @@ it('a new legacy store clears the curves of the old one before paint', async () 
   release();
   await settle();
   assert.equal(current(), `${legacyOne},${THREE}`);
+});
+
+it('a tree click that makes another federated model active keeps the curves (#9086)', async () => {
+  const other = fixtureModel('other', { idOffset: 2 * OFFSET });
+  Object.assign(other.ifcDataStore!, { source: { byteLength: 1 } });
+  other.geometryResult = geometry();
+  const model = sourceModel();
+  const from = await mountInstalled([1], ONE, { ...fixtureModels(model, other),
+    ifcDataStore: model.ifcDataStore, toGlobalId: (modelId, expressId) => (modelId === MODEL ? OFFSET : 2 * OFFSET) + expressId });
+  const before = builds;
+  // HierarchyPanel: Ctrl-add a product of the other model, which also makes that model active.
+  await commit({ selectedEntitiesSet: new Set([`${MODEL}:1`, 'other:2']), selectedEntity: { modelId: 'other', expressId: 2 },
+    selectedEntityIds: new Set([OFFSET + 1, 2 * OFFSET + 2]), selectedEntityId: 2 * OFFSET + 2,
+    activeModelId: 'other', ifcDataStore: other.ifcDataStore });
+  await settle();
+  assert.ok(builds > before, 'the overlay rebuilt for the new selection');
+  assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'the active model mirror does not move the curves');
+});
+
+it('a swept-disk result superseded in the same render by a model replacement is not built', async () => {
+  await mountInstalled([1], ONE);
+  let release: () => void = () => undefined;
+  loadGate = new Promise((resolve) => { release = resolve; });
+  await commit(select([1, 3]));
+  await settle();
+  const from = held.length;
+  let second: () => void = () => undefined;
+  await act(async () => {
+    // The load answering products 1 and 3 resolves and queues its result;
+    // before that result renders, the model is replaced under the same id.
+    release();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    loadGate = new Promise((resolve) => { second = resolve; });
+    flushSync(() => useViewerStore.setState(fixtureModels(sourceModel())));
+  });
+  await settle();
+  assert.ok(since(from).every((set) => set === ''), 'nothing from the replaced model installs while its reload is pending');
+  loadGate = null;
+  second();
+  await settle();
+  assert.equal(current(), `${ONE},${THREE}`);
+});
+
+it('a GPU recovery reinstalls the curves on the recovered device', async () => {
+  const from = await mountInstalled([1], ONE);
+  await act(async () => { recover(); await Promise.resolve(); });
+  await settle();
+  assert.ok(since(from).includes(''), 'the lost device\'s curves were dropped');
+  assert.equal(current(), ONE, 'the recovered device snaps to the selection again');
+});
+
+it('a rebuild that rejects, or whose GPU upload fails, clears the kept curves', async () => {
+  await mountInstalled([1], ONE);
+  fail.build = true;
+  await commit(select([1, 2]));
+  await settle();
+  assert.equal(current(), '', 'a failed build leaves nothing to snap to');
+  fail.build = false;
+  await commit(select([1]));
+  await settle();
+  assert.equal(current(), ONE);
+  fail.upload = true;
+  await commit(select([1, 2]));
+  await settle();
+  assert.equal(current(), '', 'curves without their drawn line are not snappable');
+});
+
+it('a swept-disk load that fails clears the kept curves', async () => {
+  await mountInstalled([1], ONE);
+  fail.load = true;
+  await commit(select([1, 2]));
+  await settle();
+  assert.equal(current(), '');
+});
+
+it('isolating or lens-hiding away the selected product clears its curves before paint', async () => {
+  await mountInstalled([1], ONE);
+  await commit({ isolatedEntities: new Set([OFFSET + 2]) });
+  assert.equal(current(), '', 'an isolated-out product cannot be snapped to');
+  await commit({ isolatedEntities: null });
+  await settle();
+  assert.equal(current(), ONE);
+  await commit({ lensHiddenIds: new Set([OFFSET + 1]) });
+  assert.equal(current(), '', 'a lens-hidden product cannot be snapped to');
+});
+
+it('unmounting the overlay clears its curves', async () => {
+  await mountInstalled([1], ONE);
+  cleanup();
+  assert.equal(current(), '');
 });

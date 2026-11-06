@@ -22,6 +22,11 @@ export interface SelectedSweptDisksState {
   items: SelectedSweptDisk[];
   loading: boolean;
   error: string | null;
+  /**
+   * False once a newer query (selection, visibility, highlight or models)
+   * has superseded the one this state answers; absent on the idle state.
+   */
+  current?: () => boolean;
 }
 
 const EMPTY: SelectedSweptDisksState = { items: [], loading: false, error: null };
@@ -70,6 +75,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   useEffect(() => {
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
+    const current = () => active;
     const state = useViewerStore.getState();
     const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
@@ -77,10 +83,10 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
     ] }));
     if (grouped.size === 0) {
-      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null });
+      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null, current });
       return () => { active = false; };
     }
-    setResult({ items: [], loading: true, error: null });
+    setResult({ items: [], loading: true, error: null, current });
     void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
       const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
@@ -92,9 +98,9 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       });
     }).then(({ items, errors }) => {
       if (active) setResult({ items: [...items, ...createdInOverlay], loading: false,
-        error: [...diagnostics, ...errors].join('; ') || null });
+        error: [...diagnostics, ...errors].join('; ') || null, current });
     }).catch((error: unknown) => {
-      if (active) setResult({ items: [], loading: false, error: String(error) });
+      if (active) setResult({ items: [], loading: false, error: String(error), current });
     });
     return () => { active = false; };
   }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,

@@ -29,8 +29,9 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
-import { measureSnapOff } from './measureSnapOff.js';
-import { noteMeasureCursor } from './measureCursor.js';
+import { measureSnapToggle } from './measureSnapToggle.js';
+import { noteMeasureCursor, noteMeasureShift } from './measureCursor.js';
+import { pressPastClickSlop } from './pointerGesture.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { forgetTouchSelection } from './referenceSelection.js';
 
@@ -119,9 +120,11 @@ export function routeMousePointers(
       else gate.held = { e, timer: setTimeout(runHeld, 0) };
     },
     move: (e) => {
-      // A Measure preview follows only the moves its own handlers note again (#8992)
+      // A Measure preview follows only the moves its own handlers note again (#8992); a press within
+      // its click slop has moved neither the view nor the preview (#9022)
       const measure = measureContexts.get(canvas)?.ctx;
-      if (measure) noteMeasureCursor(measure, null);
+      const press = measure?.mouseState;
+      if (measure && !(press?.isDragging && !press.didDrag && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
       // A Pencil hovering with nothing down, after a press whose pointerup never reached us
       if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
       if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);
@@ -207,18 +210,26 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * unmount. While registered, every Measure gesture reset (the store's
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
  * reposition) reaches the context's press state and queued frame (#8786),
- * and turning Snap off drops the queued frame and re-picks the live preview
- * unsnapped (#8881, #8992).
+ * a Snap toggle drops the queued frame and re-picks the live preview under
+ * the new setting (#8881, #8992, #9022), and Shift is noted for that re-pick.
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
   measureContexts.delete(canvas);
   if (!ctx) return;
-  const stop = useViewerStore.subscribe((state, prev) => {
+  const unsubscribe = useViewerStore.subscribe((state, prev) => {
     if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
     // A command's preview frame is its own
-    else if (prev.snapEnabled && !state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapOff(ctx);
+    else if (prev.snapEnabled !== state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapToggle(ctx, state.snapEnabled);
   });
+  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.type === 'keydown'); };
+  window.addEventListener('keydown', onShift);
+  window.addEventListener('keyup', onShift);
+  const stop = () => {
+    unsubscribe();
+    window.removeEventListener('keydown', onShift);
+    window.removeEventListener('keyup', onShift);
+  };
   measureContexts.set(canvas, { ctx, stop });
 }
 

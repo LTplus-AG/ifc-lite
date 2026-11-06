@@ -16,11 +16,15 @@ export interface MatchHighlightProps {
 }
 
 export function MatchHighlight({ text, query }: MatchHighlightProps) {
-  const needle = query.trim().toLocaleLowerCase();
-  const at = needle ? text.toLocaleLowerCase().indexOf(needle) : -1;
+  // Locale-free case folding, as the palette's own matcher does
+  // (`commandPaletteSearch.ts`): a Turkish locale would fold 'I' to 'ı' and
+  // lose the highlight on every label containing an 'I'.
+  const needle = query.trim().toLowerCase();
+  const lowered = text.toLowerCase();
+  const at = needle ? lowered.indexOf(needle) : -1;
   // Lower-casing can change length (e.g. 'İ'), so a slice by the needle's
   // length is only safe when the haystack kept its length.
-  if (at < 0 || text.toLocaleLowerCase().length !== text.length) return <>{text}</>;
+  if (at < 0 || lowered.length !== text.length) return <>{text}</>;
   return (
     <>
       {text.slice(0, at)}

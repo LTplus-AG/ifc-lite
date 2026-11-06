@@ -203,13 +203,13 @@ export function LocationMap({
   // Building footprint state (bounding box polygon in WGS84)
   const [footprint, setFootprint] = useState<[number, number][] | null>(null);
   const [styleVersion, setStyleVersion] = useState(0);
-  // Tiles follow the app theme (#8802 R4: a bright positron tile sat inside
-  // the dark theme); "Toggle style" flips them relative to that default.
+  // Tiles follow the app theme (#8802 R4); "Toggle style" flips them. The ref feeds the async map
+  // construction and is synced in an effect (not during render) that runs before the construction and style effects.
   const theme = useViewerStore((s) => s.theme);
   const [styleFlipped, setStyleFlipped] = useState(false);
   const darkBasemap = (theme === 'dark') !== styleFlipped;
   const darkBasemapRef = useRef(darkBasemap);
-  darkBasemapRef.current = darkBasemap;
+  useEffect(() => { darkBasemapRef.current = darkBasemap; }, [darkBasemap]);
   /** The tile style the live map was last given; null before it exists. */
   const appliedDarkRef = useRef<boolean | null>(null);
   const footprintRef = useRef<[number, number][] | null>(null);

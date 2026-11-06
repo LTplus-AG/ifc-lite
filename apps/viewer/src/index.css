@@ -794,9 +794,9 @@ body {
      accent and use the theme's dark ink for AA text contrast (#4792). */
   --color-primary-foreground: #1a1b2e !important;
   /* State language (#8802 R4) in the theme's purple. */
-  --color-active: #5b3fa0;
-  --color-active-surface: color-mix(in srgb, var(--cf-purple) 14%, transparent);
-  --color-active-surface-hover: color-mix(in srgb, var(--cf-purple) 20%, transparent);
+  --color-active: #5b3fa0 !important;
+  --color-active-surface: color-mix(in srgb, var(--cf-purple) 14%, transparent) !important;
+  --color-active-surface-hover: color-mix(in srgb, var(--cf-purple) 20%, transparent) !important;
   --color-secondary: rgba(157, 124, 216, 0.10) !important;
   --color-secondary-foreground: #2e3050 !important;
   --color-muted: rgba(0, 0, 0, 0.04) !important;

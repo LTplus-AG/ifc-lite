@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/components/ui/match-highlight.tsx b/apps/viewer/src/components/ui/match-highlight.tsx
-index 0b573bb..5b05605 100644
+index 9365a50..6b4ba71 100644
 --- a/apps/viewer/src/components/ui/match-highlight.tsx
 +++ b/apps/viewer/src/components/ui/match-highlight.tsx
 @@ -16,7 +16,6 @@ export interface MatchHighlightProps {
@@ -7,6 +7,6 @@ index 0b573bb..5b05605 100644
  
  export function MatchHighlight({ text, query }: MatchHighlightProps) {
 -  return <>{text}</>;
-   const needle = query.trim().toLocaleLowerCase();
-   const at = needle ? text.toLocaleLowerCase().indexOf(needle) : -1;
-   // Lower-casing can change length (e.g. 'İ'), so a slice by the needle's
+   // Locale-free case folding, as the palette's own matcher does
+   // (`commandPaletteSearch.ts`): a Turkish locale would fold 'I' to 'ı' and
+   // lose the highlight on every label containing an 'I'.

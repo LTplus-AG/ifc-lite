@@ -31,7 +31,7 @@ import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from '
 import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
-import { ignoreTouchPointers, noteMouseSideInput, setMeasureContext } from './touchRouting.js';
+import { noteMouseSideInput, routeMousePointers, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
@@ -835,20 +835,22 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleDoubleClick = (e: MouseEvent) => handleMeasureDoubleClick(ctx, e);
 
-    // Touch belongs to useTouchControls; a Measure tap comes back through the measure context (#5856).
-    const onPointerDown = ignoreTouchPointers(handleMouseDown), onPointerMove = ignoreTouchPointers(handleMouseMove), onPointerUp = ignoreTouchPointers(handleMouseUp);
+    // Touch, and a pen press that also arrives as touch, belong to useTouchControls;
+    // a Measure tap comes back through the measure context (#5856, #9000).
+    const pointers = routeMousePointers(canvas, { down: handleMouseDown, move: handleMouseMove, up: handleMouseUp, cancel: handlePointerCancel });
+    const onContextMenu = pointers.after(handleContextMenu), onClick = pointers.after(handleClick), onDoubleClick = pointers.after(handleDoubleClick);
     setMeasureContext(canvas, ctx);
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', handlePointerCancel);
+    canvas.addEventListener('pointerdown', pointers.down);
+    canvas.addEventListener('pointermove', pointers.move);
+    canvas.addEventListener('pointerup', pointers.up);
+    canvas.addEventListener('pointercancel', pointers.cancel);
     canvas.addEventListener('lostpointercapture', handleLostPointerCapture);
     window.addEventListener('blur', handleWindowBlur);
     canvas.addEventListener('mouseleave', handleMouseLeave);
-    canvas.addEventListener('contextmenu', handleContextMenu);
+    canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
-    canvas.addEventListener('click', handleClick);
-    canvas.addEventListener('dblclick', handleDoubleClick);
+    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('dblclick', onDoubleClick);
 
     return () => {
       disposed = true;
@@ -856,17 +858,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();
       setMeasureContext(canvas, null);
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', handlePointerCancel);
+      canvas.removeEventListener('pointerdown', pointers.down);
+      canvas.removeEventListener('pointermove', pointers.move);
+      canvas.removeEventListener('pointerup', pointers.up);
+      canvas.removeEventListener('pointercancel', pointers.cancel);
+      pointers.dispose();
       canvas.removeEventListener('lostpointercapture', handleLostPointerCapture);
       window.removeEventListener('blur', handleWindowBlur);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
-      canvas.removeEventListener('contextmenu', handleContextMenu);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', handleWheel);
-      canvas.removeEventListener('click', handleClick);
-      canvas.removeEventListener('dblclick', handleDoubleClick);
+      canvas.removeEventListener('click', onClick);
+      canvas.removeEventListener('dblclick', onDoubleClick);
       commandPress.dispose();
       fineZoomModifier.dispose();
       fly.dispose();

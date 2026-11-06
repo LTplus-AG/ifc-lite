@@ -51,7 +51,7 @@ export function ManualValidationEntry({ onNew, onOpenFile, onLoadRecent, recent,
           onChange={(e) => { void handleFileSelect(e); }}
         />
       </div>
-      {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
       {recent.length > 0 && (
         <div className="mt-3">
           <h4 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">

@@ -304,8 +304,6 @@ source copy; a SharedArrayBuffer view does not avoid wasm-bindgen marshalling.
 Model-dependent index fallback and discovery allocations prevent qualifying the
 observed large-file crash band. Existing successful large-file loads remain
 eligible; OOM-shaped traps after a failed attempt receive actionable context.
-The [allocation accounting](../../docs/architecture/prepass-memory.md) explains
-the remaining overlap and the trap-reporting heuristic.
 
 Verdict: estimated memory reduction, with no measured end-to-end worker-pool
 timing or performance-neutrality claim. Benchmarks were explicitly excluded

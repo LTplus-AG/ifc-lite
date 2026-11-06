@@ -25,17 +25,7 @@ import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
 
 export function MeasureHint() {
   const { t } = useTranslation();
-  const key = useViewerStore((s) =>
-    measureHintKey({
-      measureMode: s.measureMode,
-      angleKind: s.angleKind,
-      activeAngle: s.activeAngle,
-      activePolyline: s.activePolyline,
-      activeRadius: s.activeRadius,
-      activeMeasurement: s.activeMeasurement,
-      measurePointLast: s.measurePointLast,
-    }),
-  );
+  const key = useViewerStore(measureHintKey);
   return (
     <HudItem region="bottom-center" order={1}>
       <HudHint>{t(key)}</HudHint>

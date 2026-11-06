@@ -515,11 +515,11 @@ export function HierarchyPanel() {
       ] as const).map(([mode, Icon, labelKey, titleKey]) => (
         <Button
           key={mode}
-          variant="ghost"
+          variant="toggle"
           size="sm"
           aria-pressed={groupingMode === mode}
           aria-label={t(titleKey)}
-          className="h-6 min-w-0 flex-1 gap-1 rounded px-1 text-2xs font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground"
+          className="h-6 min-w-0 flex-1 gap-1 rounded px-1 text-2xs font-medium"
           onClick={() => setGroupingMode(mode)}
           title={t(titleKey)}
         >
@@ -539,12 +539,11 @@ export function HierarchyPanel() {
       ] as const).map(([value, labelKey]) => (
         <Button
           key={value}
-          variant="ghost"
+          variant="toggle"
           size="sm"
           aria-pressed={groupFilter === value}
-          // Same neutral segmented switch as the grouping modes (#8802); the
-          // muted foreground keeps inactive chips above 4.5:1 in both themes.
-          className="h-5 min-w-0 flex-1 rounded px-1 text-2xs font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground"
+          // Same switch as the grouping modes: the shared toggle state (#8802 R4).
+          className="h-5 min-w-0 flex-1 rounded px-1 text-2xs font-medium"
           onClick={() => setGroupFilter(value)}
         >
           {t(labelKey)}

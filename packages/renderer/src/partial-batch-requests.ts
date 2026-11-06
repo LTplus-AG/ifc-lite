@@ -32,6 +32,9 @@ import { alphaSlotSuffix, type XRayAlpha } from './xray-alpha.js';
 
 /** One sub-batch the frame wants drawn: a subset of `colorKey`'s batch. */
 export interface PartialBatchRequest {
+  /** The colour batch this subset is cut from. Drawing the subset counts as
+   *  drawing it for residency (#9034), so an on-screen batch never ages out. */
+  sourceBatch: BatchedMesh;
   /** Cache slot this subset belongs to. Stable across frames, unique per subset. */
   sourceBatchKey: string;
   colorKey: string;
@@ -84,6 +87,7 @@ export class PartialBatchRequests {
     const baseKey = `${sourceBatch.colorKey}:${sourceBatch.id}${keySuffix}`;
     const emit = (sourceBatchKey: string, ids: Set<number>): void => {
       this.items.push({
+        sourceBatch,
         sourceBatchKey,
         colorKey: sourceBatch.colorKey,
         visibleIds: ids,

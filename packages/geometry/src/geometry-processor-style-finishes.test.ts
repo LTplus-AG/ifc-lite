@@ -16,7 +16,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const calls: string[] = [];
+  const parallel = vi.fn(async function* (..._args: unknown[]) { yield* []; });
   const buildPrePassOnce = vi.fn();
+  const setSkipVoids = vi.fn();
   const setStyleFinishes = vi.fn((_ids: Uint32Array, _finishes: Float32Array) => {
     calls.push('setStyleFinishes');
   });
@@ -40,17 +42,21 @@ const wasmMocks = vi.hoisted(() => {
   });
   class MockIfcAPI {
     buildPrePassOnce = buildPrePassOnce;
+    setSkipVoids = setSkipVoids;
     setStyleFinishes = setStyleFinishes;
     processGeometryBatch = processGeometryBatch;
     clearPrePassCache = vi.fn();
+    free = vi.fn();
   }
-  return { init: vi.fn(async () => undefined), calls, buildPrePassOnce, setStyleFinishes, processGeometryBatch, MockIfcAPI };
+  return { init: vi.fn(async () => undefined), parallel, calls, buildPrePassOnce, setSkipVoids, setStyleFinishes, processGeometryBatch, MockIfcAPI };
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
   default: wasmMocks.init,
   IfcAPI: wasmMocks.MockIfcAPI,
 }));
+
+vi.mock('./geometry-parallel.js', () => ({ processParallel: wasmMocks.parallel }));
 
 import { GeometryProcessor } from './index.js';
 
@@ -82,6 +88,7 @@ async function load() {
 describe('GeometryProcessor sync path #5582 style finishes', () => {
   beforeEach(() => {
     wasmMocks.calls.length = 0;
+    wasmMocks.setSkipVoids.mockClear();
     wasmMocks.buildPrePassOnce.mockReset();
     wasmMocks.setStyleFinishes.mockClear();
     wasmMocks.processGeometryBatch.mockClear();
@@ -113,4 +120,30 @@ describe('GeometryProcessor sync path #5582 style finishes', () => {
     expect(wasmMocks.processGeometryBatch).toHaveBeenCalledTimes(1);
     expect(wasmMocks.setStyleFinishes).not.toHaveBeenCalled();
   });
+});
+
+// #8875: prove the public processor passes gross mode before any mesh batch.
+it('sets skipVoids on the actual bridge before adaptive small-file geometry', async () => {
+  wasmMocks.buildPrePassOnce.mockReturnValue(prePass());
+  wasmMocks.setSkipVoids.mockClear();
+  wasmMocks.processGeometryBatch.mockClear();
+  const processor = new GeometryProcessor({ skipVoids: true });
+  try {
+    for await (const _event of processor.processAdaptive(new Uint8Array([65]))) { /* drain */ }
+    expect(wasmMocks.setSkipVoids).toHaveBeenCalledWith(true);
+    expect(wasmMocks.setSkipVoids.mock.invocationCallOrder[0])
+      .toBeLessThan(wasmMocks.processGeometryBatch.mock.invocationCallOrder[0]);
+  } finally { processor.dispose(); }
+});
+
+// #8875: the adaptive large-file route must forward the same cut policy to its pool.
+it('forwards skipVoids through adaptive worker-pool selection', async () => {
+  vi.stubGlobal('Worker', class {});
+  vi.stubGlobal('navigator', { hardwareConcurrency: 2 });
+  const processor = new GeometryProcessor({ skipVoids: true });
+  try {
+    for await (const _event of processor.processAdaptive(new Uint8Array([65]), { sizeThreshold: 0 })) { /* drain */ }
+    expect(wasmMocks.parallel).toHaveBeenCalled();
+    expect(wasmMocks.parallel.mock.calls.at(-1)?.[4]).toMatchObject({ skipVoids: true });
+  } finally { processor.dispose(); vi.unstubAllGlobals(); }
 });

@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { loadDefinitionLibrary } from '@/lib/validation/definition-library';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
 
 after(installResizablePanelLayout());
 
@@ -150,10 +151,14 @@ for (const kind of ['ids', 'rules'] as const) {
         const selectors = ui.querySelectorAll('select[aria-label="Select IDS document"]');
         assert.equal(selectors.length, 1);
         assert.ok(summary.contains(selectors[0]));
+        // The run slot plus the shared header (#8802): inline actions, the rest in its More actions menu.
+        const header = summary.querySelector('[data-panel-header]');
+        assert.ok(header, 'the shared header belongs to the upper scroll pane');
         for (const label of ['Re-run validation', 'Clear results', 'Load New IDS', 'Unload IDS']) {
-          const controls = ui.querySelectorAll(`button[aria-label="${label}"]`);
-          assert.equal(controls.length, 1, `one shared ${label} action`);
-          assert.ok(summary.contains(controls[0]), `${label} belongs to the upper scroll pane`);
+          const inline = ui.querySelectorAll(`button[aria-label="${label}"]`);
+          assert.ok(inline.length <= 1, `one shared ${label} action`);
+          if (inline.length === 1) assert.ok(summary.contains(inline[0]), `${label} belongs to the upper scroll pane`);
+          else assert.ok(await findPanelAction(header, label), `${label} is in the shared header's menu`);
         }
       }
       if (kind === 'rules') {
@@ -213,9 +218,7 @@ for (const kind of ['ids', 'rules'] as const) {
         assert.ok(rerunReport);
         assertInvariant(rerunReport, 1);
         assert.equal(rerunReport.modelInfo[0].modelId, 'm0');
-        const clear = ui.querySelector<HTMLButtonElement>('button[aria-label="Clear results"]');
-        assert.ok(clear);
-        click(clear);
+        await runPanelAction(ui, 'Clear results');
         assert.equal(useViewerStore.getState().idsValidationReport, null);
         assert.equal(useViewerStore.getState().idsDocument, ids);
         const unload = ui.querySelector<HTMLButtonElement>('button[aria-label="Unload IDS"]');

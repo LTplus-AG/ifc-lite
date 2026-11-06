@@ -13,6 +13,7 @@
  */
 
 import { Button } from '@/components/ui/button';
+import { FilterChip } from '@/components/ui/filter-chip';
 import { useTranslation } from '@/i18n';
 
 export interface HierarchyFooterStatusProps {
@@ -45,36 +46,31 @@ export function HierarchyFooterStatus({
   // so idle shows nothing and the tree gets the room (#8802).
   if (!hasActiveFilters) return null;
 
-  // Active filters: a neutral strip with primary-tinted chips (sentence case),
-  // so the filter reads as state without out-shouting the selection.
-  const chip = 'inline-flex items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-2xs font-medium text-foreground';
-  const clear = 'ml-0.5 text-xs leading-none text-muted-foreground hover:text-foreground';
+  // Active filters: a neutral strip with chips in the shared active state
+  // (#8802 R4), so the filter reads as a state that is on.
   return (
     <div className="border-t border-border bg-muted/50 px-2 py-1.5">
       <div className="flex items-center justify-between text-xs gap-2">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           {selectedStoreys.size > 0 && (
-            <span className={chip}>
+            <FilterChip onClear={clearStoreySelection} clearLabel={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>
               {t('hierarchy.panel.storeyCount', { count: selectedStoreys.size })}
-              <button onClick={clearStoreySelection} className={clear} aria-label={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>&times;</button>
-            </span>
+            </FilterChip>
           )}
           {classFilter !== null && (
             <>
               {selectedStoreys.size > 0 && <span className="text-2xs text-muted-foreground">+</span>}
-              <span className={chip}>
+              <FilterChip onClear={clearClassFilter} clearLabel={t('hierarchy.panel.clearClassFilterAriaLabel')}>
                 {classFilter.label}
-                <button onClick={clearClassFilter} className={clear} aria-label={t('hierarchy.panel.clearClassFilterAriaLabel')}>&times;</button>
-              </span>
+              </FilterChip>
             </>
           )}
           {isolatedEntities !== null && (
             <>
               {(selectedStoreys.size > 0 || classFilter !== null) && <span className="text-2xs text-muted-foreground">+</span>}
-              <span className={chip}>
+              <FilterChip onClear={clearIsolation} clearLabel={t('hierarchy.panel.clearTypeFilterAriaLabel')}>
                 {typeIsolationLabel}
-                <button onClick={clearIsolation} className={clear} aria-label={t('hierarchy.panel.clearTypeFilterAriaLabel')}>&times;</button>
-              </span>
+              </FilterChip>
             </>
           )}
         </div>

@@ -87,6 +87,8 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
+  // #8947: requires a pending extension export; exercised by runtime-refusal and exporter Activity cases.
+  'commandPalette.extension.busy',
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.
   // These prerequisites need roles, loaded models, or a missing host beyond this seed.
   'commandPalette.availability.editor',

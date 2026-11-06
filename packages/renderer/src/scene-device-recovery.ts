@@ -5,6 +5,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
+import type { BatchUseFrames } from './residency.js';
 import { destroyInstancedTemplateGpu, type InstancedOccurrence, type InstancedTemplateCpu, type InstancedTemplateGPU } from './scene-instance-types.js';
 import { createInstancedRteDeltaStream, type InstancedRteDeltaStream } from './instanced-rte.js';
 import type { TexturedMesh } from './scene.js';
@@ -69,7 +70,7 @@ export interface SceneRecoveryHost {
   lastGhostAlpha: number;
   instancedDevice?: GPUDevice;
   cachedMaxBufferSize: number;
-  lastDrawnFrame: Map<number, number>;
+  lastDrawnFrame: Pick<BatchUseFrames, 'delete' | 'clear'>;
   residencyRestoreQueue: Set<string>;
   meshDataMap: Map<number, MeshData[]>;
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;

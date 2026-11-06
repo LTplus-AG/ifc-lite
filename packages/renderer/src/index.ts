@@ -2399,10 +2399,12 @@ export class Renderer {
                             }
                             // A COLD parent has no CPU meshData, so the partial
                             // sub-batch above comes back empty — queue the
-                            // residency restore or the visible subset would
-                            // stay missing under hide/isolate forever.
+                            // restore of its pieces or the visible subset would
+                            // stay missing under hide/isolate forever. Only the
+                            // pieces: the subset never reads the parent's own
+                            // GPU buffers (#9050).
                             if (batch.gpuResident === false) {
-                                this.scene.requestBatchResidency(batch);
+                                this.scene.requestBatchPieces(batch);
                             }
                             continue; // Don't add batch to render list
                         }
@@ -2736,7 +2738,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
+                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a

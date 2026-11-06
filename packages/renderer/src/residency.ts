@@ -81,3 +81,54 @@ export function selectEvictions(
   }
   return evict;
 }
+
+/**
+ * When each bucket batch was last used, split by what the use reads (#9050).
+ * A full or LOD1 draw reads the batch's OWN GPU buffers and its CPU pieces
+ * stay as the rebuild source; a partial sub-batch reads only the CPU pieces
+ * (it owns separate buffers cut from them). So the GPU tier ages a batch by
+ * own-buffer draws alone, while the host tier ages it by any use: a parent
+ * drawn only through a subset may lose its GPU buffers but never the pieces
+ * its on-screen subset draws from.
+ */
+export class BatchUseFrames {
+  private readonly ownBuffers = new Map<number, number>();
+  private readonly pieces = new Map<number, number>();
+
+  /** Drawn from its own GPU buffers (also uses its pieces). */
+  set(batchId: number, frame: number): void {
+    this.ownBuffers.set(batchId, frame);
+    this.pieces.set(batchId, frame);
+  }
+
+  /** Drawn only as a partial sub-batch cut from its CPU pieces. */
+  setSubset(batchId: number, frame: number): void {
+    this.pieces.set(batchId, frame);
+  }
+
+  /** Last own-buffer draw: the GPU tier's age. */
+  get(batchId: number): number | undefined {
+    return this.ownBuffers.get(batchId);
+  }
+
+  /** Last use of any kind: the host (cold) tier's age. */
+  getAnyUse(batchId: number): number | undefined {
+    return this.pieces.get(batchId);
+  }
+
+  /** The batch's GPU buffers were evicted; its pieces' use still counts. */
+  evicted(batchId: number): void {
+    this.ownBuffers.delete(batchId);
+  }
+
+  /** The batch object is gone (replaced, retired or repartitioned). */
+  delete(batchId: number): void {
+    this.ownBuffers.delete(batchId);
+    this.pieces.delete(batchId);
+  }
+
+  clear(): void {
+    this.ownBuffers.clear();
+    this.pieces.clear();
+  }
+}

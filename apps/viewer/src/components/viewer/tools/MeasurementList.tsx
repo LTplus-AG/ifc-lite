@@ -38,9 +38,11 @@ const ROW_LIVE = 'flex items-center justify-between gap-2 rounded bg-overlay-acc
 // at Finish does not land on the destructive Cancel.
 const HIT_SLOP = 'relative after:absolute after:-inset-0.5 after:content-[""]';
 const DELETE = `h-5 w-5 shrink-0 hover:bg-destructive/20 ${HIT_SLOP}`;
-// The list itself takes focus when the live row it held goes away with nothing
-// recorded (#9041); a ring shows a keyboard user where they landed.
-const LIST_FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring';
+// A recorded row, or the list when nothing was recorded, takes focus when the
+// live row that held it goes away (#9041); a ring shows a keyboard user where
+// they landed.
+const FOCUS_TARGET = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring';
+const ROW_TARGET = `${ROW} ${FOCUS_TARGET}`;
 
 /** An open sequence whose live row has Finish and Cancel. */
 type LiveKind = 'polyline' | 'radius';
@@ -70,9 +72,11 @@ export function MeasurementList() {
 
   // #9041: when a live row goes away while it holds focus (Finish, Cancel, Esc
   // or Enter pressed on its buttons), focus would fall to the page. It moves to
-  // the delete button of the row that sequence recorded, or to the list when it
-  // recorded nothing. A row that goes away without focus (Enter or Esc from the
-  // canvas, a click that did not focus the button) moves nothing.
+  // the row that sequence recorded, or to the list when it recorded nothing.
+  // The row, not its delete button: a second or held Enter after Finish has
+  // nothing left to finish, and on a focused button it would delete the
+  // measurement just taken. A row that goes away without focus (Enter or Esc
+  // from the canvas, a click that did not focus the button) moves nothing.
   const listRef = useRef<HTMLDivElement>(null);
   const liveRowHadFocus = useRef<LiveKind | null>(null);
   const previousRows = useRef({ polyline: polylineMeasurements, radius: radiusMeasurements });
@@ -88,10 +92,10 @@ export function MeasurementList() {
     if (active && active !== list.ownerDocument.body && active.isConnected) return;
     const known = new Set(before[kind].map((m) => m.id));
     const recorded = rows[kind].find((m) => !known.has(m.id));
-    const remove = recorded
+    const row = recorded
       ? [...list.querySelectorAll<HTMLElement>('[data-measurement-id]')].find((el) => el.dataset.measurementId === recorded.id)
       : undefined;
-    (remove ?? list).focus();
+    (row ?? list).focus();
   });
   const listProps = {
     ref: listRef,
@@ -106,7 +110,7 @@ export function MeasurementList() {
 
   if (totalItemCount === 0 && !activePolyline && !activeAngle && !activeRadius) {
     return (
-      <div {...listProps} className={`flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-muted-foreground ${LIST_FOCUS}`}>
+      <div {...listProps} className={`flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-muted-foreground ${FOCUS_TARGET}`}>
         <span>{t('measure.list.empty')}</span>
         {activeTool !== 'measure' && (
           <Button variant="outline" size="sm" onClick={() => setActiveTool('measure')}>
@@ -119,7 +123,7 @@ export function MeasurementList() {
   }
 
   return (
-    <div {...listProps} className={`space-y-1 px-3 py-2 ${LIST_FOCUS}`}>
+    <div {...listProps} className={`space-y-1 px-3 py-2 ${FOCUS_TARGET}`}>
       {measurements.map((m, i) => (
         <MeasurementItem
           key={m.id}
@@ -145,14 +149,14 @@ export function MeasurementList() {
         </div>
       )}
       {polylineMeasurements.map((pl, i) => (
-        <div key={pl.id} className={ROW}>
+        <div key={pl.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={pl.id}>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">
               {t('measure.polyline.indexLabel', { index: i + 1 })} · {t(polylineBasisLabelKey(pl.closed))}
               <StaleMeasurementBadge id={pl.id} />
             </span>
             <span className="ml-auto font-medium tabular-nums">{formatDistance(pl.length, unitDisplayOverrides)}</span>
-            <IconButton label={t('measure.list.deletePolyline', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} data-measurement-id={pl.id} onClick={() => deletePolylineMeasurement(pl.id)}>
+            <IconButton label={t('measure.list.deletePolyline', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deletePolylineMeasurement(pl.id)}>
               <X className="h-3 w-3" />
             </IconButton>
           </div>
@@ -188,14 +192,14 @@ export function MeasurementList() {
       )}
 
       {radiusMeasurements.map((r, i) => (
-        <div key={r.id} className={ROW}>
+        <div key={r.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={r.id}>
           <div className="flex items-center gap-2">
             <span className="shrink-0 text-muted-foreground">
               {t('measure.radius.indexLabel', { index: i + 1 })}
               <StaleMeasurementBadge id={r.id} />
             </span>
             <span className="ml-auto text-right font-medium tabular-nums">{formatRadiusPoints(r.points, unitDisplayOverrides)}</span>
-            <IconButton label={t('measure.list.deleteRadius', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} data-measurement-id={r.id} onClick={() => deleteRadiusMeasurement(r.id)}>
+            <IconButton label={t('measure.list.deleteRadius', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteRadiusMeasurement(r.id)}>
               <X className="h-3 w-3" />
             </IconButton>
           </div>

@@ -4,8 +4,9 @@
 
 /**
  * Where focus goes when the live row of an open Polyline or Radius goes away
- * while it holds focus (#9041). Finish lands on the delete button of the row it
- * recorded; anything that records nothing (Cancel, Esc) lands on the list. A
+ * while it holds focus (#9041). Finish lands on the row it recorded (not its
+ * delete button, which a second Enter would press); anything that records
+ * nothing (Cancel, Esc) lands on the list. A
  * Finish or Cancel that never had focus in the row (Enter or Esc from the
  * canvas, a click that does not focus the button) leaves focus where it was.
  *
@@ -78,11 +79,19 @@ function mount(): HTMLElement {
   );
 }
 
-/** What has focus: its accessible name, else its id, else `body`. */
+/**
+ * What has focus: its accessible name, a recorded row by its delete button's
+ * name, else its id, else `body`. Happy DOM focuses any connected element, so
+ * an element a browser would refuse to focus is flagged in the string.
+ */
 function focused(): string {
   const el = document.activeElement;
   if (!el || el === document.body) return 'body';
-  return el.getAttribute('aria-label') ?? (el.id || el.tagName.toLowerCase());
+  const focusable = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.hasAttribute('tabindex');
+  const name = el.getAttribute('aria-label')
+    ?? (el.hasAttribute('data-measurement-id') ? `row of ${el.querySelector('button')?.getAttribute('aria-label')}` : null)
+    ?? (el.id || el.tagName.toLowerCase());
+  return focusable ? name : `${name} (not focusable)`;
 }
 
 function button(container: HTMLElement, label: string): HTMLElement {
@@ -100,8 +109,19 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     useViewerStore.setState({ polylineMeasurements: [PL1], activePolyline: OPEN_POLYLINE });
     const container = mount();
     activate(button(container, 'Finish (Enter)'), 'Enter');
-    assert.deepEqual(useViewerStore.getState().polylineMeasurements.length, 2, 'Enter recorded the polyline');
-    assert.equal(focused(), 'Delete polyline measurement 2');
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 2, 'Enter recorded the polyline');
+    assert.equal(focused(), 'row of Delete polyline measurement 2');
+  });
+
+  it('a second Enter after Finish keeps the recorded measurement', () => {
+    useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
+    const container = mount();
+    activate(button(container, 'Finish (Enter)'), 'Enter');
+    const target = document.activeElement as HTMLElement;
+    activate(target, 'Enter');
+    press(target, 'Enter', { repeat: true });
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 1, 'the repeat Enter deleted nothing');
+    assert.equal(focused(), 'row of Delete polyline measurement 1');
   });
 
   it('Space on a focused Finish lands on the recorded radius row', () => {
@@ -110,7 +130,7 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     activate(button(container, 'Finish (Enter)'), ' ');
     assert.equal(useViewerStore.getState().activeRadius, null, 'Space finished the radius');
     assert.equal(useViewerStore.getState().radiusMeasurements.length, 1);
-    assert.equal(focused(), 'Delete radius measurement 1');
+    assert.equal(focused(), 'row of Delete radius measurement 1');
   });
 
   it('Space on a focused Cancel lands on the list', () => {
@@ -135,9 +155,15 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
     const container = mount();
     const finish = button(container, 'Finish (Enter)');
-    finish.focus();
-    press(finish, 'Escape');
-    assert.equal(useViewerStore.getState().activePolyline, null, 'Esc cancelled the polyline');
+    // Focused inside act, as a user's Tab is: the button's tooltip opens, and
+    // its own Escape handler may take the first press.
+    act(() => { finish.focus(); });
+    let presses = 0;
+    while (useViewerStore.getState().activePolyline !== null && presses < 2) {
+      press(document.activeElement ?? finish, 'Escape');
+      presses += 1;
+    }
+    assert.equal(useViewerStore.getState().activePolyline, null, `Esc cancelled the polyline (${presses} presses)`);
     assert.equal(focused(), 'Measurements taken');
   });
 
@@ -179,7 +205,7 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
       finish.focus();
       click(finish);
       assert.equal(useViewerStore.getState().polylineMeasurements.length, 1);
-      assert.equal(focused(), 'Delete polyline measurement 1');
+      assert.equal(focused(), 'row of Delete polyline measurement 1');
     });
 
     it(`a ${pointerInput} press that does not focus Cancel leaves focus where it was`, () => {

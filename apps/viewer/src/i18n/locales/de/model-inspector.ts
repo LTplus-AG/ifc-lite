@@ -11,6 +11,7 @@ export const modelInspectorDe = {
   "modelInspector.empty.enter": "Modell",
   "modelInspector.empty.noModel": "Laden oder starten Sie zuerst ein Modell",
   "modelInspector.empty.idle": "Wählen Sie ein Werkzeug in der Werkzeugleiste oder ein Bauteil aus",
+  "modelInspector.empty.command": "Dieses Werkzeug hat hier keine Standardwerte. Seine Optionen finden Sie in der Leiste über dem Ansichtsfenster.",
   "modelInspector.header.defaults": "Standardwerte · {kind}",
   "modelInspector.header.selection": "{ifcClass} #{id}",
   "modelInspector.header.selectionOnStorey": "{ifcClass} #{id} · {storey}",

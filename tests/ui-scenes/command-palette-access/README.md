@@ -518,3 +518,36 @@ Original `8021801` viewer shards 0–2 finished with failures; shard 3 still has
 The next admitted validation runs the root typecheck and build, then a focused command-surface preflight (including the German catalogue) before the unchanged four full viewer shards. The focused result cannot substitute for those full shards or the matching GPU/browser scenarios.
 
 R2 original validation request `auto-fc0474354ddb4ea5b4495602fe2db538` / Pop job `fce5571d-41f4-45ec-bfd2-60c335c72578` stopped at root typecheck on `ec5d4cbd732bf73efa635b547f239abf4c694907`: 131/134 tasks succeeded, viewer-embed reported three test-source errors, and the downstream build/focused/full-shard stages were not run. Corrections use the actual German catalogue fragment, the registry translation resolver, and explicit `FederatedModel` fixture types. Locale activation now proves a real locale rerender; callback-registration replacement is asserted after actual metadata publication, rather than assuming the stable translation resolver changes identity. All real loader, workspace, cancellation and owner-retirement outcomes remain asserted. Fresh Astra source review of `fa4c6aad15df91de79228c3785b830a75e158bb5` found no actionable findings; it did not execute tests or accept access R2.
+
+
+### R2 execution and validation-setup correction (2026-11-06)
+
+On exact source `285414189e9cb659d89b4acfa7bdcaf4a739760b`, original Pop job
+`f6181d06-c1bd-45f2-b13b-1894af9143a6` passed root typecheck (134 tasks and
+4,543 test sources in the tail) and `pnpm build:e2e` (58 tasks). Its focused
+50-file stage has not passed: `extension-dock-destinations.test.tsx` exceeded
+its declared 120-second limit by more than fifteen minutes, with about 22 GiB
+RSS. After recording PID, parent, start ticks, exact source cwd and test identity,
+the coordinator sent SIGTERM only to that owned test child. The original test
+runner resumed other files and must report the terminated file as a failure.
+The four full viewer shards remain unrun until the focused gate passes.
+
+The provisional physical Intel GPU capture against the same build produced
+10/12 context images. Loaded-hide.light and selected-hide.light timed out at the
+unchanged 180-second model-readiness gate. No acceptance: capture transport also
+had two independently reviewed defects (foreign-port readiness and interruption
+leaking a detached preview). The corrected transport now checks its own Vite
+startup plus served-index identity and bounds owned preview teardown; five real
+HTTP/process tests pass, including occupied-port refusal and both interrupt
+signals. Frozen scene steps, GPU requirements and timeouts are unchanged. Failed
+scenes now retain a screenshot and UI/error text for diagnosis. Matching browser
+execution and fresh review remain required.
+
+GitHub's mounted-public-ui lane failed on both `2854141` and `32ece44` before
+mounted tests: root typecheck completed 133/134 tasks, then viewer-embed exceeded
+Node's default roughly 4 GiB heap. Neither head contains the correction. The
+workflow now reports actual host/cgroup/available RAM, requires capacity for the
+existing 8 GiB Node profile, appends that heap option without discarding inherited
+options, and serializes Turbo while retaining the entire plain `pnpm typecheck`
+command and tail. YAML/bash parsing pass; the corrected workflow still needs its
+own CI execution. This does not supersede Pop's separate successful typecheck.

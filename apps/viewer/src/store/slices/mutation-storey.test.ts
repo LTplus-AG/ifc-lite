@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { readTopAttachment, readStoreyInventory } from '@ifc-lite/create';
+import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
@@ -132,6 +133,26 @@ describe('storey ops in the viewer (#9013)', () => {
     assert.ok(outcome.ok);
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
     assert.deepEqual(storeys().map(([name]) => name).length, 1);
+  });
+
+  it('a deletion reviewed in the panel refuses contents added since, and deletes nothing (#9013 review)', async () => {
+    const m = await storey();
+    const reviewed = m.reviewStoreyDeletion(useViewerStore.getState(), MODEL_ID, UPPER_STOREY);
+    assert.ok(reviewed);
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const editor = new StoreEditor(target.dataStore, target.view);
+    const late = editor.addEntity('IfcWall', ['3JUHrTM_j3UxZiBnyBfByx', null, 'Late', null, null, null, null, null, null]).expressId;
+    editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${late}`], `#${UPPER_STOREY}`]);
+    const depth = undoDepth();
+    const outcome = m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'deleteContents' }, reviewed);
+    assert.ok(!outcome.ok);
+    assert.equal(outcome.refusals[0]?.code, 'stale');
+    assert.equal(target.view.isDeleted(late), false, 'the wall added after the review survives');
+    assert.equal(undoDepth(), depth);
+    assert.equal(storeys().length, 2);
+    // Reviewed again, the deletion goes through with the wall.
+    assert.ok(m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'deleteContents' }, m.reviewStoreyDeletion(useViewerStore.getState(), MODEL_ID, UPPER_STOREY)!).ok);
+    assert.equal(target.view.isDeleted(late), true);
   });
 });
 

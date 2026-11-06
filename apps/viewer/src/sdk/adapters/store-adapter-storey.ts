@@ -47,13 +47,13 @@ export function storeyMutationTracking(store: StoreApi): Pick<Methods,
       return { modelId: normalized, expressId: ref.expressId };
     },
     planStoreyEdit: (modelId, edit) => planStoreyLevelEdit(inventory(modelId), edit),
-    editStorey(modelId, edit) {
-      const { normalized, outcome } = commit('editStorey', modelId, { kind: 'level', edit });
+    editStorey(modelId, edit, expected) {
+      const { normalized, outcome } = commit('editStorey', modelId, { kind: 'level', edit, expected });
       return refs(normalized, [edit.storeyId, ...outcome.remeshed]);
     },
     planStoreyDelete: (ref, mode) => planStoreyDelete(inventory(ref.modelId), ref.expressId, mode),
-    deleteStorey(ref, mode) {
-      const { normalized } = commit('deleteStorey', ref.modelId, { kind: 'delete', storeyId: ref.expressId, mode });
+    deleteStorey(ref, mode, expected) {
+      const { normalized } = commit('deleteStorey', ref.modelId, { kind: 'delete', storeyId: ref.expressId, mode, expected });
       return refs(normalized, [ref.expressId]);
     },
   };

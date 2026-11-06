@@ -12,7 +12,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { effectiveStoreyElevation } from '@ifc-lite/create';
+import { effectiveStoreyElevation, type StoreyDeletePlan } from '@ifc-lite/create';
 import { ChevronLeft, Layers, Plus } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -22,7 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
-import { activateStorey, addStoreyNextTo, deleteStorey } from '@/lib/storeys/storey-actions';
+import { activateStorey, addStoreyNextTo, deleteStorey, reviewStoreyDeletion } from '@/lib/storeys/storey-actions';
 import { formatElevation } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
 import { StoreyRow } from './StoreyRow';
@@ -40,7 +40,9 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
   const denial = useStoreyEditDenial(modelId);
   const editing = useStoreyLevelEditing(modelId);
   const rename = useStoreyRename(modelId);
-  const [deleting, setDeleting] = useState<{ storeyId: number; error: string | null } | null>(null);
+  // `reviewed`: what the open delete panel shows, and all that confirming it may delete.
+  const [deleting, setDeleting] = useState<{ storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null } | null>(null);
+  const review = (storeyId: number) => (modelId ? reviewStoreyDeletion(useViewerStore.getState(), modelId, storeyId) : null);
   const radios = useRef(new Map<number, HTMLButtonElement>());
   const names = useRef(new Map<number, HTMLInputElement>());
   const fallbackName = (index: number) => t('storeyManager.fallbackName', { index });
@@ -72,13 +74,14 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const remove = (storeyId: number, mode: Parameters<typeof deleteStorey>[3]) => {
+  const remove = (storeyId: number, mode: Parameters<typeof deleteStorey>[3], expected?: StoreyDeletePlan) => {
     if (!modelId) return;
     const row = rows.find((candidate) => candidate.expressId === storeyId);
-    const outcome = deleteStorey(useViewerStore, modelId, storeyId, mode);
+    const outcome = deleteStorey(useViewerStore, modelId, storeyId, mode, expected);
     if (!outcome.ok) {
       const message = outcome.refusals[0] ? refusalText(t, outcome.refusals[0]) : t('storeyManager.refusal.other', { reason: outcome.reason });
-      if (deleting?.storeyId === storeyId) setDeleting({ storeyId, error: message });
+      // A refused panel shows the storey as it is now, so a second confirm deletes what it lists.
+      if (deleting?.storeyId === storeyId) setDeleting({ storeyId, error: message, reviewed: review(storeyId) });
       else toast.error(message);
       return;
     }
@@ -94,7 +97,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     if (!row) return;
     // An empty storey goes straight away (with Undo); one with elements asks what to do with them.
     if (row.elementCount === 0) remove(storeyId, { kind: 'empty' });
-    else setDeleting({ storeyId, error: null });
+    else setDeleting({ storeyId, error: null, reviewed: review(storeyId) });
   };
 
   const selectElements = (ids: readonly number[]) => {
@@ -186,12 +189,12 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
               >
                 {deletingRow?.expressId === row.expressId && (
                   <StoreyDeletePanel
-                    row={row}
+                    row={deleting?.reviewed ? { ...row, elementCount: deleting.reviewed.elementCount } : row}
                     others={rows.filter((other) => other.expressId !== row.expressId)}
                     defaultTargetId={(rows[index + 1] ?? rows[index - 1])?.expressId ?? null}
                     error={deleting?.error ?? null}
                     onMove={(targetStoreyId) => remove(row.expressId, { kind: 'move', targetStoreyId })}
-                    onDeleteContents={() => remove(row.expressId, { kind: 'deleteContents' })}
+                    onDeleteContents={() => remove(row.expressId, { kind: 'deleteContents' }, deleting?.reviewed ?? undefined)}
                     onCancel={() => setDeleting(null)}
                   />
                 )}

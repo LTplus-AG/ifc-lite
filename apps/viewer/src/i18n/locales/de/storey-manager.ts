@@ -88,6 +88,8 @@ export const storeyManagerDe = {
     "other": "{count} Elemente haben Platzierungen, die nicht gelesen werden können"
   },
   "storeyManager.refusal.onlyStorey": "Ein Modell behält mindestens ein Geschoss",
+  "storeyManager.refusal.stale": "Das Modell hat sich seit der Prüfung geändert. Prüfen Sie es erneut, bevor Sie bestätigen.",
+  "storeyManager.refusal.tooLarge": "{storey} enthält zu viele Elemente, um es in einem Schritt zu bearbeiten",
   "storeyManager.refusal.other": "Nicht übernommen: {reason}",
   "storeyManager.refusal.nothingChanged": "Es wurde nichts geändert.",
   "storeyManager.delete": "{storey} löschen",

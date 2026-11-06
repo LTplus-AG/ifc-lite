@@ -9,8 +9,8 @@
  */
 
 import {
-  readStoreyInventory, suggestStorey, summarizeStoreys,
-  type StoreyDeleteMode, type StoreySuggestion, type StoreySummary,
+  planStoreyDelete, readStoreyInventory, suggestStorey, summarizeStoreys,
+  type StoreyDeleteMode, type StoreyDeletePlan, type StoreySuggestion, type StoreySummary,
 } from '@ifc-lite/create';
 import type { TransactionStore } from '@/lib/commands/modeling/transaction';
 import type { ViewerState } from '@/store';
@@ -69,13 +69,25 @@ export function activateStorey(s: ViewerState, modelId: string, storeyId: number
 }
 
 /**
+ * What deleting a storey with its contents would remove, as the delete panel
+ * shows it; passed back to `deleteStorey` so contents added after the panel
+ * opened are refused (`stale`) rather than deleted unseen.
+ */
+export function reviewStoreyDeletion(s: ViewerState, modelId: string, storeyId: number): StoreyDeletePlan | null {
+  const target = modelEditTarget(s, modelId);
+  return target ? planStoreyDelete(readStoreyInventory(target.dataStore, target.view), storeyId, { kind: 'deleteContents' }) : null;
+}
+
+/**
  * Delete a storey. When it is the one being drawn on, the session moves to
  * the storey below it (or above, for the lowest) first, so it never points
  * at a deleted storey.
  */
-export function deleteStorey(store: TransactionStore, modelId: string, storeyId: number, mode: StoreyDeleteMode): StoreyOpOutcome {
+export function deleteStorey(
+  store: TransactionStore, modelId: string, storeyId: number, mode: StoreyDeleteMode, expected?: StoreyDeletePlan,
+): StoreyOpOutcome {
   const s = store.getState();
-  const op = { kind: 'delete', storeyId, mode } as const;
+  const op = { kind: 'delete', storeyId, mode, expected } as const;
   const refusals = storeyOpRefusals(s, modelId, op);
   if (refusals.length) return { ok: false, reason: refusals.map((r) => r.message).join('; '), refusals };
   if (s.session?.modelId === modelId && s.session.storeyId === storeyId) {

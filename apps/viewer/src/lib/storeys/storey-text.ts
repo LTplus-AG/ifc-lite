@@ -39,6 +39,10 @@ export function refusalText(t: T, refusal: StoreyRefusal): string {
       return t('storeyManager.refusal.unreadable', { count });
     case 'onlyStorey':
       return t('storeyManager.refusal.onlyStorey');
+    case 'stale':
+      return t('storeyManager.refusal.stale');
+    case 'tooLarge':
+      return t('storeyManager.refusal.tooLarge', { storey: text(p.storey) });
     case 'invalidValue':
       return t('storeyManager.invalid.length');
     default:

@@ -17,7 +17,7 @@
 import {
   addStoreyInStore, applyStoreyDelete, applyStoreyLevelEdit, planStoreyDelete, planStoreyLevelEdit,
   readStoreyInventory, renameStoreyInStore, StoreyEditRefusedError,
-  type AddStoreyParams, type StoreyDeleteMode, type StoreyLevelEdit, type StoreyRefusal,
+  type AddStoreyParams, type StoreyDeleteMode, type StoreyDeletePlan, type StoreyLevelEdit, type StoreyLevelPlan, type StoreyRefusal,
 } from '@ifc-lite/create';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -30,8 +30,9 @@ import { completeEntityRemoval } from './mutation-mesh-stash.js';
 export type StoreyOp =
   | { readonly kind: 'add'; readonly params: AddStoreyParams }
   | { readonly kind: 'rename'; readonly storeyId: number; readonly Name: string }
-  | { readonly kind: 'level'; readonly edit: StoreyLevelEdit }
-  | { readonly kind: 'delete'; readonly storeyId: number; readonly mode: StoreyDeleteMode };
+  /** `expected`: the reviewed plan; a model that changed since is refused with code `stale`. */
+  | { readonly kind: 'level'; readonly edit: StoreyLevelEdit; readonly expected?: StoreyLevelPlan }
+  | { readonly kind: 'delete'; readonly storeyId: number; readonly mode: StoreyDeleteMode; readonly expected?: StoreyDeletePlan };
 
 export type StoreyOpOutcome =
   | { readonly ok: true; readonly batchId: string | null; readonly storeyId: number | null; readonly remeshed: readonly number[] }
@@ -99,11 +100,11 @@ function write(dataStore: IfcDataStore, editor: StoreEditor, op: StoreyOp): Writ
       renameStoreyInStore(dataStore, editor, op.storeyId, op.Name);
       return { storeyId: op.storeyId, remesh: [], removed: [] };
     case 'level': {
-      const { plan, reshaped } = applyStoreyLevelEdit(dataStore, editor, op.edit);
+      const { plan, reshaped } = applyStoreyLevelEdit(dataStore, editor, op.edit, op.expected);
       return { storeyId: op.edit.storeyId, remesh: [...new Set([...plan.moved, ...reshaped])], removed: [] };
     }
     case 'delete': {
-      const plan = applyStoreyDelete(dataStore, editor, op.storeyId, op.mode);
+      const plan = applyStoreyDelete(dataStore, editor, op.storeyId, op.mode, op.expected);
       // Moved contents keep their world position, so nothing re-meshes.
       const removed = op.mode.kind === 'deleteContents' ? [...plan.contents, op.storeyId] : [op.storeyId];
       return { storeyId: null, remesh: [], removed };

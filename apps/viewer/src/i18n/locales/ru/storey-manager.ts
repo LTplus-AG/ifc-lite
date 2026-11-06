@@ -110,6 +110,8 @@ export const storeyManagerRu = {
     "other": "У {count} элементов размещения не читаются"
   },
   "storeyManager.refusal.onlyStorey": "В модели остаётся хотя бы один этаж",
+  "storeyManager.refusal.stale": "Модель изменилась после проверки. Проверьте ещё раз, прежде чем подтвердить.",
+  "storeyManager.refusal.tooLarge": "{storey}: слишком много элементов, чтобы изменить этаж за один шаг",
   "storeyManager.refusal.other": "Не применено: {reason}",
   "storeyManager.refusal.nothingChanged": "Ничего не изменено.",
   "storeyManager.delete": "Удалить {storey}",

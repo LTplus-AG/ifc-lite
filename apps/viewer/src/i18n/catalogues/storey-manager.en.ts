@@ -60,6 +60,8 @@ export const storeyManagerEn = {
   'storeyManager.refusal.unplaced': { one: '{count} element has geometry but no placement, so it cannot move', other: '{count} elements have geometry but no placement, so they cannot move' },
   'storeyManager.refusal.unreadable': { one: '{count} element has a placement that cannot be read', other: '{count} elements have placements that cannot be read' },
   'storeyManager.refusal.onlyStorey': 'A model keeps at least one storey',
+  'storeyManager.refusal.stale': 'The model changed since you reviewed this. Check it again before you confirm.',
+  'storeyManager.refusal.tooLarge': '{storey} holds too many elements to edit in one step',
   'storeyManager.refusal.other': 'Not applied: {reason}',
   'storeyManager.refusal.nothingChanged': 'Nothing was changed.',
   'storeyManager.delete': 'Delete {storey}',

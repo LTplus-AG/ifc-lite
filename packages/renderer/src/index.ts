@@ -4,6 +4,8 @@
 
 import type { LineVertices } from './section-2d-line-buffer.js';
 import { sectionExclusions } from './section-exclusions.js';
+import { PickClipRevision } from './pick-clip-revision.js';
+import { PickSourceRevision } from './pick-source-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
@@ -533,14 +535,15 @@ export class Renderer {
     // overrideParams: full entity anchor for clipping, plus colour-override mode (#6076).
     private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
-    // What the last render() actually clipped, so the GPU picker can mirror it and
-    // section/crop-clipped geometry stays unpickable, not just invisible. Updated
-    // every render; read by pick()/pickRect(). null = nothing clipped that frame.
+    // What the last render() actually clipped, so the GPU picker can mirror it and section/crop-clipped
+    // geometry stays unpickable, not just invisible. Updated every render; read by pick()/pickRect(). null = nothing clipped that frame.
     private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
     private _sectionExcludedIds: ReadonlySet<number> = new Set();
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
+    private readonly _pickClipRevision = new PickClipRevision(); // see getPickClipRevision()
+    private readonly pickSources = new PickSourceRevision(); // point clouds and source curves in getPickGeometryRevision() (#9029, #9030)
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
@@ -1004,19 +1007,13 @@ export class Renderer {
         }
     }
 
-    /**
-     * Replace all loaded point clouds with `assets`.
-     *
-     * Phase 0 entry point — single-chunk inline assets from IFCx
-     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
-     * accept streaming sources via a different overload.
-     */
+    /** Replace the embedded clouds with single-chunk inline IFCx `assets` (`pcd::base64`, `points::array`, `points::base64`); streamed scans stay. */
     setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-        this.pointCloudRenderer.setAssets(assets);
+        this.pickSources.setEmbeddedClouds(this.pointCloudRenderer, assets);
         this.refreshPlacementBounds();
     }
 
@@ -1025,6 +1022,7 @@ export class Renderer {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
+        this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
         for (const asset of assets) {
             this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
@@ -1046,7 +1044,7 @@ export class Renderer {
 
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
-        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.refreshPlacementBounds();
     }
 
@@ -1084,7 +1082,7 @@ export class Renderer {
      * effect on the next render — no GPU buffer rewrite needed.
      */
     relabelPointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
-        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex);
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex); this.pickSources.notePointClouds();
         this.requestRender();
     }
 
@@ -1095,7 +1093,7 @@ export class Renderer {
 
     /** Apply rendering options (color mode, fixed override, point size). */
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
-        this.pointCloudRenderer?.setOptions(opts);
+        if (this.pointCloudRenderer) this.pickSources.setPointCloudOptions(this.pointCloudRenderer, opts);
         this.requestRender();
     }
 
@@ -1124,7 +1122,7 @@ export class Renderer {
 
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
-        this.pointCloudRenderer?.setAssetTranslation(handle, translation);
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTranslation(handle, translation));
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1132,6 +1130,7 @@ export class Renderer {
     /** Toggle one resident streamed scan without releasing its GPU buffers. */
     setPointCloudVisibility(handle: { id: number }, visible: boolean): void {
         if (!this.pointCloudRenderer?.setAssetVisible(handle, visible)) return;
+        this.pickSources.notePointClouds();
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1159,7 +1158,7 @@ export class Renderer {
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
         matrix: Float32Array | Float64Array | null,
     ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTransform(handle, matrix));
         this.refreshPlacementBounds();
     }
 
@@ -1902,12 +1901,10 @@ export class Renderer {
             // Load/overlay paths own model + camera scene bounds; the Gaussian
             // layer independently updates the camera's depth-only extent (#8564).
 
-            // Stash what we actually clipped this frame so the GPU picker mirrors
-            // it (section/crop-clipped geometry must be unpickable, not just hidden).
-            // `flipped` matches how the mesh flags pack it below. terrainClipY feeds
-            // sectionPlaneData too, so it's covered without special-casing.
-            // Snapshot (don't alias the caller's arrays/object) so an in-place
-            // mutation after render() can't make pick() mirror a different cut.
+            // Stash what we actually clipped this frame so the GPU picker mirrors it (section/crop-clipped
+            // geometry must be unpickable, not just hidden). `flipped` matches the mesh flags packed below;
+            // terrainClipY feeds sectionPlaneData too. Snapshot, don't alias the caller's arrays/object, so
+            // an in-place mutation after render() can't make pick() mirror a different cut.
             this._activePickSection = sectionPlaneData?.enabled
                 ? {
                     normal: [...sectionPlaneData.normal] as [number, number, number],
@@ -1925,6 +1922,7 @@ export class Renderer {
                     max: [...options.clipBox.max] as [number, number, number],
                 }
                 : null;
+            this._pickClipRevision.note(this.activePickClip(), options.restoreEvictedForCapture === true); // a capture's clip lasts one frame (#9002)
 
             // Meshes this camera's RTE frame cannot represent (#6128). Nothing
             // culls individual meshes before this point, so a far-off mesh (a
@@ -2726,7 +2724,7 @@ export class Renderer {
                     // paints straight over it. That is routine since #4129 — an
                     // X-Rayed batch emits a faded group AND a solid one.
                     const transparentSubBatches: typeof allBatchedMeshes = [];
-                    for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
+                    for (const { sourceBatch, sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
                             sourceBatchKey,
@@ -2738,6 +2736,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
+                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2758,8 +2757,7 @@ export class Renderer {
                             // full-batch path above.
                             usePipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
-                            // Render the sub-batch as a single draw call
-                            renderBatch(subBatch, true);
+                            renderBatch(subBatch, true); // one draw call for the whole subset
                         }
                     }
                     if (transparentSubBatches.length > 0) holdGlass(true);
@@ -3206,6 +3204,10 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
+    /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
+    getPickClipRevision(): number { return this._pickClipRevision.revision; }
+    /** Bumped when what a pick can hit changes: an edit or its undo, a move, a stream (#8998), points (#9029), source curves (#9030). */
+    getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision() + this.pickSources.revision(); }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
@@ -3221,8 +3223,7 @@ export class Renderer {
     }
 
     /**
-     * Raycast with magnetic edge snapping behavior
-     * This provides the "stick and slide along edges" experience
+     * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.
@@ -3238,7 +3239,7 @@ export class Renderer {
 
     /** Opt in the currently selected authored curves for exact magnetic picking. */
     setSourceSnapCurves(curves: readonly import('./source-curve-snap.js').SourceSnapCurve[]): void {
-        this.raycastEngine.setSourceSnapCurves(curves);
+        this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
     /**
@@ -3657,7 +3658,7 @@ export class Renderer {
 
         // Point cloud GPU resources
         this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
-        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.pointCloudRenderer = null;
 
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.

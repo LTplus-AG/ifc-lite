@@ -117,6 +117,25 @@ describe('addCurtainWallToStore', () => {
     }
   });
 
+  it('glazes every panel with one shared translucent style and leaves the members unstyled', () => {
+    for (const schema of ['IFC4', 'IFC2X3'] as const) {
+      const { editor, anchor, entity, ref, view } = setup(schema);
+      const r = addCurtainWallToStore(editor, anchor, CW);
+      const first = (list: unknown) => (list as string[])[0];
+      const solidId = (id: number) => first(ref(first(ref(entity(id).attributes[6]).attributes[2])).attributes[3]);
+      const styled = view.getNewEntities().filter((e) => e.type === 'IfcStyledItem');
+      expect(styled.map((e) => e.attributes[0]).sort()).toEqual(r.panelIds.map(solidId).sort());
+      expect(new Set(styled.map((e) => first(e.attributes[1]))).size).toBe(1);
+
+      const direct = ref(first(styled[0].attributes[1]));
+      const style = schema === 'IFC2X3' ? ref(first(direct.attributes[0])) : direct;
+      expect(style.type).toBe('IfcSurfaceStyle');
+      expect(style.attributes[0]).toBe('Curtain wall glazing');
+      const shading = ref(first(style.attributes[2]));
+      expect((shading.attributes[1] as { real: number }).real).toBeGreaterThan(0);
+    }
+  });
+
   it('extrudes mullions up the wall and transoms along it, with profile Y across the wall on both', () => {
     const { editor, anchor, entity, ref, frame } = setup('IFC4');
     const r = addCurtainWallToStore(editor, anchor, CW);

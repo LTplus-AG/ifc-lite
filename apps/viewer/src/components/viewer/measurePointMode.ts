@@ -20,6 +20,7 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
+import { viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
 /** Point mode is live: the Measure tool is open in Point mode. A hover frame queued before a mode or tool switch lands as a no-op. */
 function pointModeLive(): boolean {
@@ -60,6 +61,9 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */
 export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
+  // A pick now would read a capture's camera or clip, not the view the user
+  // sees (#9031): read this spot once the live loop has drawn again.
+  if (viewportPicksAwaitLiveFrame(ctx.renderer)) { deferHover(ctx, x, y); return; }
   // A live point holds only for the view it was picked under: the camera
   // reprojection pass drops it on any camera or scene change (#8828, #8886).
   // Bring that pass up to this view first, so the next frame does not count
@@ -93,14 +97,28 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
   cancelTrailingHover(ctx);
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
-    trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
-      trailingHover.delete(ctx.lastHoverSnapTimeRef);
-      // A press since then owns the pointer (orbit, or the click's own pick).
-      if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
-    }, wait));
+    armTrailingHover(ctx, x, y, wait);
     return;
   }
   handleMeasureHover(ctx, x, y, hoverMeasurePoint);
+}
+
+function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: number): void {
+  trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
+    trailingHover.delete(ctx.lastHoverSnapTimeRef);
+    // A press since then owns the pointer (orbit, or the click's own pick).
+    if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
+  }, wait));
+}
+
+/**
+ * Retry a hover pick a capture held back (#9031), asking the loop for the
+ * frame it waits on. A trailing pick already pending is for a later cursor
+ * position, so it stands.
+ */
+function deferHover(ctx: MouseHandlerContext, x: number, y: number): void {
+  ctx.renderer.requestRender();
+  if (!trailingHover.has(ctx.lastHoverSnapTimeRef)) armTrailingHover(ctx, x, y, ctx.HOVER_SNAP_THROTTLE_MS);
 }
 
 /**

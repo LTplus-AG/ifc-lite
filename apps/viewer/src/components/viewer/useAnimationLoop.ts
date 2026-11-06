@@ -25,7 +25,7 @@ import { reprojectMeasurementsForCamera, type MeasureCameraState } from './measu
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-import { registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
+import { noteLiveFrameSubmitted, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { GpuFramePacer } from './gpuFramePacer';
@@ -260,7 +260,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         const stats = renderer.getFrameStats();
         throttle.noteRenderCost(stats && stats.timestamp >= renderStart ? stats.cpuMs : performance.now() - renderStart);
         // Only a frame that really reached the queue can owe the page a completion.
-        if (submitted) framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+        if (submitted) {
+          framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+          noteLiveFrameSubmitted(renderer); // the measure pass below may compare picks again (#9031)
+        }
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback

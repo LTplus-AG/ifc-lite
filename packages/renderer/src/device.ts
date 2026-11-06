@@ -21,6 +21,25 @@ export interface AdapterInfoSnapshot {
   architecture?: string;
 }
 
+/**
+ * Bound on `requestAdapter()`. A broken driver, a remote session or a GPU-less
+ * headless browser can leave it pending forever, so init() would never settle
+ * and no caller could show an error (#9076). Past the bound init() rejects.
+ */
+export const ADAPTER_REQUEST_TIMEOUT_MS = 10_000;
+
+async function requestAdapterOrTimeout(gpu: GPU): Promise<GPUAdapter | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('GPU adapter request timed out')), ADAPTER_REQUEST_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([gpu.requestAdapter(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class WebGPUDevice {
   private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
@@ -66,7 +85,7 @@ export class WebGPUDevice {
       throw new Error('WebGPU not available');
     }
 
-    this.adapter = await navigator.gpu.requestAdapter();
+    this.adapter = await requestAdapterOrTimeout(navigator.gpu);
     if (!this.adapter) {
       throw new Error('Failed to get GPU adapter');
     }

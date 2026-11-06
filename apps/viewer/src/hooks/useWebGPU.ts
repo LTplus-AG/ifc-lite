@@ -62,6 +62,27 @@ export function getWebGPUStatus(): WebGPUStatus {
     : CHECKING_STATUS;
 }
 
+/**
+ * A conformant browser settles requestAdapter() with an adapter or null, but a
+ * broken driver, a remote session or a GPU-less headless browser can leave it
+ * pending forever, which kept the viewer on "checking" behind an endless
+ * spinner (#9076). Past this bound the probe reports no-gpu, so the usual
+ * guidance shows; Retry asks again.
+ */
+export const ADAPTER_REQUEST_TIMEOUT_MS = 10_000;
+
+async function requestAdapterOrTimeout(gpu: GPU): Promise<GPUAdapter | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('GPU adapter request timed out')), ADAPTER_REQUEST_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([gpu.requestAdapter(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function probeWebGPU(force = false): Promise<WebGPUStatus> {
   const gpu = navigator.gpu;
   const secureContext = window.isSecureContext;
@@ -77,7 +98,7 @@ function probeWebGPU(force = false): Promise<WebGPUStatus> {
     }
 
     try {
-      const adapter = await gpu.requestAdapter();
+      const adapter = await requestAdapterOrTimeout(gpu);
       return adapter
         ? { supported: true, checking: false, reason: null, category: null }
         : { supported: false, checking: false, reason: 'No compatible GPU adapter found', category: 'no-gpu' };

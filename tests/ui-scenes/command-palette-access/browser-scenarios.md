@@ -8,7 +8,7 @@ Status: authored, browser execution UNRUN. This finite representative set is not
 ALL-feature acceptance, a substitute for semantic inventory reconciliation, or
 proof of the existing unit cases. The unchanged #8946 general UX spec has 11
 previously accepted scenarios on the earlier source; all 11 must run again on
-the candidate alongside these eight access scenarios.
+the candidate alongside these eight access scenarios and the installed-extension scenario.
 
 | Access case | Context | Observable contract |
 | --- | --- | --- |
@@ -17,9 +17,10 @@ the candidate alongside these eight access scenarios.
 | Loaded tools (1) | bundled building-architecture IFC, desktop/light, unselected then selected | disabled Hide becomes executable with canonical selection; resident real wall hidden in renderer visibility; Bulk target-source UI, class switch, Angle toolbar, Point/List/Qty tabs |
 | Blank (1) | empty desktop/light with real WebGPU | canonical parser creates project/storey; actual Model wall rail pressed and wall.place session; replacement refused |
 | Camera (1) | real IFC desktop/light | edge/corner/edge changes actual renderer view-projection; returning to edge reproduces matrix after animation settles |
+| Installed extension (1) | real IFC desktop/light | actual .iflx import and grants, owner-qualified dock, QuickJS Hide/Show, UI disable/re-enable/uninstall retirement |
 | Live context (1) | real IFC narrow/dark | production role gate observes viewer role while palette open; editor restoration reenables; canonical removeModel retirement disables author destination |
 
-Context setup selects an entity from the parsed IFC and invokes the canonical
+The original access context setup selects an entity from the parsed IFC and invokes the canonical
 selection actions. Role setup changes only role data through Zustand; no action,
 canCollabEdit function, geometry, host, or action return is replaced. Model
 retirement uses the real removeModel action. This does not certify relay role
@@ -34,24 +35,47 @@ extract the PNGs plus compact status/error summaries; the default list reporter
 does not publish passed attachment bodies. Retain failure traces. Missing bundled
 sample or missing debug hooks fails honestly; no synthetic fallback is provided.
 
-## Extension gap: explicitly UNIMPLEMENTED / UNRUN
+## Installed extension witness: authored / runtime UNRUN
 
-Inspected the real ExtensionsPanel `.iflx` install/capability-consent route,
-IdbExtensionStorage (extensions and extension-bundles stores), the packed QuickJS
-exporter fixture in src/test/extension-export-fixture.tsx, and
-packages/extensions/test/fixtures/bundles/good. The latter has a real widget but
-its command only reads selection and returns a count: it produces no observable
-view change. The mounted exporter fixture is a native test host, not an installed
-browser fixture. Neither counts as the requested browser witness.
+`tests/e2e/command-palette-access-extension.e2e.spec.ts` adds one finite browser
+journey for #8947. Source lives under `tests/e2e/fixtures/palette-access-extension/`:
+a manifest, a real widget with Hide/Show buttons and boolean command arguments,
+and a plain `async function run(ctx)` handler (the canonical source wrapper does
+not accept ESM exports). It reads `bim.query.selection()` and calls
+`bim.viewer.hide` / `show`. Consent grants `model.read`, `viewer.read` and
+`viewer.isolate`; no host, command result or contribution registry is substituted.
 
-This batch does not include a deterministic packed fixture with a view-mutating
-handler and a widget invoking that handler. Missing case: install such a bundle
-through the actual browser installer and consent UI; open its owner-qualified
-palette dock destination; invoke the real widget button through QuickJS; assert
-an actual renderer visibility or view change on the bundled IFC; then disable or
-uninstall its owner and verify stale destination refusal. No fake host, seeded
-registry row, monkeypatched handler or passing skipped test stands in for this.
-Extension access acceptance remains blocked on that witness.
+The helper dynamically imports the canonical **built** extension directory loader
+and `.iflx` packer. Root pnpm/Turbo must build those outputs first. Discovery never
+packs, loads the host or launches a browser. On execution, it validates the source
+bundle, packs twice to require identical bytes, and attaches the actual uploaded
+`.iflx` plus its byte length/SHA256. No packed hash is claimed before that run.
+Do not substitute source imports or an ad-hoc gzip envelope for a missing build.
+
+The test loads the real bundled `building-architecture.ifc`, selects a parsed
+wall with canonical selection actions and requires resident scene geometry. It
+opens Extensions from the palette, clicks Import, uploads the actual packed bytes
+through its filechooser, and explicitly toggles each consent grant off/on before
+Install. **ExtensionsPanel always uses `<input type="file" accept=".iflx">`; it
+does not use `showOpenFilePicker`.** This test leaves File System Access intact.
+In-memory file payloads avoid WSL path interpretation by Windows Chrome over CDP.
+This certifies neither the model File System Access picker nor persistent handles.
+
+The exact owner-qualified `ext-widget:` tuple row must open the actual widget in
+its dialog. Clicking Hide and Show there dispatches the real owner-scoped command
+through QuickJS. Renderer visibility must hide then show the resident wall. It
+then disables the owner through its installed-list switch, requires its destination
+to disappear, and presses Enter on the empty owner search to verify no widget opens or
+wall is hidden. Re-enabling must restore the destination and widget. Finally,
+Uninstall plus the real confirmation dialog must remove the installed row and
+retire/refuse the destination again. This is observed UI lifecycle retirement,
+not certification of a retained DOM callback race in the same frame.
+
+Attachments include consent, hidden/shown wall, disabled/uninstalled owner,
+final state, bundle identity/bytes and uncaught pageerrors, including final-state
+and pageerror evidence on failure. Retain JSON reporter attachments and failure
+traces. **Packing, installation, QuickJS, renderer assertions, screenshots and
+retirement remain UNRUN by this author.** Discovery/syntax are not acceptance.
 
 ## Coordinator runner recipe (no execution by this author)
 
@@ -73,14 +97,15 @@ Discovery only (no server or browser):
 
 ```sh
 pnpm exec playwright test --project=viewer-e2e-ci --list \
-  tests/e2e/command-palette-ux.e2e.spec.ts tests/e2e/command-palette-access.e2e.spec.ts
+  tests/e2e/command-palette-ux.e2e.spec.ts tests/e2e/command-palette-access.e2e.spec.ts \
+  tests/e2e/command-palette-access-extension.e2e.spec.ts
 ```
 
-Expect 19 tests. After the matching artifact is available, coordinator owns the
-preview and browser lifetimes. Choose a free PLAYWRIGHT_PORT and verify server
+Expect 20 tests (11 frozen UX + 8 access + 1 extension). After the matching
+artifact is available, coordinator owns the preview and browser lifetimes. Choose a free PLAYWRIGHT_PORT and verify server
 ownership and dist hash: the standard config may reuse an existing server.
 For PC real GPU correctness use ifc-gpu-check, never a plain WSL browser launch.
-The new access spec attaches directly when IFC_GPU_CDP_URL is present. The old UX
+Both new access specs attach directly when IFC_GPU_CDP_URL is present. The old UX
 spec is unchanged and needs the existing attaching preload too:
 `/home/louistrue/.t3/scratch/palette-ux-evidence-fd0b1714/attach-gpu-root.mjs`.
 It imports this checkout's Playwright and redirects launch to the managed CDP
@@ -94,13 +119,14 @@ From this checkout, after the coordinator has arranged the matching preview:
   export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import=/home/louistrue/.t3/scratch/palette-ux-evidence-fd0b1714/attach-gpu-root.mjs"
   pnpm exec playwright test --project=viewer-e2e-ci --workers=1 \
     tests/e2e/command-palette-ux.e2e.spec.ts tests/e2e/command-palette-access.e2e.spec.ts \
+    tests/e2e/command-palette-access-extension.e2e.spec.ts \
     --reporter=json
 '
 ```
 
 Set PLAYWRIGHT_JSON_OUTPUT_FILE to an owned evidence path beforehand. Do not
 nest GPU helpers, inherit another owner's browser, or run this against a stale
-artifact. Report host, source/artifact hash, adapter, exits, all 19 outcomes,
+artifact. Report host, source/artifact hash, adapter, exits, all 20 outcomes,
 skips and pageerrors; GPU checks are untimed correctness, never perf proof.
 
 ## Frozen comparisons and new flow captures

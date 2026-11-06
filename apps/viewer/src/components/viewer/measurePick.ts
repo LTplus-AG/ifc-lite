@@ -19,15 +19,16 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
  * snaps, Shift included (#8995): the axis constrains the point, an edge or
  * vertex never pulls it, so the raycast can set no edge lock or glyph. On the
  * Shift axis an edge or vertex may pull it before it is projected (no faces);
- * `reduced` drops vertex snap after a slow frame.
+ * `reduced` drops vertex snap after a slow frame; `radius` overrides the
+ * 60px pull (the hover preview uses 40px).
  */
 export function measureSnapOptions(
   ctx: Pick<MouseHandlerContext, 'snapEnabledRef'>,
-  { axis = false, reduced = false }: { axis?: boolean; reduced?: boolean } = {},
+  { axis = false, reduced = false, radius }: { axis?: boolean; reduced?: boolean; radius?: number } = {},
 ): Partial<SnapOptions> {
   if (!ctx.snapEnabledRef.current) return { snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 };
   if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40 };
-  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: reduced ? 40 : 60 };
+  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: radius ?? (reduced ? 40 : 60) };
 }
 
 /**

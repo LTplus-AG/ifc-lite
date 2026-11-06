@@ -249,12 +249,7 @@ export function handleMeasureHover(
       }, {
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
-        snapOptions: {
-          snapToVertices: true,
-          snapToEdges: true,
-          snapToFaces: true,
-          screenSnapRadius: 40, // Good radius for hover snap detection
-        },
+        snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
       });
 
       // Update snap target for visual feedback

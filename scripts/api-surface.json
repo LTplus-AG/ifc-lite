@@ -5130,6 +5130,7 @@
     "splitElementsInStore: function",
     "stairFlightOutline: function",
     "storeyContents: function",
+    "storeyDeletePlanSignature: function",
     "storeyFootprintFaceInStore: function",
     "storeyLevelPlanSignature: function",
     "storeyPlanFrame: function",

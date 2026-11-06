@@ -212,7 +212,7 @@ export {
   readStoreyInventory, summarizeStoreys, storeyContents, storeySpacingAbove,
   addStoreyInStore, addStoreyRefusal, renameStoreyInStore,
   planStoreyLevelEdit, applyStoreyLevelEdit, storeyLevelPlanSignature,
-  planStoreyDelete, applyStoreyDelete, suggestStorey, DEFAULT_STOREY_HEIGHT,
+  planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, suggestStorey, DEFAULT_STOREY_HEIGHT,
   type StoreyLevelResult,
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,
   type StoreyInventory, type StoreyRecord, type StoreySummary, type AddStoreyParams, type AddStoreyResult,

@@ -24,7 +24,9 @@ export type StoreyRefusalCode =
   | 'notEmpty'
   | 'invalidTarget'
   | 'onlyStorey'
-  | 'dependent';
+  | 'dependent'
+  /** A reviewed plan no longer matches the model: review the edit again. */
+  | 'stale';
 
 export interface StoreyRefusal {
   readonly code: StoreyRefusalCode;

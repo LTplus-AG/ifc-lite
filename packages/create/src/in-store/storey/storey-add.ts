@@ -68,6 +68,41 @@ function nearest(inventory: StoreyInventory, elevation: number, parentId: number
   return best;
 }
 
+/**
+ * The live entity already carrying `globalId`, or null: the parsed index and
+ * every record the overlay created or edited, read through the effective view
+ * (a deleted entity no longer holds its GlobalId, an edited one holds its new one).
+ */
+function globalIdOwner(inventory: StoreyInventory, globalId: string): number | null {
+  const { reader, store, view } = inventory;
+  const carries = (id: number) => reader.entity(id)?.attributes[0] === globalId;
+  const indexed = store.entities.getExpressIdByGlobalId?.(globalId) ?? -1;
+  if (indexed > 0 && carries(indexed)) return indexed;
+  for (const entity of view.getNewEntities()) if (carries(entity.expressId)) return entity.expressId;
+  for (const change of view.getEffectiveChanges()) if (carries(change.entityId)) return change.entityId;
+  return null;
+}
+
+/** The building the new storey joins, refusing a reference and a `buildingId` that disagree. */
+function joinedBuilding(inventory: StoreyInventory, params: AddStoreyParams): { parentId: number; requested: StoreyRecord | null } {
+  if (params.referenceStoreyId === undefined) {
+    const parents = [...new Set(inventory.storeys.map((storey) => storey.parentId))];
+    const shared = params.buildingId === undefined && parents.length === 1 ? parents[0] : null;
+    return { parentId: shared ?? soleBuilding(inventory, params.buildingId), requested: null };
+  }
+  const requested = inventory.storeys.find((storey) => storey.expressId === params.referenceStoreyId);
+  if (!requested) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
+  // The new storey copies the reference's PlacementRelTo, so it must join the
+  // reference's building too; a reference outside any building has none to give.
+  if (requested.parentId === null) {
+    throw new Error(`${OP}: ${requested.Name} is not aggregated under a building, so a new storey cannot follow it; choose another reference storey`);
+  }
+  if (params.buildingId !== undefined && params.buildingId !== requested.parentId) {
+    throw new Error(`${OP}: ${requested.Name} belongs to #${requested.parentId}, not building #${params.buildingId}; choose a reference storey in that building`);
+  }
+  return { parentId: requested.parentId, requested };
+}
+
 function soleBuilding(inventory: StoreyInventory, requested: number | undefined): number {
   const buildings = [...inventory.reader.ids('IFCBUILDING')];
   if (requested !== undefined) {
@@ -82,19 +117,17 @@ function soleBuilding(inventory: StoreyInventory, requested: number | undefined)
 export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams): AddStoreyResult {
   return editor.runAtomic((draft) => {
     const inventory = readStoreyInventory(store, draft.getMutationView());
-    if (params.GlobalId !== undefined && !isValidIfcGuid(params.GlobalId)) throw new Error(`${OP}: GlobalId "${params.GlobalId}" is not a valid IFC GUID`);
+    if (params.GlobalId !== undefined) {
+      if (!isValidIfcGuid(params.GlobalId)) throw new Error(`${OP}: GlobalId "${params.GlobalId}" is not a valid IFC GUID`);
+      const owner = globalIdOwner(inventory, params.GlobalId);
+      if (owner !== null) throw new Error(`${OP}: GlobalId "${params.GlobalId}" already belongs to #${owner}; a GlobalId must be unique`);
+    }
     const ownerHistoryId = inventory.reader.firstId('IFCOWNERHISTORY');
     if (inventory.schema === 'IFC2X3' && ownerHistoryId === null) throw new Error(`${OP}: IFC2X3 requires IfcOwnerHistory`);
 
     // The building first: a reference storey names it; otherwise the one
     // building the storeys share, or the sole IfcBuilding (or `buildingId`).
-    const requested = params.referenceStoreyId !== undefined
-      ? inventory.storeys.find((storey) => storey.expressId === params.referenceStoreyId) ?? null
-      : null;
-    if (params.referenceStoreyId !== undefined && !requested) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
-    const parents = [...new Set(inventory.storeys.map((storey) => storey.parentId))];
-    const parentId = requested?.parentId
-      ?? (params.buildingId === undefined && parents.length === 1 && parents[0] !== null ? parents[0] : soleBuilding(inventory, params.buildingId));
+    const { parentId, requested } = joinedBuilding(inventory, params);
     const refusal = addStoreyRefusal(inventory, params, parentId);
     if (refusal) throw new Error(refusal);
     const reference = requested ?? nearest(inventory, params.Elevation, parentId);

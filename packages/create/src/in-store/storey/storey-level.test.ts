@@ -177,6 +177,16 @@ describe('storey edits stay within their building (#9013 review)', () => {
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Twin', Elevation: 3, referenceStoreyId: 142 }))
       .toThrow('Annex 1 is already at +3.00 m');
   });
+
+  it('a buildingId that disagrees with the reference storey is refused', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    const before = s.snapshot();
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6, referenceStoreyId: 142, buildingId: 30 }))
+      .toThrow('Annex 1 belongs to #130, not building #30');
+    expect(s.snapshot()).toEqual(before);
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6, referenceStoreyId: 142, buildingId: 130 });
+    expect(api('readStoreyInventory')(s.store, s.view).storeys.find((x) => x.expressId === added.storeyId)?.parentId).toBe(130);
+  });
 });
 
 describe('a reviewed plan is refused when the model changed under it (#9013 review)', () => {
@@ -188,6 +198,22 @@ describe('a reviewed plan is refused when the model changed under it (#9013 revi
     const column = s.editor.addEntity('IfcColumn', ['3Oz2e8GZz8RA2h4D8U3fsH', null, 'Late', null, null, '#71', null, null, null]).expressId;
     s.editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${column}`], '#42']);
     expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+  });
+
+  it('a placement point edited after review makes the plan stale, though ids and offsets are unchanged', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const edit = { kind: 'elevation', storeyId: 42, Elevation: 3.5 } as const;
+    const reviewed = plan(s, edit);
+    // The column hangs from the building, so the plan lifts its own placement #61 (point #62) by 500 mm.
+    expect(reviewed.placements.map(({ leaf, offset }) => [leaf.placementId, offset[2]])).toContainEqual([61, 500]);
+    s.editor.setPositionalAttribute(62, 0, [1000, 0, 4000]);
+    expect(plan(s, edit).placements.map(({ leaf, offset }) => [leaf.placementId, offset[2]])).toContainEqual([61, 500]);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.snapshot()).toEqual(before);
+    // Re-reviewed, it applies, and the column lands 500 mm above where it now is.
+    api('applyStoreyLevelEdit')(s.store, s.editor, edit, plan(s, edit));
+    expect(s.worldZ(60)).toBe(4500);
   });
 });
 

@@ -19,7 +19,7 @@ import { refId } from '../host-geometry-frame.js';
 import { safeLengthUnitScale } from '../length-unit-scale.js';
 import { effectiveStoreyElevation } from '../room-storey-elevation.js';
 
-/** Products below this count are a storey's "contents"; the walk refuses beyond it. */
+/** A mutation plan refuses a storey holding more products than this; read-only listings count past it. */
 export const STOREY_CONTENT_LIMIT = 50_000;
 
 export interface StoreyRelationship {
@@ -112,9 +112,13 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
   const relationships = relationshipsOf(reader);
   const outgoing = new Map<number, StoreyRelationship[]>();
   const incoming = new Map<number, StoreyRelationship[]>();
+  const append = (map: Map<number, StoreyRelationship[]>, key: number, rel: StoreyRelationship) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(rel); else map.set(key, [rel]);
+  };
   for (const rel of relationships) {
-    outgoing.set(rel.parent, [...(outgoing.get(rel.parent) ?? []), rel]);
-    for (const child of rel.children) incoming.set(child, [...(incoming.get(child) ?? []), rel]);
+    append(outgoing, rel.parent, rel);
+    for (const child of rel.children) append(incoming, child, rel);
   }
   const storeys: StoreyRecord[] = [];
   for (const expressId of reader.ids('IFCBUILDINGSTOREY')) {
@@ -170,8 +174,11 @@ export function storeySpacingAbove(inventory: StoreyInventory, storeyId: number)
  * aggregates (spaces, sub-storeys excluded) and, transitively, their
  * aggregated and nested parts, their openings and fillings, and what those
  * spatial elements contain in turn. Iterative with a visited set.
+ *
+ * Throws beyond `limit` products: a plan that would write that many is
+ * refused. Read-only callers pass `Infinity`.
  */
-export function storeyContents(inventory: StoreyInventory, storeyId: number): Set<number> {
+export function storeyContents(inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT): Set<number> {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
   const contents = new Set<number>();
   const queue = [storeyId];
@@ -179,8 +186,8 @@ export function storeyContents(inventory: StoreyInventory, storeyId: number): Se
     for (const rel of inventory.outgoing.get(queue[index]) ?? []) {
       for (const child of rel.children) {
         if (child === storeyId || contents.has(child) || storeyIds.has(child)) continue;
-        if (contents.size >= STOREY_CONTENT_LIMIT) {
-          throw new Error(`Storey #${storeyId} holds more than ${STOREY_CONTENT_LIMIT.toLocaleString('en')} products`);
+        if (contents.size >= limit) {
+          throw new Error(`Storey #${storeyId} holds more than ${limit.toLocaleString('en')} products`);
         }
         contents.add(child);
         queue.push(child);
@@ -215,7 +222,7 @@ export interface StoreySummary {
   readonly elementCount: number;
 }
 
-/** One row per storey, highest first: what a storey manager lists. */
+/** One row per storey, highest first: what a storey manager lists. Never refused for size. */
 export function summarizeStoreys(inventory: StoreyInventory): StoreySummary[] {
   return inventory.storeys.map((storey) => {
     const above = storeyNeighbour(inventory, storey.expressId, 1);
@@ -225,7 +232,7 @@ export function summarizeStoreys(inventory: StoreyInventory): StoreySummary[] {
       Name: storey.Name,
       elevation: storey.elevation,
       height: above ? above.elevation - storey.elevation : null,
-      elementCount: countedElements(inventory, storeyContents(inventory, storey.expressId)),
+      elementCount: countedElements(inventory, storeyContents(inventory, storey.expressId, Infinity)),
     };
   }).reverse();
 }

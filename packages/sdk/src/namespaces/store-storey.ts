@@ -35,17 +35,23 @@ export class StoreStoreyNamespace extends StoreModellingNamespace {
     return this.storeyMethod('planStoreyEdit')(modelId, edit);
   }
 
-  /** Move a storey (`elevation`) or the storeys above it (`floorHeight`) with their contents. */
-  editStorey(modelId: string, edit: StoreyLevelEdit): EntityRef[] {
-    return this.storeyMethod('editStorey')(modelId, edit);
+  /**
+   * Move a storey (`elevation`) or the storeys above it (`floorHeight`) with their contents. Pass the
+   * reviewed `planStoreyEdit` result as `expected` to refuse the edit if the model changed since.
+   */
+  editStorey(modelId: string, edit: StoreyLevelEdit, expected?: StoreyLevelPlan): EntityRef[] {
+    return this.storeyMethod('editStorey')(modelId, edit, expected);
   }
 
   planStoreyDelete(ref: EntityRef, mode: StoreyDeleteMode): StoreyDeletePlan {
     return this.storeyMethod('planStoreyDelete')(ref, mode);
   }
 
-  /** Delete a storey; one that holds elements needs `{ kind: 'move', targetStoreyId }` or `{ kind: 'deleteContents' }`. */
-  deleteStorey(ref: EntityRef, mode: StoreyDeleteMode): EntityRef[] {
-    return this.storeyMethod('deleteStorey')(ref, mode);
+  /**
+   * Delete a storey; one that holds elements needs `{ kind: 'move', targetStoreyId }` or `{ kind: 'deleteContents' }`.
+   * Pass the reviewed `planStoreyDelete` result as `expected` so contents added since are never deleted unseen.
+   */
+  deleteStorey(ref: EntityRef, mode: StoreyDeleteMode, expected?: StoreyDeletePlan): EntityRef[] {
+    return this.storeyMethod('deleteStorey')(ref, mode, expected);
   }
 }

@@ -72,9 +72,17 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
     refusals.push({ code: 'notEmpty', elementIds: [...contents], message: `${storey.Name} holds ${elementCount} element(s): move them to another storey or delete them with it`, params: { storey: storey.Name, count: elementCount } });
   }
   if (mode.kind === 'move') {
+    const nested = [...new Set((inventory.outgoing.get(storeyId) ?? []).filter((rel) => rel.type === 'IFCRELNESTS').flatMap((rel) => rel.children))];
     const target = inventory.storeys.find((candidate) => candidate.expressId === mode.targetStoreyId);
     if (!target || target.expressId === storeyId) {
       refusals.push({ code: 'invalidTarget', message: 'Choose another storey to move the elements to' });
+    } else if (nested.length) {
+      // IfcRelNests children have no spatial owner to re-point: moving the
+      // storey's other contents would leave them orphaned by the deletion.
+      refusals.push({
+        code: 'dependent', elementIds: nested,
+        message: `${storey.Name} nests ${nested.length} product(s) through IfcRelNests, which cannot be moved to another storey; delete them with it or re-nest them first`,
+      });
     } else {
       for (let start = 0; start < roots.length; start += REASSIGN_BATCH) {
         try {
@@ -89,11 +97,34 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
   return { ...base, contents: [...contents], roots, elementCount, refusals };
 }
 
-/** Delete atomically, or throw `StoreyEditRefusedError` having written nothing. */
-export function applyStoreyDelete(store: IfcDataStore, editor: StoreEditor, storeyId: number, mode: StoreyDeleteMode): StoreyDeletePlan {
+/**
+ * What makes two deletion plans the same: the storey, the mode and exactly
+ * what would be moved or deleted. Contents added to the storey after the
+ * review change it, so a reviewed `deleteContents` never deletes them.
+ */
+export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
+  return JSON.stringify({
+    storeyId: plan.storeyId,
+    mode: plan.mode.kind === 'move' ? ['move', plan.mode.targetStoreyId] : [plan.mode.kind],
+    contents: [...plan.contents].sort((x, y) => x - y),
+    roots: [...plan.roots].sort((x, y) => x - y),
+  });
+}
+
+/**
+ * Delete atomically, or throw `StoreyEditRefusedError` having written nothing.
+ * With `expected` (the plan a person reviewed), a model that has changed
+ * since is refused rather than re-planned.
+ */
+export function applyStoreyDelete(
+  store: IfcDataStore, editor: StoreEditor, storeyId: number, mode: StoreyDeleteMode, expected?: StoreyDeletePlan,
+): StoreyDeletePlan {
   return editor.runAtomic((draft) => {
     const plan = planStoreyDelete(readStoreyInventory(store, draft.getMutationView()), storeyId, mode);
     if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
+    if (expected && storeyDeletePlanSignature(plan) !== storeyDeletePlanSignature(expected)) {
+      throw new StoreyEditRefusedError([{ code: 'stale', message: 'The storey deletion was planned against a model that has changed since; review it again' }]);
+    }
     if (mode.kind === 'move') {
       for (let start = 0; start < plan.roots.length; start += REASSIGN_BATCH) {
         reassignElementsToStoreyInStore(store, draft, plan.roots.slice(start, start + REASSIGN_BATCH), storeyId, mode.targetStoreyId);

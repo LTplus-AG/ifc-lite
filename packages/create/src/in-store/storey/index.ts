@@ -14,7 +14,7 @@ export {
   type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,
 } from './storey-level-plan.js';
 export { applyStoreyLevelEdit, storeyLevelPlanSignature, type StoreyLevelResult } from './storey-level-apply.js';
-export { planStoreyDelete, applyStoreyDelete, type StoreyDeleteMode, type StoreyDeletePlan } from './storey-delete.js';
+export { planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, type StoreyDeleteMode, type StoreyDeletePlan } from './storey-delete.js';
 export { suggestStorey, DEFAULT_STOREY_HEIGHT, type StoreySuggestion } from './storey-suggest.js';
 export {
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,

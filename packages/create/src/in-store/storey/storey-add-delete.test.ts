@@ -6,6 +6,7 @@
 
 import * as create from '../../index.js';
 import { describe, expect, it } from 'vitest';
+import type { StoreyInventory } from './storey-model.js';
 import { effectiveStoreyId } from '../edit/effective-storey.js';
 import { THIRD_PARTY, helloWall, parse, session } from '../__test__/storey-fixtures.oracle.js';
 
@@ -51,6 +52,33 @@ describe('addStoreyInStore', () => {
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Twin', Elevation: 3 }))
       .toThrow('Level 2 is already at +3.00 m: storeys need a positive floor-to-floor height');
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: '  ', Elevation: 4 })).toThrow('A storey needs a name');
+    expect(s.snapshot()).toEqual(before);
+  });
+
+  it('refuses a GlobalId a live entity already carries; a deleted one is free again', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const before = s.snapshot();
+    // The column's GlobalId, from the parsed index.
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, GlobalId: '0Oz2e8GZz8RA2h4D8U3fsH' }))
+      .toThrow('GlobalId "0Oz2e8GZz8RA2h4D8U3fsH" already belongs to #60');
+    expect(s.snapshot()).toEqual(before);
+    // An entity authored in this session.
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, GlobalId: '3x4Kp9QeT0ZvYc1mN8bR2a' });
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '3x4Kp9QeT0ZvYc1mN8bR2a' }))
+      .toThrow(`already belongs to #${added.storeyId}`);
+    // A source entity whose GlobalId was edited holds the new one, not the old one.
+    s.editor.setPositionalAttribute(70, 0, '2Zq8Lm4Nr6Tv0Xy3Bc5Df7');
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2Zq8Lm4Nr6Tv0Xy3Bc5Df7' }))
+      .toThrow('already belongs to #70');
+    s.editor.removeEntity(80);
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2Hh6l7AY56SAGC9IQvMEv6' })).not.toThrow();
+  });
+
+  it('refuses a reference storey outside any building', async () => {
+    const s = session(await parse(THIRD_PARTY.replace('(#40,#42,#46));', '(#40,#42));')));
+    const before = s.snapshot();
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, referenceStoreyId: 46 }))
+      .toThrow('Level 3 is not aggregated under a building');
     expect(s.snapshot()).toEqual(before);
   });
 
@@ -124,9 +152,60 @@ describe('storey deletion', () => {
     expect(s.view.isDeleted(80)).toBe(false);
   });
 
+  it('refuses to move a storey that nests products, which have no spatial owner to move', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const nested = s.editor.addEntity('IfcBuildingElementProxy', ['1Ab2Cd3Ef4Gh5Ij6Kl7Mn8', null, 'Nested', null, null, '#71', null, null, null]).expressId;
+    s.editor.addEntity('IfcRelNests', ['0Pq1Rs2Tu3Vw4Xy5Za6Bc7', null, null, null, '#42', [`#${nested}`]]);
+    const inventory = api('readStoreyInventory')(s.store, s.view);
+    const plan = api('planStoreyDelete')(inventory, 42, { kind: 'move', targetStoreyId: 40 });
+    expect(plan.refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [nested]]]);
+    expect(plan.refusals[0].message).toContain('nests 1 product(s) through IfcRelNests');
+    const before = s.snapshot();
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, { kind: 'move', targetStoreyId: 40 })).toThrow(api('StoreyEditRefusedError'));
+    expect(s.snapshot()).toEqual(before);
+    // Deleting the contents takes the nested product too, so nothing is left orphaned.
+    api('applyStoreyDelete')(s.store, s.editor, 42, { kind: 'deleteContents' });
+    expect(s.view.isDeleted(nested)).toBe(true);
+  });
+
+  it('refuses a reviewed deletion once the storey holds something the review did not list', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const mode = { kind: 'deleteContents' } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    expect(api('storeyDeletePlanSignature')(reviewed)).toBe(api('storeyDeletePlanSignature')(api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode)));
+    const late = s.editor.addEntity('IfcColumn', ['3Oz2e8GZz8RA2h4D8U3fsH', null, 'Late', null, null, '#71', null, null, null]).expressId;
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${late}`], '#42']);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow(api('StoreyEditRefusedError'));
+    expect(s.snapshot()).toEqual(before);
+    expect(s.view.isDeleted(late)).toBe(false);
+  });
+
   it('keeps the last storey', async () => {
     const s = session(await helloWall());
     const plan = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, { kind: 'deleteContents' });
     expect(plan.refusals.map((r) => r.code)).toEqual(['onlyStorey']);
+  });
+});
+
+describe('storey content limit (#9013 review)', () => {
+  /** One storey containing `count` walls: only what the content walk and the count read. */
+  function crowded(count: number): StoreyInventory {
+    const children = Array.from({ length: count }, (_, index) => 1000 + index);
+    const rel = { id: 2, type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', parent: 1, children, parentIndex: 5, listIndex: 4 };
+    const storey = { expressId: 1, GlobalId: '', Name: 'Crowded', elevation: 0, elevationAttribute: 0, placementId: null, parentId: null, aggregateRelId: null };
+    const reader = { entity: (id: number) => ({ expressId: id, type: 'IFCWALL', attributes: [] }) };
+    return { storeys: [storey], relationships: [rel], outgoing: new Map([[1, [rel]]]), incoming: new Map(), reader } as unknown as StoreyInventory;
+  }
+
+  it('planning walks up to the limit and refuses beyond it', () => {
+    expect(api('storeyContents')(crowded(50_000), 1).size).toBe(50_000);
+    expect(() => api('storeyContents')(crowded(50_001), 1)).toThrow('Storey #1 holds more than 50,000 products');
+  });
+
+  it('listing still counts a storey beyond the limit', () => {
+    expect(api('summarizeStoreys')(crowded(50_000)).map((row) => row.elementCount)).toEqual([50_000]);
+    expect(api('summarizeStoreys')(crowded(50_001)).map((row) => [row.Name, row.elementCount])).toEqual([['Crowded', 50_001]]);
   });
 });

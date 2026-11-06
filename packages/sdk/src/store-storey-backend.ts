@@ -33,17 +33,17 @@ export function createStoreyStoreBackend(resolve: ModellingStoreModelResolver): 
     planStoreyEdit(modelId, edit) {
       return planStoreyLevelEdit(inventory(modelId).inventory, edit);
     },
-    editStorey(modelId, edit) {
+    editStorey(modelId, edit, expected) {
       const model = resolve(modelId);
-      const { plan, reshaped } = applyStoreyLevelEdit(model.store, model.editor, edit);
+      const { plan, reshaped } = applyStoreyLevelEdit(model.store, model.editor, edit, expected);
       return refs(model.modelId, [...plan.storeys.map((storey) => storey.expressId), ...plan.moved, ...reshaped]);
     },
     planStoreyDelete(ref, mode) {
       return planStoreyDelete(inventory(ref.modelId).inventory, ref.expressId, mode);
     },
-    deleteStorey(ref, mode) {
+    deleteStorey(ref, mode, expected) {
       const model = resolve(ref.modelId);
-      const plan = applyStoreyDelete(model.store, model.editor, ref.expressId, mode);
+      const plan = applyStoreyDelete(model.store, model.editor, ref.expressId, mode, expected);
       return refs(model.modelId, [ref.expressId, ...(mode.kind === 'deleteContents' ? plan.contents : [])]);
     },
   };

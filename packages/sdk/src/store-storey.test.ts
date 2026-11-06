@@ -63,6 +63,32 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store storey authoring (#9013)', () =>
     expect(listStoreyLevels('m').map((row) => row.Name)).toEqual(['My Storey']);
   });
 
+  it('refuses a reviewed plan once the model has changed under it (#9013 review)', async () => {
+    const { resolve } = await model();
+    const { addStorey, planStoreyEdit, editStorey, planStoreyDelete, deleteStorey, listStoreyLevels } = createModellingStoreBackend(resolve);
+    for (const method of [addStorey, planStoreyEdit, editStorey, planStoreyDelete, deleteStorey, listStoreyLevels]) expect(method).toBeTypeOf('function');
+    if (!addStorey || !planStoreyEdit || !editStorey || !planStoreyDelete || !deleteStorey || !listStoreyLevels) return;
+    const level2 = addStorey('m', { Name: 'Level 2', Elevation: 3 });
+
+    // A plan reviewed for another edit is not this edit's plan.
+    const other = planStoreyEdit('m', { kind: 'floorHeight', storeyId: 42, Height: 3.6 });
+    expect(() => editStorey('m', { kind: 'floorHeight', storeyId: 42, Height: 3.4 }, other)).toThrow('planned against a model that has changed');
+    const reviewed = planStoreyEdit('m', { kind: 'floorHeight', storeyId: 42, Height: 3.4 });
+    expect(editStorey('m', { kind: 'floorHeight', storeyId: 42, Height: 3.4 }, reviewed)).toEqual([level2]);
+
+    // A deletion reviewed while Level 2 was empty does not delete a wall placed on it since.
+    const mode = { kind: 'deleteContents' } as const;
+    const reviewedDelete = planStoreyDelete(level2, mode);
+    expect(reviewedDelete.contents).toEqual([]);
+    const { editor } = resolve('m');
+    const wall = editor.addEntity('IfcWall', ['3JUHrTM_j3UxZiBnyBfByx', null, 'Late', null, null, null, null, null, null]).expressId;
+    editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${wall}`], `#${level2.expressId}`]);
+    expect(() => deleteStorey(level2, mode, reviewedDelete)).toThrow('planned against a model that has changed');
+    expect(listStoreyLevels('m').map((row) => [row.Name, row.elementCount])).toEqual([['Level 2', 1], ['My Storey', 4]]);
+    deleteStorey(level2, mode, planStoreyDelete(level2, mode));
+    expect(listStoreyLevels('m').map((row) => row.Name)).toEqual(['My Storey']);
+  });
+
   it('records each headless storey write as one undo step', async () => {
     const { view, resolve } = await model();
     const recorded = createRecordedModellingBackend(resolve);

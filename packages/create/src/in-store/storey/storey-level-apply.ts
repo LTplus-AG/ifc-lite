@@ -9,17 +9,23 @@ import { planStoreyLevelEdit, type StoreyLevelEdit, type StoreyLevelPlan } from 
 import { writeStoreyLevelPlan } from './storey-level-write.js';
 import { StoreyEditRefusedError } from './storey-validation.js';
 
+const micro = (value: number): number => Math.round(value * 1e6);
+
 /**
- * What makes two plans the same edit: the writes, and which products they
- * move or hold. A product attached to a moved placement after the review
- * changes the outcome without changing the writes, so it is part of it.
+ * What makes two plans the same edit: where everything starts, the writes,
+ * and which products they move or hold. A placement point edited after the
+ * review keeps the ids and offsets but changes where the write lands, and a
+ * product attached to a moved placement changes the outcome without changing
+ * the writes, so both are part of it.
  */
 export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
   return JSON.stringify({
     moved: [...plan.moved].sort((x, y) => x - y),
     held: [...plan.held].sort((x, y) => x - y),
-    storeys: plan.storeys.map(({ expressId, to }) => [expressId, Math.round(to * 1e6)]),
-    placements: plan.placements.map(({ leaf, offset }) => [leaf.placementId, leaf.axisPlacementId, offset.map((v) => Math.round(v * 1e6))]),
+    storeys: plan.storeys.map(({ expressId, from, to, elevationAttribute }) => [expressId, micro(from), micro(to), micro(elevationAttribute)]),
+    placements: plan.placements.map(({ leaf, offset }) => [
+      leaf.placementId, leaf.parentId, leaf.axisPlacementId, leaf.location.map(micro), offset.map(micro),
+    ]),
   });
 }
 
@@ -42,7 +48,7 @@ export function applyStoreyLevelEdit(
     const plan = planStoreyLevelEdit(readStoreyInventory(store, draft.getMutationView()), edit);
     if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
     if (expected && storeyLevelPlanSignature(plan) !== storeyLevelPlanSignature(expected)) {
-      throw new Error('The storey edit was planned against a model that has changed since; review it again');
+      throw new StoreyEditRefusedError([{ code: 'stale', message: 'The storey edit was planned against a model that has changed since; review it again' }]);
     }
     return { plan, reshaped: writeStoreyLevelPlan(store, draft, plan) };
   });

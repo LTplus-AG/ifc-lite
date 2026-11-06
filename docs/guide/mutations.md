@@ -1032,8 +1032,8 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
 
 `@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). `bim.store` runs the same functions. Lengths are metres, in the frame the parsed spatial hierarchy reports storey elevations in, and are written in the file's own length unit. Storeys are a per-building sequence: neighbours, floor-to-floor shifts and elevation clashes are taken within the storey's own building.
 
-- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. A name that is empty, or an elevation already taken, is refused. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
-- `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically:
+- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. It is refused when the name is empty, the elevation is already taken, the `GlobalId` is already carried by a live entity, or `buildingId` disagrees with `referenceStoreyId`'s building. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
+- `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically. With `expected`, the reviewed plan, it refuses a model that changed since: a point moved, a product attached or a storey re-levelled. Edits:
   - `{ kind: 'elevation', storeyId, Elevation }` moves one storey.
   - `{ kind: 'floorHeight', storeyId, Height }` shifts every storey above by the same delta.
 - Geometry follows storeys. Everything a moved storey holds moves with it, and nothing else does:
@@ -1047,9 +1047,9 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
   - measure floor-to-floor on the top storey (`topStorey`);
   - move a placement that elements on another storey share (`sharedPlacement`);
   - meet a placement that cannot be read.
-- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode)` delete a storey without orphaning anything:
+- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode, expected?)` delete a storey without orphaning anything. With `expected`, contents added to the storey after the review are never deleted unseen. Modes:
   - `{ kind: 'empty' }` is refused while the storey holds elements.
-  - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above.
+  - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above. It is refused for a storey that nests products through `IfcRelNests`, which have no spatial owner to move.
   - `{ kind: 'deleteContents' }` removes them with the storey.
 
   The storey's placement is kept, and relationships listing it are narrowed. A model always keeps one storey.
@@ -1071,4 +1071,4 @@ function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId
 }
 ```
 
-The same operations are exposed to scripts as `bim.store.listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. Headless backends record each write as one Undo step.
+The same operations are exposed to scripts as `bim.store.listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.

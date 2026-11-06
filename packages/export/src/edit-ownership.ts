@@ -51,8 +51,10 @@ export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyV
   for (const expressId of changed) {
     if (tombstones.has(expressId)) continue;
     const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
+    // A deferred property atom (an edited IfcPropertySingleValue) lives in the
+    // secondary index; its baseline references are excluded above, so it must be rescanned too.
     // @raw-entity-enumeration-ok point lookup of an already changed record's source bytes; effectiveSourceRecord applies the overlay
-    const source = created ? undefined : store.entityIndex.byId.get(expressId);
+    const source = created ? undefined : store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
     let refs: number[];
     if (created) {
       const bytes = encoder.encode(created.text);

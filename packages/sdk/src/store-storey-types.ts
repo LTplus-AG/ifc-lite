@@ -19,10 +19,16 @@ export interface StoreyStoreBackendMethods {
   renameStorey?(ref: EntityRef, Name: string): EntityRef;
   /** Dry run: what an elevation or floor-to-floor edit would move, and any refusal. Writes nothing. */
   planStoreyEdit?(modelId: string, edit: StoreyLevelEdit): StoreyLevelPlan;
-  /** Apply an elevation or floor-to-floor edit atomically; returns every moved product. Throws on a refusal. */
-  editStorey?(modelId: string, edit: StoreyLevelEdit): EntityRef[];
+  /**
+   * Apply an elevation or floor-to-floor edit atomically; returns every moved product. Throws on a refusal,
+   * or when `expected` (the reviewed `planStoreyEdit` result) no longer matches the model.
+   */
+  editStorey?(modelId: string, edit: StoreyLevelEdit, expected?: StoreyLevelPlan): EntityRef[];
   /** Dry run of a deletion. Writes nothing. */
   planStoreyDelete?(ref: EntityRef, mode: StoreyDeleteMode): StoreyDeletePlan;
-  /** Delete a storey atomically; a storey holding elements needs `move` or `deleteContents`. */
-  deleteStorey?(ref: EntityRef, mode: StoreyDeleteMode): EntityRef[];
+  /**
+   * Delete a storey atomically; a storey holding elements needs `move` or `deleteContents`. With `expected`
+   * (the reviewed `planStoreyDelete` result), a storey whose contents changed since is refused, not re-planned.
+   */
+  deleteStorey?(ref: EntityRef, mode: StoreyDeleteMode, expected?: StoreyDeletePlan): EntityRef[];
 }

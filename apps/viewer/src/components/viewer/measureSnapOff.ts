@@ -1,0 +1,37 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { useViewerStore } from '@/store';
+import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
+import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { cancelMeasureRaycast, moveRubberBand, syncMeasureScreenCoords } from './measureHandlers.js';
+import { hoverMeasurePoint } from './measurePointMode.js';
+import { measureCursor } from './measureCursor.js';
+
+/**
+ * Snap turned off in the Measure tool. A queued hover or rubber-band frame
+ * would re-lock the edge, so it is dropped (#8881). The live preview it would
+ * have refreshed, Point mode's Live reading or the Distance rubber-band end, is
+ * then re-picked once, unsnapped, where a move last drew it, through that
+ * move's own pick (#8992). A pending Distance start and the gesture epoch stay.
+ * With no preview following the cursor (none shown, a navigation press, a
+ * touch gesture, a view or scene change since) nothing is re-picked.
+ */
+export function measureSnapOff(ctx: MouseHandlerContext): void {
+  cancelMeasureRaycast(ctx);
+  const cursor = measureCursor(ctx);
+  if (!cursor) return;
+  // Bring the reprojection pass up to the view now: it ends a Live reading the
+  // view no longer shows, and keeps the state the rubber band was noted under
+  // only while nothing under the cursor changed (#8886).
+  syncMeasureScreenCoords(ctx);
+  const s = useViewerStore.getState();
+  // The refs catch up with the store only on the next render: pick as Snap off does, with no lock to slide along.
+  const unsnapped = { ...ctx, snapEnabledRef: { current: false }, edgeLockStateRef: { current: getDefaultEdgeLockState() } };
+  if (s.measureMode === 'point') {
+    if (s.measurePointLive) hoverMeasurePoint(unsnapped, cursor.x, cursor.y);
+  } else if (s.activeMeasurement && cursor.view !== null && cursor.view === ctx.lastCameraStateRef.current) {
+    moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
+  }
+}

@@ -52,7 +52,7 @@ async function openSemantic() {
   assert.equal(document.querySelector('input[role="combobox"]'), null);
 }
 
-test('#8947 unloaded palette Linked records rejects malformed identity links and recovers with a valid empty mapping', async () => {
+test('#8947 unloaded palette Linked records rejects malformed identity links, applies a valid mapping and clears it', async () => {
   await openSemantic();
   const identity = panel().querySelector<HTMLSelectElement>('select[aria-label]'); assert.ok(identity);
   // The select is owned by the real identity disclosure, not a surrogate panel.
@@ -64,7 +64,12 @@ test('#8947 unloaded palette Linked records rejects malformed identity links and
   click(namedButton('Apply resource links', details));
   await waitFor(() => /Links require/.test(panel().querySelector('[role="alert"]')?.textContent ?? ''), 'identity refusal');
   assert.deepEqual(useSemanticSession.getState().links, []);
+  const mapping = [{ resourceId: 'https://example.org/palette/resource',
+    modelRevision: 'https://example.org/palette/revision', GlobalId: '0000000000000000000001' }];
+  type(links, JSON.stringify(mapping)); click(namedButton('Apply resource links', details));
+  assert.deepEqual(useSemanticSession.getState().links, mapping, 'valid input reaches the canonical identity configuration');
   type(links, '[]'); click(namedButton('Apply resource links', details));
+  assert.deepEqual(useSemanticSession.getState().links, [], 'empty input clears an actually populated mapping');
   change(identity, 'profile-fields');
   assert.equal(details.querySelectorAll('select').length, 3, 'profile identity offers GlobalId and revision field choices');
   change(identity, 'ifc-global-id');

@@ -53,7 +53,7 @@ and behavioral evidence, accept/reject decision and remaining gaps separately.
 | --- | --- | --- | --- |
 | 1 | REVISE (provisional source `8021801`) | Unified projection, prerequisites and canonical destinations | 12/12 GPU context captures, no page errors; Opus found command labels clipped by reasons and unavailable rows styled as runnable. Full access unaccepted. |
 | 2 | REVISE (observed UX, source `f8ca13e`) | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and discovery gaps | 36/36 physical-GPU captures, zero page errors; browser 21/22 with extension calibration correction pending. Opus confirms R1 fixes, finds 12px selected-row misalignment and inactive recovery rows crowding browse. Overall coverage remains unaccepted. |
-| 3 | Candidate in progress | Keep row labels aligned during keyboard navigation; show recovery context honestly without crowding browse; preserve searchable access | Implementation and matching validation pending; original R2 evidence retained. |
+| 3 | Observed UX ACCEPT; complete access pending | Aligned labels, contextual recovery browse, honest replaced-error reasons and narrow wrapping | Opus accepted pinned `15bd492`: 22/22 physical-GPU browser cases, 36/36 captures, 401/401 focused tests. Full four-shard, integrated-main workflow tests and inventory closure remain pending. |
 
 Implementation batches inside a round are not separate acceptance rounds. Keep
 reviewable PR layers for #8947 if the implementation exceeds roughly 1500 lines.
@@ -756,3 +756,21 @@ See `evidence/main-6b944-integration.json`. The new integrated candidate needs
 matching validation and captures; the 15bd evidence remains attributed to 15bd.
 Three new mounted workflow files add Assistant, Semantic and Script child-flow
 witnesses. Their execution is pending; they do not yet close the access verdict.
+
+## Foundation catalogue and workflow-oracle qualification
+
+After main integration, the foundation German catalogue lacked thirteen entries
+already present in the final candidate. They are now placed in their owning
+foundation layer; four file-host and five authoring translations are placed only
+where their English keys are introduced. The serial propagation preserves the
+combined leaf tree exactly. See `evidence/foundation-de-backport.json`. Actual
+foundation root typecheck plus palette and `de-catalogue-data-1` tests are queued
+on `723039da70d87e830482fd6b944525ec797cfac1`; source key accounting is not a test pass.
+
+Astra independently verified all eighteen main-integration trees. Its workflow
+witness review found one weak valid-input assertion: the semantic identity test
+now applies a nonempty mapping, observes the canonical session mapping, then
+clears it. This tests successful application without claiming the pre-existing
+error message clears. The three new workflow files and this correction still need
+actual execution. The unchanged production tree retains the pinned R3 visual
+evidence; integrated-main runtime and complete access acceptance are separate gates.

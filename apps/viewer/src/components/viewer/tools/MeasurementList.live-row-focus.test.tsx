@@ -4,9 +4,9 @@
 
 /**
  * Where focus goes when the live row of an open Polyline or Radius goes away
- * while it holds focus (#9041). Finish lands on the row it recorded (not its
- * delete button, which a second Enter would press); anything that records
- * nothing (Cancel, Esc) lands on the list. A
+ * while it holds focus (#9041). Finish lands on the row it recorded, named by
+ * its label and value (not its delete button, which a second Enter would
+ * press); anything that records nothing (Cancel, Esc) lands on the list. A
  * Finish or Cancel that never had focus in the row (Enter or Esc from the
  * canvas, a click that does not focus the button) leaves focus where it was.
  *
@@ -80,17 +80,18 @@ function mount(): HTMLElement {
 }
 
 /**
- * What has focus: its accessible name, a recorded row by its delete button's
- * name, else its id, else `body`. Happy DOM focuses any connected element, so
- * an element a browser would refuse to focus is flagged in the string.
+ * What has focus: its accessible name (`aria-label`, else the text its
+ * `aria-labelledby` points at), else its id, else `body`. Happy DOM focuses
+ * any connected element, so an element a browser would refuse to focus is
+ * flagged in the string.
  */
 function focused(): string {
   const el = document.activeElement;
   if (!el || el === document.body) return 'body';
   const focusable = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.hasAttribute('tabindex');
-  const name = el.getAttribute('aria-label')
-    ?? (el.hasAttribute('data-measurement-id') ? `row of ${el.querySelector('button')?.getAttribute('aria-label')}` : null)
-    ?? (el.id || el.tagName.toLowerCase());
+  const labelledBy = el.getAttribute('aria-labelledby')?.split(' ')
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '?').join(' ');
+  const name = el.getAttribute('aria-label') ?? labelledBy ?? (el.id || el.tagName.toLowerCase());
   return focusable ? name : `${name} (not focusable)`;
 }
 
@@ -110,7 +111,7 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     const container = mount();
     activate(button(container, 'Finish (Enter)'), 'Enter');
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 2, 'Enter recorded the polyline');
-    assert.equal(focused(), 'row of Delete polyline measurement 2');
+    assert.equal(focused(), 'Poly #2 · Length 2.000 m');
   });
 
   it('a second Enter after Finish keeps the recorded measurement', () => {
@@ -121,16 +122,21 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     activate(target, 'Enter');
     press(target, 'Enter', { repeat: true });
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 1, 'the repeat Enter deleted nothing');
-    assert.equal(focused(), 'row of Delete polyline measurement 1');
+    assert.equal(focused(), 'Poly #1 · Length 2.000 m');
   });
 
-  it('Space on a focused Finish lands on the recorded radius row', () => {
-    useViewerStore.setState({ measureMode: 'radius', activeRadius: OPEN_RADIUS });
+  it('Space on a focused Finish lands on the recorded radius row, past rows of every kind', () => {
+    useViewerStore.setState({
+      measureMode: 'radius',
+      polylineMeasurements: [PL1],
+      radiusMeasurements: [{ id: 'r1', points: OPEN_RADIUS.points }],
+      activeRadius: OPEN_RADIUS,
+    });
     const container = mount();
     activate(button(container, 'Finish (Enter)'), ' ');
     assert.equal(useViewerStore.getState().activeRadius, null, 'Space finished the radius');
-    assert.equal(useViewerStore.getState().radiusMeasurements.length, 1);
-    assert.equal(focused(), 'row of Delete radius measurement 1');
+    assert.equal(useViewerStore.getState().radiusMeasurements.length, 2);
+    assert.match(focused(), /^Radius #2 \S/, 'the recorded radius row, by its label and value');
   });
 
   it('Space on a focused Cancel lands on the list', () => {
@@ -205,7 +211,7 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
       finish.focus();
       click(finish);
       assert.equal(useViewerStore.getState().polylineMeasurements.length, 1);
-      assert.equal(focused(), 'row of Delete polyline measurement 1');
+      assert.equal(focused(), 'Poly #1 · Length 2.000 m');
     });
 
     it(`a ${pointerInput} press that does not focus Cancel leaves focus where it was`, () => {

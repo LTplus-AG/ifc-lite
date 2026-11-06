@@ -12,7 +12,7 @@
  * share a basis.
  */
 
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useId, useLayoutEffect, useRef, type RefObject } from 'react';
 import { Check, Ruler, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -78,6 +78,9 @@ export function MeasurementList() {
   // measurement just taken. A row that goes away without focus (Enter or Esc
   // from the canvas, a click that did not focus the button) moves nothing.
   const listRef = useRef<HTMLDivElement>(null);
+  // A focused row is a named group, "Poly #2 · Length 5.000 m", so a screen
+  // reader says what Finish recorded. Named by its own label and value.
+  const rowName = useId();
   const liveRowHadFocus = useRef<LiveKind | null>(null);
   const previousRows = useRef({ polyline: polylineMeasurements, radius: radiusMeasurements });
   useLayoutEffect(() => {
@@ -149,13 +152,13 @@ export function MeasurementList() {
         </div>
       )}
       {polylineMeasurements.map((pl, i) => (
-        <div key={pl.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={pl.id}>
+        <div key={pl.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={pl.id} role="group" aria-labelledby={`${rowName}${pl.id}-label ${rowName}${pl.id}-value`}>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">
+            <span id={`${rowName}${pl.id}-label`} className="text-muted-foreground">
               {t('measure.polyline.indexLabel', { index: i + 1 })} · {t(polylineBasisLabelKey(pl.closed))}
               <StaleMeasurementBadge id={pl.id} />
             </span>
-            <span className="ml-auto font-medium tabular-nums">{formatDistance(pl.length, unitDisplayOverrides)}</span>
+            <span id={`${rowName}${pl.id}-value`} className="ml-auto font-medium tabular-nums">{formatDistance(pl.length, unitDisplayOverrides)}</span>
             <IconButton label={t('measure.list.deletePolyline', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deletePolylineMeasurement(pl.id)}>
               <X className="h-3 w-3" />
             </IconButton>
@@ -192,13 +195,13 @@ export function MeasurementList() {
       )}
 
       {radiusMeasurements.map((r, i) => (
-        <div key={r.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={r.id}>
+        <div key={r.id} className={ROW_TARGET} tabIndex={-1} data-measurement-id={r.id} role="group" aria-labelledby={`${rowName}${r.id}-label ${rowName}${r.id}-value`}>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-muted-foreground">
+            <span id={`${rowName}${r.id}-label`} className="shrink-0 text-muted-foreground">
               {t('measure.radius.indexLabel', { index: i + 1 })}
               <StaleMeasurementBadge id={r.id} />
             </span>
-            <span className="ml-auto text-right font-medium tabular-nums">{formatRadiusPoints(r.points, unitDisplayOverrides)}</span>
+            <span id={`${rowName}${r.id}-value`} className="ml-auto text-right font-medium tabular-nums">{formatRadiusPoints(r.points, unitDisplayOverrides)}</span>
             <IconButton label={t('measure.list.deleteRadius', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteRadiusMeasurement(r.id)}>
               <X className="h-3 w-3" />
             </IconButton>

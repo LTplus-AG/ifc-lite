@@ -18,6 +18,7 @@ import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from './clash-run-fixture.js';
 import { click, render, type, waitFor } from './render.js';
+import { findPanelAction, runPanelAction } from './panel-header.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
@@ -84,9 +85,9 @@ export async function publishCappedRun(): Promise<ClashResult & { truncated: Non
 /** Open the saved-report dialog from the panel header; it loads on first open. */
 export async function openSavedReports(): Promise<void> {
   if (document.body.querySelector('input[aria-label="Report name"]')) return;
-  const trigger = bodyButton('Saved clash reports');
-  assert.ok(trigger, 'the Clash panel header offers saved clash reports (#6947)');
-  click(trigger);
+  // A header action, inline or in the shared header's More actions (#8802).
+  assert.ok(await findPanelAction(document.body, 'Saved clash reports'), 'the Clash panel header offers saved clash reports (#6947)');
+  await runPanelAction(document.body, 'Saved clash reports');
   await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') !== null, 'the saved-report dialog opens');
 }
 

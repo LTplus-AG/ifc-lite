@@ -31,7 +31,7 @@ const BASE: MeasureHintState = {
   activeRadius: null, activeMeasurement: null, measurePointLast: null, pointerInput: 'mouse',
 };
 
-/** Every hint state a tap can act on; Polyline and Radius in progress wait for a touch finish (#8991). */
+/** Every hint state a tap can act on; Polyline and Radius in progress finish from the list's ✓ (#8991). */
 function tapStates(): Array<[string, Partial<MeasureHintState>]> {
   const states: Array<[string, Partial<MeasureHintState>]> = [
     ['drag start', { measureMode: 'drag' }],
@@ -40,6 +40,8 @@ function tapStates(): Array<[string, Partial<MeasureHintState>]> {
     ['point active', { measureMode: 'point', measurePointLast: mp(1) }],
     ['polyline start', { measureMode: 'polyline' }],
     ['radius start', { measureMode: 'radius' }],
+    ['polyline active', { measureMode: 'polyline', activePolyline: { points: [mp(0), mp(1)] } }],
+    ['radius active', { measureMode: 'radius', activeRadius: { points: [mp(0), mp(1)] } }],
   ];
   const counts: Record<AngleKind, number> = { points: 3, edges: 4, faces: 2 };
   for (const kind of Object.keys(counts) as AngleKind[]) {

@@ -126,7 +126,6 @@ jobs:
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
     # don't need a larger runner; Rust/WASM compilation also stays on the
     # standard runner so routine CI remains within the Depot Developer tier.
-    # See scripts/README-vercel-cost.md for the full runner-cost rationale.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # A path filter over one checkout. Anything past a minute is a hung API call,
     # not work. Capped because the default is SIX HOURS and a job killed by its own
@@ -507,8 +506,7 @@ jobs:
               # Same trap this block warns about for `apps/`, `examples/` and
               # `.oxlintrc.json` above. It goes here rather than under `rust:`
               # because the gate is a Node step and `rust:` would additionally
-              # spin the WASM compile lane for a one-line JSON edit
-              # (scripts/README-vercel-cost.md).
+              # spin the WASM compile lane for a one-line JSON edit.
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               # Corpus documentation is read by the Node guards.

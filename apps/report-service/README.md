@@ -36,7 +36,7 @@ Run checks through root `pnpm typecheck` and `pnpm test --filter=@ifc-lite/repor
 
 Supply the GitHub App signing key through exactly one protected secret source: a PEM file path or the inline PEM with actual newlines. The environment option supports Railway without a startup file wrapper; never configure both or print/commit the key.
 
-Approved NDA signing requires an explicit `REPORT_AGREEMENT_VERSION` matching the exact text’s declaration. Missing, blank, draft, placeholder, mismatched or undeclared versions fail startup when approval is configured. Owner approval of v2 is complete; leave the runtime approval unset until complete-source, private access, provider disclosure, custody, retention, deletion, backup and restore qualification passes. The historical [v1-era draft](../../legal/model-report-confidentiality-draft.md) remains unchanged as evidence and is not the approved runtime asset.
+Approved NDA signing requires an explicit `REPORT_AGREEMENT_VERSION` matching the exact text’s declaration. Missing, blank, draft, placeholder, mismatched or undeclared versions fail startup when approval is configured. Owner approval of v2 is complete; leave the runtime approval unset until complete-source, private access, provider disclosure, custody, retention, deletion, backup and restore qualification passes.
 
 Verification distinguishes proven byte-integrity failures from provider/network errors. Transient reads and verification deadlines remain unpublished and retry with a PostgreSQL-persisted exponential delay from 10 seconds to 15 minutes; the original pending-upload expiry still applies. Shutdown cancellation leaves the work pending. A successful retry must read and hash the actual object before it becomes ready.
 
@@ -78,7 +78,7 @@ Before enabling, qualify the configured PostHog query shape/read scopes with a r
 
 The resolver uses PostHog’s dynamically added `events.issue_id`, not the historical `properties.$exception_issue_id`. The [pinned upstream database mapping](https://github.com/PostHog/posthog/blob/8c409d41eb190b96d4e0eaaef5fae11a2009c1cc/posthog/hogql/database/database.py#L3091) resolves current fingerprint ownership and is installed for ordinary project queries; the base `EventsTable` declaration alone omits these dynamic fields. Issue retrieval requires [`error_tracking:read`](https://posthog.com/docs/api/error-tracking-3). These source checks still require live verification against the configured project.
 
-Operational routing, historical hosted receipts and activation gaps are tracked in the [deployment runbook](../../deploy/reports/railway.md). Before restoring a production snapshot, stop the entire API and all workers and complete the [independent deletion/outbox reconciliation procedure](../../deploy/reports/recovery.md). The admission flag alone does not pause workers; restore acceptance remains outstanding.
+Before restoring a production snapshot, stop the entire API and all workers and reconcile deletions and the outbox independently. The admission flag alone does not pause workers; restore acceptance remains outstanding.
 
 ### Public model quarantine foundation (not enabled)
 
@@ -136,8 +136,14 @@ Deletion/expiry also revoke access; cleanup retries provider
 failures without releasing storage quota early. Restores must keep public workers
 and delivery disabled until deletion/withdrawal tombstones are reconciled.
 
-A dormant [isolated scanner runner](../../deploy/reports/scanner.md) now supplies
+A dormant isolated scanner runner now supplies
 the real-engine adapter and qualification entrypoint. It is not started by the API.
+Run `pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures`,
+then the same script with `scan-once`, with `REPORT_SCANNER_SIGNATURE_DIRECTORY` and
+`REPORT_SCANNER_SCRATCH_DIRECTORY` set. Do not update signatures during a scan in a
+constrained runtime. Use one dedicated private scratch root per database, never a shared
+directory such as `/tmp`: before claiming work the worker recursively deletes `job-*`
+directories there, and its database lock cannot protect a scanner using another database.
 Still required before enabling: qualification and deployment of that runner with
 fresh signatures and measured resource limits, real clean IFC and EICAR refusal evidence,
 actual deployment-provider immutable-copy and bounded-download qualification,

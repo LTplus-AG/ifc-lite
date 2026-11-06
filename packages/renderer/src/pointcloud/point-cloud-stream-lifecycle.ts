@@ -61,8 +61,9 @@ function currentPointCloudStreamRenderer(host: PointCloudStreamHost, handle: Poi
 export function appendPointCloudChunk(
   host: PointCloudStreamHost, handle: PointCloudAssetHandle, chunk: PointCloudChunkInput, key?: string,
 ): void {
-  currentPointCloudStreamRenderer(host, handle).appendChunk(handle, chunk, key);
-  if (chunk.pointCount > 0) host.pickSources.notePointClouds();
+  const points = currentPointCloudStreamRenderer(host, handle);
+  if (chunk.pointCount > 0) host.pickSources.notePointClouds(); // first, so an upload that throws partway still counts
+  points.appendChunk(handle, chunk, key);
   host.modelBoundsTracker.expandForPointClouds();
   host.camera.setSceneBounds(host.modelBounds);
   host.requestRender();

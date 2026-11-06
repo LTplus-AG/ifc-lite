@@ -97,6 +97,27 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
     assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the retry rebuilt them');
   });
 
+  it('an add or a COPC node that fails partway still counts', () => {
+    const { renderer, points, scan, bumps } = setup();
+    const upload = points.addAsset.bind(points);
+    let uploads = 0;
+    points.addAsset = (asset) => { if (++uploads > 1) throw new Error('out of memory'); return upload(asset); };
+    assert.equal(bumps(() => assert.throws(() => renderer.addPointClouds([{ expressId: 5, chunk: chunk(5) }, { expressId: 6, chunk: chunk(6) }]))), true,
+      'the first cloud became pickable before the second threw');
+    points.appendChunk = () => { throw new Error('out of memory'); };
+    assert.equal(bumps(() => assert.throws(() => renderer.appendPointCloudChunk(scan, chunk(7), 'node-2'))), true);
+  });
+
+  it('zero-point descriptors in the list are not embedded clouds', () => {
+    const { renderer, bumps } = setup();
+    const cloud = { expressId: 3, chunk: chunk(4) };
+    const descriptor = { expressId: 2, modelIndex: 1, chunk: { pointCount: 0, positions: new Float32Array(0),
+      bbox: { min: [0, 0, 0] as [number, number, number], max: [0, 0, 0] as [number, number, number] } } };
+    renderer.setPointClouds([cloud, descriptor]);
+    assert.equal(bumps(() => renderer.setPointClouds([cloud, { ...descriptor, modelIndex: 4 }])), false, 'a re-stamped descriptor');
+    assert.equal(bumps(() => renderer.setPointClouds([cloud])), false, 'a descriptor dropping out');
+  });
+
   it('a list changed in place after setPointClouds still counts', () => {
     const { renderer, bumps } = setup();
     const list = [{ expressId: 3, chunk: chunk(4) }];

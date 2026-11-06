@@ -1022,11 +1022,11 @@ export class Renderer {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
+        this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
         for (const asset of assets) {
             this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
         }
-        this.pickSources.noteEmbeddedChanged();
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();

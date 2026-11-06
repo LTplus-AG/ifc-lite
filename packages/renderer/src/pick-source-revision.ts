@@ -8,7 +8,9 @@ import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 /** Same points, same pick identity: the viewer re-stamps `modelIndex` into a fresh object on every merge. */
 type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number];
-const embeddedKey = (a: PointCloudAsset): EmbeddedKey => [a.chunk, a.expressId, a.modelIndex ?? 0];
+/** `setAssets` skips zero-point descriptors (streamed scans' identities), so they are not part of the list either. */
+const embeddedKeys = (assets: readonly PointCloudAsset[]): EmbeddedKey[] =>
+  assets.filter((a) => a.chunk.pointCount > 0).map((a) => [a.chunk, a.expressId, a.modelIndex ?? 0]);
 
 /** What identifies a curve's snap points: its authored identity and where it evaluates. */
 function curveSetKey(curves: readonly SourceSnapCurve[]): string {
@@ -46,7 +48,7 @@ export class PickSourceRevision {
   notePointClouds(): void { this.pointClouds++; }
 
   /** Embedded clouds were added outside `setPointClouds`, or every cloud was cleared (`[]`). */
-  noteEmbeddedChanged(now: readonly PointCloudAsset[] | null = null): void { this.embedded = now?.map(embeddedKey) ?? null; this.pointClouds++; }
+  noteEmbeddedChanged(now: readonly PointCloudAsset[] | null = null): void { this.embedded = now ? embeddedKeys(now) : null; this.pointClouds++; }
 
   /**
    * The viewer re-pushes the IFCx list on every model-list change, often the
@@ -60,7 +62,7 @@ export class PickSourceRevision {
       this.noteEmbeddedChanged(); // the old clouds are gone and the new ones half-uploaded
       throw error;
     }
-    const now = assets.map(embeddedKey);
+    const now = embeddedKeys(assets);
     if (last && last.length === now.length && now.every((key, i) => key.every((part, j) => part === last[i][j]))) return;
     this.noteEmbeddedChanged(assets);
   }

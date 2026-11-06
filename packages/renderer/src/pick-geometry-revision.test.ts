@@ -81,6 +81,13 @@ describe('Renderer.getPickGeometryRevision (#8998)', () => {
     assert.equal(bumps(() => scene.flushPending(device, pipeline)), true, 'the flush that makes it pickable missed');
   });
 
+  it('meshes past the streaming fragment budget count when finalize first batches them', () => {
+    const { scene, device, pipeline, bumps } = setup();
+    scene.limitStreamingFragments(0); // a cache hit: the rest join their buckets and wait for finalize
+    scene.appendToBatches([triangle(9, 9)], device, pipeline, true);
+    assert.equal(bumps(() => scene.finalizeStreaming(device, pipeline)), true, 'finalize made them pickable without a bump');
+  });
+
   it('keeps still for work that leaves the pickable geometry alone', () => {
     const { renderer, scene, device, pipeline, bumps } = setup();
     const still: Array<[string, () => unknown]> = [
@@ -91,6 +98,7 @@ describe('Renderer.getPickGeometryRevision (#8998)', () => {
       ['a move of an id the scene does not hold', () => scene.translateMeshesForEntities(new Map([[99, [1, 0, 0]]]))],
       ['the placement it already has', () => renderer.setModelTranslation(0, [0, 0, 0])],
       ['a pick', () => renderer.raycastScene(128, 128)],
+      ['a recolour', () => { scene.updateMeshColors(new Map([[7, [1, 0, 0, 1]]]), device, pipeline); scene.rebuildPendingBatches(device, pipeline); }],
     ];
     for (const [name, change] of still) assert.equal(bumps(change), false, `the revision churned on: ${name}`);
   });

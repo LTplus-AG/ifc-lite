@@ -698,7 +698,7 @@ export class Scene {
           if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
         }
       }
-      bucket.meshData = []; this.pickGeometryRevision++;
+      bucket.meshData = []; // keeps the pick-geometry revision: only buckets no frame drew go cold (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }
@@ -1321,7 +1321,7 @@ export class Scene {
     }, device, pipeline);
 
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
-    this.pendingBatchKeys.clear(); this.pickGeometryRevision++;
+    this.pendingBatchKeys.clear();
     forgetEmptyModelFrames(this.buckets, this.sharedFrameOrigins);
   }
 
@@ -1592,7 +1592,8 @@ export class Scene {
       this.rebucketMovedMesh(meshData, affectedKeys);
       anyMoved = true;
     }
-    if (!anyMoved) return false; this.pickGeometryRevision++;
+    if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: a textured mesh's GPU vertex buffer lives outside the colour buckets,
     // so the in-place position translation above won't reach the GPU on its own —
@@ -1663,7 +1664,8 @@ export class Scene {
       if (device && gpu) device.queue.writeBuffer(gpu.instanceBuffer, b + 48, translation);
       moved = true;
     }
-    if (!moved) return false; this.pickGeometryRevision++;
+    if (!moved) return false;
+    this.pickGeometryRevision++;
 
     // Rebuild the cached world AABB from the moved occurrence matrices so pick /
     // measure / section bounds stay correct. A simple in-place shift is unsafe for
@@ -1821,7 +1823,8 @@ export class Scene {
       this.rebucketMovedMesh(meshData, affectedKeys);
       anyMoved = true;
     }
-    if (!anyMoved) return false; this.pickGeometryRevision++;
+    if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: textured meshes render from their own GPU vertex buffer — re-upload
     // the rotated parts so they don't render stale (mirrors the translate path).
@@ -2050,7 +2053,7 @@ export class Scene {
       regroup = this.regroupStreamed();
       // Build into a fresh array; rebuildPendingBatches republishes every
       // bucket's batch, untouched ones included.
-      this.batchedMeshes = [];
+      this.batchedMeshes = []; this.pickGeometryRevision++; // meshes past the fragment budget become pickable here
       this.rebuildPendingBatches(device, pipeline);
       rebuilt = true;
     } finally {
@@ -2207,7 +2210,7 @@ export class Scene {
             ...[...scene.buckets.values()].flatMap((b) => (b.batchedMesh ? [b.batchedMesh] : [])),
             ...scene.streamingFragments,
           ];
-          scene.retireFinalizedBatches(retired);
+          scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
@@ -2763,7 +2766,7 @@ export class Scene {
     return this.colorOverrideGeneration;
   }
 
-  /** Changes whenever what a CPU pick (raycast, snap) can hit may have changed: pieces added or dropped, their positions, the batch and textured lists the pick walks, instances. Selection highlight meshes and GPU residency swaps keep it (#8998). */
+  /** Changes whenever what a CPU pick (raycast, snap) can hit may have changed: pieces added or dropped, their positions, the batch and textured lists the pick walks, instances. Selection highlight meshes, recolours and GPU or host residency demotion keep it (#8998). */
   getPickGeometryRevision(): number { return this.pickGeometryRevision; }
 
   /** The per-entity colour table the renderer binds at group(1) (#6076). */
@@ -2893,7 +2896,8 @@ export class Scene {
       this.instancedTemplateCpu[i] = undefined;
       freed.add(i);
     }
-    if (freed.size === 0) return 0; this.pickGeometryRevision++;
+    if (freed.size === 0) return 0;
+    this.pickGeometryRevision++;
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
       const kept = occurrences.filter((o) => !freed.has(o.templateIndex));

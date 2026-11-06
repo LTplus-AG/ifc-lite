@@ -180,6 +180,44 @@ Cancellation between a placement rotation and a map-conversion rotation is
 only expected when the model's original map alignment is known; it is not a
 general validity requirement.
 
+## Storeys
+
+In the Model workspace, the storey chip and the plan's storey picker list the
+storeys of the model you are drawing in. Each list ends with **Add storey
+above** and **Manage storeys…**. **Add storey above** adds a storey above the
+current one, with the next name and the neighbours' floor-to-floor height. The
+new storey becomes the one you draw on at once: the workplane, plan and tools
+move to it, and the storeys above it hide or ghost as usual.
+
+**Manage storeys…** opens the storey manager in the Model inspector. Storeys
+are listed highest first, each with its name, elevation, floor-to-floor height
+and element count. The storey you are drawing on is the checked one. Click a
+row, or use the arrow keys on the checked one, to switch storeys. Edit a name,
+elevation or height in place. Lengths can be typed as `3`, `3,5`, `+3.50 m` or
+`3500 mm`; **Enter** applies the value and **Escape** cancels it. If a value
+can't be applied, the reason appears under the field and nothing changes.
+
+The two edits behave differently:
+
+- **Elevation** moves that storey only. The storeys above stay where they are.
+- **Floor to floor** sets the gap to the storey above, and shifts every storey
+  above by the same amount.
+
+Geometry follows storeys. Everything a storey holds moves with it, including
+hosted doors, windows and openings. Walls drawn with **To storey above** (the
+Wall tool's default, also set from the inspector's **Top** row) follow the
+storey above and resize. Walls with **Fixed height** keep their height. A stair
+whose top tread lands on a storey is refit, so it still lands there exactly.
+While you type, the model shows the result in 3D and the plan, with a summary
+such as "Moves 1 storey · moves 24 elements · resizes 8 walls · refits 1 stair".
+The summary also lists anything the edit leaves as it is, with a way to select
+those elements. The whole edit is one Undo/Redo step.
+
+To delete a storey, use its bin button. An empty storey is deleted straight
+away, with Undo. A storey that holds elements first asks whether to move them
+to another storey (they keep their identity and position) or to delete them
+with it. A model always keeps one storey.
+
 ## Space floors and ceilings
 
 Select a created `IfcSpace`, enter the Model workspace, and choose **Edit space

@@ -27,6 +27,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useTranslation } from '@/i18n';
 import { editableModels, modelStoreys, type WorkspaceStorey } from '@/lib/commands/modeling/workspace-storeys';
 import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverTrigger } from '../../viewport-ui/hud';
+import { StoreyPickerActions } from './storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
 import { StoreyContextControl } from './StoreyContextControl';
 
@@ -123,6 +124,7 @@ export function WorkspaceStoreyChip() {
           </HudChip>
           <HudPopoverContent align="start" className="p-1">
             <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />
+            <StoreyPickerActions />
           </HudPopoverContent>
         </HudPopover>
       </HudItem>

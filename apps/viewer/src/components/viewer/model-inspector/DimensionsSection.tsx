@@ -13,6 +13,7 @@
  * so a handle and a typed value cannot disagree.
  */
 
+import { WallTopRow } from './WallTopRow';
 import { useId, useMemo } from 'react';
 import { readHostedElementSize, readStairDimensions, type StairDimensions } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
@@ -115,6 +116,7 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
           <MetreRow param="Length" value={measured.length} />
           <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
           <MetreRow param="Height" value={measured.height} onCommit={(height) => setElementDimensions(modelId, expressId, { kind: 'wall', height })} />
+          <WallTopRow modelId={modelId} wallId={expressId} />
         </>
       )}
       {measured.kind === 'slab' && (

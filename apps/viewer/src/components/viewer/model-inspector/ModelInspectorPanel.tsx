@@ -32,6 +32,7 @@ import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { StoreyManager } from '../model/storeys/StoreyManager';
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
@@ -41,6 +42,8 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
   const target = useInspectorTarget();
+  const storeyManagerOpen = useViewerStore((s) => s.storeyManagerOpen);
+  const closeStoreyManager = useViewerStore((s) => s.setStoreyManagerOpen);
   const { mode, selection, defaultsKind, kindlessCommand } = target;
 
   const title = mode === 'selection' && selection
@@ -52,6 +55,9 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
       : kindlessCommand
         ? t(kindlessCommand)
         : t('modelInspector.panel.title');
+
+  // The storey manager (#9013) takes the inspector's place until its Back button.
+  if (storeyManagerOpen && target.inSession) return <StoreyManager onBack={() => closeStoreyManager(false)} />;
 
   return (
     <div data-model-inspector data-inspector-mode={mode ?? undefined} className="flex h-full min-h-0 flex-col" aria-label={t('modelInspector.panel.title')}>

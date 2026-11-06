@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
-import { setLocale } from '@/i18n';
+import { getLocale, setLocale } from '@/i18n';
+import { createLocaleActivator } from '@/i18n/locale-activation';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render.js';
@@ -268,8 +269,11 @@ test('palette static registry is projected once and toggles expose live state (#
   assert.match(tips().textContent ?? '', /Off/);
 });
 
-test('Russian prerequisite reasons remain visible on unavailable registered rows (#8947)', () => {
-  setLocale('ru');
+test('Russian prerequisite reasons remain visible on unavailable registered rows (#8947)', async () => {
+  // Match startup: setLocale alone deliberately falls back when no catalogue is registered.
+  const locale = createLocaleActivator({ ru: () => import('@/i18n/locales/ru').then(module => module.default) });
+  await locale.activate(['ru']);
+  assert.equal(getLocale(), 'ru');
   const input = mount();
   typeInto(input, 'Hide Selection');
   const hide = rows().find(row => row.dataset.commandId === 'vis:hide')!;

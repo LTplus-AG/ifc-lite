@@ -71,7 +71,10 @@ interface Painted {
 async function paint(theme: Theme, bodyHtml: string, selectors: Record<string, string>): Promise<Record<string, Painted>> {
   return withThemedPage(theme, `${bodyHtml}${REFERENCES}`, async (page) => {
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
-    // No named inner functions: tsx's esbuild `keepNames` wraps them in a helper the page lacks.
+    // tsx's esbuild `keepNames` wraps the named helpers below in `__name()`,
+    // which the page lacks; give the page the identity version (a string, so
+    // esbuild leaves it alone).
+    await page.evaluate('globalThis.__name = (fn) => fn;');
     return page.evaluate((wanted) => {
       const canvas = document.createElement('canvas');
       canvas.width = 1;

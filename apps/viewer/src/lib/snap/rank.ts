@@ -6,7 +6,8 @@
  * Ranking of projected snap candidates: tier first, then distance, then
  * collection order, with hysteresis against the previous winner so ±1px cursor
  * jitter at a radius boundary or between two equidistant targets cannot make
- * the snap flip-flop.
+ * the snap flip-flop. A profile's aimed kinds step outside the tiers when the
+ * pointer is on one (`aimedOr`).
  *
  * Hysteresis is the classic enter/leave split: a target ENTERS at `radius` but
  * a held target only LEAVES beyond `radius + hysteresis`, and a same-tier
@@ -30,6 +31,8 @@ export const MODELING_SNAP_PROFILE: SnapProfile = {
   sources: ['mesh', 'semantic', 'grid', 'ifc-grid'],
   angleStepDeg: 15,
   hysteresisPx: 3,
+  aimedKinds: ['gridIntersection'],
+  aimedPx: 2,
 };
 
 export const DEFAULT_HYSTERESIS_PX = 3;
@@ -111,4 +114,33 @@ export function pickWinner(
   if (best.tier !== held.tier) return best.tier < held.tier ? best : held;
   // Same tier: a challenger must beat the held target by the hysteresis margin.
   return best.dist < held.dist - hysteresis ? best : held;
+}
+
+/**
+ * The ladder's winner, unless the pointer is ON a target of an aimed kind: then
+ * that target wins, whatever outranks it nearby. A column on a grid crossing
+ * puts four corners, which rank higher, within the radius of the crossing, so
+ * without this a click dead on the crossing lands on a corner.
+ *
+ * The ladder stands when its winner is nearer than the aimed target, so a
+ * pointer on the corner keeps the corner, or lands on the same spot, so a wall
+ * end on the crossing keeps naming its wall. A held aimed target stays through
+ * the hysteresis band: ±1px at the edge of `aimed` must not swap the landing.
+ */
+export function aimedOr(
+  winner: Ranked | null,
+  items: readonly Ranked[],
+  kinds: readonly SnapKind[],
+  aimed: number,
+  hysteresis: number,
+  prev: SnapCandidate | null,
+): Ranked | null {
+  let on: Ranked | null = null;
+  for (const r of items) {
+    if (!kinds.includes(r.cand.kind)) continue;
+    const reach = prev !== null && sameTarget(r.cand, prev) ? aimed + hysteresis : aimed;
+    if (r.dist <= reach && (!on || r.dist < on.dist)) on = r;
+  }
+  if (!on || !winner || winner === on || winner.dist < on.dist) return winner;
+  return sameVec(winner.point, on.point) ? winner : on;
 }

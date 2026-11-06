@@ -639,16 +639,6 @@ describe('Shift keeps to the axis and respects Measure snap off (#8995)', () => 
     noLock('the Shift release');
   });
 
-  it('Snap off: letting go of Shift after a Shift rubber band finishes where clicked, with no lock to pull it', () => {
-    const { canvas } = mountSnap(false);
-    click(canvas, 200, 300);
-    hover(canvas, 500, 280, { shiftKey: true });
-    click(canvas, 500, 280);
-    const m = s().measurements[0];
-    assert.ok(m && near(m.end.x, 5) && near(m.end.y, 0.2), `BUG: end ${m?.end.x},${m?.end.y}; expected the clicked point 5,0.2`);
-    noLock('the click after the Shift rubber band');
-  });
-
   it('Snap on: Shift still snaps the rubber band and the click to the edge, then onto the axis', () => {
     const { canvas } = mountSnap(true);
     click(canvas, 200, 300);

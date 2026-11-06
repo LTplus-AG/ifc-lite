@@ -167,8 +167,8 @@ function LayerStratum({
             <span
               className={`shrink-0 rounded-full border px-1 leading-3 ${
                 entry.checksPassed === entry.checksTotal
-                  ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
-                  : 'border-amber-500/30 text-amber-600 dark:text-amber-300'
+                  ? 'border-ok-border text-ok'
+                  : 'border-warn-border text-warn'
               }`}
             >
               {t('layersPanel.panel.checksBadge', { passed: entry.checksPassed ?? 0, total: entry.checksTotal })}

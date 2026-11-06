@@ -188,6 +188,8 @@ export class Scene {
   private appearanceBuckets?: AppearanceBuckets;
   private appearanceAccessState?: SceneAppearanceAccess;
   private authoredGeneration = 0;
+  // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
+  private pickGeometryRevision = 0;
   private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
@@ -210,7 +212,7 @@ export class Scene {
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
         release: batch => { this.dropPartialCacheForBatch(batch); this.lastDrawnFrame.delete(batch.id); destroyGpuResources(batch); },
         changed: key => this.markBucketDirty(key),
-        refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); },
+        refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); this.pickGeometryRevision++; },
       },
       adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
       upload: part => this.createTexturedMesh(part, device, pipeline),
@@ -401,8 +403,8 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
-  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.pickGeometryRevision++; }
 
   /**
    * Add mesh to scene
@@ -485,7 +487,9 @@ export class Scene {
     this.residencyFrame++;
   }
 
-  /** Record that the draw loop drew this batch this frame. */
+  /** Record that the draw loop drew this batch this frame: from its own
+   *  buffers (full or LOD1), or as a partial sub-batch cut from its CPU pieces
+   *  (#9034). Culled, hidden or not-resident batches are not recorded. */
   recordBatchDrawn(batch: BatchedMesh): void {
     if (this.gpuBudgetBytes === null) return;
     this.lastDrawnFrame.set(batch.id, this.residencyFrame);
@@ -696,7 +700,7 @@ export class Scene {
           if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
         }
       }
-      bucket.meshData = [];
+      bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }
@@ -947,7 +951,7 @@ export class Scene {
    * Accumulates multiple mesh pieces per expressId (elements can have multiple geometry pieces)
    */
   addMeshData(meshData: MeshData): void {
-    meshData = this.modelTranslations.placeMesh(meshData);
+    meshData = this.modelTranslations.placeMesh(meshData); this.pickGeometryRevision++;
     // For color-merged batches with per-vertex entityIds, register the mesh
     // under EVERY unique entity so picking/visibility/selection can find it.
     if (meshData.entityIds && meshData.entityIds.length > 0) {
@@ -1403,7 +1407,7 @@ export class Scene {
       this.meshDataBucket.delete(meshData);
     }
 
-    this.meshDataMap.delete(expressId);
+    this.meshDataMap.delete(expressId); this.pickGeometryRevision++;
     this.boundingBoxes.delete(expressId);
 
     // #961: textured meshes own GPU buffers outside the colour buckets, so the
@@ -1457,7 +1461,7 @@ export class Scene {
       this.bumpTemplateSelectedCount(expressId, -1);
     }
     this.instanceSuppression.forget(expressId);
-    this.instancedEntityMap.delete(expressId);
+    this.instancedEntityMap.delete(expressId); this.pickGeometryRevision++;
     this.instancedSelected.delete(expressId);
     this.instancedHidden.delete(expressId);
     this.instancedOverridden.delete(expressId);
@@ -1591,6 +1595,7 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: a textured mesh's GPU vertex buffer lives outside the colour buckets,
     // so the in-place position translation above won't reach the GPU on its own —
@@ -1662,6 +1667,7 @@ export class Scene {
       moved = true;
     }
     if (!moved) return false;
+    this.pickGeometryRevision++;
 
     // Rebuild the cached world AABB from the moved occurrence matrices so pick /
     // measure / section bounds stay correct. A simple in-place shift is unsafe for
@@ -1738,7 +1744,7 @@ export class Scene {
   getModelTranslation(modelIndex: number) { return this.modelTranslations.get(modelIndex); }
   setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
     const changed = translateSceneModel(this.translationScope(), modelIndex, translation);
-    this.dropOrphanedSuppressedBounds();
+    this.dropOrphanedSuppressedBounds(); if (changed) this.pickGeometryRevision++;
     return changed;
   }
 
@@ -1750,7 +1756,7 @@ export class Scene {
   setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
     const yaw: ModelYaw | null = angle === 0 ? null : { angle, px: pivot[0], pz: pivot[2] };
     const changed = rotateSceneModelInstances(this.translationScope(), modelIndex, yaw);
-    this.dropOrphanedSuppressedBounds();
+    this.dropOrphanedSuppressedBounds(); if (changed) this.pickGeometryRevision++;
     return changed;
   }
 
@@ -1820,6 +1826,7 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: textured meshes render from their own GPU vertex buffer — re-upload
     // the rotated parts so they don't render stale (mirrors the translate path).
@@ -1975,7 +1982,7 @@ export class Scene {
           this.buckets.get(key)?.frameOrigin,
         );
         this.batchedMeshes.push(fragment);
-        this.streamingFragments.push(fragment);
+        this.streamingFragments.push(fragment); this.pickGeometryRevision++;
       }
     }
   }
@@ -2048,7 +2055,7 @@ export class Scene {
       regroup = this.regroupStreamed();
       // Build into a fresh array; rebuildPendingBatches republishes every
       // bucket's batch, untouched ones included.
-      this.batchedMeshes = [];
+      this.batchedMeshes = []; this.pickGeometryRevision++; // meshes past the fragment budget become pickable here
       this.rebuildPendingBatches(device, pipeline);
       rebuilt = true;
     } finally {
@@ -2205,7 +2212,7 @@ export class Scene {
             ...[...scene.buckets.values()].flatMap((b) => (b.batchedMesh ? [b.batchedMesh] : [])),
             ...scene.streamingFragments,
           ];
-          scene.retireFinalizedBatches(retired);
+          scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
@@ -2262,7 +2269,7 @@ export class Scene {
     this.streamingFragments = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     // Keep occurrence transforms for placement; release heavy template vertices.
     releaseInstanceVertices(this.instancedTemplateCpu);
     this.activeBucketKey.clear();
@@ -2322,7 +2329,7 @@ export class Scene {
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     // Keep occurrence transforms for placement; release heavy template vertices.
     releaseInstanceVertices(this.instancedTemplateCpu);
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
@@ -2761,6 +2768,9 @@ export class Scene {
     return this.colorOverrideGeneration;
   }
 
+  /** Changes whenever what a CPU pick (raycast, snap) can hit may have changed: pieces added or dropped, their positions, the batch and textured lists the pick walks, instances. Selection highlight meshes, recolours and GPU or host residency demotion keep it (#8998). */
+  getPickGeometryRevision(): number { return this.pickGeometryRevision; }
+
   /** The per-entity colour table the renderer binds at group(1) (#6076). */
   getEntityColorTable(): EntityColorTable {
     return this.entityColorTable;
@@ -2889,6 +2899,7 @@ export class Scene {
       freed.add(i);
     }
     if (freed.size === 0) return 0;
+    this.pickGeometryRevision++;
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
       const kept = occurrences.filter((o) => !freed.has(o.templateIndex));
@@ -2984,7 +2995,7 @@ export class Scene {
     if (shard.instances.some(instance => this.instanceSuppression.owns(instance.entityId))) {
       throw new Error('Cannot append geometry to a retained appearance occurrence');
     }
-    this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
+    this.instancedDevice = device; this.pickGeometryRevision++; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
     // Selected ids whose occurrences arrived in THIS shard (selection recorded
     // before the shard streamed in) — their flags are written after upload.
@@ -3606,7 +3617,7 @@ export class Scene {
           : [0, 0, 0],
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
       }, meshData.modelIndex ?? 0);
-      this.texturedMeshes.push(drawable);
+      this.texturedMeshes.push(drawable); this.pickGeometryRevision++;
       this.texturedSourcePositions.set(drawable, meshData.positions);
     } catch (error) {
       vertexBuffer?.destroy();
@@ -3649,7 +3660,7 @@ export class Scene {
     this.liveInstancedTemplates = [];
     this.instancedTemplateCpu = [];
     this.instanceSuppression.forget();
-    this.instancedEntityMap.clear();
+    this.instancedEntityMap.clear(); this.pickGeometryRevision++;
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
     this.instancedHidden.clear();
@@ -3738,7 +3749,7 @@ export class Scene {
     this.batchedMeshes = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     this.modelTranslations.clearFlatBounds();
     this.boundingBoxes.clear();
     for (const eid of this.instancedEntityMap.keys()) this.recomputeInstancedBounds(eid);

@@ -12,7 +12,7 @@
  *   study.mjs script    Print the facilitator script for every task (prompts, start states, criteria, caps).
  *
  * Session records are one JSON file per participant x task x variant, written by the facilitator.
- * Protocol: docs/architecture/viewer-ai-evaluation.md.
+ * Protocol: tests/ai-eval/study/protocol.json.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';

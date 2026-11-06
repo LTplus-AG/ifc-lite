@@ -41,6 +41,7 @@ import { DrawingStatusLine } from './DrawingStatusLine';
 import { DrawingInspector } from './DrawingInspector';
 import { DrawingSectionCutMenu } from './DrawingSectionCutMenu';
 import { useBottomStripHeaderSlot } from '../bottom-strip-header-slot';
+import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 
 /** Labels need ~1180px for one row; icons alone fit from ~640px; below that
  *  the rarest items overflow (see DrawingToolbar). */
@@ -214,7 +215,7 @@ export function DrawingPanel(): React.ReactElement {
         display={{
           symbolic: displayOptions.useSymbolicRepresentations,
           ifcAnnotations: displayOptions.showIfcAnnotations,
-          projection: displayOptions.showConstructionProjection,
+          projection: constructionProjectionEnabled(displayOptions.showConstructionProjection, sectionPlane),
           overlay3D: displayOptions.show3DOverlay,
           printPreview: displayOptions.showPrintPreview,
         }}

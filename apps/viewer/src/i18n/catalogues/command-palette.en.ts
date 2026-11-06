@@ -24,6 +24,7 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.editor': 'Requires editor access',
   'commandPalette.availability.feature': 'Unavailable in this configuration',
   'commandPalette.availability.selection': 'Select elements in the viewer first',

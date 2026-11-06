@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
   'commandPalette.availability.editor': 'Требуется роль редактора',
   'commandPalette.availability.feature': 'Недоступно в этой конфигурации',
   'commandPalette.availability.selection': 'Сначала выберите элементы в окне просмотра',

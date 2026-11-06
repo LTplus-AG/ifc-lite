@@ -26,7 +26,7 @@ import { CommandPalette } from './CommandPalette';
 import { buildPanelCommands } from './commandPaletteCommandsPanels';
 import { RECENT_KEY } from './commandPaletteSearch';
 import { RibbonExportGroup } from './ribbon/tabs/RibbonExportGroup';
-import { EXPORT_COMMAND_IDS, type ExportIconSet } from './toolbar/export-commands';
+import { type ExportIconSet } from './toolbar/export-commands';
 
 const sdk = createBimContext({ transport: {
   send: () => Promise.reject(new Error('SDK transport is outside this regression')),
@@ -110,7 +110,11 @@ function mount(initialHost: BoundaryHost, ribbon = false) {
     get closes() { return closes; },
   };
 }
-const icons = Object.fromEntries([...EXPORT_COMMAND_IDS, 'extension'].map(id => [id, Puzzle])) as ExportIconSet;
+const icons: ExportIconSet = {
+  ifc: Puzzle, anonymized: Puzzle, 'modified-ifc': Puzzle, glb: Puzzle, kmz: Puzzle,
+  ion: Puzzle, usd: Puzzle, energy: Puzzle, 'landxml-terrain': Puzzle, csv: Puzzle,
+  json: Puzzle, screenshot: Puzzle, pdf: Puzzle, extension: Puzzle,
+};
 
 beforeEach(() => {
   setLocale('en');

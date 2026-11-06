@@ -92,7 +92,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     activeToolRef,
     modelBoundsRef,
     isInteractingRef,
-    lastCameraStateRef,
     updateCameraRotationRealtime,
     calculateScale,
     updateMeasurementScreenCoords,
@@ -292,7 +291,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
         hasPendingMeasurements()
       ) {
-        reprojectMeasurementsForCamera(camera, canvas, lastCameraStateRef, updateMeasurementScreenCoords);
+        reprojectMeasurementsForCamera(camera, canvas, params, updateMeasurementScreenCoords);
       }
 
       animationFrameRef.current = requestAnimationFrame(animate);

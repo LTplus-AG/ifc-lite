@@ -150,6 +150,8 @@ export const bcfRu = {
   "bcf.resultChrome.filtered": "Нет тем, соответствующих этому фильтру статуса",
   "bcf.topicList.newTopicAria": "Новая тема",
   "bcf.topicList.noTopics": "Нет тем",
+  "bcf.topicList.emptyDescription": "Тема фиксирует проблему с точкой обзора, комментариями и статусом.",
+  "bcf.topicList.authorNotSet": "Не указан",
   "bcf.topicList.emailAuthorshipLabel": "Ваш адрес электронной почты для авторства BCF",
   "bcf.topicList.authorLabel": "Автор",
   "bcf.topicList.editAuthorEmailAria": "Изменить адрес электронной почты автора",

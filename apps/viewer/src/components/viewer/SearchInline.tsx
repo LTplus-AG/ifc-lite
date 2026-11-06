@@ -508,7 +508,7 @@ export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
           if (target && containerRef.current?.contains(target)) e.preventDefault();
         }}
         style={{ width: 'var(--radix-popper-anchor-width)' }}
-        className="w-72 rounded-md border border-border bg-white p-0 shadow-lg dark:bg-muted"
+        className="w-72 rounded-md border border-border bg-white p-0 shadow-lg dark:bg-zinc-950"
       >
         {showRecents ? (
           <RecentsPopoverBody

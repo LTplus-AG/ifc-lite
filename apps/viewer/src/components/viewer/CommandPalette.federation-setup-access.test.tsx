@@ -178,7 +178,6 @@ for (const federated of [false, true]) {
     assert.match(blobs[0].type, /^application\/json/);
     const text = await blobs[0].text();
     const parsed = parseFederationSetupFile(text); assert.equal(parsed.ok, true);
-    if (!parsed.ok) throw new Error(parsed.error);
     assert.equal(parsed.setup.slots.length, files.length);
     assert.deepEqual(parsed.setup.tags, [{ id: 'access', name: 'Access review', color: '#123456' }]);
     for (const [index, file] of files.entries()) {

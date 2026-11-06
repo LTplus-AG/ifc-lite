@@ -689,7 +689,7 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     for (const x of [100, 300, 500]) await tap(canvas, x, 300);
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 3, 'three taps placed three points');
     assert.doesNotMatch(hint(), MOUSE_ONLY, 'the in-progress polyline hint after a tap');
-    assert.match(hint(), /Measurements/, 'the hint names where touch finishes');
+    assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
     const finish = finishButton();
     assert.equal(finish !== null, true, 'the live polyline row offers Finish');
     act(() => click(finish!));
@@ -706,7 +706,7 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     for (const x of [100, 300, 500]) await tap(canvas, x, 300);
     assert.equal(useViewerStore.getState().activeRadius?.points.length, 3, 'three taps placed three points');
     assert.doesNotMatch(hint(), MOUSE_ONLY, 'the in-progress radius hint after a tap');
-    assert.match(hint(), /Measurements/, 'the hint names where touch finishes');
+    assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
     const finish = finishButton();
     assert.equal(finish !== null, true, 'the live radius row offers Finish');
     act(() => click(finish!));

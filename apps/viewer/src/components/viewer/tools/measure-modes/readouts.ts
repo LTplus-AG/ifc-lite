@@ -82,7 +82,7 @@ export interface MeasureHintState {
 /**
  * Tap wording for the hints a tap can act on (#8879): no click, Shift, Esc or
  * Enter, none of which a touch user has. Polyline and Radius in progress name
- * the ✓ in the Measurements list, touch's finish (#8991).
+ * the ✓ in List, touch's finish (#8991).
  */
 const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
   'measure.hint.dragStart': 'measure.hint.dragStartTouch',

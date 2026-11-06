@@ -46,6 +46,10 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   // Choosing Point mode (#8770) brings its readout forward; the user can
   // still switch tabs afterwards.
   useEffect(() => { if (pointMode) setTab('point'); }, [pointMode]);
+  // An open Polyline or Radius brings List forward: its live row holds the
+  // Finish a touch user needs (#8991).
+  const sequenceOpen = useViewerStore((s) => s.activePolyline !== null || s.activeRadius !== null);
+  useEffect(() => { if (sequenceOpen) setTab('list'); }, [sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

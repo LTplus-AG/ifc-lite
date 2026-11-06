@@ -33,7 +33,8 @@ const ROW_LIVE = 'flex items-center justify-between gap-2 rounded bg-overlay-acc
 // hit-slop reaches the WCAG 2.2 2.5.8 24px minimum (#5826). Each of these
 // buttons is the last (or only) item in its `justify-between` row, so
 // there is no neighbour to overlap; a live row's Finish and Cancel pair sits
-// in a `gap-1` group, so their 2px slops still do not meet.
+// in a `gap-2` group, which leaves 4px between their slops so a finger aimed
+// at Finish does not land on the destructive Cancel.
 const HIT_SLOP = 'relative after:absolute after:-inset-0.5 after:content-[""]';
 const DELETE = `h-5 w-5 shrink-0 hover:bg-destructive/20 ${HIT_SLOP}`;
 
@@ -183,7 +184,7 @@ export function MeasurementList() {
 function LiveRowActions({ onFinish, onCancel }: { onFinish: () => void; onCancel: () => void }) {
   const { t } = useTranslation();
   return (
-    <span className="flex shrink-0 items-center gap-1">
+    <span className="flex shrink-0 items-center gap-2">
       <IconButton label={t('measure.finishEnter')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={onFinish}>
         <Check className="h-3 w-3" />
       </IconButton>

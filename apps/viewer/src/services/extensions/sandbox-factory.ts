@@ -148,7 +148,9 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
     // serialisation crashes. The bridge has already installed `bim`
     // inside the QuickJS realm — synthesize ctx from that instead.
     if (name === '__ifclite_ctx__') {
-      this.globals.set(name, `globalThis.__ifclite_ctx__ = { bim: globalThis.bim };`);
+      const args = value && typeof value === 'object' && 'args' in value ? value.args : undefined;
+      const suffix = args === undefined ? '' : `, args: ${JSON.stringify(args)}`;
+      this.globals.set(name, `globalThis.__ifclite_ctx__ = { bim: globalThis.bim${suffix} };`);
       return;
     }
     // Other globals (test args, synthetic-spec data) are JSON-safe;
@@ -209,7 +211,7 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
       const msg = err instanceof Error ? err.message : String(err);
       if (/Lifetime not alive|QuickJSUseAfterFree/i.test(msg)) {
         this.disposed = true;
-        try { this.sandbox.dispose(); } catch { /* already torn down */ }
+        try { this.sandbox.dispose(); } catch (disposeError) { console.warn('[sandbox-factory] dead sandbox teardown failed', disposeError); }
         throw new Error(
           'Sandbox was torn down between activate and run. Click Run again — the runtime will reactivate.',
         );

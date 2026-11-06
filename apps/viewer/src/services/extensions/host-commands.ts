@@ -82,6 +82,7 @@ export async function runExtensionCommand(
   deps: RunCommandDeps,
   commandId: string,
   extensionId: string,
+  args?: Record<string, unknown>,
 ): Promise<RuntimeRunResult | undefined> {
   const records = await deps.storage.listExtensions();
   for (const record of records) {
@@ -132,7 +133,7 @@ export async function runExtensionCommand(
         // JSON.stringify). The wrap also falls back to globalThis.bim
         // if ctx is somehow unset. setGlobal is inside the try so a
         // "Sandbox disposed" on a dead handle also triggers the retry.
-        const ctx: ExtensionContextV1 = { bim: deps.sdk };
+        const ctx: ExtensionContextV1 & { args?: Record<string, unknown> } = { bim: deps.sdk, ...(args === undefined ? {} : { args }) };
         await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
         return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {

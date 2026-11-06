@@ -123,10 +123,12 @@ export function buildExportCommands(
     id: `export:ext:${exporter.key}`,
     runtimeSource: 'extension-export',
     label: exporter.name,
-    keywords: `extension ${exporter.extension.slice(1)} download`,
+    keywords: `${exporter.extensionId} ${exporter.payload.id} extension ${exporter.extension.slice(1)} export download save report herunterladen speichern экспорт скачать отчёт`,
     category: 'Export',
     icon: PALETTE_EXPORT_ICONS.extension,
-    detail: exporter.extension,
+    detail: `${exporter.extensionId} · ${exporter.extension}`,
+    availability: exporter.checkAvailability?.(),
+    checkAvailability: exporter.checkAvailability,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));
   const registryRows = EXPORT_SURFACE_COMMANDS.map((command) => {

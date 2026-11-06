@@ -68,6 +68,8 @@ export const commandPaletteEn = {
   "commandPalette.availability.textSelection": "Clear the selected page text before copying elements",
   "commandPalette.availability.rendererEntity": "Select a resolvable element in the model; a property-only reference cannot open entity actions",
   "commandPalette.availability.world": "Enable the available 3D world context first",
+  'commandPalette.extension.conditions': 'This tool’s conditions are not met. Check the model or selection requirement shown beside its owner.',
+  'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
   'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',
   'commandPalette.aliases.bulk': 'bulk properties query set attribute construction stage',

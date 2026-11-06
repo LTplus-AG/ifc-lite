@@ -9,6 +9,7 @@
  * builds a house from "Start blank".
  */
 
+import * as create from '../../index.js';
 import { describe, expect, it } from 'vitest';
 import { recordCompoundMutation, undoRecordedMutationOperations, StoreEditor } from '@ifc-lite/mutations';
 import { IfcCreator } from '../../ifc-creator.js';
@@ -19,13 +20,14 @@ import { readStairDimensions } from '../stair-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { resolveSpatialAnchor } from '../resolve-anchor.js';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../__test__/stair-mesh.oracle.js';
-import { addStoreyInStore } from './storey-add.js';
-import { applyStoreyLevelEdit } from './storey-level-apply.js';
-import { planStoreyLevelEdit } from './storey-level-plan.js';
-import { readStoreyInventory } from './storey-model.js';
-import { NEXT_STOREY_ABOVE, readTopAttachment, writeTopAttachment } from './storey-attachment.js';
-import { StoreyEditRefusedError } from './storey-validation.js';
-import { parse, session, type Session } from './storey-fixtures.oracle.js';
+import { parse, session, type Session } from '../__test__/storey-fixtures.oracle.js';
+
+/** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
+function api<K extends keyof typeof create>(name: K): (typeof create)[K] {
+  expect(typeof create[name], `${String(name)} is exported by @ifc-lite/create`).toBe('function');
+  return create[name];
+}
+
 
 interface House extends Session { level1: number; level2: number; attached: number; fixed: number; door: number; window: number; stair: number; flight: number }
 
@@ -34,20 +36,20 @@ async function house(): Promise<House> {
   const creator = new IfcCreator({ Name: 'Blank' });
   creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
   const s = session(await parse(creator.toIfc().content));
-  const level1 = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+  const level1 = api('readStoreyInventory')(s.store, s.view).storeys[0].expressId;
   const anchor = (draft: StoreEditor) => resolveSpatialAnchor(s.store, level1, draft.getMutationView());
   const wall = (Start: [number, number, number], End: [number, number, number]) =>
     addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start, End, Thickness: 0.2, Height: 3 } });
   const attached = wall([0, 0, 0], [6, 0, 0]);
   const fixed = wall([0, 4, 0], [6, 4, 0]);
   // Drawn as attached before any storey stood above it.
-  writeTopAttachment(s.view, attached, NEXT_STOREY_ABOVE);
+  api('writeTopAttachment')(s.view, attached, create.NEXT_STOREY_ABOVE);
   const door = addHostedElementInStore(s.store, s.editor, attached, { kind: 'door', params: { Offset: 1, Width: 0.9, Height: 2.1 } }).expressId;
   const window = addHostedElementInStore(s.store, s.editor, attached, { kind: 'window', params: { Offset: 3, Width: 1.2, Height: 1.2, Sill: 0.9 } }).expressId;
   const stairBuilt = s.editor.runAtomic((draft) => addStairToStore(draft, anchor(draft), {
     Position: [2, 1, 0], NumberOfRisers: 17, RiserHeight: 3 / 17, TreadLength: 0.27, Width: 1,
   }));
-  const level2 = addStoreyInStore(s.store, s.editor, { Name: 'Level 2', Elevation: 3 }).storeyId;
+  const level2 = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 }).storeyId;
   return { ...s, level1, level2, attached, fixed, door, window, stair: stairBuilt.stairId, flight: stairBuilt.flightId };
 }
 
@@ -56,9 +58,9 @@ const height = (h: House, wall: number) => readWallMetres({ dataStore: h.store, 
 describe('adding the storey above binds walls drawn attached', () => {
   it('records the new storey GlobalId; the fixed wall stays fixed', async () => {
     const h = await house();
-    const inventory = readStoreyInventory(h.store, h.view);
-    expect(readTopAttachment(inventory, h.attached)).toEqual({ targetStoreyId: h.level2, source: 'ifclite' });
-    expect(readTopAttachment(inventory, h.fixed)).toBeNull();
+    const inventory = api('readStoreyInventory')(h.store, h.view);
+    expect(api('readTopAttachment')(inventory, h.attached)).toEqual({ targetStoreyId: h.level2, source: 'ifclite' });
+    expect(api('readTopAttachment')(inventory, h.fixed)).toBeNull();
     expect(height(h, h.attached)).toBeCloseTo(3, 9);
   });
 
@@ -66,11 +68,11 @@ describe('adding the storey above binds walls drawn attached', () => {
     const creator = new IfcCreator({ Name: 'Blank' });
     creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
     const s = session(await parse(creator.toIfc().content));
-    const level1 = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+    const level1 = api('readStoreyInventory')(s.store, s.view).storeys[0].expressId;
     const wall = addOrdinaryElementInStore(s.editor, (draft) => resolveSpatialAnchor(s.store, level1, draft.getMutationView()),
       { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
-    writeTopAttachment(s.view, wall, NEXT_STOREY_ABOVE);
-    const added = addStoreyInStore(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 });
+    api('writeTopAttachment')(s.view, wall, create.NEXT_STOREY_ABOVE);
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 });
     expect(added.boundWalls.map(({ wallId, from, to }) => [wallId, from, Math.round(to * 1e6) / 1e6])).toEqual([[wall, 3, 3.2]]);
     expect(readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height).toBeCloseTo(3.2, 9);
   });
@@ -79,7 +81,7 @@ describe('adding the storey above binds walls drawn attached', () => {
 describe('floor-to-floor height drives attached walls and stairs (acceptance step 4)', () => {
   it('plans the impact: moves Level 2, resizes the attached wall, refits the stair', async () => {
     const h = await house();
-    const p = planStoreyLevelEdit(readStoreyInventory(h.store, h.view), { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 });
+    const p = api('planStoreyLevelEdit')(api('readStoreyInventory')(h.store, h.view), { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 });
     expect(p.refusals).toEqual([]);
     expect(p.walls.map(({ wallId, from, to }) => [wallId, from, to])).toEqual([[h.attached, 3, 3.5]]);
     expect(p.stairs.map(({ stairId, from, to }) => [stairId, from.NumberOfRisers, to.NumberOfRisers, Math.round(to.RiserHeight * 1e6)]))
@@ -89,7 +91,7 @@ describe('floor-to-floor height drives attached walls and stairs (acceptance ste
   it('applies it: the attached wall grows, the fixed one keeps 3.00, the stair lands exactly, openings stay', async () => {
     const h = await house();
     const before = h.snapshot();
-    recordCompoundMutation(h.view, (draft) => applyStoreyLevelEdit(h.store, new StoreEditor(h.store, draft), { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 }));
+    recordCompoundMutation(h.view, (draft) => api('applyStoreyLevelEdit')(h.store, new StoreEditor(h.store, draft), { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 }));
     expect(height(h, h.attached)).toBeCloseTo(3.5, 9);
     expect(height(h, h.fixed)).toBeCloseTo(3, 9);
     const stair = readStairDimensions(h.store, h.stair, h.view)!;
@@ -107,22 +109,22 @@ describe('floor-to-floor height drives attached walls and stairs (acceptance ste
 
   it.skipIf(!stairWasmAvailable)('the exported geometry agrees: wall top and top tread at +3.50, fixed wall at +3.00', async () => {
     const h = await house();
-    applyStoreyLevelEdit(h.store, h.editor, { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 });
+    api('applyStoreyLevelEdit')(h.store, h.editor, { kind: 'floorHeight', storeyId: h.level1, Height: 3.5 });
     for (const schema of ['IFC4', 'IFC4X3'] as const) {
       const meshes = await meshStairs(h.text(schema));
       expect(stairMeshBounds(meshes.get(h.attached)!).max[2]).toBeCloseTo(3.5, 4);
       expect(stairMeshBounds(meshes.get(h.fixed)!).max[2]).toBeCloseTo(3, 4);
       expect(stairMeshBounds(meshes.get(h.flight)!).max[2]).toBeCloseTo(3.5, 4);
       const reloaded = session(await parse(h.text(schema)));
-      const inventory = readStoreyInventory(reloaded.store, reloaded.view);
+      const inventory = api('readStoreyInventory')(reloaded.store, reloaded.view);
       expect(inventory.storeys.map((x) => x.elevation)).toEqual([0, 3.5]);
-      expect(readTopAttachment(inventory, h.attached)?.targetStoreyId).toBe(h.level2);
+      expect(api('readTopAttachment')(inventory, h.attached)?.targetStoreyId).toBe(h.level2);
     }
   });
 
   it('editing Level 2 elevation directly moves only Level 2 and still drives the walls below (step 5)', async () => {
     const h = await house();
-    const p = planStoreyLevelEdit(readStoreyInventory(h.store, h.view), { kind: 'elevation', storeyId: h.level2, Elevation: 2.8 });
+    const p = api('planStoreyLevelEdit')(api('readStoreyInventory')(h.store, h.view), { kind: 'elevation', storeyId: h.level2, Elevation: 2.8 });
     expect(p.storeys.map((x) => x.expressId)).toEqual([h.level2]);
     expect(p.walls.map((w) => [w.wallId, w.to])).toEqual([[h.attached, expect.closeTo(2.8, 9)]]);
     expect(p.stairs[0].to.NumberOfRisers).toBe(16);
@@ -134,18 +136,18 @@ describe('invalid outcomes are refused with a specific message and nothing writt
     const h = await house();
     const before = h.snapshot();
     const edit = { kind: 'floorHeight', storeyId: h.level1, Height: 0.25 } as const;
-    const [refusal] = planStoreyLevelEdit(readStoreyInventory(h.store, h.view), edit).refusals;
+    const [refusal] = api('planStoreyLevelEdit')(api('readStoreyInventory')(h.store, h.view), edit).refusals;
     expect(refusal.code).toBe('dependent');
     expect(refusal.elementIds).toEqual([h.stair]);
     expect(refusal.message).toBe(`The stair #${h.stair} from Level 1 to Level 2 would have to climb 0.25 m: no flight fits; move or delete the stair first`);
-    expect(() => applyStoreyLevelEdit(h.store, h.editor, edit)).toThrow(StoreyEditRefusedError);
+    expect(() => api('applyStoreyLevelEdit')(h.store, h.editor, edit)).toThrow(api('StoreyEditRefusedError'));
     expect(h.snapshot()).toEqual(before);
   });
 
   it('refuses a wall top that would cut through its door (dry run)', async () => {
     const h = await house();
     // Remove the stair from the question: it is the wall that cannot follow.
-    const p = planStoreyLevelEdit(readStoreyInventory(h.store, h.view), { kind: 'elevation', storeyId: h.level2, Elevation: 1.8 });
+    const p = api('planStoreyLevelEdit')(api('readStoreyInventory')(h.store, h.view), { kind: 'elevation', storeyId: h.level2, Elevation: 1.8 });
     expect(p.refusals.map((r) => r.code)).toEqual(['dependent']);
     expect(p.refusals[0].message).toMatch(/reaches above the new top of the wall/);
   });

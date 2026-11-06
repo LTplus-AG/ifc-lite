@@ -10,14 +10,19 @@
  * export and reload in IFC4 and IFC4X3.
  */
 
+import * as create from '../../index.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../__test__/stair-mesh.oracle.js';
 import { effectiveStoreyId } from '../edit/effective-storey.js';
-import { applyStoreyLevelEdit } from './storey-level-apply.js';
-import { planStoreyLevelEdit } from './storey-level-plan.js';
-import { readStoreyInventory, storeyContents } from './storey-model.js';
-import { parse, session } from './storey-fixtures.oracle.js';
+import { parse, session } from '../__test__/storey-fixtures.oracle.js';
+
+/** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
+function api<K extends keyof typeof create>(name: K): (typeof create)[K] {
+  expect(typeof create[name], `${String(name)} is exported by @ifc-lite/create`).toBe('function');
+  return create[name];
+}
+
 
 const FIXTURE = new URL('../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
 const GROUND = 479;
@@ -28,7 +33,7 @@ describe.skipIf(!existsSync(FIXTURE))('ArchiCAD FZK-Haus (run `pnpm fixtures` wh
 
   it('plans the edit and names the stair it leaves unrefit', async () => {
     const s = await load();
-    const plan = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), { kind: 'floorHeight', storeyId: GROUND, Height: 3 });
+    const plan = api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), { kind: 'floorHeight', storeyId: GROUND, Height: 3 });
     expect(plan.refusals).toEqual([]);
     expect(plan.storeys.map((x) => [x.Name, x.from, x.to])).toEqual([['Dachgeschoss', 2.7, 3]]);
     // ArchiCAD hangs the storey's contents from its placement: one write moves them all.
@@ -38,12 +43,12 @@ describe.skipIf(!existsSync(FIXTURE))('ArchiCAD FZK-Haus (run `pnpm fixtures` wh
 
   it.skipIf(!stairWasmAvailable)('moves the upper storey in real geometry and survives export and reload', async () => {
     const s = await load();
-    const upper = [...storeyContents(readStoreyInventory(s.store, s.view), ROOF)];
+    const upper = [...api('storeyContents')(api('readStoreyInventory')(s.store, s.view), ROOF)];
     const before = await meshStairs(s.text());
     const meshed = upper.filter((id) => before.has(id));
     expect(meshed.length).toBeGreaterThan(10);
-    const ground = [...storeyContents(readStoreyInventory(s.store, s.view), GROUND)].filter((id) => before.has(id));
-    applyStoreyLevelEdit(s.store, s.editor, { kind: 'floorHeight', storeyId: GROUND, Height: 3 });
+    const ground = [...api('storeyContents')(api('readStoreyInventory')(s.store, s.view), GROUND)].filter((id) => before.has(id));
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'floorHeight', storeyId: GROUND, Height: 3 });
     for (const schema of ['IFC4', 'IFC4X3'] as const) {
       const text = s.text(schema);
       const after = await meshStairs(text);
@@ -56,7 +61,7 @@ describe.skipIf(!existsSync(FIXTURE))('ArchiCAD FZK-Haus (run `pnpm fixtures` wh
         expect(stairMeshBounds(after.get(id)!).min[2]).toBeCloseTo(stairMeshBounds(before.get(id)!).min[2], 4);
       }
       const reloaded = session(await parse(text));
-      const inventory = readStoreyInventory(reloaded.store, reloaded.view);
+      const inventory = api('readStoreyInventory')(reloaded.store, reloaded.view);
       expect(inventory.storeys.map((x) => [x.Name, x.elevation])).toEqual([['Erdgeschoss', 0], ['Dachgeschoss', 3]]);
       for (const id of upper.slice(0, 20)) expect(effectiveStoreyId(reloaded.store, null, id)).toBe(ROOF);
     }

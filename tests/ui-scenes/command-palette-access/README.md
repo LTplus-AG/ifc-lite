@@ -620,3 +620,26 @@ refusal, explicitly chooses Query through the real source control, then keeps
 its one-target integer mutation and old-model nonmutation oracles. Dock repair
 now commits the subscribed registry refresh inside React act before activating
 the new launcher. All these corrections await runtime qualification.
+
+### Targeted four-file follow-up
+
+Original source `887393cf67`, Pop request
+`auto-602a33e6e08c4d359e73eb8dc065ae20`, job
+`bdbdb570-facd-4ee8-9865-fa473063631e`: **31 tests, 29 passed, 2 failed,
+0 skipped**. The camera file completed naturally and the real removed-model
+Query mutation passed. The remaining dock assertion selected the Toaster's
+empty alert region; it now scopes the validation error to the contributed
+dialog. The entity diagnostic recorded `open(130) → closed` with the palette
+closed, command recorded, and target still valid. The entity menu now uses
+the existing close-focus handoff, like inline search, so palette restoration
+cannot dismiss the new nonmodal menu. The real-browser loaded scenario now
+opens that menu, checks focus and its Copy GlobalId child, then closes it and
+checks focus return before proceeding with Hide and the other destinations.
+
+The GPU trace audit also found external-Instance device loss preceding provider
+failures inside cases whose assertion defects masked the GPU problem. Three
+cases failed directly on adapter availability, but initial adapter success or
+a passing unrelated assertion does not establish continued renderer health.
+The controlled shared/fresh-browser diagnostic is being run with pinned Node
+24 after its original SSH Node 18 attempt failed before launching a browser.
+No production navigator.gpu replacement or software adapter is permitted.

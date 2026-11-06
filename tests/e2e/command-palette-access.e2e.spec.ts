@@ -231,6 +231,15 @@ test('loaded unselected → selected → hidden wall reaches renderer; author/cl
     __ifc_lite_scene_owner__: (id: number) => SceneOwnerSnapshot;
   }).__ifc_lite_scene_owner__(id), id);
   expect(!!owner.flat?.length || owner.instance, 'selected wall has real resident geometry').toBe(true);
+  // #8947: first opening must survive the palette's delayed close autofocus.
+  await run(page, 'elements:entity-actions', 'Copy GlobalId');
+  const entityMenu = page.getByRole('menu').filter({ has: page.locator('[data-command-id="context:copy-global-id"]') });
+  await expect(entityMenu).toBeVisible();
+  await expect.poll(() => entityMenu.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await info.attach('selected-entity-actions.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.press('Escape');
+  await expect(entityMenu).toBeHidden();
+  await expect(page.getByRole('button', { name: /Commands…/ }).first()).toBeFocused();
   await run(page, 'vis:hide', 'hide');
   await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(true);
   expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().hiddenEntities.has(id), id)).toBe(true);

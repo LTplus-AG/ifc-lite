@@ -7,6 +7,6 @@ index 9365a50..6b4ba71 100644
  
  export function MatchHighlight({ text, query }: MatchHighlightProps) {
 -  return <>{text}</>;
-   // Locale-free case folding, as the palette's own matcher does
-   // (`commandPaletteSearch.ts`): a Turkish locale would fold 'I' to 'ı' and
-   // lose the highlight on every label containing an 'I'.
+   const needle = query.trim();
+   if (!needle) return <>{text}</>;
+   // Match the source text itself rather than a lower-cased copy: lower-casing

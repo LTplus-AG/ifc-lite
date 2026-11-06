@@ -36,14 +36,18 @@ export async function openPanelWitness(id: 'document' | 'drawing' | 'lists' | 'l
   assert.equal(document.querySelector('input[role="combobox"]'), null, 'palette closed before child interaction');
   return element(selector);
 }
-export function choose(selector: string, value: string, root: ParentNode = document) {
+/** Dispatch the real select handler; action options may select a newly created id. */
+export function selectOption(selector: string, value: string, root: ParentNode = document) {
   const select = element<HTMLSelectElement>(selector, root);
   assert.ok([...select.options].some(option => option.value === value), `offered option ${value}`);
   act(() => {
     Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set?.call(select, value);
     select.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
-  assert.equal(select.value, value);
+  return select;
+}
+export function choose(selector: string, value: string, root: ParentNode = document) {
+  assert.equal(selectOption(selector, value, root).value, value);
 }
 export function openMenu(trigger: Element) {
   act(() => trigger.dispatchEvent(new window.PointerEvent('pointerdown', {

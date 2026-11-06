@@ -2726,7 +2726,7 @@ export class Renderer {
                     // paints straight over it. That is routine since #4129 — an
                     // X-Rayed batch emits a faded group AND a solid one.
                     const transparentSubBatches: typeof allBatchedMeshes = [];
-                    for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
+                    for (const { sourceBatch, sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
                             sourceBatchKey,
@@ -2738,6 +2738,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
+                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2758,8 +2759,7 @@ export class Renderer {
                             // full-batch path above.
                             usePipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
-                            // Render the sub-batch as a single draw call
-                            renderBatch(subBatch, true);
+                            renderBatch(subBatch, true); // one draw call for the whole subset
                         }
                     }
                     if (transparentSubBatches.length > 0) holdGlass(true);

@@ -1401,6 +1401,11 @@ export class IfcAPI {
      */
     setSkipSmallCuts(on: boolean): void;
     /**
+     * Generate gross hosts by skipping IfcRelVoidsElement subtraction only.
+     * Defaults to false. Set before processing; existing meshes are unchanged.
+     */
+    setSkipVoids(on: boolean): void;
+    /**
      * Store the whole IFC source file ONCE per load so the `*FromSource` batch
      * variants can read it from the wasm heap instead of re-copying it per call.
      *
@@ -2762,6 +2767,7 @@ export interface InitOutput {
     readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
     readonly ifcapi_setReferencedRepmaps: (a: number, b: number, c: number) => void;
     readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
+    readonly ifcapi_setSkipVoids: (a: number, b: number) => void;
     readonly ifcapi_setSourceBytes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setStyleFinishes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;

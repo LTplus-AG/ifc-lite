@@ -20,10 +20,28 @@ import { create } from 'zustand';
 
 export type ValidationSourceChoice = 'ids' | 'rules' | 'manual';
 
-export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null }>()(() => ({
+export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null; pendingIdsFile: File | null }>()(() => ({
   choice: null,
+  pendingIdsFile: null,
 }));
 
 export function setValidationSourceChoice(choice: ValidationSourceChoice | null): void {
   useValidationSourceChoice.setState({ choice });
+}
+
+/**
+ * The IDS entry card's "Load IDS file" (#8802) opens its file picker inside
+ * the click itself (Safari drops a deferred `input.click()`), then hands the
+ * picked file here. Loading stays the IDS panel's job: it takes the file once
+ * it is on screen and loads it through the same path as its own picker.
+ */
+export function handIdsFileToPanel(file: File): void {
+  useValidationSourceChoice.setState({ choice: 'ids', pendingIdsFile: file });
+}
+
+/** Consumes a file from `handIdsFileToPanel`; null when none is waiting. */
+export function takePendingIdsFile(): File | null {
+  const file = useValidationSourceChoice.getState().pendingIdsFile;
+  if (file) useValidationSourceChoice.setState({ pendingIdsFile: null });
+  return file;
 }

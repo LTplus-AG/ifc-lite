@@ -17,9 +17,8 @@
 
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { FileText, Trash2, Upload } from 'lucide-react';
-import { IconButton } from '@/components/ui/icon-button';
+import { HiddenFileInput } from '@/components/ui/hidden-file-input';
 import { useIDS } from '@/hooks/useIDS';
-import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
 import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
@@ -28,6 +27,7 @@ import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
 import { AnalysisPanel, AnalysisPanelChrome } from './analysis/AnalysisPanel';
 import { DefinitionLibraryToolbar } from './validation/DefinitionLibraryToolbar';
+import { takePendingIdsFile, useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 
 // ============================================================================
 // Types
@@ -139,28 +139,20 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     e.target.value = '';
   }, [loadIDSFile]);
 
-  const loadIdsFromDialog = useCallback(async (): Promise<boolean> => {
-    const file = await openGenericFileDialog({
-      title: t('idsPanel.openFileTitle'),
-      filters: [
-        { name: t('idsPanel.idsFiles'), extensions: ['ids', 'xml'] },
-        { name: t('idsPanel.allFiles'), extensions: ['*'] },
-      ],
-    });
-    if (file) {
-      await loadIDSFile(file);
-      return true;
-    }
-    return false;
-  }, [loadIDSFile, t, locale]);
-
-  const handleLoadIdsClick = useCallback(async () => {
-    const loaded = await loadIdsFromDialog();
-    if (loaded) {
-      return;
-    }
+  // Opens the picker inside the user's click: Safari drops an `input.click()`
+  // that runs after an await, so nothing async may come first (#8802).
+  const handleLoadIdsClick = useCallback(() => {
     fileInputRef.current?.click();
-  }, [loadIdsFromDialog]);
+  }, []);
+
+  // The Data validation IDS card's "Load IDS file" picks the file itself
+  // (synchronously, in its own click) and hands it here to load.
+  const pendingIdsFile = useValidationSourceChoice((state) => state.pendingIdsFile);
+  useEffect(() => {
+    if (!pendingIdsFile) return;
+    const file = takePendingIdsFile();
+    if (file) void loadIDSFile(file);
+  }, [pendingIdsFile, loadIDSFile]);
 
   // Handle entity click. The row's focus MODE (highlight / isolate / ghost) is
   // the user's persistent choice, applied by `focusEntity` — activating a row
@@ -193,35 +185,29 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
         cancelLabel: t('idsPanel.cancel'),
       } : undefined}
       onClearResults={document ? clearValidation : undefined}
-      actions={document && (
-        <>
-          <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={handleFileSelect} />
-          <IconButton label={t('idsPanel.loadNew')} className="h-7 w-7" onClick={() => { void handleLoadIdsClick(); }}>
-            <Upload className="h-4 w-4" />
-          </IconButton>
-          <IconButton label={t('idsPanel.unload')} className="h-7 w-7" onClick={() => { clearIDS(); clearValidation(); }}>
-            <Trash2 className="h-4 w-4" />
-          </IconButton>
-        </>
-      )}
+      actions={document ? [
+        { id: 'ids-load', label: t('idsPanel.loadNew'), icon: <Upload className="h-4 w-4" />, onSelect: handleLoadIdsClick },
+        { id: 'ids-unload', label: t('idsPanel.unload'), icon: <Trash2 className="h-4 w-4" />, onSelect: () => { clearIDS(); clearValidation(); } },
+      ] : undefined}
+      dialogs={document && <HiddenFileInput ref={fileInputRef} accept=".ids,.xml" onChange={handleFileSelect} />}
       error={error ? (typeof error === 'string' ? error : t(error.labelKey, error.params)) : null}
       progress={loading && progress ? idsProgressState(progress, t, locale) : null}
       staleFor={report}
     >
       <div className="flex-1 min-h-0 flex flex-col">
-        {!report && <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />}
+        {!report && <DefinitionLibraryToolbar kind="ids" onImport={handleLoadIdsClick} />}
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}
           onFileSelect={handleFileSelect}
-          onLoadClick={() => { void handleLoadIdsClick(); }}
+          onLoadClick={handleLoadIdsClick}
         />
         <IDSPanelResults
           results={ids}
           summaryControls={
             <>
               <AnalysisPanelChrome />
-              <DefinitionLibraryToolbar kind="ids" onImport={() => { void handleLoadIdsClick(); }} />
+              <DefinitionLibraryToolbar kind="ids" onImport={handleLoadIdsClick} />
             </>
           }
           runValidation={runValidation}

@@ -123,3 +123,18 @@ it('rejects fabricated and unowned palette ids (#5878)', async () => {
     cleanup();
   }
 });
+
+it('keeps runtime detail alongside a category without renaming registered commands (#8946)', async () => {
+  const { RegisteredPaletteOption, DynamicPaletteOption } = await loadOptions();
+  render(<>
+    <DynamicPaletteOption command={runtime} {...placement} categoryLabel="Datei" />
+    <RegisteredPaletteOption commandId="view:frame" {...placement} categoryLabel="Ansicht" />
+  </>);
+  const file = document.querySelector('[data-runtime-source="recent-file"]');
+  assert.ok(file?.textContent?.includes(runtime.label));
+  assert.ok(file?.textContent?.includes('Datei'));
+  assert.equal(file?.querySelector('[title="1.4 MB"]')?.textContent, '1.4 MB');
+  const frame = document.querySelector('[data-command-id="view:frame"]');
+  assert.equal(frame?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('view:frame', 'palette').labelKey));
+  assert.ok(frame?.textContent?.includes('Ansicht'));
+});

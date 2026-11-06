@@ -78,6 +78,8 @@ export const commandPaletteDe = {
   'commandPalette.searchPlaceholder': 'Was benötigen Sie?',
   'commandPalette.escKey': 'Esc',
   'commandPalette.noResults': 'Keine Ergebnisse',
+  'commandPalette.noResultsHint': 'Versuchen Sie einen anderen Namen oder ein anderes Stichwort.',
+  'commandPalette.clearSearch': 'Suche löschen',
   'commandPalette.footer.navigate': 'navigieren',
   'commandPalette.footer.run': 'ausführen',
   'commandPalette.footer.close': 'schließen',

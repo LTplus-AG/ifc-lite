@@ -1,0 +1,150 @@
+{
+  "head": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3",
+  "tree": "63f8396b08b2271c02364336e14f8f8acd0b41a4",
+  "run": 42127421737,
+  "viewerArtifact": 13462775595,
+  "testedTreeArtifact": 13461248722,
+  "distIndexSha256": "22ebaec78936058cf5224c61b4243c0265f75ab00c7cb3230735543f4b386190",
+  "command": "ifc-gpu-check --limit 10 -- env NODE_OPTIONS=--import=attach-gpu-root.mjs PLAYWRIGHT_PORT=31949 PLAYWRIGHT_JSON_OUTPUT_FILE=round3-browser-report.json pnpm test:e2e:ci tests/e2e/command-palette-ux.e2e.spec.ts --workers=1 --reporter=json",
+  "exitCode": 0,
+  "timedBenchmark": false,
+  "stats": {
+    "startTime": "2026-11-05T23:24:26.970Z",
+    "duration": 47928.82,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scenarios": [
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 loaded bundled IFC: keyboard command reaches real Settings UI",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "00-loaded-palette.png.png",
+          "sha256": "5582ddc82ad751634027723f575df43bd740799e2450ec0b4ef7d11b7da0a55d"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 short viewport: privacy notice stays below palette and survives close",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "01-unacknowledged-notice-palette.png.png",
+          "sha256": "058c3984defe58c04f4d2dbbaa922c1b3639102ca3b900f0cf98f12c30089355"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX desktop light: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "02-browse.png.png",
+          "sha256": "eac3110b01f7b2c1f163caa80b33482c95f77071bd1f75b5ab6ac560728aff73"
+        },
+        {
+          "file": "03-empty.png.png",
+          "sha256": "1eb6ae0706787fc1508674be94402764e631b19ff968e0126aee5763090aec71"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX desktop dark: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "04-browse.png.png",
+          "sha256": "fde120fbe9b486280b1bc1f22e5bc4677a403a422dc4762b6136097572afc974"
+        },
+        {
+          "file": "05-empty.png.png",
+          "sha256": "928fb0e33aec4d61347ed2351226f138c4e667b617e109cbb6f3fac61cd9bc81"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX narrow light: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "06-browse.png.png",
+          "sha256": "a5f03a2fb11cac5f523ba2bf31f13d85f12cb05184f74fe7f13d0b69a82fa76f"
+        },
+        {
+          "file": "07-empty.png.png",
+          "sha256": "e6a7ac376e17694bdb6b27e398720f2f5bc1ab41f6491f4c629435ccc3dca2fe"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX narrow dark: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "08-browse.png.png",
+          "sha256": "845b948460560551ab8bf48f50bc5851868f5cfa791ec68d1027b6174d24689f"
+        },
+        {
+          "file": "09-empty.png.png",
+          "sha256": "80a911caccebce5b817338e90948a209a070cf748150a2173d0e23202e4f1bb4"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short light: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "10-browse.png.png",
+          "sha256": "83fc46343fa19e3a0bdc785ad392b430206c8312d2ed798820b4cb008afd16e9"
+        },
+        {
+          "file": "11-empty.png.png",
+          "sha256": "8eefd9fbefaf56b159b775a6c31be6295eb753c77a380b4e921218c5a9a9f7f4"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short dark: bounded dialog and stable search across result heights",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "12-browse.png.png",
+          "sha256": "4de29e219e7574d99a92353a8db218a9ee64155cd1731713fd74621c585ab89b"
+        },
+        {
+          "file": "13-empty.png.png",
+          "sha256": "ec4aa3f8378223ddbd3827181bb67d34f22deb9f316a245d82175c147e7f3fa4"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX native Tab and Shift+Tab stay in the dialog and skip result options",
+      "status": "passed",
+      "attachments": []
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX short viewport: arrow keys scroll the active row into view without moving focus",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "14-scrolled-active-row.png.png",
+          "sha256": "e151748e70ff1cf29b22ceb66a1b076010d597fd4114668ef6221f8cc19f81a5"
+        }
+      ]
+    },
+    {
+      "scenario": "e2e/command-palette-ux.e2e.spec.ts #8946 unloaded palette UX Escape/reopen resets query and active row; Enter opens the canonical Settings UI",
+      "status": "passed",
+      "attachments": [
+        {
+          "file": "15-recent-settings-selected.png.png",
+          "sha256": "1ca6b934f878cf1aeda0f437a907416072191c68bdb9b042a4c1539824c81881"
+        }
+      ]
+    }
+  ]
+}

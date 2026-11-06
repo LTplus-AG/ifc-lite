@@ -100,8 +100,8 @@ const STATIC_KEYS = KEYS.filter((key) => {
 });
 const PARAM_KEYS = KEYS.filter((key) => !STATIC_KEYS.includes(key));
 
-function mp(x: number, y: number, z: number): MeasurePoint {
-  return { x, y, z, screenX: x, screenY: y };
+function mp(x: number, y: number, z: number): MeasurePoint & { id: string } {
+  return { x, y, z, screenX: x, screenY: y, id: `p-${x}-${y}-${z}` };
 }
 
 function addReadable(root: ParentNode, out: Set<string>): void {

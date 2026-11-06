@@ -1,0 +1,112 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const compareAnalysisDe = {
+  "compareAnalysis.sectionsLabel": "Auswirkungen und Abgleich des Vergleichs",
+  "compareAnalysis.impact.navigationUnavailable": "Dieser Link verweist nicht mehr auf aktuelle native Nachweise. Aktualisieren Sie Vergleich und Analyse.",
+  "compareAnalysis.impact.title": "Auswirkungen auf andere Analysen",
+  "compareAnalysis.impact.summary": {
+    "one": "{count} geändertes Bauteil mit geladenen Ergebnissen abgeglichen",
+    "other": "{count} geänderte Bauteile mit geladenen Ergebnissen abgeglichen"
+  },
+  "compareAnalysis.impact.unresolved": {
+    "one": "{count} Änderung hat keine GlobalId und wird nie zugeordnet.",
+    "other": "{count} Änderungen haben keine GlobalId und werden nie zugeordnet."
+  },
+  "compareAnalysis.impact.limitations": "Zuordnung nur anhand von Modell und GlobalId. Ein betroffener Befund beweist nicht, dass die Änderung ihn verursacht oder behoben hat.",
+  "compareAnalysis.source.clash": "Kollisionen",
+  "compareAnalysis.source.validation": "Prüffehler",
+  "compareAnalysis.source.list": "Listenzeilen",
+  "compareAnalysis.source.bcf": "BCF-Themen",
+  "compareAnalysis.status.available": {
+    "one": "{count} betroffen",
+    "other": "{count} betroffen"
+  },
+  "compareAnalysis.status.stale": {
+    "one": "{count} betroffen · vor späteren Änderungen ausgeführt",
+    "other": "{count} betroffen · vor späteren Änderungen ausgeführt"
+  },
+  "compareAnalysis.status.unverified": {
+    "one": "{count} betroffen · Aktualität unbekannt",
+    "other": "{count} betroffen · Aktualität unbekannt"
+  },
+  "compareAnalysis.status.unavailable": "Nicht geladen",
+  "compareAnalysis.impact.none": "Keine geladene Analyse verweist auf ein geändertes Bauteil.",
+  "compareAnalysis.impact.listRow": "{name}: {touched} von {total} Zeilen",
+  "compareAnalysis.impact.listColumn": "{label}: {touched} von {total}",
+  "compareAnalysis.side.base": "A",
+  "compareAnalysis.side.head": "B",
+  "compareAnalysis.reconcile.title": "Befunde revisionsübergreifend abgleichen",
+  "compareAnalysis.reconcile.kindLabel": "Analyse",
+  "compareAnalysis.reconcile.kind.clash": "Kollision",
+  "compareAnalysis.reconcile.kind.validation": "Prüfung",
+  "compareAnalysis.reconcile.capture": "Aktuellen Lauf erfassen",
+  "compareAnalysis.reconcile.captureNoClash": "Führen Sie eine Kollisionsprüfung aus, um einen Lauf zu erfassen.",
+  "compareAnalysis.reconcile.captureNoValidation": "Führen Sie eine Datenprüfung aus, um einen Lauf zu erfassen.",
+  "compareAnalysis.reconcile.none": "Noch keine Läufe erfasst. Ein Lauf über beide Revisionen kann als Basis und Vergleich dienen.",
+  "compareAnalysis.reconcile.baseRun": "Basislauf (A)",
+  "compareAnalysis.reconcile.headRun": "Vergleichslauf (B)",
+  "compareAnalysis.reconcile.runLabel": "{time} · {models}",
+  "compareAnalysis.reconcile.modelsUnknown": "Modelle unbekannt",
+  "compareAnalysis.reconcile.remove": "Ausgewählten Vergleichslauf entfernen",
+  "compareAnalysis.reconcile.run": "Abgleichen",
+  "compareAnalysis.reconcile.refused": "Diese Läufe können nicht abgeglichen werden:",
+  "compareAnalysis.incompat.kindDiffers": "Die Läufe stammen aus unterschiedlichen Analysen ({detail}).",
+  "compareAnalysis.incompat.noComparison": "Führen Sie zuerst einen Vergleich aus.",
+  "compareAnalysis.incompat.runModelsUnknown": "Ein Lauf dokumentiert nicht, welche Modelle er untersucht hat.",
+  "compareAnalysis.incompat.baseModelNotInRun": "Der Basislauf hat Modell A nicht untersucht.",
+  "compareAnalysis.incompat.headModelNotInRun": "Der Vergleichslauf hat Modell B nicht untersucht.",
+  "compareAnalysis.incompat.rulesDiffer": "Die Kollisionsregeln unterscheiden sich: {detail}.",
+  "compareAnalysis.incompat.settingsDiffer": "Die Kollisionseinstellungen unterscheiden sich: {detail}.",
+  "compareAnalysis.incompat.scopeDiffers": "Der Regelumfang unterscheidet sich: {detail}.",
+  "compareAnalysis.incompat.sourceDiffers": "Die Regelsätze unterscheiden sich: {detail}.",
+  "compareAnalysis.incompat.sourceUnknown": "Ein Lauf dokumentiert nicht den geprüften Regelinhalt.",
+  "compareAnalysis.incompat.specificationsDiffer": "Die Spezifikationen unterscheiden sich: {detail}.",
+  "compareAnalysis.incompat.runStale": "Ein Lauf wurde vor späteren Modelländerungen ausgeführt: {detail}.",
+  "compareAnalysis.incompat.runFreshnessUnknown": "Ein Lauf dokumentiert nicht den geprüften Modellzustand: {detail}.",
+  "compareAnalysis.state.new": "Neu",
+  "compareAnalysis.state.resolved": "Behoben",
+  "compareAnalysis.state.persisting": "Weiterhin vorhanden",
+  "compareAnalysis.state.changed": "Geändert",
+  "compareAnalysis.state.notEvaluated": "Nicht ausgewertet",
+  "compareAnalysis.reconcile.partial": "Teilweise: Befunde, die der Basis- oder Vergleichslauf nicht auswerten konnte, werden als nicht ausgewertet markiert, niemals als behoben oder neu.",
+  "compareAnalysis.reconcile.stale": "Die Modelle wurden nach diesen Läufen geändert. Erfassen Sie aktuelle Läufe und gleichen Sie erneut ab.",
+  "compareAnalysis.reconcile.excluded": {
+    "one": "{count} Befund verknüpft Bauteile verschiedener Revisionen oder hat keine eindeutige revisionsübergreifende Identität und wird nicht abgeglichen.",
+    "other": "{count} Befunde verknüpfen Bauteile verschiedener Revisionen oder haben keine eindeutige revisionsübergreifende Identität und werden nicht abgeglichen."
+  },
+  "compareAnalysis.reason.headRunTruncated": "Vergleichslauf gekürzt",
+  "compareAnalysis.reason.ruleNotRun": "Regel nicht ausgeführt",
+  "compareAnalysis.reason.ruleMatchedNothing": "Regel fand keine Treffer",
+  "compareAnalysis.reason.elementNotReexamined": "Bauteil nicht erneut untersucht",
+  "compareAnalysis.reason.coverageNotAttributable": "Abdeckung nicht B zuordenbar",
+  "compareAnalysis.reason.specificationError": "Spezifikation konnte nicht ausgeführt werden",
+  "compareAnalysis.reason.entityNotEvaluated": "Bauteil nicht ausgewertet",
+  "compareAnalysis.reason.baseNotEvaluated": "vom Basislauf nicht ausgewertet",
+  "compareAnalysis.reconcile.changes": "geändert: {fields}",
+  "compareAnalysis.reconcile.save": "Vergleichslauf speichern",
+  "compareAnalysis.reconcile.saved": "Gespeichert. Sie können diesen Lauf nach dem Neuladen erneut öffnen.",
+  "compareAnalysis.reconcile.saveFailed": "Der Lauf konnte in diesem Browser nicht gespeichert werden.",
+  "compareAnalysis.reconcile.saveModelClosed": "Ein von diesem Lauf untersuchtes Modell ist nicht mehr geöffnet; der Lauf kann daher nicht gespeichert werden.",
+  "compareAnalysis.reconcile.saveSourceUnknown": "Die Quelldatei von {model} wurde nicht erfasst. Der Lauf könnte ihr daher später nicht mehr zugeordnet werden. Er wurde nicht gespeichert.",
+  "compareAnalysis.reconcile.unnamedModel": "ein unbenanntes Modell",
+  "compareAnalysis.reconcile.saveEmpty": "Dieser Lauf hat keine Modelle untersucht; es gibt daher nichts zu speichern.",
+  "compareAnalysis.reconcile.savedTitle": "Gespeicherte Läufe",
+  "compareAnalysis.reconcile.savedNotStored": "Noch nicht in diesem Browser gespeichert",
+  "compareAnalysis.reconcile.reopen": "Erneut öffnen",
+  "compareAnalysis.reconcile.reopenLabel": "Gespeicherten Lauf {run} erneut öffnen",
+  "compareAnalysis.reconcile.deleteSaved": "Gespeicherten Lauf {run} löschen",
+  "compareAnalysis.reconcile.reopenRefused": "Dieser gespeicherte Lauf kann nicht erneut geöffnet werden:",
+  "compareAnalysis.bind.runEdited": "Er wurde mit ungespeicherten Modelländerungen erstellt und beschreibt daher nicht die gespeicherte Datei.",
+  "compareAnalysis.bind.modelEdited": "{model} hat ungespeicherte Änderungen und entspricht daher nicht mehr der vom Lauf untersuchten Datei.",
+  "compareAnalysis.bind.sourceUnknown": "Die Quelldatei von {model} wurde nicht erfasst.",
+  "compareAnalysis.bind.modelMissing": "{model} ist nicht geöffnet.",
+  "compareAnalysis.bind.modelReplaced": "{model} ist geöffnet, aber als andere Version der Datei.",
+  "compareAnalysis.bind.modelAmbiguous": "{model} passt zu mehreren geöffneten Modellen.",
+  "compareAnalysis.bind.frameChanged": "Die Modelle wurden seit dem Lauf auf einen anderen Koordinatenrahmen ausgerichtet.",
+  "compareAnalysis.bind.modelSetChanged": "Es sind anders viele Modelle geöffnet als beim Lauf (damals {before}, jetzt {open}). Öffnen Sie dieselben Modelle, um ihn erneut zu öffnen.",
+  "compareAnalysis.bind.modelMoved": "{model} wurde seit dem Lauf verschoben."
+} satisfies Catalogue;

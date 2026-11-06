@@ -203,13 +203,13 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       : record.kind === 'pipe-structure' ? record.structure.properties
         : record.kind === 'pipe-feature' ? record.feature.properties
           : record.kind === 'pipe-network' ? record.network.properties : record.collection.properties;
-    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
-      <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
-        <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
-        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
-        <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+    return <div className="h-full overflow-auto border-l-2 border-border bg-white dark:bg-black" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-border bg-muted p-4 dark:bg-black">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
+        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
+        <p className="break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>
       </div>
-      <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
+      <div className="space-y-2 p-4 text-xs text-muted-foreground">
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         {engineeringRows(record, document?.pipeNetworks?.rootUnits?.linearUnit).map(([name, value]) => <p key={name}><span className="font-semibold">{name}:</span> {value}</p>)}
       </div>
@@ -226,21 +226,21 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       (_, index) => semanticNavigationAt(record, firstItem + index),
     );
     const rows = semanticDetailRows(record);
-    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white p-4 text-xs dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
-      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
-      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
-      <p className="mt-1 break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+    return <div className="h-full overflow-auto border-l-2 border-border bg-white p-4 text-xs dark:bg-black" data-landxml-source-inspector>
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
+      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
+      <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>
       <p className="mt-3"><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
-      {navigation.length > 0 && <div className="mt-3 border-y border-zinc-200 dark:border-zinc-800">
-        <p className="pt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.navigation')}</p>
-        <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
+      {navigation.length > 0 && <div className="mt-3 border-y border-border">
+        <p className="pt-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.navigation')}</p>
+        <div className="divide-y divide-border py-2">
           {navigation.map((item, index) => <button key={`${item.label}:${index}`} type="button" disabled={!item.sourceId}
-            className="block w-full px-2 py-2 text-left text-xs text-zinc-700 disabled:text-zinc-500 dark:text-zinc-300"
+            className="block w-full px-2 py-2 text-left text-xs text-muted-foreground disabled:text-muted-foreground"
             onClick={() => { if (item.sourceId) onSelect({ modelId: selected.modelId, sourceId: item.sourceId }); }}>
             {item.label}
           </button>)}
         </div>
-        {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 py-2 text-xs dark:border-zinc-800">
+        {pages > 1 && <div className="flex items-center justify-between border-t border-border py-2 text-xs">
           <button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>{t('properties.landXmlSource.previous')}</button>
           <span>{t('properties.landXmlSource.page', { current: page + 1, total: pages })}</span>
           <button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
@@ -248,7 +248,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       </div>}
       <dl className="mt-3 space-y-2">
         {rows.map((row, index) => <div key={`${row.label}:${row.value}:${index}`} className="flex gap-2">
-          <dt className="shrink-0 font-semibold text-zinc-500">{row.label}</dt>
+          <dt className="shrink-0 font-semibold text-muted-foreground">{row.label}</dt>
           <dd className="min-w-0 break-all">{row.sourceId ? <button type="button" className="text-left text-primary underline" onClick={() => { if (row.sourceId) onSelect({ modelId: selected.modelId, sourceId: row.sourceId }); }}>{row.value}</button> : row.value}</dd>
         </div>)}
       </dl>
@@ -278,25 +278,25 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   const properties = surfacePropertyRows(terrain ? record.surface.properties : planProperties(record));
   const definitionProperties = surfacePropertyRows(terrain ? record.surface.definitionProperties : {});
   return (
-    <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
-      <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
-        <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
-        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
-        <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+    <div className="h-full overflow-auto border-l-2 border-border bg-white dark:bg-black" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-border bg-muted p-4 dark:bg-black">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
+        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
+        <p className="break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>
       </div>
       {record.kind === 'surface' && (
-        <p className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="border-b border-warn-border bg-warn-surface px-4 py-3 text-xs text-warn">
           {t('properties.landXmlSource.pickLimitation')}
         </p>
       )}
-      {itemCount > 0 && <div className="border-b border-zinc-200 dark:border-zinc-800">
-        <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.navigation')}</p>
-        <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
+      {itemCount > 0 && <div className="border-b border-border">
+        <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.navigation')}</p>
+        <div className="divide-y divide-border py-2">
           {navigation.map((item) => (
             <button
               key={item.sourceId}
               type="button"
-              className={`block w-full px-4 py-2 text-left text-xs ${item.sourceId === selected.sourceId ? 'bg-primary/10 text-primary' : 'text-zinc-700 dark:text-zinc-300'}`}
+              className={`block w-full px-4 py-2 text-left text-xs ${item.sourceId === selected.sourceId ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}
               onClick={() => onSelect({ modelId: selected.modelId, sourceId: item.sourceId })}
             >
               {item.label}
@@ -304,14 +304,14 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           ))}
         </div>
         {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800">
+          <div className="flex items-center justify-between border-t border-border px-4 py-2 text-xs">
             <button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>{t('properties.landXmlSource.previous')}</button>
             <span>{t('properties.landXmlSource.page', { current: page + 1, total: pages })}</span>
             <button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
           </div>
         )}
       </div>}
-      <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
+      <div className="space-y-2 p-4 text-xs text-muted-foreground">
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         {terrain && <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>}
         {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
@@ -319,7 +319,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           document.units.assumed ? 'properties.landXmlSource.unitsAssumed' : 'properties.landXmlSource.unitsDeclared',
           { linearUnit: document.units.linearUnit, elevationUnit: document.units.elevationUnit },
         )}</p>}
-        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-amber-800 dark:text-amber-200">{t('properties.landXmlSource.sourceRefusal', { warning })}</p>)}
+        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-warn">{t('properties.landXmlSource.sourceRefusal', { warning })}</p>)}
         {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', { ...sourceCount })}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}
@@ -361,11 +361,11 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
 }
 
 function SourceProperties({ title, rows, empty }: { title: string; rows: Array<readonly [string, string]>; empty: string }) {
-  return <div className="border-t border-zinc-200 p-4 text-xs dark:border-zinc-800">
-    <p className="mb-2 font-bold uppercase tracking-wide text-zinc-500">{title}</p>
-    {rows.length === 0 ? <p className="text-zinc-500">{empty}</p> : (
+  return <div className="border-t border-border p-4 text-xs">
+    <p className="mb-2 font-bold uppercase tracking-wide text-muted-foreground">{title}</p>
+    {rows.length === 0 ? <p className="text-muted-foreground">{empty}</p> : (
       <dl className="space-y-1">
-        {rows.map(([name, value]) => <div key={name} className="flex gap-2"><dt className="font-mono text-zinc-500">{name}</dt><dd className="break-all">{value}</dd></div>)}
+        {rows.map(([name, value]) => <div key={name} className="flex gap-2"><dt className="font-mono text-muted-foreground">{name}</dt><dd className="break-all">{value}</dd></div>)}
       </dl>
     )}
   </div>;

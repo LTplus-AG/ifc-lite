@@ -28,41 +28,41 @@ function Row({ icon, label, children }: { icon: ReactNode; label: string; childr
   return (
     <div className="flex items-center gap-3 px-3 py-2">
       {icon}
-      <span className="text-xs text-zinc-500">{label}</span>
-      <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto text-right">{children}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-mono text-foreground ml-auto text-right">{children}</span>
     </div>
   );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border-b border-zinc-200 dark:border-zinc-800">
-      <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
-        <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">{title}</h4>
+    <div className="border-b border-border">
+      <div className="p-3 bg-muted">
+        <h4 className="font-bold text-xs uppercase tracking-wide text-muted-foreground">{title}</h4>
       </div>
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-900">{children}</div>
+      <div className="divide-y divide-border">{children}</div>
     </div>
   );
 }
 
 export function GaussianCaptureMetadataPanel({ model, capture }: { model: FederatedModel; capture: GaussianSplatModel }) {
   const { t, locale } = useTranslation();
-  const icon = (Icon: typeof Info) => <Icon className="h-3.5 w-3.5 text-zinc-400 shrink-0" />;
+  const icon = (Icon: typeof Info) => <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
   const state = useGaussianCaptureState(model);
   const label = gaussianStateLabel(state);
   const reload = useGaussianReload();
   const [changingAxis, setChangingAxis] = useState(false);
   const fileSize = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
   return (
-    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
-      <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
+    <div className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
+      <div className="p-4 border-b-2 border-border bg-muted dark:bg-black space-y-3">
         <div className="flex items-start gap-3">
           <div className="p-2 border-2 border-primary/30 bg-primary/10 shrink-0">
             <Sparkles className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{model.name}</h3>
-            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{t('gaussianCapture.kind')}</p>
+            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-foreground">{model.name}</h3>
+            <p className="text-xs font-mono text-muted-foreground">{t('gaussianCapture.kind')}</p>
           </div>
         </div>
         <span className="text-2xs font-mono bg-primary/10 border border-primary/30 px-2 py-1 text-primary font-bold uppercase">
@@ -79,8 +79,8 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
             {t(capture.placementOrigin === 'explicit' ? 'gaussianCapture.placement.explicit' : 'gaussianCapture.placement.source')}
           </Row>
           <div className="px-3 py-2 flex items-center justify-between gap-3">
-            <label className="text-xs text-zinc-500" htmlFor={`capture-up-axis-${model.id}`}>{t('gaussianCapture.upAxis')}</label>
-            <select id={`capture-up-axis-${model.id}`} className="text-xs bg-transparent border border-zinc-300 dark:border-zinc-700"
+            <label className="text-xs text-muted-foreground" htmlFor={`capture-up-axis-${model.id}`}>{t('gaussianCapture.upAxis')}</label>
+            <select id={`capture-up-axis-${model.id}`} className="text-xs bg-transparent border border-border"
               value={appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? capture.sourcePlacement ?? capture.placement : undefined, capture.upAxis)} disabled={changingAxis || state.state !== 'resident'}
               onChange={(event) => {
                 const axis = event.target.value;
@@ -101,7 +101,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
           </Row>
           {gaussianNeedsReload(state) && (
             <div className="px-3 py-2">
-              <button type="button" className="inline-flex items-center gap-1 border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs"
+              <button type="button" className="inline-flex items-center gap-1 border border-border px-2 py-1 text-xs"
                 onClick={() => void reload(model.id).then((result) => {
                   if (!result.ok) toast.error(t(result.reason === 'source-unavailable' ? 'gaussianCapture.reload.sourceUnavailable' : 'gaussianCapture.reload.notLoaded'));
                 })}>
@@ -113,7 +113,7 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
         </Section>
         <Section title={t('gaussianCapture.heading.limitations')}>
           {GAUSSIAN_CAPTURE_LIMITATIONS.map((limit) => (
-            <p key={limit} data-limitation={limit} className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">{t(`gaussianCapture.limitation.${limit}`)}</p>
+            <p key={limit} data-limitation={limit} className="px-3 py-2 text-xs text-muted-foreground">{t(`gaussianCapture.limitation.${limit}`)}</p>
           ))}
         </Section>
       </ScrollArea>

@@ -103,14 +103,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint

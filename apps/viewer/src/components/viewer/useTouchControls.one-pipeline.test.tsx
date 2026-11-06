@@ -675,6 +675,8 @@ describe('a pen press goes through one pipeline (#9000)', () => {
       await settle();
     });
     assert.equal(selectionCount(), 2, `pen tap then mouse click selected ${selectionCount()} times`);
+  });
+});
 
 /** The Measurements list's Finish button for the open sequence, by its accessible name. */
 function finishButton(): HTMLElement | null {
@@ -719,7 +721,10 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     useViewerStore.setState({ measureMode: 'polyline' });
     const { canvas } = rig('measure');
     await tap(canvas, 100, 300);
-    act(() => click(finishButton()!));
+    // Rendered outside act: a render inside it is not committed until act ends.
+    const finish = finishButton();
+    assert.equal(finish !== null, true, 'a one-point polyline still offers Finish');
+    act(() => click(finish!));
     const { activePolyline, polylineMeasurements } = useViewerStore.getState();
     assert.equal(polylineMeasurements.length, 0);
     assert.equal(activePolyline?.points.length, 1, 'the open point survives for the next tap');

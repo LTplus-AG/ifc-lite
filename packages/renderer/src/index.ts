@@ -1924,7 +1924,7 @@ export class Renderer {
                     max: [...options.clipBox.max] as [number, number, number],
                 }
                 : null;
-            this._pickClipRevision.note(this.activePickClip());
+            this._pickClipRevision.note(this.activePickClip(), options.restoreEvictedForCapture === true); // a capture's clip lasts one frame (#9002)
 
             // Meshes this camera's RTE frame cannot represent (#6128). Nothing
             // culls individual meshes before this point, so a far-off mesh (a

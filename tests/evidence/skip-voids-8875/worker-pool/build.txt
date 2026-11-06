@@ -1,0 +1,28 @@
+import {writeFile,mkdir} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+const source=process.argv[2], side=process.argv[3], root='/home/louistrue/build-workers/worker-state/storage-tasks/discussion-8586-browser';
+const {loadConfigFromFile,build,mergeConfig}=await import(pathToFileURL(source+'/apps/viewer/node_modules/vite/dist/node/index.js').href);
+const entry=root+'/worker-entry-'+side;await mkdir(entry,{recursive:true});
+await writeFile(entry+'/index.html','<html><script type="module" src="/bench.js"></script></html>');
+await writeFile(entry+'/bench.js',`import {GeometryProcessor} from '${source}/packages/geometry/src/index.ts';
+window.run=async function(fixture){
+ if(!crossOriginIsolated)throw Error('not isolated');
+ const bytes=new Uint8Array(await (await fetch('/fixture/'+fixture)).arrayBuffer());
+ const meshes=[];let completed=false,diagnostics;const start=performance.now();
+ const p=new GeometryProcessor({enableInstancing:false});
+ try {for await(const e of p.processParallel(bytes,undefined,undefined,undefined,undefined,4)){
+  if(e.type==='batch')meshes.push(...e.meshes);
+  if(e.type==='complete'){completed=true;diagnostics=e.diagnostics;if(e.skippedHungElements)throw Error('hung elements skipped');}
+ }}finally{p.dispose();}
+ const totalMs=performance.now()-start;if(!completed||!meshes.length)throw Error('incomplete geometry');
+ const hex=b=>Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,'0')).join('');
+ const hashes=[];let vertices=0,triangles=0;
+ for(const m of meshes){vertices+=m.positions.length/3;triangles+=m.indices.length/3;
+ const parts=[m.positions,m.normals,m.indices];const digest=[];
+ for(const a of parts)digest.push(hex(await crypto.subtle.digest('SHA-256',new Uint8Array(a.buffer,a.byteOffset,a.byteLength))));
+ hashes.push(JSON.stringify([m.expressId,m.color,m.origin,digest]));}
+ hashes.sort();const hash=hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(hashes.join('\\n'))));
+ return {totalMs,meshes:meshes.length,vertices,triangles,hash,diagnostics};
+};`);
+const loaded=await loadConfigFromFile({command:'build',mode:'production'},source+'/apps/viewer/vite.config.ts');
+await build(mergeConfig(loaded.config,{configFile:false,root:entry,build:{outDir:root+'/worker-dist-'+side,emptyOutDir:true,rollupOptions:{input:entry+'/index.html'}}}));

@@ -7,12 +7,13 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readBCF, createBCFProject, createBCFTopic, type BCFProject } from '@ifc-lite/bcf';
-import { render, click, cleanup } from '@/test/render';
+import { render, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
+import { runPanelAction } from '@/test/panel-header.js';
 
 const initial = useViewerStore.getState();
 afterEach(() => {
@@ -98,9 +99,8 @@ test('the BCF panel header attaches the BCF topics (#6833)', async () => {
   useViewerStore.setState(fixtureModels(fixtureModel('haus')));
   useViewerStore.getState().setBcfProject(await bimcollabProject());
   const panel = render(renderPanelBody('bcf', () => undefined));
-  const discuss = panel.querySelector('button[aria-label="Discuss with AI"]');
-  assert.ok(discuss);
-  click(discuss);
+  // A header action, inline or in the shared header's More actions (#8802).
+  await runPanelAction(panel, 'Discuss with AI');
   assert.equal(useAssistant.getState().snapshot?.source, 'bcf');
   assert.equal(useAssistant.getState().snapshot?.totalRows, useViewerStore.getState().bcfProject?.topics.size);
 });

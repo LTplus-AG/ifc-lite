@@ -226,8 +226,7 @@ describe('Saved clash reports in the library backup (#6947)', () => {
     assert.equal(useViewerStore.getState().savedClashReportsStorage.items[a.id], 'saved', 'and the report is not marked as failing to save');
     await act(async () => { assert.equal(await state.renameSavedClashReport(a.id, 'n'.repeat(200)), true, 'control: the limit itself is accepted'); });
     // The dialog's two name fields cannot exceed the limit in the first place.
-    const open = [...document.body.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Saved clash reports'); assert.ok(open); click(open);
-    await waitFor(() => document.body.querySelector('input[aria-label="Report name"]') !== null, 'the dialog opens');
+    await openSavedReports();
     const fields = [...document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input:not([type="file"])')];
     assert.ok(fields.length >= 3, 'the save field and one rename field per report');
     assert.deepEqual([...new Set(fields.map((field) => field.maxLength))], [200]);

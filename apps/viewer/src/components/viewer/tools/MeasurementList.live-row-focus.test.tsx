@@ -89,8 +89,11 @@ function focused(): string {
   const el = document.activeElement;
   if (!el || el === document.body) return 'body';
   const focusable = ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.hasAttribute('tabindex');
-  const labelledBy = el.getAttribute('aria-labelledby')?.split(' ')
-    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '?').join(' ');
+  const parts = el.getAttribute('aria-labelledby')?.split(' ')
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '');
+  // A reference to a missing or empty element names nothing: say so, rather
+  // than return a partial name a loose pattern could still match.
+  const labelledBy = parts && (parts.every(Boolean) ? parts.join(' ') : '(broken aria-labelledby)');
   const name = el.getAttribute('aria-label') ?? labelledBy ?? (el.id || el.tagName.toLowerCase());
   return focusable ? name : `${name} (not focusable)`;
 }
@@ -136,7 +139,8 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     activate(button(container, 'Finish (Enter)'), ' ');
     assert.equal(useViewerStore.getState().activeRadius, null, 'Space finished the radius');
     assert.equal(useViewerStore.getState().radiusMeasurements.length, 2);
-    assert.match(focused(), /^Radius #2 \S/, 'the recorded radius row, by its label and value');
+    // The value is the fitted radius, "R …" with a length; only its shape is pinned here.
+    assert.match(focused(), /^Radius #2 \S.*\d/, 'the recorded radius row, by its label and value');
   });
 
   it('Space on a focused Cancel lands on the list', () => {

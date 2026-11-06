@@ -22,8 +22,8 @@ import {
   asExpressIdRef,
   readAttributes,
   resolvePlacementChain,
-  resolveRotationState,
 } from './placement-core.js';
+import { resolveRotationState } from './placement-rotate.js';
 import { moveWallAxis } from './wall-axis-edit.js';
 
 /** Only these classes are walls; a beam or member built by the in-store

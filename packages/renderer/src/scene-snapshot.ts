@@ -21,7 +21,7 @@ import { LOD_MIN_TRIANGLES } from './lod-simplify.js';
  * the merge or LOD builders, id lanes, this format. A stale snapshot is not
  * rejected by anything else and would draw garbage.
  */
-export const SCENE_SNAPSHOT_REVISION = 1;
+export const SCENE_SNAPSHOT_REVISION = 2; // 2: per-batch lattice collapse guard (#9068)
 
 const MAGIC = 0x53534649; // "IFSS"
 const HEADER_BYTES = 16;

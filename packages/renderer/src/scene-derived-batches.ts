@@ -30,8 +30,9 @@ import type { BatchedMesh } from './types.js';
 /**
  * How `createSceneBatch` treats vertex quantization:
  * - `'off'`: 28-byte f32 records.
- * - `'auto'`: quantize when the batch extent fits the u16 lattice, else f32
- *   (bucket batches, streaming fragments — the batch IS the depth writer).
+ * - `'auto'`: quantize when the batch extent fits the u16 lattice and the
+ *   lattice collapses no entity's shape (#9068), else f32 (bucket batches,
+ *   streaming fragments — the batch IS the depth writer).
  * - `'required'`: derived from a source batch that quantized; a fallback here
  *   would break depth coincidence and is reported (#4832).
  */

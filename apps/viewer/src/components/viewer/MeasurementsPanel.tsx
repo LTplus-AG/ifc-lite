@@ -46,14 +46,17 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const destination = useMeasurementDestination();
   const [tab, setTab] = useState<PanelTab>(destination.revision && destination.tab ? destination.tab : pointMode ? 'point' : 'list');
   const previousPointMode = useRef(pointMode);
-  // Choosing Point mode (#8770) brings its readout forward; the user can
-  // still switch tabs afterwards.
+  // Touch sequences expose Finish in List; explicit palette destinations win.
+  const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
+  const previousSequenceOpen = useRef(false);
   useEffect(() => {
     const requested = consumeMeasurementDestination(destination.revision);
     if (requested) setTab(requested);
+    else if (sequenceOpen && !previousSequenceOpen.current) setTab('list');
     else if (pointMode && !previousPointMode.current) setTab('point');
     previousPointMode.current = pointMode;
-  }, [destination, pointMode]);
+    previousSequenceOpen.current = sequenceOpen;
+  }, [destination, pointMode, sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

@@ -108,6 +108,11 @@ export async function exportRustFormat(
     process.stderr.write(`profile: wasm init ${(performance.now() - tInit).toFixed(0)}ms\n`);
   }
   const tWork = performance.now();
+  // --name-by-global-id names glTF/GLB element nodes (#9011); no other format
+  // has nodes to name, so say so rather than silently ignore it.
+  if (hasFlag(args, '--name-by-global-id') && format !== 'glb' && format !== 'gltf') {
+    logger.warn(`--name-by-global-id applies to --format glb/gltf only; ignored for ${format}`);
+  }
   try {
     if (format === 'ifcx') {
       const out = gp.exportIfcx(bytes);
@@ -190,8 +195,11 @@ export async function exportRustFormat(
       // exportGlb, not an empty Uint32Array — the wasm boundary now treats
       // an explicit empty array as "isolation active, matches nothing"
       // (#4328), and would fail-close every unfiltered export otherwise.
+      // --name-by-global-id: one node per element, named by its GlobalId, with
+      // its parts as children (#9011). Off by default; the output is unchanged.
+      const nameByGlobalId = hasFlag(args, '--name-by-global-id');
       const out = refusingEmpty(
-        () => gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, ''),
+        () => gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, '', true, false, nameByGlobalId),
         countGlbMeshes,
         glbEmpty,
       );

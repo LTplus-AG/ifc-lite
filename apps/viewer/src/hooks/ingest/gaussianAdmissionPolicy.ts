@@ -8,7 +8,7 @@ export type GaussianSplatsMode = 'enabled' | 'disabled';
 /**
  * The committed default (#8568: general availability, 2026-11-03). Rollback is
  * a reviewed commit that sets this to `'disabled'`, promoted like any other
- * main commit; see `docs/architecture/gaussian-splats-release.md`.
+ * main commit.
  */
 export const GAUSSIAN_SPLATS_DEFAULT: GaussianSplatsMode = 'enabled';
 

@@ -236,7 +236,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
             />
           ) : (
             <>
-              <div className="flex min-w-0 items-center gap-2 rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+              <div className="flex min-w-0 items-center gap-2 rounded-md bg-ok-surface px-3 py-2 text-sm text-ok">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span
                   className="min-w-0 truncate"
@@ -288,12 +288,12 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
                 </p>
               )}
               {replaceCount !== null && (
-                <div className="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                <div className="rounded-md bg-warn-surface px-3 py-2 text-sm text-warn">
                   {t('bcf.serverDialog.replaceWarning', { count: replaceCount })}
                 </div>
               )}
               {error && (
-                <div className="flex items-center gap-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                <div className="flex items-center gap-2 rounded-md bg-danger-surface px-3 py-2 text-sm text-danger">
                   <XCircle className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 break-words">{error}</span>
                 </div>

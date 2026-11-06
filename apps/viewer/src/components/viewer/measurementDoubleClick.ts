@@ -6,7 +6,7 @@ import { useViewerStore } from '@/store';
 import { finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { takeDoubleClickStart } from './distanceClick.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
+import { toastTooFewPoints } from '@/store/finishMeasureSequence';
 
 /** Finish the existing open polyline/radius gesture, dropping its duplicate click. */
 export function handleMeasureDoubleClick(ctx: MouseHandlerContext, event: MouseEvent): void {
@@ -20,11 +20,11 @@ export function handleMeasureDoubleClick(ctx: MouseHandlerContext, event: MouseE
   const polyline = finishPolylineFromDoubleClick();
   if (polyline !== null) {
     event.preventDefault();
-    if (!polyline) import('@/components/ui/toast').then(({ toast }) => { toast.error('Polyline needs at least 2 points'); });
+    if (!polyline) toastTooFewPoints('polyline');
     return;
   }
   const radius = finishRadiusFromDoubleClick();
   if (radius === null) return;
   event.preventDefault();
-  if (!radius) import('@/components/ui/toast').then(({ toast }) => { toast.error(`Radius needs at least ${MIN_RADIUS_POINTS} points`); });
+  if (!radius) toastTooFewPoints('radius');
 }

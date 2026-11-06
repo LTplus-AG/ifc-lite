@@ -65,6 +65,12 @@ for (const [mode, key] of MEASURE_MODE_LABELS) test(`#8947 ${mode} launches real
 });
 for (const [tab, label] of [['list', 'List'], ['point', 'Point'], ['quantities', 'Qty'], ['centreline', 'Source']] as const)
   test(`#8947 Measurements ${tab} destination reveals its body repeatedly after another tab`, async () => {
+    // #8947/#8991: an explicit destination must survive mounting while a
+    // touch sequence is open; subsequent manual tab changes remain possible.
+    useViewerStore.setState({ pointerInput: 'touch', activePolyline: { points: [
+      { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 },
+      { x: 1, y: 0, z: 0, screenX: 1, screenY: 0 },
+    ] } });
     mount();
     for (let i = 0; i < 2; i++) {
       await launchDestination(`measure-panel:${tab}`, tab);

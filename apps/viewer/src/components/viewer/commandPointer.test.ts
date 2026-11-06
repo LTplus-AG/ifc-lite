@@ -173,12 +173,20 @@ describe('command pointer: cancelling a queued preview (#8952)', () => {
     });
   });
 
-  it("never clears Measure or Point state: Point mode's trailing hover survives", (t) => {
+  it("never clears Measure or Point state: Point mode's trailing hover and live point survive", (t) => {
     t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
-    withFrames(() => {
+    const prevMode = useViewerStore.getState().measureMode;
+    useViewerStore.setState({ measureMode: 'point', measurePointLive: { x: 1, y: 2, z: 3, screenX: 4, screenY: 5 } });
+    try { withFrames(() => {
       const ctx = fakeCtx() as MouseHandlerContext & Record<string, unknown>;
       Object.assign(ctx, { HOVER_SNAP_THROTTLE_MS: 100, lastHoverSnapTimeRef: { current: 1000 }, mouseState: { isDragging: false } });
-      hoverMeasurePointAt(ctx, 3, 4); // inside the throttle window: queues a trailing pick
+      // Inside the throttle window: queues a trailing pick. Keep its own timer id.
+      const set = globalThis.setTimeout;
+      let trailing: unknown;
+      globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => (trailing = set(...args))) as typeof setTimeout;
+      try { hoverMeasurePointAt(ctx, 3, 4); } finally { globalThis.setTimeout = set; }
+      assert.ok(trailing !== undefined, 'no trailing hover was queued');
+
       const measure = () => {
         const s = useViewerStore.getState();
         return [s.measurements, s.activeMeasurement, s.measurePointLive, s.measurePointLast, s.measureMode];
@@ -186,18 +194,21 @@ describe('command pointer: cancelling a queued preview (#8952)', () => {
       const before = measure();
       const cleared: unknown[] = [];
       const clear = globalThis.clearTimeout;
-      globalThis.clearTimeout = ((id: unknown) => { cleared.push(id); }) as typeof clearTimeout;
+      globalThis.clearTimeout = ((id: unknown) => { cleared.push(id); clear(id as Parameters<typeof clearTimeout>[0]); }) as typeof clearTimeout;
       try {
         cancelCommandPointer(ctx);
         routeCommandPointer(ctx, 'down', 100, 100);
       } finally {
         globalThis.clearTimeout = clear;
       }
-      assert.equal(cleared.length, 0, "a command-tool cancel dropped Point mode's trailing hover");
+      assert.ok(!cleared.includes(trailing), "a command-tool cancel dropped Point mode's trailing hover");
+      assert.ok(useViewerStore.getState().measurePointLive !== null, "a command-tool cancel cleared Point mode's live point");
       const after = measure();
       assert.ok(after.every((v, i) => v === before[i]), 'a command-tool cancel changed Measure state');
       (ctx.mouseState as { isDragging: boolean }).isDragging = true; // let the trailing pick lapse quietly
       t.mock.timers.tick(200);
-    });
+    }); } finally {
+      useViewerStore.setState({ measureMode: prevMode, measurePointLive: null });
+    }
   });
 });

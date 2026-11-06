@@ -14,11 +14,21 @@ import {
   activateStartupLocale,
   createLocaleActivator,
   type CatalogueLoader,
+  type LocaleChoice,
   type LocaleEnvironment,
 } from './locale-activation';
+// Namespace import for the #9061 additions: with production reverted the file
+// still loads and those tests fail on an assertion, not at import.
+import * as activation from './locale-activation';
 import { getLocale, resolve, setLocale, type Catalogue } from './registry';
 
 const GERMAN: Catalogue = { 'mergeLayersBanner.reloadButton': 'Neu laden' };
+
+function createLocaleChoice(...args: Parameters<typeof activation.createLocaleChoice>): LocaleChoice {
+  const create: unknown = Reflect.get(activation, 'createLocaleChoice');
+  assert.equal(typeof create, 'function', 'Settings → Language needs createLocaleChoice (#9061)');
+  return activation.createLocaleChoice(...args);
+}
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -26,11 +36,12 @@ function memoryStorage(initial: Record<string, string> = {}) {
     values,
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
   };
 }
 
 function environment(overrides: Partial<LocaleEnvironment> = {}): LocaleEnvironment {
-  return { search: '', storage: memoryStorage(), languages: [], ...overrides };
+  return { storage: memoryStorage(), languages: [], ...overrides };
 }
 
 let warnings: unknown[][] = [];
@@ -88,29 +99,87 @@ describe('locale activation from contributed catalogues (#4785)', () => {
     assert.ok(container.textContent?.includes('Reload model to apply the new setting.'));
   });
 
-  it('prefers ?lang= over the stored choice and browser languages, and remembers it', async () => {
-    const storage = memoryStorage({ [LOCALE_STORAGE_KEY]: 'de' });
+  it('#9061 Settings choice is stored, applies without a reload and outranks browser languages after one', async () => {
+    const storage = memoryStorage();
     const loaders = { de: async () => GERMAN, fr: async () => ({}) };
-    const active = await activateStartupLocale(
-      createLocaleActivator(loaders),
-      environment({ search: '?lang=fr', storage, languages: ['de'] }),
-    );
-    assert.equal(active, 'fr');
-    assert.equal(storage.values.get(LOCALE_STORAGE_KEY), 'fr');
+    const html = { lang: 'en' };
+    const container = render(<><ViewportHud /><MergeLayersBanner /></>);
+    const choice = createLocaleChoice(createLocaleActivator(loaders, html), environment({ storage, languages: ['fr'] }));
+    assert.equal(choice.chosen(), null, 'nothing stored reads as Auto');
 
-    const next = await activateStartupLocale(
-      createLocaleActivator(loaders),
-      environment({ storage, languages: ['de'] }),
-    );
-    assert.equal(next, 'fr', 'the remembered choice outranks browser languages');
+    await act(async () => { await choice.choose('de'); });
+    assert.equal(storage.values.get(LOCALE_STORAGE_KEY), 'de');
+    assert.equal(choice.chosen(), 'de');
+    assert.equal(getLocale(), 'de');
+    assert.equal(html.lang, 'de');
+    assert.equal(reloadLabel(container), 'Neu laden', 'mounted UI re-renders in the chosen locale');
+
+    // "Reload": a fresh activator reads the stored choice before the browser's French.
+    const next = await activateStartupLocale(createLocaleActivator(loaders), environment({ storage, languages: ['fr'] }));
+    assert.equal(next, 'de');
   });
 
-  it('remembers an explicit ?lang=en so a German browser can opt back into English', async () => {
+  it('#9061 Auto forgets the choice and negotiates the browser languages again', async () => {
+    const storage = memoryStorage({ [LOCALE_STORAGE_KEY]: 'de' });
+    const html = { lang: 'en' };
+    const choice = createLocaleChoice(
+      createLocaleActivator({ de: async () => GERMAN, fr: async () => ({}) }, html),
+      environment({ storage, languages: ['fr-CA', 'de'] }),
+    );
+    assert.equal(choice.chosen(), 'de');
+    assert.equal(await choice.clear(), 'fr');
+    assert.equal(storage.values.has(LOCALE_STORAGE_KEY), false);
+    assert.equal(choice.chosen(), null);
+    assert.equal(html.lang, 'fr');
+  });
+
+  it('#9061 English can be chosen explicitly on a German browser', async () => {
     const storage = memoryStorage();
-    const loaders = { de: async () => GERMAN };
-    await activateStartupLocale(createLocaleActivator(loaders), environment({ search: '?lang=en', storage, languages: ['de'] }));
-    assert.equal(getLocale(), 'en');
+    const choice = createLocaleChoice(createLocaleActivator({ de: async () => GERMAN }), environment({ storage, languages: ['de'] }));
+    assert.equal(await choice.choose('en'), 'en');
     assert.equal(storage.values.get(LOCALE_STORAGE_KEY), 'en');
+    assert.equal(await activateStartupLocale(createLocaleActivator({ de: async () => GERMAN }), environment({ storage, languages: ['de'] })), 'en');
+  });
+
+  it('#9061 ?lang= in the address no longer affects the locale', async () => {
+    // The URL is not an input any more: boot passed `location.search` through this field.
+    // @ts-expect-error -- `search` was removed from LocaleEnvironment (#9061)
+    environment({ search: '?lang=de' });
+    const original = window.location.href;
+    window.history.replaceState(null, '', '/?lang=de');
+    try {
+      const storage = memoryStorage();
+      // What boot used to pass; an implementation that still reads it picks German.
+      const withAddress = { ...environment({ storage, languages: ['en'] }), search: window.location.search };
+      const active = await activateStartupLocale(createLocaleActivator({ de: async () => GERMAN }), withAddress);
+      assert.equal(active, 'en');
+      assert.equal(storage.values.has(LOCALE_STORAGE_KEY), false, 'nothing is pinned by a visit');
+    } finally {
+      window.history.replaceState(null, '', original);
+    }
+  });
+
+  it('#9061 storage that throws keeps the viewer working and the choice for this session', async () => {
+    const refusing = {
+      getItem: () => { throw new Error('SecurityError'); },
+      setItem: () => { throw new Error('QuotaExceededError'); },
+      removeItem: () => { throw new Error('SecurityError'); },
+    };
+    const activator = createLocaleActivator({ de: async () => GERMAN });
+    assert.equal(await activateStartupLocale(activator, environment({ storage: refusing, languages: ['en'] })), 'en');
+    const choice = createLocaleChoice(activator, environment({ storage: refusing, languages: ['en'] }));
+    assert.equal(choice.chosen(), null);
+    assert.equal(await choice.choose('de'), 'de');
+    assert.equal(choice.chosen(), 'de', 'the session keeps the choice storage refused');
+    assert.equal(await choice.clear(), 'en');
+    assert.equal(choice.chosen(), null);
+    assert.ok(warnings.length >= 3, 'each refused storage call is reported, not swallowed');
+  });
+
+  it('#9061 refuses a locale the viewer does not ship', async () => {
+    const choice = createLocaleChoice(createLocaleActivator({ de: async () => GERMAN }), environment());
+    await assert.rejects(choice.choose('xx'), /Unknown locale "xx"/);
+    assert.equal(getLocale(), 'en');
   });
 
   it('keeps English and warns when a locale fails to load or is not a catalogue', async () => {

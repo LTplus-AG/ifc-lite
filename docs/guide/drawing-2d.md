@@ -72,6 +72,12 @@ are marked stale after movement; remeasure them in the new arrangement.
 
 ## Projection Depth
 
+A plan (Down) cut opens with **Projection** on, so the floor, furniture and
+openings below the cut height are drawn under the cut walls. Front and Side
+sections open cut-only. Once you toggle **Projection**, your choice holds on
+every cut until you toggle it again, and a saved drawing keeps the setting it
+was saved with.
+
 Enable **Projection** to show geometry beyond the section cut, then open its
 settings button. **Auto** uses the existing model and floor/ceiling bands.
 Turn Auto off to enter a finite background depth in the selected display length
@@ -341,6 +347,13 @@ wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical
 wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
 pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
 Drawing panels.
+
+The drawing opens fitted to the building at the cut, and **Fit** frames the
+same extent: everything the plane cuts, plus content touching or near it.
+Small objects far from the building, such as a model's origin or
+geo-reference marker, stay drawn but do not shrink the view; zoom out to see
+them. A drawing that cuts nothing frames all of its content. Until you pan or
+zoom, the drawing refits when the panel is resized.
 
 ### DXF and PDF/Image Underlays
 

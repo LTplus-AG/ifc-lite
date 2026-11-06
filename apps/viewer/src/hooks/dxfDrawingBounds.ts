@@ -4,6 +4,7 @@
 import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
 import type { Drawing2D, Point2D } from '@ifc-lite/drawing-2d';
 import type { DxfUnderlayRenderData } from './dxfUnderlayMath';
+import { drawingWithReferenceBounds, type DrawingReferenceImage } from '@/lib/appearance/references/drawing';
 
 /** Fit, sheet layout and exports share these immutable displayed extents. */
 export function drawingWithDxfBounds(drawing: Drawing2D | null, references: readonly DxfUnderlayRenderData[], hasRasterReferences = false): Drawing2D | null {
@@ -32,6 +33,23 @@ export function drawingWithDxfBounds(drawing: Drawing2D | null, references: read
     }
   }
   return Number.isFinite(bounds.min.x) ? {...drawing,bounds} : drawing;
+}
+
+/** The visible references' own extent (raster corners and mapped DXF content),
+ *  without the generated geometry; null when no reference is shown. Fit always
+ *  frames it (#8802), even where it frames less than the whole drawing. */
+export function referenceOnlyBounds(
+  drawing: Drawing2D | null,
+  rasterCorners: readonly DrawingReferenceImage['corners'][],
+  dxf: readonly DxfUnderlayRenderData[],
+): Drawing2D['bounds'] | null {
+  if (!drawing || (!rasterCorners.length && !dxf.length)) return null;
+  const empty: Drawing2D = { ...drawing, lines: [], cutPolygons: [], projectionPolygons: [] };
+  const raster = drawingWithReferenceBounds(empty, rasterCorners);
+  const both = drawingWithDxfBounds(raster, dxf, raster !== empty);
+  if (!both || both === empty) return null;
+  const { min, max } = both.bounds;
+  return [min.x, min.y, max.x, max.y].every(Number.isFinite) ? both.bounds : null;
 }
 
 /** Empty generated geometry has no model centre, even when display references

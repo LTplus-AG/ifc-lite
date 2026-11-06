@@ -3,22 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Partial (hide / isolate) sub-batches of STREAMING FRAGMENTS.
+ * Partial (hide / isolate) sub-batches of streaming fragments (#9080).
  *
- * While a model streams, each append is drawn as fragment batches grouped by
- * the pieces' owning bucket key. That key is more than the colour: it carries
- * a `<cell>~` prefix whenever spatial chunking is on (the viewer default),
- * `model<i>~` for every federated model after the first, a `p<n>~` page for
- * ids past 2^24, and `#N` for an overflow bucket. The fragment itself was
- * labelled with the bare colour key, so `getOrCreatePartialBatch` either
- * missed the bucket and compared the bare key against the full one, or hit a
- * DIFFERENT model's same-colour bucket. Both found no piece: isolating an
- * element of the second loaded model, or hiding one of its same-colour
- * neighbours, drew nothing for that fragment until finalize.
- *
- * Invariant pinned here: for a fragment and a subset of its ids, the partial
- * batch holds exactly that subset. Driven through the real streaming append
- * and the real batch upload; only GPU allocation is stubbed.
+ * A fragment's pieces live in a bucket whose key can carry more than the
+ * colour: `<cell>~` (spatial chunking, the viewer default), `model<i>~`,
+ * `p<n>~` (ids past 2^24) and `#N` (overflow). Each case builds one of those
+ * key shapes; a fragment labelled with the bare colour key found no piece.
  */
 
 import { describe, it } from 'node:test';
@@ -70,7 +60,6 @@ function fragmentHolding(scene: Scene, expressId: number): BatchedMesh {
   return fragment;
 }
 
-/** The ids the partial batch for `visible` would draw, as the render loop requests it. */
 function partialIds(scene: Scene, fragment: BatchedMesh, visible: number[]): number[] {
   const partial = scene.getOrCreatePartialBatch(
     `${fragment.colorKey}:${fragment.id}`, fragment.colorKey, new Set(visible), device, pipeline,
@@ -78,7 +67,6 @@ function partialIds(scene: Scene, fragment: BatchedMesh, visible: number[]): num
   return partial ? [...new Set(partial.expressIds)].sort((a, b) => a - b) : [];
 }
 
-/** Isolate one id, then hide it and keep its same-fragment neighbour. */
 function assertSubsetsDraw(scene: Scene, isolated: number, neighbour: number): void {
   assert.strictEqual(scene.hasStreamingFragments(), true, 'still streaming: the fragment path is live');
   const fragment = fragmentHolding(scene, isolated);

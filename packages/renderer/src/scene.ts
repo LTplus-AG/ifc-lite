@@ -2480,10 +2480,10 @@ export class Scene {
   }
 
   /**
-   * Create a new batched mesh from mesh data array.
-   * @param bucketKey - Optional unique key for this batch. When omitted the
-   *   base color key is used (fine for overlay / partial batches that don't
-   *   participate in the main buckets map).
+   * Upload `meshes` as one GPU batch. `bucketKey` marks it as that bucket's live batch.
+   * Without it the batch is derived, and its `colorKey` is `ownerKey` (the bucket a
+   * streaming fragment's pieces live in, with model/cell/id-page/`#N`) or else the bare
+   * colour key (overlay / partial batches).
    * @param quantization - 'auto' for bucket batches; derived batches pass `inheritedQuantization(source)` (#4832).
    */
   private createBatchedMesh(
@@ -2503,8 +2503,8 @@ export class Scene {
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
-      // A derived batch (no bucketKey) is a subset of ONE material-uniform bucket: a streaming fragment names it
-      // (`ownerKey`, with model/cell/id-page/`#N`), else its first piece's finish labels it like bucketBaseKey (#5582).
+      // A derived batch (no bucketKey) is a subset of ONE material-uniform
+      // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
       id: this.nextBatchId, colorKey: bucketKey ?? ownerKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,

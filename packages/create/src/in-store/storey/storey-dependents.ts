@@ -21,7 +21,7 @@ import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { readStairDimensions } from '../stair-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readTopAttachment } from './storey-attachment.js';
-import { storeyContents, type StoreyInventory } from './storey-model.js';
+import { siblingStoreys, storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 import { describeLength, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
 
 /** A storey's top tread lands on a storey when the two agree to this, metres. */
@@ -139,11 +139,12 @@ function planStairRefit(
     // The file records no rise (a spiral or freeform stair whose body is the
     // IfcStair itself): it cannot be checked or refit. Report it whenever the
     // gap above its storey changes, rather than staying silent.
-    const above = inventory.storeys.find((candidate) => candidate.elevation > storey.elevation);
+    const above = storeyNeighbour(inventory, storeyId, 1);
     return above && Math.abs(delta(above.expressId) - delta(storeyId)) > 1e-9 ? 'unreadable' : null;
   }
   const top = storey.elevation + base + rise;
-  const landing = inventory.storeys.find((candidate) => candidate.expressId !== storeyId
+  // A flight lands on a storey of its own building.
+  const landing = siblingStoreys(inventory, storeyId).find((candidate) => candidate.expressId !== storeyId
     && Math.abs(candidate.elevation - top) <= LANDING_TOLERANCE);
   if (!landing) return null;
   const change = delta(landing.expressId) - delta(storeyId);
@@ -193,10 +194,12 @@ function genericRise(inventory: StoreyInventory, stairId: number): number | null
  * them (`NextStoreyAbove`). Each takes the height from its base to the new
  * floor. Pure read.
  */
-export function planAttachmentBindings(inventory: StoreyInventory, elevation: number): WallHeightChange[] {
-  const below = [...inventory.storeys].reverse().find((storey) => storey.elevation < elevation);
+export function planAttachmentBindings(inventory: StoreyInventory, elevation: number, parentId: number | null): WallHeightChange[] {
+  // Only storeys of the building the new storey joins.
+  const storeys = inventory.storeys.filter((storey) => storey.parentId === parentId);
+  const below = [...storeys].reverse().find((storey) => storey.elevation < elevation);
   if (!below) return [];
-  const above = inventory.storeys.find((storey) => storey.elevation > below.elevation);
+  const above = storeys.find((storey) => storey.elevation > below.elevation);
   // Only the storey that has nothing above it can hold unbound walls.
   if (above && above.elevation < elevation) return [];
   const target = { dataStore: inventory.store, view: inventory.view, editor: new StoreEditor(inventory.store, inventory.view) };

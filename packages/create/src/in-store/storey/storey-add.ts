@@ -150,7 +150,7 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
 
     const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
     const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
-    const boundWalls = planAttachmentBindings(inventory, params.Elevation).map((wall) => ({ ...wall, targetStoreyId: storeyId }));
+    const boundWalls = planAttachmentBindings(inventory, params.Elevation, parentId).map((wall) => ({ ...wall, targetStoreyId: storeyId }));
     const reshaped: number[] = [];
     for (const wall of boundWalls) {
       writeTopAttachment(draft.getMutationView(), wall.wallId, guid);

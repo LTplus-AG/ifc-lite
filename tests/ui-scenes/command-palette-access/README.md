@@ -434,3 +434,12 @@ Two browser scenarios additionally exercise actual palette close/focus, native T
 Space/Enter, selected-model cycling, history clearing and real Filter destination.
 Cheap source guards pass; runtime/typecheck/browser execution remains UNRUN.
 Fresh review and matching full validation are required; R1 is not accepted.
+
+### R1 Assistant/Semantic/script route reconciliation
+
+The focused 60-record audit found existing conditional child flows, not missing
+capabilities. Their real panel destinations now expose task-language search terms
+and localized child-path hints for conversations, preferences, proposal review,
+Semantic identity/projection/workspace, and script import/export/promotion.
+Conditional proposal execution still belongs to the actual reviewed flow. Ranking
+regressions are authored for English, German and Russian; runtime remains UNRUN.

@@ -24,6 +24,7 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.refresh': 'Reopen every model with a live file handle to refresh',
   'commandPalette.availability.gpuChecking': 'Wait for the WebGPU check to finish',
   'commandPalette.availability.gpu': 'WebGPU is unavailable — see the welcome screen for help',

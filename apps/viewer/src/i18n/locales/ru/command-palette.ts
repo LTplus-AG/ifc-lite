@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
   'commandPalette.availability.refresh': 'Для обновления откройте все модели с доступом к файлам на диске',
   'commandPalette.availability.gpuChecking': 'Дождитесь завершения проверки WebGPU',
   'commandPalette.availability.gpu': 'WebGPU недоступен — справка на начальном экране',

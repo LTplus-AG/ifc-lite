@@ -22,6 +22,7 @@ export const commandPaletteDe = {
   "commandPalette.availability.workplane": "Zuerst eine gültige Arbeitsebene wählen",
   "commandPalette.state.off": "Aus",
   "commandPalette.state.on": "Ein",
+  'commandPalette.extension.busy': 'Warten Sie, bis der Erweiterungsexport abgeschlossen ist',
   'commandPalette.file.open.label': 'Datei öffnen',
   'commandPalette.file.saveFederationSetup.label': 'Föderationseinrichtung speichern',
   'commandPalette.file.openFederationSetup.label': 'Föderationseinrichtung öffnen',

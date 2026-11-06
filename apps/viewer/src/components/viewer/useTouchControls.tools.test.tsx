@@ -27,6 +27,8 @@ import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from './tools/command/RoomPlaceBar';
 import { getCommandRuntime, updateCommandGesture } from '@/lib/commands/modeling/runtime';
+import { getModelingCommand, registerModelingCommand } from '@/lib/commands/modeling/registry';
+import type { CommandId } from '@/lib/commands/modeling/types';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import type { WallPlaceGesture } from '@/lib/commands/modeling/commands/wall-place-geometry';
 import type { RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
@@ -153,6 +155,23 @@ describe('the command tool by tap (#9042)', () => {
     assert.equal(columns(), 1, 'BUG: the tap placed no column');
     await act(async () => { canvas.dispatchEvent(click(...at(10, 10), null)); });
     assert.equal(columns(), 1, 'the compatibility click placed a second column');
+  });
+
+  it('a command that follows the press gets the press and then the release from one tap, as a mouse press and release', async (t) => {
+    // A stub, so this needs no room WASM: room.place edit mode is the real such command.
+    const calls: string[] = [];
+    const id = 'test.press-driven' as CommandId;
+    t.after(registerModelingCommand({
+      ...getModelingCommand('column.place')!,
+      id,
+      pointerDownOnPress: () => true,
+      pointerDown: (g) => { calls.push('down'); return g; },
+      pointerUp: (g) => { calls.push('up'); return g; },
+    }));
+    useViewerStore.getState().startCommand(id);
+    const { canvas } = commandRig();
+    await tap(canvas, ...at(10, 10));
+    assert.deepEqual(calls, ['down', 'up']);
   });
 
   it('a Pencil tap places one point', async () => {
@@ -316,12 +335,14 @@ describe('Pan and Walk drags (#9042)', () => {
       canvas.dispatchEvent(touchEvent('touchmove', canvas, [[420, 300]]));
     });
     activeToolRef.current = 'select';
+    const before = pose(camera);
     act(() => {
       canvas.dispatchEvent(touchEvent('touchstart', canvas, [[420, 300], [500, 300]]));
       canvas.dispatchEvent(touchEvent('touchend', canvas, [[420, 300]]));
       for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[420 + 20 * i, 300 + 10 * i]]));
       canvas.dispatchEvent(touchEvent('touchend', canvas, []));
     });
+    assert.notEqual(pose(camera), before, 'the finger left did nothing');
     assert.equal(viewDirection(camera), direction, 'the second finger re-read the tool and the one left orbited');
   });
 

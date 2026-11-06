@@ -77,6 +77,18 @@ describe('command palette fuzzy fallback (#8946)', () => {
     assert.deepEqual(searchCommands(commands, 'secton', []).map(cmd => cmd.id), ['section']);
   });
 
+  it('#8947 ranks a visible-name typo ahead of hidden aliases despite registry order and recency', () => {
+    const rows = [make('down', 'Down (Z)', 'section plane down'), make('section', 'Section')];
+    assert.deepEqual(searchCommands(rows, 'secton', ['down']).map(cmd => cmd.id), ['section', 'down']);
+    assert.ok(rankCommand(rows[0], 'secton') > 0, 'the alias remains discoverable');
+  });
+
+  it('#8947 preserves localized-name typo priority over hidden metadata', () => {
+    const rows = [make('down', 'Down (Z)', 'Schnitt'), make('section', 'Section')];
+    assert.deepEqual(searchCommands(rows, 'schnt', ['down'],
+      cmd => cmd.id === 'section' ? 'Schnitt' : cmd.label).map(cmd => cmd.id), ['section', 'down']);
+  });
+
   it('applies the same suppression to translated labels and categories', () => {
     const rows = [make('translated', 'Section plane'), make('noise', 'Sicherheit')];
     assert.ok(rankCommand(rows[1], 'sicht') > 0, 'translated search has a fuzzy alternative');

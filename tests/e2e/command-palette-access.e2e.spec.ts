@@ -282,7 +282,12 @@ test('new blank creates parsed IFC, real Model workspace and wall tool; existing
     return s.models.size === 1 && model?.loadState === 'complete' &&
       !!model.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.length && s.session?.activeCommandId === 'wall.place';
   }), { timeout: 180_000 }).toBe(true);
-  await expect(page.locator('[data-rail-tool="wall.place"]')).toHaveAttribute('aria-pressed', 'true');
+  // The real rail groups creation tools when its measured height is limited.
+  // Require the active wall's actual input flow, independent of rail layout.
+  await expect(page.getByRole('navigation', { name: 'Model tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Thickness', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Height', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Leave the command', exact: true })).toBeVisible();
   const { row } = await find(page, 'file:new-blank', 'New blank model');
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('empty session');

@@ -31,7 +31,8 @@ async function search(page: Page, query: string) {
 }
 async function openDestination(page: Page, id: string, query: string) {
   await search(page, query);
-  const destination = palette(page).locator(`[data-command-id="${id}"]`);
+  const attribute = id.startsWith('ext-widget:') ? 'data-runtime-command-id' : 'data-command-id';
+  const destination = palette(page).locator(`[${attribute}="${id}"]`);
   await expect(destination).toBeVisible();
   await expect(destination).not.toHaveAttribute('aria-disabled', 'true');
   await destination.click();
@@ -44,7 +45,7 @@ async function hidden(page: Page, id: number) {
 }
 async function refused(page: Page, id: number) {
   await search(page, OWNER);
-  await expect(palette(page).locator(`[data-command-id="${DESTINATION}"]`)).toHaveCount(0);
+  await expect(palette(page).locator(`[data-runtime-command-id="${DESTINATION}"]`)).toHaveCount(0);
   await expect(palette(page).getByRole('option')).toHaveCount(0);
   await palette(page).getByRole('combobox').press('Enter');
   await expect(widget(page)).toHaveCount(0);

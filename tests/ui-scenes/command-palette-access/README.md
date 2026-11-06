@@ -667,3 +667,26 @@ The failed e59 job's compact evidence was published and verified. Its storage
 closure remains deferred because the safety scan cannot read same-user
 `/proc/3354649/cwd`; no guard was bypassed and no foreign process was stopped.
 Access R2 remains UNACCEPTED.
+
+### First qualified-canvas candidate run
+
+Build `ce39ed9a` (tree `a18c06f7`, index SHA256
+`684354c046e4690b48fd6f7d6f509101d1cfcfdb81182ef5867dcb6046938655`)
+ran all 22 browser cases: **14 passed, 8 failed, 0 skipped**. Capture phases
+remained unrun after the required browser gate failed. The original run is
+retained at coordinator evidence `palette-access-ce39-all-fd0b1714`.
+
+Six failures exposed one search regression: a fuzzy keyword match on Down (Z)
+ranked ahead of the visible Section label for `secton`. Fuzzy visible labels now
+rank ahead of fuzzy metadata, while every direct-match tier keeps its priority.
+English and localized invariants preserve the less-preferred alias as a result.
+The existing six browser assertions remain unchanged.
+
+The installed dock was visibly present, but its oracle queried the static
+`data-command-id` instead of its owner-qualified `data-runtime-command-id`.
+Both activation and retired-owner checks now use the actual runtime identity.
+The blank-model scenario reached the real wall HUD; its measured compact rail
+grouped the individual tool button. The oracle now requires actual Thickness,
+Height and Leave-command controls alongside the existing parsed-IFC/workspace/
+active-command checks. The capture uses the same concrete UI contract. These
+repairs require a fresh run; no failure has been reclassified as a pass.

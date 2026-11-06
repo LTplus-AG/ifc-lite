@@ -4,7 +4,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
-import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
+import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import { resolveTreeGlobalId } from './productTree';
 import type { TreeNode } from './types';
@@ -36,27 +36,28 @@ function isStoreyRow(node: TreeNode): boolean {
 
 const NO_IDS: readonly number[] = [];
 
-/** Resolves a storey row's whole spatial subtree as global ids: elements in
- *  its IfcSpaces, the spaces and aggregated parts included. It is the set
- *  storey isolation (`computeStoreyIsolation`) draws, so a storey whose only
- *  isolated element sits in a space is not dimmed (#8802). Other rows resolve
- *  to nothing. Cached per row for the lifetime of the given models. */
-export function createStoreySubtreeResolver(
+/** Resolves storey and IfcSpace rows' spatial subtrees as global ids,
+ *  including space geometry and aggregated parts (#8802). Storey rows use
+ *  the same set as storey isolation. Other rows resolve to nothing.
+ *  Cached per row for the lifetime of the given models. */
+export function createSpatialSubtreeResolver(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
 ): (node: TreeNode) => readonly number[] {
   const cache = new Map<string, readonly number[]>();
   return (node) => {
-    if (!isStoreyRow(node)) return NO_IDS;
+    if (!isStoreyRow(node) && node.type !== 'IfcSpace') return NO_IDS;
     const cached = cache.get(node.id);
     if (cached) return cached;
+    const collect = node.type === 'IfcSpace'
+      ? collectSpatialSubtreeElementsWithIfcSpace : collectIfcBuildingStoreyElementsWithIfcSpace;
     const ids: number[] = [];
-    node.expressIds.forEach((storeyId, i) => {
+    node.expressIds.forEach((spatialId, i) => {
       const modelId = node.modelIds[i];
       const store = models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? ifcDataStore : null);
       if (!store?.spatialHierarchy) return;
       const relationships = store.relationships as AggregationRelationships | undefined;
-      for (const id of collectIfcBuildingStoreyElementsWithIfcSpace(store.spatialHierarchy, storeyId, relationships) ?? []) {
+      for (const id of collect(store.spatialHierarchy, spatialId, relationships) ?? []) {
         ids.push(resolveTreeGlobalId(modelId, id, models));
       }
     });
@@ -72,18 +73,18 @@ export function createStoreySubtreeResolver(
  * (`useVisibilityIsolation`): storey Solo rides `selectedStoreys`, not
  * `isolatedEntities`, so the store's manual isolation alone left Solo's other
  * storeys undimmed. Containers of an isolated element stay normal; `null`
- * means nothing is isolated. A storey row also counts its spatial subtree,
+ * means nothing is isolated. A storey or IfcSpace row also counts its spatial subtree,
  * resolved only when its direct members alone would dim it. */
 export function hierarchyNodeAppearance(
   node: TreeNode,
   elements: readonly number[],
   hidden: ReadonlySet<number>,
   isolation: ReadonlySet<number> | null,
-  storeySubtree: (node: TreeNode) => readonly number[],
+  spatialSubtree: (node: TreeNode) => readonly number[],
 ): { nodeHidden: boolean; visibilityAction: HierarchyVisibilityAction; outsideIsolation: boolean } {
   let outsideIsolation = isolation !== null && elements.every((id) => !isolation.has(id));
   if (outsideIsolation && isolation) {
-    const subtree = storeySubtree(node);
+    const subtree = spatialSubtree(node);
     outsideIsolation = elements.length + subtree.length > 0 && subtree.every((id) => !isolation.has(id));
   }
   return { ...hierarchyNodeVisibility(node, elements, hidden), outsideIsolation };

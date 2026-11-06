@@ -19,11 +19,12 @@ import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { cleanup, render } from '@/test/render.js';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureModel, fixtureModels, fixtureDataStore } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
 import { HierarchyPanel } from '../HierarchyPanel.js';
-import { hierarchyNodeAppearance } from './nodeVisibility.js';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance } from './nodeVisibility.js';
+import { buildTreeData } from './treeDataBuilder.js';
 import type { TreeNode } from './types.js';
 
 afterEach(() => {
@@ -161,5 +162,33 @@ describe('hierarchyNodeAppearance isolation dim', () => {
     assert.equal(resolved, 3);
     assert.equal(dim(storey, [1], new Set([1]), subtree), false);
     assert.equal(resolved, 3, 'an isolated direct member settles it without the subtree');
+  });
+});
+
+// #8802: a spatial IfcSpace row must include parts of its contained assemblies.
+describe('IfcSpace isolation subtree (#8802)', () => {
+  it('keeps the room normal when only an aggregated child is isolated', () => {
+    const store = fixtureDataStore([
+      { expressId: 6, type: 'IfcSpace', name: 'Room' },
+      { expressId: 9, type: 'IfcElementAssembly', name: 'Desk assembly' },
+      { expressId: 10, type: 'IfcFurniture', name: 'Desk part' },
+    ], { aggregates: { 9: [10] } });
+    store.spatialHierarchy = twoStoreyHierarchy();
+    const models = new Map();
+    const nodes = buildTreeData(models, store,
+      new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4']), false, []);
+    const room = nodes.find(node => node.type === 'IfcSpace');
+    assert.ok(room, 'use the actual spatial tree row');
+    const resolve = createSpatialSubtreeResolver(models, store);
+    let calls = 0;
+    const subtree = (node: TreeNode) => { calls++; return resolve(node); };
+    const appearance = (isolated: number[]) =>
+      hierarchyNodeAppearance(room, [6, 9], new Set(), new Set(isolated), subtree);
+    assert.equal(appearance([9]).outsideIsolation, false);
+    assert.equal(calls, 0, 'direct membership avoids traversal');
+    assert.equal(appearance([10]).outsideIsolation, false, 'isolated aggregated part keeps Room normal');
+    assert.equal(appearance([8]).outsideIsolation, true, 'unrelated isolation dims Room');
+    assert.ok(resolve(room).includes(10));
+    assert.strictEqual(resolve(room), resolve(room), 'subtree is cached per row');
   });
 });

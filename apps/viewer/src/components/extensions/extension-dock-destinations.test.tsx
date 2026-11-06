@@ -14,15 +14,24 @@ import { cleanup, render, click, activate, press } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { Toaster } from '@/components/ui/toast';
-import { setLocale } from '@/i18n';
+import { getLocale, setLocale } from '@/i18n';
 import type { Command } from '@/components/viewer/commandPaletteSearch';
 import { PaletteCommandTestHost } from '@/components/viewer/palette-extension-command.test-support';
 import { manifestToContributions } from '../../../../../packages/extensions/src/host/loader';
+import type { WidgetNode } from '../../../../../packages/extensions/src/widget/schema';
 import { useExtensionDockDestinations } from './useExtensionDockDestinations';
 
 const original = useViewerStore.getState();
+const originalLocale = getLocale();
+const hosts: PaletteCommandTestHost[] = [];
+function createHost() { const host = new PaletteCommandTestHost(); hosts.push(host); return host; }
 beforeEach(() => { setLocale('en'); useViewerStore.setState({ ...fixtureModels(), selectedEntityIds: new Set() }); });
-afterEach(() => { cleanup(); useViewerStore.setState(original); });
+afterEach(async () => {
+  for (const dismiss of document.querySelectorAll('[data-toast-seq] button')) click(dismiss);
+  cleanup();
+  for (const host of hosts.splice(0)) await host.dispose();
+  setLocale(originalLocale); useViewerStore.setState(original);
+});
 const settle = async () => { await act(async () => { await new Promise(resolve => setImmediate(resolve)); }); };
 let rows: Command[] = [];
 function Harness() {
@@ -34,10 +43,11 @@ function add(host: PaletteCommandTestHost, owner: string, when?: string, invalid
   const bundle = host.bundles.get(owner)!;
   const handler = 'function run(ctx) { ctx.bim.record(ctx.args); }';
   bundle.files.set('run.js', { path: 'run.js', text: handler, bytes: new TextEncoder().encode(handler) });
-  const widget = JSON.stringify(invalid ? { type: 'Bogus' } : {
-    type: 'Stack', children: [{ type: 'Text', text: `Body ${owner}` },
+  const validWidget = {
+    type: 'Stack', direction: 'vertical', children: [{ type: 'Text', text: `Body ${owner}` },
       { type: 'Button', label: 'Execute widget', command: 'paint', args: { groupBy: 'storey', limit: 3 } }],
-  });
+  } satisfies WidgetNode;
+  const widget = JSON.stringify(invalid ? { type: 'Bogus' } : validWidget);
   bundle.files.set('widget.json', { path: 'widget.json', text: widget, bytes: new TextEncoder().encode(widget) });
   bundle.manifest.contributes = { ...bundle.manifest.contributes, dock: [
     { id: 'shared', slot: 'dock.left', title: 'Inspector', widget: 'widget.json', when },
@@ -54,7 +64,7 @@ function button(text: string) {
 }
 
 test('#8947 actual widgets in all dock slots open by keyboard, execute owner args, close and reopen without desktop hosts', async () => {
-  const host = new PaletteCommandTestHost(); add(host, 'alpha'); add(host, 'beta');
+  const host = createHost(); add(host, 'alpha'); add(host, 'beta');
   render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
   assert.equal(new Set(rows.map(row => row.id)).size, 6);
   for (const slot of ['dock.left', 'dock.right', 'dock.bottom']) {
@@ -73,7 +83,7 @@ test('#8947 actual widgets in all dock slots open by keyboard, execute owner arg
 });
 
 test('#8947 when stays discoverable, changes live, and a replaced slot cannot keep its widget or run captured row', async () => {
-  const host = new PaletteCommandTestHost(); add(host, 'alpha', 'model.loaded && selection.count > 0');
+  const host = createHost(); add(host, 'alpha', 'model.loaded && selection.count > 0');
   render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
   assert.equal(rows[0].checkAvailability?.().status, 'disabled');
   act(() => useViewerStore.setState(fixtureModels(fixtureModel('m'))));
@@ -96,8 +106,8 @@ test('#8947 when stays discoverable, changes live, and a replaced slot cannot ke
 });
 
 test('#8947 invalid widget has visible error, and closing/reopening after repair recovers; provider replacement retires open tool', async () => {
-  const host = new PaletteCommandTestHost(); add(host, 'alpha', undefined, true);
-  const replacement = new PaletteCommandTestHost(); add(replacement, 'alpha');
+  const host = createHost(); add(host, 'alpha', undefined, true);
+  const replacement = createHost(); add(replacement, 'alpha');
   let changeHost: (() => void) | undefined;
   function Switch() {
     const [current, setCurrent] = useState(host); changeHost = () => setCurrent(replacement);
@@ -115,7 +125,7 @@ test('#8947 invalid widget has visible error, and closing/reopening after repair
 
 // Exercise the actual palette keyboard/deferred-close boundary, not just the hook.
 test('#8947 palette Enter opens the real contributed widget after its own popup closes', async () => {
-  const host = new PaletteCommandTestHost(); add(host, 'alpha');
+  const host = createHost(); add(host, 'alpha');
   function Palette() {
     const [open, setOpen] = useState(true);
     return <CommandPalette open={open} onOpenChange={setOpen} />;
@@ -139,7 +149,7 @@ test('#8947 palette Enter opens the real contributed widget after its own popup 
 });
 
 test('#8947 actual widget command failures reach the visible error path', async () => {
-  const host = new PaletteCommandTestHost(); add(host, 'alpha');
+  const host = createHost(); add(host, 'alpha');
   host.failure = new Error('Widget execution denied');
   render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
   activate(button('alpha · dock.left')); await settle();

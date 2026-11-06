@@ -7,6 +7,9 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
+import { createBimContext, type BimContext } from '@ifc-lite/sdk';
+import { BimReactContext } from '@/sdk/BimProvider';
+import { LocalBackend } from '@/sdk/local-backend';
 import { IfcParser } from '@ifc-lite/parser';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -23,6 +26,7 @@ import { GeometryModeBanner } from './GeometryModeBanner';
 import { RECENT_KEY } from './commandPaletteSearch';
 
 const original = useViewerStore.getState();
+let bim: BimContext;
 const step = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
@@ -41,6 +45,7 @@ beforeEach(async () => {
     mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     selectedEntityId: 1, selectedEntityIds: new Set(), referenceUndo: [], referenceRedo: [],
     modelPlacement: original.modelPlacement, geometryMode: 'exact', mergeLayers: false });
+  bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
 });
 afterEach(() => { cleanup(); mock.restoreAll(); useViewerStore.setState(original); localStorage.clear(); });
 function button(text: string) {
@@ -60,7 +65,9 @@ function Harness({ hosts = true }: { hosts?: boolean }) {
     {ribbon && <AuthorTab />}
     <CommandPalette open={open} onOpenChange={setOpen} />
   </>;
-  return hosts ? <PersistentToolHosts>{body}</PersistentToolHosts> : body;
+  return <BimReactContext.Provider value={bim}>
+    {hosts ? <PersistentToolHosts>{body}</PersistentToolHosts> : body}
+  </BimReactContext.Provider>;
 }
 async function launch(id: string) { click(option(id)); await advance(50); }
 function closeDialog() {
@@ -168,8 +175,8 @@ test('a deferred author row refuses its retired owner while the palette remains 
     const [mounted, setMounted] = useState(true); retire = () => setMounted(false);
     return mounted ? <PersistentToolHosts><Capture /></PersistentToolHosts> : null;
   }
-  render(<Owner />);
-  render(<CommandPalette open onOpenChange={() => {}} surfaceContext={captured} />); await advance(30);
+  render(<BimReactContext.Provider value={bim}><Owner /></BimReactContext.Provider>);
+  render(<BimReactContext.Provider value={bim}><CommandPalette open onOpenChange={() => {}} surfaceContext={captured} /></BimReactContext.Provider>); await advance(30);
   const input = document.querySelector('[role="combobox"]'); assert.ok(input);
   const events: string[] = [];
   mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') events.push(event); });

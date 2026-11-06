@@ -255,7 +255,7 @@
    410 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3689 packages/renderer/src/index.ts
+  3688 packages/renderer/src/index.ts
    706 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts

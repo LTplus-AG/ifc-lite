@@ -5,8 +5,23 @@
 /** Small UI-slice helpers kept separate from the already budgeted state module. */
 
 import type { ThemeMode, UICrossSliceState } from './uiSlice.js';
+import type { PointerInput } from '../types.js';
 
 const PERFORMANCE_STATS_KEY = 'ifc-lite:show-performance-stats';
+
+/**
+ * The input to assume before the viewport has seen any (#8879): touch when
+ * the primary pointer is coarse (a phone or tablet), else mouse. Only a seed:
+ * the last input actually used replaces it, so a hybrid device follows use.
+ */
+export function initialPointerInput(media: ((query: string) => { matches: boolean }) | undefined =
+  typeof matchMedia === 'function' ? (query) => matchMedia(query) : undefined): PointerInput {
+  try {
+    return media?.('(pointer: coarse)').matches ? 'touch' : 'mouse';
+  } catch {
+    return 'mouse';
+  }
+}
 
 /** Restore the opt-in diagnostic setting; unavailable storage means off. */
 export function initialShowPerformanceStats(): boolean {

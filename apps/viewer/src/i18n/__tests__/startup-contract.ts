@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import type { Catalogue } from '../registry';
 import { retainedGeometryEn } from '../catalogues/retained-geometry.en';
 import { checkCatalogue } from '../catalogue-problems';
-import { activateStartupLocale, createLocaleActivator } from '../locale-activation';
+import { activateStartupLocale, createLocaleActivator, LOCALE_STORAGE_KEY } from '../locale-activation';
 import { englishCatalogue } from '../en';
 import { hasActiveTranslation, registerEnglish, resolve, setLocale } from '../registry';
 import type { TranslationKey } from '../en';
@@ -22,8 +22,11 @@ export function startupContract(name: string, locale: string, loadCatalogue: () 
     assert.deepEqual(checkCatalogue(catalogue).problems, []);
     const html = { lang: 'en' };
     try {
-      await activateStartupLocale(createLocaleActivator({ [locale]: async () => catalogue }, html),
-        { search: `?lang=${locale}`, languages: [], storage: null });
+      const storage = new Map<string, string>([[LOCALE_STORAGE_KEY, locale]]);
+      await activateStartupLocale(createLocaleActivator({ [locale]: async () => catalogue }, html), {
+        languages: [],
+        storage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); }, removeItem: (key) => { storage.delete(key); } },
+      });
       assert.equal(html.lang, locale);
       for (const key of Object.keys(catalogue)) assert.ok(hasActiveTranslation(key as TranslationKey), key);
       for (const [key, message] of Object.entries(retainedGeometryEn)) {

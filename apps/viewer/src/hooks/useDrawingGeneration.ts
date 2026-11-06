@@ -46,6 +46,7 @@ import { useDrawingRtcContext } from './useDrawingRtcContext.js';
 import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
+import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -111,7 +112,7 @@ interface UseDrawingGenerationParams {
       bitangent: [number, number, number];
     };
   };
-  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean; constructionProjectionDepth?: number | null };
+  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean | null; constructionProjectionDepth?: number | null };
   /**
    * Class-level Visibility toggles (Spaces, Openings, Site, Virtual Elements,
    * Spatial Zones, Annotations). Global, not 3D-only — see the filter in
@@ -303,7 +304,8 @@ export function useDrawingGeneration({
     const projectionSupported = !sectionPlane.custom;
     const manualDepth = displayOptions.constructionProjectionDepth;
     const boundedProjection = typeof manualDepth === 'number' && Number.isFinite(manualDepth) && manualDepth >= 0;
-    const projectionOn = projectionSupported && displayOptions.showConstructionProjection && (!boundedProjection || manualDepth > 0);
+    const projectionOn = projectionSupported && constructionProjectionEnabled(displayOptions.showConstructionProjection, sectionPlane)
+      && (!boundedProjection || manualDepth > 0);
 
     // ── Construction projection profiles (issue #979) ────────────────────────
     // Extract extruded-area-solid profiles for the clean projection path. Only

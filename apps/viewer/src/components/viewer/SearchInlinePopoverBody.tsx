@@ -27,24 +27,24 @@ export function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps)
   const { t } = useTranslation();
   return (
     <div
-      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-2xs text-muted-foreground shadow-sm dark:border-zinc-800 dark:bg-zinc-950 z-40"
+      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-2xs text-muted-foreground shadow-sm dark:bg-zinc-950 z-40"
       role="status"
       aria-live="polite"
     >
-      <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-300">
+      <span className="font-mono font-semibold text-muted-foreground">
         {index + 1} / {total}
       </span>
       <span className="truncate">
         <span className="opacity-70">{t('searchModal.inline.cyclingPrefix')}</span>
         <span className="font-mono">&quot;{query}&quot;</span>
         <span className="opacity-70">{t('searchModal.inline.cyclingPressHint')}</span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cycleNextKey')}</kbd>
+        <kbd className="rounded border border-border bg-muted px-1 font-mono text-2xs">{t('searchModal.inline.cycleNextKey')}</kbd>
         <span className="opacity-70"> / </span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cyclePrevKey')}</kbd>
+        <kbd className="rounded border border-border bg-muted px-1 font-mono text-2xs">{t('searchModal.inline.cyclePrevKey')}</kbd>
       </span>
       <button
         type="button"
-        className="ml-auto rounded p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        className="ml-auto rounded p-0.5 hover:bg-muted"
         aria-label={t('searchModal.inline.exitCycleAriaLabel')}
         onMouseDown={(e) => {
           e.preventDefault();
@@ -96,7 +96,7 @@ export function RecentsPopoverBody({ recents, onPick, onClear }: RecentsPopoverP
             e.preventDefault();
             onPick(q);
           }}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
         >
           <Search className="h-3 w-3 text-muted-foreground" />
           <span className="truncate font-mono">{q}</span>
@@ -159,10 +159,10 @@ export function SearchPopoverBody({
             'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',
             i === highlightIndex
               ? 'bg-zinc-100 dark:bg-zinc-800'
-              : 'hover:bg-zinc-50 dark:hover:bg-zinc-900',
+              : 'hover:bg-muted',
           )}
         >
-          <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-2xs uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-2xs uppercase text-muted-foreground dark:bg-zinc-800">
             {r.typeName}
           </span>
           <span className="min-w-0 flex-1 truncate font-medium">
@@ -174,13 +174,13 @@ export function SearchPopoverBody({
             </span>
           )}
           {modelsCount > 1 && (
-            <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-2xs text-muted-foreground dark:border-zinc-700">
+            <span className="shrink-0 rounded border border-border px-1 py-0.5 text-2xs text-muted-foreground">
               {r.modelId.slice(0, 6)}
             </span>
           )}
         </button>
       ))}
-      <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-1 text-2xs text-muted-foreground dark:border-zinc-800">
+      <div className="flex items-center gap-2 border-t border-border px-3 py-1 text-2xs text-muted-foreground">
         <span>
           {t('searchModal.inline.resultCountHint', { count: results.length })}
           {indexingCount > 0 && <span className="ml-2 opacity-80">{t('searchModal.inline.indexingCountHint', { count: indexingCount })}</span>}
@@ -193,7 +193,7 @@ export function SearchPopoverBody({
             onOpenAdvanced();
           }}
         >
-          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{shortcutLabel('search.openAdvancedFromField')}</kbd>
+          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-border bg-muted px-1 font-mono text-2xs">{shortcutLabel('search.openAdvancedFromField')}</kbd>
         </button>
       </div>
     </div>

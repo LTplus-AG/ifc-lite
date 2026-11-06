@@ -44,7 +44,7 @@ export { NewPropertyDialog, AddQuantityDialog, AddClassificationDialog, AddMater
 // tooltip, compact enough to leave room for the headline action. Exported:
 // the four dialog files above render this same trigger style.
 export const EDIT_TOOL_CLS =
-  'h-7 w-8 rounded-none border-0 bg-transparent text-zinc-500 shadow-none transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 focus-visible:bg-indigo-500/10 dark:text-zinc-400 dark:hover:bg-indigo-400/15 dark:hover:text-indigo-300';
+  'h-7 w-8 rounded-none border-0 bg-transparent text-muted-foreground shadow-none transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 focus-visible:bg-indigo-500/10 dark:hover:bg-indigo-400/15 dark:hover:text-indigo-300';
 
 interface PropertyEditorProps {
   modelId: string;
@@ -164,7 +164,7 @@ export function PropertyEditor({
     return (
       <div className="flex items-center gap-2 min-w-0">
         <button type="button"
-          className="font-mono text-zinc-900 dark:text-zinc-100 select-all break-words flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          className="font-mono text-foreground select-all break-words flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
           onClick={() => setIsEditing(true)}
           title={t('propertyEditor.inline.clickToEdit')}
           aria-label={`${propName}: ${displayValue}`}
@@ -223,7 +223,7 @@ export function PropertyEditor({
           className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
           onClick={handleCancel}
         >
-          <X className="h-3.5 w-3.5 text-zinc-500" />
+          <X className="h-3.5 w-3.5 text-muted-foreground" />
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.delete')}
@@ -259,12 +259,12 @@ export function PropertyEditor({
 
       {showScopeConfirm && editScope && (
         <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-2xs">
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+          <div className="font-medium text-foreground">
             {editScope.mode === 'type'
               ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
               : t('propertyEditor.inline.scopeInherited', { typeEntityName: editScope.typeEntityName })}
           </div>
-          <div className="mt-0.5 text-zinc-600 dark:text-zinc-400">
+          <div className="mt-0.5 text-muted-foreground">
             {t('propertyEditor.inline.scopeImpact', { count: editScope.affectedCount })}
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -315,7 +315,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
   // entities, spaces, or materials.
   const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
   return (
-    <div className="panel-container relative -mx-3 -mt-3 mb-3 flex flex-col gap-2 border-b border-zinc-200 bg-gradient-to-b from-zinc-50/80 to-transparent px-3 pb-2.5 pt-3 dark:border-zinc-800 dark:from-zinc-900/50">
+    <div className="panel-container relative -mx-3 -mt-3 mb-3 flex flex-col gap-2 border-b border-border bg-gradient-to-b from-zinc-50/80 to-transparent px-3 pb-2.5 pt-3 dark:from-zinc-900/50">
       {/* live-edit accent hairline */}
       <span
         aria-hidden
@@ -324,7 +324,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* Data-enrichment cluster — one segmented control of icon keys */}
-          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-zinc-200 dark:bg-zinc-800/50 dark:ring-zinc-700 dark:divide-zinc-700">
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:bg-zinc-800/50 dark:ring-zinc-700">
             <NewPropertyDialog
               modelId={modelId}
               entityId={entityId}

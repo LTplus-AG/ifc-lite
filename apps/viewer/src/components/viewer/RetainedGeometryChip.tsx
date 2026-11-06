@@ -68,7 +68,7 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
           data-retained-chip={state} className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left hover:bg-accent">
           <Shapes aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 tabular-nums">{label}</span>
-          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-amber-600 dark:text-amber-400'}>
+          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-warn'}>
             {t(`retainedGeometry.chip.state.${state}`)}
           </span>
         </button>

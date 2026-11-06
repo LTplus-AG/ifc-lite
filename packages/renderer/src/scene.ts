@@ -47,7 +47,7 @@ import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
-import { BatchUseFrames, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
+import { BatchUseFrames, MIN_EVICTION_AGE_FRAMES, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
@@ -319,6 +319,7 @@ export class Scene {
   private lastDrawnFrame = new BatchUseFrames();               // batch.id -> residencyFrame, own buffers vs pieces (#9050)
   private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
   private warmOnlyRestores: Set<string> = new Set();           // queued keys only a subset wants: CPU pieces, no GPU rebuild (#9050)
+  private subsetOnlyParents: Set<BatchedMesh> = new Set();     // evicted batches with sub-batches cut from them (#9050)
   private residencyOverBudgetWarned = false;
   // Cold tier (issue #1682 phase 3b): warm buckets (GPU-evicted, CPU kept)
   // can additionally drop their CPU meshData when a HOST budget is set and a
@@ -501,6 +502,7 @@ export class Scene {
   recordBatchSubsetDrawn(batch: BatchedMesh): void {
     if (this.gpuBudgetBytes === null) return;
     this.lastDrawnFrame.setSubset(batch.id, this.residencyFrame);
+    if (batch.gpuResident === false) this.subsetOnlyParents.add(batch);
   }
 
   /**
@@ -564,16 +566,7 @@ export class Scene {
         continue;
       }
 
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.retireReplacedShell(old);
-      // Seed as just-drawn so the budget pass can't evict it before the
-      // frame that asked for it gets to draw it.
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+      this.rebuildEvictedBucket(bucket, old, device, pipeline);
       restored++;
       if (performance.now() - start >= budgetMs) break;
     }
@@ -730,9 +723,6 @@ export class Scene {
       bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
-      // No recent frame drew a subset of it either: free its sub-batch VRAM,
-      // which no budget counts (#9050).
-      if (bucket.batchedMesh) this.dropPartialCacheForBatch(bucket.batchedMesh);
     }
     if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
       this.hostOverBudgetWarned = true;
@@ -826,16 +816,7 @@ export class Scene {
     for (const bucket of this.buckets.values()) {
       const old = bucket.batchedMesh;
       if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.retireReplacedShell(old);
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
-      this.residencyRestoreQueue.delete(bucket.key);
-      this.warmOnlyRestores.delete(bucket.key);
+      this.rebuildEvictedBucket(bucket, old, device, pipeline);
       restored++;
     }
     return restored;
@@ -860,6 +841,7 @@ export class Scene {
     const budget = this.gpuBudgetBytes;
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    this.sweepSubsetOnlyParents();
     // During streaming the batch set churns (fragments + finalize rebuild
     // everything anyway) — start enforcing once the scene is stable.
     if (this.streamingFragments.length > 0) return;
@@ -896,9 +878,10 @@ export class Scene {
       batch.gpuResident = false;
       evictedBytes += residentBatchBytes(batch);
       this.lastDrawnFrame.evicted(batch.id);
-      // Same shell id, so a subset still on screen is cut again from the warm
-      // pieces next frame; one no longer drawn frees its VRAM here.
-      this.dropPartialCacheForBatch(batch);
+      // A subset drawn this frame reads its own buffers, cut from the pieces
+      // the shell keeps under the same id: keep it. Otherwise free its VRAM.
+      if (this.lastDrawnFrame.getAnyUse(batch.id) === this.residencyFrame) this.subsetOnlyParents.add(batch);
+      else this.dropPartialCacheForBatch(batch);
     }
 
     if (residentBytes - evictedBytes > budget && !this.residencyOverBudgetWarned) {
@@ -911,11 +894,55 @@ export class Scene {
     }
   }
 
-  /** An evicted shell replaced by its GPU rebuild: sub-batches cut from it
-   *  are keyed by its id, which no frame will ask for again. */
-  private retireReplacedShell(old: BatchedMesh): void {
+  /**
+   * Rebuild an evicted bucket batch from its warm pieces and swap it in. The
+   * replaced shell's sub-batches are keyed by its id, which no frame will ask
+   * for again, so they go with it. The rebuild is seeded as just drawn so the
+   * budget pass can't evict it before the frame that asked for it draws it.
+   */
+  private rebuildEvictedBucket(bucket: BatchBucket, old: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh {
+    const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
+    bucket.batchedMesh = rebuilt;
+    bucket.frameOrigin = rebuilt.origin;
+    const idx = this.batchedMeshes.indexOf(old);
+    if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
+    else this.batchedMeshes.push(rebuilt);
     this.dropPartialCacheForBatch(old);
+    this.subsetOnlyParents.delete(old);
     this.lastDrawnFrame.delete(old.id);
+    this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+    this.residencyRestoreQueue.delete(bucket.key);
+    this.warmOnlyRestores.delete(bucket.key);
+    return rebuilt;
+  }
+
+  /**
+   * An evicted batch whose subset was on screen last frame is now drawn whole
+   * (hide or isolate cleared). Rebuild it now rather than through the
+   * time-sliced queue, or the elements on screen would vanish for the frames
+   * the rebuild takes (#9050). Returns the rebuilt batch to draw, or null
+   * when the caller should skip it and queue the usual restore.
+   */
+  restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null {
+    if (batch.gpuResident !== false || this.geometryReleased || this.ephemeralStreamingMode) return null;
+    const lastUse = this.lastDrawnFrame.getAnyUse(batch.id);
+    if (lastUse === undefined || lastUse < this.residencyFrame - 1) return null;
+    const bucket = this.buckets.get(batch.colorKey);
+    if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return null;
+    return this.rebuildEvictedBucket(bucket, batch, device, pipeline);
+  }
+
+  /** Free the sub-batches of evicted parents once no frame has drawn a subset
+   *  of them for the eviction age: no budget counts that VRAM, and nothing
+   *  else frees a slot that the frame stops asking for (#9050). */
+  private sweepSubsetOnlyParents(): void {
+    for (const batch of this.subsetOnlyParents) {
+      const current = this.buckets.get(batch.colorKey)?.batchedMesh === batch && batch.gpuResident === false;
+      const lastUse = this.lastDrawnFrame.getAnyUse(batch.id) ?? -1;
+      if (current && this.residencyFrame - lastUse < MIN_EVICTION_AGE_FRAMES) continue;
+      this.dropPartialCacheForBatch(batch);
+      this.subsetOnlyParents.delete(batch);
+    }
   }
 
   /** Destroy + drop cached partial sub-batches derived from `batch` (their
@@ -2323,6 +2350,7 @@ export class Scene {
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
     this.warmOnlyRestores.clear();
+    this.subsetOnlyParents.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
@@ -2390,6 +2418,7 @@ export class Scene {
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
     this.warmOnlyRestores.clear();
+    this.subsetOnlyParents.clear();
     // Released mode has no restore source at all — drop the cold tier state
     // (the geometryReleased guards stop any further cold activity).
     this.coldBuckets.clear();
@@ -3806,6 +3835,7 @@ export class Scene {
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
     this.warmOnlyRestores.clear();
+    this.subsetOnlyParents.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;

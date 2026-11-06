@@ -2356,7 +2356,7 @@ export class Renderer {
                 const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
                 const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
-                for (const batch of allBatchedMeshes) {
+                for (let batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         if (!isRteAabbVisible(frustum, batch.bounds, rteCullCamera)) {
@@ -2416,9 +2416,15 @@ export class Renderer {
                     // path above is unaffected (sub-batches own separate buffers built
                     // from CPU meshData).
                     if (batch.gpuResident === false) {
-                        this.scene.requestBatchResidency(batch);
-                        frameBatchesNotResident++;
-                        continue;
+                        // Its subset was on screen last frame: rebuild now, or
+                        // those elements vanish while the queue catches up (#9050).
+                        const rebuilt = this.pipeline ? this.scene.restoreSubsetParentNow(batch, device, this.pipeline) : null;
+                        if (!rebuilt) {
+                            this.scene.requestBatchResidency(batch);
+                            frameBatchesNotResident++;
+                            continue;
+                        }
+                        batch = rebuilt;
                     }
                     this.scene.recordBatchDrawn(batch);
 

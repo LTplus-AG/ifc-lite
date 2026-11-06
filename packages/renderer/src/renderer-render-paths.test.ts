@@ -1057,7 +1057,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.strictEqual(coldLoads, 0);
     });
 
-    it('isolate off and back on: the full draw rebuilds the parent, the stale sub-batch slot is freed, isolate evicts it again', () => {
+    it('isolate off and back on: the parent is rebuilt on the transition frame, the stale sub-batch slot is freed, isolate evicts it again', () => {
         const h = makeHarness();
         const { grey } = seedBatches(h);
         const scene = sceneOf(h);
@@ -1068,17 +1068,17 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         const oldSub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(oldSlot)) as BatchedMesh;
 
         // Hide only red: grey is fully visible again (filtering stays active,
-        // so the show-all drop of every partial cache does not run).
-        h.render({ hiddenIds: new Set([3]) });
-        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'a full draw asks for the parent buffers back');
-        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
-        const rebuilt = greyOf(h);
-        assert.notStrictEqual(rebuilt.gpuResident, false);
-        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the sub-batch cut from the replaced shell is not orphaned');
-        assert.strictEqual((oldSub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+        // so the show-all drop of every partial cache does not run). Its subset
+        // was on screen last frame, so the parent is rebuilt in this very frame.
         const drawsBefore = h.stats.draws.length;
         h.render({ hiddenIds: new Set([3]) });
-        assert.ok(h.stats.draws.length > drawsBefore);
+        assert.ok(h.stats.draws.length > drawsBefore, 'the elements on screen are drawn on the transition frame');
+        const rebuilt = greyOf(h);
+        assert.notStrictEqual(rebuilt, grey);
+        assert.notStrictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false, 'nothing left for the time-sliced queue');
+        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the sub-batch cut from the replaced shell is not orphaned');
+        assert.strictEqual((oldSub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
 
         // Isolate again: the rebuilt parent is partial-only and ages out again.
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
@@ -1088,7 +1088,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         for (const buf of h.stats.createdBuffers) assert.ok(buf.destroyed <= 1, 'a buffer was destroyed more than once');
     });
 
-    it('a sub-batch dropped with its evicted parent is rebuilt from the warm pieces on the next frame', () => {
+    it('a sub-batch on screen survives its parent\'s eviction', () => {
         const h = makeHarness();
         const { grey } = seedBatches(h);
         const scene = sceneOf(h);
@@ -1099,11 +1099,15 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             if (grey.gpuResident === false) evictedAt = i;
         }
         assert.ok(evictedAt >= 0, 'parent evicted');
+        assert.strictEqual(scene['partialBatchCache'].size, 1);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'not destroyed with the parent');
+        const createdBefore = h.stats.createdBuffers.length;
         const drawsBefore = h.stats.draws.length;
         h.render({ isolatedIds: new Set([2]) });
         assert.ok(h.stats.draws.length > drawsBefore, 'the frame after eviction still draws the subset');
-        assert.strictEqual(scene['partialBatchCache'].size, 1);
-        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        assert.strictEqual([...scene['partialBatchCache'].values()][0], sub, 'the same sub-batch, not a rebuild');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore);
         assert.deepStrictEqual([...sub.expressIds], [2]);
     });
 
@@ -1170,10 +1174,10 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         h.render({ isolatedIds: new Set([2]) });
         assert.ok(h.stats.draws.length > drawsBefore, 'the subset draws from the restored pieces');
         assert.strictEqual(coldLoads, 1);
-        // Revealing the whole batch now asks for the full GPU rebuild.
+        // Revealing the whole batch rebuilds it in that frame: its subset was on screen.
         h.render({ hiddenIds: new Set([3]) });
-        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
         assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
     });
 
     // Shared set-up: grey {1,2} cold (hidden past both passes), provider ready.
@@ -1251,6 +1255,53 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.ok(scene['coldBuckets'].has(grey.colorKey));
         assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)), 'the cold parent\'s slot is released');
         assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+    });
+
+    it('without a host budget, the sub-batch of an evicted parent that leaves the view is freed after the eviction age', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        for (let i = 0; i < 10; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'kept while it may come right back');
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed once idle');
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)));
+        assert.strictEqual(scene['subsetOnlyParents'].size, 0);
+        // Showing it again cuts a fresh subset from the warm pieces.
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore);
+    });
+
+    it('show-all after isolate draws the formerly isolated elements on the transition frame', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.stats.draws.length = 0;
+        h.render({});
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'rebuilt in the transition frame');
+        assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
+        assert.strictEqual(scene['partialBatchCache'].size, 0);
+        assert.strictEqual(scene['subsetOnlyParents'].size, 0);
+    });
+
+    it('an evicted batch whose subset was NOT on screen is still restored through the time-sliced queue', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
     });
 });
 

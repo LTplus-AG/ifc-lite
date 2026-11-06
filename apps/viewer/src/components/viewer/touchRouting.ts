@@ -25,10 +25,17 @@ import { handleMeasureClickAt } from './selectionHandlers.js';
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
 export { beginMeasurePress } from './distanceClick.js';
 
-/** Wrap a pointer handler so touch-sourced pointer events never reach it. */
+/**
+ * Wrap a pointer handler so touch-sourced pointer events never reach it. This
+ * is where the mouse controls part from touch, so it also notes the input the
+ * viewport saw last (#8879): a pen words the hints as touch does, since a
+ * stylus taps and often has no keyboard. The touch controls note a finger.
+ */
 export function ignoreTouchPointers(handler: (e: PointerEvent) => unknown): (e: PointerEvent) => void {
   return (e) => {
-    if (e.pointerType !== 'touch') void handler(e);
+    if (e.pointerType === 'touch') return;
+    useViewerStore.getState().setPointerInput(e.pointerType === 'pen' ? 'touch' : 'mouse');
+    void handler(e);
   };
 }
 

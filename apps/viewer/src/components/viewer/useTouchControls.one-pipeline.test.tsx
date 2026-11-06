@@ -24,6 +24,8 @@ import { render, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
 import { useTouchControls, type UseTouchControlsParams } from './useTouchControls.js';
+import { measureHintKey } from './tools/measure-modes/readouts.js';
+import { measureEn } from '@/i18n/catalogues/measure.en';
 
 const ref = <T,>(current: T) => ({ current });
 const noop = () => {};
@@ -111,7 +113,7 @@ function rig(tool: string, pickedId: number | null = null) {
   return { canvas, camera, menus, selectionCount: () => selections };
 }
 
-function pointer(type: string, pointerType: 'touch' | 'mouse', x: number, y: number): PointerEvent {
+function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number): PointerEvent {
   const e = new PointerEvent(type, { button: 0, pointerId: 1, bubbles: true, cancelable: true });
   Object.defineProperties(e, {
     clientX: { value: x, configurable: true },
@@ -151,7 +153,7 @@ afterEach(() => {
   cleanup();
   for (const canvas of document.querySelectorAll('canvas')) canvas.remove();
   useViewerStore.getState().clearMeasurements();
-  useViewerStore.setState({ measureMode: 'drag', activeMeasurement: null });
+  useViewerStore.setState({ measureMode: 'drag', activeMeasurement: null, pointerInput: 'mouse' });
 });
 
 describe('touch long press (#5859)', () => {
@@ -293,5 +295,72 @@ describe('a touch that began before a Measure gesture reset places no point (#87
     act(() => useViewerStore.getState().setMeasureMode('drag'));
     await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
     assert.equal(useViewerStore.getState().activeMeasurement === null, true, 'BUG: the lift set a distance start the user never placed in Distance');
+  });
+});
+
+/** The Measure hint line's English text for the store as it stands. */
+const hint = (): string => String(measureEn[measureHintKey(useViewerStore.getState()) as keyof typeof measureEn]);
+/** Words a touch user has no way to act on. */
+const MOUSE_ONLY = /\b(click|dbl-click|shift|esc|enter)\b/i;
+const mouseAt = (canvas: HTMLCanvasElement, type: string, x: number, y: number, kind: 'mouse' | 'pen' | 'touch' = 'mouse') =>
+  act(() => { canvas.dispatchEvent(pointer(type, kind, x, y)); });
+
+describe('the Measure hint follows the last input (#8879)', () => {
+  it('a tap leaves a Distance hint with no Shift, Esc or click', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    assert.ok(useViewerStore.getState().activeMeasurement, 'the tap set the start');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'the pending-end hint after a tap');
+    assert.match(hint(), /\btap\b/i);
+  });
+
+  it('a mouse move after a tap brings back the click wording with Shift', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    mouseAt(canvas, 'pointermove', 400, 300);
+    assert.match(hint(), /Shift/, 'the mouse user is offered the axis lock again');
+  });
+
+  it('a mouse click with no move after a tap brings back the click wording', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    await tap(canvas, 500, 300);
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'the start hint after two taps');
+    mouseAt(canvas, 'pointerdown', 200, 300);
+    mouseAt(canvas, 'pointerup', 200, 300);
+    assert.match(hint(), /click/i);
+  });
+
+  it('on a hybrid device the hint follows whichever input was used last', async () => {
+    const { canvas } = rig('measure');
+    mouseAt(canvas, 'pointermove', 100, 300);
+    assert.match(hint(), /click/i, 'mouse first');
+    await tap(canvas, 200, 300);
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'then a tap');
+    mouseAt(canvas, 'pointermove', 300, 300);
+    assert.match(hint(), /Shift/, 'then the mouse again');
+    await tap(canvas, 400, 300);
+    assert.equal(useViewerStore.getState().measurements.length, 1, 'the tap finished the measurement');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'then a tap again');
+  });
+
+  it('the touch-sourced pointer events of a finger keep the tap wording', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    pointerDrag(canvas, 'touch');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'a finger\'s pointer events are not a mouse');
+  });
+
+  it('a touch in another tool words the Measure hint for touch on entry', async () => {
+    const { canvas } = rig('select');
+    await tap(canvas, 200, 300);
+    assert.equal(useViewerStore.getState().pointerInput, 'touch');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'the Distance start hint on entering Measure');
+  });
+
+  it('a pen words the hint as touch does', () => {
+    const { canvas } = rig('measure');
+    mouseAt(canvas, 'pointermove', 100, 300, 'pen');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'a stylus has no Shift or Esc to rely on');
   });
 });

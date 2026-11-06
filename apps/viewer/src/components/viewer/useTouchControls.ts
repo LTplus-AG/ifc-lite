@@ -142,6 +142,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     const handleTouchStart = async (e: TouchEvent) => {
       invalidateSelectionPick(canvas);
+      useViewerStore.getState().setPointerInput('touch'); // the Measure hint follows the last input (#8879)
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
 
@@ -158,10 +159,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         // Record tap start for tap-to-select detection
         touchState.tapStartTime = Date.now();
-        touchState.tapStartPos = {
-          x: touchState.touches[0].clientX,
-          y: touchState.touches[0].clientY,
-        };
+        touchState.tapStartPos = { ...touchState.lastCenter };
         touchState.didMove = false;
         beginMeasurePress(touchState);
         longPress.begin(touchState.touches[0]);

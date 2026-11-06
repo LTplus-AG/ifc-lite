@@ -39,7 +39,7 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
     category: 'View', icon: FolderOpen, registryOwned: true, action: () => {} } as const;
   // @ts-expect-error A registered row renders only its registry label, so it takes no label parameters.
   const withParams: Command = { ...registered, labelKeyParams: { count: 1 } };
-  // @ts-expect-error A registered row has no runtime detail to drop.
+  // #8947: registered projection now preserves secondary detail.
   const withDetail: Command = { ...registered, detail: '1.4 MB' };
   void manualLabel; void unknownId; void contextOnly; void railIds; void unowned; void withParams; void withDetail;
 }
@@ -137,4 +137,21 @@ it('keeps runtime detail alongside a category without renaming registered comman
   const frame = document.querySelector('[data-command-id="view:frame"]');
   assert.equal(frame?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('view:frame', 'palette').labelKey));
   assert.ok(frame?.textContent?.includes('Ansicht'));
+});
+
+
+it('registered options preserve projected detail, toggle state and disabled description (#8947)', async () => {
+  const { RegisteredPaletteOption } = await loadOptions();
+  let calls = 0;
+  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement}
+    projection={{ detail: 'Projected detail', stateKey: 'commandPalette.state.off',
+      availability: { status: 'disabled', reasonKey: 'commandPalette.availability.editor' } }}
+    onActivate={() => { calls++; }} />);
+  const row = document.querySelector<HTMLButtonElement>('[role="option"]')!;
+  assert.match(row.textContent ?? '', /Projected detail/);
+  assert.match(row.textContent ?? '', /Off/);
+  assert.equal(row.getAttribute('aria-disabled'), 'true');
+  assert.match(document.getElementById(row.getAttribute('aria-describedby')!)?.textContent ?? '', /Requires editor access/);
+  click(row);
+  assert.equal(calls, 0);
 });

@@ -24,6 +24,20 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  'commandPalette.availability.editor': 'Requires editor access',
+  'commandPalette.availability.feature': 'Unavailable in this configuration',
+  'commandPalette.availability.selection': 'Select elements in the viewer first',
+  'commandPalette.availability.entity': 'Select an IFC entity first',
+  'commandPalette.availability.ifc': 'Load a model with IFC data first',
+  'commandPalette.availability.model': 'Load a model first',
+  'commandPalette.availability.camera': 'Wait for the viewer camera to be ready',
+  'commandPalette.availability.workplane': 'Choose a valid modeling workplane first',
+  'commandPalette.availability.schedule': 'Create or import a schedule first',
+  'commandPalette.availability.host': 'Open the viewer tool host first',
+  'commandPalette.availability.loading': 'Wait for model loading to finish',
+  'commandPalette.state.on': 'On',
+  'commandPalette.state.off': 'Off',
+
   // ── File ──
   'commandPalette.file.open.label': 'Open File',
   'commandPalette.file.saveFederationSetup.label': 'Save Federation Setup',

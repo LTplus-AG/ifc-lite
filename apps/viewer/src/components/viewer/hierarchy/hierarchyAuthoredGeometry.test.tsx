@@ -181,13 +181,19 @@ describe('hierarchy rows of elements authored with geometry (#9026)', () => {
     assert.deepEqual(group?.memberGlobalIds, [globalOf(expressId)]);
   });
 
-  it('the storey row\'s subtree already holds the authored parts, so it dims with them', async () => {
+  it('the storey row\'s subtree holds parts linked only by an authored aggregate', async () => {
     await seed();
     const { partIds } = addCurtainWall();
+    // A copied assembly's parts reach their storey through the aggregate alone, not `byStorey`.
+    const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    const view = overlay(MODEL)!;
+    const part = view.createEntity('IfcBuildingElementPart', []).expressId;
+    view.createEntity('IfcRelAggregates', ['0kTvXnbbzCWw8lcMd1dR4p', null, null, null, `#${wall.expressId}`, [`#${part}`]]);
     const storey = spatialTree(liveModels()).find((node) => node.type === 'IfcBuildingStorey');
     assert.ok(storey);
-    const subtree = new Set(createStoreySubtreeResolver(liveModels(), null)(storey));
-    for (const id of partIds) assert.ok(subtree.has(globalOf(id)), `part #${id}`);
+    const subtree = new Set(createStoreySubtreeResolver(liveModels(), null, overlay)(storey));
+    for (const id of [...partIds, part]) assert.ok(subtree.has(globalOf(id)), `part #${id}`);
   });
 
   it('counts a curtain wall as an element with geometry', async () => {

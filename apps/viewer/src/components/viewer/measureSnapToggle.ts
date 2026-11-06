@@ -24,25 +24,23 @@ import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 export function measureSnapToggle(ctx: MouseHandlerContext, snap: boolean): void {
   cancelMeasureRaycast(ctx);
   const cursor = measureCursor(ctx);
-  if (!cursor) return;
-  const s = useViewerStore.getState();
-  const point = s.measureMode === 'point';
-  if (point ? !s.measurePointLive : !s.activeMeasurement || cursor.view === null) return;
-  // The animation loop's pass ends Point's Live and replaces the rubber band's noted state on any view or
-  // scene change (#8886, #8998), and the canvas box watch clears that state. Run it now, as the last frame
-  // saw Snap, so a change since that frame counts too, and the toggle itself reaches the pass only on the
-  // next frame.
+  if (!cursor?.view) return;
+  const point = useViewerStore.getState().measureMode === 'point';
+  if (!point && !useViewerStore.getState().activeMeasurement) return;
+  // The animation loop's pass ends Point's Live and replaces the noted state on any view or scene change
+  // (#8886, #8998), and the canvas box watch clears that state. Run it now, as the last frame saw Snap, so
+  // a change since that frame counts too, and the toggle itself reaches the pass only on the next frame.
   syncMeasureScreenCoords({ ...ctx, snapEnabledRef: { current: !snap } });
+  if (cursor.view !== ctx.lastCameraStateRef.current) return;
   // The refs catch up with the store only on the next render: pick under the new setting, with no lock to
   // slide along (a lock built with Snap on is stale, and Snap off builds none).
   const picking = { ...ctx, snapEnabledRef: { current: snap }, edgeLockStateRef: { current: getDefaultEdgeLockState() } };
-  if (point) {
-    if (useViewerStore.getState().measurePointLive) hoverMeasurePoint(picking, cursor.x, cursor.y);
-  } else if (cursor.view === ctx.lastCameraStateRef.current) {
-    // Bring the pass up to the new setting first, as a Point hover does, so the next frame keeps its state
-    // and the next toggle still finds the cursor's view current.
+  // Bring the pass up to the new setting first (the Point hover does so itself), so the next frame keeps
+  // its state and the next toggle still finds the cursor's view current.
+  if (point) hoverMeasurePoint(picking, cursor.x, cursor.y);
+  else {
     syncMeasureScreenCoords(picking);
     moveRubberBand(picking, cursor.x, cursor.y, cursor.orthogonal);
-    noteMeasureCursor(ctx, { ...cursor, view: ctx.lastCameraStateRef.current });
   }
+  noteMeasureCursor(ctx, { ...cursor, view: ctx.lastCameraStateRef.current });
 }

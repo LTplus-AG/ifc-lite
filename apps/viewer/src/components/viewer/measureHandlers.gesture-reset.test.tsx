@@ -915,6 +915,55 @@ describe('a Snap toggle re-picks the live preview under the new setting at the c
     assert.equal(locksSeen.length, 0, 'Snap off picked after a wheel zoom');
   });
 
+  it('Point mode over background within snap reach: Snap on re-picks the corner Snap off had missed', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 730, 250); // background, 30 px from the corner at 7,0
+    flushFrames();
+    assert.equal(xy(s().measurePointLive), '7,0', 'setup: Live snapped onto the corner');
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'setup: the unsnapped re-pick missed');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '7,0', 'BUG: Snap on left Live empty where a click places the corner');
+  });
+
+  it('Point mode, just after a click: Snap off keeps the placed point and shows no Live reading', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    click(canvas, 400, 250);
+    assert.equal(s().measurePointLive === null, true, 'setup: the click replaced the Live reading');
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'Snap off brought a Live reading back over the placed point');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a click');
+  });
+
+  it('Point mode: a navigation press nudged within the click slop keeps the cursor, so Snap off still re-picks', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 402, 251)); });
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'a nudge under the click slop forgot the Point cursor');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 402, 251)); });
+  });
+
+  it('Distance: Shift released while the window was away (blur, no keyup), Snap off re-picks off the axis', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'setup: the move followed the Shift axis');
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'a blur left the re-pick on the axis');
+  });
+
   it('Distance: a camera move then a plain move in one frame still re-picks (#9052)', async () => {
     const { canvas, camera } = mount();
     click(canvas, 200, 300);
@@ -959,6 +1008,25 @@ describe('the Distance end over background (#9049)', () => {
     click(canvas, 750, 250);
     assert.equal(s().measurements.length, 1, 'setup: the click measured to the corner');
     assert.equal(xy(s().measurements[0].end), '7,0', 'the click measured somewhere else');
+  });
+
+  it('picks per frame over background after a slow frame: one retry with Snap on, none with Snap off, none on the next fast frame', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    const frame = (x: number) => {
+      ctx.lastMeasureRaycastDurationRef.current = 1e6;
+      fire(canvas, 'pointermove', x, 250);
+      locksSeen.length = 0;
+      flushFrames();
+      return locksSeen.length;
+    };
+    assert.equal(frame(780), 2, 'a reduced miss with Snap on is checked once with the full options');
+    fire(canvas, 'pointermove', 781, 250);
+    locksSeen.length = 0;
+    flushFrames(); // the retry was not timed: this frame is not reduced
+    assert.equal(locksSeen.length, 1, 'the retry kept the next frame reduced');
+    await pressKey('s');
+    assert.equal(frame(780), 1, 'with Snap off the reduced options are the full ones: no retry');
   });
 
   it('on the Shift axis, collapses too and drops the active axis', () => {

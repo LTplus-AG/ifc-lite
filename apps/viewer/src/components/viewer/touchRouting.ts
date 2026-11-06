@@ -225,12 +225,15 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
   });
   // The event's modifier state, so releasing one Shift key with the other held keeps the axis
   const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.shiftKey); };
+  const onBlur = () => noteMeasureShift(ctx, false); // a release while the window is away sends no keyup
   window.addEventListener('keydown', onShift);
   window.addEventListener('keyup', onShift);
+  window.addEventListener('blur', onBlur);
   const stop = () => {
     unsubscribe();
     window.removeEventListener('keydown', onShift);
     window.removeEventListener('keyup', onShift);
+    window.removeEventListener('blur', onBlur);
   };
   measureContexts.set(canvas, { ctx, stop });
 }

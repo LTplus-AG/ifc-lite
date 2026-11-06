@@ -146,11 +146,12 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced }),
   });
   let result = pick(reduceComplexity);
-  // The release picks with the full options: a miss is shown only where a click would miss too (#9049)
-  if (reduceComplexity && !result.intersection && !result.snapTarget) result = pick(false);
 
-  // Track raycast duration for adaptive throttling
+  // Track raycast duration for adaptive throttling: the first pick's, so the retry below keeps no frame reduced
   ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;
+
+  // The release picks with the full snap options: a miss is shown only where a click would miss too (#9049)
+  if (reduceComplexity && ctx.snapEnabledRef.current && !result.intersection && !result.snapTarget) result = pick(false);
 
   const snapPoint = result.snapTarget || result.intersection;
   let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;

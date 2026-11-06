@@ -43,6 +43,7 @@ function pickPoint(ctx: MouseHandlerContext, x: number, y: number) {
 /** Place the last point. A miss keeps the previous point, as a polyline miss does, and ends a Live reading. */
 export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
+  noteMeasureCursor(ctx, null); // the placed point, not a Live one, is what the readout shows now (#9022)
   // The click's pick supersedes a trailing hover or a hover frame already
   // queued, either of which would turn the readout back to "Live" for the
   // spot just placed (#8828).
@@ -97,7 +98,9 @@ function cancelTrailingHover(ctx: MouseHandlerContext): void {
  */
 export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: number): void {
   cancelTrailingHover(ctx);
-  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: null });
+  // With the view this move reads under, as a rubber-band move notes it (#9022)
+  syncMeasureScreenCoords(ctx);
+  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: ctx.lastCameraStateRef.current });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
     armTrailingHover(ctx, x, y, wait);
@@ -157,5 +160,6 @@ export function cancelQueuedHover(ctx: MouseHandlerContext): void {
 /** The cursor left the canvas: drop a queued hover frame and the preview, so the readout falls back to the last point. */
 export function endMeasurePointHover(ctx: MouseHandlerContext): void {
   cancelQueuedHover(ctx);
+  if (pointModeLive()) noteMeasureCursor(ctx, null); // no Live reading for a Snap toggle to re-pick (#9022)
   useViewerStore.getState().setMeasurePointLive(null);
 }

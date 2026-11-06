@@ -172,6 +172,12 @@ test('palette reset restores visibility while keeping selection and collection (
   const id = await wall(page);
   await run(page, 'vis:set-iso', 'set collection');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(1);
+  // Set collection intentionally consumes selection; Hide needs a fresh target.
+  expect(await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { scalar: s.selectedEntityId, count: s.selectedEntityIds.size };
+  })).toEqual({ scalar: null, count: 0 });
+  expect(await wall(page)).toBe(id);
   await run(page, 'vis:hide', 'hide');
   await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(true);
   // Hide deliberately clears selection. Re-select the same parsed wall to test

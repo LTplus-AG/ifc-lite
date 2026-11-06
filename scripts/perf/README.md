@@ -8,7 +8,10 @@
 
 **Default worker-pool path qualified: no material regression within the preset
 limits.** Fresh-browser paired runs on Haus, ISSUE_129 and Holter completed with
-identical mesh bytes and counts across base and branch. The bounded scope is
+matching positions, normals and indices byte hashes, express IDs, colours, origins
+and mesh/vertex/triangle counts across base and branch. Optional MeshData fields
+(materials, shading colours, UVs, textures and geometry classes) were not compared;
+complete MeshData identity is not established. The bounded timing scope is
 four workers with flat geometry; renderer/GPU upload and enabled gross-mode
 performance are not claimed. [Reports, raw samples and reproduction helpers](../../tests/evidence/skip-voids-8875/worker-pool/provenance.json)
 record source identities, WASM hashes, acceptance thresholds and host checks.

@@ -14,17 +14,18 @@
     "maxSpreadPercentEachSide": 15,
     "maxMedianRegressionPercent": 5,
     "allSamplesRequired": true,
-    "meshByteIdentityRequired": true
+    "listedGeometryFieldsIdentityRequired": true
   },
   "scope": "Fresh-browser four-worker flat geometry (enableInstancing=false), default skipVoids=false. Includes worker/WASM startup, prepass, processing and delivery; file read and post-run hashing outside timer. Not renderer/GPU upload timing, enabled skipVoids timing, or proof of every possible processor configuration.",
-  "identity": "Sorted SHA256 per mesh includes expressId,color,origin,positions,normals,indices. Every sample matched counts and hashes across both revisions.",
+  "identity": "Sorted per-mesh SHA256 covers positions, normals and indices byte buffers plus JSON-serialized expressId, color and origin. Every sample matched these hashes and mesh/vertex/triangle counts across both revisions. This is not complete MeshData identity.",
   "browser": "Provisioned headless Chromium156.0.8078.80",
   "host": "pop-os",
   "qualification": "No material default-path regression within preset limits; no speedup claim.",
   "limitations": [
     "Native integer-ms phase report stayed inconclusive for sub-ms phases; pinned totals were stable.",
     "Full-viewer browser attempts failed GPU startup/device-loss on both base and branch. These failures remain failures; isolated worker qualification excludes the renderer.",
-    "Historical baseline-WASM compatibility contract skipped because no baseline bundle was supplied."
+    "Historical baseline-WASM compatibility contract skipped because no baseline bundle was supplied.",
+    "Identity coverage excludes shadingColor, material, uvs, texture, geometryClass and any other fields outside the explicit list. The original report identical and qualified flags refer only to the listed fields and timing thresholds; they do not establish complete MeshData equality. Original samples, reports and executed helpers are preserved unchanged."
   ],
   "files": {
     "runs.jsonl": "c6be515021d2c616a3d53fc34ba1c287a98cbada881ba96b25b6dac50f3671e8",

@@ -160,6 +160,25 @@ describe('storey deletion', () => {
     expect([60, 70].map((id) => effectiveStoreyId(reloaded.store, null, id))).toEqual([40, 40]);
   });
 
+  it('moving more than one batch keeps each source relationship one relationship (#9013 review)', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    // Level 2's containment #90 lists 201 products: more than one reassignment batch.
+    const walls: number[] = [];
+    for (let i = 0; i < 199; i++) {
+      const point = s.editor.addEntity('IfcCartesianPoint', [[i * 100, 5000, 0]]).expressId;
+      const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+      const placement = s.editor.addEntity('IfcLocalPlacement', ['#44', `#${axis}`]).expressId;
+      const guid = `2${String(i).padStart(3, '0')}ZqLm4Nr6Tv0Xy3Bc5D`;
+      walls.push(s.editor.addEntity('IfcBuildingElementProxy', [guid, null, `P${i}`, null, null, `#${placement}`, null, null, null]).expressId);
+    }
+    s.editor.setPositionalAttribute(90, 4, ['#60', '#70', ...walls.map((id) => `#${id}`)]);
+    api('applyStoreyDelete')(s.store, s.editor, 42, { kind: 'move', targetStoreyId: 40 });
+    const onLevel1 = api('readStoreyInventory')(s.store, s.view).relationships
+      .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' && rel.parent === 40);
+    expect(onLevel1.map((rel) => rel.id)).toEqual([90]);
+    expect(onLevel1[0].children).toEqual([60, 70, ...walls]);
+  });
+
   it('deletes the contents with the storey', async () => {
     const s = session(await parse(THIRD_PARTY));
     api('applyStoreyDelete')(s.store, s.editor, 42, { kind: 'deleteContents' });

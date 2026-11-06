@@ -137,9 +137,13 @@ export function applyStoreyDelete(
     }
     if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
     if (mode.kind === 'move') {
+      const before = readStoreyInventory(store, draft.getMutationView());
+      const sources = spatialRelationships(before, storeyId);
+      const existing = new Set(before.relationships.map((rel) => rel.id));
       for (let start = 0; start < plan.roots.length; start += REASSIGN_BATCH) {
         reassignElementsToStoreyInStore(store, draft, plan.roots.slice(start, start + REASSIGN_BATCH), storeyId, mode.targetStoreyId);
       }
+      rejoinSplitRelationships(store, draft, sources, existing, mode.targetStoreyId);
     }
     const removed = new Set<number>([storeyId]);
     if (mode.kind === 'deleteContents') for (const id of plan.contents) removed.add(id);
@@ -147,6 +151,39 @@ export function applyStoreyDelete(
     for (const id of removed) draft.removeEntity(id);
     return plan;
   });
+}
+
+/** The storey's containment and decomposition relationships, with the children each lists. */
+function spatialRelationships(inventory: StoreyInventory, storeyId: number): Array<{ id: number; type: string; children: ReadonlySet<number> }> {
+  return (inventory.outgoing.get(storeyId) ?? [])
+    .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' || rel.type === 'IFCRELAGGREGATES')
+    .map((rel) => ({ id: rel.id, type: rel.type, children: new Set(rel.children) }));
+}
+
+/**
+ * The reassignment takes at most REASSIGN_BATCH roots, so a relationship
+ * listing more is moved in parts: the last part moves it whole (keeping its
+ * identity), the earlier ones each make a fresh destination relationship.
+ * Fold those back into the original, so every source relationship arrives as
+ * the one relationship it was, as the reassignment contract promises.
+ */
+function rejoinSplitRelationships(
+  store: IfcDataStore, draft: StoreEditor,
+  sources: ReadonlyArray<{ id: number; type: string; children: ReadonlySet<number> }>, existing: ReadonlySet<number>, targetId: number,
+): void {
+  const inventory = readStoreyInventory(store, draft.getMutationView());
+  const live = new Map(inventory.relationships.map((rel) => [rel.id, rel]));
+  const fresh = inventory.relationships.filter((rel) => !existing.has(rel.id) && rel.parent === targetId);
+  for (const source of sources) {
+    const kept = live.get(source.id);
+    if (!kept || kept.parent !== targetId) continue;
+    const parts = fresh.filter((rel) => rel.type === source.type && rel.children.every((child) => source.children.has(child)));
+    if (parts.length === 0) continue;
+    const arrived = new Set([...kept.children, ...parts.flatMap((rel) => rel.children)]);
+    // In the source's own order.
+    draft.setPositionalAttribute(source.id, kept.listIndex, [...source.children].filter((child) => arrived.has(child)).map(ref));
+    for (const part of parts) draft.removeEntity(part.id);
+  }
 }
 
 /**

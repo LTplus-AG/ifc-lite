@@ -33,10 +33,12 @@ interface AnalysisEmptyStateProps {
   action?: ReactNode;
   /** Loads the demo kit this panel can analyse; absent when there is none (BCF). */
   loadDemo?: () => Promise<void>;
+  /** See `EmptyState`: `start` sits under the panel's own controls. */
+  align?: 'center' | 'start';
   className?: string;
 }
 
-export function AnalysisEmptyState({ icon, title, description, hint, action, loadDemo, className }: AnalysisEmptyStateProps) {
+export function AnalysisEmptyState({ icon, title, description, hint, action, loadDemo, align, className }: AnalysisEmptyStateProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const [loading, setLoading] = useState(false);
@@ -56,17 +58,17 @@ export function AnalysisEmptyState({ icon, title, description, hint, action, loa
   };
 
   const footer = action || offerDemo || hint ? (
-    <div className="flex flex-col items-center gap-2">
+    <>
       {action}
       {offerDemo && (
-        <Button variant="outline" size="sm" className="gap-1.5" disabled={loading} onClick={() => { void tryDemo(); }}>
+        <Button variant={action ? 'ghost' : 'outline'} size="sm" className="h-7 gap-1.5" disabled={loading} onClick={() => { void tryDemo(); }}>
           {loading ? <Spinner size="sm" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
           {t(loading ? 'analysisPanel.demo.loading' : 'analysisPanel.demo.try')}
         </Button>
       )}
-      {hint && <p className="max-w-[240px] text-2xs text-muted-foreground">{hint}</p>}
-    </div>
+      {hint && <p className="max-w-64 text-2xs text-muted-foreground">{hint}</p>}
+    </>
   ) : undefined;
 
-  return <EmptyState icon={icon} title={title} description={description} action={footer} className={className} />;
+  return <EmptyState icon={icon} title={title} description={description} action={footer} align={align} className={className} />;
 }

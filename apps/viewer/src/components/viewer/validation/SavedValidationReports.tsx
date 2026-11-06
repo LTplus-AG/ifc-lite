@@ -7,6 +7,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { DisclosureSummary, DISCLOSURE_GROUP } from '@/components/ui/disclosure';
 import { ContentStorageNotice } from '../ContentStorageNotice';
 import { IdsReportPreview } from '../document/IdsReportPreview';
 import { ManualReportPreview } from '../document/ManualReportPreview';
@@ -50,8 +52,8 @@ export function SavedValidationReports() {
   return (
     <>
       <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreValidationReports()} retry={() => useViewerStore.getState().retryValidationReportsSave()} />
-      <details className="shrink-0 border-b p-2 text-xs" data-saved-validation-reports ref={disclosure}>
-        <summary className="cursor-pointer font-medium">{t('validationPanel.history.title')} ({reports.length})</summary>
+      <details className={cn(DISCLOSURE_GROUP, 'shrink-0 border-b px-2 py-1.5 text-xs')} data-saved-validation-reports ref={disclosure}>
+        <DisclosureSummary className="font-medium">{t('validationPanel.history.title')} ({reports.length})</DisclosureSummary>
         {reports.length > 0 && (
             <select aria-label={t('validationPanel.history.select')} value={report?.id ?? ''} className="rounded border border-input bg-background p-1" onChange={(e) => { useSavedValidationFocus.setState({ record: null }); useLibraryFocus.setState({ target: null }); setPicked(e.target.value); }}>
               {!report && <option value="" disabled>{t('validationPanel.history.select')}</option>}

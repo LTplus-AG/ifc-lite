@@ -17,4 +17,6 @@ export const analysisPanelRu = {
   "analysisPanel.demo.try": "Попробовать с демонстрационными данными",
   "analysisPanel.demo.loading": "Загрузка демонстрационных данных…",
   "analysisPanel.demo.failed": "Не удалось загрузить демонстрационные данные.",
+  "panelHeader.moreActions": "Другие действия",
+  "panelHeader.close": "Закрыть",
 } satisfies Catalogue;

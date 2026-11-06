@@ -38,6 +38,7 @@ import { toast } from '@/components/ui/toast';
 import { resolve } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
 import { expandAffectedSet, type RemeshCause } from './affected-set';
+import { withAuthoredStyles } from './authored-style-wire';
 import { loadRtcFrame, toRenderFrame } from './render-frame';
 
 export type { RemeshCause } from './affected-set';
@@ -314,7 +315,7 @@ async function remesh(
       buffer: sub.bytes,
       targets: Uint32Array.from(targets),
       frame,
-      ...filterStyleWire(wire.styleIds, wire.styleColors, sub.ids),
+      ...withAuthoredStyles(filterStyleWire(wire.styleIds, wire.styleColors, sub.ids), view, sub.ids),
       materialElementIds: wire.materialElementIds,
       materialColorCounts: wire.materialColorCounts,
       materialColors: wire.materialColors,

@@ -4,6 +4,7 @@
 
 import type { LineVertices } from './section-2d-line-buffer.js';
 import { sectionExclusions } from './section-exclusions.js';
+import { PickClipRevision } from './pick-clip-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
@@ -533,14 +534,14 @@ export class Renderer {
     // overrideParams: full entity anchor for clipping, plus colour-override mode (#6076).
     private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
-    // What the last render() actually clipped, so the GPU picker can mirror it and
-    // section/crop-clipped geometry stays unpickable, not just invisible. Updated
-    // every render; read by pick()/pickRect(). null = nothing clipped that frame.
+    // What the last render() actually clipped, so the GPU picker can mirror it and section/crop-clipped
+    // geometry stays unpickable, not just invisible. Updated every render; read by pick()/pickRect(). null = nothing clipped that frame.
     private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
     private _sectionExcludedIds: ReadonlySet<number> = new Set();
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
+    private readonly _pickClipRevision = new PickClipRevision(); // see getPickClipRevision()
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
@@ -1902,12 +1903,10 @@ export class Renderer {
             // Load/overlay paths own model + camera scene bounds; the Gaussian
             // layer independently updates the camera's depth-only extent (#8564).
 
-            // Stash what we actually clipped this frame so the GPU picker mirrors
-            // it (section/crop-clipped geometry must be unpickable, not just hidden).
-            // `flipped` matches how the mesh flags pack it below. terrainClipY feeds
-            // sectionPlaneData too, so it's covered without special-casing.
-            // Snapshot (don't alias the caller's arrays/object) so an in-place
-            // mutation after render() can't make pick() mirror a different cut.
+            // Stash what we actually clipped this frame so the GPU picker mirrors it (section/crop-clipped
+            // geometry must be unpickable, not just hidden). `flipped` matches the mesh flags packed below;
+            // terrainClipY feeds sectionPlaneData too. Snapshot, don't alias the caller's arrays/object, so
+            // an in-place mutation after render() can't make pick() mirror a different cut.
             this._activePickSection = sectionPlaneData?.enabled
                 ? {
                     normal: [...sectionPlaneData.normal] as [number, number, number],
@@ -1925,6 +1924,7 @@ export class Renderer {
                     max: [...options.clipBox.max] as [number, number, number],
                 }
                 : null;
+            this._pickClipRevision.note(this.activePickClip());
 
             // Meshes this camera's RTE frame cannot represent (#6128). Nothing
             // culls individual meshes before this point, so a far-off mesh (a
@@ -3206,6 +3206,8 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
+    /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
+    getPickClipRevision(): number { return this._pickClipRevision.revision; }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;

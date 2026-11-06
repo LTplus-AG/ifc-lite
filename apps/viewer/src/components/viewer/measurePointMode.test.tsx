@@ -24,10 +24,12 @@ import { hasPendingMeasurementState } from '@/utils/viewportUtils.js';
 import { staleMeasurementIds } from '@/lib/model-placement/spatial-invalidation';
 import { measureRu } from '@/i18n/locales/ru/measure';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
+import { useVisibilityState } from '@/hooks/useViewerSelectors.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { handleMeasureTap } from './touchRouting.js';
 import { handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
 import { endMeasurePointHover, hoverMeasurePoint, hoverMeasurePointAt } from './measurePointMode.js';
+import { measureCanvasBoxWatch } from './measureCameraState.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { MeasureOverlay } from './tools/MeasurePanel.js';
@@ -48,6 +50,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     projectionMode: 'perspective' as 'perspective' | 'orthographic', orthoSize: 10,
     fov: 45, up: { x: 0, y: 1, z: 0 },
   };
+  /** The renderer's pick-clip revision; a test redraws a new cut by bumping it. */
+  const clip = { revision: 0 };
   const ctx = {
     canvas: document.createElement('canvas'),
     camera: {
@@ -61,6 +65,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
       getUp: () => ({ ...pose.up }),
     },
     renderer: {
+      getPickClipRevision: () => clip.revision,
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
         locks.push(lock.edge !== null), snapOptions.push(opts.snapOptions), {
         intersection: hit.current ? { point: hit.current } : null,
@@ -87,7 +92,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     clearEdgeLock: () => {},
     setSnapVisualization: () => {},
   } as unknown as MouseHandlerContext;
-  return { ctx, snapTargets, locks, snapOptions, pose };
+  return { ctx, snapTargets, locks, snapOptions, pose, clip };
 }
 
 const ON_WALL = { x: 3, y: 4, z: -5 };
@@ -583,6 +588,17 @@ describe('Point on the Measure mode strip (#8770)', () => {
   });
 });
 
+/** What the camera pass records about the scene a pick filters by (#8886). */
+const sceneOf = (ctx: MouseHandlerContext) => ({
+  hidden: ctx.hiddenEntitiesRef.current, isolated: ctx.isolatedEntitiesRef.current, clip: ctx.renderer.getPickClipRevision(),
+});
+/** A camera pass that last ran for some older camera, over the current scene. */
+const olderView = (ctx: MouseHandlerContext) => ({
+  position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
+  projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, canvasWidth: 1, canvasHeight: 1,
+  scene: sceneOf(ctx),
+});
+
 describe('Point mode readout staleness (#8828)', () => {
   it('a camera move ends "Live": the reprojection pass drops the hover point and keeps the placed one', () => {
     useViewerStore.setState({ measurePointLive: mp(ELSEWHERE) });
@@ -599,14 +615,11 @@ describe('Point mode readout staleness (#8828)', () => {
 
   it('a hover brings the camera pass up to the camera it picked under, so the next frame keeps it', () => {
     const { ctx, pose } = fakeCtx({ current: ON_WALL });
-    ctx.lastCameraStateRef.current = {
-      position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
-      projectionMode: 'perspective', orthoSize: 1, fov: 1, up: { x: 0, y: 0, z: 1 }, canvasWidth: 1, canvasHeight: 1,
-    };
+    ctx.lastCameraStateRef.current = olderView(ctx);
     hoverMeasurePoint(ctx, 3, 4);
     assert.deepEqual(xyz(useViewerStore.getState().measurePointLive), [3, 4, -5]);
     assert.deepEqual(ctx.lastCameraStateRef.current, {
-      ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height,
+      ...pose, canvasWidth: ctx.canvas.width, canvasHeight: ctx.canvas.height, scene: sceneOf(ctx),
     }, 'the next animation frame would count the camera as moved and drop the point just picked');
   });
 
@@ -658,6 +671,99 @@ describe('Point mode readout staleness (#8828)', () => {
     syncMeasureScreenCoords(ctx);
     assert.deepEqual(passes, [], 'an unchanged zero-width canvas counted as a view change (0/0 aspect)');
     assert.ok(useViewerStore.getState().measurePointLive !== null);
+  });
+
+  it('hiding, isolating or a redrawn cut ends "Live" under a resting cursor; an unrelated change keeps it (#8886)', () => {
+    const changes: Array<[string, (ctx: MouseHandlerContext, clip: { revision: number }) => void]> = [
+      ['hide', (ctx) => { ctx.hiddenEntitiesRef.current = new Set([1]); }],
+      ['isolate', (ctx) => { ctx.isolatedEntitiesRef.current = new Set([2]); }],
+      ['a section or box cut drawn', (_ctx, clip) => { clip.revision++; }],
+    ];
+    for (const [name, change] of changes) {
+      const { ctx, clip } = fakeCtx({ current: ON_WALL });
+      hoverMeasurePoint(ctx, 3, 4);
+      useViewerStore.setState({ snapTarget: { type: SnapType.VERTEX, position: ON_WALL, expressId: 1, confidence: 1 }, selectedEntityId: 7 });
+      syncMeasureScreenCoords(ctx); // an unrelated store change (a selection) moves nothing under the cursor
+      assert.ok(useViewerStore.getState().measurePointLive !== null, `a pass with the scene unchanged ended Live (${name})`);
+      change(ctx, clip);
+      syncMeasureScreenCoords(ctx); // the pass, as the next animation frame runs it
+      const s = useViewerStore.getState();
+      assert.equal(s.measurePointLive, null, `Live outlived: ${name}`);
+      assert.equal(s.snapTarget, null, `the snap glyph outlived: ${name}`);
+      useViewerStore.setState(initialState, true);
+      useViewerStore.setState(RESET);
+    }
+  });
+
+  it('a section change ends "Live" once the renderer draws the cut the pick mirrors, even after a hover in between (#8886)', () => {
+    const { ctx, clip } = fakeCtx({ current: ON_WALL });
+    hoverMeasurePoint(ctx, 3, 4);
+    useViewerStore.setState((s) => ({ sectionPlane: { ...s.sectionPlane, enabled: true, position: s.sectionPlane.position + 10 } }));
+    // Before the next render the pick still clips by the old cut: a hover now reads that.
+    hoverMeasurePoint(ctx, 3, 4);
+    assert.ok(useViewerStore.getState().measurePointLive !== null);
+    clip.revision++; // the frame that draws the new cut
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a section change a hover read before the redraw');
+  });
+
+  it('hiding a model ends "Live": the effective hidden set the pick reads changes (#8886)', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    // A model known by its meshes alone: hiding it hides their ids.
+    const model = { ...fixtureModel('m1'), ifcDataStore: undefined, geometryResult: { meshes: [{ expressId: 5 }] } };
+    useViewerStore.setState(fixtureModels(model as unknown as ReturnType<typeof fixtureModel>));
+    function Probe() {
+      // As Viewport does: its refs follow the effective visibility each render.
+      const { hiddenEntities, isolatedEntities } = useVisibilityState();
+      ctx.hiddenEntitiesRef.current = hiddenEntities;
+      ctx.isolatedEntitiesRef.current = isolatedEntities;
+      return null;
+    }
+    render(<Probe />);
+    hoverMeasurePoint(ctx, 3, 4);
+    // Re-renders that change nothing a pick filters by keep the sets' identity, and Live.
+    act(() => { useViewerStore.setState((s) => ({ selectedEntityId: 9, models: new Map(s.models) })); });
+    syncMeasureScreenCoords(ctx);
+    assert.ok(useViewerStore.getState().measurePointLive !== null, 'an unrelated re-render ended Live');
+    act(() => { useViewerStore.getState().setModelVisibility('m1', false); });
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived hiding its model');
+  });
+
+  it('a resize that keeps the aspect ends "Live"; a pixel-ratio-only box change keeps it (#8886)', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    ctx.canvas.width = 1600;
+    ctx.canvas.height = 800;
+    const noteBox = measureCanvasBoxWatch(ctx.lastCameraStateRef);
+    const box = (width: number, height: number) => [{ contentRect: { width, height } }];
+    noteBox(box(800, 400)); // the observer's first report
+    hoverMeasurePoint(ctx, 3, 4);
+    noteBox(box(800, 400)); // the window moved to a display with another pixel ratio: same CSS box
+    syncMeasureScreenCoords(ctx);
+    assert.ok(useViewerStore.getState().measurePointLive !== null, 'a pixel-ratio-only change ended Live');
+    noteBox(box(804, 402)); // a proportional window resize, aspect unchanged
+    ctx.canvas.width = 1608;
+    ctx.canvas.height = 804;
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a proportional resize');
+  });
+
+  it('a hover in a frame where the camera moved keeps its own snap glyph (#8886)', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const target = { type: SnapType.VERTEX, position: ON_WALL, expressId: 1, confidence: 1 };
+    (ctx.renderer as unknown as Record<string, unknown>).raycastSceneMagnetic = () => ({
+      intersection: { point: ON_WALL }, snapTarget: target,
+      edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: true, isCorner: false, cornerValence: 0 },
+    });
+    ctx.setSnapTarget = (t) => useViewerStore.setState({ snapTarget: t });
+    ctx.setSnapVisualization = (v) => useViewerStore.setState({ snapVisualization: v as never });
+    useViewerStore.setState({ measurePointLive: mp(ELSEWHERE) });
+    ctx.lastCameraStateRef.current = olderView(ctx);
+    hoverMeasurePoint(ctx, 3, 4);
+    const s = useViewerStore.getState();
+    assert.deepEqual(xyz(s.measurePointLive), [3, 4, -5]);
+    assert.equal(s.snapTarget?.expressId, 1, 'the camera pass dropped the snap glyph the same hover set');
+    assert.ok(s.snapVisualization !== null, 'the camera pass dropped the snap visualization the same hover set');
   });
 
   it('a wheel zoom on the mounted canvas drops "Live" with no pointer move afterwards', () => {

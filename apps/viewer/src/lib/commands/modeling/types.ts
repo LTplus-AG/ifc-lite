@@ -135,6 +135,8 @@ export interface ModelingCommand<G = unknown> {
     Scene?: ComponentType<CommandHudProps<G>>;
     /** Drawn inside the plan's SVG, above the footprint of the `ghost` meshes the plan draws for every command. */
     Plan?: ComponentType<CommandPlanProps<G>>;
+    /** `Plan` draws the whole preview, so no footprint goes under it: a footprint wraps a mesh in its hull, which would fill a ghost of separate parts. */
+    planReplacesFootprint?: boolean;
     hint?: (g: G) => TranslationKey;
   };
   readonly fields?: readonly CommandField<G>[];

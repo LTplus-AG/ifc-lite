@@ -15,8 +15,8 @@
  * the tool is closed because finished measurements outlive the gesture.
  */
 
-import { useMeasurementDestination } from '@/lib/panels/measurement-destination';
-import { useEffect, useState } from 'react';
+import { consumeMeasurementDestination, useMeasurementDestination } from '@/lib/panels/measurement-destination';
+import { useEffect, useRef, useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -44,11 +44,16 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { confirmDialog } = useDialogs();
   const pointMode = useViewerStore((s) => s.activeTool === 'measure' && s.measureMode === 'point');
   const destination = useMeasurementDestination();
-  const [tab, setTab] = useState<PanelTab>(destination.revision ? destination.tab : pointMode ? 'point' : 'list');
+  const [tab, setTab] = useState<PanelTab>(destination.revision && destination.tab ? destination.tab : pointMode ? 'point' : 'list');
+  const previousPointMode = useRef(pointMode);
   // Choosing Point mode (#8770) brings its readout forward; the user can
   // still switch tabs afterwards.
-  useEffect(() => { if (pointMode) setTab('point'); }, [pointMode]);
-  useEffect(() => { if (destination.revision) setTab(destination.tab); }, [destination]);
+  useEffect(() => {
+    const requested = consumeMeasurementDestination(destination.revision);
+    if (requested) setTab(requested);
+    else if (pointMode && !previousPointMode.current) setTab('point');
+    previousPointMode.current = pointMode;
+  }, [destination, pointMode]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

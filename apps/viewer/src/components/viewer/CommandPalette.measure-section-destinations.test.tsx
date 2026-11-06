@@ -73,6 +73,27 @@ for (const [tab, label] of [['list', 'List'], ['point', 'Point'], ['quantities',
       const other = [...document.querySelectorAll('[role="tab"]')].find(t => t.textContent?.trim() === (tab === 'list' ? 'Point' : 'List')); assert.ok(other); click(other);
     }
   });
+test('#8947 consumed palette tab does not override Point navigation when the toolbar reopens Measurements', async () => {
+  mount(); await launchDestination('measure:drag', 'drag');
+  await launchDestination('measure-panel:list', 'list');
+  const togglePanel = () => {
+    const button = document.querySelector(`[data-testid="measure-toolbar"] button[title="${resolveEnglish('measure.panel.toggleTitle')}"]`);
+    assert.ok(button); click(button);
+  };
+  togglePanel(); await advance(10);
+  assert.equal(document.querySelector('[role="tablist"]'), null, 'the actual toolbar closes and unmounts the panel');
+  const point = [...document.querySelectorAll('[role="radio"]')].find(r => r.textContent?.trim() === 'Point');
+  assert.ok(point); click(point);
+  togglePanel(); await advance(10);
+  assert.equal(document.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim(), 'Point');
+  assert.ok(document.querySelector('[role="tabpanel"][data-state="active"]')?.textContent?.includes(resolveEnglish('measure.point.emptyPrompt')));
+  for (let i = 0; i < 2; i++) {
+    await launchDestination('measure-panel:list', 'list');
+    assert.equal(document.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim(), 'List', 'a fresh explicit destination still wins in Point mode');
+    const pointTab = [...document.querySelectorAll('[role="tab"]')].find(t => t.textContent?.trim() === 'Point');
+    assert.ok(pointTab); click(pointTab);
+  }
+});
 test('#8947 List destination exposes real clear confirmation and cancel keeps measurements', async () => {
   const { ConfirmDialogHost } = await loadDialogs();
   const start = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };

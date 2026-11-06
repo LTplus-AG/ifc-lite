@@ -7,7 +7,15 @@ import { useViewerStore } from '@/store';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 
 export type MeasurementPanelTab = 'list' | 'point' | 'quantities' | 'centreline';
-export const useMeasurementDestination = create<{ tab: MeasurementPanelTab; revision: number }>(() => ({ tab: 'list', revision: 0 }));
+export const useMeasurementDestination = create<{ tab: MeasurementPanelTab | null; revision: number }>(() => ({ tab: null, revision: 0 }));
+
+/** Consume only the request this panel observed, without clearing a newer request. */
+export function consumeMeasurementDestination(revision: number): MeasurementPanelTab | null {
+  const current = useMeasurementDestination.getState();
+  if (!revision || current.revision !== revision || !current.tab) return null;
+  useMeasurementDestination.setState({ tab: null });
+  return current.tab;
+}
 
 /** A destination names a real tab, independent of the active picking mode (#8947). */
 export function openMeasurementDestination(tab: MeasurementPanelTab): void {

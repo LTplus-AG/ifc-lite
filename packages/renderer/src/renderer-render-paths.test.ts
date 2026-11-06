@@ -529,6 +529,60 @@ describe('canonical render submission result (#6709)', () => {
     });
 });
 
+// #9002: render() is what notes the pick clip, so a cut change moves
+// getPickClipRevision() (the viewer's Measure Point Live reading, #8886). A
+// capture render's cleared or swapped clip is restored by the next frame, so it
+// must not count as a change; a real change around a capture still does.
+describe('pick clip revision wiring (#9002)', () => {
+    const cut = (distance: number): RenderOptions => ({ sectionPlane: { axis: 'side', position: 50, enabled: true, normal: [0, 1, 0], distance } });
+
+    it('a cut change bumps the revision; the same cut on the next frame does not', () => {
+        const h = makeHarness();
+        h.render();
+        const uncut = h.renderer.getPickClipRevision();
+        h.render(cut(2));
+        const cutRev = h.renderer.getPickClipRevision();
+        assert.ok(cutRev > uncut, 'adding a section kept the revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), cutRev, 'an unchanged cut bumped the revision');
+        h.render(cut(3));
+        assert.ok(h.renderer.getPickClipRevision() > cutRev, 'moving the section kept the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() > cutRev + 1, 'removing the section kept the revision');
+    });
+
+    it('a capture render with the clip cleared does not outlive its frame', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        // idsBcfViewpoints captures with the section, extra planes and clip box cleared.
+        assert.strictEqual(h.renderer.renderWithResult({ sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
+        const during = h.renderer.getPickClipRevision();
+        // A pick until the next frame reads through the cleared clip: it must not match the cut's revision.
+        assert.notStrictEqual(during, before, 'the capture frame\'s cleared clip shares the cut\'s revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture left a new revision, ending Live');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before);
+        assert.notStrictEqual(during, before, 'a reading taken during the capture would survive the restore');
+    });
+
+    it('a real cut change across a capture still bumps the revision', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        h.renderer.renderWithResult({ restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        const during = h.renderer.getPickClipRevision();
+        h.render(cut(3));
+        const moved = h.renderer.getPickClipRevision();
+        assert.ok(moved !== before && moved !== during, 'a cut moved during the capture reused an earlier revision');
+        h.renderer.renderWithResult({ ...cut(3), restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        assert.strictEqual(h.renderer.getPickClipRevision(), moved, 'a capture of the same cut moved the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() !== moved, 'removing the cut after a capture kept the revision');
+    });
+});
+
 describe('render() error-scope balance', () => {
     it('pops the scope on a null-current-texture frame', async () => {
         const h = makeHarness();
@@ -892,6 +946,68 @@ describe('visibility epoch drives the batched draw path', () => {
         for (const buf of h.stats.createdBuffers) {
             assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
         }
+    });
+});
+
+describe('residency records a batch drawn only as a partial sub-batch (#9034)', () => {
+    const lastDrawn = (h: Harness, batch: BatchedMesh) => sceneOf(h)['lastDrawnFrame'].get(batch.id);
+    const frame = (h: Harness) => sceneOf(h)['residencyFrame'];
+    const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
+
+    for (const [label, filter] of [
+        ['hide', { hiddenIds: new Set([1, 3]) }],
+        ['isolate', { isolatedIds: new Set([2]) }],
+    ] as const) {
+        it(`${label}: the partially visible batch stays fresh and resident; the undrawn batch still ages out`, () => {
+            const h = makeHarness();
+            const { grey, red } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1); // everything is over budget
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(filter);
+
+            // grey {1,2} draws only as its {2} sub-batch.
+            assert.strictEqual(scene['partialBatchCache'].size, 1, 'grey draws as a partial sub-batch');
+            assert.strictEqual(lastDrawn(h, grey), frame(h), 'partial-only batch is recorded as drawn this frame');
+            assert.notStrictEqual(grey.gpuResident, false, 'partial-only batch is not evicted by the GPU budget pass');
+            // red {3} is hidden / not isolated: never drawn, so it must still age out.
+            assert.strictEqual(red.gpuResident, false, 'a batch that is truly not drawn is still evicted');
+            assert.strictEqual(lastDrawn(h, red), undefined);
+        });
+    }
+
+    it('a GPU-evicted parent drawn as a partial sub-batch is not demoted cold by the host pass', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        const scene = sceneOf(h);
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return []; } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+
+        // Everything hidden: both batches age out of the GPU tier (warm: CPU kept).
+        // The host pass runs on the first post-submit hook only, before anything
+        // is GPU-evicted, so nothing goes cold yet.
+        for (let i = 0; i < 40; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        assert.strictEqual(grey.gpuResident, false);
+        assert.strictEqual(red.gpuResident, false);
+        assert.ok(scene.getMeshDataPieces(2), 'still warm before the host pass');
+
+        // Reveal id 2: grey draws its {2} sub-batch from CPU meshData while the
+        // parent stays GPU-evicted (nothing processes the restore queue here).
+        // Run past the host pass cadence (every 120 post-submit hooks).
+        for (let i = 0; i < 130; i++) h.render({ hiddenIds: new Set([1, 3]) });
+        assert.ok(scene['partialBatchCache'].size >= 1, 'grey draws as a partial sub-batch');
+        assert.strictEqual(lastDrawn(h, grey), frame(h), 'GPU-evicted parent of a drawn sub-batch is recorded');
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'on-screen geometry keeps its CPU pieces (picks, snaps)');
+        assert.ok(!scene['coldBuckets'].has(grey.colorKey), 'on-screen bucket is not demoted cold');
+        // red is never drawn: the host pass still demotes it.
+        assert.strictEqual(scene.getMeshDataPieces(3), undefined, 'undrawn bucket is still demoted cold');
+        assert.ok(scene['coldBuckets'].has(red.colorKey));
+        // Drain the restore queue the draw loop filled: grey comes back from its
+        // warm CPU pieces; had it gone cold this would hit the provider instead.
+        scene.processResidencyRestores(h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, Infinity);
+        assert.strictEqual(coldLoads, 0, 'on-screen geometry never needed a cold restore');
+        assert.notStrictEqual(scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))?.gpuResident, false);
     });
 });
 

@@ -691,6 +691,21 @@ export class IfcAPI {
      */
     exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null, world_matrix?: Float64Array | null): Uint8Array;
     /**
+     * [`IfcAPI::export_glb`], with each IFC element as one node directly under
+     * the scene, named by its `GlobalId` and holding that element's part
+     * nodes (#9011): for tools that identify objects by node name. Each
+     * element node carries a copy of the scene root's translation and site
+     * rotation, so every part keeps its world pose, and geometry, accessors
+     * and materials are those `exportGlb` writes. An element without a usable
+     * `GlobalId` keeps its own node, unnamed. Same parameters and the same
+     * fail-closed `NO_RENDER_GEOMETRY` refusal as `exportGlb`.
+     *
+     * A sibling method rather than a trailing parameter on `exportGlb`: the
+     * crate is published, and a new positional argument would break every
+     * Rust caller of `export_glb`.
+     */
+    exportGlbNamedByGlobalId(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array | null | undefined, hidden_types_csv: string, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
+    /**
      * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
      *
      * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
@@ -2698,6 +2713,7 @@ export interface InitOutput {
     readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
+    readonly ifcapi_exportGlbNamedByGlobalId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportHbjsonWithStats: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

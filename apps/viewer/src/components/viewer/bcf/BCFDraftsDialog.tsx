@@ -48,7 +48,7 @@ function OutboxAttention({ excludeId }: { excludeId: string | null }) {
   const open = records.filter(record => record.id !== excludeId && record.entries.some(entry => entry.state === 'uncertain' || entry.state === 'blocked'));
   if (!open.length) return null;
   return (
-    <section className="rounded-md border border-amber-500/40 p-2 text-xs" aria-label={t('bcfDrafts.attention.region')}>
+    <section className="rounded-md border border-warn-border p-2 text-xs" aria-label={t('bcfDrafts.attention.region')}>
       <p className="font-medium">{t('bcfDrafts.attention.title')}</p>
       {open.map(record => (
         <div key={record.id} className="mt-1">

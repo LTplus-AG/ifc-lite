@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { render, cleanup, click, waitFor, mouseDown, press, advance } from '@/test/render.js';
 import { loadDialogs } from '@/test/dialog-host.js';
 import { useViewerStore } from '@/store/index.js';
@@ -31,6 +32,8 @@ const M2 = { id: 'm2', start: START, end: mp(2, 0, 0), distance: 2 };
 beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'measure',
+    measureMode: 'drag',
+    pointerInput: 'mouse',
     measurements: [],
     activeMeasurement: null,
     angleMeasurements: [],
@@ -144,6 +147,24 @@ describe('Measurements panel (#5502)', () => {
     const container = render(<MeasurementsPanel onClose={() => { closed += 1; }} />);
     click(container.querySelector('button[aria-label="Close panel"]')!);
     assert.equal(closed, 1);
+  });
+
+  it('#8991 on touch an open Polyline brings List forward from the Point tab, with Finish', () => {
+    useViewerStore.setState({ measureMode: 'point', pointerInput: 'touch' });
+    const container = render(<MeasurementsPanel />);
+    assert.equal(tab(container, 'Point').getAttribute('aria-selected'), 'true', 'Point mode opens on Point');
+    act(() => useViewerStore.setState({ measureMode: 'polyline', activePolyline: { points: [START, END] } }));
+    assert.equal(tab(container, 'List').getAttribute('aria-selected'), 'true', 'the open polyline brought List forward');
+    click(container.querySelector('button[aria-label="Finish (Enter)"]')!);
+    assert.deepEqual(useViewerStore.getState().polylineMeasurements.map((m) => m.points.length), [2, 2]);
+    assert.equal(useViewerStore.getState().activePolyline, null);
+  });
+
+  it('#8991 with a mouse an open Polyline leaves the chosen tab alone', () => {
+    useViewerStore.setState({ measureMode: 'point' });
+    const container = render(<MeasurementsPanel />);
+    act(() => useViewerStore.setState({ measureMode: 'polyline', activePolyline: { points: [START, END] } }));
+    assert.equal(tab(container, 'Point').getAttribute('aria-selected'), 'true', 'a mouse user keeps the Point tab');
   });
 
   it('#5811 names each icon-only measurement action and keeps its row action', () => {

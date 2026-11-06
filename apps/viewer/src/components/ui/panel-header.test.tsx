@@ -12,6 +12,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, cleanup, press, render } from '@/test/render.js';
+import { act, useState } from 'react';
 import { setLocale } from '@/i18n';
 import { PanelHeader, type PanelHeaderAction } from './panel-header.js';
 import { useTourStore } from '@/lib/tours/tour-store';
@@ -138,6 +139,42 @@ describe('PanelHeader during a guided tour (#8802)', () => {
       assert.deepEqual(inlineLabels(ui), ['Import']);
     } finally {
       restore();
+    }
+  });
+});
+
+describe('PanelHeader when its title content grows (#8802)', () => {
+  it('measures again when the count beside the title widens, though the header keeps its width', async () => {
+    // 260px header, 100px title, a meta badge 10px per character.
+    const proto = window.HTMLElement.prototype as unknown as Record<string, unknown>;
+    const names = ['clientWidth', 'scrollWidth', 'offsetWidth'];
+    const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)] as const);
+    const size = (el: HTMLElement, name: string): number => {
+      if (el.hasAttribute('data-panel-header')) return name === 'clientWidth' ? 260 : 0;
+      if (el.tagName === 'H2') return 100;
+      if (el.firstElementChild?.hasAttribute('data-test-meta')) return (el.textContent ?? '').length * 10;
+      return 0;
+    };
+    for (const name of names) {
+      Object.defineProperty(proto, name, { configurable: true, get(this: HTMLElement) { return size(this, name); } });
+    }
+    let setCount: (value: string) => void = () => {};
+    function Host() {
+      const [count, set] = useState('9');
+      setCount = set;
+      return <PanelHeader title="BCF Topics" meta={<span data-test-meta>{count}</span>} actions={actions()} onClose={() => {}} />;
+    }
+    try {
+      const ui = render(<Host />);
+      assert.deepEqual(inlineLabels(ui), ['Import'], 'a short count leaves room for one action');
+      act(() => setCount('9999'));
+      await advance(10);
+      assert.deepEqual(inlineLabels(ui), [], 'the wider count moves the action into More actions');
+    } finally {
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(proto, name, descriptor);
+        else delete proto[name];
+      }
     }
   });
 });

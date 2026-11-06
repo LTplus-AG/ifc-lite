@@ -208,10 +208,17 @@ function useInlineCount(budget: number, actionCount: number, hasClose: boolean, 
       setCount(fit);
     };
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(root);
-    return () => observer.disconnect();
+    // The title group's content can widen while the root keeps its width (a
+    // topic count going from 9 to 10), so a content change measures again too.
+    const titleGroup = titleGroupRef.current;
+    const content = titleGroup && typeof MutationObserver !== 'undefined' ? new MutationObserver(measure) : null;
+    if (content && titleGroup) content.observe(titleGroup, { childList: true, subtree: true, characterData: true });
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resize?.observe(root);
+    return () => {
+      content?.disconnect();
+      resize?.disconnect();
+    };
   }, [wanted, actionCount, hasClose, title]);
 
   return { count: Math.min(count, wanted), rootRef, titleGroupRef, actionsRef };

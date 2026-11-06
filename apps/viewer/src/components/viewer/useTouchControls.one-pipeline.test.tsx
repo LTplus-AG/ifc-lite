@@ -363,4 +363,49 @@ describe('the Measure hint follows the last input (#8879)', () => {
     mouseAt(canvas, 'pointermove', 100, 300, 'pen');
     assert.doesNotMatch(hint(), MOUSE_ONLY, 'a stylus has no Shift or Esc to rely on');
   });
+  it('a wheel after a tap, with no pointer move, brings back the click wording with Shift (#8999)', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    act(() => { canvas.dispatchEvent(wheelAt()); });
+    assert.equal(useViewerStore.getState().pointerInput, 'mouse');
+    assert.match(hint(), /Shift/, 'a wheel or trackpad scroll is a mouse');
+  });
+
+  it('a trackpad pinch (ctrl+wheel) after a tap brings back the mouse wording (#8999)', async () => {
+    const { canvas } = rig('measure');
+    await tap(canvas, 200, 300);
+    act(() => { canvas.dispatchEvent(wheelAt({ ctrlKey: true })); });
+    assert.equal(useViewerStore.getState().pointerInput, 'mouse');
+    assert.match(hint(), /Shift/, 'a pinch arrives as a ctrl+wheel from a mouse-class device');
+  });
+
+  it('a wheel with no tap before it changes nothing (#8999)', () => {
+    const { canvas } = rig('measure');
+    const before = hint();
+    let writes = 0;
+    const unsubscribe = useViewerStore.subscribe((next, prev) => { if (next.pointerInput !== prev.pointerInput) writes++; });
+    try {
+      act(() => { canvas.dispatchEvent(wheelAt()); });
+    } finally {
+      unsubscribe();
+    }
+    assert.equal(writes, 0, 'already mouse: no pointerInput write');
+    assert.equal(hint(), before);
+  });
 });
+
+/**
+ * happy-dom's `WheelEvent` implements only the delta half of the init dict, so
+ * `ctrlKey` and the position are defined explicitly, as in
+ * `useMouseControls.wheelZoom.test.tsx`.
+ */
+function wheelAt(init: { ctrlKey?: boolean } = {}): WheelEvent {
+  const e = new WheelEvent('wheel', { deltaY: 120, deltaMode: 0, bubbles: true, cancelable: true });
+  Object.defineProperties(e, {
+    ctrlKey: { value: init.ctrlKey ?? false, configurable: true },
+    metaKey: { value: false, configurable: true },
+    clientX: { value: 400, configurable: true },
+    clientY: { value: 300, configurable: true },
+  });
+  return e;
+}

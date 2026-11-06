@@ -61,7 +61,6 @@ function storeyDisplayElevationFor(
 
 /** Two contributors show the same badge when they round to the same centimetre. */
 const DISPLAY_ELEVATION_AGREEMENT_M = 0.005;
-
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
 export function elevationKey(elevation: number): string {
   return (Math.round(elevation * 2) / 2).toFixed(2);
@@ -629,6 +628,7 @@ export interface AuthoredProduct {
   globalId: number;
   name: string;
   ifcType: string;
+  parts?: number[];
 }
 
 /** Build tree data grouped by IFC class instead of spatial hierarchy.
@@ -710,7 +710,7 @@ export function buildTypeTree(
     let list = typeGroups.get(p.ifcType);
     if (!list) { list = []; typeGroups.set(p.ifcType, list); }
     if (!list.some((e) => e.globalId === p.globalId)) {
-      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId });
+      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId, parts: p.parts });
     }
   }
 

@@ -102,6 +102,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
+  const currentExtensionHost = useRef(extensionHost);
+  currentExtensionHost.current = extensionHost;
 
   useEffect(() => {
     if (open) {
@@ -132,6 +134,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     cachedNames: cachedNamesRef,
     extensionCommands,
     extensionHost,
+    extensionHostIsCurrent: () => currentExtensionHost.current === extensionHost,
     canEditInSession,
     cesiumAvailable,
     activateRightPanel,

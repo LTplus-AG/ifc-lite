@@ -116,6 +116,9 @@ export function pickWinner(
   return best.dist < held.dist - hysteresis ? best : held;
 }
 
+/** Two targets this close are one spot: a computed crossing and a file's wall end differ by rounding. */
+const SAME_SPOT_M = 1e-3;
+
 /**
  * The ladder's winner, unless the pointer is ON a target of an aimed kind: then
  * that target wins, whatever outranks it nearby. A column on a grid crossing
@@ -147,5 +150,6 @@ export function aimedOr(
     if (toTarget <= reach && toTarget < onDist) { on = r; onDist = toTarget; }
   }
   if (!on || !winner || winner === on || winner.dist < on.dist) return winner;
-  return sameVec(winner.point, on.point) ? winner : on;
+  const apart = Math.hypot(winner.point[0] - on.point[0], winner.point[1] - on.point[1]);
+  return apart <= SAME_SPOT_M ? winner : on;
 }

@@ -94,6 +94,21 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
     assert.equal(pick(w, [w, on(crossing, 0.01, 1)], 0.01), wallEnd);
   });
 
+  it('a wall end a rounding error or under a millimetre off the crossing still names its wall', () => {
+    for (const x of [6 + 1e-13, 6.0004]) {
+      const wallEnd: SnapCandidate = { kind: 'endpoint', local: [x, 6], source: 'semantic', entity: { modelId: 'm', expressId: 5 } };
+      const w: Ranked = { cand: wallEnd, point: [x, 6], dist: 0.01, tier: 0, order: 0 };
+      const c: Ranked = { cand: crossing, point: [6, 6], dist: 0.01, tier: 1, order: 1 };
+      assert.equal(pick(w, [w, c], 0.01), wallEnd, String(x));
+    }
+  });
+
+  it('a target 5 mm off the crossing is a different target: the crossing under the pointer wins', () => {
+    const near: SnapCandidate = { kind: 'endpoint', local: [6.005, 6], source: 'linework' };
+    const n: Ranked = { cand: near, point: [6.005, 6], dist: 0.0112, tier: 0, order: 0 };
+    assert.equal(pick(n, [n, { cand: crossing, point: [6, 6], dist: 0.01, tier: 1, order: 1 }], 0.01), crossing);
+  });
+
   it('a held crossing survives ±1px at the edge of the aim, a fresh one does not', () => {
     const c = on(corner, 0.2, 0);
     const items = [c, on(crossing, 0.03, 1)];

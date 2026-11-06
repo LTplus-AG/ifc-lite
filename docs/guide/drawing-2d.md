@@ -352,7 +352,8 @@ The drawing opens fitted to the building at the cut, and **Fit** frames the
 same extent: everything the plane cuts, plus content touching or near it.
 Small objects far from the building, such as a model's origin or
 geo-reference marker, stay drawn but do not shrink the view; zoom out to see
-them. A drawing that cuts nothing frames all of its content. Until you pan or
+them. Visible references (raster and DXF underlays) are always framed. A
+drawing that cuts nothing frames all of its content. Until you pan or
 zoom, the drawing refits when the panel is resized.
 
 ### DXF and PDF/Image Underlays

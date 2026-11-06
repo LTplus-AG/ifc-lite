@@ -49,7 +49,7 @@ test('Cost and AI Chat palette rows open their panels (#5862)', async () => {
   const input = document.body.querySelector('input') as HTMLInputElement;
   typeInto(input, 'cost');
   const cost = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
-    .find((row) => row.textContent?.trim() === 'Cost');
+    .find((row) => row.getAttribute('aria-label') === 'Cost');
   assert.ok(cost, 'Cost is searchable');
   click(cost);
   await advance(50);
@@ -63,7 +63,7 @@ test('Cost and AI Chat palette rows open their panels (#5862)', async () => {
   );
   typeInto(document.body.querySelector('input') as HTMLInputElement, 'chat');
   const chat = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
-    .find((row) => row.textContent?.trim() === 'AI Chat');
+    .find((row) => row.getAttribute('aria-label') === 'AI Chat');
   assert.ok(chat, 'AI Chat is searchable');
   click(chat);
   await advance(50);

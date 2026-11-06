@@ -1307,6 +1307,26 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.notStrictEqual(greyOf(h).gpuResident, false);
     });
 
+    it('with sun shadows on, the un-isolate frame rebuilds the parent once in the shadow pass and the colour pass draws that rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        scene.setGpuResidencyBudget(1);
+        const sun = { sunShadows: { enabled: true } } as const;
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const rebuild = scene['rebuildEvictedBucket'].bind(scene);
+        let rebuilds = 0;
+        scene['rebuildEvictedBucket'] = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+        h.stats.draws.length = 0;
+        h.render({ ...sun });
+        assert.strictEqual(rebuilds, 1, 'one rebuild, shared by both passes');
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
+        assert.ok(!scene['residencyRestoreQueue'].has(greyOf(h).colorKey), 'grey was not skipped into the queue');
+    });
+
     it('a subset drawn only as a shadow caster does not qualify its parent for the un-isolate rebuild', () => {
         const h = makeHarness();
         const { grey } = seedBatches(h);

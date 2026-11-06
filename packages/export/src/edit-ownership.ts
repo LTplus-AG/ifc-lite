@@ -35,19 +35,21 @@ function sourceInverse(store: IfcDataStore): Map<number, number[]> {
   return inverse;
 }
 
-/** In-place writes may only affect the requested products. A shared geometry
- * or placement leaf is refused before writing rather than moving/resizing a
- * second occurrence. Reverse walks stop at products and are iterative. */
-export function editOwnershipRefusal(
-  store: IfcDataStore, view: MutablePropertyView, writtenIds: readonly number[], allowedProducts: ReadonlySet<number>,
-): string | null {
-  if (writtenIds.length === 0) return null;
+/**
+ * The live reverse-reference lookup: which entities reference `id` once the
+ * overlay is applied (created records, edited source records and tombstones).
+ * The immutable source inverse is cached per model; only changed records are
+ * rescanned, once per call of this function, so callers that walk many ids
+ * build it once per planning request.
+ */
+export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyView): (id: number) => readonly number[] {
   const baseline = sourceInverse(store), inverse = new Map<number, number[]>();
   const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
   for (const entity of view.getNewEntities()) changed.add(entity.expressId);
   const encoder = new TextEncoder();
+  const tombstones = view.getTombstones();
   for (const expressId of changed) {
-    if (view.getTombstones().has(expressId)) continue;
+    if (tombstones.has(expressId)) continue;
     const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
     // @raw-entity-enumeration-ok point lookup of an already changed record's source bytes; effectiveSourceRecord applies the overlay
     const source = created ? undefined : store.entityIndex.byId.get(expressId);
@@ -71,6 +73,22 @@ export function editOwnershipRefusal(
       parents.push(expressId); inverse.set(ref, parents);
     }
   }
+  return (id) => {
+    const parents: number[] = [];
+    for (const parent of baseline.get(id) ?? []) if (!changed.has(parent) && !tombstones.has(parent)) parents.push(parent);
+    for (const parent of inverse.get(id) ?? []) parents.push(parent);
+    return parents;
+  };
+}
+
+/** In-place writes may only affect the requested products. A shared geometry
+ * or placement leaf is refused before writing rather than moving/resizing a
+ * second occurrence. Reverse walks stop at products and are iterative. */
+export function editOwnershipRefusal(
+  store: IfcDataStore, view: MutablePropertyView, writtenIds: readonly number[], allowedProducts: ReadonlySet<number>,
+): string | null {
+  if (writtenIds.length === 0) return null;
+  const referencers = effectiveReferencers(store, view);
   const queue = [...writtenIds], visited = new Set<number>();
   while (queue.length) {
     const id = queue.pop()!;
@@ -83,8 +101,7 @@ export function editOwnershipRefusal(
       if (!allowedProducts.has(id)) return `The edit shares placement or geometry with #${id}; shared occurrences cannot be edited in place`;
       continue;
     }
-    for (const parent of baseline.get(id) ?? []) if (!changed.has(parent)) queue.push(parent);
-    queue.push(...(inverse.get(id) ?? []));
+    queue.push(...referencers(id));
   }
   return null;
 }

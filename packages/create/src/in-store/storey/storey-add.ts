@@ -1,0 +1,167 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Add and rename an IfcBuildingStorey in a parsed model (#9013).
+ *
+ * The new storey copies its neighbour's conventions: it is aggregated under
+ * the same spatial parent (the existing IfcRelAggregates is extended, so the
+ * building keeps one decomposition), and its IfcLocalPlacement hangs from the
+ * same PlacementRelTo with the same axes, lifted by the elevation difference.
+ * Whatever offset the file keeps between Elevation and placement Z (a project
+ * base point, a building lift) is therefore preserved.
+ */
+
+import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
+import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { ownerHistoryRef } from '../_emit-helpers.js';
+import { refId } from '../host-geometry-frame.js';
+import { readStoreyInventory, ref, type StoreyInventory, type StoreyRecord } from './storey-model.js';
+import { readPlacementLeaf, worldLiftInParent } from './storey-placement.js';
+import { MIN_STOREY_SPACING, describeElevation } from './storey-validation.js';
+
+export interface AddStoreyParams {
+  readonly Name: string;
+  /** Metres, in the same frame the workspace shows storey elevations. */
+  readonly Elevation: number;
+  readonly LongName?: string;
+  readonly Description?: string;
+  readonly GlobalId?: string;
+  /** The storey whose conventions the new one copies; defaults to the nearest by elevation. */
+  readonly referenceStoreyId?: number;
+  /** Required only when the model has no storey yet and more than one IfcBuilding. */
+  readonly buildingId?: number;
+}
+
+export interface AddStoreyResult {
+  readonly storeyId: number;
+  readonly placementId: number;
+  readonly relAggregatesId: number;
+}
+
+const OP = 'addStoreyInStore';
+
+/** Why `params` cannot be added, or null. Shared by the UI's inline validation. */
+export function addStoreyRefusal(inventory: StoreyInventory, params: Pick<AddStoreyParams, 'Name' | 'Elevation'>): string | null {
+  if (!params.Name.trim()) return 'A storey needs a name';
+  if (!Number.isFinite(params.Elevation)) return 'Enter an elevation in metres';
+  const clash = inventory.storeys.find((storey) => Math.abs(storey.elevation - params.Elevation) < MIN_STOREY_SPACING);
+  if (clash) return `${clash.Name} is already at ${describeElevation(clash.elevation)}: storeys need a positive floor-to-floor height`;
+  return null;
+}
+
+function nearest(inventory: StoreyInventory, elevation: number): StoreyRecord | null {
+  let best: StoreyRecord | null = null;
+  for (const storey of inventory.storeys) {
+    if (!best || Math.abs(storey.elevation - elevation) < Math.abs(best.elevation - elevation)) best = storey;
+  }
+  return best;
+}
+
+function soleBuilding(inventory: StoreyInventory, requested: number | undefined): number {
+  const buildings = [...inventory.reader.ids('IFCBUILDING')];
+  if (requested !== undefined) {
+    if (!buildings.includes(requested)) throw new Error(`${OP}: #${requested} is not a live IfcBuilding`);
+    return requested;
+  }
+  if (buildings.length !== 1) throw new Error(`${OP}: the model has ${buildings.length} buildings; choose the one the storey belongs to`);
+  return buildings[0];
+}
+
+/** Add a storey atomically. Throws (writing nothing) when the storey cannot be placed. */
+export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams): AddStoreyResult {
+  return editor.runAtomic((draft) => {
+    const inventory = readStoreyInventory(store, draft.getMutationView());
+    const refusal = addStoreyRefusal(inventory, params);
+    if (refusal) throw new Error(refusal);
+    if (params.GlobalId !== undefined && !isValidIfcGuid(params.GlobalId)) throw new Error(`${OP}: GlobalId "${params.GlobalId}" is not a valid IFC GUID`);
+    const ownerHistoryId = inventory.reader.firstId('IFCOWNERHISTORY');
+    if (inventory.schema === 'IFC2X3' && ownerHistoryId === null) throw new Error(`${OP}: IFC2X3 requires IfcOwnerHistory`);
+
+    const reference = params.referenceStoreyId !== undefined
+      ? inventory.storeys.find((storey) => storey.expressId === params.referenceStoreyId) ?? null
+      : nearest(inventory, params.Elevation);
+    if (params.referenceStoreyId !== undefined && !reference) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
+
+    const parentId = reference?.parentId ?? soleBuilding(inventory, params.buildingId);
+    const placementId = emitStoreyPlacement(draft, inventory, reference, parentId, params.Elevation);
+    const elevationAttribute = reference?.elevationAttribute !== null && reference?.elevationAttribute !== undefined
+      ? reference.elevationAttribute + (params.Elevation - reference.elevation) / inventory.scale
+      : params.Elevation / inventory.scale;
+
+    const storeyId = draft.addEntity('IfcBuildingStorey', [
+      params.GlobalId ?? generateIfcGuid(),
+      ownerHistoryRef(ownerHistoryId),
+      params.Name.trim(),
+      params.Description ?? null,
+      null,
+      ref(placementId),
+      null,
+      params.LongName ?? null,
+      '.ELEMENT.',
+      { real: roundNative(elevationAttribute) },
+    ]).expressId;
+
+    const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
+    return { storeyId, placementId, relAggregatesId };
+  });
+}
+
+/** Rename a storey. Throws for an empty name or a dead storey. */
+export function renameStoreyInStore(store: IfcDataStore, editor: StoreEditor, storeyId: number, name: string): void {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('A storey needs a name');
+  editor.runAtomic((draft) => {
+    const inventory = readStoreyInventory(store, draft.getMutationView());
+    if (!inventory.storeys.some((storey) => storey.expressId === storeyId)) throw new Error(`#${storeyId} is not a live IfcBuildingStorey in this model`);
+    draft.setAttribute(storeyId, 'Name', trimmed);
+  });
+}
+
+/** Avoid 2.9999999999999996 in the written file; 1e-9 file units is far below any modelling tolerance. */
+function roundNative(value: number): number {
+  return Math.round(value * 1e9) / 1e9;
+}
+
+function emitStoreyPlacement(
+  draft: StoreEditor, inventory: StoreyInventory, reference: StoreyRecord | null, parentId: number, elevation: number,
+): number {
+  const leaf = reference?.placementId != null ? readPlacementLeaf(inventory.reader, reference.placementId) : null;
+  if (reference && leaf) {
+    const lift = worldLiftInParent(inventory.reader, leaf.parentId, (elevation - reference.elevation) / inventory.scale);
+    if (!lift) throw new Error(`${OP}: the placement of ${reference.Name} cannot be read`);
+    const point = draft.addEntity('IfcCartesianPoint', [[0, 1, 2].map((i) => roundNative(leaf.location[i] + lift[i]))]).expressId;
+    const axis = draft.addEntity('IfcAxis2Placement3D', [ref(point), directionRef(leaf.axis), directionRef(leaf.refDirection)]).expressId;
+    return draft.addEntity('IfcLocalPlacement', [leaf.parentId === null ? null : ref(leaf.parentId), ref(axis)]).expressId;
+  }
+  // No neighbour placement to copy: hang from the parent's own placement, as IfcCreator does.
+  const parent = inventory.reader.entity(parentId);
+  const parentPlacement = parent ? refId(parent.attributes[5]) : null;
+  const point = draft.addEntity('IfcCartesianPoint', [[0, 0, roundNative(elevation / inventory.scale)]]).expressId;
+  const axis = draft.addEntity('IfcAxis2Placement3D', [ref(point), null, null]).expressId;
+  return draft.addEntity('IfcLocalPlacement', [parentPlacement === null ? null : ref(parentPlacement), ref(axis)]).expressId;
+}
+
+function directionRef(value: unknown): string | null {
+  const id = refId(value);
+  return id === null ? null : ref(id);
+}
+
+/** Extend the parent's existing decomposition, or start one. */
+function aggregateUnder(
+  draft: StoreEditor, inventory: StoreyInventory, parentId: number, storeyId: number,
+  ownerHistoryId: number | null, preferredRelId: number | null,
+): number {
+  const view: MutablePropertyView = draft.getMutationView();
+  const existing = (inventory.outgoing.get(parentId) ?? []).filter((rel) => rel.type === 'IFCRELAGGREGATES');
+  const rel = existing.find((candidate) => candidate.id === preferredRelId) ?? existing[0];
+  if (rel && !view.isDeleted(rel.id)) {
+    draft.setPositionalAttribute(rel.id, rel.listIndex, [...rel.children.map(ref), ref(storeyId)]);
+    return rel.id;
+  }
+  return draft.addEntity('IfcRelAggregates', [
+    generateIfcGuid(), ownerHistoryRef(ownerHistoryId), null, null, ref(parentId), [ref(storeyId)],
+  ]).expressId;
+}

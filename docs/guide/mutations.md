@@ -1027,3 +1027,48 @@ function reassignProducts(dataStore: IfcDataStore, editor: StoreEditor,
 ```
 
 Select 1–200 distinct roots; the complete dependency closure is bounded to 5,000 products and the effective relationship inventory to 2,000,000 references. Missing or duplicate identities/ownership, detached hosted or assembly children, cycles, shared placements, unsupported or unreadable world frames, and spatial roots such as sites/buildings/storeys refuse. IFC2X3 requires OwnerHistory; IFC4 and IFC4X3 allow it to be omitted. Native grids and grid-based product placements are unsupported; ordinary local placements may include translated, rotated or tilted frames. A refusal or late transaction failure preserves the graph, journal and allocation state. Recorded Undo restores the complete graph and journal; the native ID allocator remains monotonic after a successful operation.
+
+### Storey authoring
+
+`@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). The viewer's Model workspace and `bim.store` run the same functions. Lengths are metres in the frame the workspace shows storey elevations in, and are written in the file's own length unit.
+
+- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. A name that is empty, or an elevation already taken, is refused. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
+- `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically:
+  - `{ kind: 'elevation', storeyId, Elevation }` moves one storey.
+  - `{ kind: 'floorHeight', storeyId, Height }` shifts every storey above by the same delta.
+- Geometry follows storeys. Everything a moved storey holds moves with it, and nothing else does:
+  - Contents hanging from the storey placement need no write of their own.
+  - Contents placed relative to the building or the world, which is common in exported files, get their own root placement lifted.
+  - A product of another storey that hangs from a moved placement is compensated so it stays put.
+  - Every move is a fresh `IfcCartesianPoint` and `IfcAxis2Placement3D`, so a shared origin point is never moved.
+- An edit is refused before anything is written, with a specific `code` and `message`, when it would:
+  - leave no height between storeys (`spacing`);
+  - pass a neighbour (`crossing`);
+  - measure floor-to-floor on the top storey (`topStorey`);
+  - move a placement that elements on another storey share (`sharedPlacement`);
+  - meet a placement that cannot be read.
+- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode)` delete a storey without orphaning anything:
+  - `{ kind: 'empty' }` is refused while the storey holds elements.
+  - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above.
+  - `{ kind: 'deleteContents' }` removes them with the storey.
+
+  The storey's placement is kept, and relationships listing it are narrowed. A model always keeps one storey.
+
+```ts
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
+import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+
+function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId: number) {
+  const view = editor.getMutationView();
+  const { storeyId } = recordCompoundMutation(view, (draft) =>
+    addStoreyInStore(dataStore, new StoreEditor(dataStore, draft), { Name: 'Level 2', Elevation: 3 }));
+  const edit = { kind: 'floorHeight', storeyId: groundId, Height: 3.5 } as const;
+  const plan = planStoreyLevelEdit(readStoreyInventory(dataStore, view), edit);
+  if (plan.refusals.length) throw new Error(plan.refusals[0].message);
+  recordCompoundMutation(view, (draft) => applyStoreyLevelEdit(dataStore, new StoreEditor(dataStore, draft), edit, plan));
+  return storeyId;
+}
+```
+
+The same operations are exposed to scripts as `bim.store.listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. Headless backends record each write as one Undo step.

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { click, type, waitFor } from '@/test/render';
 import { launchDestination, namedButton } from '@/test/palette-destinations';
 import { resetReviewAccess, disposeReviewAccess, mountReviewAccess, required,
-  dialog, cancelDialog } from './CommandPalette.review-panel-access.fixture';
+  dialog, cancelDialog } from '@/test/palette-review-panel-witness';
 
 beforeEach(resetReviewAccess);
 afterEach(disposeReviewAccess);

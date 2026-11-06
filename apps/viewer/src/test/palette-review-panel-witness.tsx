@@ -15,9 +15,9 @@ import { fixtureModels } from '@/test/store-fixture';
 import { cleanup, click, press, render, waitFor } from '@/test/render';
 import { namedButton } from '@/test/palette-destinations';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
-import { CommandPalette } from './CommandPalette';
-import { PersistentToolHosts } from './PersistentToolHosts';
-import { MobilePanelSheet } from './MobilePanelSheet';
+import { CommandPalette } from '@/components/viewer/CommandPalette';
+import { PersistentToolHosts } from '@/components/viewer/PersistentToolHosts';
+import { MobilePanelSheet } from '@/components/viewer/MobilePanelSheet';
 
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;

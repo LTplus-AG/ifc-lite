@@ -15,7 +15,15 @@ import { startOwnedPreview } from '../tests/ui-scenes/capture-preview.mjs';
 const moduleUrl = new URL('../tests/ui-scenes/capture-preview.mjs', import.meta.url).href;
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'capture-preview-test-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const disposers = [];
+  t.after(async () => {
+    const failures = [];
+    for (const dispose of disposers.reverse()) {
+      try { await dispose(); } catch (error) { failures.push(error); }
+    }
+    try { await rm(root, { recursive: true, force: true }); } catch (error) { failures.push(error); }
+    if (failures.length) throw new AggregateError(failures, 'Preview test cleanup');
+  });
   const dist = join(root, 'dist');
   await mkdir(join(root, 'apps/viewer'), { recursive: true });
   await mkdir(dist);
@@ -26,13 +34,13 @@ const port = Number(process.argv[2]);
 const server = createServer((req, res) => res.end(process.argv[3]));
 server.listen(port, '127.0.0.1', () => console.log('  ➜  Local:   http://127.0.0.1:' + port + '/'));
 `);
-  return { root, dist, command: port => [process.execPath, server, String(port), '<h1>requested build</h1>'] };
+  return { root, dist, defer: dispose => disposers.push(dispose), command: port => [process.execPath, server, String(port), '<h1>requested build</h1>'] };
 }
-async function sentinel(t) {
+async function sentinel(setup) {
   const server = createServer((req, res) => res.end('foreign build'));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  setup.defer(() => new Promise(resolve => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
 }
 async function refused(url) {
@@ -42,7 +50,7 @@ async function refused(url) {
 test('#8947 owned preview verifies served bytes and releases its listening socket', { timeout: 10000 }, async t => {
   const setup = await fixture(t);
   const preview = await startOwnedPreview(setup);
-  t.after(() => preview.close());
+  setup.defer(() => preview.close());
   assert.equal(await (await fetch(preview.url)).text(), '<h1>requested build</h1>');
   assert.equal(preview.identity.servedIndexSha256, preview.identity.expectedIndexSha256);
   preview.assertAlive();
@@ -51,8 +59,8 @@ test('#8947 owned preview verifies served bytes and releases its listening socke
 });
 
 test('#8947 occupied preview port cannot certify or terminate a foreign build', { timeout: 10000 }, async t => {
-  const foreign = await sentinel(t);
   const setup = await fixture(t);
+  const foreign = await sentinel(setup);
   await assert.rejects(startOwnedPreview({ ...setup, port: Number(new URL(foreign).port) }), /EADDRINUSE/);
   assert.equal(await (await fetch(foreign)).text(), 'foreign build');
 });
@@ -68,8 +76,8 @@ test('#8947 successful owned startup still rejects different served bytes', { ti
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   test(`#8947 ${signal} awaits owned preview cleanup while a foreign server survives`, { timeout: 12000 }, async t => {
-    const foreign = await sentinel(t);
     const setup = await fixture(t);
+    const foreign = await sentinel(setup);
     const driver = join(setup.root, 'driver.mjs');
     await writeFile(driver, `import { startOwnedPreview } from ${JSON.stringify(moduleUrl)};
 const controller = new AbortController();
@@ -85,7 +93,7 @@ process.exitCode = 1;
 `);
     const child = spawn(process.execPath, [driver], { stdio: ['ignore', 'pipe', 'pipe'] });
     const exited = once(child, 'exit');
-    t.after(async () => { if (child.exitCode === null) { child.kill('SIGTERM'); await exited; } });
+    setup.defer(async () => { if (child.exitCode === null) { child.kill('SIGTERM'); await exited; } });
     let output = ''; let errors = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { errors += chunk; });

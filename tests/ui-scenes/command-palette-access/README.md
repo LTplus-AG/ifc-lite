@@ -565,3 +565,24 @@ The catalogue census explicitly accounts for new metadata/context-only keys; fil
 metadata is checked as visible content. Generic zone authoring and selected-entity
 volume inspection now assert their distinct canonical destinations. These repairs
 have only cheap source checks so far; runtime/typecheck must run on the new head.
+
+### Reporting profile qualification and first NVIDIA sequence
+
+The original `be8e5c02` reporting workflow run `42165928276`, job
+`127722278792`, passed the complete root typecheck (134 tasks; 4,543 test files
+in 70 packages), 11 mounted public UI tests, and 10 restore-receipt race tests,
+with zero failures or skips in those two suites. Its actual capacity was
+16,759,308,288 bytes, available memory 15,358,435,328 bytes, effective V8 heap
+8,240 MiB, and Turbo concurrency 1. Compact evidence:
+`palette-be8-mounted-qualification-fd0b1714.json` in the coordinator scratch.
+This qualifies the reporting workflow memory repair, not the missing main-only
+full CI graph or palette access acceptance. Skipped review jobs are not passes.
+
+The first NVIDIA sequence against production build `285414189e` and harness
+`e59ec98acb` established a physical NVIDIA/lovelace adapter and green GPU
+readback. It then exposed invalid locator-only assertions on file-chooser
+ElementHandles, plus a later loaded-page adapter failure. The chooser checks
+now read the actual chooser input attribute and assert the same file type;
+activation, chooser events, and real install flow remain required. The original
+run is preserved. A passing initial adapter probe does not prove all subsequent
+viewer contexts work. R2 remains unaccepted.

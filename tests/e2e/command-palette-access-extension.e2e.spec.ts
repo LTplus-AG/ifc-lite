@@ -105,7 +105,7 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     const chooserPromise = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     const chooser = await chooserPromise;
-    await expect(chooser.element()).toHaveAttribute('accept', '.iflx');
+    expect(await chooser.element().getAttribute('accept')).toBe('.iflx');
     await chooser.setFiles(packed.upload);
     const consent = page.getByRole('dialog', { name: `Install ${OWNER} v1.0.0?`, exact: true });
     await expect(consent).toBeVisible();

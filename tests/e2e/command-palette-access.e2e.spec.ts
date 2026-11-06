@@ -213,7 +213,7 @@ for (const context of contexts) {
       }
       const chooser = await chooserPromise;
       expect(chooser.isMultiple()).toBe(true);
-      await expect(chooser.element()).toHaveAttribute('accept', /ifc/i);
+      expect(await chooser.element().getAttribute('accept')).toMatch(/ifc/i);
       await chooser.setFiles([]); // Cancel; never substitute a fake file or load result.
       await expect(palette(page)).toBeHidden();
     }

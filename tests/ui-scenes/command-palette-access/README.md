@@ -400,3 +400,26 @@ absent; persistent File System Access handles require separate evidence. The
 installed-extension → widget → QuickJS → renderer browser witness remains an
 explicit gap. Full source-to-control reconciliation and all candidate access
 browser evidence remain pending; round 1 is not accepted.
+
+### Round 1 continuation: source corrections, not execution acceptance
+
+The georeference capability correction now lives in the tools layer; its shared
+test helper moved unchanged with it. Rebasing the later layers preserved the
+complete candidate tree (`3383fcc9`), not equality between different stack layers.
+Fresh Astra found the production lifetime/camera/help corrections addressed and
+one remaining retirement-test setup error. That test now performs an actual
+keyed React host unmount/remount during a held real load, then checks that
+metadata cannot restore the retired owner or enter its wall tool.
+
+The file/extension route audit found an ion upload eligibility mismatch. The
+palette, canonical export dispatcher and upload dialog now share the same STEP
+IFC candidate list. IFCX-only contexts explain the format prerequisite; adding
+a supported federation member makes the real configuration flow available even
+when another format is active. An excluded capture cannot be resurrected through
+the legacy active-store fallback. Authored regressions parse real IFCX/STEP and
+open the actual model/token dialog; they do not perform a remote upload.
+
+These new assertions remain unexecuted. Original request
+`auto-733abcb75900474aaf129393bb4e0edf` / job
+`835cba3b-6fb4-4f09-88b3-0a347ca04560` is still queued for older source `8021801`;
+it cannot certify these corrections. Other original requests remain preserved.

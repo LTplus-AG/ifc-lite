@@ -306,3 +306,37 @@ agent removed 42,408 bytes of its redundant edit scripts after preserving the
 compact result. No original queued validation was moved or replayed. Dynamic
 exporter/dock destinations, full semantic reconciliation and candidate UI evidence
 remain open; this is still access round 1, not acceptance.
+
+## Round 1 extension destinations and independent corrections
+
+Dock contributions now have owner/slot-qualified palette destinations that open
+real widget bodies in a persistent dialog, including mobile. The dock and palette
+share the same widget renderer. Canonical command dispatch preserves widget
+arguments into the sandbox context. Exporter rows expose owner context, share a
+busy guard across surfaces and refuse retired/replaced registrations. Existing
+manifest command projection already includes toolbar commands, so it is reused.
+
+New mounted regressions cover owner/slot collisions, actual widget controls and
+arguments, context loss/restoration, retirement, provider replacement, malformed
+widget recovery, focus restoration and exporter lifecycle. These assertions are
+UNRUN; syntax, targeted lint, module-size, i18n and source-text guards passed.
+
+Independent Astra review of destination head `69dda602` found one P2: an old
+measurement tab request replayed after remount, overriding later Point navigation.
+The correction consumes pending requests once and preserves fresh explicit tab
+requests. Its regression uses the actual toolbar to close, choose Point and reopen,
+then invokes fresh List destinations repeatedly. The same review found the earlier
+CSV target/read-generation correction addressed in source, without runtime proof.
+
+Original validation `auto-fb8f85e8abd94a28a2234d97f1df3879`, job
+`af297000-bc57-40d0-8e8d-b2ada4a8d4f7`, tested exact `69dda602` on PC. It failed
+viewer test typechecking on an incomplete FileSystemFileHandle fixture; 133 other
+Turbo tasks passed. Root tail, build and viewer tests were not reached. The fixture
+now supplies the complete interface without a cast. Corrections were backported
+into their owning hosts/destinations layers, preserving the combined source tree.
+The original failure is published and retained; storage close refused live output
+references, so nothing was force-deleted (0 bytes reclaimed).
+
+Complete semantic reconciliation, blank-model/load-recovery/camera-edge routes,
+combined runtime validation and candidate UI evidence remain open. This is still
+access round 1, not acceptance; the independently accepted UX hillclimb is unchanged.

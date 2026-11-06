@@ -18,6 +18,7 @@ import { extractGeoreferencingOnDemand, extractProjectUnits, ProjectUnits, type 
 import { useViewerStore } from '@/store';
 import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
+import { effectiveEntityCount, effectiveMaxExpressId } from '@/lib/effective-entity-count';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
@@ -128,6 +129,11 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
     [dataStore, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
   );
 
+  // The statistics describe the model as edited; the file rows above them stay
+  // the file's, and say so once the two can differ (#9026).
+  const entityCount = useMemo(() => effectiveEntityCount(dataStore, mutationView), [dataStore, mutationView, mutationVersion]);
+  const maxExpressId = useMemo(() => effectiveMaxExpressId(model.maxExpressId, mutationView), [model.maxExpressId, mutationView, mutationVersion]);
+
   // Extract georeferencing info
   const georef = useMemo(() => {
     if (!dataStore) return null;
@@ -199,7 +205,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             reserved for real warnings (#8802). */}
         <section className="border-b border-border pb-1">
           <InspectorHeading>{t('properties.modelMetadata.fileInformationHeading')}</InspectorHeading>
-          <InspectorRow label={t('properties.modelMetadata.fileSize')} value={formatFileSize(model.fileSize)} copy={false} />
+          <InspectorRow label={t(mutationView?.hasPendingChanges() ? 'properties.modelMetadata.fileSizeAsLoaded' : 'properties.modelMetadata.fileSize')} value={formatFileSize(model.fileSize)} copy={false} />
           <InspectorRow label={t('properties.modelMetadata.loadedAt')} value={formatDate(model.loadedAt)} mono copy={false} />
           {dataStore && dataStore.parseTime != null && (
             <InspectorRow label={t('properties.modelMetadata.parseTime')} value={t('properties.modelMetadata.parseTimeValue', { ms: formatLocaleNumber(locale, dataStore.parseTime, { maximumFractionDigits: 0 }) })} copy={false} />
@@ -246,7 +252,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
           <InspectorHeading>{model.sourceSchema ? t('properties.modelMetadata.sourceStatisticsHeading') : t('properties.modelMetadata.statisticsHeading')}</InspectorHeading>
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourceSurfaces') : t('properties.modelMetadata.totalEntities')}
-            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.surfaces) : dataStore?.entityCount != null ? formatLocaleNumber(locale, dataStore.entityCount) : t('properties.modelMetadata.notAvailable')}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.surfaces) : entityCount != null ? formatLocaleNumber(locale, entityCount) : t('properties.modelMetadata.notAvailable')}
             copy={false}
           />
           <InspectorRow
@@ -260,7 +266,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             copy={false}
           />
           {!model.sourceSchema && (
-            <InspectorRow label={t('properties.modelMetadata.maxExpressId')} value={formatLocaleNumber(locale, model.maxExpressId)} copy={false} />
+            <InspectorRow label={t('properties.modelMetadata.maxExpressId')} value={formatLocaleNumber(locale, maxExpressId)} copy={false} />
           )}
         </section>
 

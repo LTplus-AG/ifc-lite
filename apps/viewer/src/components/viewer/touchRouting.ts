@@ -125,7 +125,7 @@ export function routeMousePointers(
       // caught by the re-pick's view check
       const measure = measureContexts.get(canvas)?.ctx;
       const press = measure?.mouseState;
-      if (measure && !(press?.isDragging && !press.didDrag && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
+      if (measure && !(press?.isDragging && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
       // A Pencil hovering with nothing down, after a press whose pointerup never reached us
       if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
       if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);

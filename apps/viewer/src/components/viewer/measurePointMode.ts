@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
-import { noteMeasureCursor } from './measureCursor.js';
+import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import { viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
@@ -110,10 +110,12 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
 }
 
 function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: number): void {
+  const noted = measureCursor(ctx);
   trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
     trailingHover.delete(ctx.lastHoverSnapTimeRef);
-    // A press since then owns the pointer (orbit, or the click's own pick).
-    if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
+    // A press since then owns the pointer (orbit, or the click's own pick); a pan since, even one already
+    // released, has left this spot and forgotten its cursor (#9022).
+    if (!ctx.mouseState.isDragging && measureCursor(ctx) === noted) hoverMeasurePointAt(ctx, x, y);
   }, wait));
 }
 

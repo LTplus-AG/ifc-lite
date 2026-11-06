@@ -802,10 +802,11 @@ describe('a Snap toggle re-picks the live preview under the new setting at the c
   });
 
   it('Distance: a pan past the click slop and back near its press still forgets the cursor', async () => {
-    const { canvas } = mount();
+    const { canvas, camera } = mount();
     click(canvas, 200, 300);
     fire(canvas, 'pointermove', 400, 250);
     flushFrames();
+    Object.assign(camera, { pan: () => {} }); // a pan clamped to nothing: only the drag tells the press moved
     act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
     act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 450, 250)); });
     act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 401, 250)); });
@@ -962,6 +963,36 @@ describe('a Snap toggle re-picks the live preview under the new setting at the c
     act(() => { window.dispatchEvent(new Event('blur')); });
     await pressKey('s');
     assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'a blur left the re-pick on the axis');
+  });
+
+  it('Point mode: a camera move then a plain move in one frame still re-picks', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, camera } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    camera.setPosition(2, 1.6, 10); // the measure pass has not run since
+    fire(canvas, 'pointermove', 400, 250); // throttled: queues a trailing pick, notes the cursor
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'BUG: the Point move noted the view of the frame before it');
+  });
+
+  it('Point mode: a pan released inside the hover throttle does not re-pick at the pixel before it', async (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 });
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    t.mock.timers.tick(10);
+    fire(canvas, 'pointermove', 450, 250); // inside the throttle window: a trailing pick is queued at 450
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 450, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 550, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 550, 250)); });
+    locksSeen.length = 0;
+    act(() => t.mock.timers.tick(200));
+    flushFrames();
+    assert.equal(locksSeen.length, 0, 'the trailing pick ran at the pixel the pan left');
+    await pressKey('s');
+    assert.equal(locksSeen.length, 0, 'Snap off re-picked at the pixel the pan left');
   });
 
   it('Distance: a camera move then a plain move in one frame still re-picks (#9052)', async () => {

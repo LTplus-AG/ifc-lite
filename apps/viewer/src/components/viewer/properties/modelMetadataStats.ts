@@ -23,7 +23,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { countEffectiveEntityTypes } from '@ifc-lite/data';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects } from '@/lib/object-count';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 
 export interface ModelStats {
   storeys: number;
@@ -63,7 +63,7 @@ export function computeModelStats(
   }
   const physicalIds = geometry.physicalIds ?? collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
   const elementsWithGeometry = countShapedObjects(physicalIds, {
-    relationships: dataStore.relationships as AggregationRelationships | undefined,
+    relationships: ownedAggregationRelationships(dataStore, geometry.mutationView),
     meshedIds,
     // A still-streaming model may have no geometry result yet; the shape
     // test must then stand aside (see `object-count.ts`'s "Before geometry

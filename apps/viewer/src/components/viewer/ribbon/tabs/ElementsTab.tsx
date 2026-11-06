@@ -8,12 +8,12 @@
 
 import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group, Layer } from '@/icons';
-import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { usePersistentToolHosts } from '../../PersistentToolHosts';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { surfaceCommand } from '../../surface-commands';
-import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
+import { useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -24,6 +24,7 @@ import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-b
 export function ElementsTab() {
   const { t } = useTranslation();
   const bim = useContext(BimReactContext);
+  const toolHosts = usePersistentToolHosts();
   const toggleCollection = surfaceCommand('vis:toggle-iso', 'ribbon');
   const resetColors = surfaceCommand('vis:reset-colors', 'ribbon');
   const collabRole = useViewerStore((s) => s.collabRole);
@@ -160,11 +161,10 @@ export function ElementsTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.elements.visibilityGroup')}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+
             <RibbonCommandLargeButton
               commandId="elements:class-filter"
-              triggerOnly
+              commandContext={toolHosts}
               icon={ClassVisibility}
               hasMenu
               tooltip={mergeLayers
@@ -177,9 +177,7 @@ export function ElementsTab() {
                 <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-background" />
               ) : undefined}
             />
-          </DropdownMenuTrigger>
-          <ClassVisibilityMenuContent align="start" />
-        </DropdownMenu>
+
         <RibbonSmallStack>
           {[toggleCollection, resetColors].map((command) => (
             <RibbonCommandSmallButton

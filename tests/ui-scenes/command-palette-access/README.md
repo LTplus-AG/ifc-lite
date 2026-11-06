@@ -174,3 +174,28 @@ Turbo dry run selected the intended tests but found 58 missing dependency builds
 so it was not counted as execution. The host implementer removed its own 44,204
 bytes of redundant scratch; no active jobs, source, fixtures or evidence were
 removed. Author dialogs and class filtering remain for the next serial batch.
+
+## Round 1 author/class host checkpoint and host review
+
+Persistent hosts now share Bulk Property Editor, CSV Data Connector and class
+visibility controls between ribbon and palette. Workspace Undo/Redo uses the
+existing history resolver. Eight mounted tests cover real editor bodies, CSV
+input/mapping, draft preservation after ribbon unmount/cancel, class settings,
+host/role/model refusal, and mutation followed by workspace history replay.
+The tests are added but not yet executed; existing standalone editor regressions
+and asynchronous cancellation need matching-source validation too. Cheap lint,
+syntax, module-size, source-text and i18n guards passed. No feature-access verdict.
+
+Fresh Astra review of `2e2c35e..efdcf49` found the three foundation objections
+resolved in source. It found one P2 in the new Activity host: both it and the
+existing desktop/mobile entry point announced the same completed job. The
+correction keeps the new dialog persistent with announcements disabled there;
+two composed-shell regressions require exactly one completion live region.
+These assertions also await execution.
+
+The source reconciliation retains all 624 component records, 3,994 anchors and
+189 indirect/display records. Some remaining handler chains are explicitly
+unresolved, and candidate behavior coverage is still pending. Source accounting
+is not a completeness verdict. The author-host implementer reclaimed 2,297,930
+bytes of its own redundant dry-run and verbose guard output, retaining compact
+receipts and preserving source, fixtures, evidence and foreign jobs.

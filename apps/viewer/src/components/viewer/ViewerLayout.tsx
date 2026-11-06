@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { PersistentToolHosts } from './PersistentToolHosts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
@@ -239,7 +239,6 @@ export function ViewerLayout() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Track the gap between the layout viewport (innerHeight) and the visual
   // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
   // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
   const bottomViewportInset = useVisualViewportBottomInset();
@@ -255,7 +254,7 @@ export function ViewerLayout() {
   useThemeDocumentClass();
   const safeMode = isSafeMode();
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={300}><PersistentToolHosts>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
         <ShellStoreEffects />
@@ -445,6 +444,6 @@ export function ViewerLayout() {
             child documents; live-synced via the shared store. */}
         <PanelWindowHost />
       </div>
-    </TooltipProvider>
+    </PersistentToolHosts></TooltipProvider>
   );
 }

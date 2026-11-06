@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 
 /**
  * Bulk Property Editor - Query builder UI for mass property updates
@@ -38,7 +39,6 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { canMutate, mutationDenialKey, mutationPermissionForModels } from '@/store/mutation-permission';
-import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
@@ -75,13 +75,9 @@ export { parseBulkSetPropertyValue } from './bulk-property-value';
 
 type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
 
-interface BulkPropertyEditorProps {
-  trigger?: React.ReactNode;
-}
-
-export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
+export function BulkPropertyEditor(props: ToolDialogProps) {
   const { t, locale, revision } = useTranslation();
-  const { models } = useIfc();
+  const models = useViewerStore(s => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const mutationViews = useViewerStore((s) => s.mutationViews);
@@ -93,7 +89,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
 
-  const [open, setOpen] = useState(false);
+  const { trigger } = props;
+  const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
   const targetGroups = useBulkTargets(open, targetSource, models);
@@ -425,24 +422,23 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
   }, [targetSource, targetGroups, selectedModelId, queryGroups, actionType, targetPset, targetProp, targetValue, valueType]);
 
+  useEffect(() => {
+    if (!open) { executeCancelRef.current = true; executeAbortRef.current?.abort(); return; }
+    const selection = useViewerStore.getState();
+    setTargetSource(selection.models.size > 0
+      && (selection.selectedEntityIds.size > 0 || selection.selectedEntityId !== null) ? 'selection' : 'query');
+  }, [open]);
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => {
-      setOpen(nextOpen);
-      if (!nextOpen) { executeCancelRef.current = true; executeAbortRef.current?.abort(); }
-      if (nextOpen) {
-        const selection = useViewerStore.getState();
-        setTargetSource(selection.models.size > 0
-          && (selection.selectedEntityIds.size > 0 || selection.selectedEntityId !== null) ? 'selection' : 'query');
-      }
-    }}>
-      <DialogTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {(props.open === undefined || trigger) && <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
             <Filter className="h-4 w-4 mr-2" />
             {t('bulkPropertyEditor.trigger')}
           </Button>
         )}
-      </DialogTrigger>
+      </DialogTrigger>}
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
           <DialogTitle className="flex items-center gap-2">

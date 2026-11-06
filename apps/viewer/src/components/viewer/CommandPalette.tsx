@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { usePersistentToolHosts } from './PersistentToolHosts';
 
 /** Ctrl/Cmd+K command search with scoring and recent usage. Command DATA
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
@@ -98,6 +99,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const fileHost = useMountedFileHost();
+  const toolHosts = usePersistentToolHosts();
   const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
@@ -121,13 +123,13 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   // Cesium only has something to show once a model carries georeferencing.
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
-  const { t } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
     execute,
-    surfaceContext: { ...surfaceContext, ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
+    surfaceContext: { ...toolHosts, ...surfaceContext, ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
@@ -138,7 +140,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext]);
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──

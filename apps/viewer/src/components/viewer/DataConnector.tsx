@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 /**
  * Data Connector UI - Import data from CSV files and map to IFC properties
  *
@@ -52,7 +52,6 @@ import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
-import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -83,22 +82,17 @@ const COLUMN_TYPES: Partial<Record<PropertyValueType, ColumnValueType>> = {
   [PropertyValueType.String]: 'text', [PropertyValueType.Real]: 'real', [PropertyValueType.Integer]: 'integer', [PropertyValueType.Boolean]: 'boolean',
 };
 
-interface DataConnectorProps {
-  trigger?: React.ReactNode;
-}
-
 interface CsvColumn {
   name: string;
   sampleValues: string[];
 }
 
-export function DataConnector({ trigger }: DataConnectorProps) {
+export function DataConnector(props: ToolDialogProps) {
   const { t, locale } = useTranslation();
-  const { models } = useIfc();
+  const models = useViewerStore(s => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
+  const mutationViews = useViewerStore(s => s.mutationViews);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  // CSV writes bypass mutationSlice, so both its live guard and the Import
-  // affordance use the same edit-mode, collaboration, and model policy.
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
@@ -107,7 +101,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const { trigger } = props;
+  const [open, setOpen] = useToolDialog(props);
+  const lifetime = useMemo(() => ({ active: open }), [open]);
+  useEffect(() => { lifetime.active = open; return () => { lifetime.active = false; }; }, [lifetime, open]);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
     [editEnabled, collabEditRole, selectedModelId, models]);
@@ -186,7 +183,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   // Ensure mutation view exists for selected model
   useEffect(() => {
-    if (!selectedModel?.ifcDataStore || !selectedModelId) return;
+    if (!open || !selectedModel?.ifcDataStore || !selectedModelId) return;
 
     // Check if mutation view already exists
     let mutationView = getMutationView(selectedModelId);
@@ -200,7 +197,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);
-  }, [selectedModel, selectedModelId, getMutationView, registerMutationView]);
+  }, [open, selectedModel, selectedModelId, getMutationView, registerMutationView]);
 
   // Create CsvConnector instance
   const csvConnector = useMemo(() => {
@@ -215,9 +212,9 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => canMutate(useViewerStore.getState(), selectedModelId)
+      () => lifetime.active && canMutate(useViewerStore.getState(), selectedModelId)
     );
-  }, [selectedModel, selectedModelId, getMutationView]);
+  }, [lifetime, selectedModel, selectedModelId, getMutationView, mutationViews]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -233,6 +230,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      if (!lifetime.active) return;
       const text = event.target?.result as string;
       if (!text) return;
 
@@ -325,7 +323,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
     reader.readAsText(file);
     e.target.value = ''; // Reset input
-  }, [csvConnector]);
+  }, [csvConnector, lifetime]);
 
   // Re-parse when model changes and we have content
   const handleModelChange = useCallback((modelId: string) => {
@@ -498,9 +496,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
       state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
     setSuggesting(false);
+    if (!lifetime.active) return;
     if (outcome.ok) setAiMapping(outcome.mapping);
     else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
-  }, [tableRows, selectedModelId, headers, t]);
+  }, [tableRows, selectedModelId, headers, t, lifetime]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -597,14 +596,14 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+      {(props.open === undefined || trigger) && <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
             <Upload className="h-4 w-4 mr-2" />
             {t('dataConnector.triggerButton')}
           </Button>
         )}
-      </DialogTrigger>
+      </DialogTrigger>}
       <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col p-0 gap-0">
         {/* Fixed Header */}
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">

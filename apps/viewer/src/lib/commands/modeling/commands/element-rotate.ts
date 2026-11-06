@@ -15,6 +15,7 @@
  */
 
 import { ElementRotateBar, ElementRotatePlan, ElementRotateScene } from '@/components/viewer/tools/command/ElementRotateLayers';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitElementTransform } from '@/lib/element-transform/commit';
 import { commandGhostId } from '../ghost.js';
 import { readTransformSelection, selectionExtent, transformedGhosts } from './element-transform-shared.js';
@@ -25,6 +26,9 @@ import type { CommandContext, CommandField, ModelingCommand, Workplane } from '.
 const MIN_RADIUS = 0.6;
 
 function init(ctx: CommandContext): ElementRotateGesture {
+  const selected = readTransformSelection(ctx.get());
+  // #8947: registration replaces the live view map; read fresh state for the gesture.
+  if (selected && !selected.refusal) modelEditTarget(ctx.get(), selected.modelId);
   const s = ctx.get();
   const selection = readTransformSelection(s);
   const extent = selection && ctx.workplane ? selectionExtent(s, selection, ctx.workplane) : null;

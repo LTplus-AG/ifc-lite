@@ -50,6 +50,13 @@ export interface ActiveMeasurement {
  */
 export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius' | 'point';
 
+/**
+ * The input the Measure gesture saw last (#8879): a tap on the touch path, or
+ * a mouse (or pen) move or press on the canvas. The hint line words itself
+ * for it, so a hybrid device shows the wording for whichever was used last.
+ */
+export type MeasureInput = 'mouse' | 'touch';
+
 /** A multi-click sequence in progress, not yet finished or cancelled. */
 export interface ActivePolyline {
   points: MeasurePoint[];

@@ -194,6 +194,7 @@ function assertMarked(after: Set<string>, key: MeasureKey, params: Record<string
 const RESET = {
   activeTool: 'measure',
   measureMode: 'drag' as const,
+  measureInput: 'mouse' as const,
   measurements: [],
   activeMeasurement: null,
   angleMeasurements: [],
@@ -406,6 +407,48 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     walk(after);
 
     assertStaticCoverage(english, after);
+  });
+
+  it('touch: every tap-worded hint, across modes and pick counts (#8879)', () => {
+    useViewerStore.setState({ measureInput: 'touch' });
+    renderMeasure();
+
+    const onePick = { kind: 'points' as const, point: mp(0, 0, 0) };
+    const angle = (kind: 'points' | 'edges' | 'faces', picks: number) => ({
+      measureMode: 'angle' as const, angleKind: kind,
+      activeAngle: picks === 0 ? null : { kind, picks: Array(picks).fill(onePick) },
+    });
+    const states: Array<Partial<ReturnType<typeof useViewerStore.getState>>> = [
+      { measureMode: 'drag', activeMeasurement: null },
+      { measureMode: 'drag', activeMeasurement: { start: mp(0, 0, 0), current: mp(1, 0, 0), distance: 1 } },
+      { activeMeasurement: null, measureMode: 'point', measurePointLast: null },
+      { measureMode: 'point', measurePointLast: mp(1, 2, 3) },
+      { measurePointLast: null, measureMode: 'polyline' },
+      { measureMode: 'radius' },
+      angle('points', 0), angle('points', 1), angle('points', 2),
+      angle('edges', 0), angle('edges', 1), angle('edges', 2), angle('edges', 3),
+      angle('faces', 0), angle('faces', 1),
+    ];
+
+    const walk = (out: Set<string>) => {
+      for (const s of states) {
+        act(() => useViewerStore.setState(s));
+        addReadable(document.body, out);
+      }
+      act(() => useViewerStore.setState({ measureMode: 'drag', activeAngle: null }));
+    };
+
+    const english = new Set<string>();
+    walk(english);
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = new Set<string>();
+    walk(after);
+
+    assertStaticCoverage(english, after);
+    const touchKeys = STATIC_KEYS.filter((key) => key.startsWith('measure.hint.') && key.endsWith('Touch'));
+    assert.deepEqual(touchKeys.filter((key) => !coveredStatic.has(key)), [], 'every tap-worded hint renders translated');
   });
 
   it('radius mode: hints on and off an active sequence', () => {

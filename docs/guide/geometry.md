@@ -996,7 +996,11 @@ To mesh hosts without subtracting their `IfcRelVoidsElement` openings, set
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const geometry = new GeometryProcessor({ skipVoids: true, preferNative: false });
+const geometry = new GeometryProcessor({
+  skipVoids: true,
+  preferNative: false,
+  enableInstancing: false, // Deliver all geometry through event.meshes.
+});
 await geometry.init();
 for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
   if (event.type === 'batch') console.log(event.meshes);

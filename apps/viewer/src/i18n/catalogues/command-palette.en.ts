@@ -24,6 +24,10 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  'commandPalette.availability.refresh': 'Reopen every model with a live file handle to refresh',
+  'commandPalette.availability.gpuChecking': 'Wait for the WebGPU check to finish',
+  'commandPalette.availability.gpu': 'WebGPU is unavailable — see the welcome screen for help',
+  'commandPalette.availability.reopen': 'Reopen the file from disk; the cached copy is no longer available',
   'commandPalette.availability.editor': 'Requires editor access',
   'commandPalette.availability.feature': 'Unavailable in this configuration',
   'commandPalette.availability.selection': 'Select elements in the viewer first',

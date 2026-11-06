@@ -158,3 +158,19 @@ revert oracle and performance ratchet passing. Node shard 2/4 failed nine BCF
 fixture tests, and its dependent aggregate failed; Rust/path-gated lanes skipped
 as configured. This is not a full-CI pass. Separate test-only repair PR #8959
 and its original admitted validation are parent-owned; UX head remains frozen.
+
+## Round 1 mounted file/activity host checkpoint
+
+The Ribbon-owned file hook now publishes one typed, identity-checked host.
+Palette Open/Add invoke the real picker synchronously; Refresh requires live
+handles for every loaded model; Share opens the existing persistent dialog.
+Activity uses the real tray dialog outside the closing palette. Open/Add/recent
+files share the cached WebGPU prerequisite. Recent cache miss/error recovery no
+longer attempts a picker after an asynchronous cache read. Eight mounted host
+regressions cover these paths; their runtime assertions are still unverified.
+
+Focused lint and module-size/source-text/i18n/whitespace guards passed. The root
+Turbo dry run selected the intended tests but found 58 missing dependency builds,
+so it was not counted as execution. The host implementer removed its own 44,204
+bytes of redundant scratch; no active jobs, source, fixtures or evidence were
+removed. Author dialogs and class filtering remain for the next serial batch.

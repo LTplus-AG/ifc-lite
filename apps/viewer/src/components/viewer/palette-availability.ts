@@ -3,10 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
-import { selectHasModelsLoaded } from '@/hooks/model-presence';
+import { getWebGPUStatus } from '@/hooks/useWebGPU';
+import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
 import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
@@ -42,6 +44,26 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   const id = command.id;
   const loaded = selectHasModelsLoaded(s);
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
+  if (id === 'file:share' && !isCollabEnabled()) return blocked('commandPalette.availability.feature');
+  if (['file:open', 'file:add-model', 'file:refresh', 'file:share'].includes(id)) {
+    const callback = id === 'file:open' ? context.openFiles : id === 'file:add-model' ? context.addModel
+      : id === 'file:refresh' ? context.refreshModels : context.openShareDialog;
+    if (!callback || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+    if (id === 'file:share') {
+      if (!loaded) return blocked('commandPalette.availability.model');
+    } else {
+      if (s.loading) return blocked('commandPalette.availability.loading');
+      if (id === 'file:refresh') {
+        if (!loaded) return blocked('commandPalette.availability.model');
+        if (!selectCanRefreshModels(s)) return blocked('commandPalette.availability.refresh');
+      } else {
+        const gpu = getWebGPUStatus();
+        if (gpu.checking) return blocked('commandPalette.availability.gpuChecking');
+        if (!gpu.supported) return blocked('commandPalette.availability.gpu');
+      }
+    }
+  }
+  if (id === 'ui:activity' && !context.openActivity) return blocked('commandPalette.availability.host');
   if (id === 'tool:edit-mode' && !s.editEnabled && !modelWorkspaceTarget(s)) {
     return blocked('commandPalette.availability.ifc');
   }

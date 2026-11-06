@@ -12,6 +12,9 @@ import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
+import { useMountedFileHost, getMountedFileHost } from './toolbar/mounted-file-host';
+import { useWebGPU } from '@/hooks/useWebGPU';
+import type { SurfaceCommandContext } from './surface-command-types';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -77,9 +80,12 @@ function activateBottomPanel(panel: BottomPanelId) {
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  surfaceContext?: Omit<SurfaceCommandContext, 'surface'>;
 }
 
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPaletteProps) {
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [query, setQuery] = useState('');
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const listId = useId();
@@ -91,6 +97,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // Names currently in the blob cache, refreshed each open — lets recent-file clicks decide hit/miss without an async gap that would void user activation.
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
+  const fileHost = useMountedFileHost();
+  const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
@@ -119,6 +127,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
     execute,
+    surfaceContext: { ...surfaceContext, ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
@@ -129,7 +138,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites]);
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext]);
 
 
   // ── Search: score, filter, sort ──
@@ -185,6 +194,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (!canRunPaletteCommand(cmd)) return;
     onOpenChange(false);
     const activate = () => {
+      if (!mounted.current) return;
       if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return;
       recordUsage(cmd.id);
       if (!cmd.registryOwned) trackCommandExecution(cmd.id, 'palette');

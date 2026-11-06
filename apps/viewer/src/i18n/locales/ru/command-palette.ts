@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  'commandPalette.availability.refresh': 'Для обновления откройте все модели с доступом к файлам на диске',
+  'commandPalette.availability.gpuChecking': 'Дождитесь завершения проверки WebGPU',
+  'commandPalette.availability.gpu': 'WebGPU недоступен — справка на начальном экране',
+  'commandPalette.availability.reopen': 'Откройте файл с диска: сохранённая копия больше недоступна',
   'commandPalette.availability.editor': 'Требуется роль редактора',
   'commandPalette.availability.feature': 'Недоступно в этой конфигурации',
   'commandPalette.availability.selection': 'Сначала выберите элементы в окне просмотра',

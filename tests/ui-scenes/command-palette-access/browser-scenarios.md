@@ -303,7 +303,7 @@ The runner now requires actual visible-canvas readback before starting cases;
 an offscreen pixel probe missed this failure. Physical-adapter checks remain.
 The PC helper-managed browser is unchanged. This is setup qualification only;
 all 26 cases, three capture matrices, source identity and zero skips still gate
-acceptance. See `evidence/pop-gpu-setup-qualification.json`.
+acceptance. See [evidence/pop-gpu-setup-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/pop-gpu-setup-qualification.json).
 
 The additional access case activates Screenshot from the real loaded palette,
 receives its actual PNG download, decodes it, checks nonblank image content and

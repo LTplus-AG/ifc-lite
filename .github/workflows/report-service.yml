@@ -109,6 +109,9 @@ jobs:
         with:
           cache-prefix: report-public-ui-wasm
       - name: Root Turbo viewer dependency graph and test-source typecheck
+        env:
+          # viewer-embed's plain `tsc` otherwise aborts at Node's default heap (exit 134).
+          NODE_OPTIONS: --max-old-space-size=8192
         run: pnpm typecheck
       - name: Provision real report integration prerequisites
         uses: ./.github/actions/setup-report-integration

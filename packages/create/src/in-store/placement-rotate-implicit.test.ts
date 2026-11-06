@@ -27,12 +27,8 @@ import {
   recordCompoundMutation,
   undoRecordedMutationOperations,
 } from '@ifc-lite/mutations';
-import {
-  asExpressIdRef,
-  readAttributes,
-  resolveRotationState,
-  rotateProductYaw,
-} from './edit/placement-core.js';
+import { asExpressIdRef, readAttributes } from './edit/placement-core.js';
+import { resolveRotationState, rotateProductYaw } from './edit/placement-rotate.js';
 import { transformElementsInStore } from './element-transform-edit.js';
 
 const BOILERPLATE = `#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);

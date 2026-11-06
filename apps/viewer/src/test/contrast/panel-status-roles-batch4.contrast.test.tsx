@@ -29,7 +29,9 @@ const record: BcfPublication = {
 // The DOM checks are also a bounded revert oracle independent of browser launch.
 const states = [
   {
+    // TableMappingCard paints its section bg-primary/5 over the card, so the warning is measured on that stack.
     name: 'table mapping references a column absent from the imported headers', role: 'warn', selector: '[role="alert"]',
+    surface: 'bg-primary/5', backdrop: 'bg-card',
     mount: () => render(<TableMappingCard modelId="missing-model" headers={['GlobalId']} rows={[]}
       mapping={{ version: 1, kind: 'table.mapping', title: 'Mapping', identity: { column: 'GlobalId', key: 'GlobalId' },
         columns: [{ column: 'Absent', target: 'attribute', name: 'Name' }] }}
@@ -37,6 +39,7 @@ const states = [
   },
   {
     name: 'BCF publication was definitely rejected by the server', role: 'danger', selector: 'li > div > span:last-child',
+    surface: 'bg-card', backdrop: undefined,
     mount: () => render(<BCFOutboxEntry record={record} entry={entry} label="Topic" connection={null} />),
   },
 ];
@@ -60,7 +63,7 @@ describe('panel status roles batch 4 (Refs #8802)', () => {
           const expected = await page.$eval('#expected', el => getComputedStyle(el).color);
           assert.equal(actual, expected, 'status paints its role');
         });
-        const ratio = await measureTextContrastOnSurface(theme, 'bg-card', notice.className);
+        const ratio = await measureTextContrastOnSurface(theme, state.surface, notice.className, state.backdrop);
         assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `status contrast ${ratio.toFixed(2)}:1 in ${theme}`);
       });
     }

@@ -81,7 +81,7 @@ import { useAuthoringOverlay } from './useAuthoringOverlay.js';
 import { useClashRendererOverlays } from './useClashRendererOverlays';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
-import type { MeasureCameraState } from './measureCameraState';
+import { measureCanvasBoxWatch, type MeasureCameraState } from './measureCameraState';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -1107,8 +1107,11 @@ export function Viewport({
       });
 
       // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
-      resizeObserver = new ResizeObserver(() => {
+      // Its CSS box also ends Point mode's Live on any resize (#8886).
+      const noteCanvasBox = measureCanvasBoxWatch(lastCameraStateRef);
+      resizeObserver = new ResizeObserver((entries) => {
         if (aborted) return;
+        noteCanvasBox(entries);
         renderCurrent();
       });
       // The device-pixel box also fires when only the pixel ratio changes (window

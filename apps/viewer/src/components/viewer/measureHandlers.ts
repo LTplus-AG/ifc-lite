@@ -449,5 +449,5 @@ export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
  * pass (wheel zoom, a Point-mode hover). The same pass the animation loop runs.
  */
 export function syncMeasureScreenCoords(ctx: MouseHandlerContext): void {
-  reprojectMeasurementsForCamera(ctx.camera, ctx.canvas, ctx.lastCameraStateRef, ctx.updateMeasurementScreenCoords);
+  reprojectMeasurementsForCamera(ctx.camera, ctx.canvas, ctx, ctx.updateMeasurementScreenCoords);
 }

@@ -51,8 +51,11 @@ function capturing(t: TestContext) {
   globalThis.cancelAnimationFrame = ((id: number) => { frames.delete(id); }) as typeof cancelAnimationFrame;
   t.after(() => { globalThis.requestAnimationFrame = raf; globalThis.cancelAnimationFrame = caf; });
   const updateMeasurementScreenCoords = useViewerStore.getState().updateMeasurementScreenCoords;
+  /** The snap glyph's target, as the canvas handlers set it. */
+  const snap: { target: unknown } = { target: undefined };
   const ui = mountMouseControls({
     activeToolRef: { current: 'measure' }, snapEnabledRef: { current: true }, HOVER_SNAP_THROTTLE_MS: 100,
+    setSnapTarget: (target) => { snap.target = target; },
     // As Viewport passes them in.
     updateMeasurementScreenCoords,
     hasPendingMeasurements: () => hasPendingMeasurementState(useViewerStore.getState()),
@@ -60,10 +63,13 @@ function capturing(t: TestContext) {
   const clip = { revision: 0 };
   let picks = 0;
   let renderRequests = 0;
+  /** The capture's GPU completion: settled at once unless a test holds it (a slow GPU). */
+  let finishGpu = () => {};
+  let gpuWork: Promise<void> | null = null;
   const renderer = Object.assign(ui.params.rendererRef.current as unknown as Record<string, unknown>, {
     getPickClipRevision: () => clip.revision,
     requestRender: () => { renderRequests++; },
-    getGPUDevice: () => null,
+    getGPUDevice: () => gpuWork ? { queue: { onSubmittedWorkDone: () => gpuWork } } : null,
     // A capture frame gives the pickers its own clip and revision (#9002).
     renderWithResult: (options: { restoreEvictedForCapture?: boolean }) => {
       if (options.restoreEvictedForCapture) clip.revision = 99;
@@ -80,6 +86,10 @@ function capturing(t: TestContext) {
   const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
   return {
     flush,
+    snap,
+    /** Hold the next capture's GPU completion until {@link finishGpu}. */
+    slowGpu: () => { gpuWork = new Promise<void>(resolve => { finishGpu = () => { gpuWork = null; resolve(); }; }); },
+    finishGpu: () => finishGpu(),
     picks: () => picks,
     /** The loop re-registers its capture session, which aborts a capture in flight. */
     replaceSession: () => { unregister(); unregister = registerViewportCapture(renderer, ui.canvas, () => ({})); },
@@ -154,23 +164,84 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     assert.deepEqual(live(), [7, 1, -2], 'the held-back hover never read the resting cursor');
   });
 
-  it('a hover held back by a live frame that never comes stops asking and ends Live', async (t) => {
+  it('a hover held back by a live frame that keeps failing stops asking and ends Live, then reads the cursor once it lands', async (t) => {
     const h = capturing(t);
     h.move(30); h.runFrames();
     h.liveFrame();
     assert.deepEqual(live(), [3, 4, -5]);
+    assert.ok(h.snap.target !== undefined, 'fixture: the hover must set the snap glyph');
     h.tick(100);
     const { shot } = await h.capture();
     await h.present(shot); // no live frame follows: the loop keeps failing
+    h.snap.target = 'glyph';
     const requests = h.renderRequests();
     h.move(70); h.runFrames();
     for (let i = 0; i < 10; i++) { h.tick(100); h.runFrames(); }
     assert.equal(h.renderRequests() - requests, 3, 'a held-back hover kept asking for frames past a transient miss');
     assert.equal(live(), null, 'a reading for an older cursor position stayed Live');
+    assert.equal(h.snap.target, null, 'the snap glyph outlived the Live reading');
     const picks = h.picks();
     h.liveFrame(); // the frame arrives after all
+    h.tick(100); h.runFrames();
+    assert.equal(h.picks(), picks + 1, 'the resting cursor was never read once the live frame landed');
+    assert.deepEqual(live(), [7, 1, -2]);
+  });
+
+  it('a slow capture holds a resting hover back as long as it needs, then the cursor is read', async (t) => {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    h.tick(100);
+    h.slowGpu();
+    const { shot } = await h.capture();
     h.move(70); h.runFrames();
-    assert.equal(h.picks(), picks + 1, 'the next move did not pick again');
+    for (let i = 0; i < 10; i++) { h.tick(100); h.runFrames(); } // a second of GPU work
+    assert.deepEqual(live(), [3, 4, -5], 'a capture still finishing its GPU work ended Live');
+    h.finishGpu();
+    await h.flush(); // the capture moves on to its presentation frame
+    await h.present(shot);
+    h.liveFrame();
+    h.tick(100); h.runFrames();
+    assert.deepEqual(live(), [7, 1, -2], 'the resting cursor was never read after a slow capture');
+  });
+
+  it('back-to-back captures (a viewpoint export) hold a resting hover back, then the cursor is read', async (t) => {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    h.tick(100);
+    for (let i = 0; i < 3; i++) {
+      const { shot } = await h.capture();
+      if (i === 0) { h.move(70); h.runFrames(); }
+      h.tick(100);
+      await h.present(shot);
+    }
+    h.liveFrame();
+    h.tick(100); h.runFrames();
+    assert.deepEqual(live(), [7, 1, -2], 'the resting cursor was never read after back-to-back captures');
+  });
+
+  it('a hover that left the canvas while held back does not count against the next capture', async (t) => {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    h.tick(100);
+    let { shot } = await h.capture();
+    await h.present(shot);
+    h.move(70); h.runFrames(); h.tick(100); h.runFrames(); h.tick(100); h.runFrames(); // held back twice
+    h.leave();
+    h.liveFrame();
+    h.tick(100);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    assert.deepEqual(live(), [3, 4, -5]);
+    h.tick(100);
+    ({ shot } = await h.capture());
+    await h.present(shot);
+    h.move(70); h.runFrames(); h.tick(100); h.runFrames(); // a normal window: held back twice
+    assert.deepEqual(live(), [3, 4, -5], 'held-back hovers from before the cursor left ended this Live');
+    h.liveFrame();
+    h.tick(100); h.runFrames();
     assert.deepEqual(live(), [7, 1, -2]);
   });
 

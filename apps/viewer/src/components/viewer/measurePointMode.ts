@@ -20,7 +20,7 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
-import { viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
+import { viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
 /** Point mode is live: the Measure tool is open in Point mode. A hover frame queued before a mode or tool switch lands as a no-op. */
 function pointModeLive(): boolean {
@@ -60,7 +60,7 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
 
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */
 export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number): void {
-  if (!pointModeLive()) return;
+  if (!pointModeLive()) { heldBackHovers.delete(ctx.lastHoverSnapTimeRef); return; }
   // A pick now would read a capture's camera or clip, not the view the user
   // sees (#9031): read this spot once the live loop has drawn again.
   if (viewportPicksAwaitLiveFrame(ctx.renderer)) { deferHover(ctx, x, y); return; }
@@ -112,27 +112,32 @@ function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: 
   }, wait));
 }
 
-/** Hover picks held back in a row since the last one that ran, per canvas (#9031). */
+/** Hover picks held back since the capture released the frame, per canvas (#9031). */
 const heldBackHovers = new WeakMap<object, number>();
 /** Like the loop's own live-frame retries: past a transient miss, a timer must not keep the GPU busy. */
-const HOVER_DEFERRALS = 3;
+const HOVER_RENDER_REQUESTS = 3;
 
 /**
- * Retry a hover pick a capture held back (#9031), asking the loop for the
- * frame it waits on. A trailing pick already pending is for a later cursor
- * position, so it stands. A frame that keeps failing ends the Live reading
- * instead: it is for an older cursor position, and the next move picks again.
+ * Retry a hover pick a capture held back (#9031). A trailing pick already
+ * pending is for a later cursor position, so it stands. While the capture
+ * holds the frame nothing is failing, and its release asks for a frame. After
+ * that, ask the loop for the live frame a few times; a frame that keeps
+ * failing ends the Live reading, which is for an older cursor position, and
+ * the retry stays a timer until the live frame lands.
  */
 function deferHover(ctx: MouseHandlerContext, x: number, y: number): void {
   const key = ctx.lastHoverSnapTimeRef;
-  const deferrals = (heldBackHovers.get(key) ?? 0) + 1;
-  if (deferrals > HOVER_DEFERRALS) {
-    heldBackHovers.delete(key);
-    useViewerStore.getState().setMeasurePointLive(null);
-    return;
+  if (!viewportCaptureOwnsFrame(ctx.renderer)) {
+    const deferrals = (heldBackHovers.get(key) ?? 0) + 1;
+    heldBackHovers.set(key, deferrals);
+    if (deferrals <= HOVER_RENDER_REQUESTS) ctx.renderer.requestRender();
+    else if (deferrals === HOVER_RENDER_REQUESTS + 1) {
+      // As a miss ends Live: the snap glyph goes with it.
+      ctx.setSnapTarget(null);
+      updateSnapViz(ctx, null);
+      useViewerStore.getState().setMeasurePointLive(null);
+    }
   }
-  heldBackHovers.set(key, deferrals);
-  ctx.renderer.requestRender();
   if (!trailingHover.has(key)) armTrailingHover(ctx, x, y, ctx.HOVER_SNAP_THROTTLE_MS);
 }
 
@@ -143,6 +148,7 @@ function deferHover(ctx: MouseHandlerContext, x: number, y: number): void {
  */
 export function cancelQueuedHover(ctx: MouseHandlerContext): void {
   cancelTrailingHover(ctx);
+  heldBackHovers.delete(ctx.lastHoverSnapTimeRef);
   cancelMeasureRaycast(ctx);
 }
 

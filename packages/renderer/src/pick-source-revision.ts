@@ -2,13 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { PointCloudRenderer, PointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudAssetHandle, PointCloudRenderer, PointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
+
+/** Same points, same pick identity: the viewer re-stamps `modelIndex` into a fresh object on every merge. */
+const sameAsset = (a: PointCloudAsset, b: PointCloudAsset) =>
+  a.chunk === b.chunk && a.expressId === b.expressId && (a.modelIndex ?? 0) === (b.modelIndex ?? 0);
 
 /** What identifies a curve's snap points: its authored identity and where it evaluates. */
 function curveSetKey(curves: readonly SourceSnapCurve[]): string {
   return JSON.stringify(curves.map((c) => [c.identity, c.globalId, c.kind, c.length, c.sweepAngle ?? null,
     c.affineDisplayFrame ?? null, c.bounds ?? null, c.pointAt(0), c.pointAt(0.5), c.pointAt(1)]));
+}
+
+/** The matrices a ray query reads for one asset (`placement ?? model`). */
+function placementKey(points: PointCloudRenderer, handle: PointCloudAssetHandle): string {
+  return JSON.stringify([Array.from(points.getAssetPlacement(handle) ?? []), Array.from(points.getAssetTransform(handle) ?? [])]);
 }
 
 function sameMask(a: Uint32Array, b: Uint32Array): boolean {
@@ -26,12 +36,34 @@ function sameMask(a: Uint32Array, b: Uint32Array): boolean {
  */
 export class PickSourceRevision {
   private pointClouds = 0;
+  /** The IFCx list `setPointClouds` last installed; null once anything else changed the embedded clouds. */
+  private embedded: readonly PointCloudAsset[] | null = [];
   private curves = 0;
   private curveKey = curveSetKey([]);
   private readCurveKey = this.curveKey;
 
   /** Points were added, removed, moved, shown, hidden or relabelled. */
   notePointClouds(): void { this.pointClouds++; }
+
+  /** Embedded clouds were added outside `setPointClouds`, or every cloud was cleared (`[]`). */
+  noteEmbeddedChanged(now: readonly PointCloudAsset[] | null = null): void { this.embedded = now; this.pointClouds++; }
+
+  /**
+   * The viewer re-pushes the IFCx list on every model-list change, often the
+   * same assets or none at all; only a different list changes what a snap can hit.
+   */
+  noteEmbeddedClouds(assets: readonly PointCloudAsset[]): void {
+    const last = this.embedded;
+    if (last && last.length === assets.length && assets.every((asset, i) => sameAsset(asset, last[i]))) return;
+    this.noteEmbeddedChanged([...assets]);
+  }
+
+  /** Runs `place`; counts only when the matrices the ray query reads moved (the placement sync re-pushes unchanged ones). */
+  placePointCloud(points: PointCloudRenderer, handle: PointCloudAssetHandle, place: () => void): void {
+    const before = placementKey(points, handle);
+    place();
+    if (placementKey(points, handle) !== before) this.pointClouds++;
+  }
 
   /** Applies `opts`; only a changed class mask filters what a snap can hit. */
   setPointCloudOptions(points: PointCloudRenderer, opts: PointCloudRenderOptions): void {

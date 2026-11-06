@@ -1074,11 +1074,14 @@ describe('Point mode "Live" and the point clouds and source curves a pick snaps 
     const { ctx } = fakeCtx({ current: ON_WALL });
     const { renderer, scan } = realPoints(ctx);
     renderer.setPointCloudOptions({ classMask: [-1, -1, -1, -1, -1, -1, -1, -1] });
+    renderer.setPointCloudTranslation(scan, [0, 0, 0]); // the placement sync's first push
     assert.ok(keepsLive(ctx, () => {
       renderer.setPointCloudOptions({ pointSize: 9, colorMode: 'height', classMask: [-1, -1, -1, -1, -1, -1, -1, -1] });
       renderer.setPointCloudVisibility(scan, true); // the visibility sync re-pushes on every model change
       renderer.removePointCloudChunk(scan, 'never-loaded');
-    }), 'a restyle, the same visibility or a no-op eviction ended Live');
+      renderer.setPointClouds([]); // the IFCx sync re-pushes on every model-list change, here with none
+      renderer.setPointCloudTranslation(scan, [0, 0, 0]); // the placement sync re-pushes an unchanged translation
+    }), 'a restyle, the same visibility, a no-op eviction or a re-pushed unchanged list or placement ended Live');
   });
 
   it('installing a different source curve set ends "Live"', () => {

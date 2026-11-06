@@ -71,6 +71,21 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
     }
   });
 
+  it('a re-pushed embedded list counts only when it differs from what setPointClouds installed', () => {
+    const { renderer, bumps } = setup();
+    const list = [{ expressId: 3, modelIndex: 2, chunk: chunk(4) }];
+    renderer.setPointClouds(list);
+    assert.equal(bumps(() => renderer.setPointClouds(list.map((asset) => ({ ...asset })))), false,
+      'the same assets, re-stamped into fresh objects by the merge');
+    assert.equal(bumps(() => renderer.setPointClouds([{ ...list[0], modelIndex: 5 }])), true, 'a different model index');
+    renderer.setPointClouds(list);
+    renderer.addPointClouds([{ expressId: 9, chunk: chunk(9) }]);
+    assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the same list dropping a cloud addPointClouds added');
+    renderer.clearPointClouds();
+    assert.equal(bumps(() => renderer.setPointClouds([])), false, 'no embedded clouds, before or after');
+    assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the list back after a clear');
+  });
+
   it('a hidden scan shown again counts too', () => {
     const { renderer, scan, bumps } = setup();
     renderer.setPointCloudVisibility(scan, false);
@@ -80,6 +95,8 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
   it('keeps still for work that leaves the snappable points alone', () => {
     const { renderer, scan, bumps } = setup();
     renderer.setPointCloudOptions({ classMask: ALL_CLASSES });
+    renderer.setPointCloudTranslation(scan, [1, 0, 0]); // the placement sync's first push
+    renderer.setPointCloudTransform(scan, null);
     const still: Array<[string, () => unknown]> = [
       ['a colour, size or stride change', () => renderer.setPointCloudOptions({ colorMode: 'height', pointSize: 9, previewStride: 4, classMask: ALL_CLASSES })],
       ['the class mask it already has, as a fresh array', () => renderer.setPointCloudOptions({ classMask: [-1, -1, -1, -1, -1, -1, -1, -1] })],
@@ -87,6 +104,8 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
       ['a stream that opens empty', () => renderer.beginPointCloudStream({ expressId: 4 })],
       ['an eviction of a node it never loaded', () => renderer.removePointCloudChunk(scan, 'never-loaded')],
       ['a stream ending', () => renderer.endPointCloudStream(scan)],
+      ['the translation it already has', () => renderer.setPointCloudTranslation(scan, [1, 0, 0])],
+      ['the alignment it already has', () => renderer.setPointCloudTransform(scan, null)],
       ['a pick', () => renderer.raycastScene(128, 128)],
     ];
     for (const [name, change] of still) assert.equal(bumps(change), false, `the revision churned on: ${name}`);

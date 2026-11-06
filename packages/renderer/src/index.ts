@@ -1013,7 +1013,7 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-        this.pointCloudRenderer.setAssets(assets); this.pickSources.notePointClouds();
+        this.pointCloudRenderer.setAssets(assets); this.pickSources.noteEmbeddedClouds(assets);
         this.refreshPlacementBounds();
     }
 
@@ -1026,7 +1026,7 @@ export class Renderer {
             this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
         }
-        this.pickSources.notePointClouds();
+        this.pickSources.noteEmbeddedChanged();
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
@@ -1044,7 +1044,7 @@ export class Renderer {
 
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
-        this.pointCloudRenderer?.clear(); this.pickSources.notePointClouds();
+        this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.refreshPlacementBounds();
     }
 
@@ -1122,7 +1122,7 @@ export class Renderer {
 
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
-        this.pointCloudRenderer?.setAssetTranslation(handle, translation); this.pickSources.notePointClouds();
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTranslation(handle, translation));
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1158,7 +1158,7 @@ export class Renderer {
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
         matrix: Float32Array | Float64Array | null,
     ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix); this.pickSources.notePointClouds();
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTransform(handle, matrix));
         this.refreshPlacementBounds();
     }
 
@@ -3658,7 +3658,7 @@ export class Renderer {
 
         // Point cloud GPU resources
         this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
-        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear(); this.pickSources.notePointClouds();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.pointCloudRenderer = null;
 
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.

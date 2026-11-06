@@ -237,7 +237,7 @@ test('loaded unselected → selected → hidden wall reaches renderer; author/cl
   await info.attach('hidden-real-wall.png', { body: await page.screenshot(), contentType: 'image/png' });
   await run(page, 'author:bulk-properties', 'bulk properties');
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Target source', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Target source', exact: true })).toBeVisible();
   await info.attach('author-bulk-host.png', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Escape');
   await run(page, 'elements:class-filter', 'class visibility');

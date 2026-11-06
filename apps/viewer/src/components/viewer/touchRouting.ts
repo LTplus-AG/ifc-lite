@@ -17,7 +17,6 @@
 
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import type { MeasureInput } from '@/store/types';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
@@ -27,21 +26,16 @@ export { beginMeasurePress } from './distanceClick.js';
 
 /**
  * Wrap a pointer handler so touch-sourced pointer events never reach it. This
- * is where mouse and touch part ways, so it also notes, in the Measure tool,
- * that the last input was a mouse (#8879); `handleMeasureTap` notes a tap.
+ * is where the mouse controls part from touch, so it also notes the input the
+ * viewport saw last (#8879): a pen words the hints as touch does, since a
+ * stylus taps and often has no keyboard. The touch controls note a finger.
  */
 export function ignoreTouchPointers(handler: (e: PointerEvent) => unknown): (e: PointerEvent) => void {
   return (e) => {
     if (e.pointerType === 'touch') return;
-    noteMeasureInput('mouse');
+    useViewerStore.getState().setPointerInput(e.pointerType === 'pen' ? 'touch' : 'mouse');
     void handler(e);
   };
-}
-
-/** The hint line words itself for the input the Measure gesture saw last (#8879). */
-function noteMeasureInput(input: MeasureInput): void {
-  const state = useViewerStore.getState();
-  if (state.activeTool === 'measure') state.setMeasureInput(input);
 }
 
 const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContext; stop: () => void }>();
@@ -80,7 +74,6 @@ export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number,
  * second completes the measurement.
  */
 export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number): void {
-  noteMeasureInput('touch');
   const state = useViewerStore.getState();
   if (state.measureMode !== 'drag') {
     handleMeasureClickAt(ctx, x, y);

@@ -19,7 +19,7 @@ import {
   type ActiveRadius,
   type AngleKind,
   type AngleMeasurement,
-  type MeasureInput,
+  type PointerInput,
   type MeasureMode,
   type MeasurePoint,
   type Measurement,
@@ -76,7 +76,7 @@ export interface MeasureHintState {
   activeRadius: ActiveRadius | null;
   activeMeasurement: ActiveMeasurement | null;
   measurePointLast: MeasurePoint | null;
-  measureInput: MeasureInput;
+  pointerInput: PointerInput;
 }
 
 /**
@@ -111,7 +111,7 @@ const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
  */
 export function measureHintKey(s: MeasureHintState): TranslationKey {
   const key = mouseHintKey(s);
-  return s.measureInput === 'touch' ? TOUCH_HINT_KEYS[key] ?? key : key;
+  return s.pointerInput === 'touch' ? TOUCH_HINT_KEYS[key] ?? key : key;
 }
 
 function mouseHintKey(s: MeasureHintState): TranslationKey {

@@ -194,7 +194,7 @@ function assertMarked(after: Set<string>, key: MeasureKey, params: Record<string
 const RESET = {
   activeTool: 'measure',
   measureMode: 'drag' as const,
-  measureInput: 'mouse' as const,
+  pointerInput: 'mouse' as const,
   measurements: [],
   activeMeasurement: null,
   angleMeasurements: [],
@@ -410,7 +410,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
   });
 
   it('touch: every tap-worded hint, across modes and pick counts (#8879)', () => {
-    useViewerStore.setState({ measureInput: 'touch' });
+    useViewerStore.setState({ pointerInput: 'touch' });
     renderMeasure();
 
     const onePick = { kind: 'points' as const, point: mp(0, 0, 0) };

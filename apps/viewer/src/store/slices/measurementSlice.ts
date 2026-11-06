@@ -18,7 +18,6 @@ import type {
   MeasurementConstraintEdge,
   OrthogonalAxis,
   MeasureMode,
-  MeasureInput,
   ActivePolyline,
   PolylineMeasurement,
   ActiveAngle,
@@ -97,10 +96,6 @@ export interface MeasurementSlice extends MeasurePointSlice {
    * queued measure raycast frame when it changes.
    */
   measureGestureEpoch: number;
-  /** The input the Measure gesture saw last, which words the hint line (#8879). */
-  measureInput: MeasureInput;
-  /** Note the input a Measure gesture used; a no-op when it is unchanged. */
-  setMeasureInput: (input: MeasureInput) => void;
   /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
   activePolyline: ActivePolyline | null;
   /** Which angle the tool measures when `measureMode === 'angle'` (#2735). */
@@ -316,8 +311,6 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   measureReferencePoint: null,
   measureMode: 'drag',
   measureGestureEpoch: 0,
-  measureInput: 'mouse',
-  setMeasureInput: (input) => { if (get().measureInput !== input) set({ measureInput: input }); },
   activePolyline: null,
   polylineMeasurements: [],
   angleKind: 'points',

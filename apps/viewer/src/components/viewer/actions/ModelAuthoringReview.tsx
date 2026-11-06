@@ -32,7 +32,7 @@ import { ReceiptSummary, STATUS } from './ModelChangeReview';
 
 const AUTHORING_STATUS: Record<AuthoringRowStatus, { key: TranslationKey; tone: string }> = {
   ...STATUS,
-  invalid: { key: 'modelAuthoring.status.invalid', tone: 'border border-transparent bg-amber-500/15 text-warn' },
+  invalid: { key: 'modelAuthoring.status.invalid', tone: 'border border-transparent bg-warn-surface text-warn' },
   blocked: { key: 'modelAuthoring.status.blocked', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };
 

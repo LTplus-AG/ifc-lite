@@ -26,9 +26,9 @@ import { ReceiptValidation } from './ReceiptValidation';
 export const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
   ready: { key: 'modelChanges.status.ready', tone: 'border border-transparent bg-ok-surface text-ok' },
   unchanged: { key: 'modelChanges.status.unchanged', tone: 'border border-transparent bg-muted text-muted-foreground' },
-  conflict: { key: 'modelChanges.status.conflict', tone: 'border border-transparent bg-amber-500/15 text-warn' },
-  'missing-target': { key: 'modelChanges.status.missing', tone: 'border border-transparent bg-amber-500/15 text-warn' },
-  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'border border-transparent bg-amber-500/15 text-warn' },
+  conflict: { key: 'modelChanges.status.conflict', tone: 'border border-transparent bg-warn-surface text-warn' },
+  'missing-target': { key: 'modelChanges.status.missing', tone: 'border border-transparent bg-warn-surface text-warn' },
+  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'border border-transparent bg-warn-surface text-warn' },
   denied: { key: 'modelChanges.status.denied', tone: 'border border-transparent bg-muted text-muted-foreground' },
   unsupported: { key: 'modelChanges.status.unsupported', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };

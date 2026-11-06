@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  "commandPalette.vis.resetFilters.label": "Сбросить фильтры видимости",
+  "commandPalette.vis.resetFilters.detail": "Сохранить выбор и коллекцию",
+  "commandPalette.vis.resetFilters.aliases": "сбросить фильтры видимости восстановить видимость без очистки выбора",
+  "commandPalette.availability.noVisibilityFilters": "Нет фильтров видимости для сброса",
 
   "commandPalette.errorReport.label": "Просмотреть отчёт об ошибке…",
   "commandPalette.errorReport.aliases": "сообщить об ошибке сбой загрузки помочь улучшить продолжить недавний ожидающий отчёт",

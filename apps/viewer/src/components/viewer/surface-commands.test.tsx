@@ -31,7 +31,7 @@ const EXPECTED_IDS = [
 ] as const;
 const VISIBILITY_IDS = [
   'vis:isolate',
-  'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
+  'vis:hide', 'vis:show', 'vis:reset-filters', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',
   'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:reset-colors',
@@ -235,7 +235,10 @@ describe('shared palette and ribbon commands (#5870)', () => {
     const exports = await import('./commandPaletteExports.js');
     assert.ok(registry);
     const previous = useViewerStore.getState();
-    useViewerStore.setState({ collabRole: null, cesiumAvailable: false });
+    useViewerStore.setState({ collabRole: null, cesiumAvailable: false,
+      models: new Map(), ifcDataStore: null, geometryResult: null,
+      loading: false, error: null, lastLoadRetry: null,
+      activeLoadCanceller: null, activeStreamCanceller: null });
     try {
       render(<BimReactContext.Provider value={{} as BimContext}>
         <CommandPalette open onOpenChange={() => {}} />
@@ -243,6 +246,11 @@ describe('shared palette and ribbon commands (#5870)', () => {
       const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
       const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
         .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
+      // #8947: inactive contextual actions stay searchable without occupying idle browse.
+      // Explicit expectation, independent of the production browse predicate.
+      const searchOnlyIds = new Set([
+        'file:cancel-load', 'file:retry-load', 'file:dismiss-load-error', 'vis:reset-filters',
+      ]);
       const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
       const runtimePrefixes = {
         'recent-file': 'file:recent:',
@@ -257,7 +265,8 @@ describe('shared palette and ribbon commands (#5870)', () => {
       assert.equal(new Set(renderedStaticIds).size, renderedStaticIds.length,
         'a registered palette command is rendered exactly once');
       assert.deepEqual(new Set(renderedStaticIds),
-        new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
+        new Set(expected.filter(command => !searchOnlyIds.has(command.id)).map(command => command.id)),
+        'idle browse contains every ordinary command and no inactive contextual actions');
       for (const row of rows) {
         const source = row.dataset.runtimeSource;
         assert.notEqual(Boolean(row.dataset.commandId), Boolean(source),
@@ -278,8 +287,32 @@ describe('shared palette and ribbon commands (#5870)', () => {
         assert.equal(row.querySelector('[data-command-label]')?.textContent, resolve(command.labelKey),
           `${command.id} retains its registry label alongside palette availability (#8947)`);
       }
+      const input = document.querySelector<HTMLInputElement>('[role="combobox"]');
+      assert.ok(input);
+      const covered = new Set(renderedStaticIds);
+      for (const id of searchOnlyIds) {
+        const command = expected.find(item => item.id === id);
+        assert.ok(command, `${id} remains declared`);
+        typeInto(input, resolve(command.labelKey));
+        const row = document.querySelector<HTMLElement>(`[role="option"][data-command-id="${id}"]`);
+        assert.ok(row, `${id} remains searchable`);
+        assert.equal(row.getAttribute('aria-label'), resolve(command.labelKey));
+        assert.equal(row.querySelector('[data-command-label]')?.textContent, resolve(command.labelKey));
+        assert.equal(row.getAttribute('aria-disabled'), 'true', `${id} refuses idle activation`);
+        assert.ok(document.getElementById(row.getAttribute('aria-describedby') ?? '')?.textContent?.trim(),
+          `${id} explains its prerequisite`);
+        covered.add(id);
+      }
+      assert.deepEqual(covered, new Set(expected.map(command => command.id)),
+        'browse and contextual search together expose the entire registry');
+      typeInto(input, '');
+      for (const id of searchOnlyIds) {
+        assert.equal(document.querySelector(`[role="option"][data-command-id="${id}"]`), null,
+          `${id} leaves idle browse again after clearing search`);
+      }
     } finally {
-      useViewerStore.setState({ collabRole: previous.collabRole, cesiumAvailable: previous.cesiumAvailable });
+      cleanup();
+      useViewerStore.setState(previous, true);
     }
   });
 });

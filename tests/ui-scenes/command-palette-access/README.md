@@ -915,3 +915,34 @@ widths. Their strict runner requires 26 cases (11 UX + 14 access + 1 extension),
 zero skips. The 9672 built production can be used only with both build-source
 and newer harness-source identities explicitly recorded; no previous
 22/24-case receipt proves these cases. Complete access remains UNACCEPTED.
+
+
+### Access round 4 preparation: exact contextual reset and census correction
+
+R3 observed UX remains accepted on 15bd; complete access remains UNACCEPTED.
+The normalized source overlay preserves all 813 IDs and 3,994 anchors, including
+original report references, ordered paths and explicit evidence qualifications.
+Read the lossless `evidence/normalized-route-overlay.json.gz` using the command
+in its adjacent manifest. Source counts are not behavior passes. That manifest
+also records dormant candidates and the manifest-command palette projection.
+
+C1242/N1269 exposed one genuine route omission: Show all additionally clears
+selection, collection and clash focus, so it cannot stand in for the contextual
+Reset everything action. `vis:reset-filters` now calls the same canonical reset
+as those controls, advertises preservation, and stays searchable with a reason
+when inactive. Seven authored mounted cases cover 1/N models, live refusal,
+stale activation and localized discovery. All remain UNRUN.
+
+Independent original-15bd triage counted 19,788 pass, 110 fail, 150 cancelled,
+338 skipped. Of the failures, 102 and all cancellations came from unavailable
+Chrome; six cold initialization failures and one ion census have later source
+repairs awaiting qualification. The remaining census incorrectly expected three
+inactive load-recovery commands in browse. It now asserts the explicit idle set,
+then searches every contextual action and checks labels, refusal explanations,
+and the complete registry union. The focused selector now includes all
+surface-commands tests, while retaining all four full shards.
+
+The original publication recovery failed at remote PC manifest-put; original
+workspace, receipt and locks remain protected. No rerun or cleanup bypass.
+The 26 real-GPU cases and matching new reset behavior still require execution;
+older source/build receipts cannot qualify this production addition.

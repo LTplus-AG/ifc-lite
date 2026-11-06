@@ -14,7 +14,7 @@ import { useViewerStore } from '@/store';
 import { namedButton } from '@/test/palette-destinations';
 import { loadDocuments } from '@/lib/document/persistence';
 import { seedPanelWitness, mountPanelWitness, openPanelWitness, closePanelWitness,
-  element, choose, openMenu, menuItem } from '@/test/palette-document-panel-witness';
+  element, choose, selectOption, openMenu, menuItem } from '@/test/palette-document-panel-witness';
 
 const initial = useViewerStore.getState();
 let host: ReturnType<typeof mountPanelWitness> | undefined;
@@ -35,7 +35,19 @@ for (const existing of [false, true]) test(`#8947 palette Document configures ${
   host = mountPanelWitness();
   const body = await openPanelWitness('document', '[data-document-panel]');
   await waitFor(() => !!body.querySelector('textarea'), 'actual block editor');
-  if (!existing) choose('select[aria-label="Document"]', 'preset:Blank page', body);
+  if (!existing) {
+    const before = new Set(useViewerStore.getState().documents.map(d => d.id));
+    const picker = selectOption('select[aria-label="Document"]', 'preset:Blank page', body);
+    const current = useViewerStore.getState();
+    const created = current.documents.find(d => d.id === current.activeDocumentId);
+    assert.ok(created, 'preset creates an active document');
+    assert.equal(before.has(created.id), false, 'preset creates a fresh document');
+    assert.equal(current.documents.length, before.size + 1);
+    assert.equal(picker.value, created.id, 'real handler selects the created UUID');
+    assert.equal(created.name, 'Untitled document');
+    assert.deepEqual(created.page, { size: 'A4', orientation: 'portrait' });
+    assert.ok(created.blocks.some(b => b.kind === 'text' && b.text === '{IfcProject.Name}'));
+  }
   else assert.equal(element<HTMLSelectElement>('select[aria-label="Document"]', body).value, existingId);
   await waitFor(() => !!body.querySelector('textarea'), 'chosen document configuration');
   choose('select[aria-label="Page size"]', 'A3', body);
@@ -49,16 +61,17 @@ for (const existing of [false, true]) test(`#8947 palette Document configures ${
   assert.ok(configured.blocks.some(b => b.kind === 'text' && b.text === 'Palette configuration witness'));
   for (let attempt = 0; attempt < 2; attempt++) {
     openMenu(namedButton('Document actions', body)); click(menuItem('Rename'));
-    await waitFor(() => !!document.querySelector('[role="dialog"] input'), 'real rename prompt');
-    const dialog = element('[role="dialog"]');
+    // DocumentMenu.useDialogs requests the mounted ConfirmDialogHost's alertdialog.
+    await waitFor(() => !!document.querySelector('[role="alertdialog"] input'), 'real rename prompt');
+    const dialog = element('[role="alertdialog"]');
     assert.equal(element<HTMLInputElement>('input', dialog).value, configured.name, 'cancelled draft did not leak');
     type(element<HTMLInputElement>('input', dialog), 'Discard this rename');
     click(namedButton('Cancel', dialog));
-    await waitFor(() => !document.querySelector('[role="dialog"]'), 'rename cancelled');
+    await waitFor(() => !document.querySelector('[role="alertdialog"]'), 'rename cancelled');
     assert.equal(useViewerStore.getState().documents.find(d => d.id === configured.id)?.name, configured.name);
   }
   await act(async () => { await useViewerStore.getState().retryDocumentsSave(); });
-  assert.deepEqual((await loadDocuments()).find(d => d.id === configured.id)?.page, configured.page);
+  assert.deepEqual((await loadDocuments()).find(d => d.id === configured.id), configured, 'cancelled rename leaves the durable document unchanged');
   closePanelWitness(); assert.equal(document.querySelector('[data-document-panel]'), null);
   const reopened = await openPanelWitness('document', '[data-document-panel]');
   assert.equal(element<HTMLSelectElement>('select[aria-label="Document"]', reopened).value, configured.id);
@@ -71,8 +84,10 @@ for (const save of [false, true]) test(`#8947 palette Lists New builder configur
   await openPanelWitness('lists', '[data-list-name]');
   click(namedButton('New list'));
   const name = element<HTMLInputElement>('input[aria-label="List name"]'); type(name, 'Palette list');
-  const custom = [...document.querySelectorAll('button')].find(b => b.textContent?.startsWith('Custom column'));
-  assert.ok(custom); click(custom);
+  // The opener includes icon spacing and the visible Pset/Qto hint in its name.
+  const custom = [...document.querySelectorAll('button')]
+    .filter(b => /^Custom column\s*Pset\/Qto or \/regex\/$/.test(b.textContent?.trim() ?? ''));
+  assert.equal(custom.length, 1, 'actual custom-column opener'); click(custom[0]);
   type(element<HTMLInputElement>('input[aria-label="Property set"]'), 'Pset_SlabCommon');
   type(element<HTMLInputElement>('input[aria-label="Property name"]'), 'FireRating');
   const add = namedButton('Add custom column'); assert.equal(add.disabled, false); click(add);

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { click, type, waitFor } from '@/test/render';
 import { launchDestination, namedButton } from '@/test/palette-destinations';
+import { loadSavedSourcePrefs } from '@/lib/sources/preferences';
 import { resetReviewAccess, disposeReviewAccess, mountReviewAccess, required,
   dialog, cancelDialog } from '@/test/palette-review-panel-witness';
 
@@ -23,17 +24,23 @@ test('#8947 palette Sources mounts lazy provider body and Configure cancels/reop
   const row = daluxRow();
   assert.equal(namedButton('Browse Dalux Box', row).disabled, true, 'missing API key blocks browsing');
   assert.equal(row.querySelector('output')?.textContent?.trim(), 'Add the required settings to browse');
-  click(namedButton('Configure', row));
+  assert.deepEqual(loadSavedSourcePrefs('dalux-build'), {});
+  // SourcesPanel owns SourceSettingsDialog; use the row's actual action name.
+  click(namedButton('Configure source', row));
   assert.ok(dialog().textContent?.includes('Dalux Box'));
   const key = required<HTMLInputElement>('#pref-apiKey', dialog());
   assert.equal(key.type, 'password');
   assert.equal(namedButton('Save', dialog()).disabled, true);
   assert.equal(namedButton('Test connection', dialog()).disabled, true);
   type(key, 'unsaved-local-draft');
+  assert.equal(namedButton('Save', dialog()).disabled, false);
+  assert.equal(namedButton('Test connection', dialog()).disabled, false);
   await cancelDialog();
+  assert.deepEqual(loadSavedSourcePrefs('dalux-build'), {}, 'cancel never saves the credential');
   assert.equal(namedButton('Browse Dalux Box', daluxRow()).disabled, true, 'cancel did not configure provider');
-  click(namedButton('Configure', daluxRow()));
+  click(namedButton('Configure source', daluxRow()));
   assert.equal(required<HTMLInputElement>('#pref-apiKey', dialog()).value, '', 'cancel discarded credential draft');
   assert.equal(namedButton('Save', dialog()).disabled, true);
   await cancelDialog();
+  assert.deepEqual(loadSavedSourcePrefs('dalux-build'), {});
 });

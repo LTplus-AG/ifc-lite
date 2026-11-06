@@ -217,11 +217,13 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     it(`a ${pointerInput} press that does not focus Cancel leaves focus where it was`, () => {
       useViewerStore.setState({ pointerInput, activePolyline: OPEN_POLYLINE });
       const container = mount();
-      // Safari (macOS and iOS) does not focus a button it clicks or taps.
-      canvas(container).focus();
+      // Safari (macOS and iOS) does not focus a button it clicks or taps; the
+      // press focuses the nearest focusable ancestor, the list, instead.
+      const list = container.querySelector<HTMLElement>('[role="group"][aria-label="Measurements taken"]')!;
+      list.focus();
       act(() => { button(container, 'Cancel (Esc)').click(); });
       assert.equal(useViewerStore.getState().activePolyline, null, 'the press cancelled the polyline');
-      assert.equal(focused(), 'viewport-canvas');
+      assert.equal(focused(), 'Measurements taken');
     });
   }
 });

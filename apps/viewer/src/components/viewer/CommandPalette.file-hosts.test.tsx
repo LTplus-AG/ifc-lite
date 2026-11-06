@@ -103,7 +103,12 @@ test('loading, mixed refresh handles and host loss refuse pointer/Enter without 
   const executions: string[] = [];
   mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') executions.push(event); });
   const a = fixtureModel('a');
-  a.sourceHandle = { getFile: async () => { throw new Error('must not read a partial federation'); } } as FileSystemFileHandle;
+  a.sourceHandle = {
+    kind: 'file', name: 'a.ifc',
+    getFile: async () => { throw new Error('must not read a partial federation'); },
+    createWritable: async () => { throw new Error('refresh must not write'); },
+    isSameEntry: async other => other === a.sourceHandle,
+  };
   useViewerStore.setState({ ...fixtureModels(a, fixtureModel('b')), loading: false });
   render(<Harness />);
   await settle();

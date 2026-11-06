@@ -29,7 +29,8 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
-import { cancelMeasureRaycast } from './measureHandlers.js';
+import { measureSnapOff } from './measureSnapOff.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
@@ -102,6 +103,9 @@ export function routeMousePointers(
       else gate.held = { e, timer: setTimeout(runHeld, 0) };
     },
     move: (e) => {
+      // A Measure preview follows only the moves its own handlers note again (#8992)
+      const measure = measureContexts.get(canvas)?.ctx;
+      if (measure) noteMeasureCursor(measure, null);
       // A Pencil hovering with nothing down, after a press whose pointerup never reached us
       if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
       if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);
@@ -188,7 +192,8 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * unmount. While registered, every Measure gesture reset (the store's
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
  * reposition) reaches the context's press state and queued frame (#8786),
- * and turning Snap off drops the queued frame (#8881).
+ * and turning Snap off drops the queued frame and re-picks the live preview
+ * unsnapped (#8881, #8992).
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
@@ -196,8 +201,8 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
   if (!ctx) return;
   const stop = useViewerStore.subscribe((state, prev) => {
     if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
-    // A queued Measure hover would re-lock (#8881); a command's preview frame is its own
-    else if (prev.snapEnabled && !state.snapEnabled && ctx.activeToolRef.current === 'measure') cancelMeasureRaycast(ctx);
+    // A command's preview frame is its own
+    else if (prev.snapEnabled && !state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapOff(ctx);
   });
   measureContexts.set(canvas, { ctx, stop });
 }
@@ -220,6 +225,7 @@ export function routeMeasureTap(canvas: HTMLCanvasElement, x: number, y: number,
  * second completes the measurement.
  */
 export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number): void {
+  noteMeasureCursor(ctx, null); // a mouse resting elsewhere does not drive a touch gesture's preview (#8992)
   const state = useViewerStore.getState();
   if (state.measureMode !== 'drag') {
     handleMeasureClickAt(ctx, x, y);

@@ -5,6 +5,7 @@ import { guardedMeshShader, unbiasedMeshShader, OPAQUE_VISIBILITY_GROUP } from '
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { setOpaqueVisibilityCommands } from './opaque-visibility-commands.js';
 import { opaqueVisibilityTimestampWrites } from './renderer-frame-timing.js';
+import { emptyBindGroup } from './section-exclusions.js';
 
 const layouts = new WeakMap<GPUDevice, Map<number, GPUBindGroupLayout>>();
 
@@ -81,16 +82,22 @@ export class OpaqueVisibilityPass {
    */
   resume(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
     const pass = encoder.beginRenderPass(descriptor);
-    const section = this.sectionBinding?.();
-    if (section) pass.setBindGroup(3, section);
+    this.bindPadding(pass);
     if (!this.active) return pass;
+    let variant: Variants | undefined;
     const setPipeline = (base: GPURenderPipeline) => {
-      const variant = this.forPipeline(base);
+      variant = this.forPipeline(base);
       pass.setPipeline(variant?.colour ?? base);
-      if (variant) pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, this.binding!);
+    };
+    // A replayed draw may carry its own padding bind for slot 2 after its
+    // pipeline (#9065 review); decide slot 2 at draw time, as `begin` does.
+    const draw = (name: PropertyKey) => (...args: unknown[]) => {
+      pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, variant ? this.binding! : emptyBindGroup(this.device));
+      return Reflect.apply(Reflect.get(pass, name), pass, args);
     };
     return new Proxy(pass, { get: (target, key) => {
       if (key === 'setPipeline') return setPipeline;
+      if (key === 'draw' || key === 'drawIndexed' || key === 'drawIndirect' || key === 'drawIndexedIndirect') return draw(key);
       const member: unknown = Reflect.get(target, key);
       return typeof member === 'function' ? member.bind(target) : member;
     } });
@@ -152,8 +159,7 @@ export class OpaqueVisibilityPass {
   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
     this.active = orthographic;
     const main = encoder.beginRenderPass(descriptor);
-    const section = this.sectionBinding?.();
-    if (section) main.setBindGroup(3, section);
+    const section = this.bindPadding(main);
     if (!orthographic) { this.releaseTexture(); return main; }
     this.ensureSize(width, height);
     const before = this.device.createCommandEncoder({ label: 'opaque-visibility-before-main' });
@@ -173,12 +179,14 @@ export class OpaqueVisibilityPass {
       if (variant?.depth) {
         depthPass.setPipeline(variant.depth);
         for (const [group, args] of groups) if (group !== OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
+        // The depth variant keeps the base layout, whose visibility slot is padding.
+        depthPass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device));
         for (const args of vertices.values()) invoke(depthPass, 'setVertexBuffer', args);
         if (indices) invoke(depthPass, 'setIndexBuffer', indices);
         for (const [method, args] of raster) invoke(depthPass, method, args);
         invoke(depthPass, name, args);
       }
-      if (variant) main.setBindGroup(OPAQUE_VISIBILITY_GROUP, this.binding!);
+      main.setBindGroup(OPAQUE_VISIBILITY_GROUP, variant ? this.binding! : emptyBindGroup(this.device));
       invoke(main, name, args);
     };
     // Proxy retains the actual pass API for existing mesh/overlay helpers. Only
@@ -203,6 +211,14 @@ export class OpaqueVisibilityPass {
       };
       methods.set(key, method); return method;
     } });
+  }
+
+  /** Base mesh layouts pad the visibility slot; every pass binds it before any draw (#9060). */
+  private bindPadding(pass: GPURenderPassEncoder): GPUBindGroup | undefined {
+    pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device));
+    const section = this.sectionBinding?.();
+    if (section) pass.setBindGroup(3, section);
+    return section;
   }
 
   private releaseTexture(): void {

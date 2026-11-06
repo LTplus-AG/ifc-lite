@@ -3208,6 +3208,7 @@ export class Renderer {
 
     /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
     getPickClipRevision(): number { return this._pickClipRevision.revision; }
+    /** Bumped when the geometry a pick can hit changes: an edit or its undo, a move, a stream (#8998). */ getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision(); }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
@@ -3223,8 +3224,7 @@ export class Renderer {
     }
 
     /**
-     * Raycast with magnetic edge snapping behavior
-     * This provides the "stick and slide along edges" experience
+     * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.

@@ -30,21 +30,27 @@ export interface MeasureCameraState {
    * into them), by identity, and the revision of the section/box clip the
    * renderer last drew, which the pick mirrors. The store's section state
    * leads that clip by a render, so a hover in between would pick through
-   * the old cut and record the new one.
+   * the old cut and record the new one. Likewise the renderer's revision of
+   * the geometry a pick can hit (an edit or its undo, a moved element,
+   * geometry streaming in), which the store's geometry counters lead by an
+   * upload; and whether the pick snaps, as the pick reads it (#8998).
    */
   scene: {
     hidden: ReadonlySet<number>;
     isolated: ReadonlySet<number> | null;
     clip: number;
+    geometry: number;
+    snap: boolean;
   };
 }
 
 /** What Viewport hands both the animation loop and the pointer handlers. */
 interface MeasurePassRefs {
-  renderer: { getPickClipRevision(): number };
+  renderer: { getPickClipRevision(): number; getPickGeometryRevision(): number };
   lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
   hiddenEntitiesRef: MutableRefObject<ReadonlySet<number>>;
   isolatedEntitiesRef: MutableRefObject<ReadonlySet<number> | null>;
+  snapEnabledRef: MutableRefObject<boolean>;
 }
 
 interface CameraPose {
@@ -75,13 +81,16 @@ export function measureCameraState(
       hidden: refs.hiddenEntitiesRef.current,
       isolated: refs.isolatedEntitiesRef.current,
       clip: refs.renderer.getPickClipRevision(),
+      geometry: refs.renderer.getPickGeometryRevision(),
+      snap: refs.snapEnabledRef.current,
     },
   };
 }
 
 /**
  * Nothing changed what a pick at a resting cursor returns: the camera did not
- * move (#8828) and nothing was hidden, isolated or cut (#8886). A
+ * move (#8828), nothing was hidden, isolated or cut (#8886), and neither the
+ * geometry nor Snap changed (#8998). A
  * drawing-buffer resize alone is no such change: the buffer drops to pixel
  * ratio 1 while the view interacts and grows back once it settles, and still
  * needs the markers reprojected (the camera's aspect follows it), but moves
@@ -92,6 +101,8 @@ export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCa
     a.scene.hidden === b.scene.hidden &&
     a.scene.isolated === b.scene.isolated &&
     a.scene.clip === b.scene.clip &&
+    a.scene.geometry === b.scene.geometry &&
+    a.scene.snap === b.scene.snap &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
     a.position.z === b.position.z &&

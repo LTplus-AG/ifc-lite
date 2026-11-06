@@ -187,6 +187,7 @@ export const propertiesRu = {
   "properties.modelMetadata.sourceModel": "Исходная модель",
   "properties.modelMetadata.fileInformationHeading": "Информация о файле",
   "properties.modelMetadata.fileSize": "Размер файла",
+  "properties.modelMetadata.fileSizeAsLoaded": "Размер файла (при загрузке)",
   "properties.modelMetadata.loadedAt": "Загружено в",
   "properties.modelMetadata.parseTime": "Время анализа",
   "properties.modelMetadata.parseTimeValue": "{ms} мс",

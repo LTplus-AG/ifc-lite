@@ -7,6 +7,7 @@ import { chromium, expect, test as base, type Page } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { RenderVisibilitySnapshot, SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 import { packWitness } from './fixtures/palette-access-extension/pack';
+import { visibilityOutputWitness } from './command-palette-extension.rendering';
 
 const OWNER = 'org.ifclite.e2e.palette-access';
 const TITLE = 'Palette witness dock';
@@ -53,6 +54,10 @@ async function refused(page: Page, id: number) {
 
 test('installed extension dock runs QuickJS on real IFC; UI disable and uninstall retire destination (#8947)', async ({ page }, info) => {
   const pageerrors: string[] = [];
+  const commandErrors: string[] = [];
+  page.on('console', message => {
+    if (message.text().includes('[ExtensionDockHost] command failed:')) commandErrors.push(message.text());
+  });
   page.on('pageerror', error => pageerrors.push(error.message));
   try {
     const packed = await packWitness();
@@ -118,15 +123,23 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     await openDestination(page, DESTINATION, TITLE);
     await expect(widget(page)).toContainText(OWNER);
     await expect(widget(page)).toContainText('Installed QuickJS visibility witness');
-    await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
-    await expect.poll(() => hidden(page, id)).toBe(true);
-    await info.attach('renderer-hidden.json', { body: JSON.stringify({ id, hidden: await hidden(page, id) }), contentType: 'application/json' });
-    await info.attach('quickjs-hidden-wall.png', { body: await page.screenshot(), contentType: 'image/png' });
-    // The second widget invocation passes a different real argument to the same QuickJS handler.
-    await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
-    await expect.poll(() => hidden(page, id)).toBe(false);
-    await info.attach('renderer-shown.json', { body: JSON.stringify({ id, hidden: await hidden(page, id) }), contentType: 'application/json' });
-    await info.attach('quickjs-shown-wall.png', { body: await page.screenshot(), contentType: 'image/png' });
+    // Canonical scene setup only. The extension alone changes the wall's hide state.
+    // Isolate and frame its real geometry so unchanged draw submission cannot pass.
+    await page.evaluate(id => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      state.isolateEntities([id]);
+      if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
+      if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
+      state.cameraCallbacks.frameSelection(0);
+    }, id);
+    const exerciseVisibility = async (name: string) => visibilityOutputWitness(page, info, name, async () => {
+      await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
+      await expect.poll(() => hidden(page, id)).toBe(true);
+    }, async () => {
+      await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
+      await expect.poll(() => hidden(page, id)).toBe(false);
+    });
+    await exerciseVisibility('initial-activation');
     await page.keyboard.press('Escape');
     await expect(widget(page)).toBeHidden();
 
@@ -141,6 +154,7 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     await expect(installedRow(page).getByRole('switch', { name: 'Disable extension', exact: true })).toBeChecked();
     await openDestination(page, DESTINATION, TITLE);
     await expect(widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true })).toBeVisible();
+    await exerciseVisibility('reenabled-activation');
     await page.keyboard.press('Escape');
     await openDestination(page, 'panel:extensions', 'Extensions');
     await installedRow(page).getByRole('button', { name: `Uninstall ${OWNER}`, exact: true }).click();
@@ -153,6 +167,8 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
   } finally {
     await info.attach('actual-state.png', { body: await page.screenshot(), contentType: 'image/png' });
     await info.attach('pageerrors.json', { body: JSON.stringify(pageerrors), contentType: 'application/json' });
+    await info.attach('command-errors.json', { body: JSON.stringify(commandErrors), contentType: 'application/json' });
+    expect(commandErrors, 'caught widget command failures, including reactivation').toEqual([]);
     expect(pageerrors, 'uncaught browser errors, also retained on failure').toEqual([]);
   }
 });

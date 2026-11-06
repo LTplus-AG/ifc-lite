@@ -63,10 +63,14 @@ This certifies neither the model File System Access picker nor persistent handle
 
 The exact owner-qualified `ext-widget:` tuple row must open the actual widget in
 its dialog. Clicking Hide and Show there dispatches the real owner-scoped command
-through QuickJS. Renderer visibility must hide then show the resident wall. It
+through QuickJS. Visibility-input assertions must hide then show the resident wall. Independently, the
+wall is isolated and framed with canonical controls; completed production GPU color
+readbacks must change on Hide and restore on Show with an unchanged camera,
+above repeated-frame noise. A broken draw submission cannot pass from input sets alone. It
 then disables the owner through its installed-list switch, requires its destination
 to disappear, and presses Enter on the empty owner search to verify no widget opens or
-wall is hidden. Re-enabling must restore the destination and widget. Finally,
+wall is hidden. Re-enabling must restore the destination and widget and execute Hide/Show again,
+including the same GPU output/restoration assertions and caught-command-error checks. Finally,
 Uninstall plus the real confirmation dialog must remove the installed row and
 retire/refuse the destination again. This is observed UI lifecycle retirement,
 not certification of a retained DOM callback race in the same frame.
@@ -165,3 +169,7 @@ capability before startup and exercise the real `<input type="file">` fallback.
 They do not replace picker callbacks or model loading. These cases cannot certify
 `showOpenFilePicker`, persistent handles, or Refresh; that Chromium-specific path
 requires separate observed browser evidence.
+
+Fresh Astra witness objections addressed in source: post-enable command execution
+and completed-frame color evidence. These strengthened assertions remain UNRUN.
+They do not prove withheld-consent enforcement or same-frame stale callback rejection.

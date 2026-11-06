@@ -46,7 +46,8 @@ describe('panel status roles batch 4 (Refs #8802)', () => {
     it(`${state.name} renders its status role`, () => {
       const ui = state.mount();
       const notice = ui.querySelector(state.selector);
-      assert.ok(notice?.textContent?.trim(), 'real status is visible');
+      assert.ok(notice, 'the status element renders');
+      assert.ok(notice.textContent?.trim(), 'real status is visible');
       assert.ok(notice.classList.contains(`text-${state.role}`), 'status uses its colour role');
     });
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {

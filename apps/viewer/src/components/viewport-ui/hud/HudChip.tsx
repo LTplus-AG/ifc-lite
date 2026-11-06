@@ -26,6 +26,9 @@ export interface HudChipProps {
   resume?: HudChipAction;
   /** e.g. dismiss for a chip the user can permanently clear. */
   dismiss?: HudChipAction;
+  /** A state that is on (an isolation or filter narrowing the view): the
+   *  chip wears the shared active state over its HUD surface (#8802 R4). */
+  active?: boolean;
   /** e.g. `status` for a warning chip a screen reader should announce. */
   role?: string;
   /** Paired with `role`; defaults follow from `role` when omitted. */
@@ -39,10 +42,15 @@ export interface HudChipProps {
  * resume and/or dismiss action. None of the actions render text of their
  * own; the caller supplies the translated `aria-label`.
  */
-export function HudChip({ children, icon, toggle, resume, dismiss, role, 'aria-live': ariaLive, className }: HudChipProps) {
+export function HudChip({ children, icon, toggle, resume, dismiss, active, role, 'aria-live': ariaLive, className }: HudChipProps) {
   return (
     <HudSurface
-      className={cn('flex max-w-[13rem] items-center gap-1.5 px-2 py-1 text-xs', className)}
+      data-active={active ? '' : undefined}
+      className={cn(
+        'flex max-w-[13rem] items-center gap-1.5 px-2 py-1 text-xs',
+        active && 'border-active-border bg-active-overlay font-medium text-active',
+        className,
+      )}
       role={role}
       aria-live={ariaLive ?? (role === 'status' ? 'polite' : role === 'alert' ? 'assertive' : undefined)}
     >
@@ -77,7 +85,7 @@ export function HudChip({ children, icon, toggle, resume, dismiss, role, 'aria-l
           onClick={dismiss.onClick}
           aria-label={dismiss['aria-label']}
           title={dismiss.title}
-          className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent"
+          className={cn('rounded-sm p-0.5 hover:bg-accent', active ? 'text-active' : 'text-muted-foreground')}
         >
           {dismiss.icon}
         </button>

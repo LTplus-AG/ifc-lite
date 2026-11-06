@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** The Drawing toolbar's controls (#5494, #8802 R3b). Three kinds, three
- *  looks, each with one unmistakable state:
- *  - a markup tool is one option of a radio group: the active tool is a
- *    solid primary fill (exactly one is ever on);
- *  - a display toggle is on/off: a checkbox mark beside its label, filled
- *    with a primary-tinted face when on (`aria-pressed`); icon-only at
- *    compact widths, where the tinted face and a primary icon carry it;
- *  - a settings drawer or an icon action is a plain ghost button; an open
- *    drawer reads as pressed (`aria-pressed`, accent face).
+/** The Drawing toolbar's controls (#5494, #8802 R3b, R4). Every "on" state
+ *  is the shared active state of Button's `toggle` variant: a primary-tinted
+ *  face with active ink (#8802 R4), never a dot or a faint tint.
+ *  - a markup tool is one option of a radio group (`aria-checked`; exactly
+ *    one is ever on);
+ *  - a display toggle is on/off (`aria-pressed`): a checkbox mark beside its
+ *    label, filled with the active ink when on; icon-only at compact widths;
+ *  - a settings drawer or an icon action is a ghost button at rest; an open
+ *    drawer or a pressed action reads as pressed (`aria-pressed`).
  *  Labels collapse to icons when the host is narrow; every control keeps an
  *  accessible name and a tooltip either way. */
 
@@ -42,17 +42,12 @@ export function ToolSegment({ icon: Icon, label, tip, active, showLabel, onSelec
     <Tipped tip={tip ?? label}>
       <Button
         type="button"
-        variant="ghost"
+        variant="toggle"
         role="radio"
         aria-checked={active}
         aria-label={label}
         onClick={onSelect}
-        className={cn(
-          CONTROL,
-          active
-            ? 'bg-primary font-medium text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground'
-            : 'text-muted-foreground hover:bg-background hover:text-foreground',
-        )}
+        className={cn(CONTROL, active && 'font-medium')}
       >
         <Icon className="shrink-0" />
         {showLabel && <span>{label}</span>}
@@ -69,32 +64,26 @@ export function ToggleChip({ icon: Icon, label, tip, on, disabled, showLabel, on
     <Tipped tip={tip}>
       <Button
         type="button"
-        variant="ghost"
+        variant="toggle"
         aria-pressed={on}
         aria-label={label}
         disabled={disabled}
         onClick={onToggle}
         data-state={on ? 'on' : 'off'}
-        className={cn(
-          CONTROL,
-          'border',
-          on
-            ? 'border-primary/60 bg-primary/15 text-foreground hover:bg-primary/25'
-            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
-        )}
+        className={cn(CONTROL, 'border', on ? 'border-active-border' : 'border-transparent')}
       >
         {showLabel ? (
           <span
             aria-hidden="true"
             className={cn(
               'inline-flex size-3 shrink-0 items-center justify-center rounded-sm border',
-              on ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/60',
+              on ? 'border-active bg-active text-background' : 'border-muted-foreground/60',
             )}
           >
             {on && <Check className="!size-2.5" strokeWidth={3.5} />}
           </span>
         ) : (
-          <Icon className={cn('shrink-0', on && 'text-primary')} />
+          <Icon className="shrink-0" />
         )}
         {showLabel && <span>{label}</span>}
       </Button>
@@ -111,16 +100,13 @@ export function DrawerToggle({ icon: Icon, label, tip, open, active, showLabel, 
     <Tipped tip={tip}>
       <Button
         type="button"
-        variant="ghost"
+        variant="toggle"
         aria-pressed={open}
         aria-label={label}
         onClick={onToggle}
-        className={cn(
-          CONTROL,
-          open ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-        )}
+        className={CONTROL}
       >
-        <Icon className={cn('shrink-0', active && 'text-primary')} />
+        <Icon className={cn('shrink-0', active && 'text-active')} />
         {showLabel && <span>{label}</span>}
       </Button>
     </Tipped>
@@ -135,20 +121,14 @@ export function IconAction({ icon: Icon, label, text, onClick, pressed, disabled
     <Tipped tip={label}>
       <Button
         type="button"
-        variant="ghost"
+        variant="toggle"
         aria-label={label}
         aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
-        className={cn(
-          CONTROL,
-          !text && 'w-6 px-0',
-          'text-muted-foreground hover:bg-accent hover:text-foreground',
-          pressed && 'bg-primary/15 text-foreground',
-          className,
-        )}
+        className={cn(CONTROL, !text && 'w-6 px-0', className)}
       >
-        <Icon className={cn('shrink-0', pressed && 'text-primary')} />
+        <Icon className="shrink-0" />
         {text && <span>{text}</span>}
       </Button>
     </Tipped>

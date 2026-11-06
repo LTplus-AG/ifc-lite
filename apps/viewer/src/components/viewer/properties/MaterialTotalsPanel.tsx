@@ -304,15 +304,15 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   }
 
   return (
-    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black">
       {/* Header */}
-      <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
+      <div className="p-4 border-b-2 border-border bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
         <div className="flex items-start gap-3">
-          <div className="p-2 border-2 border-amber-200 dark:border-amber-800 bg-white dark:bg-zinc-950 shrink-0">
+          <div className="p-2 border-2 border-amber-200 dark:border-amber-800 bg-white dark:bg-muted shrink-0">
             <Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100 min-w-0">
+            <h3 className="font-bold text-sm truncate uppercase tracking-tight text-foreground min-w-0">
               {display.name}
             </h3>
             <p className="text-xs font-mono text-amber-600/80 dark:text-amber-400/80">{display.type}</p>
@@ -322,7 +322,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
 
       <ScrollArea className="flex-1 bg-white dark:bg-black">
         <div className="p-3 space-y-3 w-full overflow-hidden">
-          {pendingEditsMissing && <output className="block text-xs text-amber-700 dark:text-amber-400">{t('properties.materialTotals.pendingEditsMissing')}</output>}
+          {pendingEditsMissing && <output className="block text-xs text-warn">{t('properties.materialTotals.pendingEditsMissing')}</output>}
           {/* Totals */}
           <div className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20">
             <div className="flex items-center gap-2 px-2.5 py-2 border-b-2 border-amber-200 dark:border-amber-800">
@@ -342,13 +342,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>{t('properties.materialTotals.noVolumeQuantities')}</span>
               </div>
             )}
             {totals.hasVolume && totals.elementsWithVolume < totals.elementCount && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
                   {t('properties.materialTotals.partialVolumeNote', { counted: formatLocaleNumber(locale, totals.elementsWithVolume), total: formatLocaleNumber(locale, totals.elementCount) })}
@@ -359,16 +359,16 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
 
           {/* Breakdown by class */}
           {totals.byClass.length > 0 && (
-            <div className="border border-zinc-200 dark:border-zinc-800">
-              <div className="flex items-center gap-2 px-2.5 py-2 border-b border-zinc-200 dark:border-zinc-800">
-                <Boxes className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                <span className="font-bold text-xs text-zinc-600 dark:text-zinc-300 uppercase tracking-wide">{t('properties.materialTotals.byClassHeading')}</span>
+            <div className="border border-border">
+              <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border">
+                <Boxes className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="font-bold text-xs text-muted-foreground uppercase tracking-wide">{t('properties.materialTotals.byClassHeading')}</span>
               </div>
-              <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+              <div className="divide-y divide-border">
                 {totals.byClass.map((c) => (
                   <div key={c.ifcClass} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
-                    <span className="font-mono text-zinc-600 dark:text-zinc-400 truncate">{c.ifcClass}</span>
-                    <span className="font-mono text-zinc-900 dark:text-zinc-100">{formatLocaleNumber(locale, c.count)}</span>
+                    <span className="font-mono text-muted-foreground truncate">{c.ifcClass}</span>
+                    <span className="font-mono text-foreground">{formatLocaleNumber(locale, c.count)}</span>
                   </div>
                 ))}
               </div>
@@ -395,7 +395,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           )}
 
           {psetCount === 0 && totals.elementCount === 0 && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
+            <p className="text-sm text-muted-foreground text-center py-8 font-mono">
               {t('properties.materialTotals.noData')}
             </p>
           )}
@@ -409,7 +409,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
 function TotalRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between px-2.5 py-2 text-xs">
-      <span className="text-zinc-500 dark:text-zinc-400 font-medium">{label}</span>
+      <span className="text-muted-foreground font-medium">{label}</span>
       <span className="font-mono font-semibold text-amber-700 dark:text-amber-300 tabular-nums">{value}</span>
     </div>
   );

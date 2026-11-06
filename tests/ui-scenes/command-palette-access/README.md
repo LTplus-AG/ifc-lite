@@ -946,3 +946,10 @@ The original publication recovery failed at remote PC manifest-put; original
 workspace, receipt and locks remain protected. No rerun or cleanup bypass.
 The 26 real-GPU cases and matching new reset behavior still require execution;
 older source/build receipts cannot qualify this production addition.
+
+R4 also authors one browser reset-preservation case; the strict protocol now
+requires 27/27 (11 UX + 15 access + 1 extension). It explicitly distinguishes
+renderer visibility inputs from the extension journey's actual raster witness.
+The owning final-flow TS2339 failure is corrected by removing an unreachable
+error branch after the successful parse assertion; the assertion is retained.
+All corrected/new runtime results are pending.

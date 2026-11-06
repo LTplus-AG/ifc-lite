@@ -167,6 +167,47 @@ test('palette saved federation opens both real pickers and reaches cancellable s
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().models.size)).toBe(1);
 });
 
+test('palette reset restores visibility while keeping selection and collection (#8947 C1242)', async ({ page }, info) => {
+  await start(page, true);
+  const id = await wall(page);
+  await run(page, 'vis:set-iso', 'set collection');
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(1);
+  await run(page, 'vis:hide', 'hide');
+  await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(true);
+  // Hide deliberately clears selection. Re-select the same parsed wall to test
+  // preservation independently from the existing Hide-selection contract.
+  expect(await wall(page)).toBe(id);
+  const before = await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { scalar: s.selectedEntityId, ids: [...s.selectedEntityIds], collection: [...s.pinboardEntities] };
+  });
+  expect(before.ids).toEqual([id]);
+  expect(before.collection).toHaveLength(1);
+  const result = await find(page, 'vis:reset-filters', 'reset visibility filters');
+  await expect(result.row).toContainText('Keep selection and collection');
+  await expect(result.row).not.toHaveAttribute('aria-disabled', 'true');
+  await info.attach('reset-preservation-command.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await run(page, 'vis:reset-filters', 'reset visibility filters');
+  // This is a renderer visibility-input assertion; the installed-extension
+  // journey separately proves actual hide/show raster changes.
+  await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(false);
+  expect(await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { scalar: s.selectedEntityId, ids: [...s.selectedEntityIds], collection: [...s.pinboardEntities] };
+  })).toEqual(before);
+  const inactive = await find(page, 'vis:reset-filters', 'reset visibility filters');
+  await expect(inactive.row).toHaveAttribute('aria-disabled', 'true');
+  await expect(inactive.row).toContainText('No visibility filters to reset');
+  await info.attach('reset-inactive-reason.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await inactive.search.fill('');
+  await expect(palette(page).locator('[data-command-id="vis:reset-filters"]')).toHaveCount(0);
+  await run(page, 'vis:show', 'show all');
+  expect(await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { scalar: s.selectedEntityId, ids: [...s.selectedEntityIds], collection: [...s.pinboardEntities] };
+  })).toEqual({ scalar: null, ids: [], collection: [] });
+});
+
 test('palette Screenshot publishes a decoded nonblank PNG from the loaded real viewport (#8947)', async ({ page }, info) => {
   await start(page, true);
   const downloaded = page.waitForEvent('download');

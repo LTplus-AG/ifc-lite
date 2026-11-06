@@ -171,3 +171,18 @@ export function routeCommandPointer(
   });
   return true;
 }
+
+/**
+ * A touch tap (#9042): what a click does. A command that follows the press
+ * itself (`pointerDownOnPress`, a drag) gets the press and the release in
+ * place, as a mouse press and release with no drag between them; any other
+ * gets the click's down.
+ */
+export function routeCommandTap(ctx: MouseHandlerContext, x: number, y: number): boolean {
+  const runtime = getCommandRuntime();
+  if (!runtime.command || !runtime.ctx) return false;
+  const onPress = runtime.command.pointerDownOnPress?.(runtime.gesture) === true;
+  routeCommandPointer(ctx, 'down', x, y);
+  if (onPress) routeCommandPointer(ctx, 'up', x, y);
+  return true;
+}

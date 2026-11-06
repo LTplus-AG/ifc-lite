@@ -13,6 +13,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { useViewerStore } from '@/store';
 import { getLocale, setLocale } from '@/i18n';
+import { createLocaleActivator } from '@/i18n/locale-activation';
 import { Toaster } from '@/components/ui/toast';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
@@ -172,7 +173,14 @@ for (const [language, remedy] of [
   ['de', 'Öffnen Sie die 3D-Ansicht und warten Sie, bis sie vollständig geladen ist. Versuchen Sie es dann erneut.'],
   ['ru', 'Откройте 3D-вид и дождитесь его полной загрузки, затем повторите попытку.'],
 ] as const) test(`#8947 palette screenshot gives a visible missing-viewport remedy in ${language}`, async () => {
-  await seed(); setLocale(language); hosts.push(mountDestinations(<Toaster />));
+  await seed();
+  const activator = createLocaleActivator({
+    de: () => import('@/i18n/locales/de').then(module => module.default),
+    ru: () => import('@/i18n/locales/ru').then(module => module.default),
+  });
+  await activator.activate([language]);
+  assert.equal(getLocale(), language, 'real catalogue activated before the screenshot action');
+  hosts.push(mountDestinations(<Toaster />));
   assert.equal(getGlobalRenderer(), null, 'this mounted DOM has no GPU viewport');
   await launchDestination('export:screenshot', 'screenshot');
   await waitFor(() => document.body.textContent?.includes(remedy) === true, 'actual localized refusal and next step');

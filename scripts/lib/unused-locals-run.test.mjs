@@ -6,9 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { assertCompleteTscRun } from './unused-locals-run.mjs';
+import { assertCompleteTscRun, runUnusedLocals } from './unused-locals-run.mjs';
 
 for (const status of [0, 1, 2, 134, 137]) {
   test(`#8981: compiler outcome ${status} retains diagnostics and rejects incomplete census`, () => {
@@ -47,10 +46,7 @@ test('#8981: real tsc noEmit diagnostics are a completed census', (t) => {
     compilerOptions: { noEmit: true, noUnusedLocals: true, types: [], lib: ['es5'] },
     files: ['input.ts'],
   }));
-  const run = spawnSync(process.execPath, [
-    fileURLToPath(new URL('../../node_modules/typescript/bin/tsc', import.meta.url)),
-    '--pretty', 'false', '-p', join(dir, 'tsconfig.json'),
-  ], { encoding: 'utf8' });
+  const run = runUnusedLocals(join(dir, 'tsconfig.json'), dir);
   assertCompleteTscRun(run);
   assert.match(run.stdout, /error TS6133:/);
   assert.notEqual(run.status, 0);

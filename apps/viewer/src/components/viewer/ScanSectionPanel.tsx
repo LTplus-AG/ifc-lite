@@ -165,7 +165,7 @@ export function ScanSectionPanel({
                   cell: formatLength(outline.diagnostics.cellSize),
                 })}
             {outline?.diagnostics.cellCapHit && (
-              <span className="block text-amber-600">{t('scanSectionPanel.outlineCapHitMessage')}</span>
+              <span className="block text-warn">{t('scanSectionPanel.outlineCapHitMessage')}</span>
             )}
           </output>
         )}

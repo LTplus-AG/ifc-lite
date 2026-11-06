@@ -84,7 +84,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
       </div>
 
       {unreadable > 0 && (
-        <p role="alert" data-clash-filter-unreadable className="text-2xs leading-snug text-amber-700 dark:text-amber-400">
+        <p role="alert" data-clash-filter-unreadable className="text-2xs leading-snug text-warn">
           {t('clashTools.setFilter.unreadableWarning', { count: unreadable })}
         </p>
       )}

@@ -26,7 +26,7 @@ export function PropertyBooleanChoices({ value, onChange }: {
           className={`cursor-pointer px-2 py-0.5 text-xs rounded border transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-ring ${
             value === choice
               ? 'bg-overlay-accent text-overlay-halo border-overlay-accent'
-              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              : 'bg-white dark:bg-muted text-muted-foreground border-border hover:bg-muted'
           } ${choice === '' ? 'italic' : ''}`}
         >
           <input type="radio" name={name} value={choice} checked={value === choice}

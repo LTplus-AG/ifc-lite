@@ -203,7 +203,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                     {/* Existing psets on this entity */}
                     {existingStandardPsets.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                           {t('propertyEditor.shared.onElement')}
                         </div>
                         {existingStandardPsets.map((def) => (
@@ -219,7 +219,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                     {/* Non-standard existing psets */}
                     {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                           {t('propertyEditor.shared.existingCustom')}
                         </div>
                         {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).map((name) => (
@@ -242,7 +242,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                                 <span className="font-medium">{def.name}</span>
                                 <Badge variant="outline" className="h-4 px-1 text-2xs border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                               </div>
-                              <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
+                              <span className="text-2xs text-muted-foreground">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -274,7 +274,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                               <span className="font-medium">{prop.name}</span>
                               <Badge variant="secondary" className="h-4 px-1 text-2xs">{t(getTypeNameKey(prop.type))}</Badge>
                             </div>
-                            <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
+                            <span className="text-2xs text-muted-foreground">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                           </div>
                         </SelectItem>
                       ))}

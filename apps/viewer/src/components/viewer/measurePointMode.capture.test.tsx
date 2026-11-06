@@ -154,6 +154,26 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     assert.deepEqual(live(), [7, 1, -2], 'the held-back hover never read the resting cursor');
   });
 
+  it('a hover held back by a live frame that never comes stops asking and ends Live', async (t) => {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    assert.deepEqual(live(), [3, 4, -5]);
+    h.tick(100);
+    const { shot } = await h.capture();
+    await h.present(shot); // no live frame follows: the loop keeps failing
+    const requests = h.renderRequests();
+    h.move(70); h.runFrames();
+    for (let i = 0; i < 10; i++) { h.tick(100); h.runFrames(); }
+    assert.equal(h.renderRequests() - requests, 3, 'a held-back hover kept asking for frames past a transient miss');
+    assert.equal(live(), null, 'a reading for an older cursor position stayed Live');
+    const picks = h.picks();
+    h.liveFrame(); // the frame arrives after all
+    h.move(70); h.runFrames();
+    assert.equal(h.picks(), picks + 1, 'the next move did not pick again');
+    assert.deepEqual(live(), [7, 1, -2]);
+  });
+
   it('a held-back hover frame leaves a trailing pick for a later cursor position in place', async (t) => {
     const h = capturing(t);
     h.move(30); h.runFrames();

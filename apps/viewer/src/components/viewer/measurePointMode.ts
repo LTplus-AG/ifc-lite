@@ -64,6 +64,7 @@ export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number
   // A pick now would read a capture's camera or clip, not the view the user
   // sees (#9031): read this spot once the live loop has drawn again.
   if (viewportPicksAwaitLiveFrame(ctx.renderer)) { deferHover(ctx, x, y); return; }
+  heldBackHovers.delete(ctx.lastHoverSnapTimeRef);
   // A live point holds only for the view it was picked under: the camera
   // reprojection pass drops it on any camera or scene change (#8828, #8886).
   // Bring that pass up to this view first, so the next frame does not count
@@ -111,14 +112,28 @@ function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: 
   }, wait));
 }
 
+/** Hover picks held back in a row since the last one that ran, per canvas (#9031). */
+const heldBackHovers = new WeakMap<object, number>();
+/** Like the loop's own live-frame retries: past a transient miss, a timer must not keep the GPU busy. */
+const HOVER_DEFERRALS = 3;
+
 /**
  * Retry a hover pick a capture held back (#9031), asking the loop for the
  * frame it waits on. A trailing pick already pending is for a later cursor
- * position, so it stands.
+ * position, so it stands. A frame that keeps failing ends the Live reading
+ * instead: it is for an older cursor position, and the next move picks again.
  */
 function deferHover(ctx: MouseHandlerContext, x: number, y: number): void {
+  const key = ctx.lastHoverSnapTimeRef;
+  const deferrals = (heldBackHovers.get(key) ?? 0) + 1;
+  if (deferrals > HOVER_DEFERRALS) {
+    heldBackHovers.delete(key);
+    useViewerStore.getState().setMeasurePointLive(null);
+    return;
+  }
+  heldBackHovers.set(key, deferrals);
   ctx.renderer.requestRender();
-  if (!trailingHover.has(ctx.lastHoverSnapTimeRef)) armTrailingHover(ctx, x, y, ctx.HOVER_SNAP_THROTTLE_MS);
+  if (!trailingHover.has(key)) armTrailingHover(ctx, x, y, ctx.HOVER_SNAP_THROTTLE_MS);
 }
 
 /**

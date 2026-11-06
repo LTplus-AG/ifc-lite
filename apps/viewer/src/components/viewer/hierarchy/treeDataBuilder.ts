@@ -21,6 +21,7 @@ import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { entityOwnership } from '@/utils/entity-ownership';
+import { effectiveEntityCount } from '@/lib/effective-entity-count';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { appendOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
@@ -88,7 +89,6 @@ function isLevelLikeSpatialType(type: IfcTypeEnum): boolean {
 
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level 10". */
 const storeyNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 /** Order two storey-like entries (unified storeys or spatial nodes) by the
  *  browser sort mode chosen in the hierarchy panel (issue #1296). */
 export function compareStoreyEntries(
@@ -524,7 +524,7 @@ export function buildTreeData(
         hasChildren: hasSpatialHierarchy,
         isExpanded: isModelExpanded,
         isVisible: model.visible,
-        elementCount: model.ifcDataStore?.entityCount,
+        elementCount: effectiveEntityCount(model.ifcDataStore, overlayViewFor(overlay, modelId)),
       });
 
       // If expanded, show Project -> Site -> Building (stop at building, no storeys)

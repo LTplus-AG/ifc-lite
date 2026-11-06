@@ -1372,6 +1372,7 @@ export function Viewport({
     lastFrameTimeRef,
     mouseIsDraggingRef,
     activeToolRef,
+    snapEnabledRef,
     terrainClipYRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,

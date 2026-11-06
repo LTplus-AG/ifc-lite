@@ -260,6 +260,13 @@ describe('solveSnap aimed kinds (#9140)', () => {
     assert.deepEqual(solveSnap(q, [crossingAt([6, 6])], aimedProfile(2)).local, [6.15, 0]);
   });
 
+  it('under a lock the aim is the straight distance to the target: 1.7 px counts within 2 px', () => {
+    const q = { ...free, anchor: [0, 0] as Vec2, locks: { axis: 'u' as const } };
+    const solved = solveSnap(q, [crossingAt([6.06, 0.06])], aimedProfile(2));
+    assert.equal(solved.winner?.kind, 'gridIntersection');
+    assert.deepEqual(solved.local, [6.06, 0]);
+  });
+
   it('aimedPx 0 means exactly on the target, not off', () => {
     assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile(0)).local, [6, 0]);
     assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile()).local, [6, 0]);

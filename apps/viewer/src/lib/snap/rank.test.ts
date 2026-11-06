@@ -69,51 +69,52 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
   const crossing: SnapCandidate = { kind: 'gridIntersection', local: [6, 6], source: 'ifc-grid' };
   const corner: SnapCandidate = { kind: 'endpoint', local: [6.15, 6.15], source: 'linework' };
   const on = (cand: SnapCandidate, dist: number, tier: number) => ranked(cand, dist, tier, 0);
-  const pick = (winner: Ranked | null, items: Ranked[], prev: SnapCandidate | null = null) =>
-    aimedOr(winner, items, ['gridIntersection'], 0.02, 0.03, prev)?.cand ?? null;
+  /** The pointer sits `off` metres from the crossing, unless a test places it. */
+  const pick = (winner: Ranked | null, items: Ranked[], off: number, prev: SnapCandidate | null = null, cursor: readonly [number, number] = [6, 6 + off]) =>
+    aimedOr(winner, items, ['gridIntersection'], 0.02, 0.03, prev, cursor)?.cand ?? null;
 
   it('the crossing beats a higher-ranked corner while the pointer is on it', () => {
     const c = on(corner, 0.21, 0);
-    assert.equal(pick(c, [c, on(crossing, 0.01, 1)]), crossing);
+    assert.equal(pick(c, [c, on(crossing, 0.01, 1)], 0.01), crossing);
   });
 
   it('off the crossing the ladder decides, even when the crossing is the nearer target', () => {
     const c = on(corner, 0.08, 0);
-    assert.equal(pick(c, [c, on(crossing, 0.05, 1)]), corner);
+    assert.equal(pick(c, [c, on(crossing, 0.05, 1)], 0.05), corner);
   });
 
   it('a pointer nearer the other target keeps it, at any zoom', () => {
     const c = on(corner, 0.005, 0);
-    assert.equal(pick(c, [c, on(crossing, 0.015, 1)]), corner);
+    assert.equal(pick(c, [c, on(crossing, 0.015, 1)], 0.015), corner);
   });
 
   it('a wall end on the crossing keeps naming its wall', () => {
     const wallEnd: SnapCandidate = { kind: 'endpoint', local: [6, 6], source: 'semantic', entity: { modelId: 'm', expressId: 5 } };
     const w = on(wallEnd, 0.01, 0);
-    assert.equal(pick(w, [w, on(crossing, 0.01, 1)]), wallEnd);
+    assert.equal(pick(w, [w, on(crossing, 0.01, 1)], 0.01), wallEnd);
   });
 
   it('a held crossing survives ±1px at the edge of the aim, a fresh one does not', () => {
     const c = on(corner, 0.2, 0);
     const items = [c, on(crossing, 0.03, 1)];
-    assert.equal(pick(c, items), corner);
-    assert.equal(pick(c, items, crossing), crossing);
+    assert.equal(pick(c, items, 0.03), corner);
+    assert.equal(pick(c, items, 0.03, crossing), crossing);
   });
 
   it('a crossing that only projects under the pointer through a lock is not aimed at', () => {
     const c = on(corner, 0.15, 0);
     const projected: Ranked = { cand: crossing, point: [6, 0], dist: 0, tier: 1, order: 1 };
-    assert.equal(pick(c, [c, projected]), corner);
+    assert.equal(pick(c, [c, projected], 0, null, [6, 0]), corner);
   });
 
   it('a lock running through the crossing still lets the pointer aim at it', () => {
     const c = on(corner, 0.21, 0);
-    assert.equal(pick(c, [c, { cand: crossing, point: [6, 6], dist: 0.01, tier: 1, order: 1 }]), crossing);
+    assert.equal(pick(c, [c, { cand: crossing, point: [6, 6], dist: 0.01, tier: 1, order: 1 }], 0.01), crossing);
   });
 
   it('no aimed target in range leaves the ladder alone, including no winner at all', () => {
     const c = on(corner, 0.2, 0);
-    assert.equal(pick(c, [c]), corner);
-    assert.equal(pick(null, []), null);
+    assert.equal(pick(c, [c], 0), corner);
+    assert.equal(pick(null, [], 0), null);
   });
 });

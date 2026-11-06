@@ -134,15 +134,17 @@ export function aimedOr(
   aimed: number,
   hysteresis: number,
   prev: SnapCandidate | null,
+  cursor: Vec2,
 ): Ranked | null {
   let on: Ranked | null = null;
+  let onDist = Infinity;
   for (const r of items) {
     if (!kinds.includes(r.cand.kind)) continue;
     const reach = prev !== null && sameTarget(r.cand, prev) ? aimed + hysteresis : aimed;
-    // `dist` runs to the point on the active lock, so add the way from there to
-    // the target: a crossing far off the lock can project right under the pointer.
-    const toTarget = r.dist + Math.hypot(r.point[0] - r.cand.local[0], r.point[1] - r.cand.local[1]);
-    if (toTarget <= reach && (!on || r.dist < on.dist)) on = r;
+    // To the target itself: `dist` runs to its point on the active lock, and a
+    // crossing far off the lock can project right under the pointer.
+    const toTarget = Math.hypot(cursor[0] - r.cand.local[0], cursor[1] - r.cand.local[1]);
+    if (toTarget <= reach && toTarget < onDist) { on = r; onDist = toTarget; }
   }
   if (!on || !winner || winner === on || winner.dist < on.dist) return winner;
   return sameVec(winner.point, on.point) ? winner : on;

@@ -90,7 +90,7 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     const details = ui.querySelector('details'); assert(details); assert.equal(details.open, false, 'full fingerprints are collapsed');
     assert.equal(ui.querySelector<HTMLSelectElement>('select')?.selectedOptions[0]?.textContent, 'Sample building');
     click(button(ui, 'Sign out'));
-    await waitFor(() => useRegistryWorkspace.getState().session === null, 'server revocation should complete sign-out');
+    await waitFor(() => useRegistryWorkspace.getState().session === null && !useRegistryWorkspace.getState().signOutPending, 'server revocation should complete sign-out');
     assert.equal(useRegistryWorkspace.getState().session, null);
     assert.equal(transport.can('pull'), false);
     assert.equal(ui.querySelector('input[type="password"]'), null);
@@ -131,7 +131,7 @@ test('remembered login restores the source after a fresh viewer mount without op
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'a reloaded viewer should restore again');
     assert.equal(restores, 2);
     click(button(ui, 'Sign out'));
-    await waitFor(() => useRegistryWorkspace.getState().session === null, 'remembered sign-out should finish');
+    await waitFor(() => useRegistryWorkspace.getState().session === null && !useRegistryWorkspace.getState().signOutPending, 'remembered sign-out should finish');
     cleanup(); freshPage(); ui = await mount(); click(button(ui, 'Model registry (experimental)'));
     await waitFor(() => restores === 3, 'fresh viewer should check the cleared cookie');
     assert(button(ui, 'Sign in to registry')); assert.equal(useRegistryWorkspace.getState().session, null);

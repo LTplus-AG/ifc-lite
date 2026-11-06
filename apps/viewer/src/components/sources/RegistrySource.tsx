@@ -5,6 +5,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { registerEnglish, useTranslation } from '@/i18n';
@@ -37,10 +38,11 @@ function nextVersion(releases: RegistryRelease[]): string {
 /** OCI-specific browsing and publishing inside the common Cloud Sources layout. */
 export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyChange }: RegistrySourceProps) {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const id = useId();
   const [transport] = useState(() => registryTransport(window.location.origin));
   const [artifacts] = useState(() => new RegistryArtifacts(transport));
-  const { address, session, models, modelTitles, catalogNext, releases, repository, release, version, fingerprint, published } = useRegistryWorkspace();
+  const { address, session, signOutPending, models, modelTitles, catalogNext, releases, repository, release, version, fingerprint, published } = useRegistryWorkspace();
   const selected = releases.find(item => item.tag === release);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -81,12 +83,27 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     if (requested && !available.some(item => item.tag === requested)) setError(t('registry.releaseMissing'));
   };
   const pull = async (reference: string, signal: AbortSignal) => {
+    const before = useViewerStore.getState();
+    if (before.models.size && !await confirmDialog({
+      description: t('registry.replaceWarning'), confirmLabel: t('registry.replaceSession'), destructive: true,
+    })) return;
+    signal.throwIfAborted();
     const received = await artifacts.pull(repository, reference, signal);
     signal.throwIfAborted();
-    await loadFile(new File([received.bytes], sanitizeFilename(received.filename, { fallback: 'model.ifc' }), { type: 'application/x-step' }));
+    const current = useViewerStore.getState();
+    if (current.models !== before.models || current.mutationVersion !== before.mutationVersion) {
+      throw new RegistryError(t('registry.sessionChanged'));
+    }
+    const modelId = crypto.randomUUID();
+    await loadFile(new File([received.bytes], sanitizeFilename(received.filename, { fallback: 'model.ifc' }), { type: 'application/x-step' }), { kind: 'primary', modelId });
     signal.throwIfAborted();
-    const loadError = useViewerStore.getState().error;
+    const state = useViewerStore.getState();
+    const loaded = state.models.get(modelId);
+    const loadError = loaded?.loadError ?? state.error;
     if (loadError) throw new RegistryError(loadError);
+    if (state.activeModelId !== modelId || loaded?.loadState !== 'complete' || !loaded.ifcDataStore) {
+      throw new RegistryError(t('registry.notOpened'));
+    }
     update({ fingerprint: received.digest });
     setMessage(t('registry.opened', { name: selected?.title ?? displayModel(repository), version: selected ? releaseLabel(selected) : t('registry.savedRelease') }));
   };
@@ -125,7 +142,10 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
       </button>
     </div>
     <fieldset id={`${id}-content`} hidden={!expanded} disabled={navigationDisabled} aria-label={t('registry.title')} className="min-w-0 space-y-3 border-t p-3">
-      {!session ? <form className="grid gap-2" onSubmit={event => {
+      {signOutPending ? <div className="grid gap-2">
+        <p className="text-sm">{t('registry.signOutPending')}</p>
+        <Button disabled={busy} onClick={logout}>{t('registry.retrySignOut')}</Button>
+      </div> : !session ? <form className="grid gap-2" onSubmit={event => {
         event.preventDefault();
         void run(async signal => {
           const connection = parseRegistryAddress(address);
@@ -171,11 +191,13 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
             <p className="text-xs text-muted-foreground">{modelName ? t('registry.activeModel', { name: modelName }) : t('registry.noModel')}</p>
             <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>
             <Input id={`${id}-version`} value={version} onChange={event => update({ version: event.target.value })} disabled={busy || !transport.can('push', repository)} />
-            <Button disabled={busy || !modelName || !version || !transport.can('push', repository, version)} onClick={() => void run(async signal => {
+            {transport.can('push', repository, version) && !transport.can('pull', repository, version) && <p className="text-xs text-muted-foreground">{t('registry.publishNeedsRead')}</p>}
+            <Button disabled={busy || !modelName || !version || !transport.can('push', repository, version) || !transport.can('pull', repository, version)} onClick={() => void run(async signal => {
               const source = await exportRegistryModel(); signal.throwIfAborted();
               const digest = await artifacts.publish(repository, version, source.bytes, source.filename, signal);
-              const info = await artifacts.describe(repository, version, signal);
-              signal.throwIfAborted();
+              // The manifest PUT commits publication. Metadata is optional and
+              // can be fetched by Refresh versions without turning success into failure.
+              const info: RegistryRelease = { tag: version, digest, title: source.filename.replace(/\.ifc$/i, '') };
               update({ fingerprint: digest, published: digest, release: version, releases: [info, ...releases.filter(item => item.tag !== version)], tags: [...new Set([...releases.map(item => item.tag), version])] });
               setMessage(t('registry.published', { version }));
             })}>{t('registry.publish')}</Button>

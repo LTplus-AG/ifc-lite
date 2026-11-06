@@ -66,7 +66,9 @@ uses another port, restart the registry with its matching `--oauth-redirect-uri`
    popups for the viewer if your browser blocks this window.
 2. Choose the model and version from the lists. Publication details identify
    the authenticated publisher and time when the registry recorded them.
-   Click **Open model** and close Cloud Sources.
+   Click **Open model** and close Cloud Sources. If models are already loaded,
+   confirm **Replace session**; this replaces every current model and discards
+   unpublished edits. Cancel to keep the current session.
 3. Select a wall, open **Author → Model**, and edit **Name** in the Model
    inspector. Press Tab to apply the edit.
 4. Reopen **Cloud Sources → Model registry**. The connection remains signed in.
@@ -85,9 +87,14 @@ reference can select a pinned release; users do not need to type a fingerprint.
 
 No models, no versions, expired sign-in, denied access and unknown publication
 records have explicit UI states. Use a new version name each time; the demo
-refuses an existing tag. The backend also enforces immutable tags atomically: a
+requires both read and push access for that version and always checks for an
+existing tag before uploading. Push-only accounts cannot publish through this
+viewer. The backend also enforces immutable tags atomically: a
 different manifest at an existing tag returns HTTP 409, while a retry of the
-same manifest preserves the original publication record.
+same manifest preserves the original publication record. After the manifest is
+accepted, publication is shown as successful and the saved digest is available
+to reopen. **Refresh versions** fetches registry-recorded publication metadata
+separately, so a metadata outage cannot turn a successful publish into an error.
 
 ## Connection and discovery boundaries
 
@@ -225,6 +232,10 @@ buffer. The demo handles one active IFC STEP model, up to 512 MiB; IFC5, portabl
 texture archives and incomplete exports are refused. Export coverage depends
 on the model and the pinned IFClite exporter.
 
+If server sign-out fails, access is cleared from the tab and **Retry sign out**
+remains available, including after closing and reopening Cloud Sources. New
+sign-in is blocked until server revocation succeeds.
+
 ## Focused checks
 
 Run through the root Turbo runner, supplying the real local executables:
@@ -233,13 +244,19 @@ Run through the root Turbo runner, supplying the real local executables:
 OCI_REGISTRY_BINARY=/absolute/path/to/subsoil \
 ORAS_BINARY=/absolute/path/to/oras \
 TEST_PATTERN='lib/registry/.*test|components/sources/Registry.*test' \
-  pnpm exec turbo test --filter=@ifc-lite/viewer --only
+  pnpm test --filter=@ifc-lite/viewer --only
 pnpm typecheck
 pnpm lint
 ```
 
-Without the executable variables, integration/ORAS coverage reports its skipped
-portion. The tests cover address parsing, S256 challenge/verifier binding,
+The viewer CI shard containing `registry.test.ts` builds Subsoil at pinned
+commit `117c7788fbd839a855f4c324248b930e1b232f02` and uses the checksum-pinned
+ORAS tooling. Missing executables fail that test in CI. Locally, without the
+executable variables, integration/ORAS coverage reports its skipped portion.
+The real registry roundtrip publishes a pending wall-name edit through the
+viewer exporter, downloads it by digest, reparses the edit and checks the same
+bytes independently with ORAS. The tests cover address parsing, S256
+challenge/verifier binding,
 callback validation, session renewal, remembered restoration, multi-tab cookie
 serialization, sign-out races, credential boundaries, authenticated
 model discovery, publisher/time metadata, actual edited IFC export, integrity,

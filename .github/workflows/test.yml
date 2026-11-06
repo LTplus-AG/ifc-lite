@@ -2325,6 +2325,41 @@ jobs:
         with:
           name: build-output
           path: packages
+      # The real-registry test belongs to exactly one shard. Derive it from the
+      # same manifest/algorithm as the test runner, so repacking cannot skip it.
+      - name: Locate the registry integration shard
+        id: registry-shard
+        env:
+          TEST_SHARD: ${{ matrix.shard }}
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs';
+          import { assignShards, MANIFEST_PATH } from './scripts/viewer-test-shards.mjs';
+          const path = 'src/lib/registry/registry.test.ts';
+          const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+          console.log(`selected=${assignShards([path], manifest, 16).get(path) === Number(process.env.TEST_SHARD)}`);
+          NODE
+      - name: Setup registry Rust toolchain
+        if: steps.registry-shard.outputs.selected == 'true'
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
+        with:
+          toolchain: stable
+      - name: Build pinned Subsoil registry
+        if: steps.registry-shard.outputs.selected == 'true'
+        run: |
+          set -euo pipefail
+          source_dir="$(mktemp -d "$RUNNER_TEMP/subsoil-source.XXXXXX")"
+          git -C "$source_dir" init
+          git -C "$source_dir" remote add origin https://github.com/zahmadsaleem/subsoil.git
+          git -C "$source_dir" fetch --depth=1 origin 117c7788fbd839a855f4c324248b930e1b232f02
+          git -C "$source_dir" checkout --detach FETCH_HEAD
+          cargo +stable build --locked --bin subsoil --manifest-path "$source_dir/Cargo.toml" --target-dir "$RUNNER_TEMP/subsoil-target"
+          test -x "$RUNNER_TEMP/subsoil-target/debug/subsoil"
+          echo "OCI_REGISTRY_BINARY=$RUNNER_TEMP/subsoil-target/debug/subsoil" >> "$GITHUB_ENV"
+      - name: Setup independent ORAS retrieval
+        id: registry-tools
+        if: steps.registry-shard.outputs.selected == 'true'
+        uses: ./.github/actions/setup-oci-registries
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -2365,6 +2400,7 @@ jobs:
         run: pnpm --filter @ifc-lite/viewer run test
         env:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
+          ORAS_BINARY: ${{ steps.registry-tools.outputs.oras-path }}
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
       - name: Mergify CI Upload

@@ -36,17 +36,18 @@ export class RegistryTransport {
   }
 
   get session(): RegistrySession | null { return this.current; }
+  get hasPendingSignOut(): boolean { return this.pendingRevoke !== null; }
   can(action: 'pull' | 'push', repository = this.current?.repository, tag?: string): boolean {
     return Boolean(this.current && !this.pendingRevoke && this.current.sessionExpiresAt > Date.now() && (repository ? (this.current.permissions ? grantAllows(this.current.permissions, repository, action, tag) : this.current.repositories.some(access => access.repository === repository && access.actions.includes(action))) : this.current.permissions?.some(g => g.actions.includes(action)) || this.current.repositories.some(a => a.actions.includes(action))));
   }
-  logout(notify = true): void {
+  logout(): void {
     this.generation += 1;
     this.attempt?.abort(); this.attempt = null;
     this.renewing?.abort(); this.renewing = null; this.refreshing = null; this.restoring = null;
     this.scoped.clear();
     this.token = null; this.current = null; this.authorization = null; this.suppressedRestore = true;
     this.channel?.close(); this.channel = null;
-    if (notify) this.onSession?.(null);
+    this.onSession?.(null);
   }
 
   private accept(authorization: RegistryAuthorization, generation: number, previous?: RegistryAuthorization): RegistrySession {
@@ -75,7 +76,7 @@ export class RegistryTransport {
     const target = authorization ? { clientId: authorization.clientId, refreshToken: authorization.refreshToken, remembered: authorization.session.remembered }
       : this.pendingRevoke ?? { clientId: '', remembered: true };
     this.pendingRevoke = target;
-    this.logout(false);
+    this.logout();
     if (!target.clientId) target.clientId = (await discoverRegistryOAuth(this.origin, this.registryOrigin, AbortSignal.timeout(15000))).clientId;
     await revokeRegistrySession(this.origin, this.registryOrigin, target.clientId, target.refreshToken);
     this.pendingRevoke = null; this.onSession?.(null);
@@ -124,7 +125,7 @@ export class RegistryTransport {
     const body = new URLSearchParams({ grant_type: 'refresh_token', client_id: previous.clientId });
     if (previous.refreshToken) body.set('refresh_token', previous.refreshToken);
     const refreshing = (previous.shareSecret ? redeemRegistryShare(this.origin, previous.shareSecret, controller.signal) : exchangeRegistrySession(this.origin, this.registryOrigin, previous.clientId, body,
-      previous.session.repository || null, controller.signal, previous.session.remembered))
+      previous.session.authorizationType === 'session' ? null : previous.session.repository || null, controller.signal, previous.session.remembered))
       .then(authorization => this.accept(authorization, generation, previous))
       .catch((error: unknown) => {
         const rejected = error instanceof RegistryError && [400, 401, 403].includes(error.status);

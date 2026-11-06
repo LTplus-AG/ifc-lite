@@ -20,6 +20,8 @@ import { REGISTRY_CALLBACK_PATH } from './oauth';
 const browserWindow = new Window({ url: 'http://localhost/' });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: browserWindow });
 Object.defineProperty(globalThis, 'DOMParser', { configurable: true, value: browserWindow.DOMParser });
+Object.defineProperty(globalThis, 'location', { configurable: true, value: browserWindow.location });
+Object.defineProperty(globalThis, 'document', { configurable: true, value: browserWindow.document });
 
 test('registry references cannot escape their repository and SHA-256 uses actual bytes', async () => {
   for (const value of ['../private', 'Project/model', 'project//model', 'project/model?token=x']) assert.throws(() => repositoryName(value));
@@ -57,9 +59,13 @@ test('an IFC blob with the expected size but different bytes is refused', async 
   } finally { transport?.logout(); popup.restore(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
-test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the published artifact (#8310)', { timeout: 30000 }, async context => {
+test('real registry PKCE login preserves edited IFC and scopes; ORAS reads the published artifact (#8310)', { timeout: 30000 }, async context => {
   const binary = process.env.OCI_REGISTRY_BINARY;
-  if (!binary) { context.skip('Set OCI_REGISTRY_BINARY to run against the Rust registry.'); return; }
+  if (!binary) {
+    assert(!process.env.CI, 'CI must provide OCI_REGISTRY_BINARY for the real registry test');
+    context.skip('Set OCI_REGISTRY_BINARY to run against the Rust registry.'); return;
+  }
+  if (process.env.CI) assert(process.env.ORAS_BINARY, 'CI must provide ORAS_BINARY for independent retrieval');
   const root = await mkdtemp(join(tmpdir(), 'ifclite-registry-'));
   const password = 'test-only-registry-password';
   const data = join(root, 'store');
@@ -111,8 +117,12 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     const session = await writer.login('project/model');
     assert.deepEqual(session.actions.sort(), ['pull', 'push']);
     const artifacts = new RegistryArtifacts(writer);
-    const source = new Uint8Array(await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url)));
-    const digest = await artifacts.publish('project/model', 'first', source, 'model.ifc');
+    const { editedRegistryModel } = await import('@/test/registry-model-fixture');
+    const { exportRegistryModel } = await import('./export-model');
+    const edited = await editedRegistryModel();
+    const { bytes: source, filename } = await exportRegistryModel();
+    assert.notDeepEqual(source, edited.bytes, 'publish the edited export, not the input buffer');
+    const digest = await artifacts.publish('project/model', 'first', source, filename);
     const discovery = client(origin);
     await discovery.login(null);
     const browser = new RegistryArtifacts(discovery);
@@ -126,6 +136,9 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
     assert(info.createdAt && Number.isFinite(Date.parse(info.createdAt)));
     const pulled = await artifacts.pull('project/model', digest);
     assert.equal(pulled.digest, digest); assert.deepEqual(pulled.bytes, source);
+    const reopened = await edited.parser.parseColumnar(pulled.bytes.buffer, { disableWorkerScan: true });
+    assert.equal(reopened.entityCount, edited.store.entityCount);
+    assert.equal(reopened.entities.getName(edited.wall), 'Registry persisted wall');
     assert.deepEqual(await artifacts.tags('project/model'), ['first']);
     await assert.rejects(artifacts.publish('project/model', 'first', source, 'model.ifc'), /already exists/);
     const reader = client(origin);
@@ -143,7 +156,7 @@ test('real registry PKCE login preserves IFC bytes and scopes; ORAS reads the pu
       assert.equal(await sha256(manifest), digest);
       const output = join(root, 'received');
       execFileSync(oras, ['pull', '--plain-http', '--registry-config', config, '--output', output, `${host}/project/model@${digest}`], { stdio: ['ignore', 'pipe', 'pipe'] });
-      assert.deepEqual(new Uint8Array(await readFile(join(output, 'model.ifc'))), source);
+      assert.deepEqual(new Uint8Array(await readFile(join(output, filename))), source);
     } else { context.diagnostic('ORAS check skipped: set ORAS_BINARY.'); }
     let now = Date.now(); context.mock.method(Date, 'now', () => now);
     const deadline = writer.session?.sessionExpiresAt;

@@ -766,16 +766,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
                 {(['hard', 'clearance'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'px-2.5 py-1 capitalize transition-colors',
-                      mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  // The selected mode is the shared pressed state (#8802 R4), so
+                  // the panel's one solid primary stays "Detect all clashes".
+                  <Button key={m} type="button" variant="toggle" aria-pressed={mode === m} onClick={() => setMode(m)}
+                    className="h-auto rounded-none px-2.5 py-1 text-xs font-normal capitalize">
                     {m}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <label className="flex items-center gap-1 text-xs text-muted-foreground" title={t('clashPanel.tolLabelTooltip')}>

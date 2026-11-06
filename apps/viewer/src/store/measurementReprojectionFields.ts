@@ -62,6 +62,9 @@ export const REPROJECTED_MEASUREMENT_FIELDS = {
   radiusMeasurements: 'list',
   /** Point mode's placed point, drawn as a marker (#8770). */
   measurePointLast: 'nullable',
+  /** Point mode's hovered point (#8770). Not reprojected but dropped: once the
+   * camera moves it is no longer the point under the cursor (#8828). */
+  measurePointLive: 'nullable',
 } as const satisfies Record<string, ReprojectedFieldKind>;
 
 /** Field names of {@link REPROJECTED_MEASUREMENT_FIELDS}. */

@@ -39,14 +39,16 @@ describe('shadow occluder residency (#9034)', () => {
     });
   }
 
-  it('a partial parent whose subset comes back empty (cold) is not recorded', () => {
-    const parent = batch(1, [1, 2], false);
-    const { scene, recorded, requested } = fakeScene([parent], 0);
-    const out = shadowOccluderBatches(scene, { hiddenIds: new Set([1]) }, DEVICE, true, PIPELINE, 0);
-    assert.equal(out.length, 0);
-    assert.deepEqual(recorded, []);
-    assert.deepEqual(requested, [1]);
-  });
+  for (const resident of [true, false]) {
+    it(`a partial ${resident ? 'resident' : 'GPU-evicted'} parent whose subset comes back empty is not recorded`, () => {
+      const parent = batch(1, [1, 2], resident ? undefined : false);
+      const { scene, recorded, requested } = fakeScene([parent], 0);
+      const out = shadowOccluderBatches(scene, { hiddenIds: new Set([1]) }, DEVICE, true, PIPELINE, 0);
+      assert.equal(out.length, 0);
+      assert.deepEqual(recorded, [], 'nothing cast, so nothing drawn');
+      assert.deepEqual(requested, resident ? [] : [1]);
+    });
+  }
 
   it('a fully hidden batch is neither recorded nor requested', () => {
     const { scene, recorded, requested } = fakeScene([batch(1, [1, 2])], 3);

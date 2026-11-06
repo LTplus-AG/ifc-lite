@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { skip } from '@/test/blank-ifc-loader-harness';
@@ -34,8 +34,10 @@ afterEach(() => {
 });
 function Host() { return <>{useFileCommands().fileInputs}</>; }
 function Harness() {
+  const [hostKey, setHostKey] = useState(0);
   return <BimReactContext.Provider value={{} as BimContext}>
-    <Host /><CommandPalette open onOpenChange={() => {}} />
+    <Host key={hostKey} /><button data-replace-file-host onClick={() => setHostKey(key => key + 1)}>Replace toolbar</button>
+    <CommandPalette open onOpenChange={() => {}} />
   </BimReactContext.Provider>;
 }
 function row() {
@@ -137,7 +139,7 @@ for (const retire of [false, true]) test(`blank callback refresh survives real l
   });
   render(<Harness />); await settle();
   const originalHost = getMountedFileHost(); assert.ok(originalHost?.owner);
-  let removeReplacement = () => {};
+  let replacementOwner: object | undefined;
   try {
     click(row()); await waitFor(() => held, 'real blank source read is pending');
     const locale = createLocaleActivator({ de: () => import('@/i18n/locales/de').then(module => module.default) });
@@ -146,9 +148,13 @@ for (const retire of [false, true]) test(`blank callback refresh survives real l
     assert.notEqual(refreshedHost, originalHost, 'translated file callbacks actually refreshed');
     assert.equal(refreshedHost?.owner, originalHost.owner, 'toolbar lifetime survived callback refresh');
     assert.equal(useViewerStore.getState().session, null, 'pending real load cannot enter authoring');
-    if (retire) act(() => {
-      removeReplacement = registerMountedFileHost({ owner: {}, openFiles() {}, addModel() {}, async refreshModels() {} });
-    });
+    if (retire) {
+      const replace = document.querySelector('[data-replace-file-host]'); assert.ok(replace);
+      click(replace); // A real keyed React unmount/remount retires the original effect lifetime.
+      replacementOwner = getMountedFileHost()?.owner;
+      assert.ok(replacementOwner);
+      assert.notEqual(replacementOwner, originalHost.owner);
+    }
     release();
     await waitFor(() => {
       const state = useViewerStore.getState();
@@ -156,13 +162,16 @@ for (const retire of [false, true]) test(`blank callback refresh survives real l
     }, 'actual blank model completes after source read');
     await settle();
     const state = useViewerStore.getState();
+    assert.equal(state.models.size, 1);
+    assert.equal([...state.models.values()][0].id, state.activeModelId);
     assert.ok(state.ifcDataStore?.entityIndex.byType.get('IFCPROJECT')?.length);
     if (retire) {
+      assert.equal(getMountedFileHost()?.owner, replacementOwner, 'metadata cannot re-register an unmounted owner');
       assert.equal(state.session, null, 'retired host must not activate authoring after completion');
     } else {
       assert.equal(getMountedFileHost()?.owner, originalHost.owner, 'metadata publication keeps the same toolbar lifetime');
       assert.equal(state.session?.modelId, state.activeModelId);
       assert.equal(getCommandRuntime().command?.id, 'wall.place');
     }
-  } finally { release(); act(removeReplacement); await settle(); }
+  } finally { release(); await settle(); }
 });

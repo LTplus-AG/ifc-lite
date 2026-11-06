@@ -13,10 +13,11 @@ import { useViewerStore, type MeasurePoint } from '@/store';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
-import { pickMeasurePoint } from './measurePick.js';
+import { measureSnapOptions, pickMeasurePoint } from './measurePick.js';
 import { cancelQueuedHover } from './measurePointMode.js';
 import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
+import { noteMeasureCursor } from './measureCursor.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
 const startingPresses = new WeakSet<MouseState>();
@@ -59,12 +60,14 @@ export function resetMeasurePress(ctx: MouseHandlerContext): void {
   startingPresses.delete(ctx.mouseState);
   forgetVertexPress(ctx);
   forgetDistancePress(ctx.mouseState);
+  noteMeasureCursor(ctx, null); // the preview it followed is gone (#8992)
 }
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */
 export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
   ctx.startMeasurement(measurePoint);
   rememberVertexPress(ctx, measurePoint, at);
+  noteMeasureCursor(ctx, null); // an earlier gesture's cursor, as after a pen tap with no move between (#8992)
 
   // Set up orthogonal constraint for Shift - always use world axes
   ctx.setMeasurementConstraintEdge({
@@ -176,23 +179,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   }, {
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: ctx.snapEnabledRef.current && !useOrthogonalConstraint ? {
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: true,
-      screenSnapRadius: 60,
-    } : useOrthogonalConstraint ? {
-      // In orthogonal mode, snap to edges and vertices only (no faces)
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: false,
-      screenSnapRadius: 40,
-    } : {
-      snapToVertices: false,
-      snapToEdges: false,
-      snapToFaces: false,
-      screenSnapRadius: 0,
-    },
+    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint }),
   });
 
   // The final position, snapped and (with Shift) on the axis

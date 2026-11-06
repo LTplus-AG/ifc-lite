@@ -12,6 +12,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { DrawingPanel } from './DrawingPanel';
 import { DrawingRuntimeHost } from './DrawingRuntimeHost';
@@ -37,6 +38,7 @@ function seed(patch: Partial<ReturnType<typeof useViewerStore.getState>> = {}): 
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: null, geometryResult: geometry }),
     modelPlacement: emptyPlacementState(), activeModelId: null, ifcDataStore: null, activeTool: 'select',
     drawing2D: null, drawing2DStatus: 'idle', drawing2DPanelVisible: true, annotation2DActiveTool: 'none',
+    drawing2DDisplayOptions: getDefaultDrawing2DState().drawing2DDisplayOptions,
     sectionPlane: { ...s.sectionPlane, axis: 'down', position: 50, enabled: true, custom: undefined }, ...patch });
 }
 
@@ -69,13 +71,52 @@ it('the display chips write drawing2DDisplayOptions', () => {
   assert.equal(byLabel(ui, '3D overlay').getAttribute('aria-pressed'), String(!before.show3DOverlay));
   click(byLabel(ui, 'Annotations'));
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showIfcAnnotations, !before.showIfcAnnotations);
+  // Projection's shown state follows the cut until the user chooses (#8802): the
+  // chip flips what is SHOWN, and stores that as an explicit choice.
+  const projectionShown = byLabel(ui, 'Projection').getAttribute('aria-pressed') === 'true';
   click(byLabel(ui, 'Projection'));
-  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showConstructionProjection, !before.showConstructionProjection);
+  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showConstructionProjection, !projectionShown);
+  assert.equal(byLabel(ui, 'Projection').getAttribute('aria-pressed'), String(!projectionShown));
   click(byLabel(ui, 'Symbolic'));
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.useSymbolicRepresentations, !before.useSymbolicRepresentations);
   click(byLabel(ui, 'Print preview'));
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showPrintPreview, !before.showPrintPreview);
   assert.equal(byLabel(ui, 'Print preview').getAttribute('aria-pressed'), String(!before.showPrintPreview));
+});
+
+it('a plan cut shows projection on and a front cut off, until the user chooses (#8802)', () => {
+  const ui = render(<DrawingPanel />);
+  const pressed = () => byLabel(ui, 'Projection').getAttribute('aria-pressed');
+  assert.equal(pressed(), 'true', 'a plan cut opens with projection on');
+  const s = useViewerStore.getState();
+  act(() => { useViewerStore.setState({ sectionPlane: { ...s.sectionPlane, axis: 'front' } }); });
+  assert.equal(pressed(), 'false', 'a front section keeps projection off');
+  act(() => { useViewerStore.setState({ sectionPlane: { ...s.sectionPlane, axis: 'down' } }); });
+  assert.equal(pressed(), 'true');
+});
+
+it("the user's Projection choice survives a switch between plan and section (#8802)", () => {
+  const ui = render(<DrawingPanel />);
+  const pressed = () => byLabel(ui, 'Projection').getAttribute('aria-pressed');
+  const setAxis = (axis: 'down' | 'front') => act(() => {
+    useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, axis } });
+  });
+  // On a plan the user turns projection OFF: it stays off on a section and back on the plan.
+  click(byLabel(ui, 'Projection'));
+  assert.equal(pressed(), 'false', 'the click turns the shown projection off');
+  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showConstructionProjection, false, 'stored as an explicit choice');
+  setAxis('front');
+  assert.equal(pressed(), 'false');
+  setAxis('down');
+  assert.equal(pressed(), 'false', 'the plan default does not override the choice');
+  // On a section the user turns it ON: it stays on everywhere.
+  setAxis('front');
+  click(byLabel(ui, 'Projection'));
+  assert.equal(pressed(), 'true');
+  setAxis('down');
+  assert.equal(pressed(), 'true');
+  setAxis('front');
+  assert.equal(pressed(), 'true', 'the section default does not override the choice');
 });
 
 it('IFC annotations are offered on plan cuts only, and projection never on a custom plane', () => {

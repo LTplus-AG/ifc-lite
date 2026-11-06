@@ -56,7 +56,7 @@ export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle,
   if (!registry.subscribed) {
     registry.subscribed = true;
     useViewerStore.subscribe((state, previous) => {
-      if (state.models !== previous.models) reconcileGaussianAssets(state.models);
+      if (state.models !== previous.models || state.geometryResult !== previous.geometryResult) reconcileGaussianAssets(state.models);
     });
   }
   reconcileGaussianAssets(useViewerStore.getState().models);
@@ -292,7 +292,15 @@ export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis):
     const appliedAxis = appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? sourcePlacement : undefined, upAxis ?? capture.upAxis);
     const framed = gaussianCaptureFrame(sourcePlacement, appliedAxis, frame);
     if (capture.upAxis === framed.upAxis && asset.placedOffset.x === offset.x
-      && asset.placedOffset.y === offset.y && asset.placedOffset.z === offset.z) return true;
+      && asset.placedOffset.y === offset.y && asset.placedOffset.z === offset.z) {
+      if (capture.frameOffset?.x !== offset.x || capture.frameOffset?.y !== offset.y || capture.frameOffset?.z !== offset.z
+        || capture.placement.some((value, index) => value !== framed.placement[index])) {
+        const latest = useViewerStore.getState().models.get(modelId);
+        if (latest?.gaussianSplat !== capture || currentAsset(latest) !== asset) return false;
+        useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
+      }
+      return true;
+    }
     try {
       if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
     } catch (error) {

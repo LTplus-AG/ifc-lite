@@ -27,7 +27,8 @@ function useProjectedReferences(plane: SectionPlaneConfig | undefined) {
 export function useDrawingWithReferences(source: Drawing2D | null) {
   const references = useProjectedReferences(source?.config.plane);
   return useMemo(() => ({ drawing: source ? drawingWithReferenceBounds(source, references.map(r => r.corners)) : null,
-    hasReferences: references.length > 0, referenceCount: references.length }), [source, references]);
+    hasReferences: references.length > 0, referenceCount: references.length,
+    referenceCorners: references.map(r => r.corners) }), [source, references]);
 }
 
 /** Each canvas owns a lease until unmount/replacement; shared ImageBitmaps must

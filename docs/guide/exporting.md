@@ -276,16 +276,18 @@ RTC origins ride a glTF node translation so large-coordinate models stay precise
 | `isolated` | `undefined` = no isolation filter (everything not hidden exports). A `Uint32Array` = an **active** allowlist: only these express-ids export, and an **empty** array exports nothing (`NO_RENDER_GEOMETRY`). Pass `undefined`, not `new Uint32Array()`, when your filter is inactive — `exportObj` follows the same contract (`isolated?`); on the Rust side this is `GltfOptions::isolated` / `ObjOptions::isolated: Option<Vec<u32>>` (`None` vs `Some(ids)`) |
 | hidden-types CSV | IFC class names to drop wholesale, e.g. `IfcSpace,IfcOpeningElement` |
 | `lit` | `true` (default) emits standard PBR materials that shade from normals; `false` emits flat `KHR_materials_unlit` materials |
+| `emissive` | `true` sets each material's `emissiveFactor` to its base colour, for renderers with no ambient light; default `false` |
+| `nameByGlobalId` | `true` makes each element one node under the scene, named by its `GlobalId`, with its mesh parts as children; default `false` (one unnamed root over every part). See below |
 
 ### glTF with Metadata
 
 ```typescript
 const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), new Uint32Array(), '');
 
-// With includeMetadata, each node carries identifying extras:
+// With includeMetadata, each mesh node carries identifying extras:
 // {
 //   "nodes": [{
-//     "name": "Wall-001",
+//     "mesh": 0,
 //     "extras": {
 //       "expressId": 123,
 //       "ifcType": "IfcWall",
@@ -297,6 +299,41 @@ const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), n
 
 Property sets are not embedded in the GLB; export them separately (CSV, JSON-LD,
 Parquet) and join on `expressId` / `GlobalId` when you need both.
+
+### Element nodes named by GlobalId
+
+By default every mesh node hangs under one unnamed root, and an element with
+several parts (a window's frame and glass, a layered wall) is several unrelated
+sibling nodes. Tools that identify objects by node name need one named node per
+element instead. Pass `nameByGlobalId` (CLI: `--name-by-global-id`):
+
+```typescript
+const glb = gp.exportGlb(
+  bytes, false, new Uint32Array(), undefined, '',
+  /* lit */ true, /* emissive */ false, /* nameByGlobalId */ true,
+);
+// {
+//   "scenes": [{ "nodes": [2, 3] }],
+//   "nodes": [
+//     { "mesh": 0 }, { "mesh": 1 },
+//     { "name": "2O2Fr$t4X7Zf8NOew3FL9r", "children": [0, 1], "translation": [...] },
+//     ...
+//   ]
+// }
+```
+
+Each element node sits directly under the scene and carries a copy of the root
+translation and site rotation, so every part lands exactly where it does
+without the option; geometry, accessors and materials are unchanged. An element
+without a usable `GlobalId` keeps its own node, unnamed. glTF does not require
+unique names, so a file that gives two elements the same `GlobalId` exports two
+nodes with that name. Mesh-node `extras` work
+as before when `includeMetadata` is on. In Rust the option is
+`GltfOptions::with_name_by_global_id(true)`, and on the raw wasm API it is the
+sibling method `exportGlbNamedByGlobalId`, which takes `exportGlb`'s parameters.
+It applies to the in-memory
+GLB, the bounded large-model GLB and the multi-buffer `.gltf` alike.
+`exportGlbFromMeshes` does not take it: the viewer's meshes carry no `GlobalId`.
 
 ## Parquet Export
 

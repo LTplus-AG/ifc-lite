@@ -39,12 +39,12 @@ function ChecksList({ manifest }: { manifest: ProvenanceManifest }) {
           <span className="flex items-center gap-1">
             {check.result === 'pass' ? (
               <CheckCircle2
-                className="size-3 shrink-0 text-emerald-500"
+                className="size-3 shrink-0 text-ok"
                 aria-label={t('layersPanel.provenance.checkPassAriaLabel')}
               />
             ) : (
               <XCircle
-                className="size-3 shrink-0 text-red-500"
+                className="size-3 shrink-0 text-danger"
                 aria-label={t('layersPanel.provenance.checkFailAriaLabel')}
               />
             )}

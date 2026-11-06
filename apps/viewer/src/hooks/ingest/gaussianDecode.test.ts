@@ -87,6 +87,33 @@ it('rebases double PLY centres before f32 narrowing at a survey origin (#8752, #
     - local[0]) > 0.001, 'narrowing the source centre before rebase must fail this precision bound');
 });
 
+it('reads double PLY positions using the admitted format line, not comment text (#9009)', async () => {
+  const centres = [[2_600_000.0012, 1_200_000.0023, 500.0045], [2_600_000.0314, 1_200_000.0425, 500.0546]];
+  const stride = base.length * 4 + 12;
+  for (const { formatLine, comment, little } of [
+    { formatLine: 'format  binary_little_endian 1.0', comment: '', little: true },
+    { formatLine: 'format binary_big_endian 1.0', comment: 'comment format binary_little_endian 1.0\n', little: false },
+  ]) {
+    const body = new DataView(new ArrayBuffer(stride * centres.length));
+    centres.forEach((centre, row) => {
+      let offset = row * stride;
+      base.forEach(name => {
+        if (['x', 'y', 'z'].includes(name)) { body.setFloat64(offset, centre[['x', 'y', 'z'].indexOf(name)], little); offset += 8; }
+        else { body.setFloat32(offset, name === 'rot_0' ? 1 : 0, little); offset += 4; }
+      });
+    });
+    const header = `ply\n${formatLine}\n${comment}element vertex ${centres.length}\n`
+      + base.map(name => `property ${['x', 'y', 'z'].includes(name) ? 'double' : 'float'} ${name}\n`).join('') + 'end_header\n';
+    const decoded = await decodeGaussianFile(new File([header, body.buffer], 'format.ply'));
+    const prepared = prepareGaussianCapture(decoded);
+    assert.deepEqual(decoded.centerBounds.min, centres[0]);
+    assert.deepEqual(decoded.centerBounds.max, centres[1]);
+    for (let row = 0; row < centres.length; row++) for (let axis = 0; axis < 3; axis++) {
+      assert.ok(Math.abs(prepared.decodeOrigin[axis] + prepared.attributes.positions[row * 3 + axis] - centres[row][axis]) < 0.001);
+    }
+  }
+});
+
 it('ordinary PLY and truncated Gaussian payload never enter decoding (#8565)', async () => {
   await assert.rejects(decodeGaussianFile(new File(['ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nend_header\n0\n'], 'ordinary.ply')), /Not a Gaussian/);
   await assert.rejects(decodeGaussianFile(new File([new Uint8Array(31)], 'broken.splat')), /Truncated/);

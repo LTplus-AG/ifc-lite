@@ -67,7 +67,7 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
             </div>
           ))}
           {proposal.unplaced.length > 0 && (
-            <div className="flex items-center gap-2 rounded bg-amber-500/10 px-2 py-1">
+            <div className="flex items-center gap-2 rounded bg-warn-surface px-2 py-1">
               <span className="min-w-0 flex-1">{t('bcfDrafts.reconcile.unplaced', { count: proposal.unplaced.length })}</span>
               <Button size="sm" variant="outline" className="h-6 px-2 text-2xs" onClick={() => void draftUnplaced()}>{t('bcfDrafts.reconcile.draftUnplaced')}</Button>
             </div>

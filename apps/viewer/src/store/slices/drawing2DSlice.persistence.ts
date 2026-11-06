@@ -60,7 +60,7 @@ import type {
 } from './drawing2DSlice.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
-import { isManualProjectionDepth } from '@/lib/drawing/projection-depth';
+import { isManualProjectionDepth, isConstructionProjectionPreference } from '@/lib/drawing/projection-depth';
 
 /** The five store fields this module persists/restores/clears, as a plain patch. */
 export type Drawing2DMarkupPatch = Pick<
@@ -213,7 +213,7 @@ function coalesceDisplayOptions(
     scale: num('scale'),
     useSymbolicRepresentations: bool('useSymbolicRepresentations'),
     showIfcAnnotations: bool('showIfcAnnotations'),
-    showConstructionProjection: bool('showConstructionProjection'),
+    showConstructionProjection: isConstructionProjectionPreference(o.showConstructionProjection) ? o.showConstructionProjection : fallback.showConstructionProjection,
     constructionProjectionDepth: isManualProjectionDepth(o.constructionProjectionDepth) ? o.constructionProjectionDepth : null,
     showScanSection: bool('showScanSection'),
     scanSectionThickness: num('scanSectionThickness'),

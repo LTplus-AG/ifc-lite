@@ -66,7 +66,11 @@ describe('inline palette access (#8947)', () => {
     // Canonical cycle handler, with focus outside the editable field.
     act(() => input.blur());
     press(window, 'n');
-    assert.equal(useViewerStore.getState().selectedEntity?.expressId, 43);
+    const afterCycle = useViewerStore.getState();
+    assert.equal(afterCycle.selectedEntity?.modelId, 'm');
+    assert.equal(afterCycle.selectedEntity?.expressId, 43);
+    assert.equal(afterCycle.selectedEntityId, afterCycle.toGlobalId('m', 43));
+    assert.equal(afterCycle.selectedEntityIds.size, 0, 'single selection uses the scalar renderer channel');
     act(() => { useViewerStore.getState().setSearchQuery(''); command.action(); });
     activate(button('Clear'), 'Enter');
     assert.deepEqual(loadRecentSearches(), []);

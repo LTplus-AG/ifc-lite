@@ -121,17 +121,28 @@ for (const context of contexts) {
     const input = page.getByRole('combobox', { name: 'Search entities', exact: true });
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
-    await input.fill('wall');
+    await page.keyboard.type('wall');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('wall');
     await expect(page.locator('#search-inline-popover').getByRole('option').first()).toBeVisible();
     await input.press('Enter');
     await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().searchVimCycle?.results.length ?? 0)).toBeGreaterThan(1);
-    const selected = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
-    expect(selected).not.toBeNull();
+    const expectedNext = await page.evaluate(() => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const cycle = state.searchVimCycle;
+      if (!cycle || cycle.results.length < 2) throw new Error('A real multi-result cycle is required');
+      const next = cycle.results[(cycle.index + 1) % cycle.results.length];
+      return { modelId: next.modelId, expressId: next.expressId, globalId: state.toGlobalId(next.modelId, next.expressId) };
+    });
     // Native Tab moves out of text entry; n then invokes the real cycle binding.
     await input.press('Tab');
     await expect(page.getByRole('button', { name: 'Advanced filter', exact: true })).toBeFocused();
     await page.keyboard.press('n');
-    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).not.toBe(selected);
+    await expect.poll(() => page.evaluate(() => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      return { modelId: state.selectedEntity?.modelId, expressId: state.selectedEntity?.expressId,
+        globalId: state.selectedEntityId, multiSelection: [...state.selectedEntityIds] };
+    })).toEqual({ ...expectedNext, multiSelection: [] });
     await run(page, 'search:inline', 'quick search');
     await expect(input).toBeFocused();
     await input.fill('');

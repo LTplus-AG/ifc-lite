@@ -26,7 +26,7 @@ export function useInlineSearchFocus(input: RefObject<HTMLInputElement | null>):
     setRequest(value => value + 1);
   }, []);
   // A mobile field can be hidden before the request. Focus after React reveals
-  // it, and after the palette has released its modal focus scope.
+  // it. Palette callers invoke this only from their completed close handoff.
   useLayoutEffect(() => {
     if (!request) return;
     input.current?.focus();

@@ -18,7 +18,7 @@
 # ~30-60 s; warm cache adds essentially nothing.
 set -euo pipefail
 
-# ── Prebuilt-WASM fast path (see scripts/README-vercel-cost.md §3c) ───────────
+# ── Prebuilt-WASM fast path ───────────────────────────────────────────────────
 #
 # The from-source bootstrap below re-clones emsdk and re-downloads ~270 MB of
 # wasm-binaries + the Rust toolchain on every deploy (the /vercel/cache copy

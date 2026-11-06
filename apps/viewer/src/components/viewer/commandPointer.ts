@@ -38,17 +38,20 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { cancelMeasureRaycast } from './measureHandlers.js';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
 const latest = new WeakMap<MouseHandlerContext, { x: number; y: number; mods: PointerModifiers; runtime: CommandRuntimeState }>();
 
-/** Discard a coalesced preview before a press, release, cancellation or teardown. */
+/**
+ * Discard a coalesced preview before a press, release, cancellation or teardown.
+ * Only the shared frame cancel: Point mode's trailing hover (`cancelQueuedHover`)
+ * belongs to Measure and is not the command tool's to drop.
+ */
 export function cancelCommandPointer(ctx: MouseHandlerContext): void {
   latest.delete(ctx);
-  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-  ctx.measureRaycastFrameRef.current = null;
-  ctx.measureRaycastPendingRef.current = false;
+  cancelMeasureRaycast(ctx);
 }
 
 /** The cursor ray in render space, from CSS-pixel canvas coordinates. */
@@ -166,5 +169,20 @@ export function routeCommandPointer(
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
   });
+  return true;
+}
+
+/**
+ * A touch tap (#9042): what a click does. A command that follows the press
+ * itself (`pointerDownOnPress`, a drag) gets the press and the release in
+ * place, as a mouse press and release with no drag between them; any other
+ * gets the click's down.
+ */
+export function routeCommandTap(ctx: MouseHandlerContext, x: number, y: number): boolean {
+  const runtime = getCommandRuntime();
+  if (!runtime.command || !runtime.ctx) return false;
+  const onPress = runtime.command.pointerDownOnPress?.(runtime.gesture) === true;
+  routeCommandPointer(ctx, 'down', x, y);
+  if (onPress) routeCommandPointer(ctx, 'up', x, y);
   return true;
 }

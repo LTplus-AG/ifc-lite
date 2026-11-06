@@ -88,7 +88,7 @@ export function InformationValidationEntry({
           onChange={(e) => { void handleIdsSelect(e); }}
         />
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       {recentRuleSets.length > 0 && (
         <div className="mt-3">
           <h4 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">

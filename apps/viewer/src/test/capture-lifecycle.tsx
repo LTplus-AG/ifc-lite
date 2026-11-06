@@ -102,7 +102,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   const params: UseAnimationLoopParams = {
     canvasRef: ref(canvas), rendererRef: ref(renderer), isInitialized: true,
     animationFrameRef: ref(null), lastFrameTimeRef: ref(0), mouseIsDraggingRef: ref(false),
-    activeToolRef: ref('select'), terrainClipYRef: ref(null), hiddenEntitiesRef: ref(new Set()),
+    activeToolRef: ref('select'), snapEnabledRef: ref(true), terrainClipYRef: ref(null), hiddenEntitiesRef: ref(new Set()),
     isolatedEntitiesRef: ref(null), ghostExceptEntitiesRef: ref(null), selectedEntityIdRef: ref(null),
     selectedModelIndexRef: ref(undefined), clearColorRef: ref([1, 1, 1, 1]),
     visualEnhancementRef: ref({ enabled: false }), environmentRef: ref({}), sunShadowsRef: ref(null),

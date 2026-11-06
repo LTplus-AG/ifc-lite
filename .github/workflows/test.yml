@@ -126,7 +126,6 @@ jobs:
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
     # don't need a larger runner; Rust/WASM compilation also stays on the
     # standard runner so routine CI remains within the Depot Developer tier.
-    # See scripts/README-vercel-cost.md for the full runner-cost rationale.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # A path filter over one checkout. Anything past a minute is a hung API call,
     # not work. Capped because the default is SIX HOURS and a job killed by its own
@@ -507,8 +506,7 @@ jobs:
               # Same trap this block warns about for `apps/`, `examples/` and
               # `.oxlintrc.json` above. It goes here rather than under `rust:`
               # because the gate is a Node step and `rust:` would additionally
-              # spin the WASM compile lane for a one-line JSON edit
-              # (scripts/README-vercel-cost.md).
+              # spin the WASM compile lane for a one-line JSON edit.
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               # Corpus documentation is read by the Node guards.
@@ -2064,6 +2062,13 @@ jobs:
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ui-drift/no-comment-strip.oracle.patch | grep -Fxq 'tests/evidence/ui-drift/no-comment-strip.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/ui-drift/no-comment-strip.oracle.patch --test scripts/check-ui-drift.test.mjs)
             oracle_args+=(--mutation tests/evidence/ui-drift/string-spans-lines.oracle.patch --test scripts/check-ui-drift.test.mjs)
+          fi
+          # #8802 R4: the state-language primitives (filter-chip, match-highlight) are
+          # new modules, so a blunt revert leaves their tests unable to load. Revert the
+          # state tokens, then drop the match highlight, one behaviour at a time.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/r4-state-language/state-tokens.oracle.patch | grep -Fxq 'tests/evidence/r4-state-language/state-tokens.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/r4-state-language/state-tokens.oracle.patch --test apps/viewer/src/test/contrast/state-language-8802.contrast.test.tsx)
+            oracle_args+=(--mutation tests/evidence/r4-state-language/match-highlight.oracle.patch --test apps/viewer/src/test/contrast/state-language-8802.contrast.test.tsx --test apps/viewer/src/components/ui/match-highlight.test.tsx)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
@@ -4383,6 +4388,13 @@ jobs:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/check-silent-revert.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}" --pr "${PR_NUMBER}"
+      # #9054: evidence goes in the PR or a CI artifact, not back into the tree.
+      # This job has no path filter, so a docs-only evidence PR cannot skip it.
+      - name: Refuse new files in the retired evidence trees
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-no-retained-evidence.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}"
 
   # NATIVE INSTRUCTION CEILINGS (#6982, charter #6954): the `native-instructions`
   # family. perf_probe runs single-threaded under callgrind on AC20-FZK-Haus

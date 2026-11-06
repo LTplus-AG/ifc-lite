@@ -40,7 +40,7 @@ const CAPTURE_SETS = {
     },
   },
   // Seem Kirke, Danmark: Peter Rødsgaard Rasmussen (roedsgaard), CC BY 4.0,
-  // https://superspl.at/scene/e832997f (docs/research/gaussian-qualification/seem-source.json).
+  // https://superspl.at/scene/e832997f.
   seem: {
     credit: 'Capture: Seem Kirke, Danmark — Peter Rødsgaard Rasmussen (roedsgaard), CC BY 4.0 — artificially placed, not aligned, no metric scale',
     detail: 'superspl.at/scene/e832997f; the publisher’s quantized SOG expanded to PLY by @playcanvas/splat-transform 3.10.3 (not the lossless original); published higher-order SH are all zero; viewpoint changed.',

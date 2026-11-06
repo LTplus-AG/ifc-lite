@@ -21,11 +21,11 @@ import {
   type GeometryLoadSettingsState,
 } from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
-import type { FederatedModel } from '../types.js';
+import type { FederatedModel, PointerInput } from '../types.js';
 import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
-import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
+import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
@@ -101,6 +101,10 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
    *  fold (`useEmptyStartFold.ts`) instead of writing the stored layout. */
   startFoldLifted: { left: boolean; right: boolean };
   activeTool: string;
+  /** The input the viewport saw last, which words the Measure hint (#8879). */
+  pointerInput: PointerInput;
+  /** Note the input the viewport saw; a no-op when it is unchanged. */
+  setPointerInput: (input: PointerInput) => void;
   /**
    * Global edit mode. When `true`, all in-place editing affordances (inline
    * property/attribute editors, future geometry manipulators, georeference
@@ -207,6 +211,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   rightPanelCollapsed: false,
   startFoldLifted: { left: false, right: false },
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+  pointerInput: initialPointerInput(),
+  setPointerInput: (input) => { if (get().pointerInput !== input) set({ pointerInput: input }); },
   editEnabled: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),

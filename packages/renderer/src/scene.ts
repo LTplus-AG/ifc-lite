@@ -47,7 +47,8 @@ import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
-import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
+import { BatchUseFrames, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
+import { SubsetParentResidency, type SceneSubsetResidencyHost } from './scene-subset-residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
@@ -316,8 +317,9 @@ export class Scene {
   // budget, and rebuilt on demand when the draw loop wants them again.
   private gpuBudgetBytes: number | null = null;
   private residencyFrame = 0;                                  // bumped once per render()
-  private lastDrawnFrame: Map<number, number> = new Map();     // batch.id -> residencyFrame
+  private lastDrawnFrame = new BatchUseFrames();               // batch.id -> residencyFrame, own buffers vs pieces (#9050)
   private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
+  private readonly subsetResidency = new SubsetParentResidency(this as unknown as SceneSubsetResidencyHost); // #9050
   private residencyOverBudgetWarned = false;
   // Cold tier (issue #1682 phase 3b): warm buckets (GPU-evicted, CPU kept)
   // can additionally drop their CPU meshData when a HOST budget is set and a
@@ -487,13 +489,15 @@ export class Scene {
     this.residencyFrame++;
   }
 
-  /** Record that the draw loop drew this batch this frame: from its own
-   *  buffers (full or LOD1), or as a partial sub-batch cut from its CPU pieces
-   *  (#9034). Culled, hidden or not-resident batches are not recorded. */
+  /** Record that the draw loop drew this batch from its own buffers (full or
+   *  LOD1) this frame. Culled, hidden or not-resident batches are not recorded. */
   recordBatchDrawn(batch: BatchedMesh): void {
     if (this.gpuBudgetBytes === null) return;
     this.lastDrawnFrame.set(batch.id, this.residencyFrame);
   }
+
+  /** A pass drew this batch only as a partial sub-batch: its pieces stay warm, its own buffers may go (#9034, #9050). */
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen = true): void { this.subsetResidency.recordSubsetDrawn(batch, onScreen); }
 
   /**
    * The draw loop wants an evicted batch back on the GPU. Queues its bucket
@@ -507,8 +511,12 @@ export class Scene {
     // Warm (CPU kept) OR cold (disk-restorable) — both are restorable.
     if (bucket.meshData.length > 0 || this.coldBuckets.has(bucket.key)) {
       this.residencyRestoreQueue.add(bucket.key);
+      this.subsetResidency.warmOnly.delete(bucket.key);
     }
   }
+
+  /** A partial sub-batch wants an evicted batch's CPU pieces, not its GPU buffers (#9050). */
+  requestBatchPieces(batch: BatchedMesh): void { this.subsetResidency.requestPieces(batch); }
 
   hasResidencyRestoreWork(): boolean {
     return this.residencyRestoreQueue.size > 0;
@@ -529,24 +537,16 @@ export class Scene {
       const old = bucket?.batchedMesh;
       // Only restore a still-evicted bucket batch — a recolour/finalize may
       // have rebuilt (or emptied) it in the meantime.
-      if (!bucket || !old || old.gpuResident !== false) continue;
+      if (!bucket || !old || old.gpuResident !== false) { this.subsetResidency.warmOnly.delete(key); continue; }
       // Cold bucket: geometry is on disk — kick off the async provider fetch
       // (it re-queues the key as warm when the meshes land).
       if (bucket.meshData.length === 0) {
         if (this.coldBuckets.has(key)) this.startColdRestore(key);
         continue;
       }
+      if (this.subsetResidency.warmOnly.delete(key)) { restored++; continue; } // warm again, only a subset wanted it: no parent rebuild
 
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.lastDrawnFrame.delete(old.id);
-      // Seed as just-drawn so the budget pass can't evict it before the
-      // frame that asked for it gets to draw it.
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+      this.subsetResidency.rebuildEvicted(bucket, old, device, pipeline);
       restored++;
       if (performance.now() - start >= budgetMs) break;
     }
@@ -680,7 +680,7 @@ export class Scene {
       shells.push({
         key: bucket.key,
         bytes,
-        lastDrawnFrame: this.lastDrawnFrame.get(b.id) ?? -1,
+        lastDrawnFrame: this.lastDrawnFrame.getAnyUse(b.id) ?? -1, // a subset on screen keeps its pieces (#9050)
       });
     }
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
@@ -760,9 +760,11 @@ export class Scene {
         }
         if (members.length > 0) {
           this.coldBuckets.delete(key);
-          for (const restoredKey of repartitionHydratedRecoveryBucket(
-            this as unknown as SceneRecoveryHost, key, bucket, shell)) this.residencyRestoreQueue.add(restoredKey);
+          const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
+          if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
+          this.subsetResidency.requeueColdRestore(key, restoredKeys);
         } else {
+          this.subsetResidency.warmOnly.delete(key);
           console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
         }
       })
@@ -789,15 +791,7 @@ export class Scene {
     for (const bucket of this.buckets.values()) {
       const old = bucket.batchedMesh;
       if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.lastDrawnFrame.delete(old.id);
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
-      this.residencyRestoreQueue.delete(bucket.key);
+      this.subsetResidency.rebuildEvicted(bucket, old, device, pipeline);
       restored++;
     }
     return restored;
@@ -822,6 +816,7 @@ export class Scene {
     const budget = this.gpuBudgetBytes;
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    this.subsetResidency.sweep();
     // During streaming the batch set churns (fragments + finalize rebuild
     // everything anyway) — start enforcing once the scene is stable.
     if (this.streamingFragments.length > 0) return;
@@ -857,8 +852,7 @@ export class Scene {
       destroyGpuResources(batch);
       batch.gpuResident = false;
       evictedBytes += residentBatchBytes(batch);
-      this.lastDrawnFrame.delete(batch.id);
-      this.dropPartialCacheForBatch(batch);
+      this.subsetResidency.noteEvicted(batch);
     }
 
     if (residentBytes - evictedBytes > budget && !this.residencyOverBudgetWarned) {
@@ -870,6 +864,9 @@ export class Scene {
       );
     }
   }
+
+  /** Rebuild now, within a per-frame cap, an evicted parent whose subset was on screen last frame (#9050). */
+  restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null { return this.subsetResidency.restoreParentNow(batch, device, pipeline); }
 
   /** Destroy + drop cached partial sub-batches derived from `batch` (their
    *  sourceBatchKeys embed the batch id, so they are stale once it is
@@ -2275,6 +2272,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
@@ -2341,6 +2339,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     // Released mode has no restore source at all — drop the cold tier state
     // (the geometryReleased guards stop any further cold activity).
     this.coldBuckets.clear();
@@ -3756,6 +3755,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;

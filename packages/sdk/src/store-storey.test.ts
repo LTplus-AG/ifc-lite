@@ -3,14 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #9013: bim.store storey authoring runs the shared create path; headless records one undo per call. */
+import * as create from '@ifc-lite/create';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { readStoreyInventory } from '@ifc-lite/create';
 import { createModellingStoreBackend } from './store-modelling-backend.js';
 import { createRecordedModellingBackend } from './headless/headless-backend-modelling.js';
+
+/** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
+function api<K extends keyof typeof create>(name: K): (typeof create)[K] {
+  expect(typeof create[name], `${String(name)} is exported by @ifc-lite/create`).toBe('function');
+  return create[name];
+}
+
 
 const SAMPLE = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 
@@ -31,7 +38,8 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store storey authoring (#9013)', () =>
     const { store, view, resolve } = await model();
     const store_ = createModellingStoreBackend(resolve);
     const { addStorey, planStoreyEdit, editStorey, listStoreyLevels, deleteStorey, renameStorey } = store_;
-    if (!addStorey || !planStoreyEdit || !editStorey || !listStoreyLevels || !deleteStorey || !renameStorey) throw new Error('Missing storey capability');
+    for (const method of [addStorey, planStoreyEdit, editStorey, listStoreyLevels, deleteStorey, renameStorey]) expect(method).toBeTypeOf('function');
+    if (!addStorey || !planStoreyEdit || !editStorey || !listStoreyLevels || !deleteStorey || !renameStorey) return;
 
     const level2 = addStorey('m', { Name: 'Level 2', Elevation: 3 });
     renameStorey(level2, 'Upper');
@@ -49,7 +57,7 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store storey authoring (#9013)', () =>
 
     const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4X3', applyMutations: true }).content);
     const reloaded = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
-    expect(readStoreyInventory(reloaded, new MutablePropertyView(null, 'r')).storeys.map((s) => [s.Name, s.elevation])).toEqual([['My Storey', 0], ['Upper', 3.4]]);
+    expect(api('readStoreyInventory')(reloaded, new MutablePropertyView(null, 'r')).storeys.map((s) => [s.Name, s.elevation])).toEqual([['My Storey', 0], ['Upper', 3.4]]);
 
     deleteStorey(level2, { kind: 'empty' });
     expect(listStoreyLevels('m').map((row) => row.Name)).toEqual(['My Storey']);
@@ -58,6 +66,7 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store storey authoring (#9013)', () =>
   it('records each headless storey write as one undo step', async () => {
     const { view, resolve } = await model();
     const recorded = createRecordedModellingBackend(resolve);
+    expect('addStorey' in recorded, 'the headless backend records storey writes').toBe(true);
     const level2 = recorded.addStorey('m', { Name: 'Level 2', Elevation: 3 });
     const afterAdd = structuredClone(view.getNewEntities());
     recorded.editStorey('m', { kind: 'elevation', storeyId: level2.expressId, Elevation: 3.6 });

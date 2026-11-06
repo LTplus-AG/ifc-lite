@@ -4,17 +4,21 @@
 
 /** #9013: storey re-level (elevation, floor-to-floor) moves real placements. */
 
+import * as create from '../../index.js';
 import { describe, expect, it } from 'vitest';
 import { recordCompoundMutation, undoRecordedMutationOperations, StoreEditor } from '@ifc-lite/mutations';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../__test__/stair-mesh.oracle.js';
-import { applyStoreyLevelEdit } from './storey-level-apply.js';
-import { planStoreyLevelEdit } from './storey-level-plan.js';
-import { readStoreyInventory } from './storey-model.js';
-import { StoreyEditRefusedError } from './storey-validation.js';
-import { THIRD_PARTY, helloWall, parse, session } from './storey-fixtures.oracle.js';
+import { THIRD_PARTY, helloWall, parse, session } from '../__test__/storey-fixtures.oracle.js';
 
-const plan = (s: ReturnType<typeof session>, edit: Parameters<typeof planStoreyLevelEdit>[1]) =>
-  planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit);
+/** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
+function api<K extends keyof typeof create>(name: K): (typeof create)[K] {
+  expect(typeof create[name], `${String(name)} is exported by @ifc-lite/create`).toBe('function');
+  return create[name];
+}
+
+
+const plan = (s: ReturnType<typeof session>, edit: Parameters<typeof create.planStoreyLevelEdit>[1]) =>
+  api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), edit);
 
 describe('storey elevation edit', () => {
   it('moves a third-party storey and exactly its contents, whatever they hang from', async () => {
@@ -34,7 +38,7 @@ describe('storey elevation edit', () => {
       { lowerId: 42, upperId: 46, from: 3, to: 2.5 },
     ]);
 
-    applyStoreyLevelEdit(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
     expect(s.worldZ(42)).toBeCloseTo(3500, 9);
     expect(s.worldZ(60)).toBeCloseTo(3500, 9);
     expect(s.worldZ(70)).toBeCloseTo(3500, 9);
@@ -42,17 +46,17 @@ describe('storey elevation edit', () => {
     expect(s.worldZ(46)).toBeCloseTo(6000, 9);
     // The shared origin axis placement #5 is untouched: Level 1 and the site still sit on it.
     expect(s.worldZ(40)).toBe(0);
-    expect(readStoreyInventory(s.store, s.view).storeys.map((storey) => [storey.Name, storey.elevation]))
+    expect(api('readStoreyInventory')(s.store, s.view).storeys.map((storey) => [storey.Name, storey.elevation]))
       .toEqual([['Level 1', 0], ['Level 2', 3.5], ['Level 3', 6]]);
   });
 
   it('survives export and reload in IFC4 and IFC4X3', async () => {
     for (const schema of ['IFC4', 'IFC4X3'] as const) {
       const s = session(await parse(THIRD_PARTY));
-      applyStoreyLevelEdit(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+      api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
       const reloaded = session(await parse(s.text(schema)));
       expect(reloaded.store.schemaVersion).toBe(schema);
-      expect(readStoreyInventory(reloaded.store, reloaded.view).storeys.map((storey) => [storey.GlobalId, storey.elevation]))
+      expect(api('readStoreyInventory')(reloaded.store, reloaded.view).storeys.map((storey) => [storey.GlobalId, storey.elevation]))
         .toEqual([['3BXk9GCxj5V9eCELW6qKoB', 0], ['1UbzJ6LyL7XBk4BdJ_jP0R', 3.5], ['0dwaCbNdz3hA0zHj3Fmq1n', 6]]);
       expect(reloaded.worldZ(60)).toBeCloseTo(3500, 6);
       expect(reloaded.worldZ(70)).toBeCloseTo(3500, 6);
@@ -68,7 +72,7 @@ describe('storey elevation edit', () => {
     expect(p.placements.map((w) => w.leaf.placementId)).toEqual([65]);
     expect([...p.moved].sort((a, b) => a - b)).toEqual([1222, 1262, 1299, 1407, 1443, 1494]);
     expect(p.movedElementCount).toBe(4); // wall, two windows and the aggregated space
-    applyStoreyLevelEdit(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 0.75 });
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 0.75 });
     const after = await meshStairs(s.text());
     for (const id of [1222, 1262, 1407, 1494]) {
       const a = stairMeshBounds(before.get(id)!), b = stairMeshBounds(after.get(id)!);
@@ -88,7 +92,7 @@ describe('storey floor-to-floor edit', () => {
     // The beam hangs from Level 2 and moves with Level 3 by the same amount: no write of its own.
     expect(Object.fromEntries(p.placements.map((w) => [w.leaf.placementId, w.offset[2]]))).toEqual({ 44: 500, 47: 500, 61: 500 });
     expect(p.spacing).toEqual([{ lowerId: 40, upperId: 42, from: 3, to: 3.5 }]);
-    applyStoreyLevelEdit(s.store, s.editor, { kind: 'floorHeight', storeyId: 40, Height: 3.5 });
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'floorHeight', storeyId: 40, Height: 3.5 });
     expect([40, 42, 46, 60, 70, 80].map((id) => Math.round(s.worldZ(id)))).toEqual([0, 3500, 6500, 3500, 3500, 6500]);
   });
 });
@@ -107,7 +111,7 @@ describe('invalid storey edits are refused before anything is written', () => {
     const s = session(await parse(THIRD_PARTY));
     expect(plan(s, edit).refusals.map((r) => r.code)).toEqual([code]);
     const before = s.snapshot();
-    expect(() => applyStoreyLevelEdit(s.store, s.editor, edit)).toThrow(StoreyEditRefusedError);
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit)).toThrow(api('StoreyEditRefusedError'));
     expect(s.snapshot()).toEqual(before);
   });
 
@@ -128,7 +132,7 @@ describe('a storey edit is one undo step', () => {
   it('restores the overlay exactly, however many placements it wrote', async () => {
     const s = session(await parse(THIRD_PARTY));
     const before = s.snapshot();
-    recordCompoundMutation(s.view, (draft) => applyStoreyLevelEdit(s.store, new StoreEditor(s.store, draft), { kind: 'floorHeight', storeyId: 40, Height: 3.5 }));
+    recordCompoundMutation(s.view, (draft) => api('applyStoreyLevelEdit')(s.store, new StoreEditor(s.store, draft), { kind: 'floorHeight', storeyId: 40, Height: 3.5 }));
     expect(Math.round(s.worldZ(60))).toBe(3500);
     undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound storey edit expected'); });
     expect(s.snapshot()).toEqual(before);

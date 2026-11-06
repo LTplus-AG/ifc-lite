@@ -37,6 +37,7 @@ import { DEFAULT_FAILED_COLOR, DEFAULT_PASSED_COLOR, IDS_FOCUS_COLOR } from '@/h
 import { useValidationResults, type UseValidationResults } from '@/hooks/validation/useValidationResults';
 import { IDSPanel } from './IDSPanel.js';
 import { ValidationPanel } from './validation/ValidationPanel.js';
+import { runPanelAction } from '@/test/panel-header.js';
 
 installLayout();
 const initial = useViewerStore.getState();
@@ -252,11 +253,12 @@ for (const host of HOSTS) {
 
 describe('IDS validation: Clear results and Unload IDS restore original colors (#6373)', () => {
   for (const label of ['Clear results', 'Unload IDS']) {
-    it(label, () => {
+    it(label, async () => {
       seed(HOSTS[0], 1);
       const ui = render(<IDSPanel />);
       assert.ok(painted().length > 0);
-      click(button(ui, label));
+      // A header action, inline or in More actions (#8802).
+      await runPanelAction(ui, label);
       assert.deepEqual(painted(), []);
     });
   }

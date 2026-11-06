@@ -64,7 +64,11 @@ impl IfcAPI {
         // Reconstruct void_index from the flat wire arrays. Length-guarded so
         // upstream drift drops the index instead of trapping the whole wasm
         // instance under panic=abort (see `prepass::voids_from_flat`).
-        let void_index = ifc_lite_processing::prepass::voids_from_flat(void_keys, void_counts, void_values);
+        let void_index = if self.skip_voids() {
+            Default::default()
+        } else {
+            ifc_lite_processing::prepass::voids_from_flat(void_keys, void_counts, void_values)
+        };
 
         // #1097: the wire styles are session-constant, so build the colour map
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker

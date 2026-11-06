@@ -71,6 +71,10 @@ it('capture-then-IFC matches IFC-then-capture with origin shift AND RTC; removal
     await loadCapture();
     addIfc();
     await settled(BOUNDS);
+    const offset = totalYupOffset(FRAME);
+    for (let i = 0; i < 100 && capture().frameOffset?.x !== offset.x; i++) await tick();
+    assert.deepEqual(capture().frameOffset, offset, 'store frame matches the translated adapter frame (#9009)');
+    assert.deepEqual(capture().placement.slice(12, 15), [-offset.x, -offset.y, -offset.z]);
     const early = bounds();
     const record = capture();
     const uploads = gpu.backend.sources.length;
@@ -102,7 +106,8 @@ it('an in-flight frame edit is serialized with the next frame and axis edit (#87
       addIfc();
       // Let the first placement reach the held backend before removing its anchor.
       await tick();
-      assert.equal(capture(), original, 'store keeps the accepted frame during upload');
+      assert.equal(capture().upAxis, original.upAxis, 'store keeps the accepted axis during upload');
+      assert.deepEqual(capture().frameOffset, totalYupOffset(FRAME), 'translated frame is published before the axis edit settles');
       useViewerStore.getState().removeModel('ifc');
       const axis = setGaussianCaptureUpAxis('capture', 'y');
       release();
@@ -261,8 +266,10 @@ it('every capture follows a survey-scale frame once, including a later-added cap
     await loader.loadFile(gaussianPly('other.ply', [[WORLD[0] + 5, WORLD[1], WORLD[2]]]), { kind: 'federated', modelId: 'other' });
     addIfc();
     await settled(BOUNDS);
+    const offset = totalYupOffset(FRAME);
     const other = useViewerStore.getState().models.get('other')!.gaussianSplat!;
-    for (let i = 0; i < 100 && useViewerStore.getState().models.get('other')!.gaussianSplat!.frameOffset?.x !== capture().frameOffset?.x; i++) await tick();
+    for (let i = 0; i < 100 && useViewerStore.getState().models.get('other')!.gaussianSplat!.frameOffset?.x !== offset.x; i++) await tick();
+    assert.deepEqual(useViewerStore.getState().models.get('other')!.gaussianSplat!.frameOffset, offset);
     assert.deepEqual(gpu.renderer.gaussianSplats.getBounds(other.handle), { min: [7, 4, -33], max: [7, 4, -33] });
     await loader.loadFile(gaussianPly('late.ply', [[WORLD[0] + 10, WORLD[1], WORLD[2]]]), { kind: 'federated', modelId: 'late' });
     const late = useViewerStore.getState().models.get('late')!.gaussianSplat!;
@@ -271,7 +278,7 @@ it('every capture follows a survey-scale frame once, including a later-added cap
   });
 });
 
-it('a primary IFC frame held in geometryResult aligns a capture before and after reconcile (#8778)', async () => {
+it('a primary IFC frame held only in geometryResult re-frames a capture when that result changes (#8778, #9009)', async () => {
   await act(async () => {
     const primary = fixtureModel('primary', { entities: [] });
     primary.loadState = 'complete';
@@ -284,6 +291,15 @@ it('a primary IFC frame held in geometryResult aligns a capture before and after
     await settled(BOUNDS);
     await reframeGaussianCapture('capture');
     assert.deepEqual(bounds(), BOUNDS, 'reconcile keeps the primary geometry fallback');
+    const models = useViewerStore.getState().models;
+    const nextFrame = { ...FRAME, originShift: { ...FRAME.originShift, x: FRAME.originShift.x + 5 } };
+    useViewerStore.setState({ geometryResult: { ...geometry, coordinateInfo: { ...geometry.coordinateInfo, ...nextFrame } } });
+    assert.equal(useViewerStore.getState().models, models, 'only geometryResult changed');
+    const expected = { min: [BOUNDS.min[0] - 5, ...BOUNDS.min.slice(1)], max: [BOUNDS.max[0] - 5, ...BOUNDS.max.slice(1)] };
+    await settled(expected);
+    const offset = totalYupOffset(nextFrame);
+    for (let i = 0; i < 100 && capture().frameOffset?.x !== offset.x; i++) await tick();
+    assert.deepEqual(capture().frameOffset, offset);
   });
 });
 

@@ -8,6 +8,7 @@ import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
+import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { useViewerStore, type ViewerState } from '@/store';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
@@ -52,10 +53,13 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (id === 'elements:entity-actions' && selectedEntityActionTarget(s) === null) {
     return blocked('commandPalette.availability.rendererEntity');
   }
-  if (id === 'view:move-georef' && (!s.cesiumAvailable || !s.cesiumEnabled)) {
-    return blocked('commandPalette.availability.world');
+  if (id === 'view:move-georef') {
+    if (s.cesiumPlacementEditMode) return available; // Exiting remains possible after capability loss.
+    if (!s.canCollabEdit()) return blocked('commandPalette.availability.editor');
+    const georef = getPlacementGeorefContext();
+    if (!georef || !s.models.has(georef.modelId)) return blocked('placementPanel.georeference.emptyHint');
+    if (!georef.canEdit) return blocked(georef.unavailableReason ?? 'cesiumGeo.placement.requiresProjectedCrs');
   }
-  if (id === 'view:move-georef' && !s.canCollabEdit()) return blocked('commandPalette.availability.editor');
   const loaded = selectHasModelsLoaded(s);
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   if (id === 'author:bulk-properties' || id === 'author:import-data') {

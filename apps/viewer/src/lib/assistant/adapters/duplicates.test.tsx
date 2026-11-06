@@ -22,6 +22,7 @@ import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 import { adapterFor } from './registry';
+import { runPanelAction } from '@/test/panel-header.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
@@ -77,14 +78,15 @@ for (const modelCount of [1, 2] as const) {
     // #8520: wait for the lazy registered panel before using its native actions.
     await waitFor(() => [...panel.querySelectorAll('button')].some(b => b.textContent?.trim() === 'Detect all clashes'), 'Clash detection actions mounted');
     await clickAndSettle(button(panel, 'Detect all clashes'));
-    await act(async () => button(panel, 'Discuss with AI').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    // A header action, inline or in the shared header's More actions (#8802).
+    await act(async () => { await runPanelAction(panel, 'Discuss with AI'); });
     assert.equal(useAssistant.getState().snapshot?.source, 'clash', 'a clash run is discussed as clashes');
     assert.equal(JSON.parse(captureEvidence('duplicates').payload).sourceAvailability, 'unavailable', 'no duplicate scan yet');
 
     act(() => useViewerStore.getState().setClashResult(null));
     await clickAndSettle(button(panel, 'Find duplicates'));
     assert.equal(useViewerStore.getState().clashResult?.clashes.length, 6, 'four coincident walls are six native pairs');
-    await act(async () => button(panel, 'Discuss with AI').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await act(async () => { await runPanelAction(panel, 'Discuss with AI'); });
     const snapshot = useAssistant.getState().snapshot;
     assert.equal(snapshot?.source, 'duplicates');
     assert.ok(snapshot);

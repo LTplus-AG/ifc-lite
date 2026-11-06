@@ -4,6 +4,27 @@
 
 # Performance diagnosis kit
 
+## Opt-in gross host geometry (#8875)
+
+**Default worker-pool path qualified: no material regression within the preset
+limits.** Fresh-browser paired runs on Haus, ISSUE_129 and Holter completed with
+matching positions, normals and indices byte hashes, express IDs, colours, origins
+and mesh/vertex/triangle counts across base and branch. Optional MeshData fields
+(materials, shading colours, UVs, textures and geometry classes) were not compared;
+complete MeshData identity is not established. The bounded timing scope is
+four workers with flat geometry; renderer/GPU upload and enabled gross-mode
+performance are not claimed. [Reports, raw samples and reproduction helpers](../../tests/evidence/skip-voids-8875/worker-pool/provenance.json)
+record source identities, WASM hashes, acceptance thresholds and host checks.
+
+Lesson: more rounds did not fix the original short-model native variance;
+matching physical CPU affinity did. Native integer-millisecond subphases still
+rounded to zero, so those reports remain inconclusive. Full-viewer runs also
+failed GPU initialization/device-lifetime checks on both base and branch.
+Neither failure was relabelled a pass: the successful qualification measures
+the actual geometry worker pipeline separately and hashes output after timing.
+The [earlier rejected native evidence](../../tests/evidence/skip-voids-8875/performance.json)
+is retained; this is not a speedup claim or a full-viewer qualification.
+
 ## Retained qualification runners (#7955)
 
 Viewer first retained frame, built-CLI retained export, browser and native memory

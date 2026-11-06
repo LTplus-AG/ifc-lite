@@ -26,10 +26,13 @@
  * neither replaces nor is replaced by an IDS or information run.
  */
 
-import { AssistantAction } from '../assistant/AssistantAction';
+import { useRef } from 'react';
+import { useAssistantAction } from '../assistant/AssistantAction';
 import { SavedValidationReports } from './SavedValidationReports';
 import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar';
-import { X } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
+import { PanelHeader } from '@/components/ui/panel-header';
+import { HiddenFileInput } from '@/components/ui/hidden-file-input';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -47,6 +50,7 @@ import { useManualValidation } from '@/hooks/validation/useManualValidation';
 import { ManualValidationTab } from './ManualValidationTab';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import {
+  handIdsFileToPanel,
   setValidationSourceChoice as setActiveSource,
   useValidationSourceChoice,
   type ValidationSourceChoice,
@@ -73,6 +77,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const definitions = useViewerStore((s) => s.validationDefinitions);
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
+  const assistant = useAssistantAction();
+  const idsPickerRef = useRef<HTMLInputElement>(null);
 
   // Shared with the IDS tour (#5608), which puts the panel on its IDS side.
   const activeSource = useValidationSourceChoice((s) => s.choice);
@@ -117,6 +123,28 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     setActiveSource('manual');
   };
 
+  // The IDS entry card's "Load IDS file" (#8802). Safari only opens a file
+  // picker from inside the click, so the click opens it first, then shows the
+  // IDS side (cancelling leaves that side, its library and demo, on screen).
+  // The input leads both returns below, so it stays mounted across that
+  // switch; the IDS panel loads whatever file it is handed.
+  const handleLoadIds = () => {
+    idsPickerRef.current?.click();
+    setActiveSource('ids');
+  };
+  const idsPicker = (
+    <HiddenFileInput
+      ref={idsPickerRef}
+      accept=".ids,.xml"
+      data-testid="validation-entry-ids-input"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) handIdsFileToPanel(file);
+      }}
+    />
+  );
+
   const handleClose = onClose ? () => {
     useViewerStore.getState().clearValidationRuleSetDraft();
     onClose();
@@ -129,7 +157,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <section aria-label={t('validationPanel.title')} tabIndex={0}
       className="min-h-0 max-h-[35%] shrink-0 overflow-auto focus-visible:outline-2 focus-visible:outline-primary">
-      <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
+      <PanelHeader icon={<ClipboardCheck />} title={t('validationPanel.title')} actions={[assistant]} onClose={handleClose} />
       {effectiveSource !== null && <SourceToggle />}
       <SavedValidationReports />
     </section>
@@ -137,10 +165,12 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
 
   if (effectiveSource === null) {
     return (
+      <>
+      {idsPicker}
       <div className="h-full flex flex-col bg-background" data-validation-panel>
         {chrome}
         <ValidationPanelEmpty
-          onSelectIds={() => setActiveSource('ids')}
+          onLoadIds={handleLoadIds}
           onOpenRuleSetFile={handleOpenRuleSetFile}
           onImportIds={handleImportIds}
           onNewRuleSet={handleNewRuleSet}
@@ -156,6 +186,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
           }}
         />
       </div>
+      </>
     );
   }
 
@@ -163,6 +194,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const hasResults = validationSource === 'rules' && results.report !== null && !info.editing && !info.running;
 
   return (
+    <>
+    {idsPicker}
     <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' || value === 'manual' ? value : 'rules')} className="h-full flex flex-col bg-background" data-validation-panel>
       {chrome}
       <TabsContent value="ids" className="mt-0 flex-1 min-h-0 flex flex-col">
@@ -208,21 +241,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         <ManualValidationTab key={manualEditorKey} manual={manual} />
       </TabsContent>
     </Tabs>
-  );
-}
-
-function PanelHeader({ title, onClose }: { title: string; onClose?: () => void }) {
-  return (
-    <div className="flex items-center justify-between p-3 border-b">
-      <span className="font-medium text-sm">{title}</span>
-      <div className="ml-auto flex items-center gap-1"><AssistantAction />
-      {onClose && (
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={title} onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      )}
-      </div>
-    </div>
+    </>
   );
 }
 

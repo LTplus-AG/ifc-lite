@@ -119,7 +119,6 @@ export const clashPanelDe = {
     'Prüfen Sie dieses Modell in Sekunden: „Alle Kollisionen finden“ findet jede Überlappung darin, und „Duplikate finden“ erkennt zusammenfallende Objekte – ohne Gewerke-Einrichtung.',
   'clashPanel.empty.multiModelHint':
     'Finden Sie alle Kollisionen, führen Sie die Gewerkematrix aus oder wählen Sie eine Vorgabe, um Konflikte zwischen den geladenen Modellen zu finden.',
-  'clashPanel.empty.hint': 'Klicken Sie auf ein Ergebnis, um beide Bauteile hervorzuheben; klappen Sie eine Zeile auf, um die Objekte einzeln durchzugehen.',
   'clashPanel.matrixNoMatch.title': 'Die Matrix war auf dieses Modell nicht anwendbar – sie wurde NICHT ausgeführt.',
   'clashPanel.matrixNoMatch.description':
     'Keine der {count} Regel(n) hat hier Bauteile gefunden, daher bedeutet „0 Kollisionen“ nicht, dass dieses Modell fehlerfrei ist – es wurde tatsächlich nichts geprüft. Dieser Regelsatz ist auf die Koordination von TGA/HLK/Elektro/Brandschutz ausgelegt; er beschreibt die Gewerke dieses Modells möglicherweise nicht.',

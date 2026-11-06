@@ -156,6 +156,20 @@ for (const stage of ['encode', 'finish', 'submit'] as const) {
   });
 }
 
+it('a live frame that keeps failing after a capture is retried a few times, not every frame (#9031)', async (t) => {
+  const { h, passes, clip } = await restingReading(t);
+  const shot = await startCapture(h, clip);
+  const restore = h.gpu.refuse('texture');
+  assert.ok(await finishCapture(h, shot));
+  const attempts = h.frames.length;
+  for (let i = 0; i < 10; i++) h.step();
+  // The capture's release request, then at most three retries of its own.
+  assert.equal(h.frames.length - attempts, 4, 'a failing live frame was retried every frame');
+  assert.deepEqual(passes, [], 'a failing frame ended Live');
+  restore();
+  assertLiveFrameResumes(h, passes, clip, 'after the retries'); // a resize or device recovery asks for the frame
+});
+
 it('a render that throws after a capture keeps its single retry, not one per frame (#9031)', async (t) => {
   const { h, passes, clip } = await restingReading(t);
   const warn = mock.method(console, 'warn', () => {});

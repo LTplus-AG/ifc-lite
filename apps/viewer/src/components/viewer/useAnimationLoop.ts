@@ -125,6 +125,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let wasInteracting = false;
     let residencyRestoreErrorLogged = false;
     let renderErrorLogged = false;
+    /** Frames since a capture that asked again for the live frame its picks wait on (#9031). */
+    let liveFrameRetries = 0;
 
     // Adaptive render throttle (continuousRenderThrottle.ts): caps the
     // continuous-render cadence (interaction + inertia) from the measured
@@ -265,10 +267,12 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         if (submitted) {
           framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
           noteLiveFrameSubmitted(renderer); // the measure pass below may compare picks again (#9031)
-        } else if (!threw && viewportPicksAwaitLiveFrame(renderer)) {
+          liveFrameRetries = 0;
+        } else if (!threw && viewportPicksAwaitLiveFrame(renderer) && liveFrameRetries++ < LIVE_FRAME_RETRIES) {
           // The pickers still mirror a capture, and the measure pass waits on
-          // a live frame: keep asking until one reaches the GPU (#9031). A
-          // throw keeps its single retry above.
+          // a live frame: ask again, a few times (#9031). A frame that keeps
+          // failing is the renderer's own bounded retry, and device recovery
+          // and a resize ask for their frame; a throw keeps its single retry above.
           renderer.requestRender();
         }
         lastRenderTime = currentTime;
@@ -323,5 +327,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     };
   }, [isInitialized]);
 }
+
+/** Like the renderer's own degraded-frame retries: a transient miss, not a permanent one. */
+const LIVE_FRAME_RETRIES = 3;
 
 export default useAnimationLoop;

@@ -47,6 +47,7 @@ after(closeContrastBrowser);
 
 /** Reference swatches: what each state token paints in the theme under test. */
 const REFERENCES = `
+  <div id="ref-plain">ref</div>
   <div id="ref-active" class="text-active border-l-2 border-active">ref</div>
   <div id="ref-active-surface" class="bg-active-surface">ref</div>
   <div id="ref-primary" class="bg-primary text-primary-foreground">ref</div>
@@ -136,16 +137,23 @@ function assertClears(label: string, measured: number, threshold: number, theme:
   assert.ok(measured >= threshold, `${label} in ${theme}: ${measured.toFixed(2)}:1, expected >= ${threshold}:1`);
 }
 
-/** The element paints the active state: the reference ink and surface. */
-function assertActive(name: string, painted: Record<string, Painted>, theme: Theme, opts: { surface?: boolean } = {}) {
-  const el = painted[name];
-  assert.equal(el.color, painted.refActive.color, `${name} in ${theme} paints the active ink`);
-  if (opts.surface !== false) {
-    assert.equal(el.background, painted.refActiveSurface.background, `${name} in ${theme} paints the active surface`);
-  }
+/** The state tokens exist: the active ink is not the plain inherited ink and
+ *  the active surface is not transparent. Without this an undefined token
+ *  makes element and reference both inherit, and "equal" passes vacuously. */
+function assertTokensPaint(painted: Record<string, Painted>, theme: Theme) {
+  assert.notEqual(painted.refActive.color, painted.refPlain.color, `text-active in ${theme} paints its own ink`);
+  assert.notEqual(painted.refActiveSurface.background, 'rgba(0, 0, 0, 0)', `bg-active-surface in ${theme} paints a surface`);
 }
 
-const SELECT_REFS = { refActive: '#ref-active', refActiveSurface: '#ref-active-surface', refPrimary: '#ref-primary' };
+/** The element paints the active state: the reference ink and surface. */
+function assertActive(name: string, painted: Record<string, Painted>, theme: Theme) {
+  assertTokensPaint(painted, theme);
+  const el = painted[name];
+  assert.equal(el.color, painted.refActive.color, `${name} in ${theme} paints the active ink`);
+  assert.equal(el.background, painted.refActiveSurface.background, `${name} in ${theme} paints the active surface`);
+}
+
+const SELECT_REFS = { refPlain: '#ref-plain', refActive: '#ref-active', refActiveSurface: '#ref-active-surface', refPrimary: '#ref-primary' };
 
 describe('state language: primary, pressed, active and filtered states (Refs 8802, R4)', () => {
   for (const theme of THEMES) {
@@ -229,6 +237,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
       });
       // The overlay is layered on the HUD surface; it must not replace it.
       assert.equal(p.chip.background, p.neutralChip.background, `active HUD chip in ${theme} keeps the HUD surface fill`);
+      assertTokensPaint(p, theme);
       assert.equal(p.label.color, p.refActive.color, `active HUD chip label in ${theme} paints the active ink`);
       assert.notEqual(p.chip.backgroundImage, 'none', `active HUD chip in ${theme} layers the active overlay`);
       assert.notEqual(p.label.color, p.neutral.color, `active and neutral HUD chips in ${theme} paint different ink`);
@@ -252,6 +261,7 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
         rest: '[data-command-id="view:frame"] span.truncate',
         idleMatch: '[data-command-id="view:home"] mark',
       });
+      assertTokensPaint(p, theme);
       assert.equal(p.row.background, p.refActiveSurface.background, `focused row in ${theme} paints the active surface`);
       assert.equal(p.row.borderLeft, p.refActive.borderLeft, `focused row in ${theme} paints the active bar`);
       assert.equal(p.match.color, p.refActive.color, `matched text in ${theme} paints the active ink`);

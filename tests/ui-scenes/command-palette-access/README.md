@@ -738,3 +738,21 @@ the imported rotated beam is intentionally unsupported by the canonical reader
 (covered by #6233). The witness now uses the real parsed horizontal slab and
 asserts its supported kind before both launch and deferred-refusal scenarios.
 No tool eligibility rule or geometry code changed. Corrected runtime is pending.
+
+R3 actual browser qualification on `15bd4920d2410c102138c830bdd220799a4174b3`:
+22/22 tests passed with no skips, including both installed QuickJS GPU visibility
+cycles, disable and uninstall. All 36 matrix/context/flow captures passed; their
+PNG hashes were verified. The adapter was physical NVIDIA Lovelace, with a
+completed visible-canvas readback and no cleanup error. Root typecheck and build
+passed before capture; the focused/full-shard job was still running, so this is
+not a full-suite result. See `evidence/r3-browser-qualification.json`.
+
+After general UX #8950 merged, main `6b944859` was integrated through all 18
+access stack layers using serial parent merges, preserving original heads. Four
+foundation conflicts duplicated the already incorporated accepted UX; its palette
+files matched the prior UX baseline. All access-owned files and all 153 upstream
+changes were verified unchanged in every layer; no unexpected edits occurred.
+See `evidence/main-6b944-integration.json`. The new integrated candidate needs
+matching validation and captures; the 15bd evidence remains attributed to 15bd.
+Three new mounted workflow files add Assistant, Semantic and Script child-flow
+witnesses. Their execution is pending; they do not yet close the access verdict.

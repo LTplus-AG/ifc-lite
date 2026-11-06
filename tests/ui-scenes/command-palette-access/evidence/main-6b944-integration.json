@@ -1,0 +1,230 @@
+{
+  "main": "6b944859b2565562969aedba82635421723ef363",
+  "priorUX": "d18ff8eac2c012e9c3d74e0adca2a2271c123805",
+  "method": "serial parent merges; no history rewrite; prior refs preserved",
+  "layers": [
+    {
+      "branch": "feat/command-palette-access",
+      "pr": 8956,
+      "before": "5bb3738ed9d168da9fa8e34c0bf2f1a77d54b67c",
+      "remoteBefore": "5bb3738ed9d168da9fa8e34c0bf2f1a77d54b67c",
+      "after": "b7920556ab707d42ea5dacd15b36c7924b02d0c6"
+    },
+    {
+      "branch": "feat/command-palette-access-hosts",
+      "pr": 8961,
+      "before": "ffd01db399fa30c1d633a3a17af8ce6f9d55edb8",
+      "remoteBefore": "ffd01db399fa30c1d633a3a17af8ce6f9d55edb8",
+      "after": "45af52749716741a82ecaf181409687e7ecb3f7d",
+      "verification": {
+        "ownedPreserved": 43,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-author",
+      "pr": 8962,
+      "before": "11842c9cfa17928067beb3fb5e6b9b503d5650ef",
+      "remoteBefore": "11842c9cfa17928067beb3fb5e6b9b503d5650ef",
+      "after": "ff98cf79d7302ebcdc7c902599871460c60e2077",
+      "verification": {
+        "ownedPreserved": 55,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-runtime",
+      "pr": 8963,
+      "before": "e3c98676cb9008ae523bb7b9100e95dd8a2a4a0e",
+      "remoteBefore": "e3c98676cb9008ae523bb7b9100e95dd8a2a4a0e",
+      "after": "9ef2e60253d9b8e0e8e36368d220a2721a45eb29",
+      "verification": {
+        "ownedPreserved": 61,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-tools",
+      "pr": 8964,
+      "before": "366f8676f04feb148be1067b2cc939b496f76da6",
+      "remoteBefore": "366f8676f04feb148be1067b2cc939b496f76da6",
+      "after": "4ee5e10f1ceffb449a4821624181010c72021b7e",
+      "verification": {
+        "ownedPreserved": 79,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-destinations",
+      "pr": 8965,
+      "before": "8334a28c4fadb753771f5ef53fff212f0006fadb",
+      "remoteBefore": "8334a28c4fadb753771f5ef53fff212f0006fadb",
+      "after": "59df194d0e2d916dba491816a302f2d4b444dedc",
+      "verification": {
+        "ownedPreserved": 99,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-extension-destinations",
+      "pr": 8967,
+      "before": "171c3770c6e714069910063ea936b45c917e9461",
+      "remoteBefore": "171c3770c6e714069910063ea936b45c917e9461",
+      "after": "f9d62d0089ca579b70e6d675fa7c76bce1f1e39c",
+      "verification": {
+        "ownedPreserved": 113,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-recovery",
+      "pr": 8969,
+      "before": "439fd2a47d5a960e87931ad6f86d0eca9213c834",
+      "remoteBefore": "439fd2a47d5a960e87931ad6f86d0eca9213c834",
+      "after": "3336e88649ee645053f9dd5ea7631158b23dfd13",
+      "verification": {
+        "ownedPreserved": 136,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-evidence",
+      "pr": 8972,
+      "before": "02e3dca0a2d71a030abc09872616eb1665b00b8b",
+      "remoteBefore": "02e3dca0a2d71a030abc09872616eb1665b00b8b",
+      "after": "35818ab423765e059fd7f4063d9a34bc4e939aa0",
+      "verification": {
+        "ownedPreserved": 142,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-search",
+      "pr": 8973,
+      "before": "04d9b0634dd0b34587a9bfc179ca7d5a2a7b3329",
+      "remoteBefore": "04d9b0634dd0b34587a9bfc179ca7d5a2a7b3329",
+      "after": "323035b85e1ec03454730f7e9d890da40306bd22",
+      "verification": {
+        "ownedPreserved": 150,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-inventory",
+      "pr": 8974,
+      "before": "395ea03875d65e3aba9b14ef16a2be1ec1521ac4",
+      "remoteBefore": "395ea03875d65e3aba9b14ef16a2be1ec1521ac4",
+      "after": "74daea60a6d91f88057837f384036a59f3b97f0f",
+      "verification": {
+        "ownedPreserved": 154,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-workflows",
+      "pr": 8975,
+      "before": "14ce8d77ded323942524925228f5a892c3642d9b",
+      "remoteBefore": "14ce8d77ded323942524925228f5a892c3642d9b",
+      "after": "7d19ef916aff1ad23120056cfa8093283c0cedeb",
+      "verification": {
+        "ownedPreserved": 155,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-validation",
+      "pr": 8978,
+      "before": "f9d861b8c74900389d8cc5e1726f33766014d927",
+      "remoteBefore": "f9d861b8c74900389d8cc5e1726f33766014d927",
+      "after": "7292f82bfe085c281d17f12f04c9c90121ca7e74",
+      "verification": {
+        "ownedPreserved": 159,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-report-paths",
+      "pr": 8982,
+      "before": "4bf740b76bc2b3e63be3b5cb4aa465af06d47b7c",
+      "remoteBefore": "4bf740b76bc2b3e63be3b5cb4aa465af06d47b7c",
+      "after": "2c808e4f59c35f438c6bc11dd0f1963ce0526e8c",
+      "verification": {
+        "ownedPreserved": 164,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-report",
+      "pr": 8983,
+      "before": "32ece44328b82751a99fcdaf5576c99f73ac3f3a",
+      "remoteBefore": "32ece44328b82751a99fcdaf5576c99f73ac3f3a",
+      "after": "5d6ad59fa6e823965f6cbd58b6c395f29d7b9d12",
+      "verification": {
+        "ownedPreserved": 173,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-validation-runtime",
+      "pr": 8986,
+      "before": "be8e5c02c779a45f188783ede4991cdcf7174e4c",
+      "remoteBefore": "be8e5c02c779a45f188783ede4991cdcf7174e4c",
+      "after": "2e966446785d76127f2771fee7afe80633b86add",
+      "verification": {
+        "ownedPreserved": 177,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-runtime-repairs",
+      "pr": 8988,
+      "before": "72c215c5f5762e9d52cf6aff62d42f0e89a41fd6",
+      "remoteBefore": "72c215c5f5762e9d52cf6aff62d42f0e89a41fd6",
+      "after": "15f88ca9381980dab73d3af2a2db75b09bd61168",
+      "verification": {
+        "ownedPreserved": 183,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    },
+    {
+      "branch": "feat/command-palette-access-polish",
+      "pr": 9005,
+      "before": "fcc04db542965c34b657bac5042f0a573f8be4cd",
+      "remoteBefore": "15bd4920d2410c102138c830bdd220799a4174b3",
+      "after": "7b470cd0010f2f1c3d4e72a2722763ccca292ecc",
+      "verification": {
+        "ownedPreserved": 196,
+        "upstreamPreserved": 153,
+        "unexpectedChanges": []
+      }
+    }
+  ],
+  "overlapBeforeIntegration": [],
+  "state": "all18layersintegrated; verificationpassed; runtimepending",
+  "foundationVerification": {
+    "ownedFiles": 34,
+    "upstreamFiles": 153,
+    "ownedChangesLost": [],
+    "upstreamChangesMissing": [],
+    "unexpectedChanges": [],
+    "mergedTree": "13e1cc959698a384bf0fd908b18d3ff43f8de51a",
+    "resolution": "Four duplicated-UX conflicts preserved access side; main UX files match priorUX byte-for-byte. All owned34 and upstream153 verified."
+  },
+  "qualification": "Merge preserves each owned source file and all153upstream files; not a runtime/acceptance proof. Pre-main GPU receipt remains15bd only."
+}

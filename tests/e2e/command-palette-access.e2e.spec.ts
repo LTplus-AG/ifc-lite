@@ -271,14 +271,14 @@ test('palette Plan refuses actual constrained and mobile widths while preserving
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     return { layout: s.modelLayout, ids: [...s.models.keys()] };
   });
-  await result.row.click();
+  await result.row.click({ force: true });
   await expect(palette(page)).toBeVisible();
   await info.attach('plan-constrained-refusal.png', { body: await page.screenshot(), contentType: 'image/png' });
   await page.setViewportSize({ width: 390, height: 844 });
   result = await find(page, 'model:plan', 'plan layout');
   await expect(result.row).toHaveAttribute('aria-disabled', 'true');
   await expect(result.row).toContainText('Unavailable in this configuration');
-  await result.row.click();
+  await result.row.click({ force: true });
   await expect(palette(page)).toBeVisible();
   await result.search.press('Escape');
   await expect(page.locator('canvas[data-viewport="main"]')).toBeVisible();

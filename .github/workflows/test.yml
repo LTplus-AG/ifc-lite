@@ -2063,6 +2063,13 @@ jobs:
             oracle_args+=(--mutation tests/evidence/ui-drift/no-comment-strip.oracle.patch --test scripts/check-ui-drift.test.mjs)
             oracle_args+=(--mutation tests/evidence/ui-drift/string-spans-lines.oracle.patch --test scripts/check-ui-drift.test.mjs)
           fi
+          # #8802 R4: the state-language primitives (filter-chip, match-highlight) are
+          # new modules, so a blunt revert leaves their tests unable to load. Revert the
+          # state tokens, then drop the match highlight, one behaviour at a time.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/r4-state-language/state-tokens.oracle.patch | grep -Fxq 'tests/evidence/r4-state-language/state-tokens.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/r4-state-language/state-tokens.oracle.patch --test apps/viewer/src/test/contrast/state-language-8802.contrast.test.tsx)
+            oracle_args+=(--mutation tests/evidence/r4-state-language/match-highlight.oracle.patch --test apps/viewer/src/test/contrast/state-language-8802.contrast.test.tsx --test apps/viewer/src/components/ui/match-highlight.test.tsx)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"

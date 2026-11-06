@@ -83,7 +83,7 @@ async function paint(theme: Theme, bodyHtml: string, selectors: Record<string, s
         const layers: Element[] = [];
         for (let a = el; a; a = a.parentElement) layers.unshift(a);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'rgb(255, 255, 255)';
         ctx.fillRect(0, 0, 1, 1);
         for (const layer of layers) {
           const style = getComputedStyle(layer);
@@ -144,7 +144,7 @@ function assertActive(name: string, painted: Record<string, Painted>, theme: The
 
 const SELECT_REFS = { refActive: '#ref-active', refActiveSurface: '#ref-active-surface', refPrimary: '#ref-primary' };
 
-describe('state language: primary, pressed, active and filtered states (#8802 R4)', () => {
+describe('state language: primary, pressed, active and filtered states (Refs 8802, R4)', () => {
   for (const theme of THEMES) {
     it(`a primary button is a solid primary fill whose label clears AA in ${theme}`, async () => {
       const ui = render(<div className="bg-background p-2"><Button data-test="primary">New topic</Button></div>);

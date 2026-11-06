@@ -19,9 +19,10 @@ const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         // A two-state button, or one option of a mode or radio set (#8802 R4):
         // ghost at rest, the shared active state when `aria-pressed` or
-        // `aria-checked` is true. The look comes from the attribute, so the
-        // state a screen reader hears is the state the user sees.
-        toggle: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground aria-pressed:bg-active-surface aria-pressed:text-active aria-pressed:hover:bg-active-surface-hover aria-pressed:hover:text-active aria-checked:bg-active-surface aria-checked:text-active aria-checked:hover:bg-active-surface-hover aria-checked:hover:text-active',
+        // `aria-checked` is true (tinted face, active ink, inset active edge,
+        // as on a latched ribbon tool). The look comes from the attribute, so
+        // the state a screen reader hears is the state the user sees.
+        toggle: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground aria-pressed:bg-active-surface aria-pressed:text-active aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-active-border aria-pressed:hover:bg-active-surface-hover aria-pressed:hover:text-active aria-checked:bg-active-surface aria-checked:text-active aria-checked:ring-1 aria-checked:ring-inset aria-checked:ring-active-border aria-checked:hover:bg-active-surface-hover aria-checked:hover:text-active',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {

@@ -70,7 +70,7 @@ export function ToggleChip({ icon: Icon, label, tip, on, disabled, showLabel, on
         disabled={disabled}
         onClick={onToggle}
         data-state={on ? 'on' : 'off'}
-        className={cn(CONTROL, 'border', on ? 'border-active-border' : 'border-transparent')}
+        className={CONTROL}
       >
         {showLabel ? (
           <span

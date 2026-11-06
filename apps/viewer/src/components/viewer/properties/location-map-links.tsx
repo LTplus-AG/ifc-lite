@@ -6,13 +6,15 @@
  * The location map's footer: open the site in Google Maps / OpenStreetMap,
  * export a Google Earth KMZ, and flip the tile style. Split out of
  * `LocationMap.tsx` (module-size budget) for #8802 R4, which also fixes its
- * layout: each link is one unbreakable unit and the row wraps between links,
- * never inside a label, so a narrow properties panel shows every link whole
- * instead of half-lines cut off at the panel's edge.
+ * layout: each link is one unbreakable unit, the style flip is an icon with a
+ * tooltip, and the row wraps between links, never inside a label. At the
+ * default panel width it is one row, so the panel's last line is never a
+ * half-line cut off above the status bar.
  */
 
 import type { ReactNode } from 'react';
-import { ExternalLink, Globe2 } from 'lucide-react';
+import { Contrast, ExternalLink, Globe2 } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 
@@ -67,9 +69,10 @@ export function LocationMapLinks({ googleMapsUrl, openStreetMapUrl, geometryLoca
         </Tipped>
       )}
       {onToggleStyle && (
-        <button onClick={onToggleStyle} className="ml-auto whitespace-nowrap text-xs text-muted-foreground hover:text-foreground transition-colors">
-          {t('properties.locationMap.toggleStyle')}
-        </button>
+        <IconButton label={t('properties.locationMap.toggleStyle')} onClick={onToggleStyle} size="icon-xs"
+          className="ml-auto h-6 w-6 text-muted-foreground [&_svg]:size-3.5">
+          <Contrast />
+        </IconButton>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
   'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',
   'commandPalette.aliases.bulk': 'bulk properties query set attribute construction stage',

@@ -79,7 +79,7 @@ function rig(tool: string, pickedId: number | null = null) {
     lastMeasureRaycastDurationRef: ref(0), lastHoverSnapTimeRef: ref(0), lastHoverCheckRef: ref(0),
     hoverTooltipsEnabledRef: ref(false),
     isInteractingRef: ref(false), lastClickTimeRef: ref(0), lastClickPosRef: ref(null), lastCameraStateRef: ref(null),
-    handlePickForSelection: noop, setHoverState: noop, clearHover: noop,
+    handlePickForSelection: () => { selections++; }, setHoverState: noop, clearHover: noop,
     openContextMenu: (id, x, y) => menus.push({ id, x, y }),
     startMeasurement: (p) => useViewerStore.getState().startMeasurement(p),
     updateMeasurement: (p) => useViewerStore.getState().updateMeasurement(p),
@@ -113,8 +113,8 @@ function rig(tool: string, pickedId: number | null = null) {
   return { canvas, camera, menus, selectionCount: () => selections };
 }
 
-function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number): PointerEvent {
-  const e = new PointerEvent(type, { button: 0, pointerId: 1, bubbles: true, cancelable: true });
+function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0): PointerEvent {
+  const e = new PointerEvent(type, { button: 0, buttons, pointerId: 1, bubbles: true, cancelable: true });
   Object.defineProperties(e, {
     clientX: { value: x, configurable: true },
     clientY: { value: y, configurable: true },
@@ -123,9 +123,9 @@ function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number
   return e;
 }
 
-function touchEvent(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>): Event {
+function touchEvent(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus'): Event {
   const event = new window.Event(kind, { bubbles: true, cancelable: true });
-  const touches = points.map(([x, y], i) => ({ identifier: i + 1, target: canvas, clientX: x, clientY: y }));
+  const touches = points.map(([x, y], i) => ({ identifier: i + 1, target: canvas, clientX: x, clientY: y, touchType }));
   Object.defineProperty(event, 'touches', { value: touches });
   Object.defineProperty(event, 'changedTouches', { value: touches });
   return event;
@@ -138,7 +138,7 @@ async function tap(canvas: HTMLCanvasElement, x: number, y: number): Promise<voi
   });
 }
 
-function pointerDrag(canvas: HTMLCanvasElement, pointerType: 'touch' | 'mouse'): void {
+function pointerDrag(canvas: HTMLCanvasElement, pointerType: 'touch' | 'mouse' | 'pen'): void {
   act(() => {
     canvas.dispatchEvent(pointer('pointerdown', pointerType, 400, 300));
     for (let i = 1; i <= 5; i++) canvas.dispatchEvent(pointer('pointermove', pointerType, 400 + 20 * i, 300));
@@ -409,3 +409,270 @@ function wheelAt(init: { ctrlKey?: boolean } = {}): WheelEvent {
   });
   return e;
 }
+
+/**
+ * #9000: an Apple Pencil on iPad. iOS Safari sends one Pencil press as pointer
+ * events (`pointerType: 'pen'`) and as touch events (`touchType: 'stylus'`),
+ * each pointer event just before its touch event. A desktop pen sends pointer
+ * events only. Either way one pipeline owns the press.
+ */
+describe('a pen press goes through one pipeline (#9000)', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const click = (x: number, y: number, pointerType: string | undefined = 'pen') => {
+    const e = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    if (pointerType) Object.defineProperty(e, 'pointerType', { value: pointerType });
+    return e;
+  };
+
+  /** iOS order: pointerdown, touchstart, pointermove, touchmove ... pointerup, touchend, then a possible click. */
+  async function pencilTap(canvas: HTMLCanvasElement, x: number, y: number, touchType: 'stylus' | undefined = 'stylus') {
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], touchType));
+      await settle();
+      canvas.dispatchEvent(pointer('pointerup', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      canvas.dispatchEvent(click(x, y));
+      await settle();
+    });
+  }
+
+  function pencilDrag(canvas: HTMLCanvasElement, touchFirst = false, touchType: 'stylus' | undefined = 'stylus') {
+    act(() => {
+      const down = [pointer('pointerdown', 'pen', 400, 300), touchEvent('touchstart', canvas, [[400, 300]], touchType)];
+      for (const e of touchFirst ? down.reverse() : down) canvas.dispatchEvent(e);
+    });
+    act(() => {
+      for (let i = 1; i <= 5; i++) {
+        canvas.dispatchEvent(pointer('pointermove', 'pen', 400 + 20 * i, 300, 1));
+        canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]], touchType));
+      }
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 500, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+  }
+
+  function fingerDrag(canvas: HTMLCanvasElement) {
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]]));
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+  }
+
+  it('an iPad pen drag orbits once, exactly as a finger drag does', () => {
+    const finger = rig('select');
+    fingerDrag(finger.canvas);
+    const expected = pos(finger.camera);
+    cleanup(); finger.canvas.remove();
+    const pen = rig('select');
+    const before = pos(pen.camera);
+    pencilDrag(pen.canvas);
+    assert.notEqual(pos(pen.camera), before, 'the pen drag did not orbit');
+    assert.equal(pos(pen.camera), expected, 'BUG: the pen drag orbited through both the mouse and the touch controls');
+  });
+
+  it('the same holds when the touchstart comes before the pointerdown', () => {
+    const finger = rig('select');
+    fingerDrag(finger.canvas);
+    const expected = pos(finger.camera);
+    cleanup(); finger.canvas.remove();
+    const pen = rig('select');
+    pencilDrag(pen.canvas, true);
+    assert.equal(pos(pen.camera), expected, 'BUG: the pen drag orbited through both pipelines');
+  });
+
+  it('touchstart first without touchType: the touch at the pen point still owns the press', () => {
+    const finger = rig('select');
+    fingerDrag(finger.canvas);
+    const expected = pos(finger.camera);
+    cleanup(); finger.canvas.remove();
+    const pen = rig('select');
+    pencilDrag(pen.canvas, true, undefined);
+    assert.equal(pos(pen.camera), expected, 'BUG: the pen drag orbited through both pipelines');
+  });
+
+  it('a touch-owned pen whose pointerup never arrived does not keep the next pointer-only press from the mouse side', () => {
+    const mouse = rig('select');
+    pointerDrag(mouse.canvas, 'mouse');
+    const expected = pos(mouse.camera);
+    cleanup(); mouse.canvas.remove();
+    const pen = rig('select');
+    act(() => {
+      pen.canvas.dispatchEvent(pointer('pointerdown', 'pen', 100, 100));
+      pen.canvas.dispatchEvent(touchEvent('touchstart', pen.canvas, [[100, 100]], 'stylus'));
+      // a capture-phase listener stopped this pointerup before the mouse controls saw it
+      pen.canvas.dispatchEvent(touchEvent('touchend', pen.canvas, []));
+    });
+    const before = pos(pen.camera);
+    // A Pencil hover move releases the stale ownership; a following press without touches is the mouse side's
+    act(() => pen.canvas.dispatchEvent(pointer('pointermove', 'pen', 400, 300)));
+    assert.equal(pos(pen.camera), before, 'a hover move orbited');
+    pointerDrag(pen.canvas, 'pen');
+    assert.equal(pos(pen.camera), expected, 'the pointer-only pen drag no longer orbits like a mouse drag');
+  });
+
+  it('a held desktop pen press cancelled before it runs places nothing', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(pointer('pointercancel', 'pen', 200, 300));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activeMeasurement === null, true, 'a cancelled pen press set a distance start');
+  });
+
+  it('an iPad pen press cancelled by the system places nothing on either side', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+      canvas.dispatchEvent(pointer('pointercancel', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchcancel', canvas, []));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activeMeasurement === null, true, 'BUG: a cancelled pen press set a distance start');
+  });
+
+  it('an iPad pen tap in Select selects once', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    assert.equal(selectionCount(), 1, `BUG: one pen tap selected ${selectionCount()} times`);
+  });
+
+  it('a touch at the pen point without touchType still claims the press', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await pencilTap(canvas, 200, 300, undefined);
+    assert.equal(selectionCount(), 1, `BUG: one pen tap selected ${selectionCount()} times`);
+  });
+
+  it('two iPad pen taps in Measure Distance measure once, start to end', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    const start = useViewerStore.getState().activeMeasurement?.start.x;
+    assert.equal(start, 2, `the first pen tap set the start at x ${String(start)}, expected 2`);
+    assert.equal(useViewerStore.getState().measurements.length, 0, 'BUG: the first pen tap finished a measurement');
+    await pencilTap(canvas, 500, 300);
+    const { measurements, activeMeasurement } = useViewerStore.getState();
+    assert.equal(measurements.length, 1, `BUG: two pen taps made ${measurements.length} measurements`);
+    assert.equal(activeMeasurement === null, true, 'BUG: a start was left pending after the second tap');
+    assert.ok(Math.abs(measurements[0].distance - 3) < 1e-9, `distance ${measurements[0].distance}, expected 3`);
+  });
+
+  it('a pen tap in Measure Polyline adds one point', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'BUG: one pen tap added more or less than one polyline point');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a desktop pen (pointer events only) still drags through the mouse controls', () => {
+    const mouse = rig('select');
+    pointerDrag(mouse.canvas, 'mouse');
+    const expected = pos(mouse.camera);
+    cleanup(); mouse.canvas.remove();
+    const pen = rig('select');
+    pointerDrag(pen.canvas, 'pen');
+    assert.equal(pos(pen.camera), expected, 'the desktop pen drag no longer orbits like a mouse drag');
+  });
+
+  it('a desktop pen tap selects once, through the click', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      await settle();
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(click(200, 300));
+      await settle();
+    });
+    assert.equal(selectionCount(), 1, `a desktop pen tap selected ${selectionCount()} times`);
+  });
+
+  it('two desktop pen clicks in Measure Distance measure once', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    for (const x of [200, 500]) {
+      await act(async () => {
+        canvas.dispatchEvent(pointer('pointerdown', 'pen', x, 300));
+        canvas.dispatchEvent(pointer('pointerup', 'pen', x, 300));
+        canvas.dispatchEvent(click(x, 300));
+        await settle();
+      });
+    }
+    const { measurements } = useViewerStore.getState();
+    assert.equal(measurements.length, 1, `two desktop pen clicks made ${measurements.length} measurements`);
+    assert.ok(Math.abs(measurements[0].distance - 3) < 1e-9, `distance ${measurements[0].distance}, expected 3`);
+  });
+
+  it('a desktop pen press held past a task still runs when nothing claims it', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await act(async () => { canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300)); await settle(); });
+    assert.equal(useViewerStore.getState().activeMeasurement?.start.x, 2, 'the held desktop pen press never set the start');
+    act(() => canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300)));
+  });
+
+  it('a finger touch far from a held desktop pen press does not take it', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[600, 100]], 'direct'));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activeMeasurement?.start.x, 2, 'a distant finger took the desktop pen press');
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchcancel', canvas, []));
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+    });
+  });
+
+  it('a finger (touchType direct) at the point of a held desktop pen press does not take it', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[202, 300]], 'direct'));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activeMeasurement?.start.x, 2, 'a finger took the desktop pen press');
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchcancel', canvas, []));
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+    });
+  });
+
+  it('a held desktop pen press does not run after unmount', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas } = rig('measure');
+    act(() => canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300)));
+    cleanup();
+    await settle();
+    assert.equal(useViewerStore.getState().activeMeasurement === null, true, 'the held press ran after unmount');
+  });
+
+  it('the native menu after an iPad pen tap is suppressed, not shown', async () => {
+    const { canvas, menus } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    const native = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 });
+    assert.equal(canvas.dispatchEvent(native), false, 'the native menu after a pen tap was not prevented');
+    await act(async () => { await settle(); });
+    assert.deepEqual(menus, [], 'the pen tap opened the viewer menu');
+  });
+
+  it('a mouse click right after an iPad pen tap still selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 200, 300));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 200, 300));
+      canvas.dispatchEvent(click(200, 300, 'mouse'));
+      await settle();
+    });
+    assert.equal(selectionCount(), 2, `pen tap then mouse click selected ${selectionCount()} times`);
+  });
+});

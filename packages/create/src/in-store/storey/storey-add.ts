@@ -32,7 +32,11 @@ export interface AddStoreyParams {
   readonly GlobalId?: string;
   /** The storey whose conventions the new one copies; defaults to the nearest by elevation. */
   readonly referenceStoreyId?: number;
-  /** Required only when the model has no storey yet and more than one IfcBuilding. */
+  /**
+   * The IfcBuilding the storey joins. Needed when no `referenceStoreyId` is
+   * given and the storeys do not already share one building: a model with
+   * several buildings, or with none of its storeys aggregated yet.
+   */
   readonly buildingId?: number;
 }
 

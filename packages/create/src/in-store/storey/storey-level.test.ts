@@ -178,6 +178,13 @@ describe('storey edits stay within their building (#9013 review)', () => {
       .toThrow('Annex 1 is already at +3.00 m');
   });
 
+  it('with several buildings and no reference, buildingId chooses the building', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6 })).toThrow('choose the one the storey belongs to');
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6, buildingId: 130 });
+    expect(api('readStoreyInventory')(s.store, s.view).storeys.find((x) => x.expressId === added.storeyId)?.parentId).toBe(130);
+  });
+
   it('a buildingId that disagrees with the reference storey is refused', async () => {
     const s = session(await parse(TWO_BUILDINGS));
     const before = s.snapshot();

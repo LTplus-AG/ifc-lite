@@ -94,6 +94,7 @@ export function selectEvictions(
 export class BatchUseFrames {
   private readonly ownBuffers = new Map<number, number>();
   private readonly pieces = new Map<number, number>();
+  private readonly subsetOnScreen = new Map<number, number>();
 
   /** Drawn from its own GPU buffers (also uses its pieces). */
   set(batchId: number, frame: number): void {
@@ -101,9 +102,16 @@ export class BatchUseFrames {
     this.pieces.set(batchId, frame);
   }
 
-  /** Drawn only as a partial sub-batch cut from its CPU pieces. */
-  setSubset(batchId: number, frame: number): void {
+  /** Drawn only as a partial sub-batch cut from its CPU pieces: by the colour
+   *  pass (`onScreen`) or only as a shadow caster, which may be off screen. */
+  setSubset(batchId: number, frame: number, onScreen: boolean): void {
     this.pieces.set(batchId, frame);
+    if (onScreen) this.subsetOnScreen.set(batchId, frame);
+  }
+
+  /** Last frame the colour pass drew a subset of it. */
+  getSubsetOnScreen(batchId: number): number | undefined {
+    return this.subsetOnScreen.get(batchId);
   }
 
   /** Last own-buffer draw: the GPU tier's age. */
@@ -125,10 +133,12 @@ export class BatchUseFrames {
   delete(batchId: number): void {
     this.ownBuffers.delete(batchId);
     this.pieces.delete(batchId);
+    this.subsetOnScreen.delete(batchId);
   }
 
   clear(): void {
     this.ownBuffers.clear();
     this.pieces.clear();
+    this.subsetOnScreen.clear();
   }
 }

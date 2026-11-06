@@ -11,7 +11,7 @@ export interface ShadowBatchScene {
   requestBatchResidency(batch: BatchedMesh): void;
   requestBatchPieces(batch: BatchedMesh): void;
   recordBatchDrawn(batch: BatchedMesh): void;
-  recordBatchSubsetDrawn(batch: BatchedMesh): void;
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen?: boolean): void;
   restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null;
   getOrCreatePartialBatch(key: string, colorKey: string, ids: Set<number>, device: GPUDevice, pipeline: RenderPipeline, epoch: number): BatchedMesh | null | undefined;
 }
@@ -38,7 +38,7 @@ export function shadowOccluderBatches(scene: ShadowBatchScene, options: RenderOp
     if (batch.gpuResident === false) scene.requestBatchPieces(batch); // a subset reads pieces, not parent buffers (#9050)
     const subset = scene.getOrCreatePartialBatch(`${batch.colorKey}:${batch.id}`, batch.colorKey, visible.visibleIds, device, pipeline, epoch);
     // #9034/#9050: a subset cut from the parent's CPU pieces keeps those pieces warm, resident or not.
-    if (subset && subset.indexCount > 0) { scene.recordBatchSubsetDrawn(batch); result.push(subset); }
+    if (subset && subset.indexCount > 0) { scene.recordBatchSubsetDrawn(batch, false); result.push(subset); }
   }
   return result;
 }

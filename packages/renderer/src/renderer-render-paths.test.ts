@@ -1307,6 +1307,21 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.notStrictEqual(greyOf(h).gpuResident, false);
     });
 
+    it('a subset drawn only as a shadow caster does not qualify its parent for the un-isolate rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene.beginResidencyFrame();
+        scene.recordBatchSubsetDrawn(grey, false); // the shadow pass cast {2}; the view did not show it
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'its pieces still count as used');
+    });
+
     it('an evicted batch whose subset was NOT on screen is still restored through the time-sliced queue', () => {
         const h = makeHarness();
         const { grey } = seedBatches(h);

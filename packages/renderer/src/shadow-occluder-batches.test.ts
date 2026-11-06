@@ -17,16 +17,17 @@ function fakeScene(batches: BatchedMesh[], subsetIndexCount: number, rebuildsNow
   const subsetRecorded: number[] = [];    // drawn only as a subset of its pieces
   const requested: number[] = [];         // own GPU buffers wanted back
   const piecesRequested: number[] = [];   // only CPU pieces wanted back
+  const offScreen: boolean[] = [];        // subset recorded as a shadow caster only
   const scene: ShadowBatchScene = {
     getBatchedMeshes: () => batches,
     recordBatchDrawn: (b) => { recorded.push(b.id); },
-    recordBatchSubsetDrawn: (b) => { subsetRecorded.push(b.id); },
+    recordBatchSubsetDrawn: (b, onScreen) => { subsetRecorded.push(b.id); offScreen.push(onScreen === false); },
     requestBatchResidency: (b) => { requested.push(b.id); },
     requestBatchPieces: (b) => { piecesRequested.push(b.id); },
     restoreSubsetParentNow: (b) => (rebuildsNow ? batch(b.id + 100, b.expressIds) : null),
     getOrCreatePartialBatch: () => (subsetIndexCount > 0 ? ({ id: 999, indexCount: subsetIndexCount } as unknown as BatchedMesh) : undefined),
   };
-  return { scene, recorded, subsetRecorded, requested, piecesRequested };
+  return { scene, recorded, subsetRecorded, requested, piecesRequested, offScreen };
 }
 
 const PIPELINE = {} as RenderPipeline;
@@ -36,10 +37,11 @@ describe('shadow occluder residency (#9034, #9050)', () => {
   for (const resident of [true, false]) {
     it(`a partially visible ${resident ? 'resident' : 'GPU-evicted'} parent whose subset casts keeps its pieces, not its own buffers`, () => {
       const parent = batch(1, [1, 2], resident ? undefined : false);
-      const { scene, recorded, subsetRecorded, requested, piecesRequested } = fakeScene([parent], 3);
+      const { scene, recorded, subsetRecorded, requested, piecesRequested, offScreen } = fakeScene([parent], 3);
       const out = shadowOccluderBatches(scene, { hiddenIds: new Set([1]) }, DEVICE, true, PIPELINE, 0);
       assert.deepEqual(out.map((b) => b.id), [999]);
       assert.deepEqual(subsetRecorded, [1]);
+      assert.deepEqual(offScreen, [true], 'a caster may be off screen: it does not earn an un-isolate rebuild');
       assert.deepEqual(recorded, [], 'the subset never reads the parent buffers');
       assert.deepEqual(requested, [], 'no parent GPU rebuild for a subset');
       assert.deepEqual(piecesRequested, resident ? [] : [1], 'an evicted parent is asked for its pieces');

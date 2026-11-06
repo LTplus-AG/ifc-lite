@@ -499,12 +499,13 @@ export class Scene {
     this.lastDrawnFrame.set(batch.id, this.residencyFrame);
   }
 
-  /** Record that the draw loop drew this batch only as a partial sub-batch cut
-   *  from its CPU pieces. The pieces stay warm (#9034); the batch's own GPU
-   *  buffers, which nothing read, may still be evicted (#9050). */
-  recordBatchSubsetDrawn(batch: BatchedMesh): void {
+  /** Record that a pass drew this batch only as a partial sub-batch cut from
+   *  its CPU pieces. The pieces stay warm (#9034); the batch's own GPU buffers,
+   *  which nothing read, may still be evicted (#9050). `onScreen` is false for
+   *  the shadow pass, whose casters may be outside the view. */
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen = true): void {
     if (this.gpuBudgetBytes === null) return;
-    this.lastDrawnFrame.setSubset(batch.id, this.residencyFrame);
+    this.lastDrawnFrame.setSubset(batch.id, this.residencyFrame, onScreen);
     if (batch.gpuResident === false) this.subsetOnlyParents.add(batch);
   }
 
@@ -793,6 +794,7 @@ export class Scene {
             if (warmOnly) this.warmOnlyRestores.add(restoredKey);
           }
         } else {
+          this.warmOnlyRestores.delete(key);
           console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
         }
       })
@@ -930,7 +932,9 @@ export class Scene {
    */
   restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null {
     if (batch.gpuResident !== false || this.geometryReleased || this.ephemeralStreamingMode) return null;
-    const lastUse = this.lastDrawnFrame.getAnyUse(batch.id);
+    // Only a subset the colour pass drew: off-screen shadow casters must not
+    // spend the cap that on-screen parents need.
+    const lastUse = this.lastDrawnFrame.getSubsetOnScreen(batch.id);
     if (lastUse === undefined || lastUse < this.residencyFrame - 1) return null;
     const bucket = this.buckets.get(batch.colorKey);
     if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return null;

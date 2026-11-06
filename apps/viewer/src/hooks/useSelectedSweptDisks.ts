@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { useViewerStore, type EntityRef } from '@/store';
+import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
@@ -25,6 +25,13 @@ export interface SelectedSweptDisksState {
 }
 
 const EMPTY: SelectedSweptDisksState = { items: [], loading: false, error: null };
+
+/** The products whose swept disks the centreline query loads: selection, visibility and the cap, highlighted product first. */
+export function selectedSweptDiskProducts(state: ViewerState) {
+  const highlighted = state.selectedDirectrixSegment;
+  const priority = highlighted ? { modelId: highlighted.modelId, expressId: highlighted.expressId } : null;
+  return selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+}
 
 /** One selection query shared by drawing and the later source-geometry inspector. */
 export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
@@ -64,9 +71,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
     const state = useViewerStore.getState();
-    const priority = highlightedSegment
-      ? { modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId } : null;
-    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
     const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,

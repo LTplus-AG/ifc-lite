@@ -839,3 +839,17 @@ are UNRUN until a matching receipt exists; they do not close inventory rows yet.
 Astra found no actionable source defects in the preceding cold-initialization,
 ion-census, browser-prerequisite and eight direct-child corrections; runtime
 qualification remains independent. Complete access R3 remains UNACCEPTED.
+
+The original historical foundation `b7920556` run finished successfully: root
+typecheck 134/134, test-program census 4,522 and 55/55 selected palette cases,
+zero failures/cancellations/skips, unchanged source. It did not select the German
+catalogue test. The verified original log is retained, publication succeeded and
+the owning Pop storage task was released; physical reclaimed bytes are unreported.
+See `evidence/foundation-b792-original.json`. Exact 723 full CI remains separate.
+
+Fresh review of the fourteen new cases found two cancellation-oracle gaps. Clash
+now cancels a valid named two-selector draft and compares copied live and durable
+preset collections, then verifies a fresh empty draft after reopening. Drawing
+now checks synchronous activity creation before an asynchronous PDF download can
+escape observation, and restores its journal fixture after owned jobs settle.
+These corrected assertions still need matching runtime execution.

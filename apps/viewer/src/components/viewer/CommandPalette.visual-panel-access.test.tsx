@@ -16,16 +16,32 @@ import { ARCH } from '@/test/artifact-models-fixture';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { readSavedLensSource } from '@/lib/lens/persistence';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events';
+import { ACTIVITY_STORAGE_KEY, useActivityJournal } from '@/lib/activity/activity-journal';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { seedPanelWitness, mountPanelWitness, openPanelWitness, element, choose,
   openMenu, menuItem } from '@/test/palette-document-panel-witness';
 
 const initial = useViewerStore.getState();
 let host: ReturnType<typeof mountPanelWitness> | undefined;
-beforeEach(seedPanelWitness);
+let journalBefore = structuredClone(useActivityJournal.getState().jobs);
+let storedJournalBefore: string | null = null;
+beforeEach(async () => {
+  journalBefore = structuredClone(useActivityJournal.getState().jobs);
+  storedJournalBefore = sessionStorage.getItem(ACTIVITY_STORAGE_KEY);
+  await seedPanelWitness();
+});
 afterEach(async () => {
-  cleanup(); await host?.dispose(); host = undefined;
-  useViewerStore.setState(initial, true); localStorage.clear();
+  const previousIds = new Set(journalBefore.map(job => job.id));
+  try {
+    await waitFor(() => useActivityJournal.getState().jobs.every(job => previousIds.has(job.id) || job.outcome !== 'running'),
+      'any unexpectedly started owned export settles before teardown');
+  } finally {
+    cleanup(); await host?.dispose(); host = undefined;
+    useViewerStore.setState(initial, true); localStorage.clear();
+    useActivityJournal.setState({ jobs: journalBefore });
+    if (storedJournalBefore === null) sessionStorage.removeItem(ACTIVITY_STORAGE_KEY);
+    else sessionStorage.setItem(ACTIVITY_STORAGE_KEY, storedJournalBefore);
+  }
 });
 
 // Same bounded box invariant as DrawingPanel.shell.test.tsx; attached to a
@@ -72,7 +88,10 @@ test('#8947 palette Drawing opens real ready-drawing PDF options and cancels wit
       press(custom, 'Enter');
       const input = element<HTMLInputElement>('input', dialog); type(input, '250');
       assert.equal(input.value, '250'); assert.equal(namedButton('Export', dialog).disabled, false);
+      const jobsBeforeCancel = structuredClone(useActivityJournal.getState().jobs);
       click(namedButton('Cancel', dialog));
+      // The real export creates its activity synchronously before importing PDF code.
+      assert.deepEqual(useActivityJournal.getState().jobs, jobsBeforeCancel, 'Cancel must not start an asynchronous PDF export');
       await waitFor(() => !document.querySelector('[role="dialog"]'), 'PDF options cancelled');
       assert.equal(downloads, 0);
       assert.ok(document.querySelector('[data-drawing-canvas]'), 'actual parent remains mounted');

@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { addHostedWindowToStore, resolveHostAnchor } from '@ifc-lite/create';
+import { addColumnOnGridToStore, addGridToStore, addHostedWindowToStore, rectangularGridAxes, resolveHostAnchor, resolveSpatialAnchor } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -329,6 +329,23 @@ describe('copy and paste (#6232 C3)', () => {
     return column;
   }
 
+  it('array and Ctrl+C on a column placed on a grid crossing say why, naming the grid and no internal id (#9026 item 8)', () => {
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const anchor = resolveSpatialAnchor(target.dataStore, STOREY, target.editor.getMutationView());
+    const grid = addGridToStore(target.editor, anchor, rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4] }));
+    const { columnId } = addColumnOnGridToStore(target.editor, target.dataStore, anchor, { Position: [6, 4, 0], Width: 0.4, Depth: 0.4, Height: 3 }, {
+      GridId: grid.gridId, IntersectingAxes: [grid.uAxisIds[1], grid.vAxisIds[1]],
+    });
+    select(columnId);
+    useViewerStore.getState().startCommand('element.array');
+    const g = getCommandRuntime().gesture as ArrayGesture;
+    assert.match(g.refusal ?? '', /grid intersection/);
+    assert.doesNotMatch(g.refusal ?? '', /#\d/);
+    assert.equal(g.ids.length, 0);
+    ctrl('c');
+    assert.equal(readCopyClipboard(), null, 'Ctrl+C refuses it too');
+  });
+
   it('hovering the array preview over an element whose placement is not tied to its storey shows a refusal, not a ghost or an exception', () => {
     select(detachedColumn());
     useViewerStore.getState().startCommand('element.array');
@@ -336,6 +353,7 @@ describe('copy and paste (#6232 C3)', () => {
     const g = runtime.gesture as ArrayGesture;
     assert.equal(g.ids.length, 0);
     assert.match(g.refusal ?? '', /not tied to its storey/);
+    assert.doesNotMatch(g.refusal ?? '', /#\d/, 'a refusal is read by a person: no internal ids (#9026 item 8)');
     click(1, 1);
     act(() => { commandPointerMove(at(4, 1)); });
     const now = getCommandRuntime();

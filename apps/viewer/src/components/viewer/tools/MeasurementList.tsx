@@ -102,10 +102,12 @@ export function MeasurementList() {
       : undefined;
     (row ?? list).focus();
   });
+  // The list is a native group (`fieldset`) named "Measurements taken": the
+  // target when nothing was recorded. Both branches below render one, so it is
+  // the same node when Cancel empties the list.
   const listProps = {
     ref: listRef,
     tabIndex: -1,
-    role: 'group',
     'aria-label': t('measure.section.list.title'),
   } as const;
 
@@ -115,7 +117,7 @@ export function MeasurementList() {
 
   if (totalItemCount === 0 && !activePolyline && !activeAngle && !activeRadius) {
     return (
-      <div {...listProps} className={`flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-muted-foreground ${FOCUS_TARGET}`}>
+      <fieldset {...listProps} className={`flex min-w-0 flex-col items-center gap-2 px-3 py-8 text-center text-xs text-muted-foreground ${FOCUS_TARGET}`}>
         <span>{t('measure.list.empty')}</span>
         {activeTool !== 'measure' && (
           <Button variant="outline" size="sm" onClick={() => setActiveTool('measure')}>
@@ -123,12 +125,12 @@ export function MeasurementList() {
             {t('measure.panel.startMeasuring')}
           </Button>
         )}
-      </div>
+      </fieldset>
     );
   }
 
   return (
-    <div {...listProps} className={`space-y-1 px-3 py-2 ${FOCUS_TARGET}`}>
+    <fieldset {...listProps} className={`min-w-0 space-y-1 px-3 py-2 ${FOCUS_TARGET}`}>
       {measurements.map((m, i) => (
         <MeasurementItem
           key={m.id}
@@ -221,7 +223,7 @@ export function MeasurementList() {
           <LiveRowActions kind="radius" onFinish={finishOpenRadius} onCancel={cancelRadius} hadFocus={liveRowHadFocus} />
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }
 

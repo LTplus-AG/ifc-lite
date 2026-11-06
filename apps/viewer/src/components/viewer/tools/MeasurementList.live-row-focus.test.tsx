@@ -131,7 +131,11 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
   it('Space on a focused Finish lands on the recorded radius row, past rows of every kind', () => {
     useViewerStore.setState({
       measureMode: 'radius',
+      measurements: [{ id: 'm1', start: mp(0, 0, 0), end: mp(2, 0, 0), distance: 2 }],
       polylineMeasurements: [PL1],
+      angleMeasurements: [{ id: 'a1', kind: 'points', picks: [
+        { kind: 'points', point: mp(0, 0, 0) }, { kind: 'points', point: mp(1, 0, 0) }, { kind: 'points', point: mp(0, 1, 0) },
+      ] }],
       radiusMeasurements: [{ id: 'r1', points: OPEN_RADIUS.points }],
       activeRadius: OPEN_RADIUS,
     });
@@ -140,7 +144,9 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     assert.equal(useViewerStore.getState().activeRadius, null, 'Space finished the radius');
     assert.equal(useViewerStore.getState().radiusMeasurements.length, 2);
     // The value is the fitted radius, "R …" with a length; only its shape is pinned here.
-    assert.match(focused(), /^Radius #2 \S.*\d/, 'the recorded radius row, by its label and value');
+    const name = focused();
+    assert.match(name, /^Radius #2 \S.*\d/, 'the recorded radius row, by its label and value');
+    assert.equal(name.endsWith('(not focusable)'), false, `a browser could focus it: ${name}`);
   });
 
   it('Space on a focused Cancel lands on the list', () => {
@@ -223,7 +229,7 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
       const container = mount();
       // Safari (macOS and iOS) does not focus a button it clicks or taps; the
       // press focuses the nearest focusable ancestor, the list, instead.
-      const list = container.querySelector<HTMLElement>('[role="group"][aria-label="Measurements taken"]')!;
+      const list = container.querySelector<HTMLElement>('fieldset[aria-label="Measurements taken"]')!;
       list.focus();
       act(() => { button(container, 'Cancel (Esc)').click(); });
       assert.equal(useViewerStore.getState().activePolyline, null, 'the press cancelled the polyline');

@@ -1,0 +1,63 @@
+{
+  "issue": 8947,
+  "acceptedUx": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3",
+  "acceptedUxTree": "63f8396b08b2271c02364336e14f8f8acd0b41a4",
+  "originalCensus": {
+    "controls": 624,
+    "indirect": 189,
+    "sourceSites": 3994
+  },
+  "reports": [
+    {
+      "filename": "palette-feature-access-reconciled-fd0b1714.json",
+      "sha256": "9f241274bcd6815978db6cfda1b3a2ccd9231374172115198c156c60308a5c61",
+      "source": "9f70376b95db145b1cc6b85c70298d0566df3e79"
+    },
+    {
+      "filename": "palette-access-semantic-part1-resolved-fd0b1714.json",
+      "sha256": "2952e6eb226e8cfbd8e591e4efa1491dcf44a86922d070899f02c8c41833a657",
+      "source": "d2c6ea527f8981d273a55751ac7229f82e4a9643"
+    },
+    {
+      "filename": "palette-access-semantic-part2-resolved-fd0b1714.json",
+      "sha256": "067f59a6a0efd1c1a7f4c8902fc6c6e82064feac52d521db355b4c75176f7262",
+      "source": "d2c6ea527f8981d273a55751ac7229f82e4a9643"
+    },
+    {
+      "filename": "palette-access-workflow-paths-fd0b1714.json",
+      "sha256": "dcf718a69851f511a7742cdc19bf15ac483d852943d89a5e8405a1d4a5a27a6b",
+      "source": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3"
+    },
+    {
+      "filename": "palette-access-properties-routes-fd0b1714.json",
+      "sha256": "c7e958a5276aa04012b1a640097eaa125e523134cf7f02299be91ccf5ae0e09c",
+      "source": "69dda6028846701595b53c5682e316913648f106"
+    },
+    {
+      "filename": "palette-access-model-tools-routes-fd0b1714.json",
+      "sha256": "c9df13e150176e8523123e1fa493596fa165552673291e340dee1381c83bc3f7",
+      "source": "aefa0ac31c2bad563992b2eb2c041a98aba23ca1"
+    },
+    {
+      "filename": "palette-access-file-extension-routes-fd0b1714.json",
+      "sha256": "7766595c4d0364fd8108424ea48fd9d102591f2873bca3dd6c2e09efbe6cd194",
+      "source": "aec2349d0ff47afb45bfb2ff7d51708e354406e5"
+    },
+    {
+      "filename": "palette-access-unassigned-routes-fd0b1714.json",
+      "sha256": "e1b971fb048eddafff8d164371db101ec047fff921dd1e32ffbc551e36f7df42",
+      "source": "2a600ad3028d6b84ffaa3a5f9e481f2e9aff4b15"
+    },
+    {
+      "filename": "palette-access-assistant-routes-fd0b1714.json",
+      "sha256": "5352ecaf025729b83b0b4fa69442dc3e3c904dc976fba3f022d8e11dcfde556c",
+      "source": "675f44eded1c1b36cce4c7c9119173ae4d240ad0"
+    },
+    {
+      "filename": "palette-access-indirect-resolved-fd0b1714.json",
+      "sha256": "40c60e8abb17e5f98e8bf71245225c11f7ea6219fad7e60ffbad16020316bdc3",
+      "source": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3"
+    }
+  ],
+  "qualification": "Counts are source accounting, not distinct capabilities or coverage. Every runtime verdict remains UNRUN. Review commits differ; reconcile changed routes against the final candidate before acceptance."
+}

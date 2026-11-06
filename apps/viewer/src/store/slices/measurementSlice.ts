@@ -34,7 +34,7 @@ import type {
 } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
-import { getDefaultEdgeLockState, gestureReset } from './measureGesture.js';
+import { getDefaultEdgeLockState, gestureReset, snapStateReset } from './measureGesture.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
 import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
@@ -532,7 +532,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   // Snap actions
   setSnapTarget: (snapTarget) => set({ snapTarget }),
   setSnapVisualization: (snapVisualization) => set({ snapVisualization }),
-  toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
+  // Hover stops with Snap off, so nothing else would drop its lock or glyph (#8881)
+  toggleSnap: () => set((state) => (state.snapEnabled ? { snapEnabled: false, ...snapStateReset() } : { snapEnabled: true })),
 
   // Geo readout actions
   toggleGeoReadout: () => set((state) => ({ geoReadoutEnabled: !state.geoReadoutEnabled })),

@@ -41,8 +41,8 @@ function raycastSceneMagnetic(x: number, y: number, lock: { edge: unknown }) {
   };
 }
 
-const ref = <T,>(current: T) => ({ current });
-const snapOn = ref(true);
+/** Snap, read from the store like Viewport's `snapEnabledRef`, so the S key reaches the handlers. */
+const snapOn = { get current() { return s().snapEnabled; }, set current(v: boolean) { useViewerStore.setState({ snapEnabled: v }); } };
 const tool = { get current() { return s().activeTool; }, set current(_v) { /* store-owned */ } };
 
 /** The measure context bound to the store, as Viewport.tsx binds it. */
@@ -95,16 +95,17 @@ function click(canvas: HTMLCanvasElement, x: number, y: number): void {
   fire(canvas, 'click', x, y);
 }
 
-async function pressEscape(): Promise<void> {
+async function pressKey(key: string): Promise<void> {
   function Keys(): null { useKeyboardShortcuts(); return null; }
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => { root.render(<Keys />); });
-  await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+  await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
   await act(async () => { root.unmount(); });
   host.remove();
 }
+const pressEscape = () => pressKey('Escape');
 
 /** A distance start whose rubber band has locked EDGE and shows its snap glyph. */
 function lockedRubberBand(canvas: HTMLCanvasElement): void {
@@ -338,5 +339,100 @@ describe('a press that began before a reset places no point (#8786)', () => {
     act(() => s().setMeasureMode('polyline'));
     act(() => handleMeasureTap(ctx, 300, 300));
     assert.equal(s().activePolyline?.points.length, 1, 'a tap begun after the switch places its point');
+  });
+});
+
+/** A hover with nothing placed yet that locked EDGE and shows its snap glyph. */
+function hoverLock(canvas: HTMLCanvasElement): void {
+  fire(canvas, 'pointermove', 400, 300);
+  flushFrames();
+  assert.equal(s().activeMeasurement === null, true, 'setup: nothing is placed');
+  assert.ok(s().edgeLockState.edge !== null, 'setup: the hover locked an edge');
+  assert.ok(s().snapVisualization !== null, 'setup: the hover shows its snap glyph');
+}
+
+describe('turning Snap off drops the lock and the snap glyph (#8881)', () => {
+  it('after a hover lock, the next first click is not pulled along the old edge', async () => {
+    const { canvas } = mount();
+    hoverLock(canvas);
+    await pressKey('s');
+    assert.equal(s().snapEnabled, false, 'setup: S turned Snap off');
+    assertNoGestureLeft('turning Snap off');
+    locksSeen.length = 0;
+    click(canvas, 500, 300);
+    assert.ok(s().activeMeasurement, 'the click set a start');
+    assert.equal(locksSeen.length > 0, true, 'the click picked');
+    assert.equal(locksSeen[0] === null, true, 'BUG: the first click after Snap off picked with the stale edge lock');
+  });
+
+  it('after a hover lock, the next first tap is not pulled along the old edge', async () => {
+    const { ctx } = mount();
+    hoverLock(ctx.canvas);
+    await pressKey('s');
+    assertNoGestureLeft('turning Snap off');
+    locksSeen.length = 0;
+    act(() => handleMeasureTap(ctx, 500, 300));
+    assert.ok(s().activeMeasurement, 'the tap set a start');
+    assert.equal(locksSeen[0] === null, true, 'BUG: the first tap after Snap off picked with the stale edge lock');
+  });
+
+  it('a hover frame queued before Snap off does not bring them back', async () => {
+    const { canvas } = mount();
+    fire(canvas, 'pointermove', 400, 300); // queues a hover frame, not yet run
+    assert.equal(frames.size, 1, 'setup: a hover frame is queued');
+    await pressKey('s');
+    flushFrames();
+    assertNoGestureLeft('a hover frame queued before Snap off');
+  });
+
+  it('mid-Distance keeps the start point, and the next click finishes from it', async () => {
+    const { canvas } = mount();
+    lockedRubberBand(canvas);
+    const start = s().activeMeasurement!.start;
+    const epoch = s().measureGestureEpoch;
+    await pressKey('s');
+    assertNoGestureLeft('turning Snap off mid-Distance');
+    assert.equal(s().activeMeasurement?.start.x, start.x, 'Snap off discarded the start point');
+    assert.equal(s().measureGestureEpoch, epoch, 'Snap off reset the gesture');
+    click(canvas, 600, 300);
+    assert.equal(s().measurements.length, 1, 'the next click finished the distance');
+    assert.equal(s().measurements[0].start.x, start.x, 'the distance runs from the kept start');
+  });
+
+  it('mid-Distance, a press held through Snap off still finishes the distance on release', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointerdown', 600, 300);
+    await pressKey('s');
+    fire(canvas, 'pointerup', 600, 300);
+    fire(canvas, 'click', 600, 300);
+    assert.equal(s().measurements.length, 1, 'a press held through Snap off still finishes the distance');
+  });
+
+  it('in another tool, Snap off leaves its queued frame alone (a command preview owns it)', () => {
+    act(() => s().setActiveTool('select'));
+    const { params } = mount();
+    params.measureRaycastFrameRef.current = requestAnimationFrame(() => {});
+    params.measureRaycastPendingRef.current = true;
+    act(() => s().toggleSnap());
+    assert.equal(frames.size, 1, 'Snap off outside Measure dropped a frame it does not own');
+    assert.equal(params.measureRaycastPendingRef.current, true);
+  });
+
+  it('turning Snap back on locks and shows the glyph as before', async () => {
+    const { canvas } = mount();
+    // A hover lock from before; the one real hover below is not throttled behind it.
+    act(() => { s().setEdgeLock(EDGE, 1, 0.5); s().setSnapVisualization({ slidingDot: { t: 0.5 } }); });
+    await pressKey('s');
+    assertNoGestureLeft('turning Snap off');
+    await pressKey('s');
+    assert.equal(s().snapEnabled, true, 'setup: S turned Snap back on');
+    fire(canvas, 'pointermove', 420, 300);
+    flushFrames();
+    assert.ok(s().edgeLockState.edge !== null, 'the hover locks an edge again');
+    assert.ok(s().snapVisualization !== null, 'the snap glyph shows again');
+    locksSeen.length = 0;
+    click(canvas, 420, 300);
+    assert.equal(locksSeen[0] === EDGE, true, 'the first click picks with the hover lock, as before');
   });
 });

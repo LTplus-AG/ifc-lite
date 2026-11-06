@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * WebGPU device initialization
- */
+/** WebGPU device initialization */
+import { requestAdapterWithTimeout } from './adapter-request.js';
 import { meterGpuDevice } from './gpu-counters.js';
 
 /**
@@ -19,25 +18,6 @@ export interface AdapterInfoSnapshot {
   vendor?: string;
   /** `GPUAdapterInfo.architecture`, e.g. "common-3", "gen-12lp". */
   architecture?: string;
-}
-
-/**
- * Bound on `requestAdapter()`. A broken driver, a remote session or a GPU-less
- * headless browser can leave it pending forever, so init() would never settle
- * and no caller could show an error (#9076). Past the bound init() rejects.
- */
-export const ADAPTER_REQUEST_TIMEOUT_MS = 10_000;
-
-async function requestAdapterOrTimeout(gpu: GPU): Promise<GPUAdapter | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('GPU adapter request timed out')), ADAPTER_REQUEST_TIMEOUT_MS);
-  });
-  try {
-    return await Promise.race([gpu.requestAdapter(), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export class WebGPUDevice {
@@ -85,7 +65,7 @@ export class WebGPUDevice {
       throw new Error('WebGPU not available');
     }
 
-    this.adapter = await requestAdapterOrTimeout(navigator.gpu);
+    this.adapter = await requestAdapterWithTimeout(navigator.gpu);
     if (!this.adapter) {
       throw new Error('Failed to get GPU adapter');
     }

@@ -375,3 +375,28 @@ Original validation `auto-7b80c76240734befa02b6cc41fcf29fd` / job
 correction and this batch. Preserve that outcome; it cannot certify these changes.
 The extension PR is #8967. Full semantic reconciliation and candidate UI acceptance
 remain open; this is still access round 1 of at most eight.
+
+## Round 1 recovery review corrections and browser harness
+
+Fresh Astra reviewed `aefa0ac31c..aec2349d0f` and found three P2 objections.
+The mounted file host now distinguishes its component lifetime from callbacks
+refreshed by metadata or locale. In-flight blank creation keeps its original
+owner check across callback changes; a genuinely replaced/unmounted host still
+cannot enter authoring. Added held real-source read regressions for locale
+refresh and replacement, with actual parsed IFC and wall-command assertions.
+Camera tests now use canonical ViewCube face order. The existing info-dialog
+hook owns the production event receiver, so mounted palette tests exercise it
+when opening, closing, alternating and reopening the actual tabs.
+
+The georeference correction publishes the actual editor controller's capability:
+projected placement works without World; rigid/angular/WKT/read-only contexts
+show their real prerequisite. Source review found the earlier eligibility
+mismatch addressed; runtime verification and tools-layer backport remain pending.
+
+Eight access browser cases and six named flow captures are now authored alongside
+the unchanged eleven accepted-UX cases. Discovery is not execution. Native
+chooser cases cover the browser input fallback with the Chromium-only capability
+absent; persistent File System Access handles require separate evidence. The
+installed-extension → widget → QuickJS → renderer browser witness remains an
+explicit gap. Full source-to-control reconciliation and all candidate access
+browser evidence remain pending; round 1 is not accepted.

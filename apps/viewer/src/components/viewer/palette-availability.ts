@@ -4,6 +4,7 @@
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
+import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
 import { getSplitWidth, splitFits } from './model/model-layout';
 import type { AddKind } from './tools/SectionAddMenu';
@@ -12,7 +13,6 @@ import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
-import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { useViewerStore, type ViewerState } from '@/store';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';

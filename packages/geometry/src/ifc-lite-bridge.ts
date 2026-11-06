@@ -461,8 +461,9 @@ export class IfcLiteBridge {
   }
 
   /**
-   * Export the render geometry in `content` as a binary glTF (GLB). `emissive`
-   * self-illuminates each material for renderers without ambient/IBL (#1427).
+   * Export render geometry as binary glTF (GLB). `emissive` self-illuminates each
+   * material (#1427); `nameByGlobalId` names one node per element by GlobalId (#9011,
+   * wasm `exportGlbNamedByGlobalId`).
    * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but
    * matching nothing, i.e. hide every mesh — don't collapse the two (#4328).
    */
@@ -472,11 +473,10 @@ export class IfcLiteBridge {
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array | undefined = undefined,
     hiddenTypesCsv = '',
-    lit = true,
-    emissive = false,
+    lit = true, emissive = false, nameByGlobalId = false,
   ): Uint8Array {
     return this.runExport('exportGlb', content, (api) =>
-      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive),
+      (nameByGlobalId ? api.exportGlbNamedByGlobalId : api.exportGlb).call(api, content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive),
     );
   }
 

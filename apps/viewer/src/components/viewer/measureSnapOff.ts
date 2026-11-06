@@ -25,15 +25,18 @@ export function measureSnapOff(ctx: MouseHandlerContext): void {
   const cursor = measureCursor(ctx);
   if (!cursor) return;
   const s = useViewerStore.getState();
+  const point = s.measureMode === 'point';
+  if (point ? !s.measurePointLive : !s.activeMeasurement || cursor.view === null) return;
+  // The animation loop's pass ends Point's Live and replaces the rubber band's noted state on any view or
+  // scene change (#8886, #8998), and the canvas box watch clears that state. Run it now, as the last frame
+  // saw Snap (on), so a change since that frame counts too, and the toggle itself reaches the pass only on
+  // the next frame.
+  syncMeasureScreenCoords({ ...ctx, snapEnabledRef: { current: true } });
   // The refs catch up with the store only on the next render: pick as Snap off does, with no lock to slide along.
   const unsnapped = { ...ctx, snapEnabledRef: { current: false }, edgeLockStateRef: { current: getDefaultEdgeLockState() } };
-  if (s.measureMode === 'point') {
-    if (s.measurePointLive) hoverMeasurePoint(unsnapped, cursor.x, cursor.y);
-  } else if (s.activeMeasurement && cursor.view !== null) {
-    // The animation loop's pass replaces that state on any view or scene change (#8886, #8998), and the
-    // canvas box watch clears it. Run it now, as the last frame saw Snap (on), so a change since that
-    // frame counts too, and the toggle itself reaches the pass only on the next frame.
-    syncMeasureScreenCoords({ ...ctx, snapEnabledRef: { current: true } });
-    if (cursor.view === ctx.lastCameraStateRef.current) moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
+  if (point) {
+    if (useViewerStore.getState().measurePointLive) hoverMeasurePoint(unsnapped, cursor.x, cursor.y);
+  } else if (cursor.view === ctx.lastCameraStateRef.current) {
+    moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
   }
 }

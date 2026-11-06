@@ -464,6 +464,21 @@ describe('turning Snap off re-picks the live preview unsnapped at the cursor (#8
     assert.equal(xy(s().measurePointLive), '4,0.5', 'a later frame ended or replaced the re-picked Live');
   });
 
+  it('Point mode, the view moved and no frame ran since: Snap off ends Live instead of re-picking under the new view', async () => {
+    act(() => s().setMeasureMode('point'));
+    // The pass bound to the store, as Viewport binds it: a moved view ends Live (#8828).
+    const { canvas, camera } = mount({ updateMeasurementScreenCoords: (project, moved) => s().updateMeasurementScreenCoords(project, moved) });
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    assert.equal(xy(s().measurePointLive), '4,0', 'setup: the Live reading sits on the snapped edge');
+    camera.setPosition(2, 1.6, 10); // keyboard navigation under a resting cursor; the measure pass has not run since
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(s().snapEnabled, false, 'setup: S turned Snap off');
+    assert.equal(s().measurePointLive === null, true, 'BUG: Snap off re-picked Live at the old pixel under a view the pass had not seen');
+    assert.equal(locksSeen.length, 0, 'Snap off picked under a moved view');
+  });
+
   it('Distance: the rubber-band end moves off the snapped spot to the cursor, and the start is kept', async () => {
     const { canvas } = mount();
     click(canvas, 200, 300);

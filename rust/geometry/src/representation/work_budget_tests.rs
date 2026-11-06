@@ -65,39 +65,62 @@ fn wide_source(width: usize) -> String {
 
 #[test]
 fn issue_7781_expanded_dag_occurrences_pay_again_at_exact_allowance() {
+    // #9102: the first #300 entry and the first reads of #200 and #500 are
+    // the file's own size. The 7 repeated occurrences pay 7 attempts and 56
+    // members, so 56 is the exact allowance.
     let model = wide_source(8);
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(100).unwrap();
     let mut work = Work::default();
-    walk(72).map(&root, &mut decoder, &mut work).unwrap();
+    walk(56).map(&root, &mut decoder, &mut work).unwrap();
     assert_eq!(work.leaves, vec![1; 64]);
     assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
     assert!(work.refusals.is_empty());
 
     let mut work = Work::default();
-    walk(71).map(&root, &mut decoder, &mut work).unwrap();
+    walk(55).map(&root, &mut decoder, &mut work).unwrap();
     assert_eq!(work.leaves, vec![1; 56]);
     assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
     assert_eq!(
         work.refusals,
-        [(300, "Budget { max_levels: 71 }".to_string(), 0, None)]
+        [(300, "Budget { max_levels: 55 }".to_string(), 0, None)]
     );
 }
 
+/// #9102: one wide, acyclic list is bounded by the file that spells it out.
+/// Charging its first read refused 65,536+ surface items WASM 10.4 meshed.
 #[test]
-fn issue_7781_root_list_is_precharged_before_its_first_member_is_decoded() {
-    let model = wide_source(8);
+fn issue_9102_first_read_of_a_wide_list_is_free_but_a_repeated_root_list_pays() {
+    let leaves = ["#1"; 8].join(",");
+    let model = format!(
+        "#100=IFCREPRESENTATIONMAP($,#200);\
+        #200=IFCSHAPEREPRESENTATION($,'Body','Brep',({leaves}));\
+        #1=IFCCARTESIANPOINT((0.,0.,0.));"
+    );
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(100).unwrap();
     let mut work = Work::default();
-    walk(7).map(&root, &mut decoder, &mut work).unwrap();
-    assert!(decoder.get_cached(300).is_none());
-    assert!(work.events.is_empty());
-    assert!(work.leaves.is_empty());
+    walk(0).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, vec![1; 8]);
+    assert!(work.refusals.is_empty());
+
+    let model = format!(
+        "#10=IFCWALL('g',$,$,$,$,$,#11,$);\
+        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#200,#200));{model}"
+    );
+    let mut decoder = EntityDecoder::new(&model);
+    let wall = decoder.decode_by_id(10).unwrap();
+    let mut work = Work::default();
+    walk(7).product(&wall, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, vec![1; 8]);
     assert_eq!(
         work.refusals,
         [(200, "Budget { max_levels: 7 }".to_string(), 0, Some(200))]
     );
+    let mut work = Work::default();
+    walk(8).product(&wall, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, vec![1; 16]);
+    assert!(work.refusals.is_empty());
 }
 
 #[test]
@@ -112,12 +135,10 @@ fn issue_7781_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(600).unwrap();
     let mut work = Work::default();
-    walk(9).mapped_item(&root, &mut decoder, &mut work);
-    assert!(
-        decoder.get_cached(1).is_none(),
-        "unadmitted source leaves were decoded"
-    );
-    assert!(work.leaves.is_empty());
+    // Every first read is free (#9102); the second #300 occurrence repeats
+    // #500's 8 members, which a 7-member allowance refuses before resolving.
+    walk(7).mapped_item(&root, &mut decoder, &mut work);
+    assert_eq!(work.leaves, vec![1; 8]);
     // The refused Items belong to an entered level, which leaves before its ancestors.
     assert_eq!(
         work.events,
@@ -126,26 +147,31 @@ fn issue_7781_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
             (true, 900),
             (true, 300),
             (false, 300),
+            (true, 300),
+            (false, 300),
             (false, 900),
             (false, 600)
         ]
     );
     assert_eq!(
         work.refusals,
-        [(300, "Budget { max_levels: 9 }".to_string(), 2, None)]
+        [(300, "Budget { max_levels: 7 }".to_string(), 2, None)]
     );
 }
 
 #[test]
 fn issue_7781_level_meter_is_independent_of_the_item_member_meter() {
+    // Three repeated #40 entries pay 3 attempts and three repeated #60 reads
+    // pay 3 members: each meter fits 3, though one shared meter would need 6.
     let model = "#10=IFCMAPPEDITEM(#20,$);#20=IFCREPRESENTATIONMAP($,#30);\
         #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#40,#40,#40,#40));\
         #40=IFCMAPPEDITEM(#50,$);#50=IFCREPRESENTATIONMAP($,#60);\
-        #60=IFCSHAPEREPRESENTATION($,'Body','Brep',());";
+        #60=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));\
+        #1=IFCCARTESIANPOINT((0.,0.,0.));";
     let mut decoder = EntityDecoder::new(model);
     let root = decoder.decode_by_id(10).unwrap();
     let mut work = Work::default();
-    walk(4).mapped_item(&root, &mut decoder, &mut work);
+    walk(2).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!(
         work.events,
         [
@@ -161,38 +187,45 @@ fn issue_7781_level_meter_is_independent_of_the_item_member_meter() {
     );
     assert_eq!(
         work.refusals,
-        [(40, "Budget { max_levels: 4 }".to_string(), 1, None)]
+        [(40, "Budget { max_levels: 2 }".to_string(), 1, None)]
     );
     let mut work = Work::default();
-    walk(5).mapped_item(&root, &mut decoder, &mut work);
+    walk(3).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!(work.events.len(), 10);
+    assert_eq!(work.leaves, [1; 4]);
     assert!(work.refusals.is_empty());
 }
 
 #[test]
 fn issue_7781_ignored_members_are_charged_before_reference_decoding() {
-    let model = "#10=IFCREPRESENTATIONMAP($,#20);\
+    // #20 is read twice through #30; the repeat pays all three slots.
+    let model = "#5=IFCREPRESENTATIONMAP($,#6);\
+        #6=IFCSHAPEREPRESENTATION($,'Body','Brep',(#30,#30));\
+        #30=IFCMAPPEDITEM(#10,$);\
+        #10=IFCREPRESENTATIONMAP($,#20);\
         #20=IFCSHAPEREPRESENTATION($,'Body','Brep',($,7,#1));\
         #1=IFCCARTESIANPOINT((0.,0.,0.));";
     let mut decoder = EntityDecoder::new(model);
-    let root = decoder.decode_by_id(10).unwrap();
+    let root = decoder.decode_by_id(5).unwrap();
     let mut work = Work::default();
     walk(2).map(&root, &mut decoder, &mut work).unwrap();
-    assert!(decoder.get_cached(1).is_none());
+    assert_eq!(work.leaves, [1]);
     assert_eq!(
         work.refusals,
-        [(20, "Budget { max_levels: 2 }".to_string(), 0, Some(20))]
+        [(30, "Budget { max_levels: 2 }".to_string(), 0, None)]
     );
     let mut work = Work::default();
     walk(3).map(&root, &mut decoder, &mut work).unwrap();
-    assert_eq!(work.leaves, [1]);
+    assert_eq!(work.leaves, [1, 1]);
     assert!(work.refusals.is_empty());
 }
 
 #[test]
 fn issue_7781_product_representations_share_one_budget_and_reset_between_walks() {
+    // First reads are free (#9102): the repeated #20 pays the one member the
+    // allowance holds, so the repeated #21 is refused before resolving.
     let model = "#10=IFCWALL('g',$,$,$,$,$,#11,$);\
-        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#21,#22));\
+        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#21,#20,#21,#22));\
         #20=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));\
         #21=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2));\
         #22=IFCSHAPEREPRESENTATION($,'Body','Brep',(#3));\
@@ -204,8 +237,7 @@ fn issue_7781_product_representations_share_one_budget_and_reset_between_walks()
     for _ in 0..2 {
         let mut work = Work::default();
         walk(1).product(&root, &mut decoder, &mut work).unwrap();
-        assert_eq!(work.leaves, [1]);
-        assert!(decoder.get_cached(2).is_none());
+        assert_eq!(work.leaves, [1, 2, 1]);
         assert!(decoder.get_cached(3).is_none());
         assert_eq!(
             work.refusals,

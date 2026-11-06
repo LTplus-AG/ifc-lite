@@ -690,10 +690,13 @@ pub fn meshed_representations(element, representations) -> impl Iterator; // = S
 
 `NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
 walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
-Two independent counters share that limit: mapped-level attempts (after depth
-and cycle checks, before resolving the source) and total `Items` members.
-Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
-is charged before allocating or decoding its members, including ignored
+Two independent counters share that limit: repeated mapped-level attempts
+(after depth and cycle checks, before resolving the source) and the members of
+repeated `Items` lists. The first entry into a distinct `IfcMappedItem` and the
+first read of a distinct `Items` list are bounded by the file itself and free,
+so one wide, acyclic list of any length is never refused (#9102). Every further
+expanded occurrence pays, including repeated valid DAG nodes. Each repeated list
+is charged in full before allocating or decoding its members, including ignored
 non-reference members. Product representations share the counters; each public
 walk call starts fresh. This bounds expansion work, not source parsing or
 visitor-owned computation.

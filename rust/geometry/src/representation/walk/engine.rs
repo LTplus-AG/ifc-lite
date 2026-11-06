@@ -5,6 +5,7 @@
 //! Iterative DFS. A suspended list holds only its remaining siblings; `Leave`
 //! pairs entered levels, including on terminal refusal or visitor stop.
 use super::*;
+use crate::representation::first_seen::FirstSeen;
 use ifc_lite_core::{
     slot::{IfcMappedItem, IfcRepresentation},
     IfcType,
@@ -178,11 +179,13 @@ impl RepresentationWalk {
             return refuse(run, WalkRefusal::Cyclic);
         }
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
-            if run.levels >= max_levels {
-                refuse(run, WalkRefusal::Budget { max_levels });
-                return Flow::Stop;
+            if !run.seen.first_entry(item.id) {
+                if run.levels >= max_levels {
+                    refuse(run, WalkRefusal::Budget { max_levels });
+                    return Flow::Stop;
+                }
+                run.levels += 1;
             }
-            run.levels += 1;
         }
         let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
             Ok(resolved) => resolved,
@@ -212,7 +215,7 @@ impl RepresentationWalk {
         // their Items. Report an item-list failure inside the entered scope.
         let last = run.path.len() - 1;
         let rep = &run.path[last].mapped_rep;
-        match self.level_items(&mut run.items, rep, decoder) {
+        match self.level_items(&mut run.items, &mut run.seen, rep, decoder) {
             Ok(items) => tasks.push(Task::List {
                 rep: Some(rep.clone()),
                 items: items.into_iter(),
@@ -257,12 +260,23 @@ impl RepresentationWalk {
         Ok((map, mapped_rep))
     }
 
-    /// Pay for every member, including ignored non-reference values, BEFORE
-    /// resolve_ref_list allocates or decodes. Repeated DAG occurrences pay again.
-    /// This complements the mapped-level meter: N entries into the same N-leaf
-    /// source can no longer materialize N² items under an N-level allowance.
-    pub(super) fn admit_items(&self, used: &mut u32, count: usize) -> Result<(), WalkRefusal> {
+    /// Pay for every member of a REPEATED list, including ignored non-reference
+    /// values, BEFORE resolve_ref_list allocates or decodes. Repeated DAG
+    /// occurrences pay again. This complements the mapped-level meter: N entries
+    /// into the same N-leaf source can no longer materialize N² items under an
+    /// N-level allowance. A list's first read is the file's own size and free
+    /// (#9102), so one wide acyclic list is never refused.
+    pub(super) fn admit_items(
+        &self,
+        used: &mut u32,
+        seen: &mut FirstSeen,
+        rep: &DecodedEntity,
+        count: usize,
+    ) -> Result<(), WalkRefusal> {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
+            if seen.first_list(rep.id) {
+                return Ok(());
+            }
             if count > (max_levels - *used) as usize {
                 return Err(WalkRefusal::Budget { max_levels });
             }
@@ -284,6 +298,8 @@ impl RepresentationWalk {
             .ok_or(ShapeError::MissingItems)?;
         if let Err(why) = self.admit_items(
             &mut run.items,
+            &mut run.seen,
+            rep,
             list.as_list().map_or(0, |items| items.len()),
         ) {
             let at = WalkCtx {
@@ -300,13 +316,14 @@ impl RepresentationWalk {
     fn level_items(
         &self,
         used: &mut u32,
+        seen: &mut FirstSeen,
         rep: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
         let list = rep
             .get(IfcRepresentation::ITEMS.index())
             .ok_or(WalkRefusal::MissingItems)?;
-        self.admit_items(used, list.as_list().map_or(0, |items| items.len()))?;
+        self.admit_items(used, seen, rep, list.as_list().map_or(0, |items| items.len()))?;
         decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }
 }

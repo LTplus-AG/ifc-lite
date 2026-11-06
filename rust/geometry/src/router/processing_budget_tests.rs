@@ -10,10 +10,14 @@ use super::*;
 use crate::profile_extractor::extract_profiles_with_budget;
 use crate::profile_walk_model as model;
 
+/// #9102: only repeated work pays, so the second root's cost is a repeated
+/// source: `#2000` holds `#3000` twice, and the second entry into `#3000`
+/// pays one attempt and re-reads one member.
 fn mapped_siblings() -> String {
     model::wall("#160", &format!(
-        "{}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#1000,#2000));\n{}{}\n#340=IFCEXTRUDEDAREASOLID(#230,#141,#142,3.);",
-        model::TARGET, model::mapped(1000, "#140"), model::mapped(2000, "#240,#340")
+        "{}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#1000,#2000));\n{}{}{}",
+        model::TARGET, model::mapped(1000, "#140"), model::mapped(2000, "#3000,#3000"),
+        model::mapped(3000, "#240")
     ))
 }
 
@@ -131,28 +135,26 @@ fn check_report(router: &GeometryRouter, refusal_type: Option<&str>) {
 
 #[test]
 fn issue_7887_logical_product_budget_keeps_shallow_sibling_at_threshold() {
-    // Two root members + one shallow child + two children of the second root.
-    // The second root is atomic at four, including its otherwise valid first
-    // leaf. At five, every distinct solid survives.
+    // The second root is atomic: at zero its repeated `#3000` is refused, and
+    // with it the otherwise valid first `#3000`. The shallow first root
+    // survives. At one, every occurrence survives.
     let content = mapped_siblings();
-    // Small equivalent of the review counterexample: the root list alone
-    // spends the allowance, so the first mapped child is refused on both paths.
-    check(&content, 2, &[], Some("IfcMappedItem"), false);
     for warm in [false, true] {
-        check(&content, 5, &[1.0, 2.5, 3.0], None, warm);
-        check(&content, 4, &[2.5], Some("IfcMappedItem"), warm);
+        check(&content, 1, &[1.0, 1.0, 2.5], None, warm);
+        check(&content, 0, &[2.5], Some("IfcMappedItem"), warm);
     }
 }
 
 #[test]
 fn issue_7887_root_items_cannot_bypass_the_product_allowance() {
-    check(&model::chain(1), 2, &[1.0], None, false);
+    check(&model::chain(1), 0, &[1.0], None, false);
+    // A first root read is the file's (#9102); the repeated `#160` pays 3.
     let content = model::wall(
-        "#160",
+        "#160,#160",
         "#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#240,#240));",
     );
-    check(&content, 3, &[1.0, 1.0, 2.5], None, false);
-    check(&content, 2, &[], Some("IfcShapeRepresentation"), false);
+    check(&content, 3, &[1.0, 1.0, 1.0, 1.0, 2.5, 2.5], None, false);
+    check(&content, 2, &[1.0, 1.0, 2.5], Some("IfcShapeRepresentation"), false);
 }
 
 #[test]
@@ -165,23 +167,27 @@ fn issue_7887_repeated_valid_dag_sources_pay_per_occurrence() {
             model::mapped(1000, "#240")
         ),
     );
-    check(&content, 4, &[1.0, 1.0], None, false);
-    check(&content, 3, &[1.0], Some("IfcMappedItem"), false);
+    // The first occurrence is free (#9102); the second pays an attempt and
+    // its one re-read member.
+    check(&content, 1, &[1.0, 1.0], None, false);
+    check(&content, 0, &[1.0], Some("IfcMappedItem"), false);
 }
 
 #[test]
 fn issue_7887_product_allowance_spans_selected_representations() {
+    // `#160` pays one re-read member and the repeated `#170` another: each
+    // fits one alone, together they need two.
     let content = mapped_siblings()
-        .replace("($,$,(#160))", "($,$,(#160,#170))")
+        .replace("($,$,(#160))", "($,$,(#160,#170,#170))")
         .replace(
             "ENDSEC;\nEND-ISO",
             "#170=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140));\nENDSEC;\nEND-ISO",
         );
-    check(&content, 6, &[1.0, 2.5, 2.5, 3.0], None, false);
+    check(&content, 2, &[1.0, 1.0, 2.5, 2.5, 2.5], None, false);
     check(
         &content,
-        5,
-        &[1.0, 2.5, 3.0],
+        1,
+        &[1.0, 1.0, 2.5, 2.5],
         Some("IfcShapeRepresentation"),
         false,
     );

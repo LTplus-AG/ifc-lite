@@ -321,7 +321,7 @@ pub(super) fn map(
         .get(slot::IfcRepresentation::ITEMS.index())
         .and_then(AttributeValue::as_list)
         .map_or(0, |items| items.len());
-    budget.materialize_items(count)?;
+    budget.materialize_items(representation.id, count)?;
     let items = items(&representation, decoder).map_err(|error| error.into_common(selection))?;
     Ok((representation, items))
 }

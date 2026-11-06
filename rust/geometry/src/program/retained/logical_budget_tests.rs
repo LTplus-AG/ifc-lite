@@ -48,47 +48,75 @@ fn occurrence<'a>(
     }
 }
 
+/// #9102: only a repeated read pays, so `program` acts as if this walk had
+/// already read representation `rep`'s Items.
+fn repeating(mut program: RetainedProgram<'_>, rep: u32) -> RetainedProgram<'_> {
+    let Control::Mapping(control) = &mut geometry(&mut program).control else {
+        panic!("mapping program")
+    };
+    control.mark_seen(rep, false);
+    program
+}
+
 #[test]
 fn issue_7781_retained_product_admission_precedes_member_decode_and_dangling_reference() {
-    for members in ["#13,#13", "#999999,#13", "17,#13"] {
+    // #9102: the root is listed twice. Its first read is free; the repeat pays
+    // both members, which a one-member allowance refuses for the product.
+    let bytes = SOURCE
+        .replace("'SweptSolid',(#13)", "'SweptSolid',(#13,#13)")
+        .replace("($,$,(#12))", "($,$,(#12,#12))");
+    for (limit, refused) in [(1, true), (2, false)] {
+        let source = SourceBundle::new(bytes.as_bytes().to_vec());
+        let mut decoder = source.decoder();
+        let router = GeometryRouter::with_units(&bytes, &mut decoder);
+        let entity = decoder.decode_by_id(10).unwrap();
+        let mut program = product(&entity, limit);
+        let operations = drive(&mut program, &router, &mut decoder);
+        let result = program.finish();
+        if refused {
+            assert!(operations.is_empty());
+            assert!(result.unwrap_err().to_string().contains("work budget"));
+        } else {
+            assert_eq!(result.unwrap().values.len(), 4);
+        }
+        assert!(router.take_unsupported_items().is_empty());
+    }
+    // A malformed member of a first read is the file's fault, not the budget's.
+    for members in ["#999999,#13", "17,#13"] {
         let bytes = SOURCE.replace("'SweptSolid',(#13)", &format!("'SweptSolid',({members})"));
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
         let entity = decoder.decode_by_id(10).unwrap();
-        let mut program = product(&entity, 1);
+        let mut program = product(&entity, 0);
         assert!(drive(&mut program, &router, &mut decoder).is_empty());
-        assert!(program
-            .finish()
-            .unwrap_err()
-            .to_string()
-            .contains("work budget"));
-        assert!(decoder.get_cached(13).is_none());
-        assert!(router.take_unsupported_items().is_empty());
+        let error = program.finish().unwrap_err().to_string();
+        assert!(!error.contains("work budget"), "{error}");
     }
 }
 
 #[test]
 fn issue_7781_retained_skipped_representations_pay_before_strict_validation() {
-    for members in ["#23,#23", "#999999,#23"] {
-        let bytes = SOURCE.replace("($,$,(#12))", "($,$,(#12,#22))").replace(
-            "#22=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#23))",
-            &format!("#22=IFCSHAPEREPRESENTATION(#2,'Axis','Curve3D',({members}))"),
-        );
+    // #9102: the unselected Axis list is read twice. Even skipped, its repeat
+    // pays both members before strict validation, which one cannot cover.
+    let bytes = SOURCE.replace("($,$,(#12))", "($,$,(#12,#22,#22))").replace(
+        "#22=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#23))",
+        "#22=IFCSHAPEREPRESENTATION(#2,'Axis','Curve3D',(#23,#23))",
+    );
+    for (limit, refused) in [(1, true), (2, false)] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
         let entity = decoder.decode_by_id(10).unwrap();
-        // Selected root costs one; even an unselected two-member list cannot
-        // read its first target under the one remaining member allowance.
-        let mut program = product(&entity, 2);
-        assert!(drive(&mut program, &router, &mut decoder).is_empty());
-        assert!(program
-            .finish()
-            .unwrap_err()
-            .to_string()
-            .contains("work budget"));
-        assert!(decoder.get_cached(23).is_none());
+        let mut program = product(&entity, limit);
+        let operations = drive(&mut program, &router, &mut decoder);
+        let result = program.finish();
+        if refused {
+            assert!(operations.is_empty());
+            assert!(result.unwrap_err().to_string().contains("work budget"));
+        } else {
+            assert_eq!(result.unwrap().values.len(), 1, "only the Body is selected");
+        }
     }
 }
 
@@ -99,7 +127,7 @@ fn issue_7781_retained_type_map_admission_precedes_member_decode_and_dangling_re
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
-        let mut program = type_map(decoder.decode_by_id(61).unwrap(), 1);
+        let mut program = repeating(type_map(decoder.decode_by_id(61).unwrap(), 1), 12);
         assert!(drive(&mut program, &router, &mut decoder).is_empty());
         assert!(program
             .finish_type_map(60, 1, [1.; 4])
@@ -144,7 +172,7 @@ fn issue_7781_retained_roots_reuse_exactly_admitted_members_and_preserve_placeme
 #[test]
 fn issue_7781_retained_warm_mapping_pays_items_once_per_attempt() {
     let bytes = mapping_tests::mapped().replace("'SweptSolid',(#13)", "'SweptSolid',(#13,#13)");
-    for limit in [3, 4] {
+    for limit in [0, 1] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
@@ -161,9 +189,10 @@ fn issue_7781_retained_warm_mapping_pays_items_once_per_attempt() {
             .cached(&decoder, &router, 81)
             .unwrap()
             .is_some());
-        // Root costs two, cold source costs one, warm occurrence costs one.
+        // Root, cold occurrence and its source are first reads (#9102); the
+        // warm second occurrence still pays its attempt and its one member.
         let result = program.finish_type_map(60, 1, [1.; 4]);
-        if limit == 3 {
+        if limit == 0 {
             assert!(result.unwrap_err().to_string().contains("work budget"));
         } else {
             let plan = result.unwrap();
@@ -207,7 +236,8 @@ fn issue_7781_retained_cached_mapping_guards_members_even_with_a_populated_sourc
         selection.validate_owner(&decoder, &router).unwrap();
         selection.publish(81, &values).unwrap();
         assert!(selection.cached(&decoder, &router, 81).unwrap().is_some());
-        let mut program = occurrence(&item, selection, 1);
+        // #9102: a repeated read of #83, as a second occurrence would be.
+        let mut program = repeating(occurrence(&item, selection, 1), 83);
         assert!(drive(&mut program, &router, &mut decoder).is_empty());
         let error = finish(program).err().expect("complete refusal");
         assert!(error.to_string().contains("work budget"));
@@ -256,31 +286,28 @@ fn issue_7781_retained_source_reply_debit_survives_foreign_rejection_without_dou
 
 #[test]
 fn issue_7781_retained_product_shares_root_and_nested_items_allowance() {
-    for members in ["#113", "#999999"] {
-        let bytes = mapping_tests::mapped()
-            .replace("'SweptSolid',(#113)", &format!("'SweptSolid',({members})"));
+    // #9102: only repeats pay. The second #12 repeats one root member and its
+    // #13 repeats #83's one member: two from one shared allowance.
+    let bytes = mapping_tests::mapped().replace("($,$,(#12))", "($,$,(#12,#12))");
+    for (limit, refused) in [(1, true), (2, false)] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
         let entity = decoder.decode_by_id(10).unwrap();
-        let mut program = product(&entity, 1);
-        assert!(drive(&mut program, &router, &mut decoder).is_empty());
-        assert!(program
-            .finish()
-            .unwrap_err()
-            .to_string()
-            .contains("work budget"));
-        assert!(decoder.get_cached(113).is_none());
+        let mut program = product(&entity, limit);
+        let operations = drive(&mut program, &router, &mut decoder);
+        let result = program.finish();
+        if refused {
+            assert!(operations.is_empty());
+            assert!(result.unwrap_err().to_string().contains("work budget"));
+            continue;
+        }
+        assert_eq!(operations.len(), 1);
+        let plan = result.unwrap();
+        assert_eq!(plan.values.len(), 2);
+        for value in plan.values {
+            let world = value.world_from_source().unwrap();
+            assert_eq!([world[12], world[13], world[14]], [12., 24., 36.]);
+        }
     }
-    let bytes = mapping_tests::mapped();
-    let source = SourceBundle::new(bytes.as_bytes().to_vec());
-    let mut decoder = source.decoder();
-    let router = GeometryRouter::with_units(&bytes, &mut decoder);
-    let entity = decoder.decode_by_id(10).unwrap();
-    let mut program = product(&entity, 2);
-    assert_eq!(drive(&mut program, &router, &mut decoder).len(), 1);
-    let plan = program.finish().unwrap();
-    assert_eq!(plan.values.len(), 1);
-    let world = plan.values[0].world_from_source().unwrap();
-    assert_eq!([world[12], world[13], world[14]], [12., 24., 36.]);
 }

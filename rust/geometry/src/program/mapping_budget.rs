@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Per-controller logical work, independent of allocation/cancellation policy.
 //! Cache hits and placeholders pay attempts, but skip unmaterialized children.
+//! Only repeated attempts and repeated Items lists pay: a first one is bounded
+//! by the file (#9102, `representation::first_seen`).
+use crate::representation::first_seen::FirstSeen;
 use crate::Error;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LogicalRefusal {
@@ -37,11 +41,19 @@ impl From<LogicalRefusal> for SourceFailure {
     }
 }
 
-#[derive(Clone, Copy)]
+/// The counters travel by value through speculative replies, and so do the
+/// first reads (#9102): an execution records them in `pending`, and only the
+/// accepted reply's budget folds them into `seen`, at the next [`commit`]. A
+/// discarded reply therefore never turns a later first read into a repeat.
+///
+/// [`commit`]: LogicalBudget::commit
+#[derive(Clone)]
 pub(crate) struct LogicalBudget {
     limit: u32,
     maps: u32,
     items: u32,
+    seen: Arc<FirstSeen>,
+    pending: smallvec::SmallVec<[u64; 2]>,
 }
 impl Default for LogicalBudget {
     fn default() -> Self {
@@ -49,6 +61,8 @@ impl Default for LogicalBudget {
             limit: crate::representation::MAX_WALK_LEVELS,
             maps: 0,
             items: 0,
+            seen: Arc::default(),
+            pending: smallvec::SmallVec::new(),
         }
     }
 }
@@ -62,13 +76,40 @@ impl LogicalBudget {
         *used = next;
         Ok(())
     }
-    pub(super) fn mapped_attempt(&mut self) -> std::result::Result<(), LogicalRefusal> {
+    fn first(&mut self, key: u64) -> bool {
+        if self.seen.contains(key) || self.pending.contains(&key) {
+            return false;
+        }
+        self.pending.push(key);
+        true
+    }
+    /// Fold this (accepted) budget's first reads into `seen`. Every speculative
+    /// copy is taken after a commit, so `pending` stays a few keys long.
+    pub(crate) fn commit(&mut self) {
+        if !self.pending.is_empty() {
+            let seen = Arc::make_mut(&mut self.seen);
+            for key in self.pending.drain(..) {
+                seen.insert(key);
+            }
+        }
+    }
+    /// Enter `IfcMappedItem` `item`: a repeated entry pays one attempt.
+    pub(super) fn mapped_attempt(&mut self, item: u32) -> std::result::Result<(), LogicalRefusal> {
+        if self.first(FirstSeen::entry(item)) {
+            return Ok(());
+        }
         Self::debit(&mut self.maps, 1, self.limit)
     }
+    /// Materialize the `count` Items of representation `rep`: a repeated list
+    /// pays every member before anything is resolved.
     pub(crate) fn materialize_items(
         &mut self,
+        rep: u32,
         count: usize,
     ) -> std::result::Result<(), LogicalRefusal> {
+        if self.first(FirstSeen::list(rep)) {
+            return Ok(());
+        }
         Self::debit(&mut self.items, count, self.limit)
     }
     #[cfg(test)]
@@ -77,5 +118,10 @@ impl LogicalBudget {
             limit,
             ..Self::default()
         }
+    }
+    /// Test seam: make the next read of `key` a repeat (#9102).
+    #[cfg(test)]
+    pub(super) fn mark_seen(&mut self, key: u64) {
+        Arc::make_mut(&mut self.seen).insert(key);
     }
 }

@@ -33,20 +33,20 @@ export function WorldViewSettings({ onSetOrthogonalHeight }: {
     ? formatLocaleNumber(locale, cesiumTerrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     : null;
   return (
-    <div className="px-3 py-1.5 border-t border-zinc-100 dark:border-zinc-900 space-y-1">
+    <div className="px-3 py-1.5 border-t border-border space-y-1">
       <div className="flex items-center gap-2">
         <Mountain className="h-3 w-3 text-teal-500 shrink-0" />
-        <span className="text-xs text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
+        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
         {terrainHeight !== null ? (
           <span className="text-xs font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
             {t('properties.georef.heightMeters', { value: terrainHeight })}
           </span>
         ) : (
-          <span className="text-xs font-mono text-zinc-400">{t('properties.georef.queryingEllipsis')}</span>
+          <span className="text-xs font-mono text-muted-foreground">{t('properties.georef.queryingEllipsis')}</span>
         )}
       </div>
       {cesiumTerrainSource && (
-        <div className="ml-5 text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="ml-5 text-xs text-muted-foreground">
           {t('properties.georef.sampledVia', { source: cesiumTerrainSource })}
         </div>
       )}
@@ -70,8 +70,8 @@ export function WorldViewSettings({ onSetOrthogonalHeight }: {
         onCheckedChange={setHeightsAreEllipsoidal}
         containerClassName="ml-5"
         className="mt-0.5 h-3 w-3"
-        label={<span className="text-xs text-zinc-600 dark:text-zinc-400">{t('properties.georef.heightsEllipsoidalLabel')}</span>}
-        description={<span className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.heightsEllipsoidalHelp')}</span>}
+        label={<span className="text-xs text-muted-foreground">{t('properties.georef.heightsEllipsoidalLabel')}</span>}
+        description={<span className="text-xs text-muted-foreground">{t('properties.georef.heightsEllipsoidalHelp')}</span>}
       />
       <Suspense fallback={null}><GlobePlacementControl /></Suspense>
     </div>

@@ -83,7 +83,7 @@ export const measureRu = {
   "measure.hint.pointStart": "Щёлкните по точке, чтобы узнать её координаты",
   "measure.hint.pointActive": "Щёлкните по другой точке · Esc для сброса",
   "measure.readout.live": "Текущее",
-  "measure.readout.last": "Последний",
+  "measure.readout.last": "Последнее",
   "measure.readout.latLon": "Широта {lat} / долгота {lon}",
   "measure.point.emptyPrompt": "Измерьте точку, чтобы прочитать её координаты",
   "measure.point.setReferenceTitle": "Установить эту точку как начало относительных координат",

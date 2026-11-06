@@ -122,9 +122,8 @@ export interface MeasurementSlice extends MeasurePointSlice {
   cancelMeasurement: () => void;
   deleteMeasurement: (id: string) => void;
   clearMeasurements: () => void;
-  updateMeasurementScreenCoords: (
-    projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null
-  ) => void;
+  /** Reproject stored points; `viewMoved` (default true): the camera moved, which ends Point mode's Live (#8828). */
+  updateMeasurementScreenCoords: (projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
 
   // Snap actions
   setSnapTarget: (target: SnapTarget | null) => void;
@@ -386,7 +385,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     ...NO_MEASURE_POINT,
   })),
 
-  updateMeasurementScreenCoords: (projectToScreen) => {
+  updateMeasurementScreenCoords: (projectToScreen, viewMoved = true) => {
     const state = get();
     let hasChanges = false;
 
@@ -446,7 +445,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // Reproject a single point, returning it unchanged if the projector
     // can't place it (e.g. behind the camera) — same fallback the
     // measurements/activeMeasurement paths above use.
-    const reprojectPoint = (point: MeasurePoint): MeasurePoint => {
+    const reprojectPoint = <P extends MeasurePoint>(point: P): P => {
       const screen = projectToScreen(point);
       const newX = screen?.x ?? point.screenX;
       const newY = screen?.y ?? point.screenY;
@@ -506,10 +505,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     }));
 
     const measurePointLast = state.measurePointLast && reprojectPoint(state.measurePointLast); // its marker (#8770)
-    // Early exit if nothing changed
-    if (!hasChanges) {
-      return;
-    }
+    const measurePointLive = viewMoved ? null : state.measurePointLive; // a moved camera puts another point under the cursor (#8828)
+    const liveEnded = measurePointLive !== state.measurePointLive;
+    if (!hasChanges && !liveEnded) return; // nothing changed
 
     // Typed as an EXHAUSTIVE map over the shared field registry, which is the
     // same registry `hasPendingMeasurementState` (utils/viewportUtils.ts)
@@ -526,9 +524,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       angleMeasurements: updatedAngleMeasurements,
       activeRadius: updatedActiveRadius,
       radiusMeasurements: updatedRadiusMeasurements,
-      measurePointLast,
+      measurePointLast, measurePointLive,
     };
-    set(reprojected);
+    set(liveEnded ? { ...reprojected, snapTarget: null, snapVisualization: null } : reprojected); // the snap glyph goes with an ended Live
   },
 
   // Snap actions

@@ -159,7 +159,7 @@ export function assertPinCoverage(pins, arms, fixtures) {
 }
 
 /**
- * Exclusive only when the admission environment (`IFC_WORKER_KIND=benchmark`, set by ifc-fleet for
+ * Exclusive only when the admission environment (`IFC_WORKER_KIND=benchmark`, set by the benchmark launcher for
  * `--kind benchmark` jobs) or the submitter (`--exclusive-receipt`) says so; never inferred from the
  * host or the load, and never `verified` here. A flag that contradicts an ordinary job is refused,
  * so an ordinary-admission smoke cannot be mislabelled.

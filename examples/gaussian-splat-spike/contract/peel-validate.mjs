@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // Manual GPU correctness run (#8564), serialized through the GPU wrapper:
-//   ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/peel-validate.mjs [--backend=swiftshader|hardware]
+//   node examples/gaussian-splat-spike/contract/peel-validate.mjs [--backend=swiftshader|hardware]
 // Correctness only. PEEL_RUNS (comma ids) / PEEL_SIZES narrow a debug run; PEEL_ALL=1 adds the
 // K-layer negative controls of the original witness. The option-B (nearest-glass split) runs
 // use the installed, production-patched upstream renderer and are judged against the
@@ -26,7 +26,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const output = resolve(process.env.SPLAT_SPIKE_EVIDENCE ?? '/tmp/ifc-splat-8564-peel');
 const sizes = (process.env.PEEL_SIZES ?? '24,32,48').split(',').map(Number);
 const backend = process.argv.find(a => a.startsWith('--backend='))?.slice(10) ?? 'swiftshader';
-if (backend === 'hardware' && !process.env.IFC_GPU_CDP_URL) throw new Error('--backend=hardware needs IFC_GPU_CDP_URL; run under ~/build-workers/ifc-gpu-check');
+if (backend === 'hardware' && !process.env.IFC_GPU_CDP_URL) throw new Error('--backend=hardware needs IFC_GPU_CDP_URL');
 const PANES = 'single,all';
 /** Per-channel bound for option B on hardware blending noise; 0 means exact. Recorded with every verdict. */
 const NEAREST_TOLERANCE = Number(process.env.PEEL_NEAREST_TOLERANCE ?? 0);

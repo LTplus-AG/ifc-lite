@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** #8090 disposable Experimental MVP viewer witness. Run under ifc-fleet.
+/** #8090 disposable Experimental MVP viewer witness.
  * Uses the repository's Playwright witness workflow so browser and database
  * run on the same admitted host. Owns only uniquely named containers/services.
  * Prerequisites: built viewer dependencies + WASM runtime, Chromium, and
@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { chromium } from '@playwright/test';
 const execFile = promisify(callback);
-const directory = resolve(process.argv[2] ?? 'docs/architecture/evidence/influxdb-8090/viewer');
+const directory = resolve(process.argv[2] ?? 'test-results/influxdb-viewer');
 const name = `ifclite-influx-viewer-${randomBytes(6).toString('hex')}`;
 const image = 'influxdb:2.7.12';
 const modelPath = 'apps/viewer/public/samples/building-architecture.ifc';

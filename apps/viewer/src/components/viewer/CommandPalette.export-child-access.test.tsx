@@ -46,7 +46,19 @@ beforeEach(() => {
     saves.push({ filename: this.download, outcomes: useActivityJournal.getState().jobs.map(job => job.outcome) });
   };
 });
+// Each file runs in an isolated node:test process. Never restore publication
+// globals while a native operation from this fixture can still use them.
+async function drainExports() {
+  try {
+    await waitFor(() => useActivityJournal.getState().jobs.every(job => job.outcome !== 'running'),
+      'owned native exports settle before fixture teardown', 30_000);
+  } catch (error) {
+    console.error('Retiring isolated CSV test process with an unsettled owned export:', error);
+    process.exit(1);
+  }
+}
 afterEach(async () => {
+  await drainExports();
   for (const button of document.querySelectorAll('[data-toast-seq] button')) click(button);
   cleanup();
   for (const host of hosts.splice(0)) await host.dispose();
@@ -97,7 +109,7 @@ for (const table of ['entities', 'properties', 'quantities', 'spatial'] as const
       act(() => useViewerStore.setState({ activeModelId: peer.id, ifcDataStore: peer.ifcDataStore }));
     } finally {
       await act(async () => { release(); });
-      if (entered) await waitFor(() => useActivityJournal.getState().jobs.every(job => job.outcome !== 'running'), 'native CSV settles');
+      await drainExports();
     }
     assert.equal(useActivityJournal.getState().jobs[0].outcome, 'completed');
     assert.equal(blobs.length, 1); assert.equal(blobs[0].type, 'text/csv');
@@ -108,11 +120,42 @@ for (const table of ['entities', 'properties', 'quantities', 'spatial'] as const
       assert.ok(csv.includes('Palette reviewed target wall'));
       assert.ok(csv.includes(store.entities.getGlobalId(wall) ?? 'missing-guid'));
     } else {
-      assert.match(csv, /IfcWall/);
+      const globalId = store.entities.getGlobalId(wall); assert.ok(globalId);
+      assert.ok(csv.split('\n').some(row => row.startsWith(
+        `${wall},${globalId},Palette reviewed target wall,IfcWall,`,
+      )), 'properties/quantities must contain the edited invocation target on the same row');
       assert.match(csv, table === 'properties' ? /psetName,propName,value/ : /qsetName,quantityName,value/);
     }
   });
 }
+
+test('#8947 CSV initialization wait failure drains the owned operation before restoring publication', async t => {
+  if (!ensureWasm(t)) return;
+  await seed(); mount();
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let initialized = false;
+  const init = GeometryProcessor.prototype.init;
+  mock.method(GeometryProcessor.prototype, 'init', async function (this: GeometryProcessor) {
+    await gate;
+    await init.call(this); initialized = true;
+  });
+  try {
+    await launchDestination('export:csv-entities', 'CSV');
+    assert.equal(useActivityJournal.getState().jobs[0]?.outcome, 'running');
+    await assert.rejects(waitFor(() => initialized, 'deliberately blocked initialization', 1),
+      /deliberately blocked initialization/);
+    assert.equal(blobs.length, 0);
+  } finally {
+    // Exercise the failure path while initialization has NOT completed, exactly
+    // where the former entered-only cleanup skipped the running export.
+    release();
+    await drainExports();
+  }
+  assert.equal(initialized, true);
+  assert.equal(useActivityJournal.getState().jobs[0].outcome, 'completed');
+  assert.equal(blobs.length, 1); assert.equal(saves.length, 1);
+});
 
 test('#8947 palette CSV native publication refusal records Failed without a download', async t => {
   if (!ensureWasm(t)) return;

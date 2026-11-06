@@ -878,3 +878,26 @@ Browser discovery now requires 24 cases (11 original UX, 12 access, 1 extension)
 including both actual federation pickers and their matched-source review.
 All these new runtime assertions remain UNRUN; historical reused cases are
 qualified separately in `evidence/export-child-evidence.json`.
+
+### Final-flow review corrections and remaining child configurations
+
+PR #9015 original source `9672c5b` remains under its original root/full request
+`auto-49cb91ffb0264806b518165565340186`; it does not certify later edits. Fresh
+Astra found two test-validity defects: properties/quantities did not check the
+edited invocation target, and initialization timeout could leave an owned CSV
+export running after teardown. The correction checks target ID/name together
+on each table row, drains jobs independently of initialization success, and
+retires the isolated test process with failure if an owned operation cannot
+settle. A deliberately blocked initialization exercises the timeout-cleanup path.
+These corrections remain UNRUN.
+
+Ten further mounted cases join palette commands to CSV mapping Apply/refusal,
+georeference nudge/reset/cancel, alignment configuration/refusal, Presentation
+Save/Play, Flavors create/import-review/cancel, and Plan Grid/Fit/Retry/layout.
+They use real consumers and parsed/authored fixtures, with explicit limits for
+renderer-free thumbnails and measured DOM geometry. All ten remain UNRUN.
+Historical witnesses are identified separately in
+`evidence/configuration-workspace-proposals.json`; no child case inherits a
+pass merely because its parent destination was previously opened. The 24-case
+real-GPU protocol and required four-shard suite remain mandatory. Complete
+access acceptance is unchanged: UNACCEPTED.

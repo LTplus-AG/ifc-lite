@@ -31,7 +31,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refId, type Vec3 } from '../host-geometry-frame.js';
 import {
-  countedElements, storeyContents, storeyNeighbour, storeyRecord, type StoreyInventory, type StoreyRecord,
+  countedElements, siblingStoreys, storeyContents, storeyNeighbour, storeyRecord, type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
 import {
@@ -133,8 +133,9 @@ function storeyDeltas(inventory: StoreyInventory, edit: StoreyLevelEdit): Map<nu
     }];
   }
   const delta = edit.Height - (above.elevation - storey.elevation);
-  const index = inventory.storeys.indexOf(storey);
-  return new Map(inventory.storeys.slice(index + 1).map((moved) => [moved.expressId, delta]));
+  // Every storey above in the same building; another building's storeys stay.
+  const siblings = siblingStoreys(inventory, storey.expressId);
+  return new Map(siblings.slice(siblings.indexOf(storey) + 1).map((moved) => [moved.expressId, delta]));
 }
 
 function isProduct(inventory: StoreyInventory, id: number): boolean {
@@ -272,10 +273,15 @@ function reachedProducts(
 function spacingChanges(inventory: StoreyInventory, deltas: ReadonlyMap<number, number>): SpacingChange[] {
   const changes: SpacingChange[] = [];
   const at = (storey: StoreyRecord) => storey.elevation + (deltas.get(storey.expressId) ?? 0);
-  for (let i = 0; i + 1 < inventory.storeys.length; i++) {
-    const lower = inventory.storeys[i], upper = inventory.storeys[i + 1];
-    const from = upper.elevation - lower.elevation, to = at(upper) - at(lower);
-    if (Math.abs(to - from) > EPS) changes.push({ lowerId: lower.expressId, upperId: upper.expressId, from, to });
+  const parents = new Set(inventory.storeys.map((storey) => storey.parentId));
+  for (const parentId of parents) {
+    // Gaps are measured between consecutive storeys of one building.
+    const storeys = inventory.storeys.filter((storey) => storey.parentId === parentId);
+    for (let i = 0; i + 1 < storeys.length; i++) {
+      const lower = storeys[i], upper = storeys[i + 1];
+      const from = upper.elevation - lower.elevation, to = at(upper) - at(lower);
+      if (Math.abs(to - from) > EPS) changes.push({ lowerId: lower.expressId, upperId: upper.expressId, from, to });
+    }
   }
   return changes;
 }

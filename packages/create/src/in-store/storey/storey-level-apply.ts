@@ -9,9 +9,15 @@ import { planStoreyLevelEdit, type StoreyLevelEdit, type StoreyLevelPlan } from 
 import { writeStoreyLevelPlan } from './storey-level-write.js';
 import { StoreyEditRefusedError } from './storey-validation.js';
 
-/** What makes two plans the same edit: the writes, not the counts shown beside them. */
+/**
+ * What makes two plans the same edit: the writes, and which products they
+ * move or hold. A product attached to a moved placement after the review
+ * changes the outcome without changing the writes, so it is part of it.
+ */
 export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
   return JSON.stringify({
+    moved: [...plan.moved].sort((x, y) => x - y),
+    held: [...plan.held].sort((x, y) => x - y),
     storeys: plan.storeys.map(({ expressId, to }) => [expressId, Math.round(to * 1e6)]),
     placements: plan.placements.map(({ leaf, offset }) => [leaf.placementId, leaf.axisPlacementId, offset.map((v) => Math.round(v * 1e6))]),
   });

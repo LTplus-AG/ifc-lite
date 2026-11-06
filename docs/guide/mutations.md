@@ -1030,7 +1030,7 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
 
 ### Storey authoring
 
-`@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). The viewer's Model workspace and `bim.store` run the same functions. Lengths are metres in the frame the workspace shows storey elevations in, and are written in the file's own length unit.
+`@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). `bim.store` runs the same functions. Lengths are metres, in the frame the parsed spatial hierarchy reports storey elevations in, and are written in the file's own length unit. Storeys are a per-building sequence: neighbours, floor-to-floor shifts and elevation clashes are taken within the storey's own building.
 
 - `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. A name that is empty, or an elevation already taken, is refused. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
 - `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically:

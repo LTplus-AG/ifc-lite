@@ -142,10 +142,21 @@ export function storeyRecord(inventory: StoreyInventory, storeyId: number): Stor
   return record;
 }
 
-/** The storey directly above / below in elevation order, or null. */
+/**
+ * The storeys sharing `storeyId`'s spatial parent (its building), lowest
+ * first. Levels are a per-building sequence: in a model with two buildings,
+ * one building's ground floor is not the other's storey above or below.
+ */
+export function siblingStoreys(inventory: StoreyInventory, storeyId: number): StoreyRecord[] {
+  const parentId = storeyRecord(inventory, storeyId).parentId;
+  return inventory.storeys.filter((storey) => storey.parentId === parentId);
+}
+
+/** The storey directly above / below in elevation order within its building, or null. */
 export function storeyNeighbour(inventory: StoreyInventory, storeyId: number, direction: 1 | -1): StoreyRecord | null {
-  const index = inventory.storeys.findIndex((storey) => storey.expressId === storeyId);
-  return index < 0 ? null : inventory.storeys[index + direction] ?? null;
+  const siblings = siblingStoreys(inventory, storeyId);
+  const index = siblings.findIndex((storey) => storey.expressId === storeyId);
+  return index < 0 ? null : siblings[index + direction] ?? null;
 }
 
 /** Floor-to-floor height in metres to the storey above, or null for the top storey. */
@@ -206,8 +217,8 @@ export interface StoreySummary {
 
 /** One row per storey, highest first: what a storey manager lists. */
 export function summarizeStoreys(inventory: StoreyInventory): StoreySummary[] {
-  return inventory.storeys.map((storey, index) => {
-    const above = inventory.storeys[index + 1];
+  return inventory.storeys.map((storey) => {
+    const above = storeyNeighbour(inventory, storey.expressId, 1);
     return {
       expressId: storey.expressId,
       GlobalId: storey.GlobalId,

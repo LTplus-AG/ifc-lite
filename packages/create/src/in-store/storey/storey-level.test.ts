@@ -139,3 +139,64 @@ describe('a storey edit is one undo step', () => {
     expect(Math.round(s.worldZ(60))).toBe(3000);
   });
 });
+
+/** A second building with its own storeys at 0 and 3 m (#9013 review). */
+const TWO_BUILDINGS = THIRD_PARTY
+  .replace("#51=IFCRELAGGREGATES('3cO5$AHT9DlxAizLOHv3Mx',$,$,$,#20,(#30));", "#51=IFCRELAGGREGATES('3cO5$AHT9DlxAizLOHv3Mx',$,$,$,#20,(#30,#130));")
+  .replace('ENDSEC;\nEND-ISO', `#130=IFCBUILDING('1K3P0JJ3v8HhKXCXNoHGbS',$,'Annex',$,$,#131,$,$,.ELEMENT.,$,$,$);
+#131=IFCLOCALPLACEMENT(#21,#5);
+#140=IFCBUILDINGSTOREY('2BXk9GCxj5V9eCELW6qKoB',$,'Annex 0',$,$,#141,$,$,.ELEMENT.,0.);
+#141=IFCLOCALPLACEMENT(#131,#5);
+#142=IFCBUILDINGSTOREY('2UbzJ6LyL7XBk4BdJ_jP0R',$,'Annex 1',$,$,#144,$,$,.ELEMENT.,3000.);
+#143=IFCCARTESIANPOINT((0.,0.,3000.));
+#145=IFCAXIS2PLACEMENT3D(#143,$,$);
+#144=IFCLOCALPLACEMENT(#131,#145);
+#150=IFCRELAGGREGATES('0Gm7rvwBn0aOhMnZVa$4c4',$,$,$,#130,(#140,#142));
+ENDSEC;
+END-ISO`);
+
+describe('storey edits stay within their building (#9013 review)', () => {
+  it('a floor-to-floor edit shifts only the storeys above in the same building', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    const p = plan(s, { kind: 'floorHeight', storeyId: 40, Height: 3.5 });
+    expect(p.refusals).toEqual([]);
+    expect(p.storeys.map((x) => x.expressId).sort()).toEqual([42, 46]);
+    expect(p.spacing.map(({ lowerId, upperId }) => [lowerId, upperId])).toEqual([[40, 42]]);
+  });
+
+  it('elevation neighbours come from the same building', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    // Annex 1 to +1.00 m is fine: only Annex 0 is below it; the main building's storeys do not count.
+    expect(plan(s, { kind: 'elevation', storeyId: 142, Elevation: 1 }).refusals).toEqual([]);
+  });
+
+  it('adding at an elevation only another building occupies is allowed', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6, referenceStoreyId: 142 });
+    expect(api('readStoreyInventory')(s.store, s.view).storeys.find((x) => x.expressId === added.storeyId)?.parentId).toBe(130);
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Twin', Elevation: 3, referenceStoreyId: 142 }))
+      .toThrow('Annex 1 is already at +3.00 m');
+  });
+});
+
+describe('a reviewed plan is refused when the model changed under it (#9013 review)', () => {
+  it('a product attached to a moved placement after review makes the plan stale', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const edit = { kind: 'elevation', storeyId: 42, Elevation: 3.5 } as const;
+    const reviewed = plan(s, edit);
+    // A new column on Level 2 sharing the slab's placement: the writes are unchanged, the outcome is not.
+    const column = s.editor.addEntity('IfcColumn', ['3Oz2e8GZz8RA2h4D8U3fsH', null, 'Late', null, null, '#71', null, null, null]).expressId;
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${column}`], '#42']);
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+  });
+});
+
+describe('adding next to an unreadable placement is refused (#9013 review)', () => {
+  it('does not fall back to a default placement', async () => {
+    const s = session(await parse(THIRD_PARTY.replace('#47=IFCLOCALPLACEMENT(#31,#49);', '#47=IFCLOCALPLACEMENT(#31,$);')));
+    const before = s.snapshot();
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, referenceStoreyId: 46 }))
+      .toThrow('the placement of Level 3 cannot be read');
+    expect(s.snapshot()).toEqual(before);
+  });
+});

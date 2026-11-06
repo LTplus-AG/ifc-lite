@@ -43,18 +43,26 @@ export interface AddStoreyResult {
 
 const OP = 'addStoreyInStore';
 
-/** Why `params` cannot be added, or null. Shared by the UI's inline validation. */
-export function addStoreyRefusal(inventory: StoreyInventory, params: Pick<AddStoreyParams, 'Name' | 'Elevation'>): string | null {
+/**
+ * Why `params` cannot be added, or null. Shared by the UI's inline validation.
+ * Only storeys of the building the new storey joins (`parentId`, when known)
+ * can clash: another building may well have a storey at the same elevation.
+ */
+export function addStoreyRefusal(
+  inventory: StoreyInventory, params: Pick<AddStoreyParams, 'Name' | 'Elevation'>, parentId?: number | null,
+): string | null {
   if (!params.Name.trim()) return 'A storey needs a name';
   if (!Number.isFinite(params.Elevation)) return 'Enter an elevation in metres';
-  const clash = inventory.storeys.find((storey) => Math.abs(storey.elevation - params.Elevation) < MIN_STOREY_SPACING);
+  const clash = inventory.storeys.find((storey) => (parentId === undefined || storey.parentId === parentId)
+    && Math.abs(storey.elevation - params.Elevation) < MIN_STOREY_SPACING);
   if (clash) return `${clash.Name} is already at ${describeElevation(clash.elevation)}: storeys need a positive floor-to-floor height`;
   return null;
 }
 
-function nearest(inventory: StoreyInventory, elevation: number): StoreyRecord | null {
+function nearest(inventory: StoreyInventory, elevation: number, parentId: number): StoreyRecord | null {
   let best: StoreyRecord | null = null;
   for (const storey of inventory.storeys) {
+    if (storey.parentId !== parentId) continue;
     if (!best || Math.abs(storey.elevation - elevation) < Math.abs(best.elevation - elevation)) best = storey;
   }
   return best;
@@ -74,18 +82,22 @@ function soleBuilding(inventory: StoreyInventory, requested: number | undefined)
 export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams): AddStoreyResult {
   return editor.runAtomic((draft) => {
     const inventory = readStoreyInventory(store, draft.getMutationView());
-    const refusal = addStoreyRefusal(inventory, params);
-    if (refusal) throw new Error(refusal);
     if (params.GlobalId !== undefined && !isValidIfcGuid(params.GlobalId)) throw new Error(`${OP}: GlobalId "${params.GlobalId}" is not a valid IFC GUID`);
     const ownerHistoryId = inventory.reader.firstId('IFCOWNERHISTORY');
     if (inventory.schema === 'IFC2X3' && ownerHistoryId === null) throw new Error(`${OP}: IFC2X3 requires IfcOwnerHistory`);
 
-    const reference = params.referenceStoreyId !== undefined
+    // The building first: a reference storey names it; otherwise the one
+    // building the storeys share, or the sole IfcBuilding (or `buildingId`).
+    const requested = params.referenceStoreyId !== undefined
       ? inventory.storeys.find((storey) => storey.expressId === params.referenceStoreyId) ?? null
-      : nearest(inventory, params.Elevation);
-    if (params.referenceStoreyId !== undefined && !reference) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
-
-    const parentId = reference?.parentId ?? soleBuilding(inventory, params.buildingId);
+      : null;
+    if (params.referenceStoreyId !== undefined && !requested) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
+    const parents = [...new Set(inventory.storeys.map((storey) => storey.parentId))];
+    const parentId = requested?.parentId
+      ?? (params.buildingId === undefined && parents.length === 1 && parents[0] !== null ? parents[0] : soleBuilding(inventory, params.buildingId));
+    const refusal = addStoreyRefusal(inventory, params, parentId);
+    if (refusal) throw new Error(refusal);
+    const reference = requested ?? nearest(inventory, params.Elevation, parentId);
     const placementId = emitStoreyPlacement(draft, inventory, reference, parentId, params.Elevation);
     const elevationAttribute = reference?.elevationAttribute !== null && reference?.elevationAttribute !== undefined
       ? reference.elevationAttribute + (params.Elevation - reference.elevation) / inventory.scale
@@ -129,6 +141,9 @@ function emitStoreyPlacement(
   draft: StoreEditor, inventory: StoreyInventory, reference: StoreyRecord | null, parentId: number, elevation: number,
 ): number {
   const leaf = reference?.placementId != null ? readPlacementLeaf(inventory.reader, reference.placementId) : null;
+  // A neighbour whose placement cannot be read must not be replaced by a
+  // default: the new storey would silently lose its axes and offset.
+  if (reference?.placementId != null && !leaf) throw new Error(`${OP}: the placement of ${reference.Name} cannot be read, so the new storey cannot follow it`);
   if (reference && leaf) {
     const lift = worldLiftInParent(inventory.reader, leaf.parentId, (elevation - reference.elevation) / inventory.scale);
     if (!lift) throw new Error(`${OP}: the placement of ${reference.Name} cannot be read`);

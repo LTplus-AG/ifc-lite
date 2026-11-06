@@ -255,3 +255,29 @@ all four receipts and skip counts are required. This recipe is not a passed run.
 Logs stay in the owning managed checkout until compact evidence is published
 and the task is closed. Browser correctness and feature-access review follow
 the build; they are not replaced by this script or the earlier UX acceptance.
+
+## Round 1 original validation outcome and further corrections
+
+Original foundation job `0946c2e1-c470-4e57-b850-11de05c808f2` on PC tested
+`2e2c35ea00ba32715badfca7bddab391973bc5d7`: root typecheck passed (134 Turbo
+tasks and the root tail; 4514 test files covered by typecheck programs). Focused
+viewer tests passed 90/91, zero skips. The Russian prerequisite test called
+`setLocale` before loading the catalogue, so the real locale service correctly
+fell back to English. The test now awaits the actual Russian locale activator.
+This correction is unexecuted, and the failed run did not reach the viewer build.
+It is not full-suite or current-head certification. Compact evidence was published;
+managed task closure refused because a live process or T3 task still references
+output. Those references are preserved; zero bytes were reclaimed by this closure.
+
+Fresh selected-entity/model-tool review found no concrete source defects. The
+corrected author review found one further P2: a cancelled pending CSV read left
+the new filename attached to the old importable content. Filename and content now
+publish together only on an accepted read; older reads cannot overwrite newer
+ones. Two regressions hold actual FileReader operations and verify imported IFC
+property values across target changes and reversed completion order. Lightweight
+guards passed; execution and fresh review remain pending.
+
+Original combined request `auto-abb83974a2754f3fa3464c9d88b6d8f0` tests tools
+head `319505f5671dc9c2e6bfc0c7bc296577d0365d18` using the committed root recipe.
+It predates these corrections and the next destination batch. Preserve its
+original outcome; it cannot certify later changes. No access round is accepted.

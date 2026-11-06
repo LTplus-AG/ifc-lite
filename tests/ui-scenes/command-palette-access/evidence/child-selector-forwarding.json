@@ -1,0 +1,28 @@
+{
+  "taskId": "@ifc-lite/viewer#test",
+  "command": "files=$(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | node ../../scripts/viewer-test-shards.mjs) && tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $files",
+  "environmentVariables": {
+    "specified": {
+      "env": [
+        "TEST_PATTERN",
+        "TEST_SHARD",
+        "TEST_SHARDS"
+      ],
+      "passThroughEnv": [
+        "GITHUB_*",
+        "IFCLITE_TEST_CHROME_EXECUTABLE",
+        "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE",
+        "MERGIFY_*",
+        "RUNNER_*"
+      ]
+    },
+    "configured": [
+      "TEST_PATTERN=c652fce9c5190cbbc84b3639cb25e9d81922defc878ae1167da72ce049e434d6"
+    ],
+    "inferred": [],
+    "passthrough": []
+  },
+  "dependencies": [
+    "@ifc-lite/viewer#build"
+  ]
+}

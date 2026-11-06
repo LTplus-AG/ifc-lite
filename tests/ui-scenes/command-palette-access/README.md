@@ -813,3 +813,29 @@ composed proof; the remaining palette-to-real-body joins stay open in
 `inventory/remaining-access.md`. No source count or unrelated child pass closes
 an unobserved user route. The two proposed dormant controls retain their IDs and
 must be reassessed if an ordinary production entry becomes available.
+
+## Foundation pass and remaining real-body joins
+
+Foundation PR #8956 at `723039da70d87e830482fd6b944525ec797cfac1` has
+completed main-base CI: all sixteen viewer shards, four Node shards, eight E2E
+smoke shards, root typecheck, lint, Node guards, production observation,
+silent-revert and aggregate build passed. There were 50 successful, 22 skipped
+and three neutral checks; skipped review lanes are not passed reviews. The
+foundation remains draft. Its original catalogue/fleet request is separate and
+not replayed. This qualifies that foundation, not its descendants.
+
+The original integrated `6f40f204` job completed 440 focused tests with zero
+failures, cancellations or skips after root typecheck and build. Its full four
+shards were still running at this observation. See `evidence/integrated-6f40-focused.json`.
+The Assistant and Script witnesses have unchanged source hashes here; the later
+stronger Semantic success assertion still requires its own execution.
+
+Fourteen additional authored cases now join the actual palette to BCF, IDS and
+Information/Manual validation, Clash settings, Source settings, Document, Lists,
+Drawing PDF options and Lens Auto-Color bodies, plus the non-footprint Split
+numeric input in single and federated model contexts. They use real consumers
+and parsed fixtures, with explicit cancellation and no remote publication. They
+are UNRUN until a matching receipt exists; they do not close inventory rows yet.
+Astra found no actionable source defects in the preceding cold-initialization,
+ion-census, browser-prerequisite and eight direct-child corrections; runtime
+qualification remains independent. Complete access R3 remains UNACCEPTED.

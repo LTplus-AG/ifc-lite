@@ -22,3 +22,11 @@ C1104: propose dormant exclusion while retaining the ID: whole-tree search found
 
 Sol owns entity-menu/native-export witnesses. Coordinator owns the six branch-init defects and current runtime. No jobs, source changes, builds, tests or browser work performed. Cleanup: removed own completed helper only, reclaiming 20727 bytes.
 PR https://github.com/LTplus-AG/ifc-lite/pull/9005, head 701972ef57c27f1e7051086cab2c3e8f731971f7, checks/reviews pending.
+
+
+Current authored overlay (execution pending): real parent/body cases now exist
+for BCF, IDS/Information/Manual, Clash, Sources, Drawing PDF, Document, Lists and
+Lens Auto-Color. `CommandPalette.split-numeric-access.test.tsx` adds the C1243
+scalar-input path in 1/N models. These supplement the historical child bindings;
+they do not convert any row to a passed route without matching execution. Saved
+federation setup remains a distinct open parent/child join.

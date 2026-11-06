@@ -487,7 +487,9 @@ export class Scene {
     this.residencyFrame++;
   }
 
-  /** Record that the draw loop drew this batch this frame. */
+  /** Record that the draw loop drew this batch this frame: from its own
+   *  buffers (full or LOD1), or as a partial sub-batch cut from its CPU pieces
+   *  (#9034). Culled, hidden or not-resident batches are not recorded. */
   recordBatchDrawn(batch: BatchedMesh): void {
     if (this.gpuBudgetBytes === null) return;
     this.lastDrawnFrame.set(batch.id, this.residencyFrame);

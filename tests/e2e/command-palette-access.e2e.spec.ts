@@ -222,6 +222,9 @@ for (const context of contexts) {
 
 test('loaded unselected → selected → hidden wall reaches renderer; author/class hosts and measurement tabs (#8947)', async ({ page }, info) => {
   await start(page, true);
+  const launcher = page.getByRole('button', { name: /Commands…/ }).first();
+  await launcher.focus();
+  await expect(launcher).toBeFocused();
   const { row } = await find(page, 'vis:hide', 'hide');
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('Select elements');
@@ -239,7 +242,7 @@ test('loaded unselected → selected → hidden wall reaches renderer; author/cl
   await info.attach('selected-entity-actions.png', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Escape');
   await expect(entityMenu).toBeHidden();
-  await expect(page.getByRole('button', { name: /Commands…/ }).first()).toBeFocused();
+  await expect(launcher).toBeFocused();
   await run(page, 'vis:hide', 'hide');
   await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(true);
   expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().hiddenEntities.has(id), id)).toBe(true);

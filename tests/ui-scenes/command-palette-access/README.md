@@ -643,3 +643,27 @@ a passing unrelated assertion does not establish continued renderer health.
 The controlled shared/fresh-browser diagnostic is being run with pinned Node
 24 after its original SSH Node 18 attempt failed before launching a browser.
 No production navigator.gpu replacement or software adapter is permitted.
+
+### Final focus review and GPU controls
+
+Fresh Astra review of `257f6871..ef550cc2` found no production correctness
+defect, but the browser focus-return oracle lacked its launcher precondition.
+The loaded scenario now explicitly focuses Commands before shortcut opening
+and retains the final focus assertion. Discovery passes; execution remains
+pending. The running full root validation is pinned to production source
+`ef550cc2`; this later correction changes only test setup and a test comment.
+
+The completed Chrome 156 diagnostic refuted fresh-browser isolation as a fix:
+all three fresh browsers reported external-Instance device loss after loading
+the real model. Removing persistent-context/CDP attachment did not solve it:
+all three fresh direct-transport browsers also reported device loss. The
+unchanged build was `285414189e`, with index hash
+`81f0e39da6b427ed0b6760d583f274d920e8ecc311b3f87800a417cb05d4ba50`.
+These are diagnostic results, not final-source acceptance. An installed Chrome
+154 comparison preserves the model, build, flags and direct transport to test
+the version hypothesis. No assertion or GPU requirement has been relaxed.
+
+The failed e59 job's compact evidence was published and verified. Its storage
+closure remains deferred because the safety scan cannot read same-user
+`/proc/3354649/cwd`; no guard was bypassed and no foreign process was stopped.
+Access R2 remains UNACCEPTED.

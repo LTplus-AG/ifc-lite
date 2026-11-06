@@ -94,7 +94,7 @@ for (const federated of [false, true]) test(`#8947 selected entity destination o
     }
   });
   press(input, 'Enter');
-  // Activation runs in a frame after palette close; Radix then mounts and focuses its menu.
+  // Activation hands focus off at palette close; Radix then mounts and focuses its menu.
   try {
     await waitFor(() => document.querySelector('[role="menu"]') !== null, 'real entity menu mounts after palette close');
   } catch (cause) {

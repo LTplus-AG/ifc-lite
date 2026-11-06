@@ -1075,4 +1075,16 @@ function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId
 }
 ```
 
+Elements whose shape depends on storey spacing follow the edit in the same transaction:
+
+- **Attached walls.** A wall whose top is attached to a storey above takes `height + Δabove − Δown`, through the same section edit the inspector uses. That edit refuses an opening that would end above the new top. Any existing `Qto_WallBaseQuantities` are kept true: Height and the gross side area and volume scale with the height, and the net values change by the same amount as the gross ones. Attachment is recorded, never inferred from a height that happens to match the spacing:
+  - `IfcLite_StoreyAttachment.TopConstraint` (IfcLabel) holds the target storey's GlobalId. It holds `NextStoreyAbove` for a wall drawn attached before any storey existed above; the first storey added directly above binds it, and `addStoreyInStore` resizes the wall to reach that storey.
+  - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as written.
+  - A wall with neither record keeps its height.
+  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record.
+- **Stairs.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused.
+- **What is left alone.** Attached walls that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
+
+`planStoreyLevelEdit` runs the complete write in a discarded draft, so its `refusals` include late ones such as an opening above a wall's new top. The plan's `walls`, `stairs` and `movedElementCount` are what an impact summary shows.
+
 The SDK's headless backend exposes the same operations on `bim.store`: `listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. The viewer and its script sandbox gain them with the storey manager (#9037) and the CLI work (#9121). `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.

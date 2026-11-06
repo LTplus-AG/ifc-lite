@@ -24,7 +24,7 @@ export interface StairDimensions {
   readonly WaistThickness?: number;
 }
 
-export type StairDimensionEdit = Partial<Pick<StairDimensions, 'Width' | 'RiserHeight' | 'TreadLength' | 'WaistThickness'>>;
+export type StairDimensionEdit = Partial<Pick<StairDimensions, 'NumberOfRisers' | 'Width' | 'RiserHeight' | 'TreadLength' | 'WaistThickness'>>;
 
 const close = (a: number, b: number) => Math.abs(a - b) <= 1e-7 * Math.max(1, Math.abs(a), Math.abs(b));
 const vectorIs = (a: Vec3, b: Vec3) => a.every((v, i) => close(v, b[i]));
@@ -126,19 +126,23 @@ export function readStairDimensions(store: IfcDataStore, id: number, view?: Muta
 
 /** Rebuild only the occurrence's canonical stepped body. Placements, the
  * first-riser foot, identities, type/style leaves and source bodies stay held.
- * RiserHeight changes the total rise; TreadLength changes the total run.
- * Atomic refusal for unsupported graphs or dimensions, including late errors. */
+ * RiserHeight changes the total rise; TreadLength changes the total run;
+ * NumberOfRisers (with RiserHeight) refits the flight to a new rise, keeping
+ * identities, as a storey re-level does (#9013). Atomic refusal for unsupported graphs or dimensions, including late errors. */
 export function editStairDimensionsInStore(store: IfcDataStore, editor: StoreEditor, id: number, patch: StairDimensionEdit): StairDimensions {
   return editor.runAtomic(draft => {
     const reader = new AnchorEntityReader(store, draft.getMutationView());
     const current = read(store, reader, id);
     if (!current) throw new Error(`The stair #${id} is not a supported single stepped flight`);
-    const fields = ['Width', 'RiserHeight', 'TreadLength', 'WaistThickness'] as const;
+    const fields = ['NumberOfRisers', 'Width', 'RiserHeight', 'TreadLength', 'WaistThickness'] as const;
     for (const [name, value] of Object.entries(patch)) {
       if (!fields.some(field => field === name)) throw new Error(`Unsupported stair dimension ${name}`);
       if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) {
         throw new Error(`${name} must be a finite positive number`);
       }
+    }
+    if (patch.NumberOfRisers !== undefined && (!Number.isInteger(patch.NumberOfRisers) || patch.NumberOfRisers > 4998)) {
+      throw new Error('NumberOfRisers must be a whole number of risers');
     }
     const next = { ...current.dimensions };
     for (const field of fields) if (patch[field] !== undefined) next[field] = patch[field];
@@ -172,6 +176,13 @@ export function editStairDimensionsInStore(store: IfcDataStore, editor: StoreEdi
     draft.setPositionalAttribute(next.flightId, 6, ref(shape));
     for (const name of ['RiserHeight', 'TreadLength'] as const) {
       draft.setPositionalAttribute(next.flightId, current.flight.names.indexOf(name), { real: native(next[name]) });
+    }
+    if (next.NumberOfRisers !== current.dimensions.NumberOfRisers) {
+      const risers = store.schemaVersion === 'IFC2X3' ? 'NumberOfRiser' : 'NumberOfRisers';
+      // The builder writes one tread per riser; the strict reader requires it.
+      for (const name of [risers, 'NumberOfTreads']) {
+        draft.setPositionalAttribute(next.flightId, current.flight.names.indexOf(name), next.NumberOfRisers);
+      }
     }
     const updated = readStairDimensions(store, next.flightId, draft.getMutationView());
     if (!updated) throw new Error('The stair edit cannot reproduce its validated flight; all writes were rolled back');

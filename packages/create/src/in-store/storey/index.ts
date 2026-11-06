@@ -11,9 +11,17 @@ export {
 export { addStoreyInStore, addStoreyRefusal, renameStoreyInStore, type AddStoreyParams, type AddStoreyResult } from './storey-add.js';
 export {
   planStoreyLevelEdit,
-  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,
+  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyLevelPlanOptions, type StoreyMove, type SpacingChange, type PlacementWrite,
 } from './storey-level-plan.js';
 export { applyStoreyLevelEdit, storeyLevelPlanSignature, type StoreyLevelResult } from './storey-level-apply.js';
+export {
+  planStoreyDependents, planAttachmentBindings, LANDING_TOLERANCE, MIN_FLIGHT_RISE,
+  type StoreyDependents, type WallHeightChange, type StairRefit,
+} from './storey-dependents.js';
+export {
+  readTopAttachment, writeTopAttachment, clearTopAttachment, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, NEXT_STOREY_ABOVE,
+  type TopAttachment,
+} from './storey-attachment.js';
 export { planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, type StoreyDeleteMode, type StoreyDeletePlan } from './storey-delete.js';
 export { suggestStorey, DEFAULT_STOREY_HEIGHT, type StoreySuggestion } from './storey-suggest.js';
 export {

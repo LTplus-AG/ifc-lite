@@ -127,3 +127,31 @@ describe('strict canonical stair edits (#6232)', () => {
     expect(next.NumberOfRisers).toBe(10);
   });
 });
+
+describe('stair refit to a new rise keeps identities (#9013)', () => {
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const mm of [false, true]) {
+    it(`${schema} ${mm ? 'millimetres' : 'metres'}: NumberOfRisers and RiserHeight change together`, async () => {
+      const { store, view, editor, built } = await fixture(schema, mm);
+      const next = create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 12, RiserHeight: 2.4 / 12 });
+      expect(next.stairId).toBe(built.stairId);
+      expect(next.flightId).toBe(built.flightId);
+      expect(next.NumberOfRisers).toBe(12);
+      expect(next.NumberOfRisers * next.RiserHeight).toBeCloseTo(2.4, 8);
+      expect(next.TreadLength).toBeCloseTo(0.3, 8);
+      expect(create.readStairDimensions(store, built.flightId, view)).toEqual(next);
+      if (stairWasmAvailable) {
+        const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema, applyMutations: true }).content);
+        const bounds = stairMeshBounds((await meshStairs(text)).get(built.flightId)!);
+        expect(bounds.max[2] - bounds.min[2]).toBeCloseTo(2.4, 4);
+      }
+    });
+  }
+
+  it('refuses a fractional riser count and writes nothing', async () => {
+    const { store, view, editor, built } = await fixture('IFC4');
+    const before = structuredClone(view.getMutations());
+    expect(() => create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 11.5 }))
+      .toThrow('NumberOfRisers must be a whole number of risers');
+    expect(view.getMutations()).toEqual(before);
+  });
+});

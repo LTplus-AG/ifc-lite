@@ -14,6 +14,9 @@ import assert from 'node:assert/strict';
 import { advance, cleanup, press, render } from '@/test/render.js';
 import { setLocale } from '@/i18n';
 import { PanelHeader, type PanelHeaderAction } from './panel-header.js';
+import { useTourStore } from '@/lib/tours/tour-store';
+import { getTour } from '@/lib/tours/registry';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 function actions(log: string[] = [], pressed?: boolean): PanelHeaderAction[] {
   return ['Import', 'Export', 'Server', 'Markers'].map((label) => ({
@@ -101,6 +104,37 @@ describe('PanelHeader (#8802)', () => {
     const restore = withLayout(240, 100);
     try {
       const ui = render(<PanelHeader title="BCF Topics" actions={actions()} onClose={() => {}} />);
+      assert.deepEqual(inlineLabels(ui), ['Import']);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('PanelHeader during a guided tour (#8802)', () => {
+  const exportStep = getTour('bcf')?.steps.findIndex((step) => step.anchor === TOUR_ANCHORS.bcfExport) ?? -1;
+  const toured = (): PanelHeaderAction[] => actions().map((action) => (
+    action.id === 'server' ? { ...action, data: tourAnchor(TOUR_ANCHORS.bcfExport) } : action
+  ));
+  afterEach(() => { useTourStore.setState({ status: 'idle', tourId: null, stepIndex: 0 }); });
+
+  it('keeps the action the current step points at inline, even in a dock too narrow for any action', () => {
+    assert.ok(exportStep >= 0, 'the BCF tour has a step anchored on BCF export');
+    const restore = withLayout(180, 100);
+    try {
+      useTourStore.setState({ status: 'running', tourId: 'bcf', stepIndex: exportStep });
+      const ui = render(<PanelHeader title="BCF Topics" actions={toured()} onClose={() => {}} />);
+      assert.deepEqual(inlineLabels(ui), ['Server'], 'the toured action is the one inline control');
+      assert.ok(ui.querySelector(`button[data-tour="${TOUR_ANCHORS.bcfExport}"]`), 'its live anchor is in the header, not in a closed menu');
+    } finally {
+      restore();
+    }
+  });
+
+  it('leaves the order alone when no tour is running', () => {
+    const restore = withLayout(240, 100);
+    try {
+      const ui = render(<PanelHeader title="BCF Topics" actions={toured()} onClose={() => {}} />);
       assert.deepEqual(inlineLabels(ui), ['Import']);
     } finally {
       restore();

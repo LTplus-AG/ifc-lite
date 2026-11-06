@@ -17,6 +17,10 @@
  * A `leading` control (a run slot's Re-run or Cancel) always stays visible
  * and takes one of the two inline places.
  *
+ * During a guided tour, the action carrying the current step's anchor moves
+ * to the front and keeps an inline place even in the narrowest dock. A closed
+ * menu has no live anchor, so a tour pointing into it would skip its step.
+ *
  * Dialogs opened by an action must be mounted by the panel, outside this
  * header: a dialog rendered inside a menu item would unmount with the menu.
  */
@@ -27,6 +31,8 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { IconButton } from './icon-button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './dropdown-menu';
+import { useTourStore } from '@/lib/tours/tour-store';
+import { getTour } from '@/lib/tours/registry';
 
 export interface PanelHeaderAction {
   /** Stable key; also `data-panel-action` on the rendered control. */
@@ -75,11 +81,17 @@ export function PanelHeader({
   icon, title, meta, actions = [], leading, onClose, closeLabel, untitled = false, className,
 }: PanelHeaderProps) {
   const { t } = useTranslation();
-  const present = actions.filter((action): action is PanelHeaderAction => Boolean(action));
+  const tourAnchor = useTourStore((s) => (
+    !s.tourId || s.status === 'idle' ? null : getTour(s.tourId)?.steps[s.stepIndex]?.anchor ?? null
+  ));
+  const listed = actions.filter((action): action is PanelHeaderAction => Boolean(action));
+  const toured = tourAnchor ? listed.find((action) => action.data?.['data-tour'] === tourAnchor) : undefined;
+  const present = toured ? [toured, ...listed.filter((action) => action !== toured)] : listed;
   const budget = Math.max(0, MAX_INLINE - (leading ? 1 : 0));
   const inlineCount = useInlineCount(budget, present.length, Boolean(onClose), title);
-  const inline = present.slice(0, inlineCount.count);
-  const overflow = present.slice(inlineCount.count);
+  const inlineShown = toured ? Math.max(inlineCount.count, Math.min(1, budget)) : inlineCount.count;
+  const inline = present.slice(0, inlineShown);
+  const overflow = present.slice(inlineShown);
 
   return (
     <div

@@ -162,11 +162,11 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     const { shot } = await h.capture();
     h.move(30);
     await h.present(shot);
-    act(() => { useViewerStore.getState().setMeasureMode('distance'); });
+    act(() => { useViewerStore.getState().setMeasureMode('polyline'); });
     h.liveFrame();
     const picks = h.picks();
     h.tick(500); h.runFrames();
-    assert.equal(h.picks(), picks, 'a held-back Point hover picked in Distance mode');
+    assert.equal(h.picks(), picks, 'a held-back Point hover picked in Polyline mode');
     assert.equal(live(), null);
   });
 });

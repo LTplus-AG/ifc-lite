@@ -81,7 +81,7 @@ function step(): void {
   }
 }
 
-const LIVE = { x: 1, y: 2, z: 3 };
+const LIVE = { x: 1, y: 2, z: 3, screenX: 0, screenY: 0 };
 const live = () => useViewerStore.getState().measurePointLive;
 
 /** Mount the Viewport, let its renderer initialise, and return its canvas's resize reports. */

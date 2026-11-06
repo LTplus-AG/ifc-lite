@@ -13,7 +13,7 @@ used fetched WASM; no Rust compilation, browser or model benchmark ran.
 The finite false-success inverse changed only the null-dispatch outcome kind
 while keeping the empty flat unchanged: seven real assertion failures among 18
 controls, zero skips/load errors. Guaranteed byte-exact restoration passed the
-same 18 controls. [Durable receipts](./evidence/symbolic-parse-outcomes-6537/README.md)
+same 18 controls. [Durable receipts](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/symbolic-parse-outcomes-6537/README.md)
 preserve the source hashes, full logs and historical failures.
 This is observability prerequisite work, with no performance or complete IFC
 text/appearance verdict.

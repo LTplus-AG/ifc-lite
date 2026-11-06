@@ -14,7 +14,7 @@ import { loadCeilingFile } from '../perf-ratchet/ceilings.mjs';
 import { frameMetricId, RATCHETED_FRAME_METRICS } from '../perf-ratchet/measure-browser-frames.mjs';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)));
-const EVIDENCE = JSON.parse(read('./evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json'));
+const EVIDENCE = JSON.parse(read('../../tests/fixtures/frame-ratchet-6975/repeatability.json'));
 const CEILINGS = loadCeilingFile(fileURLToPath(new URL('../../tests/perf-ratchets/browser-frames.json', import.meta.url)));
 
 test('#6975 the committed stats, contamination tally and verdicts recompute from the raw per-run values', () => {
@@ -38,7 +38,7 @@ test('#6975 only admitted artifacts carry values; refused ones remain as receipt
   assert.ok(EVIDENCE.artifacts.some((a) => !a.admitted && a.attempts.some((t) => t.contaminated)), 'a contaminated run is retained');
 });
 
-const FROZEN = loadCeilingFile(fileURLToPath(new URL('../../tests/evidence/frame-ratchet-6975/browser-frames.json', import.meta.url)));
+const FROZEN = loadCeilingFile(fileURLToPath(new URL('../../tests/fixtures/frame-ratchet-6975/browser-frames.json', import.meta.url)));
 
 // #7955 / #7624: evidence fixes the initial ceiling and tolerance, while
 // daily lowering may change the live ceiling and its provenance.
@@ -85,12 +85,12 @@ test('#7955 lowered live ceilings pass; raised or unusable ceilings and changed 
 });
 
 test('#6975 the test fixture is a byte-identical admitted artifact of the seed build', () => {
-  const raw = read('../../tests/evidence/frame-ratchet-6975/admitted.browser-frames.json');
+  const raw = read('../../tests/fixtures/frame-ratchet-6975/admitted.browser-frames.json');
   const sha = createHash('sha256').update(raw).digest('hex');
   const artifact = EVIDENCE.artifacts.find((a) => a.rawSha256 === sha);
   assert.ok(artifact?.admitted, 'fixture matches an admitted receipt');
   assert.equal(artifact.commit, EVIDENCE.seed);
-  const contaminated = JSON.parse(read('../../tests/evidence/frame-ratchet-6975/contaminated-sample.json'));
+  const contaminated = JSON.parse(read('../../tests/fixtures/frame-ratchet-6975/contaminated-sample.json'));
   const receipt = EVIDENCE.artifacts.find((a) => a.run === contaminated.run && a.rawSha256 === contaminated.rawSha256);
   assert.ok(receipt && !receipt.admitted, 'the contaminated sample comes from a refused run receipt');
   assert.ok(receipt.attempts.some((t) => t.fixture === contaminated.sample.fixture && t.contaminated));

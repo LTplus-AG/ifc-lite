@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #8567 RESEARCH PREVIEW recorder. Explicit manual tool, not a CI gate.
-// Run it under ~/build-workers/ifc-gpu-check, which exports IFC_GPU_CDP_URL for
-// a hardware Chrome; a fallback/software adapter is refused. Timing fields are
+// Set IFC_GPU_CDP_URL to a hardware Chrome CDP endpoint; a fallback/software
+// adapter is refused. Timing fields are
 // diagnostics of one take, never performance evidence.
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
@@ -33,7 +33,7 @@ const assets = assetsDirectory(args.assets);
 absoluteOutput(args.out);
 if (!['turntable', 'stills', 'record'].includes(args.mode)) throw new Error(`unknown mode ${args.mode}`);
 const cdp = process.env.IFC_GPU_CDP_URL;
-if (!cdp) throw new Error('IFC_GPU_CDP_URL is not set: run under ~/build-workers/ifc-gpu-check for a hardware Chrome');
+if (!cdp) throw new Error('IFC_GPU_CDP_URL is not set: point it at a hardware Chrome CDP endpoint');
 
 const { entry, localPath } = await verifiedFixture(args.asset, assets);
 const credits = showcaseCredits(entry);
@@ -57,7 +57,7 @@ try {
   await server.listen();
   const base = server.resolvedUrls.local[0];
   browser = await chromium.connectOverCDP(cdp);
-  evidence.browser = { version: browser.version(), cdp: 'ifc-gpu-check Windows Chrome' };
+  evidence.browser = { version: browser.version(), cdp: 'hardware Chrome' };
   const context = browser.contexts()[0] ?? await browser.newContext();
   page = await context.newPage();
   await page.setViewportSize({ width: Number(args.width), height: Number(args.height) });

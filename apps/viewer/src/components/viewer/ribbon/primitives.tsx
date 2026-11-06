@@ -18,15 +18,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 
-/** Subtle pressed-state tint shared by ribbon toggles (loud solid fills
- *  read as alarm at ribbon scale; Office-style tint + inset ring reads
- *  as "latched"). Per-tool accents (amber annotate, accent edit) pass
- *  their own class instead. */
+/** Pressed state of ribbon toggles: the shared active state (#8802 R4),
+ *  tint + inset ring + active icon (loud solid fills read as alarm at ribbon
+ *  scale). The label keeps the foreground ink. Per-tool accents (amber
+ *  annotate, accent edit) pass their own class instead. */
 export const RIBBON_ACTIVE_CLASS =
-  'bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40';
+  'bg-active-surface text-foreground ring-1 ring-inset ring-active-border';
 
 /** Icon tint of a latched command that uses the shared active state. */
-const RIBBON_ACTIVE_ICON_CLASS = 'text-primary';
+const RIBBON_ACTIVE_ICON_CLASS = 'text-active';
 
 /** A control that is unavailable but must explain why (#8802 R1): it keeps
  *  `aria-disabled` instead of `disabled`, so it stays in the tab order and

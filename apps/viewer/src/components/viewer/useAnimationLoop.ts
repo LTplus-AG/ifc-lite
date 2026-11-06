@@ -45,6 +45,8 @@ export interface UseAnimationLoopParams {
   lastFrameTimeRef: MutableRefObject<number>;
   mouseIsDraggingRef: MutableRefObject<boolean>;
   activeToolRef: MutableRefObject<string>;
+  /** Whether a Measure pick snaps: the measurement pass compares it (#8998). */
+  snapEnabledRef: MutableRefObject<boolean>;
   /** When set, clips model below this Y value (terrain clipping for Cesium overlay). */
   terrainClipYRef: MutableRefObject<number | null>;
   hiddenEntitiesRef: MutableRefObject<Set<number>>;

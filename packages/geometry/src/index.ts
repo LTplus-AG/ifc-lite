@@ -1097,6 +1097,11 @@ export class GeometryProcessor {
    * Export render geometry as a binary GLB. Fails closed: a model whose visible
    * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
    * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   *
+   * `nameByGlobalId` (default `false`) makes each element one top-level node
+   * named by its IFC `GlobalId`, with its mesh parts as children, so tools
+   * that identify objects by node name can map them back to the element
+   * (#9011). Placement, geometry and materials are unchanged.
    */
   exportGlb(
     buffer: Uint8Array,
@@ -1106,9 +1111,10 @@ export class GeometryProcessor {
     hiddenTypesCsv = '',
     lit = true,
     emissive = false,
+    nameByGlobalId = false,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive, nameByGlobalId);
   }
 
   /**

@@ -76,9 +76,13 @@ function geometryResult(): GeometryResult {
   } as unknown as GeometryResult;
 }
 
-/** Seed the store with the wall written in `unit` (`scale` native units per metre). */
-export async function seedRectangleWall(unit: string, scale: number): Promise<void> {
-  const bytes = new TextEncoder().encode(stepFile(unit, scale));
+/**
+ * Seed the store with the wall written in `unit` (`scale` native units per
+ * metre). `rewrite` edits the STEP text first (e.g. an implicit placement).
+ */
+export async function seedRectangleWall(unit: string, scale: number, rewrite?: (step: string) => string): Promise<void> {
+  const step = stepFile(unit, scale);
+  const bytes = new TextEncoder().encode(rewrite ? rewrite(step) : step);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const geometry = geometryResult();
   const model = { ...fixtureModel(WALL_MODEL), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;

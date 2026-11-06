@@ -196,6 +196,99 @@ test('palette Screenshot publishes a decoded nonblank PNG from the loaded real v
   await expect(page.getByText('Screenshot saved', { exact: true })).toBeVisible();
 });
 
+test('palette Presentation captures a real thumbnail and restores the saved camera through Play (#8947)', async ({ page }, info) => {
+  await start(page, true);
+  await wall(page);
+  await run(page, 'panel:presentation', 'presentation');
+  await page.getByRole('button', { name: 'Set collection from current context', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(1);
+  // Set an explicit camera before saving, so playback has a non-vacuous target.
+  await run(page, 'view:orientation:front-top', 'front top');
+  await expect.poll(async () => {
+    const a = (await debug(page)).matrix;
+    await page.waitForTimeout(100);
+    const b = (await debug(page)).matrix;
+    return a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+  }).toBe(true);
+  const savedMatrix = (await debug(page)).matrix;
+  await page.getByRole('button', { name: 'Save current collection as presentation view', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().basketViews.length)).toBe(1);
+  const saved = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().basketViews[0]);
+  expect(saved.viewpoint).not.toBeNull();
+  expect(saved.thumbnailDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+  const thumbnail = page.getByRole('img', { name: saved.name, exact: true });
+  await expect(thumbnail).toBeVisible();
+  await expect.poll(() => thumbnail.evaluate(element => {
+    const img = element as HTMLImageElement;
+    return img.complete && img.naturalWidth === 320 && img.naturalHeight === 180;
+  })).toBe(true);
+  expect(await thumbnail.evaluate(element => {
+    const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 180;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Thumbnail inspection context unavailable');
+    context.drawImage(element as HTMLImageElement, 0, 0);
+    const { data } = context.getImageData(0, 0, 320, 180);
+    const colors = new Set<number>();
+    for (let n = 0; n < data.length; n += 4) colors.add((data[n] << 16) | (data[n + 1] << 8) | data[n + 2]);
+    return colors.size;
+  }), 'saved thumbnail contains a nonblank rendered frame').toBeGreaterThan(16);
+  await info.attach('presentation-thumbnail.jpg', { body: Buffer.from(saved.thumbnailDataUrl!.split(',')[1], 'base64'), contentType: 'image/jpeg' });
+  await page.getByRole('button', { name: 'Clear active collection', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(0);
+  await run(page, 'view:orientation:back-right-bottom', 'back right bottom');
+  await expect.poll(async () => (await debug(page)).matrix).not.toEqual(savedMatrix);
+  // Loop keeps Stop available after the camera's finite transition completes.
+  await page.getByRole('button', { name: 'Play all saved views (Shift+Click to loop)', exact: true }).click({ modifiers: ['Shift'] });
+  try {
+    await expect.poll(() => page.evaluate(() => {
+      const s = globalThis.__ifc_lite_viewer_store__.getState();
+      return { active: s.activeBasketViewId, refs: [...s.pinboardEntities] };
+    })).toEqual({ active: saved.id, refs: saved.entityRefs });
+    await expect.poll(async () => {
+      const restored = (await debug(page)).matrix;
+      return Math.max(...restored.map((v, i) => Math.abs(v - savedMatrix[i])));
+    }, { message: 'real renderer returns to the saved camera', timeout: 15_000 }).toBeLessThan(1e-4);
+    await info.attach('presentation-playback.png', { body: await page.screenshot(), contentType: 'image/png' });
+  } finally {
+    await page.getByRole('button', { name: 'Stop playback', exact: true }).click();
+  }
+  await expect(page.getByRole('button', { name: 'Play all saved views (Shift+Click to loop)', exact: true })).toBeEnabled();
+});
+
+test('palette Plan refuses actual constrained and mobile widths while preserving the loaded 3D view (#8947)', async ({ page }, info) => {
+  await start(page, true);
+  await run(page, 'tool:wall', 'draw walls');
+  await page.getByRole('button', { name: 'Leave the command', exact: true }).click();
+  await page.setViewportSize({ width: 800, height: 844 });
+  await expect.poll(async () => {
+    const width = Number(await page.locator('[data-model-split-width]').getAttribute('data-model-split-width'));
+    return width > 0 && width < 800;
+  }).toBe(true);
+  let result = await find(page, 'model:plan', 'plan layout');
+  await expect(result.row).toHaveAttribute('aria-disabled', 'true');
+  await expect(result.row).toContainText('No room for the plan beside 3D');
+  const before = await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { layout: s.modelLayout, ids: [...s.models.keys()] };
+  });
+  await result.row.click();
+  await expect(palette(page)).toBeVisible();
+  await info.attach('plan-constrained-refusal.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  result = await find(page, 'model:plan', 'plan layout');
+  await expect(result.row).toHaveAttribute('aria-disabled', 'true');
+  await expect(result.row).toContainText('Unavailable in this configuration');
+  await result.row.click();
+  await expect(palette(page)).toBeVisible();
+  await result.search.press('Escape');
+  await expect(page.locator('canvas[data-viewport="main"]')).toBeVisible();
+  expect(await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return { layout: s.modelLayout, ids: [...s.models.keys()] };
+  })).toEqual(before);
+  await expect(page.locator('[data-plan-view]')).toHaveCount(0);
+});
+
 for (const context of contexts) {
   test(`${context.name}: unloaded selection command explains refusal; Settings sections reach real controls (#8947)`, async ({ page }) => {
     await start(page, false, context);

@@ -901,3 +901,17 @@ Historical witnesses are identified separately in
 pass merely because its parent destination was previously opened. The 24-case
 real-GPU protocol and required four-shard suite remain mandatory. Complete
 access acceptance is unchanged: UNACCEPTED.
+
+### Browser closure preparation after a62f source review
+
+Fresh Astra review of `9672..a62f` found no new actionable P1/P2 issues and
+confirmed both CSV witness/lifetime objections addressed in source. This is
+not runtime qualification; original requests remain preserved. Review:
+`/home/louistrue/.t3/scratch/palette-access-final-child-joins-astra-fd0b1714.md`.
+
+Two further real-browser cases are authored, UNRUN: Presentation live thumbnail
+and saved-camera playback, and Plan refusal at actual constrained/mobile
+widths. Their strict runner requires 26 cases (11 UX + 14 access + 1 extension),
+zero skips. The 9672 built production can be used only with both build-source
+and newer harness-source identities explicitly recorded; no previous
+22/24-case receipt proves these cases. Complete access remains UNACCEPTED.

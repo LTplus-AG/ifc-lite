@@ -52,8 +52,9 @@ function Harness({ sharedExtensionHostService }: { sharedExtensionHostService: N
 }
 function exporterRow(owner: string) {
   const row = document.querySelector<HTMLElement>(
-    `[role="option"][data-command-id="export:ext:${owner}:${EXPORTER}"]`);
+    `[role="option"][data-runtime-source="extension-export"][data-runtime-command-id="export:ext:${owner}:${EXPORTER}"]`);
   assert.ok(row, `installed owner-qualified palette exporter: ${owner}`);
+  assert.equal(row.getAttribute('data-command-id'), null, 'runtime exporter retains its own identity');
   return row;
 }
 function capturePublication() {

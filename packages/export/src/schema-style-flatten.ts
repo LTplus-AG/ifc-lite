@@ -25,6 +25,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { decodeRange } from './source-ref-bounds.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { GRID_FRAME_TYPES, GridFrames } from './schema-grid-frames.js';
 
 const ASSIGNMENT = 'IFCPRESENTATIONSTYLEASSIGNMENT';
 /** Deepest list nesting {@link StyleFlatten.strip} reads (IFC nests three). */
@@ -69,6 +70,13 @@ export class StyleFlatten {
    * list member) or written `$` (a single slot).
    */
   private emptied = new Set<number>();
+  /** The other record this conversion rewrites from a pre-pass, on the same hook (#9026 item 14). */
+  private readonly gridFrames = new GridFrames();
+
+  /** Which grids this export writes; see {@link GridFrames.retain}. */
+  retainGrids(written: (gridId: number) => boolean): void {
+    this.gridFrames.retain(written);
+  }
 
   /** True for the one conversion that flattens: IFC2X3 or IFC4 source, IFC4X3 target. */
   static applies(from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
@@ -97,6 +105,7 @@ export class StyleFlatten {
     if (!m) return;
     const type = m[3].toUpperCase();
     if (type === ASSIGNMENT) this.note(Number(m[2]), line);
+    else if ((GRID_FRAME_TYPES as readonly string[]).includes(type)) this.gridFrames.noteAttributes(type, Number(m[2]), m[5]);
     else if (isStyledItem(type)) {
       const args = splitTopLevelStepArguments(m[5]);
       const refs = args && args.length > 1 ? styleRefs(args[1]) : null;
@@ -128,6 +137,14 @@ export class StyleFlatten {
       const ref = store.entityIndex.byId.get(id);
       if (ref) flat.note(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength));
     }
+    for (const type of GRID_FRAME_TYPES) {
+      // @raw-entity-enumeration-ok the frames read SOURCE records; edits arrive through noteEdited and created records through noteLine
+      for (const id of store.entityIndex.byType.get(type) ?? []) {
+        // @raw-entity-enumeration-ok the frames read SOURCE records; edits arrive through noteEdited and created records through noteLine
+        const ref = store.entityIndex.byId.get(id);
+        if (ref) flat.noteLine(decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength));
+      }
+    }
     flat.settle(store);
     return flat;
   }
@@ -135,15 +152,28 @@ export class StyleFlatten {
   /**
    * Edited source assignments: each id's record text after the session's
    * edits (`edited(id)`, null when unchanged), so a styled item flattens to
-   * the members the user set, not the source ones.
+   * the members the user set, not the source ones. Grids and intersections
+   * likewise, so an axis the session added has its owner.
    */
-  noteEdited(store: Pick<IfcDataStore, 'entityIndex' | 'source'>, edited: (id: number, text: string) => string | null): void {
+  noteEdited(
+    store: Pick<IfcDataStore, 'entityIndex' | 'source'>,
+    edited: (id: number, text: string, type: string) => string | null,
+  ): void {
     if (!store.source) return;
+    for (const type of GRID_FRAME_TYPES) {
+      // @raw-entity-enumeration-ok the frames read SOURCE records; edits arrive through noteEdited and created records through noteLine
+      for (const id of store.entityIndex.byType.get(type) ?? []) {
+        // @raw-entity-enumeration-ok the frames read SOURCE records; edits arrive through noteEdited and created records through noteLine
+        const ref = store.entityIndex.byId.get(id);
+        const text = ref ? edited(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength), type) : null;
+        if (text !== null) this.noteLine(text);
+      }
+    }
     // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
     for (const id of store.entityIndex.byType.get(ASSIGNMENT) ?? []) {
       // @raw-entity-enumeration-ok the flatten reads SOURCE records; edits arrive through noteEdited and created records through noteLine
       const ref = store.entityIndex.byId.get(id);
-      const text = ref ? edited(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength)) : null;
+      const text = ref ? edited(id, decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength), ASSIGNMENT) : null;
       if (text !== null) this.note(id, text);
     }
     this.settle(store);
@@ -246,6 +276,8 @@ export class StyleFlatten {
     const type = m[3].toUpperCase();
     if (type === ASSIGNMENT && this.drops(Number(m[2]))) return null;
     const split = splitTopLevelStepArguments(m[5]);
+    const lifted = type === 'IFCGRIDPLACEMENT' && split ? this.gridFrames.lift(split) : null;
+    if (lifted) return `${m[1]}${m[3]}${m[4]}(${lifted.join(',')});`;
     const flat = split === null ? null : this.flatten(type, split);
     if (flat === 'drop') return null;
     return flat === null ? line : `${m[1]}${m[3]}${m[4]}(${flat});`;

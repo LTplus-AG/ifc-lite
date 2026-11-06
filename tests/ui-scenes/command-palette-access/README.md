@@ -853,3 +853,28 @@ preset collections, then verifies a fresh empty draft after reopening. Drawing
 now checks synchronous activity creation before an asynchronous PDF download can
 escape observation, and restores its journal fixture after owned jobs settle.
 These corrected assertions still need matching runtime execution.
+
+## Remaining file and export flows
+
+The owning report-workflow correction is now qualified on #8983 head
+`4a71fa4666f5591b47c7f74b8789ea251bf14b21`: root typecheck 134/134, mounted
+11/11 and restore 10/10, zero failures/skips; storage integration and the real
+scanner also passed. This is independent of descendant/full-access evidence.
+
+Three authored federation cases follow Save through the actual serializer and
+browser Blob boundary, then Open through JSON/source selection to real matched,
+mismatched and missing-source review, cancel/reopen and live unloaded refusal.
+The first picker must stay in the activation stack; the later source picker is
+asynchronous and its real browser activation remains unproven. No Restore is
+executed and no loaded/restored-model claim is made.
+
+Eleven authored export cases join all four CSV table commands to the actual Rust
+writer and browser publication boundary; exercise publication refusal; reach GLB,
+ion and Share child review/cancel; and verify missing-viewport guidance in all
+three locales. No remote operation or fake capture succeeds. Screenshot now
+gives a specific localized next step through the shared ribbon/palette handler.
+A new real-GPU case downloads and decodes its PNG and rejects blank output.
+Browser discovery now requires 24 cases (11 original UX, 12 access, 1 extension),
+including both actual federation pickers and their matched-source review.
+All these new runtime assertions remain UNRUN; historical reused cases are
+qualified separately in `evidence/export-child-evidence.json`.

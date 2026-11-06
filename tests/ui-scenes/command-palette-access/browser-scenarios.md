@@ -108,7 +108,7 @@ pnpm exec playwright test --project=viewer-e2e-ci --list \
   tests/e2e/command-palette-access-extension.e2e.spec.ts
 ```
 
-Expect 22 tests (11 frozen UX + 10 access + 1 extension). The portable runner
+Expect 24 tests (11 frozen UX + 12 access + 1 extension). The portable runner
 below replaces the machine-specific scratch preload recipe. It does not build,
 install dependencies, enter admission, modify specs or change assertions.
 Browser execution and physical GPU qualification remain **UNRUN** by its author.
@@ -199,7 +199,7 @@ They are transport tests, not substitutes for real browser and GPU acceptance.
 Retain `manifest.json`, `e2e.json`, `test-results/`, command logs, and each capture
 subdirectory. The compact runner manifest records host, observed source/tree/diff,
 artifact/receipt hashes, adapter proof, argv/exits, all test outcomes/attachments,
-skips, completed modes, not-run modes and partial failure. Exactly 22 passing
+skips, completed modes, not-run modes and partial failure. Exactly 24 passing
 cases without skips and 12 exact scene/theme pairs in each requested capture mode
 are required. A discovery or syntax pass is not a browser acceptance result.
 
@@ -302,5 +302,16 @@ remain in the evidence; this is not a claim of zero console messages.
 The runner now requires actual visible-canvas readback before starting cases;
 an offscreen pixel probe missed this failure. Physical-adapter checks remain.
 The PC helper-managed browser is unchanged. This is setup qualification only;
-all 22 cases, three capture matrices, source identity and zero skips still gate
+all 24 cases, three capture matrices, source identity and zero skips still gate
 acceptance. See `evidence/pop-gpu-setup-qualification.json`.
+
+The additional access case activates Screenshot from the real loaded palette,
+receives its actual PNG download, decodes it, checks nonblank image content and
+attaches the file. This is untimed output/access evidence, not pixel identity or
+performance proof. Missing-viewport guidance is also exercised in mounted
+English, German and Russian cases. Their execution remains pending.
+
+A second added access case uses the actual saved federation download and both
+browser file-chooser events to reach matched-source review and cancel without
+restoring. This explicitly tests the asynchronous second-picker boundary; it is
+not accepted from the mounted input-click witness alone.

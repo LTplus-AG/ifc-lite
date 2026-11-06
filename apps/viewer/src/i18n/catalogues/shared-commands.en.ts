@@ -65,6 +65,9 @@ export const sharedCommandsEn = {
   'exportCommands.screenshot.label': 'Screenshot',
   'exportCommands.screenshot.menuLabel': 'Screenshot',
   'exportCommands.screenshot.tooltip': 'Save viewport as PNG',
+  'exportCommands.screenshot.saved': 'Screenshot saved',
+  'exportCommands.screenshot.notReady': 'Open the 3D view and wait for it to finish loading, then try again.',
+  'exportCommands.screenshot.failed': 'Could not capture the 3D view. Try again after rendering finishes.',
 
   'exportCommands.pdf.label': 'PDF',
   'exportCommands.pdf.menuLabel': 'Export PDF (to-scale 3D view)',

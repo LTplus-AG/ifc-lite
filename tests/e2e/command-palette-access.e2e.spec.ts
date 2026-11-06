@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #8947 R1: bounded real destinations; run alongside the unchanged #8946 UX suite. */
-import { chromium, expect, test as base, type Page } from '@playwright/test';
+import { chromium, expect, test as base, type Download, type Page } from '@playwright/test';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { RenderVisibilitySnapshot, SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 
@@ -129,6 +129,71 @@ test.afterEach(async ({ page }, info) => {
   await info.attach('actual-state.png', { body: await page.screenshot(), contentType: 'image/png' });
   await info.attach('pageerrors.json', { body: JSON.stringify(errors.get(page)), contentType: 'application/json' });
   expect(errors.get(page), 'uncaught page errors (also saved on failure)').toEqual([]);
+});
+
+async function downloadBytes(file: Download): Promise<Buffer> {
+  expect(await file.failure()).toBeNull();
+  const chunks: Buffer[] = [];
+  for await (const chunk of await file.createReadStream()) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+test('palette saved federation opens both real pickers and reaches cancellable source review (#8947)', async ({ page }, info) => {
+  await start(page, true);
+  const downloaded = page.waitForEvent('download');
+  await run(page, 'file:save-federation-setup', 'save federation setup');
+  const saved = await downloaded;
+  expect(saved.suggestedFilename()).toMatch(/\.federation\.json$/);
+  const setupBytes = await downloadBytes(saved);
+  await info.attach('saved-federation.json', { body: setupBytes, contentType: 'application/json' });
+  const firstPicker = page.waitForEvent('filechooser');
+  await run(page, 'file:open-federation-setup', 'open federation setup');
+  const setupPicker = await firstPicker;
+  expect(setupPicker.isMultiple()).toBe(false);
+  const sourcePicker = page.waitForEvent('filechooser');
+  await setupPicker.setFiles({ name: saved.suggestedFilename(), mimeType: 'application/json', buffer: setupBytes });
+  const sources = await sourcePicker;
+  expect(sources.isMultiple()).toBe(true);
+  const source = await page.request.get('/samples/building-architecture.ifc');
+  expect(source.ok()).toBe(true);
+  await sources.setFiles({ name: 'building-architecture.ifc', mimeType: 'application/x-step', buffer: await source.body() });
+  const review = page.getByRole('dialog', { name: 'Reopen federation setup', exact: true });
+  await expect(review).toBeVisible();
+  await expect(review.getByText('building-architecture.ifc', { exact: true })).toBeVisible();
+  await expect(review.getByText('Matched', { exact: true })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Restore federation', exact: true })).toBeEnabled();
+  await review.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(review).toBeHidden();
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().models.size)).toBe(1);
+});
+
+test('palette Screenshot publishes a decoded nonblank PNG from the loaded real viewport (#8947)', async ({ page }, info) => {
+  await start(page, true);
+  const downloaded = page.waitForEvent('download');
+  await run(page, 'export:screenshot', 'screenshot');
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toMatch(/_screenshot\.png$/);
+  const png = await downloadBytes(file);
+  expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  await info.attach('palette-screenshot.png', { body: png, contentType: 'image/png' });
+  const pixels = await page.evaluate(async base64 => {
+    const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
+    const image = await createImageBitmap(blob);
+    try {
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('PNG inspection context unavailable');
+      context.drawImage(image, 0, 0);
+      const { data } = context.getImageData(0, 0, image.width, image.height);
+      const colors = new Set<number>();
+      for (let n = 0; n < data.length; n += 4) colors.add((data[n] << 16) | (data[n + 1] << 8) | data[n + 2]);
+      return { width: image.width, height: image.height, colors: colors.size };
+    } finally { image.close(); }
+  }, png.toString('base64'));
+  expect(pixels.width).toBeGreaterThan(300);
+  expect(pixels.height).toBeGreaterThan(200);
+  expect(pixels.colors, 'a real scene capture is not a solid blank image').toBeGreaterThan(16);
+  await expect(page.getByText('Screenshot saved', { exact: true })).toBeVisible();
 });
 
 for (const context of contexts) {

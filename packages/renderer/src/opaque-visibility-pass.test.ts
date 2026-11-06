@@ -14,16 +14,17 @@ function harness(sectionBinding?: GPUBindGroup) {
   let resolve!: () => void;
   let reject!: (error: Error) => void;
   const validation = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0, bindings: [] as { index: number; group: GPUBindGroup }[] };
+  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0, bindings: [] as { index: number; group: GPUBindGroup }[], group2AtDraw: [] as unknown[] };
   const pipeline = () => ({ getBindGroupLayout: () => ({}) });
-  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: (index: number, group: GPUBindGroup) => { stats.bindings.push({ index, group }); },
-    drawIndexed: () => { stats.draws++; }, end: () => {} };
+  let group2: unknown;
+  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: (index: number, group: GPUBindGroup) => { stats.bindings.push({ index, group }); if (index === 2) group2 = group; },
+    drawIndexed: () => { stats.draws++; stats.group2AtDraw.push((group2 as { label?: string } | undefined)?.label); }, end: () => {} };
   const encoder = { beginRenderPass: () => pass, finish: () => ({}) } as unknown as GPUCommandEncoder;
   const device = {
     createRenderPipeline: () => { stats.sync++; return pipeline(); },
     createRenderPipelineAsync: async () => { stats.async++; await validation; return pipeline(); },
     createShaderModule: () => ({}), createPipelineLayout: () => ({}),
-    createBindGroupLayout: () => ({}), createBindGroup: () => ({}),
+    createBindGroupLayout: () => ({}), createBindGroup: (d: { label?: string }) => ({ label: d.label ?? 'visibility' }),
     createCommandEncoder: () => encoder,
     createTexture: () => { stats.textures++; return { createView: () => ({}), destroy: () => { stats.destroyed++; } }; },
   } as unknown as GPUDevice;
@@ -87,5 +88,22 @@ test('#8015 direct pipeline draws receive the same section exclusions in colour 
     assert.deepEqual(h.stats.bindings.filter(binding => binding.index === 3), [
       { index: 3, group }, { index: 3, group },
     ], 'both passes bind exclusions when the caller sets only mesh and material groups');
+  } finally { h.visibility.destroy(); }
+});
+
+test('#9060 every draw has group 2 bound: padding in perspective and depth, visibility only for variants', async () => {
+  const h = harness({} as GPUBindGroup);
+  try {
+    h.resolve(); await h.visibility.prepare();
+    const perspective = h.begin(false);
+    perspective.setPipeline(h.base); perspective.drawIndexed(3); perspective.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['empty-padding'], 'the base layout pads group 2; perspective must bind it before drawing');
+
+    h.stats.group2AtDraw.length = 0;
+    const ortho = h.begin();
+    ortho.setPipeline(h.base); ortho.drawIndexed(3);
+    ortho.setPipeline({} as GPURenderPipeline); ortho.drawIndexed(3); ortho.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['empty-padding', 'visibility', 'empty-padding'],
+      'geometric depth keeps the base layout; a non-variant draw after a variant gets the padding back');
   } finally { h.visibility.destroy(); }
 });

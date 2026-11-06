@@ -147,6 +147,26 @@ describe('stair refit to a new rise keeps identities (#9013)', () => {
     });
   }
 
+  it('a replaced flight shape is removed once nothing uses it, so the export has no orphan shape (#9013 GPU walkthrough)', async () => {
+    const { store, view, editor, built, other } = await fixture('IFC4');
+    const orphans = () => {
+      const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+      const shapes = [...text.matchAll(/^#(\d+)=IFCPRODUCTDEFINITIONSHAPE\(/gm)].map((m) => m[1]);
+      return shapes.filter((id) => !new RegExp(`#${id}[,)]`).test(text.replace(new RegExp(`^#${id}=`, 'm'), '')));
+    };
+    // The fixture itself orphans the second stair's own shape when it points that flight at the first one's.
+    const before = orphans();
+    // The second stair's flight shares the first one's shape: the first refit must keep it.
+    create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 12, RiserHeight: 0.2 });
+    expect(view.isDeleted(built.productShapeId)).toBe(false);
+    expect(orphans()).toEqual(before);
+    create.editStairDimensionsInStore(store, editor, other.stairId, { NumberOfRisers: 12, RiserHeight: 0.2 });
+    expect(view.isDeleted(built.productShapeId)).toBe(true);
+    // A refit, again: its own replaced shape goes too.
+    create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 13, RiserHeight: 0.2 });
+    expect(orphans()).toEqual(before);
+  });
+
   it('refuses a fractional riser count and writes nothing', async () => {
     const { store, view, editor, built } = await fixture('IFC4');
     const before = structuredClone(view.getMutations());

@@ -4,6 +4,7 @@
 
 /** Strict occurrence edits of the single stepped flight built by stair.ts
  * (#6232). No inferred box, mapped shape, landing or multi-flight rewrite. */
+import { effectiveReferencers } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
@@ -116,7 +117,7 @@ function read(store: IfcDataStore, reader: AnchorEntityReader, id: number) {
     RiserHeight: r * scale, TreadLength: t * scale,
     ...(waist === undefined ? {} : { WaistThickness: waist * scale }),
   };
-  return { dimensions, scale, flight, shape, rep, solidId: solidId!, profileId: profileId!, profile };
+  return { dimensions, scale, flight, shapeId: shapeId!, shape, repId, rep, solidId: solidId!, profileId: profileId!, profile };
 }
 
 /** Parent and flight resolve to the same strict, single-flight dimensions. */
@@ -174,6 +175,13 @@ export function editStairDimensionsInStore(store: IfcDataStore, editor: StoreEdi
     });
     const shape = draft.addEntity('IfcProductDefinitionShape', [...labels, [ref(rep)]]).expressId;
     draft.setPositionalAttribute(next.flightId, 6, ref(shape));
+    // The replaced shape (and its representation) would otherwise stay as an
+    // orphan IfcProductDefinitionShape, which the schema refuses (ShapeOfProduct [1:?]).
+    const referencers = effectiveReferencers(store, draft.getMutationView());
+    if (referencers(current.shapeId).length === 0) {
+      draft.removeEntity(current.shapeId);
+      if (current.repId !== null && referencers(current.repId).every((parent) => parent === current.shapeId)) draft.removeEntity(current.repId);
+    }
     for (const name of ['RiserHeight', 'TreadLength'] as const) {
       draft.setPositionalAttribute(next.flightId, current.flight.names.indexOf(name), { real: native(next[name]) });
     }

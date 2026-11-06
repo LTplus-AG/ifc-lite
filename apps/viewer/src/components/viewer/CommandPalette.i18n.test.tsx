@@ -87,6 +87,42 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
+  // Search metadata only: these keys populate keywords, never row detail/name.
+  'commandPalette.errorReport.aliases',
+  'commandPalette.paths.modelPlan', // model:plan has keywordsKey but no detailKey.
+  'commandPalette.paths.retainedReport', // retained report path is keywords-only.
+  'commandPalette.paths.sectionAdd', // rows show each section kind's titleKey instead.
+  'commandPalette.paths.basepoints', // basepoint row has no detailKey.
+  'commandPalette.aliases.entityActions',
+  'commandPalette.file.newBlank.keywords',
+  'commandPalette.file.cancelLoad.keywords',
+  'commandPalette.file.retryLoad.keywords',
+  'commandPalette.file.dismissLoadError.keywords',
+  'commandPalette.aliases.bulk',
+  'commandPalette.aliases.import',
+  'commandPalette.aliases.classes',
+  'commandPalette.search.inline.aliases',
+  'commandPalette.pref.colorful.aliases',
+  // No error-report host is mounted: host refusal precedes the no-context refusal.
+  'commandPalette.availability.errorReportContext',
+  // No section host: its missing-host refusal precedes limit/bounds checks.
+  'commandPalette.availability.sectionLimit',
+  'commandPalette.availability.sectionBounds',
+  // No model workspace, copyable renderer selection, or selected browser text.
+  'commandPalette.availability.storeyBoundary',
+  'commandPalette.availability.copyTarget',
+  'commandPalette.availability.textSelection',
+  // Catalogue reservation: no production consumer currently requests this key.
+  'commandPalette.availability.world',
+  // No startBlank host: missing-host refusal precedes the nonempty-session check.
+  'commandPalette.availability.blankSession',
+  // Recovery is bound, but there is no current load error: noLoadError wins first.
+  'commandPalette.availability.noLoadRetry',
+  // No extension dock contributions are installed in this scenario.
+  'commandPalette.extension.conditions',
+  // Export-runner toast on a second export during an active extension export, not palette text.
+  'commandPalette.extension.busy',
+
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.
   // These prerequisites need roles, loaded models, or a missing host beyond this seed.
   'commandPalette.availability.editor',

@@ -85,6 +85,11 @@ async function startBrowser(opts, manifest) {
   if (!Array.isArray(args) || args.some(arg => typeof arg !== 'string' ||
       /swiftshader|llvmpipe|softpipe|user-data-dir|remote-debugging|disable-gpu/i.test(arg)))
     throw new Error('Unsafe/software/ownership Chrome flags refused');
+  // Pop has both Intel and NVIDIA adapters. Qualify the same discrete GPU as
+  // ifc-gpu-check --probe without changing the application's requestAdapter.
+  // The default preserves any explicit per-request preference. Pixel/adapter
+  // proof below still rejects software fallback; this flag is not proof itself.
+  args.push('--use-webgpu-power-preference=default-high-performance');
   const profile = await mkdtemp(join(tmpdir(), 'palette-browser-'));
   let context;
   try {

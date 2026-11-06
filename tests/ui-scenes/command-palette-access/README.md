@@ -551,3 +551,17 @@ existing 8 GiB Node profile, appends that heap option without discarding inherit
 options, and serializes Turbo while retaining the entire plain `pnpm typecheck`
 command and tail. YAML/bash parsing pass; the corrected workflow still needs its
 own CI execution. This does not supersede Pop's separate successful typecheck.
+
+
+R2 focused source285 outcome is now final: **377 tests, 369 passed, 8 failed,
+0 skipped**. The full four shards did not start. The help failures are confirmed
+missing Vite build constants; What's New also falsely passed on recovery-boundary
+text. Repairs seed/restore real metadata and require actual About/version/link,
+release highlight and shortcut-key content. Dock focus and entity-menu assertions
+now await the bounded real deferred lifecycle and use boolean DOM identities, so
+failure formatting cannot walk a cyclic React/DOM graph. Bulk edit still requires
+one parsed model-B target and its real Stage=6 mutation while A remains untouched.
+The catalogue census explicitly accounts for new metadata/context-only keys; file
+metadata is checked as visible content. Generic zone authoring and selected-entity
+volume inspection now assert their distinct canonical destinations. These repairs
+have only cheap source checks so far; runtime/typecheck must run on the new head.

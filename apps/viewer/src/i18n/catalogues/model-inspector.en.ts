@@ -12,6 +12,7 @@ export const modelInspectorEn = {
   'modelInspector.empty.enter': 'Model',
   'modelInspector.empty.noModel': 'Load or start a model first',
   'modelInspector.empty.idle': 'Pick a tool in the rail, or select an element',
+  'modelInspector.empty.command': 'This tool has no defaults to edit here. Its options are in the bar over the viewport.',
   'modelInspector.header.defaults': 'Defaults · {kind}',
   'modelInspector.header.selection': '{ifcClass} #{id}',
   'modelInspector.header.selectionOnStorey': '{ifcClass} #{id} · {storey}',

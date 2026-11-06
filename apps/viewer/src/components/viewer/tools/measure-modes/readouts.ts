@@ -23,6 +23,7 @@ import {
   type MeasurePoint,
   type Measurement,
 } from '@/store/types';
+import type { PlacedMeasurePoint } from '@/store/slices/measurePointSlice';
 import { formatDistance } from '../formatDistance';
 import { formatThreePointAngle, threePointAngle, type ThreePointAngle } from './three-point-angle';
 import { edgePairAngle, facePairAngle, formatAnglePair, type AnglePairOutcome } from './edge-face-angle';
@@ -102,24 +103,28 @@ export interface MeasureLivePointState {
   activeMeasurement: ActiveMeasurement | null;
   measurements: readonly Measurement[];
   measurePointLive: MeasurePoint | null;
-  measurePointLast: MeasurePoint | null;
+  measurePointLast: PlacedMeasurePoint | null;
 }
 
 /**
- * The point every coordinate readout shows, and whether it is still moving.
+ * The point every coordinate readout shows, and whether it is still moving. A
+ * reading that is not live names the stored measurement it came from, so the
+ * readout can carry that measurement's Stale badge once its model moves (#8828).
  * Point mode reads its own hover/placed point (#8770) and nothing else, so a
  * distance endpoint never shows up as a picked point there. Every other mode
  * keeps the rule the readouts always had: the moving end of the current drag,
  * else the end of the last finished distance.
  */
-export function measureLivePoint(s: MeasureLivePointState): { point: MeasurePoint; live: boolean } | null {
+export type MeasureLivePoint = { point: MeasurePoint; live: true } | { point: MeasurePoint; live: false; id: string };
+
+export function measureLivePoint(s: MeasureLivePointState): MeasureLivePoint | null {
   if (s.measureMode === 'point') {
     if (s.measurePointLive) return { point: s.measurePointLive, live: true };
-    return s.measurePointLast ? { point: s.measurePointLast, live: false } : null;
+    return s.measurePointLast ? { point: s.measurePointLast, live: false, id: s.measurePointLast.id } : null;
   }
   if (s.activeMeasurement) return { point: s.activeMeasurement.current, live: true };
   const last = s.measurements[s.measurements.length - 1];
-  return last ? { point: last.end, live: false } : null;
+  return last ? { point: last.end, live: false, id: last.id } : null;
 }
 
 /**

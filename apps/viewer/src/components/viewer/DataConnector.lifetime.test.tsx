@@ -43,12 +43,15 @@ function Harness() {
   const [open, setOpen] = useState(true);
   return <><button onClick={() => setOpen(true)}>Reopen</button><DataConnector open={open} onOpenChange={setOpen} /></>;
 }
-async function upload(count = 2) {
+function chooseCsv(name: string, text: string) {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
-  Object.defineProperty(input, 'files', { configurable: true, value: [new File([
-    ['GlobalId,FireRating', ...Array.from({ length: count }, (_, i) => `${guid(i + 1)},REI${i + 1}`)].join('\n'),
-  ], 'draft.csv', { type: 'text/csv' })] });
+  Object.defineProperty(input, 'files', { configurable: true, value: [new File([text], name, { type: 'text/csv' })] });
   act(() => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+}
+async function upload(count = 2) {
+  chooseCsv('draft.csv',
+    ['GlobalId,FireRating', ...Array.from({ length: count }, (_, i) => `${guid(i + 1)},REI${i + 1}`)].join('\n'),
+  );
   await advance(50); assert.equal(importButton().disabled, false);
 }
 function selectModel(id: string) {
@@ -61,6 +64,53 @@ function selectModel(id: string) {
 async function ticks(t: TestContext, count = 12) {
   for (let i = 0; i < count; i++) await act(async () => { t.mock.timers.tick(1); await Promise.resolve(); });
 }
+
+function holdFileReads(t: TestContext) {
+  const reads: Array<() => void> = [];
+  const read = FileReader.prototype.readAsText;
+  t.mock.method(FileReader.prototype, 'readAsText', function (this: FileReader, ...args: Parameters<FileReader['readAsText']>) {
+    reads.push(() => read.apply(this, args));
+  });
+  return reads;
+}
+function mappingTarget() {
+  const pset = document.querySelector<HTMLInputElement>('input[aria-label="Target Pset"]');
+  const property = document.querySelector<HTMLInputElement>('input[aria-label="Target Property"]');
+  assert.ok(pset && property);
+  return { pset: pset.value, property: property.value };
+}
+
+test('#8947 retiring a pending CSV read keeps the displayed filename and actual import payload together', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const target = mappingTarget();
+  const reads = holdFileReads(t);
+  chooseCsv('replacement.csv', `GlobalId,FireRating\n${guid(1)},REPLACEMENT\n`);
+  assert.equal(reads.length, 1);
+  selectModel('b');
+  act(() => reads[0]()); await advance(50);
+  assert.match(document.body.textContent ?? '', /draft\.csv/);
+  assert.doesNotMatch(document.body.textContent ?? '', /replacement\.csv/);
+  assert.equal(importButton().disabled, false);
+  click(importButton()); await advance(100);
+  const state = useViewerStore.getState();
+  assert.equal(state.getMutationView('a')?.getModifiedEntityCount(), 0);
+  assert.equal(state.getMutationView('b')?.getPropertyValue(1, target.pset, target.property), 'REI1');
+});
+
+test('#8947 an older CSV read finishing last cannot replace a newer accepted draft', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const target = mappingTarget();
+  const reads = holdFileReads(t);
+  chooseCsv('older.csv', `GlobalId,FireRating\n${guid(1)},OLDER\n`);
+  chooseCsv('newer.csv', `GlobalId,FireRating\n${guid(1)},NEWER\n`);
+  assert.equal(reads.length, 2);
+  act(() => reads[1]()); await advance(50);
+  act(() => reads[0]()); await advance(50);
+  assert.match(document.body.textContent ?? '', /newer\.csv/);
+  assert.doesNotMatch(document.body.textContent ?? '', /older\.csv/);
+  click(importButton()); await advance(100);
+  assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, target.pset, target.property), 'NEWER');
+});
 
 // Fake only scheduling after the real file parse: importAsync pauses at its own
 // matching/apply setTimeout boundaries; parsing, matching and writes stay real.

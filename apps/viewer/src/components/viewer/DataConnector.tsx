@@ -102,6 +102,7 @@ export function DataConnector(props: ToolDialogProps) {
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileReadGeneration = useRef(0);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
@@ -227,19 +228,21 @@ export function DataConnector(props: ToolDialogProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setFileName(file.name);
-    setMatchResults(null);
-    setImportStats(null);
-    setError(null);
-    setImportDirty(true);
-    setAiMapping(null);
-
+    const generation = ++fileReadGeneration.current;
     const reader = new FileReader();
     reader.onload = (event) => {
-      if (!isCurrent()) return;
+      if (!isCurrent() || generation !== fileReadGeneration.current) return;
       const text = event.target?.result as string;
       if (!text) return;
 
+      // Publish the accepted file and its payload together. A retired read must
+      // leave the previous draft intact, including the filename shown to users.
+      setFileName(file.name);
+      setMatchResults(null);
+      setImportStats(null);
+      setError(null);
+      setImportDirty(true);
+      setAiMapping(null);
       setCsvContent(text);
 
       // Use CsvConnector to parse if available, otherwise do basic parsing for preview

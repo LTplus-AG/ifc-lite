@@ -14,11 +14,31 @@ import type { PickClipState } from './pick-types.js';
 export class PickClipRevision {
   revision = 0;
   private key = '';
+  private last = 0;
+  /** The clip and revision before a run of transient (capture) frames. */
+  private settled: { key: string; revision: number } | null = null;
 
-  note(clip: PickClipState): void {
+  /**
+   * `transient` marks a one-off capture frame (#9002), whose clip may be
+   * cleared or swapped for that frame only. It still moves the revision, so a
+   * pick made against its clip is told apart; the next normal frame that shows
+   * the clip from before the capture returns to that frame's revision, so a
+   * reading taken before the capture survives it. Any other clip is a change.
+   */
+  note(clip: PickClipState, transient = false): void {
     const key = JSON.stringify([clip.sectionPlane, clip.extraPlanes, clip.clipBox, [...(clip.sectionExcludedIds ?? [])]]);
+    if (transient) this.settled ??= { key: this.key, revision: this.revision };
+    else if (this.settled) {
+      const settled = this.settled;
+      this.settled = null;
+      if (key === settled.key) {
+        this.key = key;
+        this.revision = settled.revision;
+        return;
+      }
+    }
     if (key === this.key) return;
     this.key = key;
-    this.revision++;
+    this.revision = ++this.last;
   }
 }

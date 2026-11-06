@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 import { watchGpuDeviceLoss } from './gpu-device-loss';
 import { recordViewportWitness } from './viewport-acceptance';
+import { clickPanelAction, panelHeader } from './panel-header.helpers';
 
 const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
@@ -61,9 +62,9 @@ test('native clash evidence reaches the assistant without executing model output
     await route.fulfill({ contentType: 'text/event-stream', body:
       `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n` });
   });
-  const clashHeader = page.getByRole('heading', { name: 'Clash detection', exact: true }).locator('..');
+  const clashHeader = panelHeader(page, 'Clash detection');
   await expect(clashHeader).toBeVisible();
-  await clashHeader.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await clickPanelAction(page, clashHeader, 'Discuss with AI');
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await expect(assistant.getByText(/rows attached|The captured native source contains no result rows/).first()).toBeVisible();
   // #6860: the coordinator's default sidebar must fit the refresh action.

@@ -12,9 +12,9 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Table2, Settings2 } from 'lucide-react';
+import { ArrowLeft, Plus, Settings2, Table2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { PanelHeader } from '@/components/ui/panel-header';
 import { useViewerStore } from '@/store';
 import {
   summariseListRows,
@@ -26,7 +26,7 @@ import { runListFederated } from '@/lib/lists/run-list';
 import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
-import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
+import { useAssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
@@ -40,6 +40,7 @@ type PanelView = 'library' | 'builder' | 'results';
 
 export function ListPanel() {
   const { t, locale } = useTranslation();
+  const assistant = useAssistantAction();
   const [view, setView] = useState<PanelView>('library');
   const [editingList, setEditingList] = useState<ListDefinition | null>(null);
 
@@ -205,52 +206,34 @@ export function ListPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <div className="flex items-center gap-2">
-          <Table2 className="h-4 w-4" />
-          <span className="font-medium text-sm">
-            {view === 'library' && t('lists.panel.title')}
-            {view === 'builder' && (editingList ? t('lists.panel.editList') : t('lists.panel.newList'))}
-            {view === 'results' && t('lists.panel.results')}
+      <PanelHeader
+        icon={<Table2 />}
+        title={view === 'library' ? t('lists.panel.title') : view === 'builder'
+          ? (editingList ? t('lists.panel.editList') : t('lists.panel.newList')) : t('lists.panel.results')}
+        meta={view === 'results' && listResult && (
+          <span className="text-xs text-muted-foreground">
+            ({t('lists.panel.resultsSummary', {
+              count: listResult.totalCount,
+              countDisplay: formatLocaleCount(listResult.totalCount, locale),
+              ms: listResult.executionTime.toFixed(0),
+            })})
           </span>
-          {view === 'results' && listResult && (
-            <span className="text-xs text-muted-foreground">
-              ({t('lists.panel.resultsSummary', {
-                count: listResult.totalCount,
-                countDisplay: formatLocaleCount(listResult.totalCount, locale),
-                ms: listResult.executionTime.toFixed(0),
-              })})
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <AssistantAction />
-          {view === 'results' && (
-            <>
-              <IconButton
-                label={t('lists.panel.editConfiguration')}
-                size="icon-sm"
-                onClick={handleEditFromResults}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-              </IconButton>
-              <IconButton
-                label={t('lists.panel.backToLists')}
-                size="icon-sm"
-                onClick={() => setView('library')}
-              >
-                <Table2 className="h-3.5 w-3.5" />
-              </IconButton>
-            </>
-          )}
-          {view === 'builder' && (
-            <Button variant="ghost" size="sm" onClick={() => setView('library')} className="text-xs h-7">
-              {t('lists.panel.cancel')}
-            </Button>
-          )}
-        </div>
-      </div>
+        )}
+        leading={view === 'builder' && (
+          <Button variant="ghost" size="sm" onClick={() => setView('library')} className="h-7 px-2 text-xs">
+            {t('lists.panel.cancel')}
+          </Button>
+        )}
+        actions={view === 'library' ? [
+          { id: 'list-new', label: t('lists.library.newList'), icon: <Plus className="h-4 w-4" />, disabled: !hasData, onSelect: handleCreateNew },
+          { id: 'list-import', label: t('lists.library.import'), icon: <Upload className="h-4 w-4" />, onSelect: () => importInputRef.current?.click() },
+          assistant,
+        ] : view === 'results' ? [
+          { id: 'list-edit', label: t('lists.panel.editConfiguration'), icon: <Settings2 className="h-4 w-4" />, onSelect: handleEditFromResults },
+          { id: 'list-back', label: t('lists.panel.backToLists'), icon: <ArrowLeft className="h-4 w-4" />, onSelect: () => setView('library') },
+          assistant,
+        ] : [assistant]}
+      />
 
       {/* Rendered over whichever view is active — #4317. */}
       {listError && <ListErrorBox message={listError} onDismiss={() => setListError(null)} />}
@@ -268,7 +251,6 @@ export function ListPanel() {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExport={handleExportDefinition}
-          onImport={() => importInputRef.current?.click()}
         />
       )}
 

@@ -1,0 +1,423 @@
+{
+  "issue": 8875,
+  "verdict": "inconclusive; both cohorts rejected by unchanged noise guard",
+  "scope": "Native default-path comparison on pre-merge implementation 70c63f2f1b, not browser worker-pool timing or post-merge qualification. skipVoids enabled intentionally changes geometry and was covered by correctness tests, not this timing protocol.",
+  "fixtures": {
+    "fixture-0.ifc": "ara3d/AC20-FZK-Haus.ifc",
+    "fixture-1.ifc": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+  },
+  "identity": "Mesh, vertex and triangle counts match in both cohorts; the native timing harness does not establish byte identity. Separate WASM correctness evidence covers restored net and non-host byte identity.",
+  "skipped": "No heavy CSG fixture or browser worker-pool timing qualified.",
+  "runs": [
+    {
+      "rounds": 5,
+      "job": "84c2fb34-cc4c-4e99-8231-e4e3582ccdc6",
+      "report": {
+        "base": "5560708619c83ac2e52ac26ea1852477e7c03ad0",
+        "branch": "70c63f2f1bc3c9ecc3bfaf5b883fcd1d4eb534d4",
+        "fixtures": [
+          {
+            "fixture": "fixture-0.ifc",
+            "phases": [
+              {
+                "phase": "parse",
+                "baseMedianMs": 11,
+                "branchMedianMs": 11,
+                "deltaPct": 0,
+                "noisePct": 0,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "entity-scan",
+                "baseMedianMs": 6,
+                "branchMedianMs": 6,
+                "deltaPct": 0,
+                "noisePct": 0,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "lookup/styles",
+                "baseMedianMs": 2,
+                "branchMedianMs": 2,
+                "deltaPct": 0,
+                "noisePct": 0,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "preprocess",
+                "baseMedianMs": 2,
+                "branchMedianMs": 2,
+                "deltaPct": 0,
+                "noisePct": 50,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "geometry",
+                "baseMedianMs": 47,
+                "branchMedianMs": 47,
+                "deltaPct": 0,
+                "noisePct": 34.04255319148936,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "TOTAL",
+                "baseMedianMs": 58,
+                "branchMedianMs": 58,
+                "deltaPct": 0,
+                "noisePct": 27.586206896551722,
+                "real": false,
+                "direction": "unchanged"
+              }
+            ],
+            "fingerprint": {
+              "meshes": {
+                "base": [
+                  285
+                ],
+                "branch": [
+                  285
+                ]
+              },
+              "vertices": {
+                "base": [
+                  35940
+                ],
+                "branch": [
+                  35940
+                ]
+              },
+              "triangles": {
+                "base": [
+                  20322
+                ],
+                "branch": [
+                  20322
+                ]
+              }
+            }
+          },
+          {
+            "fixture": "fixture-1.ifc",
+            "phases": [
+              {
+                "phase": "parse",
+                "baseMedianMs": 29,
+                "branchMedianMs": 29,
+                "deltaPct": 0,
+                "noisePct": 3.4482758620689653,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "entity-scan",
+                "baseMedianMs": 29,
+                "branchMedianMs": 28,
+                "deltaPct": -3.4482758620689653,
+                "noisePct": 3.4482758620689653,
+                "real": false,
+                "direction": "faster"
+              },
+              {
+                "phase": "lookup/styles",
+                "baseMedianMs": 0,
+                "branchMedianMs": 0,
+                "deltaPct": null,
+                "noisePct": null,
+                "real": false,
+                "direction": null
+              },
+              {
+                "phase": "preprocess",
+                "baseMedianMs": 0,
+                "branchMedianMs": 0,
+                "deltaPct": null,
+                "noisePct": null,
+                "real": false,
+                "direction": null
+              },
+              {
+                "phase": "geometry",
+                "baseMedianMs": 3363,
+                "branchMedianMs": 3392,
+                "deltaPct": 0.8623253047873922,
+                "noisePct": 3.6574487065120427,
+                "real": false,
+                "direction": "slower"
+              },
+              {
+                "phase": "TOTAL",
+                "baseMedianMs": 3393,
+                "branchMedianMs": 3421,
+                "deltaPct": 0.8252284114353079,
+                "noisePct": 3.595638078396699,
+                "real": false,
+                "direction": "slower"
+              }
+            ],
+            "fingerprint": {
+              "meshes": {
+                "base": [
+                  1402
+                ],
+                "branch": [
+                  1402
+                ]
+              },
+              "vertices": {
+                "base": [
+                  218929
+                ],
+                "branch": [
+                  218929
+                ]
+              },
+              "triangles": {
+                "base": [
+                  136241
+                ],
+                "branch": [
+                  136241
+                ]
+              }
+            }
+          }
+        ],
+        "verdict": {
+          "fingerprintDrift": false,
+          "tooNoisy": true,
+          "realChange": false,
+          "inconclusive": true,
+          "zeroBaselineIncrease": false
+        }
+      },
+      "qualification": {
+        "commandExitCode": 0,
+        "artifactDrift": false,
+        "observedExternalBuildActivity": false,
+        "manifestSha256": "9228ce08a3bf639947cd8824e63b9a6e3d872bff94817da7b1ae31797d8ccee7",
+        "cpuPolicyChanged": false,
+        "thermalInvalid": false,
+        "throttled": false,
+        "protocolVerdict": {
+          "fingerprintDrift": false,
+          "tooNoisy": true,
+          "realChange": false,
+          "inconclusive": true,
+          "zeroBaselineIncrease": false
+        },
+        "qualified": false,
+        "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+      }
+    },
+    {
+      "rounds": 10,
+      "job": "64e14de3-b32f-4c39-be80-4875c9b3db43",
+      "report": {
+        "base": "5560708619c83ac2e52ac26ea1852477e7c03ad0",
+        "branch": "70c63f2f1bc3c9ecc3bfaf5b883fcd1d4eb534d4",
+        "fixtures": [
+          {
+            "fixture": "fixture-0.ifc",
+            "phases": [
+              {
+                "phase": "parse",
+                "baseMedianMs": 11,
+                "branchMedianMs": 11,
+                "deltaPct": 0,
+                "noisePct": 72.72727272727273,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "entity-scan",
+                "baseMedianMs": 6,
+                "branchMedianMs": 6,
+                "deltaPct": 0,
+                "noisePct": 83.33333333333334,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "lookup/styles",
+                "baseMedianMs": 2,
+                "branchMedianMs": 2,
+                "deltaPct": 0,
+                "noisePct": 50,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "preprocess",
+                "baseMedianMs": 2,
+                "branchMedianMs": 2,
+                "deltaPct": 0,
+                "noisePct": 100,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "geometry",
+                "baseMedianMs": 47,
+                "branchMedianMs": 46.5,
+                "deltaPct": -1.0638297872340425,
+                "noisePct": 29.78723404255319,
+                "real": false,
+                "direction": "faster"
+              },
+              {
+                "phase": "TOTAL",
+                "baseMedianMs": 58,
+                "branchMedianMs": 58.5,
+                "deltaPct": 0.8620689655172413,
+                "noisePct": 37.93103448275862,
+                "real": false,
+                "direction": "slower"
+              }
+            ],
+            "fingerprint": {
+              "meshes": {
+                "base": [
+                  285
+                ],
+                "branch": [
+                  285
+                ]
+              },
+              "vertices": {
+                "base": [
+                  35940
+                ],
+                "branch": [
+                  35940
+                ]
+              },
+              "triangles": {
+                "base": [
+                  20322
+                ],
+                "branch": [
+                  20322
+                ]
+              }
+            }
+          },
+          {
+            "fixture": "fixture-1.ifc",
+            "phases": [
+              {
+                "phase": "parse",
+                "baseMedianMs": 30,
+                "branchMedianMs": 30,
+                "deltaPct": 0,
+                "noisePct": 6.666666666666667,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "entity-scan",
+                "baseMedianMs": 29,
+                "branchMedianMs": 29,
+                "deltaPct": 0,
+                "noisePct": 6.896551724137931,
+                "real": false,
+                "direction": "unchanged"
+              },
+              {
+                "phase": "lookup/styles",
+                "baseMedianMs": 0,
+                "branchMedianMs": 0,
+                "deltaPct": null,
+                "noisePct": null,
+                "real": false,
+                "direction": null
+              },
+              {
+                "phase": "preprocess",
+                "baseMedianMs": 0,
+                "branchMedianMs": 0,
+                "deltaPct": null,
+                "noisePct": null,
+                "real": false,
+                "direction": null
+              },
+              {
+                "phase": "geometry",
+                "baseMedianMs": 3402.5,
+                "branchMedianMs": 3393,
+                "deltaPct": -0.2792064658339456,
+                "noisePct": 4.320352681851579,
+                "real": false,
+                "direction": "faster"
+              },
+              {
+                "phase": "TOTAL",
+                "baseMedianMs": 3432,
+                "branchMedianMs": 3423,
+                "deltaPct": -0.26223776223776224,
+                "noisePct": 4.2540792540792545,
+                "real": false,
+                "direction": "faster"
+              }
+            ],
+            "fingerprint": {
+              "meshes": {
+                "base": [
+                  1402
+                ],
+                "branch": [
+                  1402
+                ]
+              },
+              "vertices": {
+                "base": [
+                  218929
+                ],
+                "branch": [
+                  218929
+                ]
+              },
+              "triangles": {
+                "base": [
+                  136241
+                ],
+                "branch": [
+                  136241
+                ]
+              }
+            }
+          }
+        ],
+        "verdict": {
+          "fingerprintDrift": false,
+          "tooNoisy": true,
+          "realChange": false,
+          "inconclusive": true,
+          "zeroBaselineIncrease": false
+        }
+      },
+      "qualification": {
+        "commandExitCode": 0,
+        "artifactDrift": false,
+        "observedExternalBuildActivity": false,
+        "manifestSha256": "78ccd1b0848c786952b641397c2d979fed0fb5d252768fdb874af793c4af337d",
+        "cpuPolicyChanged": false,
+        "thermalInvalid": false,
+        "throttled": false,
+        "protocolVerdict": {
+          "fingerprintDrift": false,
+          "tooNoisy": true,
+          "realChange": false,
+          "inconclusive": true,
+          "zeroBaselineIncrease": false
+        },
+        "qualified": false,
+        "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+      }
+    }
+  ]
+}

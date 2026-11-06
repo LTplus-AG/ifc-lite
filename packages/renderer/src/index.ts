@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { LineVertices } from './section-2d-line-buffer.js';
-import { sectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
@@ -2248,7 +2248,7 @@ export class Renderer {
             // valid for every main-family draw that follows.
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-            pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+            bindSectionExclusions(pass, device, 2);
 
             // Selected meshes drawn this frame, for the selection-mask pass
             // (#5390) after `pass.end()` below. Populated inside the batched
@@ -2631,7 +2631,7 @@ export class Renderer {
                     usePipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2839,7 +2839,7 @@ export class Renderer {
                     usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -3012,7 +3012,7 @@ export class Renderer {
             if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             pass.end();
             if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
-                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });
+                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [2, emptyBindGroup(device)], [3, sectionExclusions(device).bindGroup]] });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.

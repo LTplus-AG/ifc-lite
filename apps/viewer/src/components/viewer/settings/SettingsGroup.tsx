@@ -16,9 +16,11 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
   );
 }
 
-export function SettingsRow({ label, hint, htmlFor, icon, children }: {
+export function SettingsRow({ label, hint, hintRole, htmlFor, icon, children }: {
   label: string;
   hint?: string;
+  /** `status` when the hint reports the outcome of an action, so it is announced. */
+  hintRole?: 'status';
   /** The control's id, so clicking the label focuses / toggles it. Omit for
    *  a `SettingsChoice`, which names itself with its own legend. */
   htmlFor?: string;
@@ -34,7 +36,7 @@ export function SettingsRow({ label, hint, htmlFor, icon, children }: {
           {htmlFor
             ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
             : <span className="text-sm" aria-hidden="true">{label}</span>}
-          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+          {hint && <p role={hintRole} className="text-xs text-muted-foreground">{hint}</p>}
         </div>
       </div>
       <div className="max-w-full shrink-0">{children}</div>

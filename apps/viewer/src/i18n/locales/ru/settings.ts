@@ -18,6 +18,7 @@ export const settingsRu = {
   "settings.general.themeDark": "Тёмная",
   "settings.general.language": "Язык",
   "settings.general.languageAuto": "Авто (язык браузера)",
+  "settings.general.languageFailed": "Не удалось загрузить этот язык; оставлен прежний.",
   "settings.general.helpersTitle": "Вспомогательные средства",
   "settings.general.hoverTooltips": "Всплывающие подсказки при наведении",
   "settings.general.hoverTooltipsHint": "Показывать имя и класс элемента под указателем.",

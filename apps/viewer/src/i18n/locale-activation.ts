@@ -125,7 +125,8 @@ export interface LocaleChoice {
   readonly available: readonly Locale[];
   /** The chosen locale, or `null` for Auto. */
   chosen(): Locale | null;
-  /** Remember `locale` on this browser and switch to it without a reload. */
+  /** Remember `locale` on this browser and switch to it without a reload. Rejects,
+   *  remembering nothing and restoring the previous choice, when it fails to load. */
   choose(locale: Locale): Promise<Locale>;
   /** Forget the choice and follow the browser languages again. */
   clear(): Promise<Locale>;
@@ -135,20 +136,34 @@ export function createLocaleChoice(activator: LocaleActivator, environment: Loca
   // Set once the user decides on this page, so a choice storage refused
   // still shows as chosen for the rest of the session.
   let session: { locale: Locale | null } | null = null;
+  // The latest choose/clear owns storage and display; a slower earlier one only reports.
+  let latest = 0;
+  const chosen = (): Locale | null => {
+    if (session) return session.locale;
+    const stored = readStoredLocale(environment.storage);
+    return stored === null ? null : negotiateLocale([stored], activator.available);
+  };
   return {
     available: activator.available,
-    chosen() {
-      if (session) return session.locale;
-      const stored = readStoredLocale(environment.storage);
-      return stored === null ? null : negotiateLocale([stored], activator.available);
-    },
-    choose(locale) {
-      if (!activator.available.includes(locale)) return Promise.reject(new Error(`[i18n] Unknown locale "${locale}"`));
+    chosen,
+    async choose(locale) {
+      if (!activator.available.includes(locale)) throw new Error(`[i18n] Unknown locale "${locale}"`);
+      const request = ++latest;
+      const previous = chosen();
+      const active = await activator.activate([locale]);
+      if (request !== latest) return active;
+      if (active !== locale) {
+        // The catalogue failed to load and the activator fell back to English:
+        // remember nothing, and put the previous choice back on screen.
+        await activator.activate(previous === null ? environment.languages : [previous]);
+        throw new Error(`[i18n] Could not load locale "${locale}"; the previous language is kept.`);
+      }
       session = { locale };
       storeLocale(environment.storage, locale);
-      return activator.activate([locale]);
+      return active;
     },
     clear() {
+      latest += 1;
       session = { locale: null };
       forgetLocale(environment.storage);
       return activator.activate(environment.languages);

@@ -18,6 +18,7 @@ export const settingsDe = {
   "settings.general.themeDark": "Dunkel",
   "settings.general.language": "Sprache",
   "settings.general.languageAuto": "Automatisch (Browsersprache)",
+  "settings.general.languageFailed": "Diese Sprache konnte nicht geladen werden; die vorherige bleibt aktiv.",
   "settings.general.helpersTitle": "Hilfen",
   "settings.general.hoverTooltips": "Hinweise beim Darüberfahren",
   "settings.general.hoverTooltipsHint": "Name und Klasse eines Bauteils unter dem Zeiger anzeigen.",

@@ -9,7 +9,7 @@
  * entry. A choice is remembered on this browser and applies without a reload.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Globe } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { getLocaleChoice } from '@/i18n/locale-activation';
@@ -23,13 +23,21 @@ export function LanguageSetting() {
   const { t, locale: uiLocale } = useTranslation();
   const choice = getLocaleChoice();
   const [value, setValue] = useState<string>(() => choice?.chosen() ?? AUTO);
+  const [failed, setFailed] = useState(false);
+  const latestPick = useRef(0);
   if (!choice) return null;
 
   const onChange = (next: string) => {
+    const pick = ++latestPick.current;
     setValue(next);
+    setFailed(false);
     const switched = next === AUTO ? choice.clear() : choice.choose(next);
     switched.catch((error: unknown) => {
       console.warn('[i18n] Could not switch the UI language.', error);
+      if (pick !== latestPick.current) return;
+      // Show what actually applies, not the locale that failed to load.
+      setValue(choice.chosen() ?? AUTO);
+      setFailed(true);
     });
   };
 
@@ -40,7 +48,13 @@ export function LanguageSetting() {
     .sort((a, b) => collator.compare(a.name, b.name));
 
   return (
-    <SettingsRow label={t('settings.general.language')} icon={<Globe className="h-4 w-4" />}>
+    <SettingsRow
+      label={t('settings.general.language')}
+      hint={failed ? t('settings.general.languageFailed') : undefined}
+      hintRole="status"
+      htmlFor="settings-language"
+      icon={<Globe className="h-4 w-4" />}
+    >
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger id="settings-language" aria-label={t('settings.general.language')} className="h-8 w-56 text-xs">
           <SelectValue />

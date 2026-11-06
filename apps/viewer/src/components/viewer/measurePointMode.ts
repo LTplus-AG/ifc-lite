@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 
 /** Point mode is live: the Measure tool is open in Point mode. A hover frame queued before a mode or tool switch lands as a no-op. */
@@ -60,14 +61,16 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */
 export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
+  // A live point holds only for the view it was picked under: the camera
+  // reprojection pass drops it on any camera or scene change (#8828, #8886).
+  // Bring that pass up to this view first, so the next frame does not count
+  // the view as moved since some older reading and drop the point just
+  // picked; and before the snap glyph is set, since a pass that ends an older
+  // Live clears the glyph with it (#8886).
+  syncMeasureScreenCoords(ctx);
   const picked = pickPoint(ctx, x, y);
   ctx.setSnapTarget(picked?.snapTarget ?? null);
   updateSnapViz(ctx, picked?.snapTarget ?? null);
-  // A live point holds only for the camera it was picked under: the camera
-  // reprojection pass drops it on any camera change (#8828). Bring that pass
-  // up to this camera first, so the next frame does not count the camera as
-  // moved since some older reading and drop the point just picked.
-  if (picked) syncMeasureScreenCoords(ctx);
   useViewerStore.getState().setMeasurePointLive(picked?.point ?? null);
 }
 
@@ -89,6 +92,7 @@ function cancelTrailingHover(ctx: MouseHandlerContext): void {
  */
 export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: number): void {
   cancelTrailingHover(ctx);
+  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: null });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
     trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {

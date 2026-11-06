@@ -25,9 +25,10 @@ export function shadowOccluderBatches(scene: ShadowBatchScene, options: RenderOp
     if (visible.kind === 'none') continue;
     if (visible.kind === 'all') { noteResidency(scene, batch); result.push(batch); continue; }
     if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA || !pipeline) continue;
-    noteResidency(scene, batch);
+    if (batch.gpuResident === false) scene.requestBatchResidency(batch);
     const subset = scene.getOrCreatePartialBatch(`${batch.colorKey}:${batch.id}`, batch.colorKey, visible.visibleIds, device, pipeline, epoch);
-    if (subset && subset.indexCount > 0) result.push(subset);
+    // #9034: a subset cut from the parent's CPU pieces counts as drawing it, resident or not.
+    if (subset && subset.indexCount > 0) { scene.recordBatchDrawn(batch); result.push(subset); }
   }
   return result;
 }

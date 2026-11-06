@@ -981,3 +981,44 @@ checks exact preservation after reset. No production defect was identified.
 Corrected runtime and 27/27 GPU acceptance remain pending. Original ef72c5c
 has reached passing root typecheck (4,563 test sources) and build 58/58; its
 focused/full outcome is still pending and cannot certify the corrected tests.
+
+
+### Round 4 executed evidence: observed UX accepted, regression gate open
+
+Exact source `98d3ec5fb866e6098e05b7806469447e7223d01f` passed all 27
+physical-GPU browser cases (zero skips/retries), all 36 captures, and recorded
+zero page errors. The visible-canvas adapter is NVIDIA Lovelace, not a fallback.
+The root typecheck passed 134/134 with 4,563 test sources and build passed 58/58.
+[Source/build identity and image hashes](evidence/round4/qualification.json)
+pin these results independently of the final root-job outcome.
+
+Fresh [Opus R4 review](evidence/round4/palette-access-opus-round4-visual-fd0b1714.md)
+accepts observed UX on rubric axes 2–6. No production changes are proposed for
+its optional wording nits. The [bounded source closure review](evidence/round4/palette-access-r4-closure-disposition-fd0b1714.md)
+finds no remaining route omission in the resolved families, preserves all
+813 IDs / 3,994 anchors, and explicitly retains dormant and unqualified branches.
+Neither review accepts complete access or production readiness.
+
+Representative actual behavior, preserved without editing the screenshots:
+
+![Reset keeps the selected wall and collection](evidence/round4/02-reset-preservation-command.png)
+
+![Inactive Reset stays searchable with an explanation](evidence/round4/02-reset-inactive-reason.png)
+
+![Presentation replays the saved camera](evidence/round4/04-presentation-playback.png)
+
+The exact same 98d3 root request subsequently completed focused execution with
+535/543 passing, eight failures, zero skips/cancellations. Both native-export
+owner-selector corrections now pass. Remaining failures: four Document/List
+witness contracts, one Sources Configure label, two screenshot tests that had
+not registered their locale catalogues, and the second static-registry census
+that still expected inactive Reset in browse. Their corrections retain actual
+consumer/configuration/cancel/persistence assertions; corrected execution is
+pending. Full four-shard execution did not start after the focused failure.
+The passing GPU result remains separate and is not used to waive this gate.
+
+Original ac6ce05 completion remains 480/482 focused with its generated-log
+source qualification. Its evidence publication is now verified and the owning
+storage task is released. Original ef72 completion is 533/543 with ten failures;
+two are the native-export selectors already fixed in 98d3. No historical failure
+is relabelled as a pass, and no uncertain request has been resubmitted.

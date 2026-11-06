@@ -35,7 +35,9 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
   const inventory = readStoreyInventory(store, view);
   const live = new Map(inventory.storeys.map((storey) => [storey.expressId, storey]));
   const placed = new Set<number>();
-  const byStorey = store.spatialHierarchy?.byStorey;
+  // Direct containment, live: a storey added this session has no parsed entry.
+  const contained = (storeyId: number) => [...new Set((inventory.outgoing.get(storeyId) ?? [])
+    .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))];
 
   const rebuild = (node: SpatialNode): SpatialNode | null => {
     const storey = node.type === IfcTypeEnum.IfcBuildingStorey;
@@ -54,7 +56,7 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
       placed.add(record.expressId);
       children.push({
         expressId: record.expressId, type: IfcTypeEnum.IfcBuildingStorey, name: record.Name,
-        elevation: record.elevation, children: [], elements: byStorey?.get(record.expressId) ?? [],
+        elevation: record.elevation, children: [], elements: contained(record.expressId),
       });
       changed = true;
     }

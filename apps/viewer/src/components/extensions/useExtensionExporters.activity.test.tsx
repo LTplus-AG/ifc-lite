@@ -115,47 +115,69 @@ test('#7170 duplicate exporter IDs in two owners retain independent native outpu
   const publication = capturePublication();
   const controls = mountExporters(host);
   // The lock belongs to the shared host, across owners sharing an exporter ID (#8947).
+  const started: Promise<void>[] = [];
+  function start(owner: string) {
+    const invocation = controls.current.runExtensionExporter(`${owner}:${EXPORTER}`);
+    started.push(invocation);
+    return invocation;
+  }
   let pending: Promise<void> | undefined;
-  act(() => { pending = controls.current.runExtensionExporter(`${owners[0]}:${EXPORTER}`); });
   try {
-    await waitForOutput(host, owners[0]);
-    await act(async () => { await controls.current.runExtensionExporter(`${owners[1]}:${EXPORTER}`); });
-    assert.equal(host.delivered.has(owners[1]), false, 'busy refusal never invokes the second owner');
-    const jobs = useActivityJournal.getState().jobs;
-    assert.equal(jobs.length, 1);
-    assert.equal(jobs[0].outcome, 'running');
-    assert.equal(publication.blobs.length, 0);
-    assert.equal(publication.filenames.length, 0);
-    assert.match(document.querySelector('[role="status"]')?.textContent ?? '', /Wait for the current extension export to finish/);
-  } finally { await act(async () => { releases[0](); await pending; }); }
-  assert.equal(useActivityJournal.getState().jobs[0].outcome, 'completed');
-  assert.equal(publication.blobs.length, 1);
-  assert.equal(publication.filenames.length, 1);
-  act(() => { pending = controls.current.runExtensionExporter(`${owners[1]}:${EXPORTER}`); });
-  try {
-    await waitForOutput(host, owners[1]);
-    const jobs = useActivityJournal.getState().jobs;
-    assert.equal(jobs.length, 2);
-    assert.equal(jobs.find(job => job.subject?.includes(owners[0]))?.outcome, 'completed');
-    assert.equal(jobs.find(job => job.subject?.includes(owners[1]))?.outcome, 'running');
+    act(() => { pending = start(owners[0]); });
+    try {
+      await waitForOutput(host, owners[0]);
+      let refusalSettled = false;
+      let refusalError: unknown;
+      act(() => {
+        void start(owners[1]).then(() => { refusalSettled = true; }, error => {
+          refusalError = error; refusalSettled = true;
+        });
+      });
+      for (let attempt = 0; attempt < 50 && !refusalSettled; attempt++) await advance(20);
+      assert.ok(refusalSettled, 'busy refusal must settle while the first export remains gated');
+      assert.equal(refusalError, undefined, 'busy refusal is a handled visible error');
+      assert.equal(host.delivered.has(owners[1]), false, 'busy refusal never invokes the second owner');
+      const jobs = useActivityJournal.getState().jobs;
+      assert.equal(jobs.length, 1);
+      assert.equal(jobs[0].outcome, 'running');
+      assert.equal(publication.blobs.length, 0);
+      assert.equal(publication.filenames.length, 0);
+      assert.match(document.querySelector('[role="status"]')?.textContent ?? '', /Wait for the current extension export to finish/);
+    } finally { await act(async () => { releases[0](); await pending; }); }
+    assert.equal(useActivityJournal.getState().jobs[0].outcome, 'completed');
     assert.equal(publication.blobs.length, 1);
     assert.equal(publication.filenames.length, 1);
-  } finally { await act(async () => { releases[1](); await pending; }); }
-  const jobs = useActivityJournal.getState().jobs;
-  assert.equal(jobs.length, 2);
-  assert.equal(jobs.filter(job => job.outcome === 'completed').length, 2);
-  for (const owner of owners) assert.equal(jobs.filter(job => job.subject?.includes(owner)).length, 1);
-  const outputs = await Promise.all(publication.blobs.map(async blob => JSON.parse(await blob.text()) as {
-    owner: string; walls: Array<{ GlobalId: string; Name: string }>;
-  }));
-  assert.deepEqual(outputs.map(output => output.owner), owners);
-  for (const output of outputs) {
-    assert.equal(output.walls.length, 4, 'each actual native output contains the authored SketchUp walls');
-    assert.equal(new Set(output.walls.map(wall => wall.GlobalId)).size, 4);
-    assert.ok(output.walls.every(wall => wall.Name && wall.GlobalId.length === 22));
+    act(() => { pending = start(owners[1]); });
+    try {
+      await waitForOutput(host, owners[1]);
+      const jobs = useActivityJournal.getState().jobs;
+      assert.equal(jobs.length, 2);
+      assert.equal(jobs.find(job => job.subject?.includes(owners[0]))?.outcome, 'completed');
+      assert.equal(jobs.find(job => job.subject?.includes(owners[1]))?.outcome, 'running');
+      assert.equal(publication.blobs.length, 1);
+      assert.equal(publication.filenames.length, 1);
+    } finally { await act(async () => { releases[1](); await pending; }); }
+    const jobs = useActivityJournal.getState().jobs;
+    assert.equal(jobs.length, 2);
+    assert.equal(jobs.filter(job => job.outcome === 'completed').length, 2);
+    for (const owner of owners) assert.equal(jobs.filter(job => job.subject?.includes(owner)).length, 1);
+    const outputs = await Promise.all(publication.blobs.map(async blob => JSON.parse(await blob.text()) as {
+      owner: string; walls: Array<{ GlobalId: string; Name: string }>;
+    }));
+    assert.deepEqual(outputs.map(output => output.owner), owners);
+    for (const output of outputs) {
+      assert.equal(output.walls.length, 4, 'each actual native output contains the authored SketchUp walls');
+      assert.equal(new Set(output.walls.map(wall => wall.GlobalId)).size, 4);
+      assert.ok(output.walls.every(wall => wall.Name && wall.GlobalId.length === 22));
+    }
+    assert.equal(publication.filenames.length, 2);
+    for (const filename of publication.filenames) assert.match(filename, /building-architecture\.json$/);
+  } finally {
+    await act(async () => {
+      for (const release of releases) release();
+      await Promise.allSettled(started);
+    });
   }
-  assert.equal(publication.filenames.length, 2);
-  for (const filename of publication.filenames) assert.match(filename, /building-architecture\.json$/);
 });
 
 test('#7170 absent host and unregistered owner are refused before any Activity or browser publication', async () => {

@@ -40,3 +40,35 @@ it('bumps only when the clip a pick mirrors changes, not on each frame\'s fresh 
     assert.equal(clip.revision, settled + 1, `a change to ${field} alone did not bump the revision`);
   }
 });
+
+it('a transient (capture) clip moves the revision for its frame only (#9002)', () => {
+  const clip = new PickClipRevision();
+  const cut = (distance: number) => ({ sectionPlane: { normal: [0, 1, 0] as [number, number, number], distance, flipped: false }, extraPlanes: null, clipBox: null });
+  const cleared = { sectionPlane: null, extraPlanes: null, clipBox: null };
+  clip.note(cut(2));
+  const before = clip.revision;
+  clip.note(cleared, true);
+  const during = clip.revision;
+  assert.notEqual(during, before, 'a pick through the capture\'s cleared clip shares the cut\'s revision');
+  clip.note(cleared, true); // a second capture frame in the same run
+  assert.equal(clip.revision, during);
+  clip.note(cut(2));
+  assert.equal(clip.revision, before, 'restoring the pre-capture cut left a new revision');
+
+  // The cut moved while the capture ran: a change against both earlier states.
+  clip.note(cleared, true);
+  const during2 = clip.revision;
+  clip.note(cut(3));
+  assert.ok(![before, during, during2].includes(clip.revision), 'a cut moved during a capture reused an earlier revision');
+
+  // The cut was removed while a cleared capture ran: the capture's state is now the real one.
+  const moved = clip.revision;
+  clip.note(cleared, true);
+  const during3 = clip.revision;
+  clip.note(cleared);
+  assert.equal(clip.revision, during3, 'the now-real cleared clip moved again');
+  assert.notEqual(clip.revision, moved);
+  // The run has ended: a later normal frame back at cut(3) is a change, not a restore.
+  clip.note(cut(3));
+  assert.ok(![moved, during3].includes(clip.revision), 'a normal frame after the run reused a revision');
+});

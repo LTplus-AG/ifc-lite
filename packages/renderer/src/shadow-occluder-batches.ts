@@ -5,30 +5,34 @@
 import type { RenderPipeline } from './pipeline.js';
 import { classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import type { BatchedMesh, RenderOptions } from './types.js';
+import { batchForWholeDraw, type WholeBatchResidency } from './residency.js';
 
-export interface ShadowBatchScene {
+export interface ShadowBatchScene extends WholeBatchResidency {
   getBatchedMeshes(): BatchedMesh[];
-  requestBatchResidency(batch: BatchedMesh): void;
-  recordBatchDrawn(batch: BatchedMesh): void;
+  requestBatchPieces(batch: BatchedMesh): void;
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen?: boolean): void;
   getOrCreatePartialBatch(key: string, colorKey: string, ids: Set<number>, device: GPUDevice, pipeline: RenderPipeline, epoch: number): BatchedMesh | null | undefined;
 }
-function noteResidency(scene: ShadowBatchScene, batch: BatchedMesh): void {
-  if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return;
-  if (batch.gpuResident === false) scene.requestBatchResidency(batch); else scene.recordBatchDrawn(batch);
+/** A whole batch casts from its own buffers. Returns the batch to cast: the
+ *  rebuild when an evicted parent whose subset was on screen is drawn whole
+ *  again (#9050), rebuilt here because this pass runs before the colour pass. */
+function noteResidency(scene: ShadowBatchScene, batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline | null): BatchedMesh {
+  if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return batch;
+  return batchForWholeDraw(scene, batch, device, pipeline) ?? batch;
 }
 export function shadowOccluderBatches(scene: ShadowBatchScene, options: RenderOptions, device: GPUDevice, filtered: boolean, pipeline: RenderPipeline | null, epoch: number): BatchedMesh[] {
   const all = scene.getBatchedMeshes();
-  if (!filtered) { for (const batch of all) noteResidency(scene, batch); return all; }
+  if (!filtered) return all.map((batch) => noteResidency(scene, batch, device, pipeline));
   const result: BatchedMesh[] = [];
   for (const batch of all) {
     const visible = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
     if (visible.kind === 'none') continue;
-    if (visible.kind === 'all') { noteResidency(scene, batch); result.push(batch); continue; }
+    if (visible.kind === 'all') { result.push(noteResidency(scene, batch, device, pipeline)); continue; }
     if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA || !pipeline) continue;
-    if (batch.gpuResident === false) scene.requestBatchResidency(batch);
+    if (batch.gpuResident === false) scene.requestBatchPieces(batch); // a subset reads pieces, not parent buffers (#9050)
     const subset = scene.getOrCreatePartialBatch(`${batch.colorKey}:${batch.id}`, batch.colorKey, visible.visibleIds, device, pipeline, epoch);
-    // #9034: a subset cut from the parent's CPU pieces counts as drawing it, resident or not.
-    if (subset && subset.indexCount > 0) { scene.recordBatchDrawn(batch); result.push(subset); }
+    // #9034/#9050: a subset cut from the parent's CPU pieces keeps those pieces warm, resident or not.
+    if (subset && subset.indexCount > 0) { scene.recordBatchSubsetDrawn(batch, false); result.push(subset); }
   }
   return result;
 }

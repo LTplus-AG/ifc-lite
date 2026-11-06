@@ -972,7 +972,8 @@ describe('visibility epoch drives the batched draw path', () => {
 });
 
 describe('residency records a batch drawn only as a partial sub-batch (#9034)', () => {
-    const lastDrawn = (h: Harness, batch: BatchedMesh) => sceneOf(h)['lastDrawnFrame'].get(batch.id);
+    // Any use, own buffers or pieces: a subset draw keeps the pieces warm (#9050).
+    const lastDrawn = (h: Harness, batch: BatchedMesh) => sceneOf(h)['lastDrawnFrame'].getAnyUse(batch.id);
     const frame = (h: Harness) => sceneOf(h)['residencyFrame'];
     const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
 
@@ -980,7 +981,7 @@ describe('residency records a batch drawn only as a partial sub-batch (#9034)', 
         ['hide', { hiddenIds: new Set([1, 3]) }],
         ['isolate', { isolatedIds: new Set([2]) }],
     ] as const) {
-        it(`${label}: the partially visible batch stays fresh and resident; the undrawn batch still ages out`, () => {
+        it(`${label}: the partially visible batch stays fresh and warm; the undrawn batch still ages out`, () => {
             const h = makeHarness();
             const { grey, red } = seedBatches(h);
             const scene = sceneOf(h);
@@ -990,7 +991,7 @@ describe('residency records a batch drawn only as a partial sub-batch (#9034)', 
             // grey {1,2} draws only as its {2} sub-batch.
             assert.strictEqual(scene['partialBatchCache'].size, 1, 'grey draws as a partial sub-batch');
             assert.strictEqual(lastDrawn(h, grey), frame(h), 'partial-only batch is recorded as drawn this frame');
-            assert.notStrictEqual(grey.gpuResident, false, 'partial-only batch is not evicted by the GPU budget pass');
+            assert.ok(sceneOf(h).getMeshDataPieces(2)?.length, 'partial-only batch keeps the CPU pieces its subset draws from');
             // red {3} is hidden / not isolated: never drawn, so it must still age out.
             assert.strictEqual(red.gpuResident, false, 'a batch that is truly not drawn is still evicted');
             assert.strictEqual(lastDrawn(h, red), undefined);
@@ -1025,11 +1026,369 @@ describe('residency records a batch drawn only as a partial sub-batch (#9034)', 
         // red is never drawn: the host pass still demotes it.
         assert.strictEqual(scene.getMeshDataPieces(3), undefined, 'undrawn bucket is still demoted cold');
         assert.ok(scene['coldBuckets'].has(red.colorKey));
-        // Drain the restore queue the draw loop filled: grey comes back from its
-        // warm CPU pieces; had it gone cold this would hit the provider instead.
-        scene.processResidencyRestores(h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, Infinity);
+        // The subset reads warm pieces, so nothing asks for grey's own buffers
+        // (#9050) and nothing ever needed the provider.
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
         assert.strictEqual(coldLoads, 0, 'on-screen geometry never needed a cold restore');
-        assert.notStrictEqual(scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))?.gpuResident, false);
+    });
+});
+
+describe('a partial-only parent releases its own GPU buffers but keeps its CPU pieces (#9050)', () => {
+    const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
+    const device = (h: Harness) => h.renderer['device'].getDevice();
+    const pipeline = (h: Harness) => h.renderer['pipeline'] as never;
+    const greyOf = (h: Harness) => sceneOf(h).getBatchedMeshes().find((b) => b.expressIds.includes(2))!;
+    const subBatchKeys = (h: Harness) => [...sceneOf(h)['partialBatchCacheKeys'].keys()];
+
+    for (const [label, filter] of [
+        ['hide', { hiddenIds: new Set([1, 3]) }],
+        ['isolate', { isolatedIds: new Set([2]) }],
+    ] as const) {
+        it(`${label}: the parent's full buffers are evicted, the sub-batch keeps drawing, nothing asks for a GPU rebuild`, () => {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1); // everything is over budget
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(filter);
+
+            assert.strictEqual(grey.gpuResident, false, 'nothing reads the parent buffers, so the GPU tier frees them');
+            assert.ok(scene.getMeshDataPieces(2)?.length, 'the parent stays warm: the sub-batch is cut from its CPU pieces');
+            assert.strictEqual(scene['partialBatchCache'].size, 1, 'the {2} sub-batch is cached');
+            const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+            assert.notStrictEqual(sub.gpuResident, false);
+            const drawsBefore = h.stats.draws.length;
+            h.render(filter);
+            assert.ok(h.stats.draws.length > drawsBefore, 'the sub-batch is still drawn');
+            assert.strictEqual(scene.hasResidencyRestoreWork(), false, 'a warm parent drawn only as a subset is not rebuilt on the GPU');
+        });
+    }
+
+    it('the host pass still keeps a partial-only parent warm after its GPU buffers are gone', () => {
+        const h = makeHarness();
+        const { red } = seedBatches(h);
+        const scene = sceneOf(h);
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return []; } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(greyOf(h).gpuResident, false);
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'on-screen geometry keeps its CPU pieces (picks, snaps, sub-batch rebuilds)');
+        assert.ok(!scene['coldBuckets'].has(greyOf(h).colorKey));
+        assert.ok(scene['coldBuckets'].has(red.colorKey), 'the undrawn bucket is still demoted cold');
+        assert.strictEqual(coldLoads, 0);
+    });
+
+    it('isolate off and back on: the parent is rebuilt on the transition frame, the stale sub-batch slot is freed, isolate evicts it again', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const oldSlot = subBatchKeys(h)[0];
+        const oldSub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(oldSlot)!) as BatchedMesh;
+
+        // Hide only red: grey is fully visible again (filtering stays active,
+        // so the show-all drop of every partial cache does not run). Its subset
+        // was on screen last frame, so the parent is rebuilt in this very frame.
+        const drawsBefore = h.stats.draws.length;
+        h.render({ hiddenIds: new Set([3]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the elements on screen are drawn on the transition frame');
+        const rebuilt = greyOf(h);
+        assert.notStrictEqual(rebuilt, grey);
+        assert.notStrictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false, 'nothing left for the time-sliced queue');
+        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the sub-batch cut from the replaced shell is not orphaned');
+        assert.strictEqual((oldSub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+
+        // Isolate again: the rebuilt parent is partial-only and ages out again.
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+        assert.strictEqual(scene['partialBatchCache'].size, 1);
+        for (const buf of h.stats.createdBuffers) assert.ok(buf.destroyed <= 1, 'a buffer was destroyed more than once');
+    });
+
+    it('a sub-batch on screen survives its parent\'s eviction', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        let evictedAt = -1;
+        for (let i = 0; i < IDLE_FRAMES && evictedAt < 0; i++) {
+            h.render({ isolatedIds: new Set([2]) });
+            if (grey.gpuResident === false) evictedAt = i;
+        }
+        assert.ok(evictedAt >= 0, 'parent evicted');
+        assert.strictEqual(scene['partialBatchCache'].size, 1);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'not destroyed with the parent');
+        const createdBefore = h.stats.createdBuffers.length;
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the frame after eviction still draws the subset');
+        assert.strictEqual([...scene['partialBatchCache'].values()][0], sub, 'the same sub-batch, not a rebuild');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore);
+        assert.deepStrictEqual([...sub.expressIds], [2]);
+    });
+
+    it('a capture restores the parent, then live isolate frees its buffers again without leaking the capture slot', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const oldSlot = subBatchKeys(h)[0];
+        h.render({ isolatedIds: new Set([2]), restoreEvictedForCapture: true });
+        const rebuilt = greyOf(h);
+        assert.notStrictEqual(rebuilt, grey);
+        assert.notStrictEqual(rebuilt.gpuResident, false);
+        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the replaced shell\'s sub-batch slot is released');
+        assert.strictEqual(scene['partialBatchCache'].size, 1, 'one live sub-batch, cut for the rebuilt parent');
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+    });
+
+    it('a full draw and a subset draw of the same parent in one frame keep its own buffers resident, in either order', () => {
+        for (const order of ['full-first', 'subset-first'] as const) {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1);
+            for (let i = 0; i < IDLE_FRAMES; i++) {
+                scene.beginResidencyFrame();
+                if (order === 'full-first') { scene.recordBatchDrawn(grey); scene.recordBatchSubsetDrawn(grey); }
+                else { scene.recordBatchSubsetDrawn(grey); scene.recordBatchDrawn(grey); }
+                scene.enforceGpuBudget();
+            }
+            assert.notStrictEqual(grey.gpuResident, false, `${order}: the full draw reads the parent buffers`);
+        }
+    });
+
+    it('a cold partial-only parent is restored to warm only: the subset reappears without a parent GPU rebuild', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return source.map((m) => ({ ...m })); } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        // Everything hidden: both batches go GPU-evicted, then cold.
+        for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        const grey = greyOf(h);
+        assert.ok(scene['coldBuckets'].has(grey.colorKey), 'grey went cold while hidden');
+        grey.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'the subset needs its CPU pieces back');
+        const createdBefore = h.stats.createdBuffers.length;
+        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 0, 'cold: the disk fetch starts');
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'warm again');
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0, 'the completed warm restore asks for a render');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no parent GPU buffers were rebuilt');
+        assert.strictEqual(greyOf(h).gpuResident, false);
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the subset draws from the restored pieces');
+        assert.strictEqual(coldLoads, 1);
+        // Revealing the whole batch rebuilds it in that frame: its subset was on screen.
+        h.render({ hiddenIds: new Set([3]) });
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+    });
+
+    // Shared set-up: grey {1,2} cold (hidden past both passes), provider ready.
+    const coldGrey = (h: Harness) => {
+        const scene = sceneOf(h);
+        const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        const grey = greyOf(h);
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        grey.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+        return grey;
+    };
+
+    it('a warm-only cold restore that repartitions keeps every chunk warm-only and leaves no stale mark', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        const grey = coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene['cachedMaxBufferSize'] = 1; // every restored piece needs its own chunk
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        const chunks = scene.getBatchedMeshes().filter((b) => b.expressIds.includes(1) || b.expressIds.includes(2));
+        assert.strictEqual(chunks.length, 2, 'grey split into two chunks');
+        assert.ok(!chunks.includes(grey));
+        const createdBefore = h.stats.createdBuffers.length;
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0);
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no chunk was rebuilt on the GPU');
+        assert.ok(chunks.every((b) => b.gpuResident === false));
+        assert.deepStrictEqual([...scene['subsetResidency'].warmOnly], [], 'no stale warm-only mark');
+        // The split put {2} in a chunk of its own, which isolate {2} now shows
+        // whole: that chunk's own buffers are wanted, the {1} chunk's are not.
+        for (const b of chunks) b.bounds = undefined; // the default camera must not cull the fixture
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
+        const shown = scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))!;
+        const hidden = scene.getBatchedMeshes().find((b) => b.expressIds.includes(1))!;
+        assert.notStrictEqual(shown.gpuResident, false);
+        assert.strictEqual(hidden.gpuResident, false);
+        shown.bounds = undefined;
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the restored chunk draws');
+    });
+
+    it('isolate cleared while a warm-only cold restore is in flight: the full draw still gets its GPU rebuild', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity); // disk fetch in flight
+        h.render({ hiddenIds: new Set([3]) });                            // grey fully visible now
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'the full draw\'s request wins over the earlier subset request');
+    });
+
+    it('a cold demotion frees the sub-batch VRAM of a parent no longer drawn at all', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(subBatchKeys(h)[0])!) as BatchedMesh;
+        // Grey leaves the view entirely (only red is isolated): nothing asks for
+        // its slot again, so only the cold demotion can free it.
+        for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)), 'the cold parent\'s slot is released');
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+    });
+
+    it('without a host budget, the sub-batch of an evicted parent that leaves the view is freed after the eviction age', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        for (let i = 0; i < 10; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'kept while it may come right back');
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed once idle');
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)));
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
+        // Showing it again cuts a fresh subset from the warm pieces.
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore);
+    });
+
+    it('show-all after isolate draws the formerly isolated elements on the transition frame', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.stats.draws.length = 0;
+        h.render({});
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'rebuilt in the transition frame');
+        assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
+        assert.strictEqual(scene['partialBatchCache'].size, 0);
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
+    });
+
+    it('past the per-frame cap, a subset parent shown whole falls back to the queue, which keeps frames coming', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene['subsetResidency'].rebuildBudgetMs = 0;
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt past the cap');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'queued: the app loop rebuilds it and requests a render');
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) >= 1); // red, undrawn under isolate, too
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+    });
+
+    it('with sun shadows on, the un-isolate frame rebuilds the parent once in the shadow pass and the colour pass draws that rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        scene.setGpuResidencyBudget(1);
+        const sun = { sunShadows: { enabled: true } } as const;
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const residency = scene['subsetResidency'];
+        const rebuild = residency.rebuildEvicted.bind(residency);
+        let rebuilds = 0;
+        residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+        // draws[] and the drawIndexed commands stay index-aligned: clear both.
+        h.stats.draws.length = 0;
+        h.stats.commands.length = 0;
+        h.render({ ...sun });
+        assert.strictEqual(rebuilds, 1, 'one rebuild, shared by both passes');
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        // Only the colour pass draws through OPAQUE_PIPELINE; the shadow pass's
+        // draws of the same buffers must not satisfy this.
+        const colourDrawsOf = (vertexBuffer: GPUBuffer): number => {
+            let pipeline: unknown = null;
+            let draw = 0;
+            let n = 0;
+            for (const c of h.stats.commands) {
+                if (c.op === 'setPipeline') pipeline = c.pipeline;
+                if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer && pipeline === OPAQUE_PIPELINE) n++;
+            }
+            return n;
+        };
+        assert.ok(colourDrawsOf(greyOf(h).vertexBuffer) > 0, 'the colour pass draws the rebuilt parent in the transition frame');
+        assert.ok(!scene['residencyRestoreQueue'].has(greyOf(h).colorKey), 'grey was not skipped into the queue');
+    });
+
+    it('a subset drawn only as a shadow caster does not qualify its parent for the un-isolate rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene.beginResidencyFrame();
+        scene.recordBatchSubsetDrawn(grey, false); // the shadow pass cast {2}; the view did not show it
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'its pieces still count as used');
+    });
+
+    it('an evicted batch whose subset was NOT on screen is still restored through the time-sliced queue', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
     });
 });
 

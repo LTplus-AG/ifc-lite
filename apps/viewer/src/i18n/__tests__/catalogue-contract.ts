@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { checkCatalogue, isCatalogueRecord } from '../catalogue-problems';
 import { registerEnglish, registerLocale, setLocale, resolve, type Catalogue } from '../registry';
-import { activateStartupLocale, createLocaleActivator, LOCALE_STORAGE_KEY } from '../locale-activation';
+import { activateStartupLocale, createLocaleActivator, createLocaleChoice, LOCALE_STORAGE_KEY } from '../locale-activation';
 import type { TranslationKey } from '../en';
 import { messageParameters } from './message-parameters';
 import { mergeEnglishEntries } from './merge-english';
@@ -78,20 +78,21 @@ export function catalogueContract(name: string, locale: string, loadCatalogue: (
     } finally { setLocale('en'); }
   });
 
-  test(`real ${name} catalogue negotiates ${locale}-CH, persists URL choice, reloads and switches back`, async () => {
+  test(`real ${name} catalogue negotiates ${locale}-CH, persists the Settings choice, reloads and returns to Auto`, async () => {
     const catalogue = await requiredModule(loadCatalogue, `${name} shipping catalogue must be available`);
     const stored = new Map<string, string>();
     const storage = { getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => { stored.set(key, value); } };
+      setItem: (key: string, value: string) => { stored.set(key, value); },
+      removeItem: (key: string) => { stored.delete(key); } };
     const html = { lang: 'en' };
     const activate = () => createLocaleActivator({ [locale]: async () => catalogue }, html);
     try {
-      assert.equal(await activateStartupLocale(activate(), { search: '', storage, languages: [`${locale}-CH`] }), locale);
+      assert.equal(await activateStartupLocale(activate(), { storage, languages: [`${locale}-CH`] }), locale);
       assert.equal(html.lang, locale);
-      assert.equal(await activateStartupLocale(activate(), { search: `?lang=${locale}`, storage, languages: ['en'] }), locale);
+      assert.equal(await createLocaleChoice(activate(), { storage, languages: ['en'] }).choose(locale), locale);
       assert.equal(stored.get(LOCALE_STORAGE_KEY), locale);
-      assert.equal(await activateStartupLocale(activate(), { search: '', storage, languages: ['en'] }), locale);
-      assert.equal(await activateStartupLocale(activate(), { search: '?lang=en', storage, languages: [locale] }), 'en');
+      assert.equal(await activateStartupLocale(activate(), { storage, languages: ['en'] }), locale);
+      assert.equal(await createLocaleChoice(activate(), { storage, languages: ['en'] }).clear(), 'en');
       assert.equal(html.lang, 'en');
     } finally { setLocale('en'); }
   });

@@ -44,6 +44,28 @@ async function showPanel(page, id) {
   await page.evaluate((id) => globalThis.__ifc_lite_viewer_store__.getState().showWorkspacePanel(id), id);
 }
 
+/**
+ * A plan cut the way the section tool's storey list makes one: the lowest
+ * storey's floor plus 1.2 m (PLAN_CUT_HEIGHT_M), as a `down` position over the
+ * model's vertical range. The default cut sits at 50% of the bounds, which on
+ * a two-storey house with a roof passes through wall heads and shows slivers.
+ */
+async function planCutAtGroundStorey(page) {
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()][0];
+    const bounds = model.geometryResult?.coordinateInfo?.shiftedBounds;
+    if (!bounds) throw new Error('no model bounds for the plan cut');
+    const { min, max } = { min: bounds.min.y, max: bounds.max.y };
+    const elevations = [...(model.ifcDataStore?.spatialHierarchy?.storeyElevations?.values() ?? [])];
+    const floor = elevations.length > 0 ? Math.min(...elevations) : min;
+    const inRange = floor >= min - 1e-3 && floor <= max + 1e-3;
+    const cut = (inRange ? floor : min) + 1.2;
+    state.setSectionPlaneAxis('down');
+    state.setSectionPlanePosition(((cut - min) / (max - min)) * 100);
+  });
+}
+
 export const SCENES = [
   {
     id: 'empty',
@@ -125,9 +147,12 @@ export const SCENES = [
   },
   {
     id: 'drawing',
-    title: '2D section drawing',
+    title: '2D plan drawing, ground storey cut',
     model: ARCH,
-    async run({ page }) { await showPanel(page, 'drawing'); },
+    async run({ page }) {
+      await planCutAtGroundStorey(page);
+      await showPanel(page, 'drawing');
+    },
   },
   {
     id: 'shortcuts-dialog',

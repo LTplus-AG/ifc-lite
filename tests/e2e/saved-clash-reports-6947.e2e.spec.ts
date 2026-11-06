@@ -18,6 +18,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { clickPanelAction, panelHeader } from './panel-header.helpers';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -91,7 +92,8 @@ async function run(page: Page, settings: RunSettings): Promise<number> {
 }
 
 async function saveAs(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'Saved clash reports', exact: true }).click();
+  // A Clash panel header action, inline or in its More actions menu (#8802).
+  await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Report name').fill(name);
   await dialog.getByRole('button', { name: 'Save current result', exact: true }).click();

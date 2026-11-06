@@ -22,4 +22,7 @@ export const analysisPanelEn = {
   'analysisPanel.demo.try': 'Try with demo data',
   'analysisPanel.demo.loading': 'Loading demo data…',
   'analysisPanel.demo.failed': 'The demo data could not be loaded.',
+  // The shared docked-panel header (`components/ui/panel-header.tsx`, #8802).
+  'panelHeader.moreActions': 'More actions',
+  'panelHeader.close': 'Close',
 } as const;

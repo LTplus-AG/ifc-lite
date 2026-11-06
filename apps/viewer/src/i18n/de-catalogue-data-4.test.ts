@@ -1,0 +1,39 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { catalogueBatchContract } from './__tests__/catalogue-batch';
+
+catalogueBatchContract('de', 8900, [
+  'section-2d',
+  'section-planes',
+  'section-tool',
+  'semantic',
+  'semantic-assist',
+  'semantic-identity',
+  'semantic-results',
+  'settings',
+  'shared-commands',
+  'sheets-pdf',
+  'shell-chrome',
+  'sources',
+  'space-envelope',
+  'split-tool',
+  'stair-railing',
+  'storey-context',
+  'structural-properties',
+  'structural-review',
+  'swept-disk-inspection',
+  'table-corrections',
+  'terrain-imagery',
+  'tours',
+  'trim-extend',
+  'validation-editor',
+  'validation-panel',
+  'viewer-shell',
+  'viewport-lighting',
+  'visibility-reasons',
+  'webgpu-troubleshooting',
+  'workspace-migration',
+  'zone-emission',
+  'zones-panel',
+]);

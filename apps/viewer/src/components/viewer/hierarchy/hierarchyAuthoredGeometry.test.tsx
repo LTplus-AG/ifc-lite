@@ -30,10 +30,11 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { createHierarchyModelsSelector } from './hierarchy-models-selector';
 import { buildGeometricIdSet } from './hierarchyGeometry';
 import { useHierarchyTree } from './useHierarchyTree';
-import { buildTreeData, buildTypeTree } from './treeDataBuilder';
-import { collectAuthoredProducts } from './authoredProducts';
+import { buildTreeData } from './treeDataBuilder';
+import { createStoreySubtreeResolver } from './nodeVisibility';
 import type { TreeNode } from './types';
 
+const INITIAL_HIERARCHY_MODE = useViewerStore.getState().hierarchyMode;
 const MODEL = 'authored-geometry';
 const STOREY = 40;
 const FIXTURE = `ISO-10303-21;
@@ -120,7 +121,10 @@ function addCurtainWall(): { expressId: number; partIds: readonly number[] } {
   return outcome;
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  useViewerStore.setState({ hierarchyMode: INITIAL_HIERARCHY_MODE });
+});
 
 describe('hierarchy rows of elements authored with geometry (#9026)', () => {
   it('nests a curtain wall\'s authored parts under a normal row, with no "Other" group', async () => {
@@ -165,13 +169,25 @@ describe('hierarchy rows of elements authored with geometry (#9026)', () => {
     await seed();
     const { expressId, partIds } = addCurtainWall();
     deliverMeshes(partIds);
-    const models = liveModels();
-    const geometricIds = buildGeometricIdSet(models, null);
-    const authored = collectAuthoredProducts(useViewerStore.getState().mutationViews, models, null, geometricIds);
-    const nodes = buildTypeTree(models, null, { has: () => false }, false, geometricIds, authored, new Set([MODEL]), overlay);
-    const group = nodes.find((node) => node.id === 'type-IfcCurtainWall');
+    useViewerStore.setState({ hierarchyMode: 'type' });
+    let tree!: ReturnType<typeof useHierarchyTree>;
+    function Probe() {
+      tree = useHierarchyTree({ models: liveModels(), ifcDataStore: null, isMultiModel: false });
+      return null;
+    }
+    render(<Probe />);
+    const group = tree.treeData.find((node) => node.id === 'type-IfcCurtainWall');
     assert.deepEqual(new Set(group?.globalIds), new Set(partIds.map(globalOf)));
     assert.deepEqual(group?.memberGlobalIds, [globalOf(expressId)]);
+  });
+
+  it('the storey row\'s subtree already holds the authored parts, so it dims with them', async () => {
+    await seed();
+    const { partIds } = addCurtainWall();
+    const storey = spatialTree(liveModels()).find((node) => node.type === 'IfcBuildingStorey');
+    assert.ok(storey);
+    const subtree = new Set(createStoreySubtreeResolver(liveModels(), null)(storey));
+    for (const id of partIds) assert.ok(subtree.has(globalOf(id)), `part #${id}`);
   });
 
   it('counts a curtain wall as an element with geometry', async () => {

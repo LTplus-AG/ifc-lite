@@ -739,11 +739,13 @@ describe('Point mode readout staleness (#8828)', () => {
     noteBox(box(800, 400)); // the observer's first report
     hoverMeasurePoint(ctx, 3, 4);
     noteBox(box(800, 400)); // the window moved to a display with another pixel ratio: same CSS box
+    ctx.canvas.width = 2400; // ...and a 1.5x larger drawing buffer (#9002)
+    ctx.canvas.height = 1200;
     syncMeasureScreenCoords(ctx);
     assert.ok(useViewerStore.getState().measurePointLive !== null, 'a pixel-ratio-only change ended Live');
     noteBox(box(804, 402)); // a proportional window resize, aspect unchanged
-    ctx.canvas.width = 1608;
-    ctx.canvas.height = 804;
+    ctx.canvas.width = 2412;
+    ctx.canvas.height = 1206;
     syncMeasureScreenCoords(ctx);
     assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a proportional resize');
   });

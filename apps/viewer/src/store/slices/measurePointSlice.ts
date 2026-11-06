@@ -14,9 +14,16 @@
 
 import type { MeasureMode, MeasurePoint } from '../types.js';
 
+/**
+ * A placed point. Its id is fresh per click, so it joins
+ * `placementStaleMeasurements` the way a distance does when its model moves
+ * (#8828), and a new click is never born stale.
+ */
+export type PlacedMeasurePoint = MeasurePoint & { id: string };
+
 export interface MeasurePointSlice {
   measurePointLive: MeasurePoint | null;
-  measurePointLast: MeasurePoint | null;
+  measurePointLast: PlacedMeasurePoint | null;
   /** Set or clear the live hover point. No-op outside Point mode. */
   setMeasurePointLive: (point: MeasurePoint | null) => void;
   /** Commit a clicked point as the last point. No-op outside Point mode. */
@@ -30,6 +37,8 @@ export const NO_MEASURE_POINT = { measurePointLive: null, measurePointLast: null
 
 type Set = (fn: (state: MeasurePointSlice & { measureMode: MeasureMode }) => Partial<MeasurePointSlice>) => void;
 
+let placedPointCounter = 0;
+
 export function createMeasurePointSlice(set: Set): MeasurePointSlice {
   return {
     ...NO_MEASURE_POINT,
@@ -38,7 +47,9 @@ export function createMeasurePointSlice(set: Set): MeasurePointSlice {
     // Dropping the preview makes the readout flip to "Last point" on the
     // click itself; the next hover frame brings the preview back.
     placeMeasurePoint: (point) => set((state) =>
-      state.measureMode === 'point' ? { measurePointLast: point, measurePointLive: null } : {}),
+      state.measureMode === 'point'
+        ? { measurePointLast: { ...point, id: `pt-${Date.now()}-${++placedPointCounter}` }, measurePointLive: null }
+        : {}),
     clearMeasurePoint: () => set(() => NO_MEASURE_POINT),
   };
 }

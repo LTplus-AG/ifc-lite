@@ -81,6 +81,7 @@ import { useAuthoringOverlay } from './useAuthoringOverlay.js';
 import { useClashRendererOverlays } from './useClashRendererOverlays';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
+import type { MeasureCameraState } from './measureCameraState';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -522,13 +523,7 @@ export function Viewport({
   const SLOW_RAYCAST_THRESHOLD_MS = 50;
 
   // Camera state tracking for measurement updates (only update when camera actually moved)
-  const lastCameraStateRef = useRef<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>(null);
+  const lastCameraStateRef = useRef<MeasureCameraState | null>(null);
 
   // activeTool has a side effect (first-person mode), so keep as useEffect.
   //

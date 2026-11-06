@@ -855,6 +855,28 @@ describe('lighting environment bind ordering', () => {
         );
         assert.ok(envBind >= 0, 'group(1) must be bound before the first geometry draw');
     });
+
+    // #9060: the main layout pads group(2). WebGPU before gpuweb#4946 rejects
+    // a draw with any layout slot unbound, empty or not, so every frame was
+    // invalid ("No bind group set at group index 2") and nothing rendered.
+    for (const skyEnabled of [false, true]) {
+        it(`binds the group(2) padding after the sky and before geometry (sky ${skyEnabled ? 'on' : 'off'})`, () => {
+            const h = makeHarness();
+            seedBatches(h);
+            h.stats.commands.length = 0;
+            h.render(skyEnabled ? { environment: { skyEnabled: true, sunDirection: [0.45, 0.83, 0.33] } } : {});
+
+            const cmds = h.stats.commands;
+            const skyDraw = cmds.findIndex((c) => c.op === 'draw');
+            const firstGeometryDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
+            assert.ok(firstGeometryDraw >= 0, 'geometry must draw');
+            assert.equal(skyDraw >= 0, skyEnabled);
+            const paddingBind = cmds.findIndex(
+                (c, i) => c.op === 'setBindGroup' && c.index === 2 && i > skyDraw && i < firstGeometryDraw,
+            );
+            assert.ok(paddingBind >= 0, 'group(2) must be bound before the first geometry draw');
+        });
+    }
 });
 
 describe('visibility epoch drives the batched draw path', () => {

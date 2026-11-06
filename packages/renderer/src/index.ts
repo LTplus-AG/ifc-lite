@@ -5,6 +5,7 @@
 import type { LineVertices } from './section-2d-line-buffer.js';
 import { sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
+import { PickSourceRevision } from './pick-source-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
@@ -542,6 +543,7 @@ export class Renderer {
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
     private readonly _pickClipRevision = new PickClipRevision(); // see getPickClipRevision()
+    private readonly pickSources = new PickSourceRevision(); // point clouds and source curves in getPickGeometryRevision() (#9029, #9030)
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
@@ -1005,19 +1007,13 @@ export class Renderer {
         }
     }
 
-    /**
-     * Replace all loaded point clouds with `assets`.
-     *
-     * Phase 0 entry point — single-chunk inline assets from IFCx
-     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
-     * accept streaming sources via a different overload.
-     */
+    /** Replace the embedded clouds with single-chunk inline IFCx `assets` (`pcd::base64`, `points::array`, `points::base64`); streamed scans stay. */
     setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-        this.pointCloudRenderer.setAssets(assets);
+        this.pointCloudRenderer.setAssets(assets); this.pickSources.notePointClouds();
         this.refreshPlacementBounds();
     }
 
@@ -1030,6 +1026,7 @@ export class Renderer {
             this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
         }
+        this.pickSources.notePointClouds();
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
@@ -1047,7 +1044,7 @@ export class Renderer {
 
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
-        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer?.clear(); this.pickSources.notePointClouds();
         this.refreshPlacementBounds();
     }
 
@@ -1085,7 +1082,7 @@ export class Renderer {
      * effect on the next render — no GPU buffer rewrite needed.
      */
     relabelPointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
-        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex);
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex); this.pickSources.notePointClouds();
         this.requestRender();
     }
 
@@ -1096,7 +1093,7 @@ export class Renderer {
 
     /** Apply rendering options (color mode, fixed override, point size). */
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
-        this.pointCloudRenderer?.setOptions(opts);
+        if (this.pointCloudRenderer) this.pickSources.setPointCloudOptions(this.pointCloudRenderer, opts);
         this.requestRender();
     }
 
@@ -1125,7 +1122,7 @@ export class Renderer {
 
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
-        this.pointCloudRenderer?.setAssetTranslation(handle, translation);
+        this.pointCloudRenderer?.setAssetTranslation(handle, translation); this.pickSources.notePointClouds();
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1133,6 +1130,7 @@ export class Renderer {
     /** Toggle one resident streamed scan without releasing its GPU buffers. */
     setPointCloudVisibility(handle: { id: number }, visible: boolean): void {
         if (!this.pointCloudRenderer?.setAssetVisible(handle, visible)) return;
+        this.pickSources.notePointClouds();
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1160,7 +1158,7 @@ export class Renderer {
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
         matrix: Float32Array | Float64Array | null,
     ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        this.pointCloudRenderer?.setAssetTransform(handle, matrix); this.pickSources.notePointClouds();
         this.refreshPlacementBounds();
     }
 
@@ -3208,7 +3206,8 @@ export class Renderer {
 
     /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
     getPickClipRevision(): number { return this._pickClipRevision.revision; }
-    /** Bumped when the geometry a pick can hit changes: an edit or its undo, a move, a stream (#8998). */ getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision(); }
+    /** Bumped when what a pick can hit changes: an edit or its undo, a move, a stream (#8998), points (#9029), source curves (#9030). */
+    getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision() + this.pickSources.revision(); }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
@@ -3240,7 +3239,7 @@ export class Renderer {
 
     /** Opt in the currently selected authored curves for exact magnetic picking. */
     setSourceSnapCurves(curves: readonly import('./source-curve-snap.js').SourceSnapCurve[]): void {
-        this.raycastEngine.setSourceSnapCurves(curves);
+        this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
     /**
@@ -3659,7 +3658,7 @@ export class Renderer {
 
         // Point cloud GPU resources
         this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
-        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear(); this.pickSources.notePointClouds();
         this.pointCloudRenderer = null;
 
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.

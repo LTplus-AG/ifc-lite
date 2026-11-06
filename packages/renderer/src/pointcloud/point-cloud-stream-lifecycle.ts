@@ -25,6 +25,7 @@ export interface PointCloudStreamHost {
   pointCloudRenderer: PointCloudRenderer | null;
   pointCloudStreamEpoch: number;
   readonly pointCloudStreamEpochs: Map<number, number>;
+  readonly pickSources: { notePointClouds(): void };
   readonly modelBoundsTracker: { expandForPointClouds(): void };
   readonly camera: { setSceneBounds(bounds: ModelBoundsBox | null): void };
   readonly modelBounds: ModelBoundsBox | null;
@@ -61,6 +62,7 @@ export function appendPointCloudChunk(
   host: PointCloudStreamHost, handle: PointCloudAssetHandle, chunk: PointCloudChunkInput, key?: string,
 ): void {
   currentPointCloudStreamRenderer(host, handle).appendChunk(handle, chunk, key);
+  if (chunk.pointCount > 0) host.pickSources.notePointClouds();
   host.modelBoundsTracker.expandForPointClouds();
   host.camera.setSceneBounds(host.modelBounds);
   host.requestRender();
@@ -75,7 +77,7 @@ export function removePointCloudChunk(host: PointCloudStreamHost, handle: PointC
   if (host.deviceLost || !host.pointCloudRenderer
     || host.pointCloudStreamEpochs.get(handle.id) !== host.pointCloudStreamEpoch) return 0;
   const removed = host.pointCloudRenderer.removeChunk(handle, key);
-  if (removed > 0) host.requestRender();
+  if (removed > 0) { host.pickSources.notePointClouds(); host.requestRender(); }
   return removed;
 }
 
@@ -87,6 +89,7 @@ export function endPointCloudStream(host: PointCloudStreamHost, handle: PointClo
 export function removePointCloudAsset(host: PointCloudStreamHost, handle: PointCloudAssetHandle): void {
   if (!host.pointCloudStreamEpochs.delete(handle.id)) return;
   host.pointCloudRenderer?.removeAsset(handle);
+  host.pickSources.notePointClouds();
   // Bounds may have shrunk — recompute from scratch so fit-to-view
   // and section-plane sliders see fresh extents.
   host.refreshPlacementBounds();

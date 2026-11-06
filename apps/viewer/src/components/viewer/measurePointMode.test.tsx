@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { Renderer, SnapType, type RenderPipeline } from '@ifc-lite/renderer';
+import { PointCloudRenderer, Renderer, SnapType, type RenderPipeline, type SourceSnapCurve } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { cleanup, click, press, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -25,6 +25,7 @@ import { hasPendingMeasurementState } from '@/utils/viewportUtils.js';
 import { staleMeasurementIds } from '@/lib/model-placement/spatial-invalidation';
 import { measureRu } from '@/i18n/locales/ru/measure';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
+import { useCentrelineRendererOverlay } from '@/hooks/useCentrelineRendererOverlay.js';
 import { useVisibilityState } from '@/hooks/useViewerSelectors.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { handleMeasureTap } from './touchRouting.js';
@@ -1004,5 +1005,112 @@ describe('Point mode "Live" and the pick inputs a resting cursor does not move (
     hoverMeasurePoint(ctx, 3, 4); // a pick under the new Snap: its reading is current
     syncMeasureScreenCoords(ctx);
     assert.ok(live(), 'the pass ended the reading a pick under the new Snap just made');
+  });
+});
+
+/** `realGeometry`'s renderer, also holding a real point renderer with one streamed scan (one COPC node). */
+function realPoints(ctx: MouseHandlerContext) {
+  const real = realGeometry(ctx);
+  const device = {
+    limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 }, createBindGroupLayout: () => ({}),
+    createPipelineLayout: () => ({}), createShaderModule: () => ({}), createRenderPipeline: () => ({}), createBindGroup: () => ({}),
+    createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }), queue: { writeBuffer() {} },
+  } as unknown as GPUDevice;
+  (globalThis as Record<string, unknown>).GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2 };
+  Object.assign(real.renderer, { pointCloudRenderer: new PointCloudRenderer(device, 'rgba8unorm', 'depth32float', 1) });
+  const scan = real.renderer.beginPointCloudStream({ expressId: 2 });
+  real.renderer.appendPointCloudChunk(scan, pointChunk(3), 'node-0');
+  return { ...real, scan };
+}
+
+const pointChunk = (x: number) => ({ pointCount: 1, positions: new Float32Array([x, 4, -5]), classifications: new Uint8Array([2]),
+  bbox: { min: [x, 4, -5] as [number, number, number], max: [x, 4, -5] as [number, number, number] } });
+
+const snapCurve = (expressId: number): SourceSnapCurve => ({
+  identity: { modelId: 'm', expressId, solidId: 50, directrixId: 51, mappingPath: [], occurrenceIndex: 0, segmentIndex: 0 },
+  globalId: expressId, kind: 'line', length: 1, pointAt: (t) => ({ x: 3 + t, y: 4, z: -5 }),
+});
+
+/** The selected-centreline overlay, as Viewport mounts it, over a real renderer. */
+function CentrelineOverlay({ renderer }: { renderer: Renderer }) {
+  useCentrelineRendererOverlay(useRef<Renderer | null>(renderer), true, 0,
+    async () => ({ vertices: [], diagnostics: [], renderedOccurrences: new Set() }));
+  return null;
+}
+
+describe('Point mode "Live" and the point clouds and source curves a pick snaps to (#9029, #9030)', () => {
+  const live = () => useViewerStore.getState().measurePointLive !== null;
+  /** Hover at rest, let a pass confirm Live, run `change`, and say whether the next pass kept Live. */
+  const keepsLive = (ctx: MouseHandlerContext, change: () => void): boolean => {
+    hoverMeasurePoint(ctx, 3, 4);
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'setup: an idle pass ended Live');
+    change();
+    syncMeasureScreenCoords(ctx); // the pass, as the next animation frame runs it
+    return live();
+  };
+
+  it('a point-cloud node landing under a resting cursor ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer, scan } = realPoints(ctx);
+    assert.equal(keepsLive(ctx, () => renderer.appendPointCloudChunk(scan, pointChunk(3.01), 'node-1')), false,
+      'Live outlived a COPC node streaming in after the camera stopped');
+  });
+
+  it('a point-cloud class filter change ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realPoints(ctx);
+    assert.equal(keepsLive(ctx, () => renderer.setPointCloudOptions({ classMask: [~(1 << 2) >>> 0, -1, -1, -1, -1, -1, -1, -1] })), false,
+      'Live outlived the class under the cursor being filtered out');
+  });
+
+  it('hiding a scan ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer, scan } = realPoints(ctx);
+    assert.equal(keepsLive(ctx, () => renderer.setPointCloudVisibility(scan, false)), false, 'Live outlived the scan being hidden');
+  });
+
+  it('point-cloud frames that leave the snappable points alone keep "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer, scan } = realPoints(ctx);
+    renderer.setPointCloudOptions({ classMask: [-1, -1, -1, -1, -1, -1, -1, -1] });
+    assert.ok(keepsLive(ctx, () => {
+      renderer.setPointCloudOptions({ pointSize: 9, colorMode: 'height', classMask: [-1, -1, -1, -1, -1, -1, -1, -1] });
+      renderer.setPointCloudVisibility(scan, true); // the visibility sync re-pushes on every model change
+      renderer.removePointCloudChunk(scan, 'never-loaded');
+    }), 'a restyle, the same visibility or a no-op eviction ended Live');
+  });
+
+  it('installing a different source curve set ends "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realGeometry(ctx);
+    assert.equal(keepsLive(ctx, () => renderer.setSourceSnapCurves([snapCurve(7)])), false,
+      'Live outlived the selection installing curves a pick there now snaps to');
+    assert.equal(keepsLive(ctx, () => renderer.setSourceSnapCurves([snapCurve(8)])), false, 'Live outlived another set replacing it');
+  });
+
+  it('re-installing the same source curve set keeps "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realGeometry(ctx);
+    renderer.setSourceSnapCurves([snapCurve(7)]);
+    assert.ok(keepsLive(ctx, () => {
+      // The overlay clears the channel on every selection change and installs the rebuilt set (new objects) later.
+      renderer.setSourceSnapCurves([]);
+      renderer.setSourceSnapCurves([snapCurve(7)]);
+    }), 'Live ended on the same curves re-installed');
+  });
+
+  it('a selection that installs no source curves keeps "Live"', async () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realGeometry(ctx);
+    Object.assign(renderer, { setLineOverlay: () => {} });
+    useViewerStore.setState({ centrelineOverlayEnabled: true });
+    render(<CentrelineOverlay renderer={renderer} />);
+    hoverMeasurePoint(ctx, 3, 4);
+    syncMeasureScreenCoords(ctx);
+    act(() => useViewerStore.setState({ selectedEntityId: 7, selectedEntityIds: new Set([7]) }));
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the overlay's async rebuild
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'a selection with no curves to install ended Live');
   });
 });

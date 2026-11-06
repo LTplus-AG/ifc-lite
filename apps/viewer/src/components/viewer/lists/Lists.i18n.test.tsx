@@ -295,7 +295,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
     seedPanelStore([]);
     const container = render(<ListPanel />);
 
-    const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New List'));
+    const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New list'));
     assert.ok(newListButton, 'expected a New List button');
     click(newListButton as Element);
 

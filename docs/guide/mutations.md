@@ -552,7 +552,7 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 
 `editStairDimensionsInStore(dataStore, editor, stairOrFlightExpressId, patch)` accepts the four length fields. It rebuilds only that flight's occurrence body through the same geometry emitter and validation as creation. The first-riser foot, placements, riser/tread counts, identities, type relationships and shared source/style leaves stay fixed. Changing riser height changes the total rise; changing tread length changes the total run. It does not refit the stair to the upper storey. Omitted fields keep their existing values; waist thickness can be added to a solid-to-base flight. Unsupported bodies, invalid dimensions and late unreadable styles refuse atomically without writes. The Model inspector exposes these edits for the actual selected flight and its parent, each as one Undo step and one remesh of the stair and flight.
 
-[Native viewer evidence](../architecture/evidence/6232-stair-inspector/README.md) records the four dimension edits, each Undo and Redo, and the unchanged neighboring wall and windows.
+[Native viewer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/6232-stair-inspector/README.md) records the four dimension edits, each Undo and Redo, and the unchanged neighboring wall and windows.
 
 #### Openings and hosted doors / windows
 

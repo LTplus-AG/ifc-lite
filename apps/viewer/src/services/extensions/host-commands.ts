@@ -84,6 +84,11 @@ export async function runExtensionCommand(
   extensionId: string,
   args?: Record<string, unknown>,
 ): Promise<RuntimeRunResult | undefined> {
+  // Arguments belong to this evaluation, not the activation's shared globals.
+  // Capture before awaiting storage/activation; the wrapper captures the fresh
+  // context synchronously before entering an asynchronous handler (#8947).
+  const argumentField = args === undefined ? '' : `, args: ${JSON.stringify(args)}`;
+  const preamble = `globalThis.__ifclite_ctx__ = { bim: (globalThis.__ifclite_ctx__ || { bim: globalThis.bim }).bim${argumentField} };`;
   const records = await deps.storage.listExtensions();
   for (const record of records) {
     if (record.id !== extensionId) continue;
@@ -108,6 +113,7 @@ export async function runExtensionCommand(
     const wrapResult = wrapEntrySource(source, {
       entryFnName: 'run',
       filename: entry,
+      preamble,
     });
     if (!wrapResult.ok) {
       throw new Error(
@@ -133,7 +139,7 @@ export async function runExtensionCommand(
         // JSON.stringify). The wrap also falls back to globalThis.bim
         // if ctx is somehow unset. setGlobal is inside the try so a
         // "Sandbox disposed" on a dead handle also triggers the retry.
-        const ctx: ExtensionContextV1 & { args?: Record<string, unknown> } = { bim: deps.sdk, ...(args === undefined ? {} : { args }) };
+        const ctx: ExtensionContextV1 = { bim: deps.sdk };
         await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
         return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {

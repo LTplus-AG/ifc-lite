@@ -103,25 +103,3 @@ describe('BimSandboxHandle.run', () => {
     );
   });
 });
-
-// #8947: execute the generated prelude; arguments must survive the real
-// BimSandboxHandle context special case without serialising the cyclic SDK.
-it('#8947 widget args cross the canonical sandbox context and clear on the next no-args run', async () => {
-  const previous = Reflect.get(globalThis, '__ifclite_ctx__');
-  const handle = new BimSandboxHandle(fakeSandbox(async source => {
-    // Trusted fixture source only; this is the fake realm's evaluation boundary.
-    // eslint-disable-next-line no-eval
-    return { value: (0, eval)(source), logs: [], durationMs: 0 };
-  }));
-  const sdk: { self?: unknown } = {}; sdk.self = sdk;
-  try {
-    handle.setGlobal('__ifclite_ctx__', { bim: sdk, args: { groupBy: 'storey', nested: [1, 'a'] } });
-    const first = await handle.run('globalThis.__ifclite_ctx__.args');
-    assert.deepEqual(first.value, { groupBy: 'storey', nested: [1, 'a'] });
-    handle.setGlobal('__ifclite_ctx__', { bim: sdk });
-    assert.equal((await handle.run('globalThis.__ifclite_ctx__.args')).value, undefined);
-  } finally {
-    if (previous === undefined) Reflect.deleteProperty(globalThis, '__ifclite_ctx__');
-    else Reflect.set(globalThis, '__ifclite_ctx__', previous);
-  }
-});

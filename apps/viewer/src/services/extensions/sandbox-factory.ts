@@ -134,7 +134,7 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
   private globals = new Map<string, string>();
   private disposed = false;
 
-  constructor(private sandbox: Sandbox) {}
+  constructor(private sandbox: Pick<Sandbox, 'eval' | 'dispose' | 'moduleRetired'>) {}
 
   setGlobal(name: string, value: unknown): void {
     if (this.disposed) throw new Error('Sandbox disposed.');
@@ -148,9 +148,9 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
     // serialisation crashes. The bridge has already installed `bim`
     // inside the QuickJS realm — synthesize ctx from that instead.
     if (name === '__ifclite_ctx__') {
-      const args = value && typeof value === 'object' && 'args' in value ? value.args : undefined;
-      const suffix = args === undefined ? '' : `, args: ${JSON.stringify(args)}`;
-      this.globals.set(name, `globalThis.__ifclite_ctx__ = { bim: globalThis.bim${suffix} };`);
+      // Invocation arguments are captured in the command's own source wrapper,
+      // never staged on this shared activation across awaits (#8947).
+      this.globals.set(name, 'globalThis.__ifclite_ctx__ = { bim: globalThis.bim };');
       return;
     }
     // Other globals (test args, synthetic-spec data) are JSON-safe;

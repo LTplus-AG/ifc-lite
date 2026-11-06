@@ -1022,3 +1022,50 @@ source qualification. Its evidence publication is now verified and the owning
 storage task is released. Original ef72 completion is 533/543 with ten failures;
 two are the native-export selectors already fixed in 98d3. No historical failure
 is relabelled as a pass, and no uncertain request has been resubmitted.
+
+
+### Round 4 final regression verdict — original request recovered after restart
+
+The original job `9455f53a-9d60-452f-a0a4-50197f0c96d4` completed normally
+at exact source `930beb9b7e1c56e84258553ba2f509d6558f34fb`, exit 0, unchanged
+clean source, in 10,209.58 seconds (2h 50m). No project command was replayed.
+
+| Gate | Result |
+| --- | --- |
+| Root typecheck | 134/134; 4,563 test sources |
+| Viewer prerequisite/build graph | 58/58 |
+| Repaired consumer contracts | 32/32, zero skips |
+| Expanded palette suite | 543/543, zero skips |
+| All four full viewer shards | 20,212 passed; 0 failed; 0 cancelled; 338 skipped |
+
+[Final original receipt and phase hashes](evidence/round4/final-regression/summary.json)
+and [qualified family joins](evidence/round4/final-regression/route-bindings.json)
+close the pending execution gates from the bounded source review.
+The 338 full-suite skips remain unqualified: primarily absent external IFC
+fixtures, plus opt-in service/environment and optional reference-tool checks.
+The [exact skipped output](evidence/round4/final-regression/skipped-cases.json.gz)
+retains reasons (340 output rows include skipped suite headings). These are
+not passed assertions and do not replace fixture-enabled main/queue CI.
+
+The app production source is unchanged from the 98d3 physical-GPU qualification
+(27/27, 36 captures) and fresh Opus observed-UX acceptance. Later differences
+are test repairs, runner and evidence only. Both hillclimbs end at their existing
+bounded rounds: general UX R3; feature-access R4. No further scope expansion.
+The implementation is ready for serial release review; production is **not**
+claimed ready or deployed until applicable main-base CI, reviews and queue gates
+pass. Platform-native OS chooser/permission UI and arbitrary extension behavior
+remain explicit limits, not fabricated observations.
+
+Serial dependency order (retarget only after the predecessor merges):
+#8956 → #8961 → #8962 → #8963 → #8964 → #8965 → #8967 → #8969 → #8972 → #8973 → #8974 → #8975 → #8978 → #8982 → #8983 → #8986 → #8988 → #9005 → #9012 → #9015 → #9024
+
+Start with independently qualified foundation #8956. For each following layer,
+retarget to main, preserve its unique changes, require applicable CI and resolved
+reviews, then use Mergify. Parent owns watches, queueing and deployment; do not
+queue all stacked branches or treat leaf validation as each intermediate head's
+CI. Deploy only the fully merged main descendant after those gates.
+
+The original job's execution is complete, but worker evidence publication reports
+`pending`; generated storage remains protected until supported publication and
+closure succeed. Compact final receipts and compressed logs are retained locally
+and on Pop. No cleanup bypass or physical space-reclamation claim.

@@ -1,0 +1,110 @@
+{
+  "id": "9455f53a-9d60-452f-a0a4-50197f0c96d4",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 111057129472,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1793966220.7669253
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/930beb9b7e1c56e84258553ba2f509d6558f34fb",
+  "sourceBefore": {
+    "commit": "930beb9b7e1c56e84258553ba2f509d6558f34fb",
+    "tree": "7b5e310b69240556303d62e90ab217ec1799f22a",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "64876ca9f46a5934cbb68cfca2af7e74fb975399a6d5d34dafe35a2b25ea5514",
+      "pnpm-lock.yaml": "bf250ac457b01af350974e2ceaec9fc0d5702e411c1124ccb212f57dc0de52a7",
+      "package.json": "f3175b6a0cd6610ffebf283c6564ca5d1f78f4bf148e69c4802fcb269049ff53"
+    }
+  },
+  "command": [
+    "bash",
+    "tests/ui-scenes/command-palette-access/validate-candidate.sh"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1793966220.7559803,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/930beb9b7e1c56e84258553ba2f509d6558f34fb",
+    "/home/louistrue/build-workers/worker-state/caches/bbfbf896c73c2b0f0e014f83"
+  ],
+  "state": "completed",
+  "cpu": 4,
+  "memoryGiB": 24,
+  "admissionMetadataSchema": 1,
+  "storageTask": "palette-access-r4-catalogue-final-fd0b1714",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/bbfbf896c73c2b0f0e014f83",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "bbfbf896c73c2b0f0e014f83",
+      "cacheLane": 2,
+      "compatibilityGroup": "fa5520234504608b1cf6af3d"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/930beb9b7e1c56e84258553ba2f509d6558f34fb",
+      "role": "worktree"
+    }
+  ],
+  "evidenceCaptureRequired": true,
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "0d8fdc062c098850a5632d3d0a4d7070bec6e17f4db127a3bc8c124086ffa2db",
+  "startedAt": 1793966221.6719053,
+  "queueSeconds": 0.9159252643585205,
+  "descendantTracking": "linux-subreaper",
+  "resourceScope": true,
+  "exitCode": 0,
+  "processExitCode": 0,
+  "finishedAt": 1793976431.2482529,
+  "sourceAfter": {
+    "commit": "930beb9b7e1c56e84258553ba2f509d6558f34fb",
+    "tree": "7b5e310b69240556303d62e90ab217ec1799f22a",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "64876ca9f46a5934cbb68cfca2af7e74fb975399a6d5d34dafe35a2b25ea5514",
+      "pnpm-lock.yaml": "bf250ac457b01af350974e2ceaec9fc0d5702e411c1124ccb212f57dc0de52a7",
+      "package.json": "f3175b6a0cd6610ffebf283c6564ca5d1f78f4bf148e69c4802fcb269049ff53"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {},
+  "outputSha256": "7a9cb2ed1ce3ad9bf4ff43295c7bf13001b0b420653b49630677308d59e1ead7",
+  "evidenceInventoryFinalized": true,
+  "outputLogPresent": true
+}

@@ -1175,6 +1175,83 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
         assert.notStrictEqual(greyOf(h).gpuResident, false);
     });
+
+    // Shared set-up: grey {1,2} cold (hidden past both passes), provider ready.
+    const coldGrey = (h: Harness) => {
+        const scene = sceneOf(h);
+        const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        const grey = greyOf(h);
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        grey.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+        return grey;
+    };
+
+    it('a warm-only cold restore that repartitions keeps every chunk warm-only and leaves no stale mark', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        const grey = coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene['cachedMaxBufferSize'] = 1; // every restored piece needs its own chunk
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        const chunks = scene.getBatchedMeshes().filter((b) => b.expressIds.includes(1) || b.expressIds.includes(2));
+        assert.strictEqual(chunks.length, 2, 'grey split into two chunks');
+        assert.ok(!chunks.includes(grey));
+        const createdBefore = h.stats.createdBuffers.length;
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0);
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no chunk was rebuilt on the GPU');
+        assert.ok(chunks.every((b) => b.gpuResident === false));
+        assert.deepStrictEqual([...scene['warmOnlyRestores']], [], 'no stale warm-only mark');
+        // The split put {2} in a chunk of its own, which isolate {2} now shows
+        // whole: that chunk's own buffers are wanted, the {1} chunk's are not.
+        for (const b of chunks) b.bounds = undefined; // the default camera must not cull the fixture
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
+        const shown = scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))!;
+        const hidden = scene.getBatchedMeshes().find((b) => b.expressIds.includes(1))!;
+        assert.notStrictEqual(shown.gpuResident, false);
+        assert.strictEqual(hidden.gpuResident, false);
+        shown.bounds = undefined;
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the restored chunk draws');
+    });
+
+    it('isolate cleared while a warm-only cold restore is in flight: the full draw still gets its GPU rebuild', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity); // disk fetch in flight
+        h.render({ hiddenIds: new Set([3]) });                            // grey fully visible now
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'the full draw\'s request wins over the earlier subset request');
+    });
+
+    it('a cold demotion frees the sub-batch VRAM of a parent no longer drawn at all', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(subBatchKeys(h)[0])) as BatchedMesh;
+        // Grey leaves the view entirely (only red is isolated): nothing asks for
+        // its slot again, so only the cold demotion can free it.
+        for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)), 'the cold parent\'s slot is released');
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+    });
 });
 
 describe('hydrated selection meshes across renders', () => {

@@ -730,6 +730,9 @@ export class Scene {
       bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
+      // No recent frame drew a subset of it either: free its sub-batch VRAM,
+      // which no budget counts (#9050).
+      if (bucket.batchedMesh) this.dropPartialCacheForBatch(bucket.batchedMesh);
     }
     if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
       this.hostOverBudgetWarned = true;
@@ -787,8 +790,15 @@ export class Scene {
         }
         if (members.length > 0) {
           this.coldBuckets.delete(key);
-          for (const restoredKey of repartitionHydratedRecoveryBucket(
-            this as unknown as SceneRecoveryHost, key, bucket, shell)) this.residencyRestoreQueue.add(restoredKey);
+          // A restore only a subset asked for stops at warm, for every chunk a
+          // repartition splits it into (#9050).
+          const warmOnly = this.warmOnlyRestores.delete(key);
+          const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
+          if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
+          for (const restoredKey of restoredKeys) {
+            this.residencyRestoreQueue.add(restoredKey);
+            if (warmOnly) this.warmOnlyRestores.add(restoredKey);
+          }
         } else {
           console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
         }

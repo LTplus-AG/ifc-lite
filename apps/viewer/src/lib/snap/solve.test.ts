@@ -244,3 +244,25 @@ describe('solveSnap locks', () => {
     assert.equal(solveSnap(query([1, 0.05]), [sceneSource([[1, 0.05]], [], 'mesh')], PROFILE).winner, null);
   });
 });
+
+describe('solveSnap aimed kinds (#9140)', () => {
+  const crossingAt = (local: Vec2): SnapSource => ({ id: 'aimed', collect: (_q, _r, out) => {
+    out.push({ kind: 'endpoint', local: [6.15, 0], source: 'linework' });
+    out.push({ kind: 'gridIntersection', local, source: 'ifc-grid' });
+  } });
+  const aimedProfile = (aimedPx?: number): SnapProfile => ({
+    radiusPx: 12, tiers: [['endpoint'], ['gridIntersection']], sources: ['aimed'], aimedKinds: ['gridIntersection'], aimedPx,
+  });
+  const free = { cursor: [6, 0] as Vec2, metresPerPixel: 0.05, anchor: null, chain: [], modifiers: { shift: false, alt: false }, locks: {} };
+
+  it('a crossing six metres off the lock does not take the point from an endpoint beside it', () => {
+    const q = { ...free, anchor: [0, 0] as Vec2, locks: { axis: 'u' as const } };
+    assert.deepEqual(solveSnap(q, [crossingAt([6, 6])], aimedProfile(2)).local, [6.15, 0]);
+  });
+
+  it('aimedPx 0 means exactly on the target, not off', () => {
+    assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile(0)).local, [6, 0]);
+    assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile()).local, [6, 0]);
+    assert.deepEqual(solveSnap({ ...free, cursor: [6.01, 0] }, [crossingAt([6, 0])], aimedProfile(0)).local, [6.15, 0]);
+  });
+});

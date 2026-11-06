@@ -100,6 +100,17 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
     assert.equal(pick(c, items, crossing), crossing);
   });
 
+  it('a crossing that only projects under the pointer through a lock is not aimed at', () => {
+    const c = on(corner, 0.15, 0);
+    const projected: Ranked = { cand: crossing, point: [6, 0], dist: 0, tier: 1, order: 1 };
+    assert.equal(pick(c, [c, projected]), corner);
+  });
+
+  it('a lock running through the crossing still lets the pointer aim at it', () => {
+    const c = on(corner, 0.21, 0);
+    assert.equal(pick(c, [c, { cand: crossing, point: [6, 6], dist: 0.01, tier: 1, order: 1 }]), crossing);
+  });
+
   it('no aimed target in range leaves the ladder alone, including no winner at all', () => {
     const c = on(corner, 0.2, 0);
     assert.equal(pick(c, [c]), corner);

@@ -129,6 +129,7 @@ export interface SnapProfile {
   hysteresisPx?: number;
   /** Kinds that win over any tier while the pointer is within `aimedPx` of one (see `aimedOr`). */
   aimedKinds?: readonly SnapKind[];
+  /** Absent or 0: only a pointer exactly on the target counts. */
   aimedPx?: number;
 }
 

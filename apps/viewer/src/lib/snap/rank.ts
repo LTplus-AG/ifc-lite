@@ -139,7 +139,10 @@ export function aimedOr(
   for (const r of items) {
     if (!kinds.includes(r.cand.kind)) continue;
     const reach = prev !== null && sameTarget(r.cand, prev) ? aimed + hysteresis : aimed;
-    if (r.dist <= reach && (!on || r.dist < on.dist)) on = r;
+    // `dist` runs to the point on the active lock, so add the way from there to
+    // the target: a crossing far off the lock can project right under the pointer.
+    const toTarget = r.dist + Math.hypot(r.point[0] - r.cand.local[0], r.point[1] - r.cand.local[1]);
+    if (toTarget <= reach && (!on || r.dist < on.dist)) on = r;
   }
   if (!on || !winner || winner === on || winner.dist < on.dist) return winner;
   return sameVec(winner.point, on.point) ? winner : on;

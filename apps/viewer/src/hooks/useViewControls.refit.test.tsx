@@ -63,12 +63,12 @@ const ROOF: Plane = { ...PLAN, custom: { normal: [0, 0.866, 0.5], pickedAt: [1, 
 
 let latest: { t: Transform; set: (t: Transform) => void } | null = null;
 let latestFit: (() => void) | null = null;
-function Harness({ d, plane }: { d: Drawing2D; plane: Plane }): null {
+function Harness({ d, plane, refs = null }: { d: Drawing2D; plane: Plane; refs?: Drawing2D['bounds'] | null }): null {
   const containerRef = useRef<HTMLDivElement | null>(containerEl);
   const cacheRef = useRef<CachedSheetTransform | null>(null);
   const { viewTransform, setViewTransform, fitToView } = useViewControls({
     drawing: d, sectionPlane: plane, containerRef, panelVisible: true, status: 'ready',
-    sheetEnabled: false, activeSheet: null, isPinned: true, cachedSheetTransformRef: cacheRef,
+    sheetEnabled: false, activeSheet: null, isPinned: true, cachedSheetTransformRef: cacheRef, referenceBounds: refs,
   });
   latest = { t: viewTransform, set: setViewTransform };
   latestFit = fitToView;
@@ -79,10 +79,10 @@ let root: Root | null = null;
 const host = document.createElement('div');
 document.body.appendChild(host);
 /** Render, then let the hook's 50 ms deferred fit run. */
-async function show(d: Drawing2D, plane: Plane): Promise<Transform> {
+async function show(d: Drawing2D, plane: Plane, refs: Drawing2D['bounds'] | null = null): Promise<Transform> {
   await act(async () => {
     root ??= createRoot(host);
-    root.render(<Harness d={d} plane={plane} />);
+    root.render(<Harness d={d} plane={plane} refs={refs} />);
   });
   await act(async () => { await new Promise((r) => setTimeout(r, 90)); });
   return latest!.t;
@@ -239,5 +239,12 @@ describe('useViewControls frames the building, not far-off markers (#8802)', () 
     await act(async () => { latest!.set({ x: 0, y: 0, scale: 2 }); });
     await act(async () => { latestFit!(); });
     close(latest!.t, fitOf(HOUSE), 'Fit');
+  });
+
+  it('frames a visible reference beside the house, as Fit documents', async () => {
+    size.width = 1600; size.height = 372;
+    // A placed underlay south-west of the house: the frame is the house plus it.
+    const reference = { min: { x: -5, y: -12 }, max: { x: -4, y: -11 } };
+    close(await show(houseWithMarkers(), PLAN, reference), fitOf(drawing(-5, -12, 8.9, -2.7)), 'with a reference');
   });
 });

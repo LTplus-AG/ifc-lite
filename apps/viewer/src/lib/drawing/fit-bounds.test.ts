@@ -42,6 +42,14 @@ describe('drawingFitBounds', () => {
     assert.deepEqual(drawingFitBounds(d), box(-20, -20, 28, 20));
   });
 
+  it('judges an entity by all of its lines: one near the cut brings the whole element in', () => {
+    const d = drawingOf({
+      cutPolygons: [cut(1, 0, 0, 10, 10)] as Drawing2D['cutPolygons'],
+      lines: [line(2, 11, 0, 11, 1), line(2, 100, 0, 100, 1)] as Drawing2D['lines'],
+    }, box(0, 0, 100, 10));
+    assert.deepEqual(drawingFitBounds(d), box(0, 0, 100, 10));
+  });
+
   it('always frames the visible references, as Fit documents', () => {
     const d = drawingOf({ cutPolygons: [cut(1, 0, 0, 6, 6)] as Drawing2D['cutPolygons'] }, box(-100, -100, 6, 6));
     assert.deepEqual(drawingFitBounds(d, box(-100, -100, -90, -90)), box(-100, -100, 6, 6));

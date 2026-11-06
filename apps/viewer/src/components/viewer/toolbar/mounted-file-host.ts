@@ -10,6 +10,7 @@ export interface MountedFileHost {
   addModel: () => void;
   refreshModels: () => Promise<void>;
   openShareDialog?: () => void;
+  startBlank?: () => void;
 }
 let current: MountedFileHost | null = null;
 const listeners = new Set<() => void>();

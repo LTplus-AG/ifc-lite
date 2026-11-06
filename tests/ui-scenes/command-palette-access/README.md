@@ -340,3 +340,38 @@ references, so nothing was force-deleted (0 bytes reclaimed).
 Complete semantic reconciliation, blank-model/load-recovery/camera-edge routes,
 combined runtime validation and candidate UI evidence remain open. This is still
 access round 1, not acceptance; the independently accepted UX hillclimb is unchanged.
+
+## Round 1 load recovery, camera and help checkpoint
+
+New blank model now shares the welcome screen's canonical creation/load/workspace
+flow through the mounted desktop/mobile file host. It refuses replacement of an
+existing session, waits for its exact load target and does not enter authoring
+after cancellation or host retirement. Cancel/Retry/Dismiss share the actual load
+operation/error binding; an error generation distinguishes even repeated failures
+with identical messages and retry callbacks.
+
+The registry also projects the ViewCube's twelve edges and eight corners once,
+using its canonical geometry and existing camera callback. Its six face presets
+remain unchanged. About, What's New and Shortcuts open their actual tabs. About
+also reaches the existing MCP link. Sample loading remains in its real Learn tour
+flow: Get started → Load demo project; Layers tour → demo fulfilment. These are
+source routes, not newly claimed browser evidence.
+
+Mounted regressions exercise actual held load I/O, parser failure/retry, parsed
+blank IFC and wall runtime, live cancellation identity, real renderer-camera
+orientation and repeated help tab navigation. The Cartesian direction invariant
+accounts for all twenty additional camera presets. Runtime assertions are UNRUN;
+syntax (22 files), targeted lint, module-size, i18n and source-text guards passed.
+
+Fresh Astra review of `492a635925` found a P2: overlapping commands staged args on
+one activation's shared globals. Correction `aefa0ac31c` snapshots each invocation's
+arguments in its own wrapper; the shared context only supplies the SDK. The new
+regression drives concurrent canonical commands through one real BimSandboxHandle
+and evaluates their wrappers, including concurrent/subsequent no-args calls. A fresh
+narrow Astra review found no further source defect. Runtime proof remains pending.
+
+Original validation `auto-7b80c76240734befa02b6cc41fcf29fd` / job
+`3fe93140-07e3-4c54-a5e6-10a887e87844` targets `492a635925`, preceding the argument
+correction and this batch. Preserve that outcome; it cannot certify these changes.
+The extension PR is #8967. Full semantic reconciliation and candidate UI acceptance
+remain open; this is still access round 1 of at most eight.

@@ -1,6 +1,6 @@
 # Browser evidence for #6614 and #6615
 
-See [the specification](../../section-6614-6615-spec.md) for scope and acceptance. This directory contains both the original hosted baseline and the local implementation run on 2026-10-01.
+See the specification for scope and acceptance. This directory contains both the original hosted baseline and the local implementation run on 2026-10-01.
 
 ## Local implementation
 

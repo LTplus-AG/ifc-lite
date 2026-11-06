@@ -13,6 +13,7 @@ import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/ty
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
@@ -436,24 +437,17 @@ export function isDuplicateClickPoint(
   return screenDistance(a, b) <= DUPLICATE_POINT_SCREEN_RADIUS_PX;
 }
 
+/** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
+export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
+  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
+  ctx.measureRaycastFrameRef.current = null;
+  ctx.measureRaycastPendingRef.current = false;
+}
+
 /**
- * Update measurement screen coordinates during zoom (wheel event).
- * Called when in measure mode with pending measurements.
+ * Reproject the stored measurement points if the view changed since the last
+ * pass (wheel zoom, a Point-mode hover). The same pass the animation loop runs.
  */
-export function updateMeasureScreenCoords(ctx: MouseHandlerContext): void {
-  const { canvas, camera } = ctx;
-  ctx.updateMeasurementScreenCoords((worldPos) => {
-    return projectToCssScreen(camera, canvas, worldPos);
-  });
-  // Update camera state tracking to prevent duplicate update in animation loop
-  const cameraPos = camera.getPosition();
-  const cameraRot = camera.getRotation();
-  const cameraDist = camera.getDistance();
-  ctx.lastCameraStateRef.current = {
-    position: cameraPos,
-    rotation: cameraRot,
-    distance: cameraDist,
-    canvasWidth: canvas.width,
-    canvasHeight: canvas.height,
-  };
+export function syncMeasureScreenCoords(ctx: MouseHandlerContext): void {
+  reprojectMeasurementsForCamera(ctx.camera, ctx.canvas, ctx.lastCameraStateRef, ctx.updateMeasurementScreenCoords);
 }

@@ -35,11 +35,11 @@ export default function GlobePlacementControl() {
   return (
     <div className="ml-5 space-y-1">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.globePlacement.label')}</span>
+        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.globePlacement.label')}</span>
         <SegmentedControl size="sm" label={t('properties.georef.globePlacement.label')} value={mode} options={options} onValueChange={setMode} />
       </div>
       {status && (
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="text-xs text-muted-foreground">
           {resolved}
           {errorCm != null && (
             <span className="ml-1 font-mono">
@@ -51,11 +51,11 @@ export default function GlobePlacementControl() {
         </div>
       )}
       {contradicts && (
-        <div role="note" className="text-xs text-amber-600 dark:text-amber-400">
+        <div role="note" className="text-xs text-warn">
           {t('properties.georef.globePlacement.rigidAnchorWarning')}
         </div>
       )}
-      <div className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.globePlacement.help')}</div>
+      <div className="text-xs text-muted-foreground">{t('properties.georef.globePlacement.help')}</div>
     </div>
   );
 }

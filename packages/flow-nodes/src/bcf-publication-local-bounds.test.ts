@@ -383,10 +383,11 @@ it('a known bearer collision with an actual generated receipt timestamp refuses 
   expect(peer.state.receivedWriteAttempts).toBe(1);
 });
 
+// Receipt bearers contain hyphens to avoid unrelated collisions with hex owner fingerprints.
 // #7374: direct public callbacks must have the same identifier safety as real Flow checkedSend.
 for (const field of ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_guid'] as const) {
   it.each(['configured', 'ephemeral'] as const)(`raw native %s callback refuses credential-bearing ${field} without settling or replaying the real effect (#7374)`, async enrollment => {
-    const token = 'beef';
+    const token = 'beef0000-0000-4000-8000-';
     const unsafe = 'beef0000-0000-4000-8000-000000000999';
     const { directory, peer, transport } = await fixture({ token, guidPrefix: field === 'guid' ? 'beef' : 'cafe',
       ...(field === 'topic_guid' ? { commentResponseTopicGuid: unsafe } : {}),
@@ -430,7 +431,7 @@ for (const field of ['guid', 'topic_guid', 'viewpoint_guid', 'reply_to_comment_g
 }
 
 it('raw native receipt preserves clean primary and nullable optional relationship identifiers (#7374)', async () => {
-  const token = 'beef';
+  const token = 'beef0000-0000-4000-8000-';
   const { directory, peer, transport } = await fixture({ token, guidPrefix: 'cafe', commentResponseViewpointGuid: null, commentResponseReplyToCommentGuid: null });
   const client = new BcfApiClient({ baseUrl: 'https://bcf.example.test/bcf', getAccessToken: () => token,
     fetchFn: (url, init) => transport(new URL(String(url)), init) });

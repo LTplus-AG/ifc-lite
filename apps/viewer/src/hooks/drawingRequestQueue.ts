@@ -31,6 +31,8 @@ export function createDrawingRequestQueue() {
   }
 
   return {
+    /** A cut is running or waiting: its result will publish without another request. */
+    busy() { return completion !== undefined; },
     cancel() { revision++; pending = undefined; },
     request(run: Request): Promise<void> {
       pending = { run, revision: ++revision };

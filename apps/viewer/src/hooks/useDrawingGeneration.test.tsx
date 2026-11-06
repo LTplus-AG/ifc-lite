@@ -240,6 +240,7 @@ async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, stri
   let run: (() => Promise<void>) | undefined;
   let regenerate: (() => Promise<void>) | undefined;
   let repaint: (() => void) | undefined;
+  let clearSheet: (() => void) | undefined;
   const status = (value: 'idle' | 'generating' | 'ready' | 'error') => {
     if (value === 'generating') starts++;
     if (renderCanvas) useViewerStore.setState({ drawing2DStatus: value });
@@ -261,6 +262,7 @@ async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, stri
     run = generateDrawing;
     regenerate = doRegenerate;
     repaint = () => setPanX((value) => value + 1);
+    clearSheet = () => { published = null; setLocalDrawing(null); };
     return renderCanvas ? <TooltipProvider>
       {drawing ? <Drawing2DCanvas
         drawing={drawing}
@@ -288,6 +290,15 @@ async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, stri
   await update({});
   return {
     update,
+    /** What the section UI's 2D button does: `clearDrawing2D`, then open the panel, in one event. */
+    async clearDrawingAndOpenPanel() {
+      await act(async () => {
+        assert.ok(clearSheet);
+        clearSheet();
+        inputs = { ...inputs, panelVisible: true };
+        root.render(<Harness value={inputs} />);
+      });
+    },
     async activateSectionThenOpenPanel() {
       await act(async () => {
         inputs = { ...inputs, activeTool: 'section' };
@@ -380,6 +391,20 @@ describe('useDrawingGeneration active drawing demand', () => {
       assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
     } finally { await h.dispose(); }
   });
+
+  for (const position of [50, 1.2]) {
+    it(`generates when the 2D button clears the overlay's drawing and opens the panel, cut at ${position}% (#9026 items 15, 19)`, async () => {
+      const h = await drawingActivityHarness({ sectionPlane: { axis: 'down', position, flipped: false } });
+      try {
+        await h.update({ geometryResult: activityGeometry(), activeTool: 'section' });
+        assert.equal(h.starts, 1, 'the overlay already cut this plane');
+        assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+        await h.clearDrawingAndOpenPanel();
+        assert.equal(h.starts, 2, 'no other input moved, so opening has to ask for the cut');
+        assert.deepEqual(entityIds(h.drawing), new Set([100, 101]), 'the sheet must not stay empty');
+      } finally { await h.dispose(); }
+    });
+  }
 
   it('generates for an active section overlay as geometry arrives and respects its toggle', async () => {
     const h = await drawingActivityHarness();

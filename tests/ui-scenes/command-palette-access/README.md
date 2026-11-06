@@ -281,3 +281,28 @@ Original combined request `auto-abb83974a2754f3fa3464c9d88b6d8f0` tests tools
 head `319505f5671dc9c2e6bfc0c7bc296577d0365d18` using the committed root recipe.
 It predates these corrections and the next destination batch. Preserve its
 original outcome; it cannot certify later changes. No access round is accepted.
+
+## Round 1 destination and mobile host checkpoint
+
+The next source batch wires every Settings section; the five actual measurement
+modes (Distance, Polyline, Angle, Radius, Point); separate measurement panel tabs;
+six canonical Add Section choices; Search Filter/Libraries; Presentation;
+basepoints; model Plan; and the conditional retained report. These use existing
+controls and handlers. Panel destinations reveal/re-dock rather than toggle
+themselves away. Task aliases name child controls without claiming to run them.
+
+Mounted regressions reach real Settings controls, measurement radios/tabs, section
+controls, Clear-all cancellation, Presentation controls and Plan/report bodies.
+The mobile toolbar now owns the same file-command hook as the ribbon, including
+its palette bridge and load listeners. The flavor dialog moved from desktop-only
+StatusBar into a persistent shell host. Tests exercise synchronous mobile Open/Add
+picker calls, one global event receiver and the stored-flavor flow without a
+status bar. Obsolete mobile-only file-format helpers were removed; unsupported
+file reporting and mixed-case LandXML acceptance remain covered.
+
+All these runtime assertions, typecheck and browser evidence remain UNRUN. Cheap
+syntax/lint/module-size/i18n/source-test/whitespace checks passed. The implementation
+agent removed 42,408 bytes of its redundant edit scripts after preserving the
+compact result. No original queued validation was moved or replayed. Dynamic
+exporter/dock destinations, full semantic reconciliation and candidate UI evidence
+remain open; this is still access round 1, not acceptance.

@@ -529,6 +529,53 @@ describe('canonical render submission result (#6709)', () => {
     });
 });
 
+// #9002: render() is what notes the pick clip, so a cut change moves
+// getPickClipRevision() (the viewer's Measure Point Live reading, #8886). A
+// capture render's cleared or swapped clip is restored by the next frame, so it
+// must not count as a change; a real change around a capture still does.
+describe('pick clip revision wiring (#9002)', () => {
+    const cut = (distance: number): RenderOptions => ({ sectionPlane: { axis: 'side', position: 50, enabled: true, normal: [0, 1, 0], distance } });
+
+    it('a cut change bumps the revision; the same cut on the next frame does not', () => {
+        const h = makeHarness();
+        h.render();
+        const uncut = h.renderer.getPickClipRevision();
+        h.render(cut(2));
+        const cutRev = h.renderer.getPickClipRevision();
+        assert.ok(cutRev > uncut, 'adding a section kept the revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), cutRev, 'an unchanged cut bumped the revision');
+        h.render(cut(3));
+        assert.ok(h.renderer.getPickClipRevision() > cutRev, 'moving the section kept the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() > cutRev + 1, 'removing the section kept the revision');
+    });
+
+    it('a capture render with the clip cleared leaves the revision alone', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        // idsBcfViewpoints captures with the section, extra planes and clip box cleared.
+        assert.strictEqual(h.renderer.renderWithResult({ ...cut(2), sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'the capture frame bumped the revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture bumped the revision');
+    });
+
+    it('a real cut change across a capture still bumps the revision', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        h.renderer.renderWithResult({ restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        h.render(cut(3));
+        assert.ok(h.renderer.getPickClipRevision() > before, 'a cut moved during the capture kept the revision');
+        const moved = h.renderer.getPickClipRevision();
+        h.renderer.renderWithResult({ ...cut(3), restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() > moved, 'removing the cut after a capture kept the revision');
+    });
+});
+
 describe('render() error-scope balance', () => {
     it('pops the scope on a null-current-texture frame', async () => {
         const h = makeHarness();

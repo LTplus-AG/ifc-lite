@@ -110,6 +110,7 @@ export const commandPaletteEn = {
   "commandPalette.availability.blankSession": "Start blank requires an empty session; close the current model first",
   "commandPalette.availability.noLoad": "No matching load is still running",
   "commandPalette.availability.noLoadError": "No load error to recover from",
+  "commandPalette.availability.loadErrorReplaced": "The load error changed; choose the current recovery action",
   "commandPalette.availability.noLoadRetry": "This load error has no available retry",
   'commandPalette.paths.panels.assistant': 'Conversations · Recipes · Preferences · Proposal reviews',
   'commandPalette.paths.panels.semantic': 'Identity · Profiles · Sources · Workspace · Projection',

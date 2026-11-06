@@ -91,6 +91,7 @@ export const commandPaletteRu = {
   "commandPalette.availability.blankSession": "Сначала закройте текущую модель, чтобы создать пустую",
   "commandPalette.availability.noLoad": "Соответствующая загрузка больше не выполняется",
   "commandPalette.availability.noLoadError": "Нет ошибки загрузки для восстановления",
+  "commandPalette.availability.loadErrorReplaced": "Ошибка загрузки изменилась; выберите действие для текущей ошибки",
   "commandPalette.availability.noLoadRetry": "Для этой ошибки повторная загрузка недоступна",
   'commandPalette.paths.panels.assistant': 'Беседы · Рецепты · Настройки · Проверка предложений',
   'commandPalette.paths.panels.semantic': 'Идентификация · Профили · Источники · Рабочая область · Проекция',

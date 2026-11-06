@@ -15,23 +15,33 @@ import { advance, cleanup, click, render, type, waitFor } from '@/test/render';
 import { CommandPalette } from './CommandPalette';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { RECENT_KEY } from './commandPaletteSearch';
+import { Toaster } from '@/components/ui/toast';
+import { registerLocale, setLocale } from '@/i18n';
+import { commandPaletteEn } from '@/i18n/catalogues/command-palette.en';
+import { commandPaletteDe } from '@/i18n/locales/de/command-palette';
+import { commandPaletteRu } from '@/i18n/locales/ru/command-palette';
 
 let loader: ReturnType<typeof useIfcLoader>;
 function Harness() {
   loader = useIfcLoader();
   const card = useLoadErrorCard();
   return <BimReactContext.Provider value={{} as BimContext}>
+    <Toaster />
     <CommandPalette open onOpenChange={() => {}} />
     {card.error && <button onClick={card.dismiss}>Card dismiss</button>}
   </BimReactContext.Provider>;
 }
 const initial = useViewerStore.getState();
 beforeEach(() => {
+  setLocale('en');
   localStorage.clear();
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
 });
-afterEach(() => { cleanup(); useViewerStore.setState(initial); localStorage.clear(); });
+function dismissToasts() {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-toast-seq] button')) click(button);
+}
+afterEach(() => { dismissToasts(); cleanup(); useViewerStore.setState(initial); setLocale('en'); localStorage.clear(); });
 function row(id: string) {
   const node = document.querySelector(`[data-command-id="file:${id}"]`);
   assert.ok(node, id); return node;
@@ -109,44 +119,56 @@ test('palette cancels the held actual load; an old deferred Cancel cannot stop i
   }
 });
 
-test('Retry replays the exact failed source once; delayed Retry/Dismiss refuse newer identical errors (#8947)', async () => {
-  render(<Harness />);
-  const file = new File(['{ invalid json'], 'broken.ifcx');
-  await act(async () => { await loader.loadFile(file); });
-  assert.match(useViewerStore.getState().error ?? '', /file is invalid/);
-  assertRecoveryBrowse(['retry-load', 'dismiss-load-error']);
-  const seq = useViewerStore.getState().loadErrorSeq;
-  let starts = 0;
-  const stop = useViewerStore.subscribe((s, previous) => { if (s.loading && !previous.loading) starts++; });
-  try {
-    click(row('retry-load')); click(row('retry-load')); await frame();
-  } finally { stop(); }
-  assert.equal(starts, 1, 'two activations of one captured failure replay it once');
-  await waitFor(() => useViewerStore.getState().error !== null && useViewerStore.getState().loadErrorSeq > seq,
-    'actual retry fails on identical malformed source');
-  assert.equal(useViewerStore.getState().loadingFileName, file.name);
-  for (const id of ['retry-load', 'dismiss-load-error']) {
-    const frames: FrameRequestCallback[] = [];
-    const originalFrame = globalThis.requestAnimationFrame;
-    globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+for (const [locale, catalogue] of [['en', commandPaletteEn], ['de', commandPaletteDe], ['ru', commandPaletteRu]] as const) {
+  test(`Retry replays once; stale Retry/Dismiss explain the newer identical error (${locale}, #8947)`, async () => {
+    if (locale !== 'en') registerLocale(locale, catalogue);
+    setLocale(locale);
+    render(<Harness />);
+    const file = new File(['{ invalid json'], 'broken.ifcx');
+    await act(async () => { await loader.loadFile(file); });
+    assert.match(useViewerStore.getState().error ?? '', /file is invalid/);
+    assertRecoveryBrowse(['retry-load', 'dismiss-load-error']);
+    const seq = useViewerStore.getState().loadErrorSeq;
+    let starts = 0;
+    const stop = useViewerStore.subscribe((s, previous) => { if (s.loading && !previous.loading) starts++; });
     try {
-      click(row(id));
-      await act(async () => { await loader.loadFile(file); });
-      const newer = useViewerStore.getState().loadErrorSeq;
-      act(() => frames.splice(0).forEach(cb => cb(0)));
-      assert.equal(useViewerStore.getState().loadErrorSeq, newer);
-      assert.ok(useViewerStore.getState().error);
-    } finally { globalThis.requestAnimationFrame = originalFrame; }
-  }
-  click(row('dismiss-load-error')); await frame();
-  assert.equal(useViewerStore.getState().error, null);
-  assert.equal(useViewerStore.getState().lastLoadRetry, null);
-  assertRecoveryBrowse([]);
-  await act(async () => { await loader.loadFile(file); });
-  click([...document.querySelectorAll('button')].find(b => b.textContent === 'Card dismiss')!);
-  assert.equal(useViewerStore.getState().lastLoadRetry, null, 'normal card shares cleanup');
-  assertRecoveryBrowse([]);
-  search('Retry failed load');
-  assert.match(row('retry-load').textContent ?? '', /error|retry/i);
-  assert.equal(row('retry-load').getAttribute('aria-disabled'), 'true');
-});
+      click(row('retry-load')); click(row('retry-load')); await frame();
+    } finally { stop(); }
+    assert.equal(starts, 1, 'two activations of one captured failure replay it once');
+    await waitFor(() => useViewerStore.getState().error !== null && useViewerStore.getState().loadErrorSeq > seq,
+      'actual retry fails on identical malformed source');
+    assert.equal(useViewerStore.getState().loadingFileName, file.name);
+    for (const id of ['retry-load', 'dismiss-load-error']) {
+      dismissToasts();
+      const recentBefore = localStorage.getItem(RECENT_KEY);
+      const frames: FrameRequestCallback[] = [];
+      const originalFrame = globalThis.requestAnimationFrame;
+      globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+      try {
+        click(row(id));
+        await act(async () => { await loader.loadFile(file); });
+        const newer = useViewerStore.getState().loadErrorSeq;
+        const newerError = useViewerStore.getState().error;
+        act(() => frames.splice(0).forEach(cb => cb(0)));
+        assert.equal(useViewerStore.getState().loadErrorSeq, newer);
+        assert.ok(newerError);
+        assert.equal(useViewerStore.getState().error, newerError);
+        assert.equal(localStorage.getItem(RECENT_KEY), recentBefore, 'refused stale action does not record usage');
+        const notification = document.querySelector('[role="status"] [data-toast-seq] span');
+        assert.equal(notification?.textContent, catalogue['commandPalette.availability.loadErrorReplaced']);
+        assert.notEqual(notification?.textContent, catalogue['commandPalette.availability.noLoadError']);
+      } finally { globalThis.requestAnimationFrame = originalFrame; }
+    }
+    click(row('dismiss-load-error')); await frame();
+    assert.equal(useViewerStore.getState().error, null);
+    assert.equal(useViewerStore.getState().lastLoadRetry, null);
+    assertRecoveryBrowse([]);
+    await act(async () => { await loader.loadFile(file); });
+    click([...document.querySelectorAll('button')].find(b => b.textContent === 'Card dismiss')!);
+    assert.equal(useViewerStore.getState().lastLoadRetry, null, 'normal card shares cleanup');
+    assertRecoveryBrowse([]);
+    search('Retry failed load');
+    assert.ok(row('retry-load').textContent?.includes(catalogue['commandPalette.availability.noLoadError']));
+    assert.equal(row('retry-load').getAttribute('aria-disabled'), 'true');
+  });
+}

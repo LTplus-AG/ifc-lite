@@ -113,6 +113,7 @@ export const commandPaletteDe = {
   "commandPalette.availability.blankSession": "Für ein leeres Modell zuerst das aktuelle Modell schließen",
   "commandPalette.availability.noLoad": "Kein passender Ladevorgang läuft mehr",
   "commandPalette.availability.noLoadError": "Kein Ladefehler vorhanden",
+  "commandPalette.availability.loadErrorReplaced": "Der Ladefehler hat sich geändert; aktuelle Wiederherstellungsaktion wählen",
   "commandPalette.availability.noLoadRetry": "Für diesen Ladefehler ist keine Wiederholung verfügbar",
   'commandPalette.paths.panels.assistant': 'Gespräche · Rezepte · Einstellungen · Vorschläge prüfen',
   'commandPalette.paths.panels.semantic': 'Identität · Profile · Quellen · Arbeitsbereich · Projektion',

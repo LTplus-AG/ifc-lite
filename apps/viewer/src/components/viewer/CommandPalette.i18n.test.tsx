@@ -121,6 +121,8 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.file.retryLoad.label',
   'commandPalette.file.dismissLoadError.label',
   'commandPalette.availability.noLoadError',
+  // A deferred recovery command must be replaced before this reason is shown.
+  'commandPalette.availability.loadErrorReplaced',
   'commandPalette.availability.noLoad',
   // Filter aliases stay searchable; only the brief breadcrumb is rendered.
   'commandPalette.paths.search.filter',

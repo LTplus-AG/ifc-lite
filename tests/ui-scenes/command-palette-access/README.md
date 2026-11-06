@@ -717,3 +717,9 @@ and live selection changes. Narrow labels may wrap instead of clipping. The came
 flow now requests preservation of its actual result in the manifest screenshot;
 other baseline capture behavior is unchanged. These corrections are **UNRUN**
 until the matching candidate validation and GPU capture receipts exist.
+
+R3 correctness follow-up: fresh Astra review found that a deferred Retry/Dismiss
+correctly refused a replacement load error but reported the absent-error reason.
+The binding now distinguishes absent from replaced errors; mounted regressions
+assert the real notification in EN/DE/RU and preserve the newer error/history.
+This correction awaits runtime qualification; R3 remains unaccepted.

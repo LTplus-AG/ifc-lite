@@ -732,3 +732,9 @@ asserts it before both cycles, without changing camera or pixel thresholds.
 See `evidence/a333-extension-reactivation.json`; corrected execution is pending.
 The registry regression now checks inactive recovery commands are omitted from
 browse yet remain uniquely searchable and unavailable, matching the R3 contract.
+
+The first R3 focused run also rejected the Split launch fixture before activation:
+the imported rotated beam is intentionally unsupported by the canonical reader
+(covered by #6233). The witness now uses the real parsed horizontal slab and
+asserts its supported kind before both launch and deferred-refusal scenarios.
+No tool eligibility rule or geometry code changed. Corrected runtime is pending.

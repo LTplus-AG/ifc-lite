@@ -97,7 +97,7 @@ const ISOLATION = [
  * Worker, WASM or licence path is a 404, never index.html. `true` as build and
  * install command: the upload is already built; nothing may build on the host.
  * `ignoreCommand: exit 1` overrides the projects' dashboard Ignored Build Step,
- * which cancels every non-production remote build (scripts/README-vercel-cost.md).
+ * which cancels every non-production remote build.
  */
 export function previewHostConfig() {
   const js = 'text/javascript; charset=utf-8', text = 'text/plain; charset=utf-8';

@@ -34,9 +34,9 @@ export function ConversionSummary({ conversion }: { conversion: ChangeConversion
   const { issues } = conversion;
   return <div className="space-y-2 text-xs">
     <p>{t('tableChanges.summary', { count: conversion.total, parts: conversion.batches.length, unchanged: conversion.unchanged, issues: issues.length })}</p>
-    {conversion.refused && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
+    {conversion.refused && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">
       {t('tableChanges.refused', { total: conversion.total, limit: MODEL_CHANGE_SET_LIMIT })}</p>}
-    {conversion.refusal && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
+    {conversion.refusal && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">
       {t(REFUSAL[conversion.refusal])}</p>}
     {!conversion.refused && !conversion.refusal && conversion.total === 0 && <p className="text-muted-foreground">{t('tableChanges.nothing')}</p>}
     {issues.length > 0 && <details>

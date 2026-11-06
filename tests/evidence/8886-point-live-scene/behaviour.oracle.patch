@@ -1,0 +1,49 @@
+diff --git a/apps/viewer/src/components/viewer/measureCameraState.ts b/apps/viewer/src/components/viewer/measureCameraState.ts
+--- a/apps/viewer/src/components/viewer/measureCameraState.ts
++++ b/apps/viewer/src/components/viewer/measureCameraState.ts
+@@ -89,6 +89,9 @@ export function measureCameraState(
+  */
+ export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCameraState): boolean {
+   return a !== null && sameAspect(a, b) &&
++    a.scene.hidden === b.scene.hidden &&
++    a.scene.isolated === b.scene.isolated &&
++    a.scene.clip === b.scene.clip &&
+     a.position.x === b.position.x &&
+     a.position.y === b.position.y &&
+     a.position.z === b.position.z &&
+@@ -138,7 +141,7 @@ export function measureCanvasBoxWatch(lastStateRef: MutableRefObject<MeasureCame
+   return (entries: ReadonlyArray<{ contentRect: { width: number; height: number } }>): void => {
+     const rect = entries[entries.length - 1]?.contentRect;
+     if (!rect) return;
+-    void lastStateRef;
++    if (box && (box.width !== rect.width || box.height !== rect.height)) lastStateRef.current = null;
+     box = { width: rect.width, height: rect.height };
+   };
+ }
+diff --git a/apps/viewer/src/components/viewer/measurePointMode.ts b/apps/viewer/src/components/viewer/measurePointMode.ts
+--- a/apps/viewer/src/components/viewer/measurePointMode.ts
++++ b/apps/viewer/src/components/viewer/measurePointMode.ts
+@@ -66,10 +66,10 @@ export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number
+   // the view as moved since some older reading and drop the point just
+   // picked; and before the snap glyph is set, since a pass that ends an older
+   // Live clears the glyph with it (#8886).
++  syncMeasureScreenCoords(ctx);
+   const picked = pickPoint(ctx, x, y);
+   ctx.setSnapTarget(picked?.snapTarget ?? null);
+   updateSnapViz(ctx, picked?.snapTarget ?? null);
+-  if (picked) syncMeasureScreenCoords(ctx);
+   useViewerStore.getState().setMeasurePointLive(picked?.point ?? null);
+ }
+ 
+diff --git a/packages/renderer/src/pick-clip-revision.ts b/packages/renderer/src/pick-clip-revision.ts
+--- a/packages/renderer/src/pick-clip-revision.ts
++++ b/packages/renderer/src/pick-clip-revision.ts
+@@ -16,7 +16,7 @@ export class PickClipRevision {
+   private key = '';
+ 
+   note(clip: PickClipState): void {
+-    const key = JSON.stringify(clip.sectionPlane !== null && clip.sectionPlane !== undefined);
++    const key = JSON.stringify([clip.sectionPlane, clip.extraPlanes, clip.clipBox, [...(clip.sectionExcludedIds ?? [])]]);
+     if (key === this.key) return;
+     this.key = key;
+     this.revision++;

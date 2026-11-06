@@ -3,7 +3,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# CI prebuilt-WASM eligibility probe (see scripts/README-vercel-cost.md §1a).
+# CI prebuilt-WASM eligibility probe.
 #
 # Emits a single token on STDOUT — `true` or `false` — for the test.yml
 # `changes` job to expose as an output. All diagnostics go to STDERR so the

@@ -10,7 +10,6 @@
  * gate, and returns a proposal the user reviews. Provider adapters live in
  * `@ifc-lite/ids-agent/anthropic` and `@ifc-lite/ids-agent/openai`; model
  * doubles and recorded transcripts in `@ifc-lite/ids-agent/testing`.
- * See `docs/architecture/ids-studio/03-architecture/06-ai-agent.md`.
  */
 
 export { runAgent, DEFAULT_AGENT_MODEL, type AgentRunOptions, type AgentRun, type AgentEvent } from './runner/loop.js';

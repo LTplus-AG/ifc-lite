@@ -26,7 +26,7 @@ afterEach(async () => {
 
 for (const [name, direction] of [
   ['front-top', { x: 0, y: 1, z: 1 }],
-  ['back-bottom-left', { x: -1, y: -1, z: -1 }],
+  ['back-left-bottom', { x: -1, y: -1, z: -1 }],
 ] as const) test(`#8947 palette ${name} preset reaches the real renderer camera`, async () => {
   const camera = new Camera();
   const bounds = { min: { x: -5, y: 0, z: -5 }, max: { x: 5, y: 10, z: 5 } };

@@ -62,9 +62,19 @@ test('#8947 copy and paste-in-place use real clipboard and one undoable copy', (
   assert.equal(canRunPaletteCommand(paste), true);
   paste.action();
   const after = useViewerStore.getState();
-  assert.equal(after.undoStacks.get(MODEL_ID)?.length, before + 1);
+  const added = after.undoStacks.get(MODEL_ID)?.slice(before) ?? [];
+  assert.ok(added.length > 0, 'paste produces actual IFC mutations');
+  const tags = new Set(added.map(mutation => after.mutationBatchTags.get(mutation.id)));
+  assert.equal(tags.size, 1, 'all copied geometry belongs to one undo operation');
+  assert.ok(!tags.has(undefined));
+  const columns = () => useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities()
+    .filter(entity => entity.type.toUpperCase() === 'IFCCOLUMN'
+      && !useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(entity.expressId))
+    .map(entity => entity.expressId);
+  assert.equal(columns().length, 2, 'the copied column is a live IFC product');
   assert.notEqual(after.selectedEntityId, source);
   after.undo(MODEL_ID);
+  assert.deepEqual(columns(), [source], 'one undo removes the copied product and preserves its source');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length, before);
 });
 

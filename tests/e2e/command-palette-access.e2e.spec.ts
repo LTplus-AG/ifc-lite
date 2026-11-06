@@ -97,11 +97,34 @@ test.afterEach(async ({ page }, info) => {
 for (const context of contexts) {
   test(`${context.name}: unloaded selection command explains refusal; Settings sections reach real controls (#8947)`, async ({ page }) => {
     await start(page, false, context);
-    const { row } = await find(page, 'vis:hide', 'Hide Selection');
+    const { row, search } = await find(page, 'vis:hide', 'Hide Selection');
     await expect(row).toHaveAttribute('aria-disabled', 'true');
     await expect(row).toContainText(/Select elements|Load a model/);
     await expect(row).toHaveAttribute('aria-describedby', /.+/);
-    await row.click(); await expect(palette(page)).toBeVisible();
+    const recentBefore = await page.evaluate(() => localStorage.getItem('ifc-lite:cmd-palette:recent'));
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await search.press('Enter');
+    await expect(palette(page)).toBeVisible();
+    await expect(search).toBeFocused();
+    expect(await page.evaluate(() => localStorage.getItem('ifc-lite:cmd-palette:recent'))).toBe(recentBefore);
+    await expect(palette(page).getByText('run', { exact: true })).toHaveCount(0);
+    // A real pointer click, without Playwright waiting for aria-disabled to clear.
+    const bounds = await row.boundingBox(); expect(bounds).not.toBeNull();
+    await page.mouse.click(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+    await expect(palette(page)).toBeVisible();
+    for (const [id, query, label] of [['vis:hide', 'Hide Selection', 'Hide Selection'], ['author:undo', 'undo', 'Undo']]) {
+      const option = (await find(page, id, query)).row;
+      await expect(option.locator('[data-command-label]')).toHaveText(label);
+      const layout = await option.evaluate(element => {
+        const title = element.querySelector<HTMLElement>('[data-command-label]')!;
+        const reason = document.getElementById(element.getAttribute('aria-describedby')!)!;
+        return { titleWidth: title.clientWidth, textWidth: title.scrollWidth,
+          titleBottom: title.getBoundingClientRect().bottom, reasonTop: reason.getBoundingClientRect().top };
+      });
+      expect(layout.titleWidth, 'visible command title has room').toBeGreaterThan(35);
+      expect(layout.textWidth, 'short command name is not clipped by its reason').toBeLessThanOrEqual(layout.titleWidth);
+      expect(layout.reasonTop, 'reason has a separate line below the command').toBeGreaterThanOrEqual(layout.titleBottom);
+    }
     await run(page, 'settings:privacy', 'action log');
     const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
     await expect(settings.getByRole('tab', { name: 'Privacy', exact: true })).toHaveAttribute('aria-selected', 'true');

@@ -51,7 +51,8 @@ and behavioral evidence, accept/reject decision and remaining gaps separately.
 
 | Round | Status | Changes / hypothesis | Evidence / verdict |
 | --- | --- | --- | --- |
-| 1 | Implementation in progress | Unified static projection, visible availability and canonical destinations close omissions | Baseline inventory reconciliation and behavioral evidence pending; no acceptance |
+| 1 | REVISE (provisional source `8021801`) | Unified projection, prerequisites and canonical destinations | 12/12 GPU context captures, no page errors; Opus found command labels clipped by reasons and unavailable rows styled as runnable. Full access unaccepted. |
+| 2 | Candidate in progress | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and remaining discovery gaps | Source fixes and browser oracles authored; matching build, full tests, visual review and final source reconciliation pending. |
 
 Implementation batches inside a round are not separate acceptance rounds. Keep
 reviewable PR layers for #8947 if the implementation exceeds roughly 1500 lines.
@@ -483,3 +484,35 @@ Manifest, observations and three representative images are preserved under
 evidence for fresh Opus critique. Source reconstruction retains all 813 identities
 and 3,994 anchors. The newly focused 141 records retain all 989 per-site actions;
 78 component records still need focused semantic tracing. R1 remains unaccepted.
+
+### R2 candidate — review objections and validation protocol
+
+The first access-specific Opus critique rejects provisional `8021801` presentation:
+long prerequisites could reduce Hide Selection to “Hid…” or completely hide Undo.
+Reasons now occupy a separate line below the command. Blocked rows use muted text,
+a lock indicator and a muted selection stripe; their footer omits the Run hint.
+Details remain readable below the header rather than competing with its label.
+The browser scenarios now exercise native Enter and pointer refusal, unchanged
+recent usage, and actual label/description bounding rectangles at both widths.
+These new assertions are UNRUN and require CSS from the matching candidate build.
+
+The existing error-report flow now has a canonical palette destination. Its actual
+conditionally mounted host and eligible prompt/recent reference determine live
+availability. Opening keeps report review and consent controls in the real dialog;
+it does not submit, upload or delete anything. Properties and hierarchy search
+hints name their conditional downstream paths. Five mounted report regressions
+and three locale ranking tests remain UNRUN.
+
+Astra's test review found that an incorrectly admitted concurrent export could
+stall its busy-refusal assertion. The regression now bounds that wait and releases
+and drains every started invocation on failure, preserving real native outputs.
+The lock-removal mutation oracle has not run. New admitted validation first runs
+the focused command-surface files, then all four viewer shards; the focused step
+is never a substitute for full-suite acceptance. Original `835cba3b/802` continues
+on its original receipt and cannot certify this candidate.
+
+### R2 final-diagnostic repairs
+
+Original `8021801` viewer shards 0–2 finished with failures; shard 3 still has no terminal receipt. Preserved compact assertion tails in the coordinator evidence. Final diagnostics identified 20 missing German availability/alias/state keys, a presentation destination incorrectly declaring a ribbon surface, and test expectations tied to retired dialog-trigger markup, outdated camera IDs, pre-hint row text and individual IFC mutations instead of one undo batch. R2 restores the translations and surface declaration and keeps behavioral oracles: real dialog opening, canonical camera vectors, a live copied IFC column, one undo removing that copy, and preservation of the original column. No runtime pass is claimed for these fixes.
+
+The next admitted validation runs the root typecheck and build, then a focused command-surface preflight (including the German catalogue) before the unchanged four full viewer shards. The focused result cannot substitute for those full shards or the matching GPU/browser scenarios.

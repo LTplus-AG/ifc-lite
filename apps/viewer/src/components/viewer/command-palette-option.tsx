@@ -4,6 +4,7 @@
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
 import { useId } from 'react';
+import { LockKeyhole } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
@@ -70,21 +71,29 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-selected={selected}
       aria-disabled={disabled || undefined}
       aria-describedby={reason ? reasonId : undefined}
-      className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent text-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary' : 'text-foreground hover:bg-accent/50')}
+      className={cn('relative flex items-start gap-3 w-full px-3 py-2 text-left text-sm',
+        selected ? 'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full' : 'hover:bg-accent/50',
+        disabled ? 'text-muted-foreground cursor-not-allowed before:bg-muted-foreground' : 'text-foreground before:bg-primary')}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
-        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1">{label}</span>
-        {reason && <span id={reasonId} className="block text-xs text-muted-foreground">{reason}</span>}
-        {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
+      <Icon className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-3">
+          <span data-command-label className="min-w-0 flex-1 truncate">{label}</span>
+          <span className="flex max-w-[55%] shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground">
+            {categoryLabel && <span className="truncate">{categoryLabel}</span>}
+            {state && <span className="shrink-0">{state}</span>}
+            {shortcut && <kbd className="hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium shrink-0">
+              {shortcutLabel(shortcut)}
+            </kbd>}
+          </span>
+        </span>
+        {reason && <span id={reasonId} className="mt-0.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+          <LockKeyhole aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+          <span className="min-w-0 break-words">{reason}</span>
+        </span>}
+        {detail && <span className="mt-0.5 block text-xs text-muted-foreground break-words">{detail}</span>}
       </span>
-      {state && <span className="text-xs text-muted-foreground">{state}</span>}
-      {detail && <span title={detail} className="max-w-[30%] truncate text-xs text-muted-foreground">{detail}</span>}
-      {shortcut && <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
-        {shortcutLabel(shortcut)}
-      </kbd>}
     </button>
   );
 }

@@ -16,6 +16,14 @@ if pnpm typecheck >"$logs/typecheck.log" 2>&1; then tail -12 "$logs/typecheck.lo
 else tail -150 "$logs/typecheck.log"; exit 1; fi
 if pnpm build:e2e >"$logs/build.log" 2>&1; then tail -12 "$logs/build.log";
 else tail -150 "$logs/build.log"; exit 1; fi
+# Fail early on the changed command surfaces, then retain the full four-shard gate.
+# Turbo test.env forwards these filename selectors; they are not test-name filters.
+unset TEST_SHARD TEST_SHARDS
+export TEST_PATTERN='([Cc]ommand[Pp]alette|palette-|command-palette|useExtensionExporters|extension-dock|extension-command|inline-search|SearchInline|file-rejected|command-labels|appearance-entrypoints|ErrorReportHost|de-catalogue-data)'
+find apps/viewer/src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sort | awk -v p="$TEST_PATTERN" '$0 ~ p' >"$logs/focused-files.txt"
+printf 'focused files: %s\n' "$(wc -l <"$logs/focused-files.txt")"
+if pnpm test --filter=@ifc-lite/viewer >"$logs/focused.log" 2>&1; then tail -24 "$logs/focused.log";
+else tail -180 "$logs/focused.log"; exit 1; fi
 unset TEST_PATTERN
 # Each root Turbo invocation retains prerequisite builds and receives its exact shard.
 export NODE_OPTIONS="${inherited_node_options:---max-old-space-size=4096}"

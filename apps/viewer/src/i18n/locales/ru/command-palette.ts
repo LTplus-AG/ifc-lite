@@ -5,6 +5,14 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+
+  "commandPalette.errorReport.label": "Просмотреть отчёт об ошибке…",
+  "commandPalette.errorReport.aliases": "сообщить об ошибке сбой загрузки помочь улучшить продолжить недавний ожидающий отчёт",
+  "commandPalette.paths.errorReport": "Отчёт об ошибке → сначала существующее приглашение; иначе недавний или ожидающий отчёт → проверка, согласие на вложение, отправка",
+  "commandPalette.availability.errorReportHost": "Отчёты об ошибках недоступны в этом просмотрщике.",
+  "commandPalette.availability.errorReportContext": "Нет подходящей ошибки или сохранённой ссылки на отчёт. Приглашение появляется после ошибки, о которой можно сообщить.",
+  "commandPalette.paths.properties": "Выбрать элемент → Режим редактирования → Свойства → изменить, добавить или переназначить свойства; Зоны расположения над вкладками → разделение объёма пересекающих зоны элементов",
+  "commandPalette.paths.tree": "Иерархия → теги моделей; несколько моделей в пространственном режиме → группировка по тегам, изоляция отмеченных моделей; сортировка этажей, разнос, синхронизация источника и удаление изменённых моделей",
   "commandPalette.paths.learn": "Обучение → туры Get started / Layers → загрузка демонстрационных проектов",
   "commandPalette.paths.about": "О программе → версия, конфиденциальность, зависимости, площадка MCP",
   "commandPalette.view.orientation.front-left-top": "Вид спереди / слева / сверху",
@@ -45,7 +53,7 @@ export const commandPaletteRu = {
   "commandPalette.paths.settings.display": "Настройки Отображение → профиль навигации Default Navisworks Trackpad SpaceMouse статистика производительности",
   "commandPalette.paths.settings.performance": "Настройки Производительность → переопределения рабочих потоков количество уровень сброс; ядро только в поддерживаемых сборках",
   "commandPalette.paths.settings.collaboration": "Настройки Совместная работа → отображаемое имя сохранить имя",
-  "commandPalette.paths.settings.privacy": "Настройки Конфиденциальность → согласие на аналитику локальный журнал действий экспорт очистка личные инструкции",
+  "commandPalette.paths.settings.privacy": "Настройки → Конфиденциальность → согласие на аналитику локальный журнал действий экспорт очистка личные инструкции",
   "commandPalette.paths.measure": "Панель измерений → расстояние полилиния угол радиус точка; Угол → точки рёбра грани; Geo XYZ → географическая привязка",
   "commandPalette.paths.measurePanel": "Измерения → список точка количества осевая линия; Список → очистить всё подтверждение; Точка → координаты опорная точка смещение; Количества → площадь объём масса",
   "commandPalette.paths.sectionAdd": "Панель сечений → добавить снизу спереди сбоку грань коробка трасса; выбор грани выбор трассы",
@@ -89,8 +97,8 @@ export const commandPaletteRu = {
   'commandPalette.paths.panels.chat': 'Модель · API-ключи · Вложения · Действия с кодом',
   'commandPalette.extension.conditions': 'Условия инструмента не выполнены. Проверьте требование к модели или выбору рядом с владельцем.',
   'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
-  'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены (история IDS и календарного плана ведётся отдельно)',
-  'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора (история IDS и календарного плана ведётся отдельно)',
+  'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены',
+  'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора',
   'commandPalette.aliases.bulk': 'массовое редактирование свойства запрос атрибут этап строительства',
   'commandPalette.aliases.import': 'CSV таблица импорт данных сопоставление столбцов',
   'commandPalette.aliases.classes': 'видимость классов пространства проёмы аннотации сетки объединение слоёв быстрая точная геометрия',
@@ -107,7 +115,7 @@ export const commandPaletteRu = {
   'commandPalette.availability.camera': 'Дождитесь готовности камеры',
   'commandPalette.availability.workplane': 'Сначала выберите рабочую плоскость',
   'commandPalette.availability.schedule': 'Сначала создайте или импортируйте расписание',
-  'commandPalette.availability.host': 'Сначала откройте инструменты просмотра',
+  'commandPalette.availability.host': 'Этот инструмент недоступен в текущем виде',
   'commandPalette.availability.loading': 'Дождитесь завершения загрузки модели',
   'commandPalette.state.on': 'Включено',
   'commandPalette.state.off': 'Выключено',

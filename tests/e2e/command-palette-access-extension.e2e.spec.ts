@@ -126,20 +126,22 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     await expect(widget(page)).toContainText('Installed QuickJS visibility witness');
     // Canonical scene setup only. The extension alone changes the wall's hide state.
     // Isolate and frame its real geometry so unchanged draw submission cannot pass.
-    await page.evaluate(id => {
-      const state = globalThis.__ifc_lite_viewer_store__.getState();
-      state.isolateEntities([id]);
-      if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
-      if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
-      state.cameraCallbacks.frameSelection(0);
-    }, id);
-    const exerciseVisibility = async (name: string) => visibilityOutputWitness(page, info, name, async () => {
-      await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
-      await expect.poll(() => hidden(page, id)).toBe(true);
-    }, async () => {
-      await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
-      await expect.poll(() => hidden(page, id)).toBe(false);
-    });
+    const exerciseVisibility = async (name: string) => {
+      await page.evaluate(id => {
+        const state = globalThis.__ifc_lite_viewer_store__.getState();
+        state.isolateEntities([id]);
+        if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
+        if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
+        return state.cameraCallbacks.frameSelection(0);
+      }, id);
+      await visibilityOutputWitness(page, info, name, async () => {
+        await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
+        await expect.poll(() => hidden(page, id)).toBe(true);
+      }, async () => {
+        await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
+        await expect.poll(() => hidden(page, id)).toBe(false);
+      });
+    };
     await exerciseVisibility('initial-activation');
     await page.keyboard.press('Escape');
     await expect(widget(page)).toBeHidden();

@@ -31,6 +31,17 @@ export async function visibilityOutputWitness(page: Page, info: TestInfo, name: 
     expect(await matrix(), 'camera stays fixed through every submitted GPU frame').toEqual(camera);
     return decodePng(png);
   };
+  const before = await capture('before');
+  const beforeRepeat = await capture('before-repeat');
+  await hide();
+  const hidden = await capture('hidden');
+  const hiddenRepeat = await capture('hidden-repeat');
+  await show();
+  const shown = await capture('shown');
+  const shownRepeat = await capture('shown-repeat');
+  // Capture the independent reference last: restoring a fully hidden model can
+  // legitimately refit the scene. Every compared frame still must retain the
+  // original camera; restoration is cleanup after the final measured frame.
   // Independent absent-wall reference: model-level visibility, not the extension's
   // entity hide command. Selection/scene/camera stay fixed. Highlight-only changes
   // cannot satisfy agreement with these completed wall-absent frames (#8947).
@@ -51,15 +62,9 @@ export async function visibilityOutputWitness(page: Page, info: TestInfo, name: 
       const state = globalThis.__ifc_lite_viewer_store__.getState();
       for (const id of ids) state.setModelVisibility(id, true);
     }, visibleModels);
+    // Finish the legitimate scene restoration before the next activation frames it.
+    await rendererColorFrame(page);
   }
-  const before = await capture('before');
-  const beforeRepeat = await capture('before-repeat');
-  await hide();
-  const hidden = await capture('hidden');
-  const hiddenRepeat = await capture('hidden-repeat');
-  await show();
-  const shown = await capture('shown');
-  const shownRepeat = await capture('shown-repeat');
   const noise = Math.max(difference(absent, absentRepeat), difference(before, beforeRepeat), difference(hidden, hiddenRepeat), difference(shown, shownRepeat));
   const hiddenChange = difference(before, hidden);
   const restoredDifference = difference(before, shown);

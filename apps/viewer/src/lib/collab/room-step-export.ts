@@ -10,7 +10,8 @@ import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutat
 import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSymbolicSource } from './room-symbolic-source';
 import { propertyValueTypeFor } from './mutation-bridge';
-import { asExpressIdRef, readAttributes, resolvePlacementChain, resolveRotationState } from '@/lib/placement-core';
+import { asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
+import { resolveRotationState } from '@/lib/placement-rotate';
 import '@/lib/placement-edit.boot';
 
 export interface RoomStepExportSource {

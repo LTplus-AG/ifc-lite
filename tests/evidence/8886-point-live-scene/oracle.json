@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/pick-clip-revision.ts",
+  "mutation": "tests/evidence/8886-point-live-scene/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export the witnesses import but drops the hidden, isolated and pick-clip comparison, the resize watch's reset, the hover's sync-before-glyph order and the clip revision's key, so Point mode's Live outlives hide, isolate, a redrawn cut and a proportional resize, the hover loses its glyph, and the clip revision misses one-field changes."
+}

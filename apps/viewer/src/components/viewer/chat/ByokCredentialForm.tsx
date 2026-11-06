@@ -155,7 +155,7 @@ export function ByokCredentialForm({
           </button>
         </div>
         {keyValid && trimmedKey.length > 0 && trimmedKey !== savedKey && (
-          <p className="text-2xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+          <p className="text-2xs text-ok flex items-center gap-1">
             <Check className="h-3 w-3" />
             {t('chatByok.credentialForm.looksLikeKey', { label: meta.label, masked: maskKey(trimmedKey) })}
           </p>
@@ -207,7 +207,7 @@ export function ByokCredentialForm({
       {savedKey && (
         <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-xs">
           <div className="flex items-center gap-2 text-muted-foreground">
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
+            <Check className="h-3.5 w-3.5 text-ok" />
             {t('chatByok.credentialForm.configuredLabel')}{' '}
             <code className="font-mono text-foreground">{maskKey(savedKey)}</code>
           </div>

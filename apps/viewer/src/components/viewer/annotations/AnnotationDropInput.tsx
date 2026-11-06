@@ -172,14 +172,14 @@ export function AnnotationDropInput({
                 'border border-border rounded-sm',
                 'px-2 py-1.5 outline-none focus:ring-1',
                 overHardLimit
-                  ? 'focus:ring-red-400 border-red-300 dark:border-red-700/60'
+                  ? 'focus:ring-red-400 border-danger-border'
                   : 'focus:ring-overlay-accent/50 focus:border-overlay-accent',
               )}
               spellCheck
               autoCorrect="on"
             />
             <div className="mt-1.5 flex items-center justify-between gap-2 text-xs font-mono">
-              <span className="text-zinc-400 dark:text-zinc-500">
+              <span className="text-muted-foreground">
                 {t('annotations.dropInput.keyHints')}
               </span>
               {charCountVisible && (
@@ -187,10 +187,10 @@ export function AnnotationDropInput({
                   className={cn(
                     'tabular-nums',
                     overHardLimit
-                      ? 'text-red-500'
+                      ? 'text-danger'
                       : overSoftLimit
                         ? 'text-status-warn'
-                        : 'text-zinc-400',
+                        : 'text-muted-foreground',
                   )}
                 >
                   {draft.length}/{MAX_NOTE_LEN}

@@ -16,7 +16,9 @@ fs.mkdirSync(out, { recursive: true });
 const dependency = fs.readdirSync('node_modules/.pnpm').find(n => /^playwright@/.test(n));
 const { chromium } = await import(pathToFileURL(path.resolve('node_modules/.pnpm', dependency, 'node_modules/playwright/index.mjs')));
 const chromeRoot = path.join(os.homedir(), '.t3/tools/chrome-headless-shell/linux64');
-const executablePath = process.env.IFC_GPU_CHROME_PATH ?? path.join(chromeRoot, fs.readdirSync(chromeRoot).sort().at(-1), 'chrome-headless-shell');
+// A CDP worker owns its browser installation; local Chrome is only for launch.
+const executablePath = process.env.IFC_GPU_CDP_URL ? undefined
+  : process.env.IFC_GPU_CHROME_PATH ?? path.join(chromeRoot, fs.readdirSync(chromeRoot).sort().at(-1), 'chrome-headless-shell');
 assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use ifc-gpu-check; do not bypass GPU admission');
 const browser = process.env.IFC_GPU_CDP_URL
   ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)

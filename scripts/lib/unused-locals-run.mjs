@@ -7,9 +7,10 @@ export function tscRunDetails(run) {
   return `TypeScript status=${run.status}, signal=${run.signal}, error=${run.error?.message ?? 'none'}\nstdout:\n${run.stdout ?? ''}\nstderr:\n${run.stderr ?? ''}`;
 }
 
-// With --noEmit, tsc completes with 0 (clean) or 2 (diagnostics, emit skipped).
+// tsc completes with 0 (clean), 1 (diagnostics, emit skipped) or 2
+// (diagnostics, outputs generated). Classification still rejects non-diagnostics.
 // pnpm can instead return a numeric crash status, even after partial diagnostics.
 export function assertCompleteTscRun(run) {
-  assert.ok(!run.error && !run.signal && (run.status === 0 || run.status === 2),
+  assert.ok(!run.error && !run.signal && [0, 1, 2].includes(run.status),
     `TypeScript must run to completion\n${tscRunDetails(run)}`);
 }

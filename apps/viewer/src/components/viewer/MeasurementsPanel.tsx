@@ -46,19 +46,17 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const destination = useMeasurementDestination();
   const [tab, setTab] = useState<PanelTab>(destination.revision && destination.tab ? destination.tab : pointMode ? 'point' : 'list');
   const previousPointMode = useRef(pointMode);
-  // Choosing Point mode (#8770) brings its readout forward; the user can
-  // still switch tabs afterwards.
+  // Touch sequences expose Finish in List; explicit palette destinations win.
+  const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
+  const previousSequenceOpen = useRef(false);
   useEffect(() => {
     const requested = consumeMeasurementDestination(destination.revision);
     if (requested) setTab(requested);
+    else if (sequenceOpen && !previousSequenceOpen.current) setTab('list');
     else if (pointMode && !previousPointMode.current) setTab('point');
     previousPointMode.current = pointMode;
-  }, [destination, pointMode]);
-  // On touch, an open Polyline or Radius brings List forward: its live row
-  // holds the only Finish a finger has (#8991). A mouse user has Enter and
-  // double-click, so their chosen tab is left alone.
-  const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
-  useEffect(() => { if (sequenceOpen) setTab('list'); }, [sequenceOpen]);
+    previousSequenceOpen.current = sequenceOpen;
+  }, [destination, pointMode, sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>

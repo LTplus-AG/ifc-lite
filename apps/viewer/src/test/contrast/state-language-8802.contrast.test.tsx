@@ -166,6 +166,8 @@ describe('state language: primary, pressed, active and filtered states (Refs 880
           <div className="flex bg-muted p-0.5">
             <Button variant="toggle" size="sm" aria-pressed={true} data-test="pressed">By class</Button>
             <Button variant="toggle" size="sm" aria-pressed={false} data-test="resting">Spatial</Button>
+            {/* Mirrors the drawing toolbar's markup tool segment, a radio-role button. */}
+            {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
             <Button variant="toggle" size="sm" role="radio" aria-checked={true} data-test="checked">Select</Button>
           </div>
         </div>,

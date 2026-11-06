@@ -1,0 +1,543 @@
+{
+  "issue": 8947,
+  "kind": "untimed acceptance setup qualification, not palette UX acceptance",
+  "experiments": [
+    {
+      "experiment": "palette-canvas-interop-diagnostic",
+      "source": "285414189e9cb659d89b4acfa7bdcaf4a739760b",
+      "resultSha256": "5135bcd6b4f158e311fca7a2a57fb482269a6b21a1fe959f580b15b2fbe6f70f",
+      "scriptSha256": "556f0e17d88e22f3310c991eb5823ec6ca236d9997ea002730a011af649fbd60",
+      "args": [
+        "--enable-unsafe-webgpu",
+        "--ignore-gpu-blocklist",
+        "--enable-features=Vulkan",
+        "--use-angle=vulkan",
+        "--use-webgpu-power-preference=default-high-performance"
+      ],
+      "dimensions": {
+        "dpr": 1,
+        "canvases": [
+          {
+            "width": 832,
+            "height": 791,
+            "clientWidth": 832,
+            "clientHeight": 791
+          }
+        ]
+      },
+      "arms": [
+        {
+          "kind": "offscreen",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 30,
+          "pixelValues": [
+            "[0, 255, 0, 255]"
+          ],
+          "loss": null,
+          "errors": []
+        },
+        {
+          "kind": "canvas",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 1,
+          "pixelValues": [
+            "[0, 0, 0, 0]"
+          ],
+          "loss": null,
+          "errors": [
+            "Requested allocation size (2662400) is smaller than the image requires (2981888).\n    at ImportMemory (../../third_party/dawn/src/dawn/native/vulkan/external_memory/MemoryServiceImplementationOpaqueFD.cpp:132)\n"
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "palette-canvas-enablegpu-diagnostic",
+      "source": "285414189e9cb659d89b4acfa7bdcaf4a739760b",
+      "resultSha256": "da68ee483e992b4d0e63fed4db27d83cdb579f9ff08c30b631584ae848546c44",
+      "scriptSha256": "5da6393bab2c5bf3bf989428c39ef7f498bd285e4c4f7678184039c2cea5f262",
+      "args": [
+        "--enable-unsafe-webgpu",
+        "--ignore-gpu-blocklist",
+        "--enable-features=Vulkan",
+        "--use-angle=vulkan",
+        "--use-webgpu-power-preference=default-high-performance",
+        "--enable-gpu"
+      ],
+      "dimensions": {
+        "dpr": 1,
+        "canvases": [
+          {
+            "width": 832,
+            "height": 791,
+            "clientWidth": 832,
+            "clientHeight": 791
+          }
+        ]
+      },
+      "arms": [
+        {
+          "kind": "offscreen",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 30,
+          "pixelValues": [
+            "[0, 255, 0, 255]"
+          ],
+          "loss": null,
+          "errors": []
+        },
+        {
+          "kind": "canvas",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 1,
+          "pixelValues": [
+            "[0, 0, 0, 0]"
+          ],
+          "loss": null,
+          "errors": [
+            "Requested allocation size (2662400) is smaller than the image requires (2981888).\n    at ImportMemory (../../third_party/dawn/src/dawn/native/vulkan/external_memory/MemoryServiceImplementationOpaqueFD.cpp:132)\n"
+          ]
+        }
+      ]
+    },
+    {
+      "experiment": "palette-canvas-angle-diagnostic",
+      "source": "285414189e9cb659d89b4acfa7bdcaf4a739760b",
+      "resultSha256": "1fce7e4eb05869d2188ddbbab485cd73222d7fd08439af86d972885431c7daac",
+      "scriptSha256": "f871714587952051b87b93da6e01bea9d4d0ce9f971b26328e888eba3bf9bf24",
+      "args": [
+        "--enable-unsafe-webgpu",
+        "--ignore-gpu-blocklist",
+        "--enable-features=Vulkan,VulkanFromANGLE",
+        "--use-angle=vulkan",
+        "--use-webgpu-power-preference=default-high-performance"
+      ],
+      "dimensions": {
+        "dpr": 1,
+        "canvases": [
+          {
+            "width": 832,
+            "height": 791,
+            "clientWidth": 832,
+            "clientHeight": 791
+          },
+          {
+            "width": 317,
+            "height": 180,
+            "clientWidth": 317,
+            "clientHeight": 180
+          }
+        ]
+      },
+      "arms": [
+        {
+          "kind": "offscreen",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 30,
+          "pixelValues": [
+            "[0, 255, 0, 255]"
+          ],
+          "loss": null,
+          "errors": []
+        },
+        {
+          "kind": "canvas",
+          "adapter": {
+            "vendor": "nvidia",
+            "architecture": "lovelace",
+            "fallback": false
+          },
+          "frames": 30,
+          "pixelValues": [
+            "[0, 255, 0, 255]"
+          ],
+          "loss": null,
+          "errors": []
+        }
+      ]
+    }
+  ],
+  "realModelComparison": {
+    "source": "285414189e9cb659d89b4acfa7bdcaf4a739760b",
+    "indexSha256": "81f0e39da6b427ed0b6760d583f274d920e8ecc311b3f87800a417cb05d4ba50",
+    "resultSha256": "3890d7a391d159251ec03d79f5a34fabaedc1b7e29763f2e8350f9e1bff35594",
+    "protocol": "Single-feature VulkanFromANGLE comparison; same fixed six shared-browser contexts then three fresh browsers, owned direct Playwright transport (no persistent context/CDP attachment); real model; no retries; 45s per app. Diagnostic only.",
+    "contexts": [
+      {
+        "mode": "shared",
+        "index": 0,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "shared",
+        "index": 1,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "shared",
+        "index": 2,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "shared",
+        "index": 3,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "shared",
+        "index": 4,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "shared",
+        "index": 5,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "fresh",
+        "index": 0,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "fresh",
+        "index": 1,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      },
+      {
+        "mode": "fresh",
+        "index": 2,
+        "loaded": true,
+        "adapter": {
+          "vendor": "nvidia",
+          "architecture": "lovelace",
+          "fallback": false
+        },
+        "gpuBytes": 43536,
+        "drawCalls": 5,
+        "gpuErrors": [],
+        "otherWarnings": [
+          {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          },
+          {
+            "type": "warning",
+            "text": "[Viewport] frameSelection: No selection or geometry"
+          }
+        ]
+      }
+    ]
+  },
+  "primarySources": [
+    "https://github.com/gpuweb/gpuweb/issues/5022#issuecomment-2662870672",
+    "https://skia.googlesource.com/skia/+/c0d972768df98c6a207d128afe469fd9c24000ed"
+  ],
+  "limits": "Build285 diagnostic only. Physical NVIDIA readback and real model repeated-load health qualified this flag on Pop. Final-source22 browser cases, captures and Opus verdict remain pending. No GPU driver change or software substitution. Unrelated missing-resource and empty-selection warnings retained."
+}

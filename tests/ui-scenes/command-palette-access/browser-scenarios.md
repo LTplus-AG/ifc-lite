@@ -284,3 +284,23 @@ reported NVIDIA lovelace, fallback=false, with green pixel readback. That is
 transport qualification only: rerun all requested application cases and captures.
 The emitted manifest records the flag and independently verifies the actual GPU.
 It does not certify the earlier default-Intel configuration.
+
+### Pop visible-canvas qualification
+
+The owned Linux browser merges `VulkanFromANGLE` into inherited enabled features.
+This makes browser compositing reuse ANGLE's Vulkan instance/device (upstream
+[Skia explanation](https://skia.googlesource.com/skia/+/c0d972768df98c6a207d128afe469fd9c24000ed)).
+Our measured hybrid-host failure matched the OpaqueFD allocation mismatch
+[reported upstream](https://github.com/gpuweb/gpuweb/issues/5022#issuecomment-2662870672).
+A fixed paired probe reproduced it on a visible 832×791 canvas while offscreen
+readback passed; adding `--enable-gpu` alone did not fix it. Adding only
+`VulkanFromANGLE` gave 30 correct visible-canvas frames and no validation/loss.
+Six shared-browser and three fresh-browser real IFC loads then kept the NVIDIA
+adapter and resident GPU geometry without GPU errors. Other console warnings
+remain in the evidence; this is not a claim of zero console messages.
+
+The runner now requires actual visible-canvas readback before starting cases;
+an offscreen pixel probe missed this failure. Physical-adapter checks remain.
+The PC helper-managed browser is unchanged. This is setup qualification only;
+all 22 cases, three capture matrices, source identity and zero skips still gate
+acceptance. See `evidence/pop-gpu-setup-qualification.json`.

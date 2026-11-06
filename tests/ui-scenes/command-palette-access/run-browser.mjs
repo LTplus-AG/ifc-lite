@@ -90,6 +90,17 @@ async function startBrowser(opts, manifest) {
   // The default preserves any explicit per-request preference. Pixel/adapter
   // proof below still rejects software fallback; this flag is not proof itself.
   args.push('--use-webgpu-power-preference=default-high-performance');
+  // #8947: reuse ANGLE's Vulkan device for browser image sharing. On the
+  // qualified hybrid Pop host, separate instances passed offscreen readback
+  // but failed visible canvases with an OpaqueFD allocation-size mismatch.
+  // Preserve every inherited feature; this changes only this owned browser.
+  const features = new Set(['VulkanFromANGLE']);
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (!args[i].startsWith('--enable-features=')) continue;
+    for (const feature of args[i].slice('--enable-features='.length).split(',')) features.add(feature);
+    args.splice(i, 1);
+  }
+  args.push(`--enable-features=${[...features].join(',')}`);
   const profile = await mkdtemp(join(tmpdir(), 'palette-browser-'));
   let context;
   try {
@@ -141,9 +152,18 @@ async function probe(cdp) {
           !/nvidia|amd|intel|apple|qualcomm|0x10de|0x1002|0x8086/i.test(proof.vendor))
         throw new Error(`Physical adapter not established: ${JSON.stringify(proof)}`);
       const device = await adapter.requestDevice();
+      const canvas = document.createElement('canvas');
+      // Exercise shared-image presentation, not just an offscreen texture.
+      // These dimensions reproduce the actual viewer's Pop failure (#8947).
+      canvas.width = 832; canvas.height = 791;
+      document.body.append(canvas);
+      const surface = canvas.getContext('webgpu');
+      if (!surface) { device.destroy(); throw new Error('No visible WebGPU canvas context'); }
       try {
-        const texture = device.createTexture({ size: [1, 1], format: 'rgba8unorm',
-          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+        surface.configure({ device, format: navigator.gpu.getPreferredCanvasFormat(),
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC, alphaMode: 'premultiplied' });
+        device.pushErrorScope('validation');
+        const texture = surface.getCurrentTexture();
         const buffer = device.createBuffer({ size: 256, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
         const encoder = device.createCommandEncoder();
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(),
@@ -153,10 +173,12 @@ async function probe(cdp) {
         device.queue.submit([encoder.finish()]);
         await buffer.mapAsync(GPUMapMode.READ);
         const pixel = [...new Uint8Array(buffer.getMappedRange()).slice(0, 4)];
-        buffer.unmap(); buffer.destroy(); texture.destroy();
+        buffer.unmap(); buffer.destroy();
+        const error = await device.popErrorScope();
+        if (error) throw new Error(`Visible canvas validation failed: ${error.message}`);
         if (pixel.join(',') !== '0,255,0,255') throw new Error(`GPU readback failed: ${pixel}`);
-        return { ...proof, pixel };
-      } finally { device.destroy(); }
+        return { ...proof, pixel, surface: 'visible-canvas', width: canvas.width, height: canvas.height };
+      } finally { surface.unconfigure(); canvas.remove(); device.destroy(); }
     });
   } finally { await context?.close(); await browser.close(); } // CDP disconnect
 }

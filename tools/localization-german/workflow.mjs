@@ -36,13 +36,12 @@ const check = async (name, fn) => { console.log('START',name); try { const detai
 try {
   // Readiness bounded to two minutes; no server or build is started by this harness.
   for (let i=0;i<60;i++) { try { const r=await fetch(base); if(r.ok && (await r.text()).includes('<html'))break; } catch(e) { report.readinessError=String(e); } if(i===59)throw Error('Preview did not serve built HTML within 120 seconds'); await new Promise(r=>setTimeout(r,2000)); }
-  await page.goto(base);
+  await page.goto(base+model);
   await page.getByRole('button',{name:'Settings',exact:true}).click();
   await page.locator('#settings-language').click();
   await page.getByRole('option',{name:'Deutsch',exact:true}).click();
   await page.waitForFunction(()=>document.documentElement.lang==='de');
   await page.keyboard.press('Escape');
-  await page.goto(base+model);
   await page.waitForFunction(() => document.documentElement.lang === 'de');
   report.gpu = await page.evaluate(async()=>{ const a=await navigator.gpu.requestAdapter(); if(!a)return null; return {...a.info.toJSON?.(),vendor:a.info.vendor,architecture:a.info.architecture,device:a.info.device,description:a.info.description,isFallbackAdapter:a.info.isFallbackAdapter??a.isFallbackAdapter}; });
   assert.ok(report.gpu && !report.gpu.isFallbackAdapter && !/swiftshader|llvmpipe/i.test(JSON.stringify(report.gpu)), 'Real GPU adapter required');
@@ -52,7 +51,7 @@ try {
   fs.writeFileSync(path.join(out,'wide-aria.txt'),await page.locator('body').ariaSnapshot());
   if(report.mode === 'inspection') { console.log(await page.locator('body').ariaSnapshot()); }
   else {
-    await check('render-device-health',async()=>{assert.doesNotMatch(await page.locator('body').innerText(),/graphics device was lost|could not recover|WebGPU Nicht verfügbar/); assert.ok(report.wasm.some(w=>w.status===200)); await save('render-device-health');});
+    await check('render-device-health',async()=>{assert.doesNotMatch(await page.locator('body').innerText(),/graphics device was lost|could not recover|WebGPU Nicht verfügbar|3D-Rendering fehlgeschlagen|Failed to get GPU adapter/); assert.ok(report.wasm.some(w=>w.status===200)); await save('render-device-health');});
     await check('hierarchy-properties',async()=>{
       await page.getByRole('button',{name:'Single-family house ausklappen',exact:true}).click();
       fs.writeFileSync(path.join(out,'hierarchy-aria.txt'),await page.locator('body').ariaSnapshot());

@@ -9,7 +9,7 @@
  * lives in `locale-activation.ts`, which the node test runner can load
  * (`import.meta.glob` is a Vite transform and cannot run there).
  */
-import { activateStartupLocale, createLocaleActivator, type CatalogueLoader } from './locale-activation';
+import { activateStartupLocale, createLocaleActivator, createLocaleChoice, installLocaleChoice, type CatalogueLoader, type LocaleEnvironment } from './locale-activation';
 
 const modules = import.meta.glob<unknown>(['./locales/*.ts', '!./locales/*.test.ts'], { import: 'default' });
 
@@ -28,10 +28,14 @@ function localStorageOrNull(): Storage | null {
   }
 }
 
-activateStartupLocale(createLocaleActivator(loaders, document.documentElement), {
-  search: window.location.search,
+const environment: LocaleEnvironment = {
   storage: localStorageOrNull(),
   languages: navigator.languages ?? [navigator.language],
-}).catch((error: unknown) => {
+};
+// One activator for startup and Settings → Language, so the latest request wins.
+const activator = createLocaleActivator(loaders, document.documentElement);
+installLocaleChoice(createLocaleChoice(activator, environment));
+
+activateStartupLocale(activator, environment).catch((error: unknown) => {
   console.warn('[i18n] Locale startup failed; the viewer stays in English.', error);
 });

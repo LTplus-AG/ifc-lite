@@ -19,7 +19,12 @@ export function rebaseGaussianPositions(bytes: Uint8Array, format: 'gaussian-ply
     const marker = header.indexOf('\nend_header\n');
     if (marker < 0) throw new Error('Missing Gaussian PLY header end.');
     base = marker + '\nend_header\n'.length;
-    little = header.includes('format binary_little_endian');
+    const formatLine = header.slice(0, base).split('\n').map(line => line.split(' ').filter(Boolean))
+      .find(parts => parts[0] === 'format');
+    if (formatLine?.[1] !== 'binary_little_endian' && formatLine?.[1] !== 'binary_big_endian') {
+      throw new Error('Unsupported Gaussian PLY encoding.');
+    }
+    little = formatLine[1] === 'binary_little_endian';
     let vertex = false, offset = 0;
     for (const line of header.slice(0, base).split('\n')) {
       const parts = line.split(' ').filter(Boolean);

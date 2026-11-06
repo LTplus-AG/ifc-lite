@@ -15,8 +15,9 @@ import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import { updateSnapViz } from './measurePick.js';
+import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
+import { noteMeasureCursor } from './measureCursor.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -91,10 +92,12 @@ export function getApproximateWorldPosition(
  * Returns true if the event was handled (caller should early-return).
  */
 export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: number, y: number): boolean {
-  const { canvas, renderer, camera, mouseState } = ctx;
+  const { mouseState } = ctx;
 
   // Check if shift is held for orthogonal constraint
-  const useOrthogonalConstraint = e.shiftKey && ctx.measurementConstraintEdgeRef.current;
+  const useOrthogonalConstraint = e.shiftKey && !!ctx.measurementConstraintEdgeRef.current;
+  // With the view the animation loop's measure pass last ran for, for a Snap-off re-pick here (#8992)
+  noteMeasureCursor(ctx, { x, y, orthogonal: useOrthogonalConstraint, view: ctx.lastCameraStateRef.current });
 
   // Throttle raycasting to 60fps max using requestAnimationFrame
   if (!ctx.measureRaycastPendingRef.current) {
@@ -103,131 +106,116 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
-
-      const raycastStart = performance.now();
-
-      // When using orthogonal constraint (shift held), use simpler raycasting
-      // since the final position will be projected onto an axis anyway
-      const snapOn = ctx.snapEnabledRef.current && !useOrthogonalConstraint;
-
-      // If last raycast was slow, reduce complexity to prevent UI freezes
-      const wasSlowLastTime = ctx.lastMeasureRaycastDurationRef.current > ctx.SLOW_RAYCAST_THRESHOLD_MS;
-      const reduceComplexity = wasSlowLastTime && !useOrthogonalConstraint;
-
-      // Use magnetic snap for edge sliding behavior (only when not in orthogonal mode)
-      const currentLock = useOrthogonalConstraint
-        ? { edge: null, meshExpressId: null, lockStrength: 0 }
-        : ctx.edgeLockStateRef.current;
-
-      const result = renderer.raycastSceneMagnetic(x, y, {
-        edge: currentLock.edge,
-        meshExpressId: currentLock.meshExpressId,
-        lockStrength: currentLock.lockStrength,
-      }, {
-        hiddenIds: ctx.hiddenEntitiesRef.current,
-        isolatedIds: ctx.isolatedEntitiesRef.current,
-        // Reduce snap complexity when using orthogonal constraint or when slow
-        snapOptions: snapOn ? {
-          snapToVertices: !reduceComplexity, // Skip vertex snapping when slow
-          snapToEdges: true,
-          snapToFaces: true,
-          screenSnapRadius: reduceComplexity ? 40 : 60, // Smaller radius when slow
-        } : useOrthogonalConstraint ? {
-          // In orthogonal mode, snap to edges and vertices only (no faces)
-          snapToVertices: true,
-          snapToEdges: true,
-          snapToFaces: false,
-          screenSnapRadius: 40,
-        } : {
-          snapToVertices: false,
-          snapToEdges: false,
-          snapToFaces: false,
-          screenSnapRadius: 0,
-        },
-      });
-
-      // Track raycast duration for adaptive throttling
-      ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;
-
-      if (result.intersection || result.snapTarget) {
-        const snapPoint = result.snapTarget || result.intersection;
-        let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
-
-        if (pos) {
-          // Apply orthogonal constraint if shift is held and we have a constraint
-          if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
-            const constraint = ctx.measurementConstraintEdgeRef.current!;
-            const start = ctx.activeMeasurementRef.current.start;
-            const projected = projectOntoConstraintAxis(start, pos, constraint);
-            pos = projected.projectedPos;
-
-            // Update active axis for visualization
-            ctx.updateConstraintActiveAxis(projected.activeAxis);
-          } else if (!useOrthogonalConstraint && ctx.measurementConstraintEdgeRef.current?.activeAxis) {
-            // Clear active axis when shift is released
-            ctx.updateConstraintActiveAxis(null);
-          }
-
-          // Project snapped 3D position to screen - indicator position, not raw cursor
-          const screenPos = projectToCssScreen(camera, canvas, pos);
-          const measurePoint: MeasurePoint = {
-            x: pos.x,
-            y: pos.y,
-            z: pos.z,
-            screenX: screenPos?.x ?? x,
-            screenY: screenPos?.y ?? y,
-          };
-
-          ctx.updateMeasurement(measurePoint);
-          ctx.setSnapTarget(result.snapTarget || null);
-
-          // Update edge lock state and snap visualization (even in orthogonal mode)
-          if (result.edgeLock.shouldRelease) {
-            ctx.clearEdgeLock();
-            updateSnapViz(ctx, result.snapTarget || null);
-          } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-            // Check if we're on the same edge to preserve lock strength (hysteresis)
-            const sameDirection = currentLock.edge &&
-              Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v0.x) < 0.0001 &&
-              Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v0.y) < 0.0001 &&
-              Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v0.z) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v1.x) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v1.y) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v1.z) < 0.0001;
-            const reversedDirection = currentLock.edge &&
-              Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v1.x) < 0.0001 &&
-              Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v1.y) < 0.0001 &&
-              Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v1.z) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v0.x) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v0.y) < 0.0001 &&
-              Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v0.z) < 0.0001;
-            const isSameEdge = currentLock.edge &&
-              currentLock.meshExpressId === result.edgeLock.meshExpressId &&
-              (sameDirection || reversedDirection);
-
-            if (isSameEdge) {
-              ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
-              ctx.incrementEdgeLockStrength();
-            } else {
-              ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-              ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
-            }
-            updateSnapViz(ctx, result.snapTarget, {
-              edgeT: result.edgeLock.edgeT,
-              isCorner: result.edgeLock.isCorner,
-              cornerValence: result.edgeLock.cornerValence,
-            });
-          } else {
-            updateSnapViz(ctx, result.snapTarget || null);
-          }
-        }
-      }
+      moveRubberBand(ctx, x, y, useOrthogonalConstraint);
     });
   }
 
   // Within the click slop a press is still a click (#8740); past it, its release finishes.
   if (mouseState.isDragging && pressPastClickSlop(mouseState, e)) mouseState.didDrag = true;
   return true;
+}
+
+/** One rubber-band frame: pick under (x, y) and move the distance's end there. Also re-run on Snap off (#8992). */
+export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, useOrthogonalConstraint: boolean): void {
+  const { canvas, renderer, camera } = ctx;
+  const raycastStart = performance.now();
+
+  // If last raycast was slow, reduce complexity to prevent UI freezes
+  const wasSlowLastTime = ctx.lastMeasureRaycastDurationRef.current > ctx.SLOW_RAYCAST_THRESHOLD_MS;
+  const reduceComplexity = wasSlowLastTime && !useOrthogonalConstraint;
+
+  // Use magnetic snap for edge sliding behavior (only when not in orthogonal mode)
+  const currentLock = useOrthogonalConstraint
+    ? { edge: null, meshExpressId: null, lockStrength: 0 }
+    : ctx.edgeLockStateRef.current;
+
+  const result = renderer.raycastSceneMagnetic(x, y, {
+    edge: currentLock.edge,
+    meshExpressId: currentLock.meshExpressId,
+    lockStrength: currentLock.lockStrength,
+  }, {
+    hiddenIds: ctx.hiddenEntitiesRef.current,
+    isolatedIds: ctx.isolatedEntitiesRef.current,
+    // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
+    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced: reduceComplexity }),
+  });
+
+  // Track raycast duration for adaptive throttling
+  ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;
+
+  if (result.intersection || result.snapTarget) {
+    const snapPoint = result.snapTarget || result.intersection;
+    let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
+
+    if (pos) {
+      // Apply orthogonal constraint if shift is held and we have a constraint
+      if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
+        const constraint = ctx.measurementConstraintEdgeRef.current!;
+        const start = ctx.activeMeasurementRef.current.start;
+        const projected = projectOntoConstraintAxis(start, pos, constraint);
+        pos = projected.projectedPos;
+
+        // Update active axis for visualization
+        ctx.updateConstraintActiveAxis(projected.activeAxis);
+      } else if (!useOrthogonalConstraint && ctx.measurementConstraintEdgeRef.current?.activeAxis) {
+        // Clear active axis when shift is released
+        ctx.updateConstraintActiveAxis(null);
+      }
+
+      // Project snapped 3D position to screen - indicator position, not raw cursor
+      const screenPos = projectToCssScreen(camera, canvas, pos);
+      const measurePoint: MeasurePoint = {
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        screenX: screenPos?.x ?? x,
+        screenY: screenPos?.y ?? y,
+      };
+
+      ctx.updateMeasurement(measurePoint);
+      ctx.setSnapTarget(result.snapTarget || null);
+
+      // Update edge lock state and snap visualization (even in orthogonal mode)
+      if (result.edgeLock.shouldRelease) {
+        ctx.clearEdgeLock();
+        updateSnapViz(ctx, result.snapTarget || null);
+      } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
+        // Check if we're on the same edge to preserve lock strength (hysteresis)
+        const sameDirection = currentLock.edge &&
+          Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v0.x) < 0.0001 &&
+          Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v0.y) < 0.0001 &&
+          Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v0.z) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v1.x) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v1.y) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v1.z) < 0.0001;
+        const reversedDirection = currentLock.edge &&
+          Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v1.x) < 0.0001 &&
+          Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v1.y) < 0.0001 &&
+          Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v1.z) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v0.x) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v0.y) < 0.0001 &&
+          Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v0.z) < 0.0001;
+        const isSameEdge = currentLock.edge &&
+          currentLock.meshExpressId === result.edgeLock.meshExpressId &&
+          (sameDirection || reversedDirection);
+
+        if (isSameEdge) {
+          ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
+          ctx.incrementEdgeLockStrength();
+        } else {
+          ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
+          ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
+        }
+        updateSnapViz(ctx, result.snapTarget, {
+          edgeT: result.edgeLock.edgeT,
+          isCorner: result.edgeLock.isCorner,
+          cornerValence: result.edgeLock.cornerValence,
+        });
+      } else {
+        updateSnapViz(ctx, result.snapTarget || null);
+      }
+    }
+  }
 }
 
 /**
@@ -269,12 +257,7 @@ export function handleMeasureHover(
       }, {
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
-        snapOptions: {
-          snapToVertices: true,
-          snapToEdges: true,
-          snapToFaces: true,
-          screenSnapRadius: 40, // Good radius for hover snap detection
-        },
+        snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
       });
 
       // Update snap target for visual feedback
@@ -341,17 +324,7 @@ export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: 
   }, {
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: ctx.snapEnabledRef.current ? {
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: true,
-      screenSnapRadius: 60,
-    } : {
-      snapToVertices: false,
-      snapToEdges: false,
-      snapToFaces: false,
-      screenSnapRadius: 0,
-    },
+    snapOptions: measureSnapOptions(ctx),
   });
 
   if (!result.intersection && !result.snapTarget) return null;
@@ -449,5 +422,5 @@ export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
  * pass (wheel zoom, a Point-mode hover). The same pass the animation loop runs.
  */
 export function syncMeasureScreenCoords(ctx: MouseHandlerContext): void {
-  reprojectMeasurementsForCamera(ctx.camera, ctx.canvas, ctx.lastCameraStateRef, ctx.updateMeasurementScreenCoords);
+  reprojectMeasurementsForCamera(ctx.camera, ctx.canvas, ctx, ctx.updateMeasurementScreenCoords);
 }

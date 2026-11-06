@@ -18,7 +18,9 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
-import { beginMeasurePress, routeMeasureTap } from './touchRouting.js';
+import { beginMeasurePress, notePenTouches, routeMeasureTap, viewportHandlerContext } from './touchRouting.js';
+import { routeToolTap } from './toolTap.js';
+import { applyDragNavigation, dragNavigationFor, type DragNavigation } from './dragNavigation.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress } from './touchLongPress.js';
 
@@ -95,6 +97,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     let pinchSurface: { point: SurfacePoint | null; pose: string } | null = null;
     // Each pivot pick (a new one-finger gesture) supersedes a probe still in flight.
     let pivotGesture = 0;
+    let drag: DragNavigation = 'orbit'; // a one-finger drag's move, set as a gesture's first finger lands (#9042)
     let disposed = false;
     const longPress = createTouchLongPress((x, y) => {
       void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
@@ -141,8 +144,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
-      invalidateSelectionPick(canvas);
+      notePenTouches(canvas, e); invalidateSelectionPick(canvas); // #9000: a Pencil press is this side's alone
+      useViewerStore.getState().setPointerInput('touch'); // the Measure hint follows the last input (#8879)
       e.preventDefault();
+      if (touchState.touches.length === 0) drag = dragNavigationFor(activeToolRef.current); // kept until all lift
       touchState.touches = Array.from(e.touches);
 
       // Track multi-touch to prevent false tap-select after pinch/zoom
@@ -158,15 +163,12 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         // Record tap start for tap-to-select detection
         touchState.tapStartTime = Date.now();
-        touchState.tapStartPos = {
-          x: touchState.touches[0].clientX,
-          y: touchState.touches[0].clientY,
-        };
+        touchState.tapStartPos = { ...touchState.lastCenter };
         touchState.didMove = false;
         beginMeasurePress(touchState);
         longPress.begin(touchState.touches[0]);
 
-        anchorOrbitPivotUnderFinger(touchState.touches[0]);
+        if (drag !== 'pan') anchorOrbitPivotUnderFinger(touchState.touches[0]); // as the mouse, a pan has no pivot
       } else if (touchState.touches.length === 1) {
         // Single touch after multi-touch - just update center for orbit
         touchState.lastCenter = {
@@ -208,7 +210,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         // a nudge and its interaction frame would discard the tap's pick as stale.
         if (!touchState.didMove && !touchState.multiTouch) return;
 
-        camera.orbit(dx, dy, false);
+        applyDragNavigation(camera, drag, dx, dy); // the mouse drag's move: Pan pans, Walk looks (#9042)
         touchState.lastCenter = {
           x: touchState.touches[0].clientX,
           y: touchState.touches[0].clientY,
@@ -271,7 +273,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     };
 
     const handleTouchEnd = async (e: TouchEvent) => {
-      e.preventDefault();
+      notePenTouches(canvas, e); e.preventDefault();
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
@@ -282,11 +284,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // the finger's actual position (not the stale 2-finger midpoint) and
       // pivots under the finger (not the old pinch pivot).
       if (previousTouchCount >= 2 && touchState.touches.length === 1) {
-        touchState.lastCenter = {
-          x: touchState.touches[0].clientX,
-          y: touchState.touches[0].clientY,
-        };
-        anchorOrbitPivotUnderFinger(touchState.touches[0]);
+        touchState.lastCenter = { x: touchState.touches[0].clientX, y: touchState.touches[0].clientY };
+        if (drag !== 'pan') anchorOrbitPivotUnderFinger(touchState.touches[0]);
       }
 
       // Only clear interaction when all fingers are lifted (gesture truly ended).
@@ -340,7 +339,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
             markTouchSelection(canvas, x, y);
             await selectViewportTarget({ canvas, renderer, x, y, getTool: () => activeToolRef.current,
               getPickOptions, onIfc: handlePickForSelection });
-          } else {
+          } else if (!routeToolTap(viewportHandlerContext(canvas), tool, x, y)) { // Section face-pick, a command (#9042)
             handlePickForSelection(await renderer.pick(x, y, getPickOptions()));
           }
         }
@@ -355,8 +354,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     // Also reset interaction on touchcancel — mobile browsers can cancel
     // gestures (system gestures, tab switch, lost focus) without touchend.
-    const handleTouchCancel = () => {
-      longPress.cancel();
+    const handleTouchCancel = (e: TouchEvent) => {
+      notePenTouches(canvas, e); longPress.cancel();
       invalidateSelectionPick(canvas);
       if (isInteractingRef.current) {
         isInteractingRef.current = false;

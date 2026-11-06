@@ -572,3 +572,101 @@ describe('one distance path for mouse and touch (#8771, #5856)', () => {
     host.remove();
   });
 });
+
+/**
+ * #8995: an edge at world x = 5.2, parallel to Y, that pulls the pointer within
+ * the snap radius only while edge snap is asked for. It locks onto that edge,
+ * as the real snap detector does. Every raycast's snap options are recorded.
+ */
+const edgeAt52 = { v0: { x: 5.2, y: -10, z: 0 }, v1: { x: 5.2, y: 10, z: 0 } };
+let snapAsked: Array<{ snapToVertices?: boolean; snapToEdges?: boolean; snapToFaces?: boolean } | undefined> = [];
+function edgeMagnet(x: number, y: number, _lock: unknown, opts?: { snapOptions?: { snapToEdges?: boolean; screenSnapRadius?: number } }) {
+  snapAsked.push(opts?.snapOptions);
+  const point = { x: x / 100, y: (300 - y) / 100, z: 0 };
+  const radius = opts?.snapOptions?.screenSnapRadius ?? 0;
+  if (opts?.snapOptions?.snapToEdges && Math.abs(x - 520) <= radius) {
+    const position = { x: 5.2, y: point.y, z: 0 };
+    return {
+      intersection: { point },
+      snapTarget: { type: 'edge', position, expressId: 7, confidence: 1 },
+      edgeLock: { shouldRelease: false, shouldLock: true, edge: edgeAt52, meshExpressId: 7, edgeT: 0.5, isCorner: false, cornerValence: 0 },
+    };
+  }
+  return { intersection: { point }, snapTarget: null, edgeLock: { shouldRelease: true, shouldLock: false, edge: null } };
+}
+
+describe('Shift keeps to the axis and respects Measure snap off (#8995)', () => {
+  const mountSnap = (snapEnabled: boolean) => {
+    const rig = mountMouseControls({
+      ...storeBound,
+      snapEnabledRef: { current: snapEnabled },
+      setSnapTarget: (t) => s().setSnapTarget(t),
+      setSnapVisualization: (v) => s().setSnapVisualization(v),
+    });
+    Object.assign(rig.params.rendererRef.current!, { raycastSceneMagnetic: edgeMagnet });
+    return rig;
+  };
+  const noLock = (what: string) => {
+    assert.equal(s().edgeLockState.edge, null, `BUG: ${what} set an edge lock with Snap off`);
+    assert.equal(s().snapTarget, null, `BUG: ${what} kept a snap target with Snap off`);
+    assert.ok(!s().snapVisualization?.edgeLine3D, `BUG: ${what} drew the edge glyph with Snap off`);
+  };
+  const askedForSnap = () => snapAsked.some((o) => !!(o?.snapToEdges || o?.snapToVertices || o?.snapToFaces));
+
+  beforeEach(() => { snapAsked = []; });
+
+  it('Snap off: the live Shift rubber band stays on the axis, with no edge snap and no lock', () => {
+    const { canvas } = mountSnap(false);
+    click(canvas, 200, 300);
+    snapAsked = [];
+    hover(canvas, 500, 280, { shiftKey: true });
+    const end = s().activeMeasurement!.current;
+    assert.ok(near(end.x, 5) && near(end.y, 0), `BUG: rubber band end ${end.x},${end.y}; expected the axis point 5,0`);
+    assert.equal(s().measurementConstraintEdge?.activeAxis, 'axis1', 'Shift still constrains to the axis');
+    assert.equal(askedForSnap(), false, 'BUG: the Shift rubber band asked the raycast to snap with Snap off');
+    noLock('the Shift rubber band');
+  });
+
+  it('Snap off: a Shift click finishes on the axis, with no edge snap and no lock', () => {
+    const { canvas } = mountSnap(false);
+    click(canvas, 200, 300);
+    snapAsked = [];
+    click(canvas, 500, 280, { shiftKey: true });
+    assert.equal(s().measurements.length, 1, 'the Shift click finishes');
+    const m = s().measurements[0];
+    assert.ok(near(m.end.x, 5) && near(m.end.y, 0) && near(m.distance, 3), `BUG: end ${m.end.x},${m.end.y} distance ${m.distance}`);
+    assert.equal(askedForSnap(), false, 'BUG: the Shift release asked the raycast to snap with Snap off');
+    noLock('the Shift release');
+  });
+
+  it('Snap on: Shift still snaps the rubber band and the click to the edge, then onto the axis', () => {
+    const { canvas } = mountSnap(true);
+    click(canvas, 200, 300);
+    hover(canvas, 500, 280, { shiftKey: true });
+    const end = s().activeMeasurement!.current;
+    assert.ok(near(end.x, 5.2) && near(end.y, 0), `rubber band end ${end.x},${end.y}; expected the edge on the axis 5.2,0`);
+    assert.ok(s().edgeLockState.edge, 'with Snap on the Shift rubber band locks the edge as before');
+    click(canvas, 500, 280, { shiftKey: true });
+    const m = s().measurements[0];
+    assert.ok(m && near(m.end.x, 5.2) && near(m.end.y, 0) && near(m.distance, 3.2), `end ${m?.end.x},${m?.end.y} distance ${m?.distance}`);
+  });
+
+  it('touch taps (no Shift) follow the snap toggle as before', () => {
+    for (const snapEnabled of [true, false]) {
+      useViewerStore.setState(initial, true);
+      s().setActiveTool('measure');
+      s().setMeasureMode('drag');
+      const { canvas, params } = mountSnap(snapEnabled);
+      const ctx = {
+        ...params, canvas, renderer: params.rendererRef.current, camera: params.rendererRef.current!.getCamera(),
+        mouseState: params.mouseStateRef.current,
+      } as unknown as MouseHandlerContext;
+      act(() => handleMeasureTap(ctx, 200, 300));
+      act(() => handleMeasureTap(ctx, 500, 280));
+      const m = s().measurements[0];
+      const x = snapEnabled ? 5.2 : 5;
+      assert.ok(m && near(m.end.x, x) && near(m.end.y, 0.2), `snap ${snapEnabled}: end ${m?.end.x},${m?.end.y}; expected ${x},0.2`);
+      cleanupMouseControls();
+    }
+  });
+});

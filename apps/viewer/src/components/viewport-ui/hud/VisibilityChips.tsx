@@ -12,6 +12,10 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { HudChip } from './HudChip';
 import { HudItem } from './HudItem';
 
+/** Reasons that narrow the view to a chosen subset: an active filter, worn in
+ *  the shared active state (#8802 R4). Hides and exclusions stay neutral. */
+const NARROWING_REASONS: ReadonlySet<VisibilityReason['id']> = new Set(['isolation', 'ghost', 'classFilter', 'storey']);
+
 function reasonCounts(state: ViewerState) {
   const hiddenModels = [...state.models.values()].filter((model) => !model.visible).length;
   let manuallyHidden = 0;
@@ -95,6 +99,7 @@ export function VisibilityChips() {
       {reasons.map((reason) => {
         const text = label(reason);
         const kept = reason.resetPolicy === 'kept';
+        const active = NARROWING_REASONS.has(reason.id);
         return (
           <div
             key={reason.id}
@@ -102,7 +107,8 @@ export function VisibilityChips() {
             title={kept ? t('visibilityChips.keptTooltip') : text}
           >
             <HudChip
-              icon={<EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
+              active={active}
+              icon={<EyeOff className={active ? 'h-3.5 w-3.5' : 'h-3.5 w-3.5 text-muted-foreground'} />}
               dismiss={kept ? undefined : {
                 onClick: () => reason.clear(useViewerStore),
                 'aria-label': t('visibilityChips.clearAriaLabel', { reason: text }),

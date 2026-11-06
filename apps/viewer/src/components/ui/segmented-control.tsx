@@ -62,7 +62,7 @@ export function SegmentedControl<Value extends string>({
             onChange={() => onValueChange(option.value)}
             className="peer sr-only"
           />
-          <span className={cn('block rounded text-muted-foreground transition-colors', size === 'sm' ? 'px-2 py-0.5 text-2xs' : 'px-3 py-1 text-sm', 'peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-50')}>
+          <span className={cn('block rounded text-muted-foreground transition-colors', size === 'sm' ? 'px-2 py-0.5 text-2xs' : 'px-3 py-1 text-sm', 'peer-checked:bg-active-surface peer-checked:text-active peer-checked:ring-1 peer-checked:ring-inset peer-checked:ring-active-border peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-50')}>
             {option.label}
           </span>
         </label>

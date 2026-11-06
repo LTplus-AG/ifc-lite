@@ -49,7 +49,7 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   () => import.meta.env.VITE_CLOUD_HOSTED === 'true' ? hostedMsGraph() : new MsGraphProvider(),
   // BIMcollab Documents rides on the saved BIMcollab BCF connection and the
   // /api/bimcollab relay. VITE_SOURCE_BIMCOLLAB=false is the kill switch, e.g.
-  // for a deployment without the relay (docs/research/bimcollab-documents-api.md).
+  // for a deployment without the relay.
   ...(import.meta.env.VITE_SOURCE_BIMCOLLAB === 'false' ? [] : [() => new ViewerBimcollabProvider()]),
   // buildagil is offered once the deployment holds its OAuth client:
   // VITE_BUILDAGIL_CLIENT_ID here and BUILDAGIL_CLIENT_ID on the /api/buildagil

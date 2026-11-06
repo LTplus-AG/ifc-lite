@@ -127,6 +127,8 @@ export function buildExportCommands(
     category: 'Export',
     icon: PALETTE_EXPORT_ICONS.extension,
     detail: exporter.extension,
+    availability: exporter.checkAvailability?.(),
+    checkAvailability: exporter.checkAvailability,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));
   const registryRows = EXPORT_SURFACE_COMMANDS.map((command) => {

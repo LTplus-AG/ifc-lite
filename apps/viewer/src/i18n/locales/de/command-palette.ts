@@ -71,6 +71,7 @@ export const commandPaletteDe = {
   "commandPalette.availability.textSelection": "Textauswahl vor dem Kopieren von Elementen aufheben",
   "commandPalette.availability.rendererEntity": "Ein auflösbares Element im Modell auswählen; eine reine Eigenschaftsreferenz öffnet keine Elementaktionen",
   "commandPalette.availability.world": "Zuerst den verfügbaren 3D-Weltkontext aktivieren",
+  'commandPalette.extension.busy': 'Warten Sie, bis der Erweiterungsexport abgeschlossen ist',
   'commandPalette.file.open.label': 'Datei öffnen',
   'commandPalette.file.saveFederationSetup.label': 'Föderationseinrichtung speichern',
   'commandPalette.file.openFederationSetup.label': 'Föderationseinrichtung öffnen',

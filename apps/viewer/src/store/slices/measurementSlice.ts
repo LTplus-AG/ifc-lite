@@ -122,7 +122,7 @@ export interface MeasurementSlice extends MeasurePointSlice {
   cancelMeasurement: () => void;
   deleteMeasurement: (id: string) => void;
   clearMeasurements: () => void;
-  /** Reproject stored points; `viewMoved` (default true): the camera moved, which ends Point mode's Live (#8828). */
+  /** Reproject stored points; `viewMoved` (default true): the camera moved or the scene was hidden/cut, which ends Point mode's Live (#8828, #8886). */
   updateMeasurementScreenCoords: (projectToScreen: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
 
   // Snap actions

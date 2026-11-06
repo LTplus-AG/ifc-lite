@@ -32,8 +32,6 @@ function queriedProducts(): Set<string> {
   return new Set([...grouped].flatMap(([modelId, ids]) => ids.map((expressId) => entityRefToString({ modelId, expressId }))));
 }
 
-const ofProducts = (curves: readonly SourceSnapCurve[], products: ReadonlySet<string>) =>
-  curves.filter(({ identity }) => products.has(entityRefToString(identity)));
 
 const sameValues = (a: readonly unknown[], b: readonly unknown[]) => a.every((value, index) => Object.is(value, b[index]));
 
@@ -62,8 +60,6 @@ export function useCentrelineRendererOverlay(
   const { t } = useTranslation();
   const lastNotice = useRef<string | null>(null);
   const sourceEpoch = useRef(0);
-  /** The curves this overlay last gave the magnetic pick. */
-  const installedCurves = useRef<readonly SourceSnapCurve[]>([]);
   /** The products the drawn centreline shows; empty when none is drawn. */
   const drawnProducts = useRef<ReadonlySet<string>>(new Set());
   /** The inputs that place the curves, as the last layout pass saw them (#9086). */
@@ -73,12 +69,7 @@ export function useCentrelineRendererOverlay(
     renderer?.setLineOverlay('centreline', null);
   };
   const installCurves = (renderer: Renderer | null | undefined, curves: readonly SourceSnapCurve[]) => {
-    const next = [...curves].sort(bySourceIdentity);
-    const held = installedCurves.current;
-    // The renderer keys a set by its content; skip that when it already holds these very curves.
-    if (next.length > 0 && next.length === held.length && sameValues(next, held)) return;
-    installedCurves.current = next;
-    renderer?.setSourceSnapCurves(next);
+    renderer?.setSourceSnapCurves([...curves].sort(bySourceIdentity));
   };
 
   // Selection and visibility can change while the previous async source still
@@ -98,15 +89,15 @@ export function useCentrelineRendererOverlay(
     if (!isInitialized) {
       // The renderer is being torn down; forget what it held.
       drawnProducts.current = new Set();
-      installedCurves.current = [];
       return;
     }
-    const renderer = rendererRef.current;
-    const products = sameFrame && (installedCurves.current.length > 0 || drawnProducts.current.size > 0)
-      ? queriedProducts() : new Set<string>();
+    // The line is one buffer for every product it draws, and the curves are
+    // those of drawn products only: both stay, or both go.
     const drawn = drawnProducts.current;
-    if (drawn.size === 0 || [...drawn].some((product) => !products.has(product))) clearLine(renderer);
-    installCurves(renderer, ofProducts(installedCurves.current, products));
+    const products = sameFrame && drawn.size > 0 ? queriedProducts() : null;
+    if (products && [...drawn].every((product) => products.has(product))) return;
+    clearLine(rendererRef.current);
+    installCurves(rendererRef.current, []);
   }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, legacyStore, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
     highlightedSegment]);
@@ -162,7 +153,8 @@ export function useCentrelineRendererOverlay(
         if (!uploaded) { clear(); return; }
         drawnProducts.current = new Set(selected.items.filter(({ ref, occurrences }) => occurrences.some((_, index) =>
           renderedOccurrences.has(sourceOccurrenceKey(ref.modelId, ref.expressId, index)))).map(({ ref }) => entityRefToString(ref)));
-        installCurves(renderer, ofProducts(curves, queriedProducts()));
+        const products = queriedProducts();
+        installCurves(renderer, curves.filter(({ identity }) => products.has(entityRefToString(identity))));
         setSourceSegmentScreenProbe((modelId, expressId, segmentIndex, t) => {
           const curve = curves.find((entry) => entry.identity.modelId === modelId
             && entry.identity.expressId === expressId && entry.identity.segmentIndex === segmentIndex);

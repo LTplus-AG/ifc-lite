@@ -59,7 +59,11 @@ let held: string[];
 let lineCalls: boolean[];
 /** The line calls before the change under test. */
 let lineMark: number;
-/** What the renderer held when the overlay's own layout pass had run: what the next frame paints and picks. */
+/**
+ * What the renderer held after the overlay's layout pass in the last render
+ * of a commit, before that render's passive effects: what the next frame
+ * paints and picks.
+ */
 let atLayout: { curves: string; line: boolean };
 let builds: number;
 /** A build waits on this gate when one is set. */
@@ -278,6 +282,17 @@ it('Ctrl-adding a swept product keeps the old curves, then installs both', async
   lineKept();
 });
 
+it('deselecting one of two drawn products drops the shared line and every curve before paint', async () => {
+  // The line is one buffer for both products: keeping product 1's curves
+  // would leave them snappable while nothing draws them.
+  await mountInstalled([1, 3], `${ONE},${THREE}`, select([1, 3], 1));
+  commit(select([1]));
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'nothing is snappable without its drawn line');
+  await settle();
+  assert.equal(current(), ONE);
+  assert.ok(lineDrawn(), 'the kept product is drawn again');
+});
+
 it('deselecting everything clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
   commit(select([]));
@@ -443,6 +458,7 @@ it('a GPU recovery reinstalls the curves on the recovered device', async () => {
   await act(async () => { recover(); await Promise.resolve(); });
   await settle();
   assert.ok(since(from).includes(''), 'the lost device\'s curves were dropped');
+  assert.ok(lineCalls.slice(lineMark).includes(false), 'and its line');
   assert.equal(current(), ONE, 'the recovered device snaps to the selection again');
 });
 
@@ -486,4 +502,5 @@ it('unmounting the overlay clears its curves', async () => {
   await mountInstalled([1], ONE);
   cleanup();
   assert.equal(current(), '');
+  assert.equal(lineDrawn(), false);
 });

@@ -32,7 +32,7 @@ import { ReceiptSummary, STATUS } from './ModelChangeReview';
 
 const AUTHORING_STATUS: Record<AuthoringRowStatus, { key: TranslationKey; tone: string }> = {
   ...STATUS,
-  invalid: { key: 'modelAuthoring.status.invalid', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  invalid: { key: 'modelAuthoring.status.invalid', tone: 'border border-transparent bg-amber-500/15 text-warn' },
   blocked: { key: 'modelAuthoring.status.blocked', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };
 
@@ -50,7 +50,7 @@ function Row({ row, batch, checked, onToggle }: { row: AuthoringRow; batch: Mode
       <p className="break-words"><span className="line-through text-muted-foreground">{summary.before}</span>
         {' → '}<span className="font-medium">{summary.after}</span></p>
       {summary.previewNote && <p className="text-muted-foreground break-words">{summary.previewNote}</p>}
-      {row.issue && <p className={row.status === 'denied' || row.status === 'blocked' ? 'text-muted-foreground break-words' : 'text-amber-700 dark:text-amber-400 break-words'}>{row.issue}</p>}
+      {row.issue && <p className={row.status === 'denied' || row.status === 'blocked' ? 'text-muted-foreground break-words' : 'text-warn break-words'}>{row.issue}</p>}
     </div>
     <div className="flex flex-col items-end gap-1">
       <span className={cn('rounded px-1.5 py-0.5 text-2xs font-medium', status.tone)}>{t(status.key)}</span>
@@ -131,7 +131,7 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
       <p className="text-muted-foreground">{t('modelAuthoring.counts', { ready: counts.ready,
         attention: counts.conflict + counts['missing-target'] + counts['ambiguous-target'] + counts.invalid,
         other: counts.unchanged + counts.unsupported + counts.blocked + counts.denied })}</p>
-      {!editEnabled && !receipt && <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1.5">
+      {!editEnabled && !receipt && <div className="rounded border border-warn-border bg-warn-surface p-2 space-y-1.5">
         <p>{t('modelChanges.editModeRequired')}</p>
         <Button size="sm" variant="outline" className="h-7" onClick={() => useViewerStore.getState().setEditEnabled(true)}>{t('modelChanges.turnOnEditMode')}</Button>
       </div>}

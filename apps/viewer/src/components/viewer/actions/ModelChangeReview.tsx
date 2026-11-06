@@ -24,11 +24,11 @@ import { captureValidationBefore } from '@/lib/actions/validation-verdicts';
 import { ReceiptValidation } from './ReceiptValidation';
 
 export const STATUS: Record<RowStatus, { key: TranslationKey; tone: string }> = {
-  ready: { key: 'modelChanges.status.ready', tone: 'border border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+  ready: { key: 'modelChanges.status.ready', tone: 'border border-transparent bg-ok-surface text-ok' },
   unchanged: { key: 'modelChanges.status.unchanged', tone: 'border border-transparent bg-muted text-muted-foreground' },
-  conflict: { key: 'modelChanges.status.conflict', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  'missing-target': { key: 'modelChanges.status.missing', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  conflict: { key: 'modelChanges.status.conflict', tone: 'border border-transparent bg-amber-500/15 text-warn' },
+  'missing-target': { key: 'modelChanges.status.missing', tone: 'border border-transparent bg-amber-500/15 text-warn' },
+  'ambiguous-target': { key: 'modelChanges.status.ambiguous', tone: 'border border-transparent bg-amber-500/15 text-warn' },
   denied: { key: 'modelChanges.status.denied', tone: 'border border-transparent bg-muted text-muted-foreground' },
   unsupported: { key: 'modelChanges.status.unsupported', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };
@@ -52,7 +52,7 @@ function Row({ row, checked, onToggle }: { row: PreviewRow; checked: boolean; on
       <p className="text-muted-foreground break-words">{changeField(row.change)}</p>
       <p className="break-words"><span className="line-through text-muted-foreground">{shown(row.current, t('modelChanges.absent'))}</span>
         {' → '}<span className="font-medium">{shown(after, t('modelChanges.removed'))}</span></p>
-      {row.status === 'conflict' && <p className="text-amber-700 dark:text-amber-400">{t('modelChanges.expectedWas', { value: shown(row.change.expected, t('modelChanges.absent')) })}</p>}
+      {row.status === 'conflict' && <p className="text-warn">{t('modelChanges.expectedWas', { value: shown(row.change.expected, t('modelChanges.absent')) })}</p>}
       {row.denial && <p className="text-muted-foreground">{row.denial}</p>}
     </div>
     <div className="flex flex-col items-end gap-1">
@@ -75,7 +75,7 @@ export function ReceiptSummary({ receipt }: { receipt: ModelChangeReceipt }) {
     void modelChangeLibrary.put(live.id, { ...live, status: 'undone', undoneAt: new Date().toISOString() });
   };
   return <div aria-live="polite" className={cn('rounded border p-2 space-y-1.5',
-    live.status === 'undone' ? 'border-border bg-muted/40' : 'border-emerald-500/40 bg-emerald-500/10')}>
+    live.status === 'undone' ? 'border-border bg-muted/40' : 'border-ok-border bg-ok-surface')}>
     <p className="font-medium">{t(live.status === 'undone' ? 'modelChanges.receiptUndone' : 'modelChanges.receiptApplied', { count: live.applied.length })}</p>
     <p className="text-muted-foreground">{t('modelChanges.receiptDetail', { batches: live.batches.length, skipped: live.skipped.length })}</p>
     {live.status === 'applied' && <Button size="sm" variant="outline" className="h-7" onClick={undo}><Undo2 className="h-3 w-3 mr-1" />{t('modelChanges.undo')}</Button>}
@@ -120,7 +120,7 @@ export function ModelChangeReview({ batch, origin }: { batch: ModelChangeBatch; 
       </div>
       <p className="text-muted-foreground">{t('modelChanges.counts', { ready: counts.ready, conflict: counts.conflict + counts['missing-target'] + counts['ambiguous-target'],
         unchanged: counts.unchanged + counts.unsupported })}</p>
-      {!editEnabled && !receipt && <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1.5">
+      {!editEnabled && !receipt && <div className="rounded border border-warn-border bg-warn-surface p-2 space-y-1.5">
         <p>{t('modelChanges.editModeRequired')}</p>
         <Button size="sm" variant="outline" className="h-7" onClick={() => useViewerStore.getState().setEditEnabled(true)}>{t('modelChanges.turnOnEditMode')}</Button>
       </div>}

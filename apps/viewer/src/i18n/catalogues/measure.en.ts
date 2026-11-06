@@ -93,6 +93,7 @@ export const measureEn = {
     other: 'Polyline in progress — {count} pts',
   },
   'measure.cancelEsc': 'Cancel (Esc)',
+  'measure.finishEnter': 'Finish (Enter)',
   'measure.polyline.indexLabel': 'Poly #{index}',
   'measure.polyline.basisLength': 'Length',
   'measure.polyline.basisPerimeterClosed': 'Perimeter (closed)',
@@ -123,6 +124,10 @@ export const measureEn = {
   'measure.hint.pointActiveTouch': 'Tap another point',
   'measure.hint.polylineStartTouch': 'Tap to start polyline',
   'measure.hint.radiusStartTouch': 'Tap 3+ points on a circular edge',
+  // Touch finishes with the ✓ in the live row of List, the Measure bar's
+  // toggle and the Measurements panel's tab (#8991).
+  'measure.hint.polylineActiveTouch': 'Tap to add point · tap start to close · ✓ in List to finish',
+  'measure.hint.radiusActiveTouch': 'Tap to add a point on the arc · ✓ in List to finish',
   'measure.hint.faces.firstTouch': 'Tap the first face',
   'measure.hint.faces.secondTouch': 'Tap the second face',
   'measure.hint.edges.firstStartTouch': 'Tap the start of the first edge',

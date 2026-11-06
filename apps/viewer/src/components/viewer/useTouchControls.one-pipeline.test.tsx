@@ -20,12 +20,13 @@ import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { Camera, type Renderer } from '@ifc-lite/renderer';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
 import { useTouchControls, type UseTouchControlsParams } from './useTouchControls.js';
 import { measureHintKey } from './tools/measure-modes/readouts.js';
 import { measureEn } from '@/i18n/catalogues/measure.en';
+import { MeasurementList } from './tools/MeasurementList.js';
 
 const ref = <T,>(current: T) => ({ current });
 const noop = () => {};
@@ -674,5 +675,63 @@ describe('a pen press goes through one pipeline (#9000)', () => {
       await settle();
     });
     assert.equal(selectionCount(), 2, `pen tap then mouse click selected ${selectionCount()} times`);
+  });
+});
+
+/** The Measurements list's Finish button for the open sequence, by its accessible name. */
+function finishButton(): HTMLElement | null {
+  const container = render(<MeasurementList />);
+  return container.querySelector<HTMLElement>('button[aria-label="Finish (Enter)"]');
+}
+
+describe('touch finishes an open Polyline or Radius (#8991)', () => {
+  it('a tapped polyline finishes from the live row as an open length, with no point dropped', async () => {
+    useViewerStore.setState({ measureMode: 'polyline' });
+    const { canvas } = rig('measure');
+    for (const x of [100, 300, 500]) await tap(canvas, x, 300);
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 3, 'three taps placed three points');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'the in-progress polyline hint after a tap');
+    assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
+    const finish = finishButton();
+    assert.equal(finish !== null, true, 'the live polyline row offers Finish');
+    act(() => click(finish!));
+    const { activePolyline, polylineMeasurements } = useViewerStore.getState();
+    assert.equal(activePolyline, null, 'the sequence is finished');
+    assert.equal(polylineMeasurements.length, 1);
+    assert.equal(polylineMeasurements[0].closed, false, 'finished open, as Enter does');
+    assert.deepEqual(polylineMeasurements[0].points.map((p) => p.x), [1, 3, 5], 'no point dropped');
+  });
+
+  it('a tapped radius finishes from the live row', async () => {
+    useViewerStore.setState({ measureMode: 'radius' });
+    const { canvas } = rig('measure');
+    for (const x of [100, 300, 500]) await tap(canvas, x, 300);
+    assert.equal(useViewerStore.getState().activeRadius?.points.length, 3, 'three taps placed three points');
+    assert.doesNotMatch(hint(), MOUSE_ONLY, 'the in-progress radius hint after a tap');
+    assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
+    const finish = finishButton();
+    assert.equal(finish !== null, true, 'the live radius row offers Finish');
+    act(() => click(finish!));
+    const { activeRadius, radiusMeasurements } = useViewerStore.getState();
+    assert.equal(activeRadius, null, 'the sequence is finished');
+    assert.deepEqual(radiusMeasurements.map((m) => m.points.length), [3]);
+  });
+
+  it('Finish on a one-point polyline records nothing and keeps the sequence open', async () => {
+    useViewerStore.setState({ measureMode: 'polyline' });
+    const { canvas } = rig('measure');
+    await tap(canvas, 100, 300);
+    // Rendered outside act: a render inside it is not committed until act ends.
+    const finish = finishButton();
+    assert.equal(finish !== null, true, 'a one-point polyline still offers Finish');
+    act(() => click(finish!));
+    const { activePolyline, polylineMeasurements } = useViewerStore.getState();
+    assert.equal(polylineMeasurements.length, 0);
+    assert.equal(activePolyline?.points.length, 1, 'the open point survives for the next tap');
+  });
+
+  it('with nothing open the list offers no Finish', () => {
+    useViewerStore.setState({ measureMode: 'polyline', polylineMeasurements: [{ id: 'pl', points: [], closed: false, length: 0 }] });
+    assert.equal(finishButton() === null, true);
   });
 });

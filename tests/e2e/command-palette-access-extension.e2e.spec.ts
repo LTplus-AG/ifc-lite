@@ -129,11 +129,15 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     const exerciseVisibility = async (name: string) => {
       await page.evaluate(id => {
         const state = globalThis.__ifc_lite_viewer_store__.getState();
-        state.isolateEntities([id]);
+        // isolateEntities is a user-facing toggle: repeating it after re-enable
+        // would reveal the other model geometry and invalidate the absent-wall oracle.
+        if (state.isolatedEntities?.size !== 1 || !state.isolatedEntities.has(id)) state.isolateEntities([id]);
         if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
         if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
         return state.cameraCallbacks.frameSelection(0);
       }, id);
+      expect(await page.evaluate(() => [...(globalThis.__ifc_lite_viewer_store__.getState().isolatedEntities ?? [])]),
+        'both activations frame only the selected wall before comparing GPU output').toEqual([id]);
       await visibilityOutputWitness(page, info, name, async () => {
         await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
         await expect.poll(() => hidden(page, id)).toBe(true);

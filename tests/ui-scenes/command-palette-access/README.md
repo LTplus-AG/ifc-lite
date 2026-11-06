@@ -723,3 +723,12 @@ correctly refused a replacement load error but reported the absent-error reason.
 The binding now distinguishes absent from replaced errors; mounted regressions
 assert the real notification in EN/DE/RU and preserve the newer error/history.
 This correction awaits runtime qualification; R3 remains unaccepted.
+
+The a333 physical-GPU run finished with 21 passing cases, one failing case and
+no skips. Initial installed-extension hide/show passed every raster assertion;
+reactivation exposed a test setup error: repeating the canonical isolation toggle
+revealed the surrounding building. The corrected setup preserves isolation and
+asserts it before both cycles, without changing camera or pixel thresholds.
+See `evidence/a333-extension-reactivation.json`; corrected execution is pending.
+The registry regression now checks inactive recovery commands are omitted from
+browse yet remain uniquely searchable and unavailable, matching the R3 contract.

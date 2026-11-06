@@ -165,7 +165,7 @@ servers/tabs, reconcile receipts and close the owning storage task after all
 consumers finish. Preserve source, model fixtures, baseline and foreign work;
 release regenerable builds through the managed lifecycle.
 
-Coordinator correction: camera IDs use canonical face order (`front-top-right`).
+Coordinator correction: camera IDs use canonical face order (`front-right-top`).
 Native chooser cases deliberately remove the Chromium-only File System Access
 capability before startup and exercise the real `<input type="file">` fallback.
 They do not replace picker callbacks or model loading. These cases cannot certify

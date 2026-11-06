@@ -280,7 +280,7 @@ test('edge and corner presets move actual renderer and repeat deterministically 
   await start(page, true);
   await page.waitForFunction(() => typeof (globalThis as Record<string, unknown>).__ifc_lite_view_projection__ === 'function');
   const matrices: number[][] = [];
-  for (const name of ['front-top', 'front-top-right', 'front-top']) {
+  for (const name of ['front-top', 'front-right-top', 'front-top']) {
     const before = (await debug(page)).matrix;
     await run(page, `view:orientation:${name}`, name.replaceAll('-', ' '));
     await expect.poll(async () => (await debug(page)).matrix).not.toEqual(before);

@@ -88,7 +88,7 @@ flow('flow-blank-wall', 'New blank → parsed IFC and active wall tool', null, d
 });
 flow('flow-camera-corner', 'Keyboard → actual camera corner before common re-home', fixture, desktop, async page => {
   const before = await page.evaluate(() => globalThis.__ifc_lite_view_projection__());
-  await run(page, 'view:orientation:front-top-right', 'front right top');
+  await run(page, 'view:orientation:front-right-top', 'front right top');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_view_projection__())).not.toEqual(before);
   await expect.poll(async () => {
     const a = await page.evaluate(() => globalThis.__ifc_lite_view_projection__());

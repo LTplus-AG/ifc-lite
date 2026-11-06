@@ -7,11 +7,12 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
 import { useMountedFileHost, getMountedFileHost } from './toolbar/mounted-file-host';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -120,6 +121,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   }, [open]);
 
   // Keep inspected prerequisites current without subscribing to unrelated viewport state.
+  const copyClipboard = useSyncExternalStore(subscribeCopyClipboard, readCopyClipboard, readCopyClipboard);
   const prerequisites = useViewerStore(useShallow(palettePrerequisites));
   const collabRole = prerequisites.role;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
@@ -133,6 +135,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
+      entityActionsLauncher: () => paletteLauncher.current,
       openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
         ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
       ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
@@ -147,7 +150,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──

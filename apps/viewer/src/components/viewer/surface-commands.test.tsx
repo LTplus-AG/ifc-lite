@@ -30,6 +30,7 @@ const EXPECTED_IDS = [
   'vis:toggle-iso', 'vis:reset-colors', 'elements:entity-actions',
 ] as const;
 const VISIBILITY_IDS = [
+  'vis:isolate',
   'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',

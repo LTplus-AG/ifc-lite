@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { selectedEntityActionTarget } from './selected-entity-actions';
+import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
@@ -22,11 +24,13 @@ export type PaletteAvailability = { status: 'available' } | {
 const available: PaletteAvailability = { status: 'available' };
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
+  'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
+  'view:rotate-left': 'rotateLeft', 'view:rotate-right': 'rotateRight',
   'view:home': 'home', 'view:fit': 'fitAll', 'view:frame': 'frameSelection',
   'view:top': 'setPresetView', 'view:bottom': 'setPresetView', 'view:front': 'setPresetView',
   'view:back': 'setPresetView', 'view:left': 'setPresetView', 'view:right': 'setPresetView',
 } as const;
-const selectionActions = new Set(['view:frame', 'vis:hide', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso']);
+const selectionActions = new Set(['view:frame', 'vis:hide', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso', 'vis:isolate']);
 const selectedModelTools = new Set(['tool:split', 'tool:push-pull']);
 const planeFreeTools = new Set([...selectedModelTools, 'tool:space-envelope']);
 const modelTools = new Set(['tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
@@ -43,6 +47,15 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
   if (!command.enabled(state)) return blocked('commandPalette.availability.feature');
   const id = command.id;
+  const modelBlock = paletteModelBlock(id, s);
+  if (modelBlock) return blocked(modelBlock);
+  if (id === 'elements:entity-actions' && selectedEntityActionTarget(s) === null) {
+    return blocked('commandPalette.availability.rendererEntity');
+  }
+  if (id === 'view:move-georef' && (!s.cesiumAvailable || !s.cesiumEnabled)) {
+    return blocked('commandPalette.availability.world');
+  }
+  if (id === 'view:move-georef' && !s.canCollabEdit()) return blocked('commandPalette.availability.editor');
   const loaded = selectHasModelsLoaded(s);
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   if (id === 'author:bulk-properties' || id === 'author:import-data') {
@@ -133,6 +146,8 @@ export function paletteToggleState(id: string, s: ViewerState): TranslationKey |
   if (id === 'pref:theme' && s.theme !== 'colorful') return s.theme === 'dark'
     ? 'settings.general.themeDark' : 'settings.general.themeLight';
   const states: Record<string, boolean> = {
+    'view:centreline': s.centrelineOverlayEnabled, 'view:follow-work': s.ribbonContextualTabs,
+    'view:move-georef': s.cesiumPlacementEditMode,
     'tool:edit-mode': s.editEnabled, 'pref:tooltips': s.hoverTooltipsEnabled,
     'pref:hover-outline': s.hoverHighlightEnabled,
     'view:stacked': s.levelDisplayMode === 'stacked',
@@ -154,7 +169,9 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
+  return { workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
+    centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,
+    placementEdit: s.cesiumPlacementEditMode, hierarchy: s.hierarchyMode, workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
     selected: s.selectedEntity, selectedId: s.selectedEntityId, selectedIds: s.selectedEntityIds,
     activeModel: s.activeModelId, role: s.collabRole, camera: s.cameraCallbacks, cesiumAvailable: s.cesiumAvailable,
     highlight: s.hoverHighlightEnabled, mutationVersion: s.mutationVersion, georef: s.georefMutations,

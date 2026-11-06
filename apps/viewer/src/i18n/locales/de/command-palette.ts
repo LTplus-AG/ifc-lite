@@ -5,6 +5,22 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteDe = {
+  "commandPalette.elements.entityActions": "Aktionen für ausgewähltes Element…",
+  "commandPalette.aliases.entityActions": "GlobalId kopieren gleicher Typ gleiches Geschoss duplizieren X Y Z positiv negativ löschen anonymisierte Auswahl exportieren",
+  "commandPalette.model.array": "Ausgewählte Elemente anordnen…",
+  "commandPalette.model.move": "Ausgewählte Elemente verschieben…",
+  "commandPalette.model.rotate": "Ausgewählte Elemente drehen…",
+  "commandPalette.model.copy": "Ausgewählte Elemente kopieren",
+  "commandPalette.model.paste": "Elemente am Cursor einfügen…",
+  "commandPalette.model.pasteInPlace": "Elemente an gleicher Position im aktuellen Geschoss einfügen",
+  "commandPalette.model.storeyUp": "Im Geschoss darüber arbeiten",
+  "commandPalette.model.storeyDown": "Im Geschoss darunter arbeiten",
+  "commandPalette.availability.workspace": "Zuerst den Modell-Arbeitsbereich öffnen",
+  "commandPalette.availability.storeyBoundary": "Kein weiteres Geschoss in dieser Richtung",
+  "commandPalette.availability.copyTarget": "Elemente mit kopierbarer Platzierung wählen; gehostete Elemente benötigen ihren Wirt",
+  "commandPalette.availability.textSelection": "Textauswahl vor dem Kopieren von Elementen aufheben",
+  "commandPalette.availability.rendererEntity": "Ein auflösbares Element im Modell auswählen; eine reine Eigenschaftsreferenz öffnet keine Elementaktionen",
+  "commandPalette.availability.world": "Zuerst den verfügbaren 3D-Weltkontext aktivieren",
   'commandPalette.file.open.label': 'Datei öffnen',
   'commandPalette.file.saveFederationSetup.label': 'Föderationseinrichtung speichern',
   'commandPalette.file.openFederationSetup.label': 'Föderationseinrichtung öffnen',

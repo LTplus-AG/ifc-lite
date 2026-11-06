@@ -82,9 +82,9 @@ try {
     });
     await check('ids-findings-export',async()=>{
       await page.getByRole('button',{name:'Datenvalidierung',exact:true}).click();
-      const idsTab=page.getByRole('tab',{name:'IDS-Validierung',exact:true});
-      if(await idsTab.count()) await idsTab.click();
-      else await page.getByRole('button',{name:/^IDS-Validierung Modell/}).click();
+      // #8890: the shared validation panel now exposes IDS as a named region.
+      await page.getByRole('region',{name:'IDS-Validierung',exact:true}).waitFor();
+      await page.getByRole('button',{name:'IDS-Datei laden',exact:true}).waitFor();
       await page.locator('input[type=file][accept=".ids,.xml"]').first().setInputFiles(path.join(root,'apps/viewer/public/samples/building-architecture.ids'));
       await page.locator('[data-tour="ids-run"]').click();
       await page.locator('[data-tour="ids-summary"]').waitFor({timeout:60000});

@@ -144,6 +144,17 @@ describe('the command tool by tap (#9042)', () => {
     assert.equal(selectionCount(), 0, 'a command tap must not select');
   });
 
+  it('a column tap places one column, and its compatibility click does not stack a second', async () => {
+    useViewerStore.getState().startCommand('column.place');
+    const { canvas } = commandRig();
+    const columns = () => useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities()
+      .filter((e) => e.type.toUpperCase() === 'IFCCOLUMN').length ?? 0;
+    await tap(canvas, ...at(10, 10));
+    assert.equal(columns(), 1, 'BUG: the tap placed no column');
+    await act(async () => { canvas.dispatchEvent(click(...at(10, 10), null)); });
+    assert.equal(columns(), 1, 'the compatibility click placed a second column');
+  });
+
   it('a Pencil tap places one point', async () => {
     useViewerStore.getState().startCommand('wall.place');
     const { canvas } = commandRig();
@@ -295,6 +306,13 @@ describe('Pan and Walk drags (#9042)', () => {
     assert.equal(viewDirection(camera), direction, 'the pan drag turned into an orbit mid-gesture');
     fingerDrag(canvas);
     assert.notEqual(viewDirection(camera), direction, 'the next drag, in Select, orbits');
+  });
+
+  it('a Pan press picks no orbit pivot (no surface raycast), as a mouse Pan press does', () => {
+    let casts = 0;
+    const { canvas } = mountViewportControls('pan', null, { renderer: { raycastScene: () => { casts++; return null; } } });
+    fingerDrag(canvas);
+    assert.equal(casts, 0, 'a Pan drag raycast for an orbit pivot it never uses');
   });
 
   it('a tap in Pan or Walk selects nothing (control)', async () => {

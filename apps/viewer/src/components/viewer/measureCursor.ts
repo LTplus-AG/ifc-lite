@@ -25,7 +25,7 @@ const cursors = new WeakMap<object, MeasureCursor>();
 
 /**
  * Noted by the preview's own move handlers; forgotten by every pointer move
- * first (`routeMousePointers`), a Distance start, a Point click, a gesture reset and a touch tap, so a Snap
+ * first (`routeMousePointers`), a Distance start, a placed Point, a gesture reset and a touch tap, so a Snap
  * toggle re-picks the preview only where it still follows the cursor (#8992, #9022). The
  * cursor leaving the canvas keeps it: the rubber band stays drawn there while
  * the cursor reaches the toolbar's Snap toggle; in Point mode, which drops its
@@ -40,8 +40,9 @@ export function noteMeasureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycast
 
 /** Shift pressed or released with the cursor at rest: a move there would follow the axis or leave it, so the re-pick does too (#9022). */
 export function noteMeasureShift(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef' | 'measurementConstraintEdgeRef'>, held: boolean): void {
+  // In place: a queued trailing hover keeps its record, since the cursor did not move
   const cursor = measureCursor(ctx);
-  if (cursor) cursors.set(ctx.measureRaycastFrameRef, { ...cursor, orthogonal: held && !!ctx.measurementConstraintEdgeRef.current });
+  if (cursor) cursor.orthogonal = held && !!ctx.measurementConstraintEdgeRef.current;
 }
 
 export function measureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef'>): MeasureCursor | null {

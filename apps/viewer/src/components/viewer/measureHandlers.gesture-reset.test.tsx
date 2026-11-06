@@ -995,6 +995,63 @@ describe('a Snap toggle re-picks the live preview under the new setting at the c
     assert.equal(locksSeen.length, 0, 'Snap off re-picked at the pixel the pan left');
   });
 
+  it('Point mode: Shift pressed while a trailing hover is queued still lets it read the resting cursor', async (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 });
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    t.mock.timers.tick(10);
+    fire(canvas, 'pointermove', 500, 250); // inside the throttle window: a trailing pick is queued at 500
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })); });
+    act(() => t.mock.timers.tick(200));
+    flushFrames();
+    assert.equal(xy(s().measurePointLive), '5,0', 'BUG: Shift dropped the trailing pick, so Live stayed behind the cursor');
+  });
+
+  it('Point mode: a click that misses keeps the cursor, so Snap on still re-picks the corner there', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 730, 250);
+    flushFrames();
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'setup: the unsnapped re-pick missed');
+    click(canvas, 730, 250); // Snap off: misses, places nothing
+    assert.equal(s().measurePointLive === null, true, 'setup: the missed click shows no Live point');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '7,0', 'a missed click forgot the cursor');
+  });
+
+  it('Distance: a pen navigation press nudged within the slop in the same task keeps the cursor', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => {
+      canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250, { pointerType: 'pen' })); // held for a task
+      canvas.dispatchEvent(mousePointer('pointermove', 1, 401, 250, { pointerType: 'pen' }));
+    });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'the held pen press was judged before it began');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 401, 250, { pointerType: 'pen' })); });
+  });
+
+  it('Distance just finished, no move since: neither Snap toggle picks or brings a lock or glyph back', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    click(canvas, 400, 250);
+    assert.equal(s().measurements.length, 1, 'setup: the distance was finished');
+    locksSeen.length = 0;
+    await pressKey('s');
+    await pressKey('s');
+    assert.equal(locksSeen.length, 0, 'a Snap toggle picked over a finished distance');
+    assert.equal(s().snapVisualization === null, true, 'a Snap toggle brought the snap glyph back');
+    assert.equal(s().edgeLockState.edge === null, true, 'a Snap toggle brought the edge lock back');
+  });
+
   it('Distance: a camera move then a plain move in one frame still re-picks (#9052)', async () => {
     const { canvas, camera } = mount();
     click(canvas, 200, 300);

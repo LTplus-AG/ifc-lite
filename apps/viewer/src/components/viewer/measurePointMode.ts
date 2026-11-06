@@ -43,7 +43,6 @@ function pickPoint(ctx: MouseHandlerContext, x: number, y: number) {
 /** Place the last point. A miss keeps the previous point, as a polyline miss does, and ends a Live reading. */
 export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
-  noteMeasureCursor(ctx, null); // the placed point, not a Live one, is what the readout shows now (#9022)
   // The click's pick supersedes a trailing hover or a hover frame already
   // queued, either of which would turn the readout back to "Live" for the
   // spot just placed (#8828).
@@ -58,6 +57,9 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
   }
   ctx.setSnapTarget(picked.snapTarget);
   useViewerStore.getState().placeMeasurePoint(picked.point);
+  // The placed point, not a Live one, is what the readout shows now; a miss keeps the cursor, as a missed
+  // Distance click does, so a Snap toggle can still re-pick there (#9022)
+  noteMeasureCursor(ctx, null);
 }
 
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */

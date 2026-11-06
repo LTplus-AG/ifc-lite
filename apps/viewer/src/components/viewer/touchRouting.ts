@@ -120,15 +120,16 @@ export function routeMousePointers(
       else gate.held = { e, timer: setTimeout(runHeld, 0) };
     },
     move: (e) => {
+      // A Pencil hovering with nothing down, after a press whose pointerup never reached us
+      if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
+      if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);
+      if (!touchOwned(e)) runHeld(); // a held pen press begins before its first move is judged
       // A Measure preview follows only the moves its own handlers note again (#8992). A navigation press
       // within its click slop has not panned or orbited (#9022); a fly look that turned the view is
       // caught by the re-pick's view check
       const measure = measureContexts.get(canvas)?.ctx;
       const press = measure?.mouseState;
       if (measure && !(press?.isDragging && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
-      // A Pencil hovering with nothing down, after a press whose pointerup never reached us
-      if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
-      if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);
       pass(handlers.move)(e);
     },
     up: (e) => {

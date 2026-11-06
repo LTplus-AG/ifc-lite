@@ -16,5 +16,7 @@ export const analysisPanelDe = {
   "analysisPanel.export.default": "Standard",
   "analysisPanel.demo.try": "Mit Demodaten ausprobieren",
   "analysisPanel.demo.loading": "Demodaten werden geladen…",
-  "analysisPanel.demo.failed": "Die Demodaten konnten nicht geladen werden."
+  "analysisPanel.demo.failed": "Die Demodaten konnten nicht geladen werden.",
+  "panelHeader.moreActions": "Weitere Aktionen",
+  "panelHeader.close": "Schließen"
 } satisfies Catalogue;

@@ -277,7 +277,7 @@ export function ViewerLayout() {
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
           surfaceContext={{ openActivity: () => setActivityOpen(true) }} />
-        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} />
+        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} announce={false} />
         <SearchModal />
         <TourHost />
         <FlowStartupPrompt />

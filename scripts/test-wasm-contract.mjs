@@ -796,16 +796,16 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
   assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
   assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
   assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
-  // Guard that the export actually carried geometry. The IFC source must cross
-  // the boundary as a Uint8Array; if it ever arrived empty (e.g. a string coerced
-  // to zero bytes), the GLB would still be structurally valid yet declare zero
-  // meshes — caught here.
+  // Guard that the export carried geometry. The IFC source must cross the boundary
+  // as a Uint8Array; arriving empty (e.g. a string coerced to zero bytes), the GLB
+  // would still be structurally valid yet declare zero meshes — caught here.
   const dv = new DataView(glbBytes.buffer, glbBytes.byteOffset, glbBytes.byteLength);
   const jsonLen = dv.getUint32(12, true);
   const gltf = JSON.parse(Buffer.from(glbBytes.buffer, glbBytes.byteOffset + 20, jsonLen).toString('utf-8'));
   assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
+(await import('./lib/wasm-glb-element-node-contracts.mjs')).runGlbElementNodeContracts(api, test, assert, columnContent, glbBytes); // #9011
 // exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
 // GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
 // boundary, since the Rust-level tests can't prove the JS throw contract.

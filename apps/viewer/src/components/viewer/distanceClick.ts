@@ -17,6 +17,7 @@ import { measureSnapOptions, pickMeasurePoint } from './measurePick.js';
 import { cancelQueuedHover } from './measurePointMode.js';
 import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
+import { noteMeasureCursor } from './measureCursor.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
 const startingPresses = new WeakSet<MouseState>();
@@ -59,6 +60,7 @@ export function resetMeasurePress(ctx: MouseHandlerContext): void {
   startingPresses.delete(ctx.mouseState);
   forgetVertexPress(ctx);
   forgetDistancePress(ctx.mouseState);
+  noteMeasureCursor(ctx, null); // the preview it followed is gone (#8992)
 }
 
 /** Set a distance start and its Shift axis triad. Shared by the first click and the first tap (#8771). */

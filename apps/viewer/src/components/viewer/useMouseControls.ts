@@ -33,6 +33,7 @@ import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { ignoreTouchPointers, noteMouseSideInput, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
@@ -567,6 +568,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const tool = activeToolRef.current;
       if (commandPress.move(e)) return;
       if (!mouseState.isDragging) pickSurface.prime?.(x, y); // #8769: the next wheel or orbit finds the depth waiting
+      if (tool === 'measure') noteMeasureCursor(ctx, null); // the preview's own handlers note the moves that draw it (#8992)
 
       // Rectangle-select drag: just update the visual; no orbit / pan
       // / pick / hover work happens in this branch.

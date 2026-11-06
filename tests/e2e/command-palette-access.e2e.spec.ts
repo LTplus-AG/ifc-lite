@@ -300,7 +300,7 @@ test('edge and corner presets move actual renderer and repeat deterministically 
 
 test('live read-only role and retired model invalidate author context while palette stays open (#8947)', async ({ page }) => {
   await start(page, true, contexts[1]);
-  const { row } = await find(page, 'author:bulk-properties', 'bulk properties');
+  const { row, search } = await find(page, 'author:bulk-properties', 'bulk properties');
   await expect(row).not.toHaveAttribute('aria-disabled', 'true');
   // Context setup changes real role data only; canCollabEdit and all handlers remain production code.
   await page.evaluate(() => (globalThis.__ifc_lite_viewer_store__ as {
@@ -308,7 +308,8 @@ test('live read-only role and retired model invalidate author context while pale
   }).setState({ collabRole: 'viewer' }));
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('Requires editor access');
-  await row.click(); await expect(palette(page)).toBeVisible();
+  await expect(row).toHaveAttribute('aria-selected', 'true');
+  await search.press('Enter'); await expect(palette(page)).toBeVisible();
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toHaveCount(0);
   await page.evaluate(() => (globalThis.__ifc_lite_viewer_store__ as {
     getState(): ViewerState; setState(state: Partial<ViewerState>): void;
@@ -321,6 +322,8 @@ test('live read-only role and retired model invalidate author context while pale
   });
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText(/Load a model/);
-  await row.click(); await expect(palette(page)).toBeVisible();
+  // aria-disabled is intentionally discoverable/clickable for its explanation.
+  // Send the real pointer click without Playwright waiting for it to become enabled.
+  await row.click({ force: true }); await expect(palette(page)).toBeVisible();
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toHaveCount(0);
 });

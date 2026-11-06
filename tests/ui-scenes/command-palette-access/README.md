@@ -591,13 +591,15 @@ viewer contexts work. R2 remains unaccepted.
 
 The original NVIDIA sequence finished **8 passed / 14 failed / 0 skipped**.
 Matrix, context, and flow capture phases did not run after the failed E2E gate.
-The owned Chrome profile was removed and no cleanup error was recorded. Ten
+The owned Chrome profile was removed and no cleanup error was recorded. Eleven
 failures were identified as test-contract defects: three chooser assertions,
-one bulk-editor role, and six exact-result counts that predated the new real
+one bulk-editor role, one disabled-row actionability wait, and six exact-result counts that predated the new real
 class-visibility destination. The revised `annot` oracle still requires exact
 membership and ordering: Annotate, Annotations, then `elements:class-filter`;
-it does not permit unrelated fuzzy matches. The remaining four failures need
-GPU/context diagnosis. No visual acceptance follows from this run.
+it does not permit unrelated fuzzy matches. The refusal test now verifies native Enter on the selected blocked row and a
+real forced pointer click after model retirement, instead of waiting for an
+intentionally unavailable row to become enabled. The remaining three failures
+need GPU/context diagnosis. No visual acceptance follows from this run.
 
 On source `e59ec98acb`, the actual two-second CPU diagnostic of the verified
 camera/help test child identified the recurring `camera-animation.ts` →

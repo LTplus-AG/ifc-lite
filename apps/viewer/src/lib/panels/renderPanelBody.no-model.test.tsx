@@ -112,17 +112,17 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
     const root = render(renderPanelBody('lists', () => {}));
     assert.match(root.textContent ?? '', BANNER);
     assert.ok(button(root, SAMPLE));
-    assert.match(root.textContent ?? '', /New List/, 'list authoring stays reachable');
+    assert.match(root.textContent ?? '', /New list/, 'list authoring stays reachable');
   });
 
   it('a banner panel is NOT remounted when a load starts or lands (#4243 class)', () => {
     empty();
     const root = render(renderPanelBody('lists', () => {}));
-    const authored = button(root, 'New List');
+    const authored = button(root, 'New list');
     assert.ok(authored);
     act(() => { useViewerStore.setState({ loading: true }); });
     assert.doesNotMatch(root.textContent ?? '', BANNER, 'the line goes as soon as a load starts');
-    assert.equal(button(root, 'New List'), authored, 'same DOM node: the panel kept its state');
+    assert.equal(button(root, 'New list'), authored, 'same DOM node: the panel kept its state');
     assert.ok(authored.isConnected);
     cleanup();
     // ... and through to the model landing (Zones mounts over the fixture store).

@@ -7,6 +7,7 @@
  * Replaces web-ifc-bridge.ts with native IFC-Lite implementation (1.9x faster)
  */
 
+import { applySkipVoids } from './skip-voids.js';
 import { createLogger } from '@ifc-lite/data';
 import { runDomainExport } from './domain-export-call.js';
 import type { KmzAltitudeMode, TessellationQuality } from './types.js';
@@ -93,6 +94,7 @@ export class IfcLiteBridge {
    * `mergeLayers` replay pattern. Default false ⇒ every cut runs.
    */
   private skipSmallCuts: boolean = false;
+  private skipVoids = false;
 
   private isWasmRuntimeError(error: unknown): boolean {
     return isWasmRuntimeTrap(error);
@@ -189,12 +191,10 @@ export class IfcLiteBridge {
       // `setMergeLayers(true)` BEFORE `init()` and still get the
       // expected behaviour on the freshly-constructed IfcAPI.
       this.applyMergeLayers();
-      // Same replay contract for the geometry-hash toggle.
       this.applyComputeGeometryHashes();
-      // …and for the tessellation-quality level (issue #976).
       this.applyTessellationQuality();
-      // …and for the tier-independent small-cut skip (issue #1286).
       this.applySkipSmallCuts();
+      applySkipVoids(this.ifcApi, this.skipVoids);
       this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
@@ -882,6 +882,12 @@ export class IfcLiteBridge {
    * before `init()` — the value is cached and re-applied on the freshly
    * constructed IfcAPI. Applies to meshes produced AFTER the call.
    */
+  /** Skip only relationship-based host cuts (#8875). Applied again after engine recovery. */
+  setSkipVoids(on: boolean): void {
+    this.skipVoids = on;
+    if (this.ifcApi) applySkipVoids(this.ifcApi, on);
+  }
+
   setSkipSmallCuts(on: boolean): void {
     this.skipSmallCuts = on;
     if (!this.ifcApi) return; // init() will apply on the new IfcAPI
@@ -893,12 +899,7 @@ export class IfcLiteBridge {
     return this.skipSmallCuts;
   }
 
-  /**
-   * Forward the cached small-cut skip flag to the underlying IfcAPI. Guards
-   * against an older WASM build that predates the binding so the flag degrades
-   * to a no-op (every cut runs) rather than throwing — same defensive shape as
-   * `applyTessellationQuality`.
-   */
+  /** Replay small-cut configuration, tolerating older WASM bundles. */
   private applySkipSmallCuts(): void {
     if (!this.ifcApi) return;
     const api = this.ifcApi as IfcAPIWithMerge;

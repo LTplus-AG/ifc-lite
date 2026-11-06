@@ -7,6 +7,7 @@
  *
  * While a model streams, each append is drawn as fragment batches grouped by
  * the pieces' owning bucket key. That key is more than the colour: it carries
+ * a `<cell>~` prefix whenever spatial chunking is on (the viewer default),
  * `model<i>~` for every federated model after the first, a `p<n>~` page for
  * ids past 2^24, and `#N` for an overflow bucket. The fragment itself was
  * labelled with the bare colour key, so `getOrCreatePartialBatch` either
@@ -25,6 +26,7 @@ import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { BATCH_CONSTANTS } from './constants.js';
+import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 import type { BatchedMesh } from './types.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
@@ -104,6 +106,13 @@ describe('Scene.getOrCreatePartialBatch on streaming fragments', () => {
     stream(scene, [triangle(10, 0, 0)]);
     stream(scene, [triangle(1_000_001, 1, 0), triangle(1_000_002, 1, 2)]);
     assertSubsetsDraw(scene, 1_000_001, 1_000_002);
+  });
+
+  it('first model with spatial chunking on (<cell>~ key, the viewer default)', () => {
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: DEFAULT_CHUNK_CELL_SIZE });
+    stream(scene, [triangle(1, 0, 0), triangle(2, 0, 2)]);
+    assertSubsetsDraw(scene, 1, 2);
   });
 
   it('ids past 2^24 (p1~ id page key)', () => {

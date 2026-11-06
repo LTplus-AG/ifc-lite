@@ -34,6 +34,8 @@ export interface SurfaceCommandContext {
   contextAction?: () => void;
   /** Explicit focus return target for the selected-entity destination. */
   entityActionsLauncher?: () => HTMLElement | null;
+  addSectionPlane?: (kind: import('./tools/SectionAddMenu').AddKind) => boolean;
+  sectionAddUnavailable?: (kind: import('./tools/SectionAddMenu').AddKind) => TranslationKey | undefined;
   toolHostIsCurrent?: () => boolean;
   openBulkProperties?: () => void;
   openImportData?: () => void;
@@ -59,6 +61,8 @@ export interface SurfaceCommandDefinition {
   searchLabel?: string;
   keywords: string;
   keywordsKey?: TranslationKey;
+  /** Visible child path for a destination, using the existing palette detail presentation. */
+  detailKey?: TranslationKey;
   category: Command['category'];
   icon: Command['icon'];
   /** State-dependent mobile text/icon live here, alongside the action. */

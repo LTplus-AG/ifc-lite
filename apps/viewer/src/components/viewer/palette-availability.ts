@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasRetainedReportHost } from './retained-report-destination';
+import { getSplitWidth, splitFits } from './model/model-layout';
+import type { AddKind } from './tools/SectionAddMenu';
 import { selectedEntityActionTarget } from './selected-entity-actions';
 import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';
@@ -61,6 +64,25 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!georef.canEdit) return blocked(georef.unavailableReason ?? 'cesiumGeo.placement.requiresProjectedCrs');
   }
   const loaded = selectHasModelsLoaded(s);
+  if (id === 'panel:retained-report' && !hasRetainedReportHost()) return blocked('commandPalette.availability.retainedReport');
+  if (id === 'model:plan') {
+    if (s.isMobile) return blocked('commandPalette.availability.feature');
+    if (!splitFits(getSplitWidth())) return blocked('modelWorkspace.plan.noRoom');
+    if (s.workspaceMode !== 'model' && !modelWorkspaceTarget(s)) return blocked('commandPalette.availability.ifc');
+    if (!canEditInSession || !s.canCollabEdit()) return blocked('commandPalette.availability.editor');
+    if (s.loading) return blocked('commandPalette.availability.loading');
+  }
+  if (id.startsWith('section-add:')) {
+    if (!context.addSectionPlane || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+    if (s.loading) return blocked('commandPalette.availability.loading');
+    const reason = context.sectionAddUnavailable?.(id.slice('section-add:'.length) as AddKind);
+    if (reason) return blocked(reason);
+  }
+  if (id.startsWith('measure:')) {
+    if (s.loading) return blocked('commandPalette.availability.loading');
+    if (hasRetainedShapeOnlyModel(s.models)) return blocked(RETAINED_SHAPE_ONLY_REASON);
+  }
+
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   if (id === 'author:bulk-properties' || id === 'author:import-data') {
     if (s.loading) return blocked('commandPalette.availability.loading');
@@ -176,6 +198,7 @@ export function palettePrerequisites(s: ViewerState) {
   return { workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
     centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,
     placementEdit: s.cesiumPlacementEditMode, hierarchy: s.hierarchyMode, workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
+    sectionPlane: s.sectionPlane, sectionPlanes: s.inactiveSectionPlanes, placement: s.modelPlacement,
     selected: s.selectedEntity, selectedId: s.selectedEntityId, selectedIds: s.selectedEntityIds,
     activeModel: s.activeModelId, role: s.collabRole, camera: s.cameraCallbacks, cesiumAvailable: s.cesiumAvailable,
     highlight: s.hoverHighlightEnabled, mutationVersion: s.mutationVersion, georef: s.georefMutations,

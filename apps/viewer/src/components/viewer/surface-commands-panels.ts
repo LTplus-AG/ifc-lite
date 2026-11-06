@@ -9,8 +9,10 @@ import {
   History, Layout, Layers, Link2, ListChecks, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
   Ruler, Scan, Sparkles, TreeDeciduous, Users, Workflow,
 } from 'lucide-react';
+import type { TranslationKey } from '@/i18n';
+import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
-import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
 import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
@@ -24,12 +26,21 @@ const paletteOnly = ['palette'] as const;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
+const CHILD_PATH_KEYS: Partial<Record<WorkspacePanelId, TranslationKey>> = {
+  bcf: 'commandPalette.paths.panels.bcf', validation: 'commandPalette.paths.panels.ids',
+  idsStudio: 'commandPalette.paths.panels.ids', clash: 'commandPalette.paths.panels.clash',
+  compare: 'commandPalette.paths.panels.compare', lists: 'commandPalette.paths.panels.quantify',
+  gantt: 'commandPalette.paths.panels.quantify', cost: 'commandPalette.paths.panels.quantify',
+  drawing: 'commandPalette.paths.panels.drawing', appearance: 'commandPalette.paths.panels.appearance',
+  pointclouds: 'commandPalette.paths.panels.clouds',
+};
+
 function bottomCommand<const Id extends BottomPanelId>(
   panel: Id, keywords: string, icon: Command['icon'],
 ): SurfaceCommandDefinition & { id: `panel:${Id}` } {
   return {
     id: `panel:${panel}`, panelId: panel, panelGroup: panelGroupFor(panel),
-    labelKey: panelTitleKey(panel), keywords,
+    labelKey: panelTitleKey(panel), keywords, keywordsKey: CHILD_PATH_KEYS[panel], detailKey: CHILD_PATH_KEYS[panel],
     category: 'Panels', icon, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: (context) => {
       if (!context.activateBottomPanel) throw new Error(`Cannot open ${panel} without a panel host`);
@@ -45,7 +56,7 @@ function rightCommand<const Id extends string>(
 ): SurfaceCommandDefinition & { id: Id } {
   return {
     id, panelId: panel, panelGroup: panelGroupFor(panel),
-    labelKey: panelTitleKey(panel), keywords,
+    labelKey: panelTitleKey(panel), keywords, keywordsKey: CHILD_PATH_KEYS[panel], detailKey: CHILD_PATH_KEYS[panel],
     category: 'Panels', icon, surfaces: ribbon ? paletteAndRibbon : paletteOnly, enabled,
     run: (context) => {
       if (!context.activateRightPanel) throw new Error(`Cannot open ${panel} without a panel host`);
@@ -55,8 +66,9 @@ function rightCommand<const Id extends string>(
 }
 
 export const PANEL_SURFACE_COMMANDS = [
+  bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout),
   bottomCommand('script', 'code automation console', FileCode2),
-  bottomCommand('lists', 'entity lists table spreadsheet', FileSpreadsheet),
+  bottomCommand('lists', 'entity lists table spreadsheet columns sort filter selection CSV export templates', FileSpreadsheet),
   bottomCommand('gantt', 'construction schedule (gantt) 4d timeline tasks ifctask sequence playback animation', CalendarClock),
   bottomCommand('charts', 'dashboard chart graph bar pie statistics analytics report', BarChart3),
   bottomCommand('flow', 'flow graph node dynamo grasshopper automation workflow script', Workflow),
@@ -68,6 +80,7 @@ export const PANEL_SURFACE_COMMANDS = [
     keywords: 'properties attributes material classification schedule task panel right inspector information',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
+      closeActiveAnalysisExtension();
       liftStartFold('right'); // folded for the start screen, Properties must still appear
       useViewerStore.getState().showWorkspacePanel('properties', 'palette');
     },
@@ -78,25 +91,25 @@ export const PANEL_SURFACE_COMMANDS = [
     keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
+      closeActiveAnalysisExtension();
       const state = useViewerStore.getState();
-      // Folded for the start screen it LOOKS closed: reveal, don't flip.
-      if (liftStartFold('left')) { state.setLeftPanelCollapsed(false); return; }
-      state.setLeftPanelCollapsed(!state.leftPanelCollapsed);
+      liftStartFold('left');
+      state.showWorkspacePanel('hierarchy', 'palette');
     },
   },
   rightCommand('panel:assistant', 'assistant', 'assistant analysis ai evidence discussion report', MessageSquare),
-  rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare, true),
+  rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint BCF server connect review import export issues snapshots', MessageSquare, true),
   rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
   rightCommand('panel:idsStudio', 'idsStudio', 'ids studio author edit write information delivery specification requirements facets', ClipboardPen),
   rightCommand('panel:influx', 'influx', 'influxdb time series iot sensor telemetry monitoring digital twin experimental', BarChart3),
-  rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
+  rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep saved reports rules run results', Crosshair, true),
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
   rightCommand('panel:model', 'model', 'model inspector author defaults wall type dimensions edit workspace', PencilLine),
   rightCommand('panel:review', 'review', 'review coordination cards findings clash validation comparison bcf linked records decisions workspace', ListChecks),
   rightCommand('panel:semantic', 'semantic', 'linked records semantic sparql json rdf dbl dpp passport profile validation', Link2, true),
   rightCommand('panel:changeSets', 'changeSets', 'change set changeset edits group active export import share discard', GitBranch, true),
-  rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins, true),
+  rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate rates currency subtotal assignments', Coins, true),
   {
     id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),
     labelKey: 'commandPalette.panel.chat.label', searchLabel: 'AI Chat',
@@ -104,7 +117,7 @@ export const PANEL_SURFACE_COMMANDS = [
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: (context: SurfaceCommandContext) => {
       if (!context.activateBottomPanel) throw new Error('Cannot open chat without a panel host');
-      if (!isBottomPanelDocked(useViewerStore.getState(), 'script')) context.activateBottomPanel('script');
+      context.activateBottomPanel('script');
       useViewerStore.getState().setChatPanelVisible(true);
     },
   },
@@ -118,5 +131,5 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:appearance', 'appearance', 'image texture upload UV planar box projection surfaces', Palette, true),
   rightCommand('panel:collab', 'collab', 'collaboration session share invite live multiplayer presence room realtime sync', Users,
     true, (state) => state.collabEnabled === true),
-  rightCommand('panel:extensions', 'extensions', 'extension plugin install manage iflx', Puzzle, true),
+  rightCommand('panel:extensions', 'extensions', 'extension plugin install manage iflx permissions grants revoke audit log repair queue', Puzzle, true),
 ] as const satisfies readonly SurfaceCommandDefinition[];

@@ -59,12 +59,11 @@ let held: string[];
 let lineCalls: boolean[];
 /** The line calls before the change under test. */
 let lineMark: number;
-/**
- * What the renderer held after the overlay's layout pass in the last render
- * of a commit, before that render's passive effects: what the next frame
- * paints and picks.
- */
-let atLayout: { curves: string; line: boolean };
+/** What the renderer held after each of the overlay's layout passes, before that render's passive effects. */
+let layouts: Array<{ curves: string; line: boolean }>;
+let layoutMark: number;
+/** The first layout pass of the last commit: what the next frame paints and picks. */
+const firstLayout = () => layouts[layoutMark];
 let builds: number;
 /** A build waits on this gate when one is set. */
 let gate: Promise<void> | null;
@@ -113,6 +112,7 @@ function select(ids: readonly number[], primary = ids[ids.length - 1], modelId =
  * next assertion. (An async act would drain the whole rebuild first.)
  */
 function commit(patch: Partial<ViewerState>): void {
+  layoutMark = layouts.length;
   act(() => { flushSync(() => useViewerStore.setState(patch)); });
 }
 
@@ -158,7 +158,7 @@ function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
     recover = () => setEpoch((value) => value + 1);
     useCentrelineRendererOverlay(ref, true, epoch, lineBuilder);
     // Declared after the hook, so it runs after the hook's layout pass and before any passive effect.
-    useLayoutEffect(() => { atLayout = { curves: current() ?? '', line: lineDrawn() }; });
+    useLayoutEffect(() => { layouts.push({ curves: current() ?? '', line: lineDrawn() }); });
     return null;
   };
   render(<Overlay />);
@@ -172,7 +172,8 @@ beforeEach(() => {
   held = [];
   lineCalls = [];
   lineMark = 0;
-  atLayout = { curves: '', line: false };
+  layouts = [];
+  layoutMark = 0;
   builds = 0;
   gate = null;
   emptyBuild = false;
@@ -258,7 +259,7 @@ it('hiding an unrelated product keeps the curves; hiding the selected one clears
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE));
   lineKept();
   commit({ hiddenEntities: new Set([OFFSET + 1, OFFSET + 2]) });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'a hidden product is neither drawn nor snappable before paint');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a hidden product is neither drawn nor snappable before paint');
   await settle();
   assert.equal(current(), '');
 });
@@ -266,7 +267,7 @@ it('hiding an unrelated product keeps the curves; hiding the selected one clears
 it('a switch to another swept product drops the old curves before paint (#5778)', async () => {
   const from = await mountInstalled([1], ONE);
   commit(select([3]));
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'the old product is gone in the selection commit');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the old product is gone in the selection commit');
   await settle();
   assert.equal(current(), THREE);
   assert.ok(sinceSome(from).every((set) => !set.includes('1@')), 'no frame after the switch can snap to the old product');
@@ -275,7 +276,7 @@ it('a switch to another swept product drops the old curves before paint (#5778)'
 it('Ctrl-adding a swept product keeps the old curves, then installs both', async () => {
   const from = await mountInstalled([1], ONE);
   commit(select([1, 3]));
-  assert.deepEqual(atLayout, { curves: ONE, line: true }, 'the kept product stays drawn and snappable');
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'the kept product stays drawn and snappable');
   await settle();
   assert.ok(sinceSome(from).every((set) => set.includes(ONE)), 'the kept product stays snappable throughout');
   assert.equal(current(), `${ONE},${THREE}`, 'both products install');
@@ -287,7 +288,7 @@ it('deselecting one of two drawn products drops the shared line and every curve 
   // would leave them snappable while nothing draws them.
   await mountInstalled([1, 3], `${ONE},${THREE}`, select([1, 3], 1));
   commit(select([1]));
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'nothing is snappable without its drawn line');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'nothing is snappable without its drawn line');
   await settle();
   assert.equal(current(), ONE);
   assert.ok(lineDrawn(), 'the kept product is drawn again');
@@ -296,7 +297,7 @@ it('deselecting one of two drawn products drops the shared line and every curve 
 it('deselecting everything clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
   commit(select([]));
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'nothing selected, nothing drawn');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'nothing selected, nothing drawn');
   await settle();
   assert.equal(current(), '');
 });
@@ -304,7 +305,7 @@ it('deselecting everything clears the curves before paint', async () => {
 it('turning the overlay off clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
   commit({ centrelineOverlayEnabled: false });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'the overlay is off');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the overlay is off');
   await settle();
   assert.equal(current(), '');
 });
@@ -315,7 +316,7 @@ it('a placement change that moves the curves clears them, then installs the move
   commit({ modelPlacement: { ...modelPlacement, placements: new Map([[MODEL, {
     translation: [0, 5, 0], rotation: ZERO_ROTATION, locked: false,
   }]]) } });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'curves at the old place cannot be snapped to');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'curves at the old place cannot be snapped to');
   await settle();
   assert.notEqual(current(), '');
   assert.notEqual(current(), ONE, 'the reinstalled set is the moved one, so Live ends');
@@ -324,7 +325,7 @@ it('a placement change that moves the curves clears them, then installs the move
 it('a georeference edit clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
   commit({ georefMutations: new Map(useViewerStore.getState().georefMutations) });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'the georeference moved the source');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the georeference moved the source');
 });
 
 it('unloading the model mid-rebuild clears the curves and rejects the late result', async () => {
@@ -336,7 +337,7 @@ it('unloading the model mid-rebuild clears the curves and rejects the late resul
   await waitFor(() => builds > before, 'the rebuild is pending');
   assert.equal(current(), ONE);
   commit({ models: new Map() });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'an unloaded model cannot be snapped to');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'an unloaded model cannot be snapped to');
   gate = null;
   release();
   await settle();
@@ -392,13 +393,13 @@ it('replacing the model under the same id waits for its new swept disks', async 
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
   const before = builds;
-  commit(fixtureModels(sourceModel()));
   const from = held.length;
+  commit(fixtureModels(sourceModel()));
   assert.equal(builds, before, 'the old model\'s records are not built against the new model');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'curves of the replaced model cannot be snapped to');
   await settle();
   assert.equal(builds, before);
-  assert.equal(current(), '', 'curves of the replaced model cannot be snapped to');
-  assert.ok(since(from).every((set) => set === ''), 'the old model\'s records are not rebuilt for the new one');
+  assert.deepEqual(sinceSome(from), [''], 'nothing installs until the new model\'s swept disks load');
   loadGate = null;
   release();
   await settle();
@@ -412,7 +413,7 @@ it('a new legacy store clears the curves of the old one before paint', async () 
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
   commit(legacyStore());
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'the replaced store cannot be snapped to');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the replaced store cannot be snapped to');
   loadGate = null;
   release();
   await settle();
@@ -428,7 +429,7 @@ it('a highlight change while the selection reloads does not build the superseded
   const before = builds;
   commit({ selectedDirectrixSegment: { modelId: MODEL, expressId: 1, occurrenceIndex: 0, segmentIndex: 0 } });
   assert.equal(builds, before, 'the records answering the old query are not built');
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'a highlight re-evaluates the curves');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a highlight re-evaluates the curves');
   loadGate = null;
   release();
   await settle();
@@ -490,12 +491,12 @@ it('a swept-disk load that fails clears the kept curves', async () => {
 it('isolating or lens-hiding away the selected product clears its curves before paint', async () => {
   await mountInstalled([1], ONE);
   commit({ isolatedEntities: new Set([OFFSET + 2]) });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'an isolated-out product cannot be snapped to');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'an isolated-out product cannot be snapped to');
   commit({ isolatedEntities: null });
   await settle();
   assert.equal(current(), ONE);
   commit({ lensHiddenIds: new Set([OFFSET + 1]) });
-  assert.deepEqual(atLayout, { curves: '', line: false }, 'a lens-hidden product cannot be snapped to');
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a lens-hidden product cannot be snapped to');
 });
 
 it('unmounting the overlay clears its curves', async () => {

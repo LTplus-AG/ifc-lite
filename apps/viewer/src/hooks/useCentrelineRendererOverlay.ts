@@ -32,7 +32,6 @@ function queriedProducts(): Set<string> {
   return new Set([...grouped].flatMap(([modelId, ids]) => ids.map((expressId) => entityRefToString({ modelId, expressId }))));
 }
 
-
 const sameValues = (a: readonly unknown[], b: readonly unknown[]) => a.every((value, index) => Object.is(value, b[index]));
 
 /** Keep the optional selected-source overlay in its own renderer channel. */
@@ -74,11 +73,12 @@ export function useCentrelineRendererOverlay(
 
   // Selection and visibility can change while the previous async source still
   // owns this channel. Clear it before paint and reject that source's late upload.
-  // A selection or visibility change keeps the line and the curves of the
-  // products the query still loads, so an unchanged set never empties
-  // between frames and a resting Measure Point reading stays Live (#9086);
-  // a dropped product's line and curves still leave before paint (#5778).
-  // Anything that can move or re-evaluate the source clears it all.
+  // A selection or visibility change that keeps every drawn product leaves
+  // the line and curves in place until the rebuild replaces them, so an
+  // unchanged set never empties between frames and a resting Measure Point
+  // reading stays Live (#9086). Dropping any drawn product clears both
+  // before paint (#5778), as does anything that can move or re-evaluate the
+  // source.
   useLayoutEffect(() => {
     sourceEpoch.current++;
     setSourceSegmentScreenProbe(null);

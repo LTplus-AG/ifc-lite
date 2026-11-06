@@ -14,8 +14,8 @@ import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 import { pickMeasurePoint, pickSurfacePoint } from './measurePick.js';
-import { cancelTrailingHover } from './measurePointMode.js';
-import { isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
+import { cancelQueuedHover } from './measurePointMode.js';
+import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
 const startingPresses = new WeakSet<MouseState>();
@@ -53,13 +53,6 @@ export function pressOutlivedReset(press: object): boolean {
   return began !== undefined && began !== useViewerStore.getState().measureGestureEpoch;
 }
 
-/** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
-function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
-  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-  ctx.measureRaycastFrameRef.current = null;
-  ctx.measureRaycastPendingRef.current = false;
-}
-
 /**
  * The pointer side of a Measure gesture reset (#8786), run whenever the store's
  * `resetMeasureGesture` bumps the epoch: the queued raycast frame would set the
@@ -68,7 +61,7 @@ function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
  * with the command tool's preview, so only a Measure frame is dropped.
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
-  if (ctx.activeToolRef.current === 'measure') { cancelMeasureRaycast(ctx); cancelTrailingHover(ctx); }
+  if (ctx.activeToolRef.current === 'measure') cancelQueuedHover(ctx);
   startingPresses.delete(ctx.mouseState);
   startPresses.delete(ctx.mouseState);
   forgetDistancePress(ctx.mouseState);

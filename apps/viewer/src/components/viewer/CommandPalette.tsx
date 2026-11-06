@@ -294,6 +294,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
                     id: optionId(cmd.id, group.category),
                     index: flatIdx,
                     selected: flatIdx === selectedIndex,
+                    query,
                     onActivate: () => runCommand(cmd),
                     onHover: () => setSelectedOptionId(optionId(cmd.id, group.category)),
                   };

@@ -4,6 +4,7 @@
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
 import { useId } from 'react';
+import { MatchHighlight } from '@/components/ui/match-highlight';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
@@ -39,6 +40,8 @@ interface OptionPlacement {
   id?: string;
   index: number;
   selected: boolean;
+  /** Query highlighting uses the shared active ink. */
+  query: string;
   onActivate: () => void;
   onHover: () => void;
   categoryLabel?: string;
@@ -55,7 +58,7 @@ interface OptionChromeProps extends OptionPlacement {
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, state, shortcut, categoryLabel, id, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, state, shortcut, categoryLabel, id, index, selected, query, onActivate, onHover }: OptionChromeProps) {
   const fallbackId = useId();
   const reasonId = `${id ?? fallbackId}-reason`;
   const registered = 'commandId' in owner;
@@ -71,12 +74,12 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-disabled={disabled || undefined}
       aria-describedby={reason ? reasonId : undefined}
       className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent text-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary' : 'text-foreground hover:bg-accent/50')}
+        selected ? 'bg-active-surface text-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-active' : 'text-foreground hover:bg-accent/50')}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+      <Icon className={cn("h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
-        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1">{label}</span>
+        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1"><MatchHighlight text={label} query={query} /></span>
         {reason && <span id={reasonId} className="block text-xs text-muted-foreground">{reason}</span>}
         {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
       </span>

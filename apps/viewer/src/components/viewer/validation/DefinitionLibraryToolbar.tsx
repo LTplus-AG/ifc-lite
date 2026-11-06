@@ -67,6 +67,6 @@ export function DefinitionLibraryToolbar({ kind, onNew, onImport, onImportFile }
         downloadFile(current.xml, `${sanitizeFilename(current.document.info.title, { fallback: 'check' })}.ids`, 'application/xml');
       }}>{t('validationPanel.library.idsDownload')}</Button>}
     </div>
-    {error && <p role="alert" className="pt-1 text-xs text-red-600">{error}</p>}
+    {error && <p role="alert" className="pt-1 text-xs text-danger">{error}</p>}
   </div>;
 }

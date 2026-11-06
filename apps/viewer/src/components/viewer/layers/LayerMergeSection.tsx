@@ -146,15 +146,15 @@ function ConflictRow({
             rows={2}
             spellCheck={false}
             aria-label={t('layersPanel.merge.replacementAriaLabel', { path: conflict.path })}
-            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-2xs ${editedValid ? '' : 'border-red-500'}`}
+            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-2xs ${editedValid ? '' : 'border-danger-border'}`}
           />
           {!editedValid && (
-            <span className="text-2xs text-red-500">{t('layersPanel.merge.replacementInvalid')}</span>
+            <span className="text-2xs text-danger">{t('layersPanel.merge.replacementInvalid')}</span>
           )}
         </div>
       )}
       {isDelete && conflict.subtree && conflict.subtree.length > 0 && (
-        <p className="pt-0.5 text-2xs text-amber-600 dark:text-amber-300">
+        <p className="pt-0.5 text-2xs text-warn">
           {t('layersPanel.merge.deleteCarries', {
             count: conflict.subtree.length,
             countDisplay: String(conflict.subtree.length),
@@ -426,7 +426,7 @@ export function LayerMergeSection() {
           <div className="flex flex-col gap-1">
             <p className="text-2xs text-muted-foreground">{statusLine(t, result)}</p>
             {result.status === 'preview' && result.ancestorMatched === false && (
-              <p className="text-2xs text-amber-600 dark:text-amber-500">
+              <p className="text-2xs text-warn">
                 {t('layersPanel.merge.unrelatedBaseWarning')}
               </p>
             )}
@@ -439,9 +439,9 @@ export function LayerMergeSection() {
                   <div key={check.spec} className="flex flex-col gap-0.5">
                     <span className="flex items-center gap-1 text-2xs">
                       {check.passing ? (
-                        <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label={t('layersPanel.merge.checkPassAriaLabel')} />
+                        <CheckCircle2 className="size-3 shrink-0 text-ok" aria-label={t('layersPanel.merge.checkPassAriaLabel')} />
                       ) : (
-                        <XCircle className="size-3 shrink-0 text-red-500" aria-label={t('layersPanel.merge.checkFailAriaLabel')} />
+                        <XCircle className="size-3 shrink-0 text-danger" aria-label={t('layersPanel.merge.checkFailAriaLabel')} />
                       )}
                       <span className="truncate">{check.spec}</span>
                     </span>

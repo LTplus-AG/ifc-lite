@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { writeTestProgram, GENERATED_CONFIG } from './typecheck-tests.mjs';
 import { classifyTscOutput } from './lib/unused-locals-classify.mjs';
+import { assertCompleteTscRun, tscRunDetails } from './lib/unused-locals-run.mjs';
 import { isCI } from './lib/host-preconditions.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,8 +24,7 @@ test('viewer-embed unused-locals baseline matches the measured count (#6093)', (
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
   });
-  assert.equal(run.error, undefined, 'TypeScript must run to completion');
-  assert.equal(typeof run.status, 'number', 'TypeScript must exit normally');
+  assertCompleteTscRun(run);
   const output = `${run.stdout}${run.stderr}`;
   // A workspace package that has not been built resolves to nothing, and every
   // file importing it then fails to compile, so the count is not a count. That
@@ -35,7 +35,7 @@ test('viewer-embed unused-locals baseline matches the measured count (#6093)', (
     return;
   }
   const measured = classifyTscOutput(output);
-  assert.equal(measured.kind, 'violations', 'the count must come from complete unused-local diagnostics');
+  assert.equal(measured.kind, 'violations', `the count must come from complete unused-local diagnostics\n${tscRunDetails(run)}`);
   const baseline = JSON.parse(readFileSync(join(root, 'scripts/unused-locals-baseline.json'), 'utf8'));
   assert.equal(measured.count, baseline['apps/viewer-embed']);
 });

@@ -4,7 +4,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { getLocale, registerLocale, setLocale, t } from '@/i18n';
+import { getLocale, registerLocale, setLocale } from '@/i18n';
+import { resolve as t } from '@/i18n/registry';
 import { commandPaletteDe } from '@/i18n/locales/de/command-palette';
 import { commandPaletteRu } from '@/i18n/locales/ru/command-palette';
 import { paletteSurfaceCommands } from './surface-commands';

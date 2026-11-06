@@ -6,7 +6,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { cleanup, click, advance, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { mountDestinations, searchDestination, destinationOption, namedButton } from '@/test/palette-destinations';
@@ -29,7 +29,7 @@ test('#8947 actual IFCX refuses ion; adding STEP opens its real model/token flow
   }));
   const parsed = await parseIfcxViewerModel(bytes.buffer);
   assert.equal(parsed.schemaVersion, 'IFC5');
-  const ifcx = { ...fixtureModel('unsupported.ifcx'), ifcDataStore: parsed.dataStore,
+  const ifcx: FederatedModel = { ...fixtureModel('unsupported.ifcx'), ifcDataStore: parsed.dataStore,
     geometryResult: parsed.geometryResult, schemaVersion: parsed.schemaVersion };
   useViewerStore.setState({ ...fixtureModels(ifcx), ifcDataStore: parsed.dataStore,
     collabRole: null, mutationViews: new Map(), georefMutations: new Map() });
@@ -40,7 +40,7 @@ test('#8947 actual IFCX refuses ion; adding STEP opens its real model/token flow
   assert.ok(document.querySelector('[role="combobox"]'), 'blocked activation leaves the palette open');
   assert.equal(document.querySelector('#ion-token'), null);
 
-  const step = { ...fixtureModel('eligible.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  const step: FederatedModel = { ...fixtureModel('eligible.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
   // The active model remains IFCX: the dialog may choose another eligible federation member.
   act(() => useViewerStore.setState({ models: new Map([[ifcx.id, ifcx], [step.id, step]]) }));
   assert.notEqual(ion().getAttribute('aria-disabled'), 'true');

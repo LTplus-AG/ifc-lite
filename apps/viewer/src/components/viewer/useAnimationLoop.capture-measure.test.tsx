@@ -92,6 +92,15 @@ for (const [path, mode] of notRendering) {
       assert.equal(h.gpu.stats.submissions, submissions, 'fixture: these ticks must render nothing');
       assert.deepEqual(passes, [], `a pass read the capture's clip and ended Live (${path})`);
       restore();
+      // Nothing else asks for a frame: the loop itself retries the live frame the pass waits on.
+      h.params.snapEnabledRef.current = false; // a real change under the resting cursor (S)
+      h.step();
+      assert.ok(h.gpu.stats.submissions > submissions, `${path}: the loop stopped retrying the live frame`);
+      assert.deepEqual(passes, [true], `${path}: a Snap toggle after the capture did not end Live`);
+      passes.length = 0;
+      h.params.snapEnabledRef.current = true;
+      h.step();
+      passes.length = 0;
       assertLiveFrameResumes(h, passes, clip, path);
     } finally { warn.mock.restore(); error.mock.restore(); await h.dispose(); }
   });
@@ -146,6 +155,22 @@ for (const stage of ['encode', 'finish', 'submit'] as const) {
     } finally { warn.mock.restore(); error.mock.restore(); }
   });
 }
+
+it('a render that throws after a capture keeps its single retry, not one per frame (#9031)', async (t) => {
+  const { h, passes, clip } = await restingReading(t);
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const shot = await startCapture(h, clip);
+    assert.ok(await finishCapture(h, shot));
+    const render = h.renderer.renderWithResult;
+    let attempts = 0;
+    h.renderer.renderWithResult = () => { attempts++; throw new Error('controlled uncontained render throw'); };
+    try { for (let i = 0; i < 5; i++) h.step(); }
+    finally { h.renderer.renderWithResult = render; }
+    assert.equal(attempts, 2, 'a throwing frame retried every frame while the pass waited on a live frame');
+    assert.deepEqual(passes, [], 'a throwing frame ended Live');
+  } finally { warn.mock.restore(); }
+});
 
 it('a capture whose session is replaced keeps a resting Live reading until the loop draws again (#9031)', async (t) => {
   const { h, passes, clip } = await restingReading(t);

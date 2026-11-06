@@ -25,7 +25,7 @@ import { reprojectMeasurementsForCamera, type MeasureCameraState } from './measu
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-import { noteLiveFrameSubmitted, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
+import { noteLiveFrameSubmitted, registerViewportCapture, viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { GpuFramePacer } from './gpuFramePacer';
@@ -223,9 +223,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // rest of the session with nothing on screen to say why. Latched to one
         // warning per session — a dead device fails every frame.
         let submitted = false;
+        let threw = false;
         try {
           submitted = renderer.renderWithResult(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
         } catch (err) {
+          threw = true;
           if (!renderErrorLogged) {
             renderErrorLogged = true;
             offerErrorReport({ errorCode: 'renderer_frame_failed' });
@@ -263,6 +265,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         if (submitted) {
           framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
           noteLiveFrameSubmitted(renderer); // the measure pass below may compare picks again (#9031)
+        } else if (!threw && viewportPicksAwaitLiveFrame(renderer)) {
+          // The pickers still mirror a capture, and the measure pass waits on
+          // a live frame: keep asking until one reaches the GPU (#9031). A
+          // throw keeps its single retry above.
+          renderer.requestRender();
         }
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section

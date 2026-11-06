@@ -953,3 +953,31 @@ renderer visibility inputs from the extension journey's actual raster witness.
 The owning final-flow TS2339 failure is corrected by removing an unreachable
 error branch after the successful parse assertion; the assertion is retained.
 All corrected/new runtime results are pending.
+
+
+### Original receipt reconciliation and R4 oracle corrections
+
+Foundation 723039d completed its original fleet request with root typecheck
+134/134 plus 4,522 test-source census, and focused 96/96, zero skips, including
+the German command-palette catalogue. Workflow source 701972e completed root
+typecheck and all seven Assistant/Semantic/Script child cases; their test files
+are byte-identical at ef72c5c. Exact log lines/hashes are retained in evidence.
+Neither result qualifies complete access or later new tests.
+
+Original ac6ce05 focused execution passed 480/482, zero skips/cancellations;
+full shards did not run. Its two failures were native-export witnesses querying
+the static identity attribute for a runtime-owned exporter. The owning #9012
+correction uses runtime source and owner-qualified runtime command ID, retaining
+all actual QuickJS/query/publication assertions. This propagates to descendants.
+The raw receipt reports sourceUnchanged=false: post-run inspection found only
+the protocol's generated .palette-access-validation logs, with unchanged commit,
+tree, toolchain and no tracked diff. Preserve that qualification explicitly;
+new runs ignore only this generated log directory and retain compact evidence.
+
+Fresh R4 Astra review found the new browser setup must reselect after Set
+collection consumes selection. The corrected test asserts that contract and
+reselects the same parsed wall before Hide. It still reselects after Hide and
+checks exact preservation after reset. No production defect was identified.
+Corrected runtime and 27/27 GPU acceptance remain pending. Original ef72c5c
+has reached passing root typecheck (4,563 test sources) and build 58/58; its
+focused/full outcome is still pending and cannot certify the corrected tests.

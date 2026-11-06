@@ -381,6 +381,9 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 # IFC STEP re-export with schema conversion
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 
+# GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
+ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -405,6 +408,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
 
 ---

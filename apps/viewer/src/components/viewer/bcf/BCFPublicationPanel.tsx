@@ -134,7 +134,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         </Button>
       </div>
       {preflight && (
-        <output className={`block ${preflight.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+        <output className={`block ${preflight.ok ? 'text-ok' : 'text-danger'}`}>
           {preflight.ok ? t('bcfDrafts.preflight.ok', { warnings: preflight.warnings.filter(warning => warning.kind === 'unverified').length })
             // The count covers only the problems listed: a type the picker below resolves is not one.
             : listedIssues.length > 0 ? t('bcfDrafts.preflight.refused', { count: listedIssues.length }) : t('bcfDrafts.preflight.chooseType')}
@@ -146,7 +146,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         </output>
       )}
       {unknownTypes.map(({ type, allowed }) => (
-        <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-amber-500/10 px-2 py-1">
+        <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
           <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
             onChange={event => setTopicTypes(current => ({ ...current, [type]: event.target.value }))}>
@@ -157,9 +157,9 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       {report && <output className="block">{t('bcfDrafts.publish.result', { sent: report.sent, done: report.receipts.length, failed: report.failed.length,
         uncertain: report.uncertain.length, waiting: report.waiting.length + report.blocked.length })}</output>}
       {counts && (counts.uncertain > 0 || counts.blocked > 0) && (
-        <div role="alert" className="rounded bg-amber-500/10 px-2 py-1 text-amber-800 dark:text-amber-300">{t('bcfDrafts.publish.uncertainGuidance')}</div>
+        <div role="alert" className="rounded bg-warn-surface px-2 py-1 text-warn">{t('bcfDrafts.publish.uncertainGuidance')}</div>
       )}
-      {error && <p role="alert" className="text-red-700 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {record && (
         <div>
           <p className="text-muted-foreground">{t('bcfDrafts.publish.queue', { done: counts?.done ?? 0, total: record.entries.length })}</p>

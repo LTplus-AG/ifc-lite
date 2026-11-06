@@ -4,6 +4,7 @@
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
 import { useId } from 'react';
+import { MatchHighlight } from '@/components/ui/match-highlight';
 import { LockKeyhole } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,8 @@ interface OptionPlacement {
   id?: string;
   index: number;
   selected: boolean;
+  /** Query highlighting uses the shared active ink. */
+  query: string;
   onActivate: () => void;
   onHover: () => void;
   categoryLabel?: string;
@@ -56,7 +59,7 @@ interface OptionChromeProps extends OptionPlacement {
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, state, shortcut, categoryLabel, id, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, state, shortcut, categoryLabel, id, index, selected, query, onActivate, onHover }: OptionChromeProps) {
   const fallbackId = useId();
   const reasonId = `${id ?? fallbackId}-reason`;
   const registered = 'commandId' in owner;
@@ -72,14 +75,14 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-disabled={disabled || undefined}
       aria-describedby={reason ? reasonId : undefined}
       className={cn('relative flex items-start gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full' : 'hover:bg-accent/50',
-        disabled ? 'text-muted-foreground cursor-not-allowed before:bg-muted-foreground' : 'text-foreground before:bg-primary')}
+        selected ? 'bg-active-surface before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full' : 'hover:bg-accent/50',
+        disabled ? 'text-muted-foreground cursor-not-allowed before:bg-muted-foreground' : 'text-foreground before:bg-active')}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
-      <Icon className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-3">
-          <span data-command-label className="min-w-0 flex-1 truncate">{label}</span>
+          <span data-command-label className="min-w-0 flex-1 truncate"><MatchHighlight text={label} query={query} /></span>
           <span className="flex max-w-[55%] shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground">
             {categoryLabel && <span className="truncate">{categoryLabel}</span>}
             {state && <span className="shrink-0">{state}</span>}

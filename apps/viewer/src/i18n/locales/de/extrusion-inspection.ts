@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const extrusionInspectionDe = {
+  'properties.extrusion.heading': 'Erfasste Extrusionsquellen',
+  'properties.extrusion.sourceNote': 'Exakte IFC-Profil- und Extrusionsparameter. Tiefe, Radius und Umfang verwenden Meter oder Ihre gewählte Einheit; Profilkoordinaten und Verschiebungen der Koordinatensysteme bleiben in Metern. Profile sind Quellgeometrie vor Platzierung, Öffnungen und anderen Schnitten.',
+  'properties.extrusion.loading': 'Ausgewählte Extrusionsquellen werden gelesen …',
+  'properties.extrusion.solid': 'IfcExtrudedAreaSolid #{id}',
+  'properties.extrusion.status': 'Status',
+  'properties.extrusion.complete': 'Vollständig',
+  'properties.extrusion.unsupported': 'Nicht unterstützt',
+  'properties.extrusion.missingSource': 'Für dieses Vorkommen ist keine Quelldefinition verfügbar.',
+  'properties.extrusion.sourceModified': 'Quelle durch CSG verändert',
+  'properties.extrusion.modifiedHint': 'Das erfasste Profil kann vom sichtbaren Ergebnis abweichen.',
+  'properties.extrusion.yes': 'Ja',
+  'properties.extrusion.no': 'Nein',
+  'properties.extrusion.none': 'Keine',
+  'properties.extrusion.mappingPath': 'Mapping-Pfad',
+  'properties.extrusion.depth': 'Tiefe',
+  'properties.extrusion.direction': 'ExtrudedDirection-Verhältnisse',
+  'properties.extrusion.position': 'Position des Körpers',
+  'properties.extrusion.profile': 'SweptArea',
+  'properties.extrusion.profileType': 'ProfileType',
+  'properties.extrusion.profilePosition': 'Position des Profils',
+  'properties.extrusion.placement': 'Quellplatzierung',
+  'properties.extrusion.placementNote': 'Profil- und Körperverschiebungen werden von IFC-Dateieinheiten in Meter umgerechnet. Die Weltverschiebung ist in absoluten IFC-Metern mit Z nach oben angegeben; Verschiebungen des Render-Ursprungs im Viewer werden nicht angewendet. Achsvektoren enthalten die Mapping-Skalierung.',
+  'properties.extrusion.profileFrame': 'Koordinatensystem der Profilposition',
+  'properties.extrusion.solidFrame': 'Koordinatensystem der Körperposition',
+  'properties.extrusion.worldFrame': 'Welt aus Quellkoordinatensystem',
+  'properties.extrusion.translation': 'Verschiebung',
+  'properties.extrusion.xBasis': 'X-Basisspalte',
+  'properties.extrusion.yBasis': 'Y-Basisspalte',
+  'properties.extrusion.zBasis': 'Z-Basisspalte',
+  'properties.extrusion.center': 'Mittelpunkt',
+  'properties.extrusion.radius': 'Radius',
+  'properties.extrusion.normal': 'Normale',
+  'properties.extrusion.xAxis': 'x-Achse',
+  'properties.extrusion.loop': 'Schleife {index}',
+  'properties.extrusion.segments': 'Segmente',
+  'properties.extrusion.perimeter': 'Umfang',
+  'properties.extrusion.signedArea': 'Vorzeichenbehaftete Fläche',
+} satisfies Catalogue;

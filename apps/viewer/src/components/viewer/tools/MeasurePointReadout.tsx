@@ -58,6 +58,7 @@ import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
 import { formatDistance, formatSignedTriple } from './formatDistance';
 import { projectedEnh, useProjectedLatLon } from './measure-modes/geo-readout';
 import { useMeasureLivePoint } from './measure-modes/useMeasureLivePoint';
+import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
 
 /** One labelled coordinate row. */
 function CoordRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -119,6 +120,7 @@ export function MeasurePointReadout() {
         <span className="flex items-center gap-1 font-mono text-2xs uppercase tracking-wider text-foreground">
           <Crosshair className="h-3 w-3" />
           {tracked?.live ? t('measure.point.live') : t('measure.point.last')}
+          {tracked && !tracked.live && <StaleMeasurementBadge id={tracked.id} />}
         </span>
         <div className="flex items-center gap-1">
           <IconButton

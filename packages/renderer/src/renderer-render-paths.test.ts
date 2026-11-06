@@ -949,7 +949,11 @@ describe('residency records a batch drawn only as a partial sub-batch (#9034)', 
         // red is never drawn: the host pass still demotes it.
         assert.strictEqual(scene.getMeshDataPieces(3), undefined, 'undrawn bucket is still demoted cold');
         assert.ok(scene['coldBuckets'].has(red.colorKey));
-        assert.strictEqual(coldLoads, 0, 'no cold restore was requested for on-screen geometry');
+        // Drain the restore queue the draw loop filled: grey comes back from its
+        // warm CPU pieces; had it gone cold this would hit the provider instead.
+        scene.processResidencyRestores(h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, Infinity);
+        assert.strictEqual(coldLoads, 0, 'on-screen geometry never needed a cold restore');
+        assert.notStrictEqual(scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))?.gpuResident, false);
     });
 });
 

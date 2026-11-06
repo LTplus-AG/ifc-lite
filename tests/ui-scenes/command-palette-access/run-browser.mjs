@@ -220,7 +220,10 @@ async function main() {
       [path, sha(await readFile(join(HERE, path.split('/').at(-1))))])));
     const dirty = [...git('diff', 'HEAD', '--name-only').split('\n'),
       ...git('ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean);
-    if (dirty.some(path => !allowed.has(path))) throw new Error('Unrelated dirty source: rebuild committed candidate');
+    // The admitted protocol owns these generated receipts, not application source.
+    const validationOutput = path => /^\.palette-access-validation\/(typecheck\.log|build\.log|focused\.log|focused-files\.txt|viewer-[0-3]\.log)$/.test(path);
+    manifest.validationOutputs = dirty.filter(validationOutput);
+    if (dirty.some(path => !allowed.has(path) && !validationOutput(path))) throw new Error('Unrelated dirty source: rebuild committed candidate');
     if (manifest.source.sha !== manifest.expectedSource) throw new Error('Expected source SHA differs from HEAD');
     const dist = await realpath(resolve(opts.dist));
     const indexHash = sha(await readFile(join(dist, 'index.html')));

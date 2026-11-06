@@ -249,3 +249,8 @@ phase while full tests continue, without copying new source into an active job.
 The helper directory still needs access to this toolchain's installed Playwright;
 use the registered workspace dependency, never install a second version ad hoc.
 The generated Playwright preview explicitly uses the checkout as its cwd.
+
+The active root protocol writes its known `.palette-access-validation` log files.
+The runner records that exact finite output set separately from dirty source;
+unrelated untracked or modified source still refuses execution. These logs are
+not interpreted as a pass merely because their filenames exist.

@@ -34,7 +34,8 @@ function harness(sectionBinding?: GPUBindGroup) {
     fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'rgba8unorm' }] },
     depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' } });
   const begin = (orthographic = true) => visibility.begin(encoder, { colorAttachments: [] }, orthographic, 64, 64);
-  return { visibility, base, begin, stats, resolve, reject };
+  const resume = () => visibility.resume(encoder, { colorAttachments: [] });
+  return { visibility, base, begin, resume, stats, resolve, reject };
 }
 
 test('#6729 pending async validation defers the frame without an unconstrained draw', async () => {
@@ -105,5 +106,25 @@ test('#9060 every draw has group 2 bound: padding in perspective and depth, visi
     ortho.setPipeline({} as GPURenderPipeline); ortho.drawIndexed(3); ortho.end();
     assert.deepEqual(h.stats.group2AtDraw, ['empty-padding', 'visibility', 'empty-padding'],
       'geometric depth keeps the base layout; a non-variant draw after a variant gets the padding back');
+  } finally { h.visibility.destroy(); }
+});
+
+test('#9065 review: a replayed padding bind after the pipeline cannot hide the visibility group from a resumed draw', async () => {
+  const h = harness({} as GPUBindGroup);
+  try {
+    h.resolve(); await h.visibility.prepare();
+    h.begin().end();
+    h.stats.group2AtDraw.length = 0;
+    const pass = h.resume();
+    // The deferred transparent instanced draw records exactly this order:
+    // pipeline, then bindSectionExclusions(pass, device, 2), then the draw.
+    pass.setPipeline(h.base);
+    pass.setBindGroup(2, { label: 'empty-padding' } as unknown as GPUBindGroup);
+    pass.drawIndexed(3);
+    pass.setPipeline({} as GPURenderPipeline);
+    pass.drawIndexed(3);
+    pass.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['visibility', 'empty-padding'],
+      'a variant draws against the geometric depth; a non-variant draw gets the padding');
   } finally { h.visibility.destroy(); }
 });

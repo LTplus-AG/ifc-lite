@@ -14,7 +14,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { it, mock } from 'node:test';
+import { it, mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { captureLifecycle } from '@/test/capture-lifecycle';
 import { useViewerStore } from '@/store';
@@ -24,13 +24,14 @@ import { GPU_FRAMES_IN_FLIGHT, GPU_FRAME_STALE_MS } from './gpuFramePacer.js';
 type Lifecycle = Awaited<ReturnType<typeof captureLifecycle>>;
 
 /** The loop with the Measure tool open over a cut, after its pass has run: a resting cursor's Live reading holds from here. */
-async function restingReading() {
+async function restingReading(t: TestContext) {
   /** One entry per measurement pass that ran: did it count the view as moved (which ends Live)? */
   const passes: boolean[] = [];
   const h = await captureLifecycle(1, {
     hasPendingMeasurements: () => true,
     updateMeasurementScreenCoords: (_project, viewMoved = true) => { passes.push(viewMoved); },
   });
+  t.after(() => h.dispose()); // also when a fixture assertion below throws (dispose is idempotent)
   h.params.activeToolRef.current = 'measure';
   h.params.sectionPlaneRef.current = { ...h.params.sectionPlaneRef.current, axis: 'down', position: 50, enabled: true, flipped: false };
   useViewerStore.setState(state => ({ sceneState: { ...state.sceneState, section: { ...state.sceneState.section, visible: true } } }));
@@ -78,8 +79,8 @@ const notRendering = [
 ] as const;
 
 for (const [path, mode] of notRendering) {
-  it(`a tick after a capture that renders nothing keeps a resting Live reading: ${path} (#9031)`, async () => {
-    const { h, passes, clip } = await restingReading();
+  it(`a tick after a capture that renders nothing keeps a resting Live reading: ${path} (#9031)`, async (t) => {
+    const { h, passes, clip } = await restingReading(t);
     const warn = mock.method(console, 'warn', () => {});
     const error = mock.method(console, 'error', () => {});
     try {
@@ -96,8 +97,14 @@ for (const [path, mode] of notRendering) {
   });
 }
 
-it('a tick after a capture that the GPU backlog holds back keeps a resting Live reading (#9031)', async () => {
-  const { h, passes, clip } = await restingReading();
+it('a tick after a capture that the GPU backlog holds back keeps a resting Live reading (#9031)', async (t) => {
+  // The frame pacer reads performance.now(): hold it still, so only the test decides when frames go stale.
+  const realNow = performance.now.bind(performance);
+  const clockStart = realNow();
+  let elapsed = 0;
+  performance.now = () => clockStart + elapsed;
+  t.after(() => { performance.now = realNow; });
+  const { h, passes, clip } = await restingReading(t);
   try {
     // GPU_FRAMES_IN_FLIGHT live frames whose completion never arrives, then
     // a queue that completes again, so the capture's own wait resolves.
@@ -112,32 +119,36 @@ it('a tick after a capture that the GPU backlog holds back keeps a resting Live 
     assert.equal(h.gpu.stats.submissions, submissions, 'fixture: the frame pacer must hold these frames back');
     assert.deepEqual(passes, [], 'a backlogged tick read the capture\'s clip and ended Live');
     // The held-back frames go stale, so the pacer lets the loop draw again.
-    const now = performance.now.bind(performance);
-    performance.now = () => now() + GPU_FRAME_STALE_MS + 1;
-    try { assertLiveFrameResumes(h, passes, clip, 'GPU backlog'); }
-    finally { performance.now = now; }
+    elapsed += GPU_FRAME_STALE_MS + 1;
+    assertLiveFrameResumes(h, passes, clip, 'GPU backlog');
   } finally { await h.dispose(); }
 });
 
-it('a capture whose own frame is refused asks the loop to draw, and keeps a resting Live reading (#9031)', async () => {
-  const { h, passes, clip } = await restingReading();
-  const warn = mock.method(console, 'warn', () => {});
-  try {
-    const restore = h.gpu.refuse('texture');
-    const shot = captureViewportFrame(h.renderer, { options: { sectionPlane: undefined }, read: canvas => canvas.toDataURL() });
-    await h.flush();
-    assert.equal(await shot, null, 'fixture: the capture frame must be refused');
-    assert.equal(viewportCaptureOwnsFrame(h.renderer), false);
-    assert.equal(h.renderer.peekRenderRequest(), true, 'the refused capture asked for no frame');
-    h.step(); // the loop's frame is refused too
-    assert.deepEqual(passes, [], 'a tick after a refused capture ended Live');
-    restore();
-    assertLiveFrameResumes(h, passes, clip, 'refused capture');
-  } finally { warn.mock.restore(); await h.dispose(); }
-});
+for (const stage of ['encode', 'finish', 'submit'] as const) {
+  it(`a capture frame refused at ${stage}, after it noted its clip, keeps a resting Live reading (#9031)`, async (t) => {
+    const { h, passes, clip } = await restingReading(t);
+    const warn = mock.method(console, 'warn', () => {});
+    const error = mock.method(console, 'error', () => {});
+    try {
+      let restore = h.gpu.refuse(stage);
+      const shot = captureViewportFrame(h.renderer, { options: { sectionPlane: undefined }, read: canvas => canvas.toDataURL() });
+      await h.flush();
+      assert.equal(await shot, null, 'fixture: the capture frame must be refused');
+      assert.notEqual(h.renderer.getPickClipRevision(), clip, 'fixture: the refused frame must still give the pickers its clip');
+      assert.equal(viewportCaptureOwnsFrame(h.renderer), false);
+      assert.equal(h.renderer.peekRenderRequest(), true, 'the refused capture asked for no frame');
+      restore();
+      restore = h.gpu.refuse('texture');
+      h.step(); h.step(); // the loop's next frames render nothing
+      assert.deepEqual(passes, [], `a tick after a capture refused at ${stage} ended Live`);
+      restore();
+      assertLiveFrameResumes(h, passes, clip, `refused at ${stage}`);
+    } finally { warn.mock.restore(); error.mock.restore(); }
+  });
+}
 
-it('a capture whose session is replaced keeps a resting Live reading until the loop draws again (#9031)', async () => {
-  const { h, passes, clip } = await restingReading();
+it('a capture whose session is replaced keeps a resting Live reading until the loop draws again (#9031)', async (t) => {
+  const { h, passes, clip } = await restingReading(t);
   let unregister = () => {};
   try {
     const shot = await startCapture(h, clip);

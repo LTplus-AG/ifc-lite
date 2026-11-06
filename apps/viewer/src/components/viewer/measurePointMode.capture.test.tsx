@@ -43,10 +43,13 @@ afterEach(() => {
 /** The mounted canvas in Point mode, its renderer driven by a capture the way the real one is. */
 function capturing(t: TestContext) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
-  const frames: FrameRequestCallback[] = [];
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
   const raf = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => frames.push(cb)) as typeof requestAnimationFrame;
-  t.after(() => { globalThis.requestAnimationFrame = raf; });
+  const caf = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { frames.set(++nextFrame, cb); return nextFrame; }) as typeof requestAnimationFrame;
+  globalThis.cancelAnimationFrame = ((id: number) => { frames.delete(id); }) as typeof cancelAnimationFrame;
+  t.after(() => { globalThis.requestAnimationFrame = raf; globalThis.cancelAnimationFrame = caf; });
   const updateMeasurementScreenCoords = useViewerStore.getState().updateMeasurementScreenCoords;
   const ui = mountMouseControls({
     activeToolRef: { current: 'measure' }, snapEnabledRef: { current: true }, HOVER_SNAP_THROTTLE_MS: 100,
@@ -83,7 +86,9 @@ function capturing(t: TestContext) {
     renderRequests: () => renderRequests,
     move: (x: number) => act(() => { ui.canvas.dispatchEvent(mousePointer('pointermove', 0, x, 40, { buttons: 0 })); }),
     leave: () => act(() => { ui.canvas.dispatchEvent(new MouseEvent('mouseleave')); }),
-    runFrames: () => act(() => { for (const cb of frames.splice(0)) cb(0); }),
+    runFrames: () => act(() => {
+      for (const [id, cb] of [...frames]) if (frames.delete(id)) cb(0);
+    }),
     tick: (ms: number) => act(() => { t.mock.timers.tick(ms); }),
     /** The live loop's frame: it draws the live clip again, then runs its measurement pass. */
     liveFrame: () => {
@@ -119,12 +124,12 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     const { shot } = await h.capture();
     const picks = h.picks();
     h.tick(90); // the trailing pick fires while the capture holds the frame
-    const requests = h.renderRequests();
     await h.present(shot); // its hover frame runs with the capture frame's presentation
     assert.equal(h.picks(), picks, 'a hover picked through the capture\'s camera and clip');
-    assert.ok(h.renderRequests() > requests, 'a held-back hover asks for the frame it waits on');
+    const requests = h.renderRequests(); // after the capture's own release request
     h.tick(100); h.runFrames(); // the capture is done, but the pickers still mirror its clip
     assert.equal(h.picks(), picks, 'a hover picked through the capture\'s clip before the live frame');
+    assert.ok(h.renderRequests() > requests, 'a held-back hover asks for the frame it waits on');
     h.liveFrame();
     h.tick(100); h.runFrames();
     assert.equal(h.picks(), picks + 1, 'the held-back hover never read the resting cursor');

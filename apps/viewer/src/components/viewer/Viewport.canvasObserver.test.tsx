@@ -31,6 +31,7 @@ let renderer: Renderer | null = null;
 /** Every controlled GPU installed, newest last: the renderer effect may run more than once. */
 let gpus: Array<ReturnType<typeof installCaptureGpu>> = [];
 const restore: Array<() => void> = [];
+let initialState: ReturnType<typeof useViewerStore.getState>;
 
 function swap<T extends object, K extends keyof T>(target: T, key: K, value: T[K]): void {
   const saved = Object.getOwnPropertyDescriptor(target, key);
@@ -65,6 +66,7 @@ beforeEach(() => {
     state.pipeline = new Proxy(pipeline, { get: (target, name, receiver) =>
       typeof name === 'string' && name.endsWith('Uniform') ? { update: () => {} } : Reflect.get(target, name, receiver) });
   });
+  initialState = useViewerStore.getState();
   useViewerStore.setState({ activeTool: 'measure', measureMode: 'point', measurePointLive: null, measurePointLast: null });
 });
 
@@ -72,6 +74,7 @@ afterEach(() => {
   cleanup();
   for (const gpu of gpus.reverse()) gpu.dispose();
   for (const undo of restore.splice(0).reverse()) undo();
+  useViewerStore.setState(initialState, true);
 });
 
 function step(): void {

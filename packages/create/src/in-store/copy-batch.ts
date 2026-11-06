@@ -30,12 +30,12 @@ export function copySourcesInStore(ctx: CopyContext, ids: readonly number[], cop
   if (!Number.isSafeInteger(copyCount) || copyCount < 1 || kept.length * copyCount > COPY_BATCH_LIMIT) return { refusal: `A copy batch may contain at most ${COPY_BATCH_LIMIT} root copies` };
   let productWork = 0;
   for (const id of kept) {
-    const refusal = copyRefusal(ctx, id);
-    if (refusal) return { refusal };
     try {
+      const refusal = copyRefusal(ctx, id);
+      if (refusal) return { refusal };
       productWork += copiedProductWork(ctx, id);
       if (productWork * copyCount > COPY_PRODUCT_WORK_LIMIT) return { refusal: `Copy carried products exceed ${COPY_PRODUCT_WORK_LIMIT} product writes` };
-      if (!productStoreyOrigin(ctx, id)) return { refusal: `#${id} has no placement to copy from` };
+      if (!productStoreyOrigin(ctx, id)) return { refusal: 'The selected element has no placement to copy from' };
     } catch (error) {
       return { refusal: error instanceof Error ? error.message : String(error) };
     }

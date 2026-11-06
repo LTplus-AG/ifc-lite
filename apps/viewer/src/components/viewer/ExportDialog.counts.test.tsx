@@ -19,7 +19,6 @@ import { toast } from '@/components/ui/toast';
 import { render, cleanup, click, advance } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { clearDownloads, downloadedNames } from '@/test/download-capture';
-import { stepExportSummary } from '@/lib/export/step-export-summary';
 import { ExportDialog } from './ExportDialog.js';
 
 const initialState = useViewerStore.getState();
@@ -71,33 +70,47 @@ async function seedWithAuthoredWalls(): Promise<number> {
   return view.getModifiedEntityCount();
 }
 
-it('the toast after exporting authored elements repeats the count the dialog showed', async () => {
-  const pending = await seedWithAuthoredWalls();
-  assert.ok(pending > 2, 'two walls and their helper entities are pending');
+/** Open the dialog, flip the named switches, export, and return the toast. */
+async function exportThroughDialog(switches: readonly string[] = []): Promise<string> {
   const success = mock.method(toast, 'success', () => undefined);
-
   const ui = render(<ExportDialog surface="ribbon" />);
   const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
   assert.ok(trigger);
   click(trigger);
   await advance(10);
-  assert.match(document.body.textContent ?? '', new RegExp(`${pending} entities have been modified`));
-
+  for (const name of switches) {
+    const label = [...document.querySelectorAll('label')].find((el) => el.textContent?.trim() === name);
+    let row = label?.parentElement ?? null;
+    while (row && !row.querySelector('button[role="switch"]')) row = row.parentElement;
+    const toggle = row?.querySelector('button[role="switch"]');
+    assert.ok(toggle, `the "${name}" switch`);
+    click(toggle);
+    await advance(10);
+  }
   const run = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Export');
   assert.ok(run);
   click(run);
   for (let i = 0; i < 20 && success.mock.callCount() === 0; i++) await advance(50);
-
   assert.equal(downloadedNames().length, 1);
-  const message = String(success.mock.calls[0]?.arguments[0]);
+  return String(success.mock.calls[0]?.arguments[0]);
+}
+
+it('the toast after exporting authored elements repeats the count the dialog showed', async () => {
+  const pending = await seedWithAuthoredWalls();
+  assert.ok(pending > 2, 'two walls and their helper entities are pending');
+  const message = await exportThroughDialog();
+  assert.match(document.body.textContent ?? '', new RegExp(`${pending} entities have been modified`));
   assert.match(message, new RegExp(`\\(${pending} modified\\)$`));
   const written = Number(/^Exported (\d+) entities/.exec(message)?.[1]);
   assert.ok(written > pending, 'the file holds the source entities as well');
 });
 
-it('claims no change an export did not apply or may not have written', () => {
-  const base = { entityCount: 431, pendingChanges: 399, applyMutations: true, visibleOnly: false };
-  assert.equal(stepExportSummary(base), 'Exported 431 entities (399 modified)');
-  assert.equal(stepExportSummary({ ...base, applyMutations: false }), 'Exported 431 entities (0 modified)');
-  assert.equal(stepExportSummary({ ...base, visibleOnly: true }), 'Exported 431 entities');
+it('names no count for a visible-only export, which writes an unknown part of the changes', async () => {
+  await seedWithAuthoredWalls();
+  assert.match(await exportThroughDialog(['Export Visible Only']), /^Exported \d+ entities$/);
+});
+
+it('reports 0 modified when the export does not apply the changes', async () => {
+  await seedWithAuthoredWalls();
+  assert.match(await exportThroughDialog(['Apply Property Changes']), /^Exported \d+ entities \(0 modified\)$/);
 });

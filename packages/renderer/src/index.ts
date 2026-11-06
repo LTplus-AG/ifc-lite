@@ -1924,7 +1924,7 @@ export class Renderer {
                     max: [...options.clipBox.max] as [number, number, number],
                 }
                 : null;
-            this._pickClipRevision.note(this.activePickClip());
+            this._pickClipRevision.note(this.activePickClip(), options.restoreEvictedForCapture === true); // a capture's clip lasts one frame (#9002)
 
             // Meshes this camera's RTE frame cannot represent (#6128). Nothing
             // culls individual meshes before this point, so a far-off mesh (a
@@ -2726,7 +2726,7 @@ export class Renderer {
                     // paints straight over it. That is routine since #4129 — an
                     // X-Rayed batch emits a faded group AND a solid one.
                     const transparentSubBatches: typeof allBatchedMeshes = [];
-                    for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
+                    for (const { sourceBatch, sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
                             sourceBatchKey,
@@ -2738,6 +2738,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
+                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2758,8 +2759,7 @@ export class Renderer {
                             // full-batch path above.
                             usePipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
-                            // Render the sub-batch as a single draw call
-                            renderBatch(subBatch, true);
+                            renderBatch(subBatch, true); // one draw call for the whole subset
                         }
                     }
                     if (transparentSubBatches.length > 0) holdGlass(true);
@@ -3208,6 +3208,7 @@ export class Renderer {
 
     /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
     getPickClipRevision(): number { return this._pickClipRevision.revision; }
+    /** Bumped when the geometry a pick can hit changes: an edit or its undo, a move, a stream (#8998). */ getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision(); }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
@@ -3223,8 +3224,7 @@ export class Renderer {
     }
 
     /**
-     * Raycast with magnetic edge snapping behavior
-     * This provides the "stick and slide along edges" experience
+     * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.

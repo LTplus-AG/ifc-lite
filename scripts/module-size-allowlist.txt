@@ -102,7 +102,7 @@
    742 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    893 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1519 apps/viewer/src/components/viewer/Viewport.tsx
+  1507 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -313,7 +313,7 @@
   1165 scripts/lib/vitest-timeout-audit.mjs
    691 scripts/review/build-context-pack.mjs
    677 scripts/review/build-review-input.mjs
-   559 scripts/review/run-reviewer.mjs
+   531 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
   2095 scripts/test-wasm-contract.mjs

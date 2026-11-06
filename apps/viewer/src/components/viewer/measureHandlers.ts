@@ -15,7 +15,7 @@ import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import { updateSnapViz } from './measurePick.js';
+import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 
 /**
@@ -106,10 +106,6 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
 
       const raycastStart = performance.now();
 
-      // When using orthogonal constraint (shift held), use simpler raycasting
-      // since the final position will be projected onto an axis anyway
-      const snapOn = ctx.snapEnabledRef.current && !useOrthogonalConstraint;
-
       // If last raycast was slow, reduce complexity to prevent UI freezes
       const wasSlowLastTime = ctx.lastMeasureRaycastDurationRef.current > ctx.SLOW_RAYCAST_THRESHOLD_MS;
       const reduceComplexity = wasSlowLastTime && !useOrthogonalConstraint;
@@ -126,24 +122,8 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       }, {
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
-        // Reduce snap complexity when using orthogonal constraint or when slow
-        snapOptions: snapOn ? {
-          snapToVertices: !reduceComplexity, // Skip vertex snapping when slow
-          snapToEdges: true,
-          snapToFaces: true,
-          screenSnapRadius: reduceComplexity ? 40 : 60, // Smaller radius when slow
-        } : useOrthogonalConstraint ? {
-          // In orthogonal mode, snap to edges and vertices only (no faces)
-          snapToVertices: true,
-          snapToEdges: true,
-          snapToFaces: false,
-          screenSnapRadius: 40,
-        } : {
-          snapToVertices: false,
-          snapToEdges: false,
-          snapToFaces: false,
-          screenSnapRadius: 0,
-        },
+        // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
+        snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced: reduceComplexity }),
       });
 
       // Track raycast duration for adaptive throttling
@@ -269,12 +249,7 @@ export function handleMeasureHover(
       }, {
         hiddenIds: ctx.hiddenEntitiesRef.current,
         isolatedIds: ctx.isolatedEntitiesRef.current,
-        snapOptions: {
-          snapToVertices: true,
-          snapToEdges: true,
-          snapToFaces: true,
-          screenSnapRadius: 40, // Good radius for hover snap detection
-        },
+        snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
       });
 
       // Update snap target for visual feedback
@@ -341,17 +316,7 @@ export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: 
   }, {
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: ctx.snapEnabledRef.current ? {
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: true,
-      screenSnapRadius: 60,
-    } : {
-      snapToVertices: false,
-      snapToEdges: false,
-      snapToFaces: false,
-      screenSnapRadius: 0,
-    },
+    snapOptions: measureSnapOptions(ctx),
   });
 
   if (!result.intersection && !result.snapTarget) return null;

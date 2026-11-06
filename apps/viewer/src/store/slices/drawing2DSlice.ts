@@ -162,9 +162,11 @@ export interface Drawing2DState {
      * Construction projection (issue #979): project geometry beyond the cut
      * as reference lines — thin solid for the visible floor side, dashed for
      * overhead elements (beams, roofs, eaves). Cardinal Down, Front and Side sections.
-     * Off by default; the section view stays cut-only until enabled.
+     * `null` until the user chooses: then it follows the cut, on for a plan and
+     * off for a section (#8802). `true`/`false` is an explicit choice that holds
+     * on every cut. Resolve it with `constructionProjectionEnabled`.
      */
-    showConstructionProjection: boolean;
+    showConstructionProjection: boolean | null;
     /** Manual background depth in metres; null selects automatic bands (#6615). */
     constructionProjectionDepth: number | null;
     /**
@@ -376,7 +378,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
   showIfcAnnotations: true, // Mirror the 3D Class Visibility default
   constructionProjectionDepth: null,
-  showConstructionProjection: false, // Optional reference projection (issue #979), off by default
+  showConstructionProjection: null, // Reference projection (issue #979): follows the cut, on for plans (#8802)
   showScanSection: true, // Scan overlay (issue #1805) — on by default, no-op without a loaded point cloud
   scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
   scanSectionOpacity: 0.9,

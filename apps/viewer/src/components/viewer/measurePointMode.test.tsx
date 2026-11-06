@@ -12,9 +12,10 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useRef } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { SnapType } from '@ifc-lite/renderer';
+import { Renderer, SnapType, type RenderPipeline } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
 import { cleanup, click, press, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
@@ -30,6 +31,8 @@ import { handleMeasureTap } from './touchRouting.js';
 import { handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
 import { endMeasurePointHover, hoverMeasurePoint, hoverMeasurePointAt } from './measurePointMode.js';
 import { measureCanvasBoxWatch } from './measureCameraState.js';
+import { useMeshEditDrain } from './useMeshEditDrain.js';
+import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { MeasureOverlay } from './tools/MeasurePanel.js';
@@ -52,6 +55,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
   };
   /** The renderer's pick-clip revision; a test redraws a new cut by bumping it. */
   const clip = { revision: 0 };
+  /** The renderer's pick-geometry revision; a test lands an edit, a move or a stream by bumping it. */
+  const geometry = { revision: 0 };
   const ctx = {
     canvas: document.createElement('canvas'),
     camera: {
@@ -66,6 +71,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     },
     renderer: {
       getPickClipRevision: () => clip.revision,
+      getPickGeometryRevision: () => geometry.revision,
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
         locks.push(lock.edge !== null), snapOptions.push(opts.snapOptions), {
         intersection: hit.current ? { point: hit.current } : null,
@@ -92,7 +98,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     clearEdgeLock: () => {},
     setSnapVisualization: () => {},
   } as unknown as MouseHandlerContext;
-  return { ctx, snapTargets, locks, snapOptions, pose, clip };
+  return { ctx, snapTargets, locks, snapOptions, pose, clip, geometry };
 }
 
 const ON_WALL = { x: 3, y: 4, z: -5 };
@@ -591,6 +597,7 @@ describe('Point on the Measure mode strip (#8770)', () => {
 /** What the camera pass records about the scene a pick filters by (#8886). */
 const sceneOf = (ctx: MouseHandlerContext) => ({
   hidden: ctx.hiddenEntitiesRef.current, isolated: ctx.isolatedEntitiesRef.current, clip: ctx.renderer.getPickClipRevision(),
+  geometry: ctx.renderer.getPickGeometryRevision(), snap: ctx.snapEnabledRef.current,
 });
 /** A camera pass that last ran for some older camera, over the current scene. */
 const olderView = (ctx: MouseHandlerContext) => ({
@@ -739,11 +746,13 @@ describe('Point mode readout staleness (#8828)', () => {
     noteBox(box(800, 400)); // the observer's first report
     hoverMeasurePoint(ctx, 3, 4);
     noteBox(box(800, 400)); // the window moved to a display with another pixel ratio: same CSS box
+    ctx.canvas.width = 2400; // ...and a 1.5x larger drawing buffer (#9002)
+    ctx.canvas.height = 1200;
     syncMeasureScreenCoords(ctx);
     assert.ok(useViewerStore.getState().measurePointLive !== null, 'a pixel-ratio-only change ended Live');
     noteBox(box(804, 402)); // a proportional window resize, aspect unchanged
-    ctx.canvas.width = 1608;
-    ctx.canvas.height = 804;
+    ctx.canvas.width = 2412;
+    ctx.canvas.height = 1206;
     syncMeasureScreenCoords(ctx);
     assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a proportional resize');
   });
@@ -862,5 +871,140 @@ describe('Point mode readout staleness (#8828)', () => {
     // The Point tab names the point itself ("точка", feminine).
     assert.equal(measureRu['measure.point.live'], 'Текущая точка');
     assert.equal(measureRu['measure.point.last'], 'Последняя точка');
+  });
+});
+
+(globalThis as Record<string, unknown>).GPUBufferUsage ??= { COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128 };
+
+const triangleMesh = (expressId: number, x = 0): MeshData => ({
+  expressId, modelIndex: 0, origin: [x, 0, 0], color: [1, 1, 1, 1],
+  positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+  normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+  indices: new Uint32Array([0, 1, 2]),
+});
+
+/**
+ * A real renderer over a GPU stand-in that accepts every upload, holding
+ * element 7. The context's pick still lands on its fake hit; what the camera
+ * pass reads of the geometry is this renderer's own revision.
+ */
+function realGeometry(ctx: MouseHandlerContext) {
+  const renderer = new Renderer({ width: 256, height: 256,
+    getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
+  const device = {
+    limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+    createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }),
+    createBindGroup: () => ({}),
+    queue: { writeBuffer() {} },
+  } as unknown as GPUDevice;
+  const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+  Object.assign(renderer, { device: { isInitialized: () => true, getDevice: () => device }, pipeline });
+  const scene = renderer.getScene();
+  scene.appendToBatches([triangleMesh(7)], device, pipeline);
+  (ctx.renderer as unknown as Record<string, unknown>).getPickGeometryRevision = () => renderer.getPickGeometryRevision();
+  return { renderer, scene, device, pipeline };
+}
+
+/** The re-mesh drain, as Viewport mounts it, over a real renderer. */
+function MeshEditDrain({ renderer, geometry }: { renderer: Renderer; geometry: MeshData[] }) {
+  useMeshEditDrain({
+    rendererRef: useRef<Renderer | null>(renderer), isInitialized: true, isStreaming: false, geometry,
+    pendingMeshRemovals: null, clearPendingMeshRemovals: () => {}, pruneGeometryMeshes: () => {},
+    lastGeometryLengthRef: useRef(geometry.length), lastGeometryRef: useRef<MeshData[] | null>(null),
+    processedMeshIdsRef: useRef(new Set<string>()), geometryReplacementVersion: 0, lastReplacementVersionRef: useRef(0),
+  });
+  return null;
+}
+
+/** The placement drain a move command's (or its undo's) delta lands in, over a real renderer. */
+function MoveDrain({ renderer, pending }: { renderer: Renderer; pending: Map<number, [number, number, number]> | null }) {
+  usePlacementMutationDrain({
+    rendererRef: useRef<Renderer | null>(renderer), isInitialized: true, gpuRecoveryEpoch: 0,
+    kind: 'translations', pending, clearPending: () => {},
+  });
+  return null;
+}
+
+describe('Point mode "Live" and the pick inputs a resting cursor does not move (#8998)', () => {
+  const live = () => useViewerStore.getState().measurePointLive !== null;
+
+  it('an undo or redo of a modelling edit under a resting cursor ends "Live"', async () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realGeometry(ctx);
+    // Undo and redo re-mesh the element they restore and swap it in with `replaceEntityMeshes`,
+    // which queues the ids for the drain to swap in the renderer.
+    render(<MeshEditDrain renderer={renderer} geometry={[triangleMesh(7, 2)]} />);
+    hoverMeasurePoint(ctx, 3, 4);
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'setup: an idle pass ended Live');
+    act(() => useViewerStore.setState((s) => ({
+      geometryUpdateTick: s.geometryUpdateTick + 1,
+      pendingMeshEdits: { ids: new Set([7]), since: s.geometryUpdateTick, tick: s.geometryUpdateTick + 1 },
+    })));
+    await waitFor(() => useViewerStore.getState().pendingMeshEdits === null, 'the drain swaps the re-meshed element in');
+    syncMeasureScreenCoords(ctx); // the pass, as the next animation frame runs it
+    assert.equal(live(), false, 'Live outlived an undo/redo that re-meshed the element under the cursor');
+  });
+
+  it('an element moved by a command ends "Live" once the renderer moves it', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer } = realGeometry(ctx);
+    hoverMeasurePoint(ctx, 3, 4);
+    render(<MoveDrain renderer={renderer} pending={new Map([[99, [1, 0, 0]]])} />); // an id the scene does not hold
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'a move of nothing in the scene ended Live');
+    render(<MoveDrain renderer={renderer} pending={new Map([[7, [1, 0, 0]]])} />); // the delta a move (or its undo) queues
+    syncMeasureScreenCoords(ctx);
+    assert.equal(live(), false, 'Live outlived the element under the cursor moving');
+  });
+
+  it('geometry streaming in ends "Live" once the renderer uploads it, not while it is queued', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { scene, device, pipeline } = realGeometry(ctx);
+    hoverMeasurePoint(ctx, 3, 4);
+    scene.queueMeshes([triangleMesh(9, 1)]);
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'a queued batch, not yet pickable, ended Live');
+    scene.flushPending(device, pipeline); // the animation loop's upload
+    syncMeasureScreenCoords(ctx);
+    assert.equal(live(), false, 'Live outlived geometry streaming in under the cursor');
+  });
+
+  it('selection, hover highlight and idle frames keep "Live"', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    const { renderer, scene, device, pipeline } = realGeometry(ctx);
+    hoverMeasurePoint(ctx, 3, 4);
+    const unrelated: Array<[string, () => void]> = [
+      ['a selection', () => useViewerStore.setState({ selectedEntityId: 7, selectedEntityIds: new Set([7]) })],
+      ['its highlight mesh', () => renderer.createMeshFromData(scene.getMeshDataPieces(7)![0])],
+      ['a hover highlight', () => useViewerStore.getState().setHoverState({ entityId: 7, screenX: 3, screenY: 4 })],
+      ['an idle frame', () => { scene.rebuildPendingBatches(device, pipeline); scene.flushPending(device, pipeline); }],
+    ];
+    for (const [name, change] of unrelated) {
+      change();
+      syncMeasureScreenCoords(ctx);
+      assert.ok(live(), `${name} ended Live`);
+    }
+  });
+
+  it('turning Snap on or off under a resting cursor ends "Live"', () => {
+    for (const from of [true, false]) {
+      const { ctx } = fakeCtx({ current: ON_WALL }, from);
+      hoverMeasurePoint(ctx, 3, 4);
+      syncMeasureScreenCoords(ctx);
+      assert.ok(live(), `setup: an idle pass ended Live (Snap ${from ? 'on' : 'off'})`);
+      ctx.snapEnabledRef.current = !from; // the ref the pick reads, as the next render sets it
+      syncMeasureScreenCoords(ctx);
+      assert.equal(live(), false, `Live outlived Snap turning ${from ? 'off' : 'on'}`);
+    }
+  });
+
+  it('a re-pick at the resting cursor after a Snap toggle records that Snap, so the next frame keeps it', () => {
+    const { ctx } = fakeCtx({ current: ON_WALL });
+    hoverMeasurePoint(ctx, 3, 4);
+    ctx.snapEnabledRef.current = false;
+    hoverMeasurePoint(ctx, 3, 4); // a pick under the new Snap: its reading is current
+    syncMeasureScreenCoords(ctx);
+    assert.ok(live(), 'the pass ended the reading a pick under the new Snap just made');
   });
 });

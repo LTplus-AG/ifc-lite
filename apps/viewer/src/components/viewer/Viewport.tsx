@@ -81,7 +81,8 @@ import { useAuthoringOverlay } from './useAuthoringOverlay.js';
 import { useClashRendererOverlays } from './useClashRendererOverlays';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
-import { measureCanvasBoxWatch, type MeasureCameraState } from './measureCameraState';
+import type { MeasureCameraState } from './measureCameraState';
+import { observeViewportCanvas } from './viewportCanvasObserver';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -1106,22 +1107,10 @@ export function Viewport({
         if (!aborted) setGpuRecoveryEpoch((epoch) => epoch + 1);
       });
 
-      // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
-      // Its CSS box also ends Point mode's Live on any resize (#8886).
-      const noteCanvasBox = measureCanvasBoxWatch(lastCameraStateRef);
-      resizeObserver = new ResizeObserver((entries) => {
-        if (aborted) return;
-        noteCanvasBox(entries);
-        renderCurrent();
+      // Re-render on resize; a resize also ends Point mode's Live (#8886).
+      resizeObserver = observeViewportCanvas(canvas, lastCameraStateRef, () => {
+        if (!aborted) renderCurrent();
       });
-      // The device-pixel box also fires when only the pixel ratio changes (window
-      // moved to another display, browser zoom), which the CSS box does not.
-      try {
-        resizeObserver.observe(canvas, { box: 'device-pixel-content-box' });
-      } catch (err) {
-        console.debug('[Viewport] device-pixel-content-box unsupported; observing the CSS box', err);
-        resizeObserver.observe(canvas);
-      }
 
       // Initial render
       renderCurrent();
@@ -1372,6 +1361,7 @@ export function Viewport({
     lastFrameTimeRef,
     mouseIsDraggingRef,
     activeToolRef,
+    snapEnabledRef,
     terrainClipYRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,

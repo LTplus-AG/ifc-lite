@@ -171,9 +171,10 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
  *     ≥3 points already placed) → close the loop, finishing as a perimeter.
  *   - otherwise → append the clicked point.
  *
- * Finishing an OPEN polyline is a different gesture entirely (double-click
- * or Enter — see `finishOpenPolyline`'s call sites in useMouseControls.ts /
- * useKeyboardShortcuts.ts), so a click never finishes anything but a closed
+ * Finishing an OPEN polyline is a different gesture entirely (double-click,
+ * Enter, or the Measurements list's Finish on touch — see
+ * `finishPolylineFromDoubleClick` and store/finishMeasureSequence.ts, #8991),
+ * so a click never finishes anything but a closed
  * loop. A miss (no raycast hit) is a no-op — it neither starts nor extends
  * a sequence, matching how a drag-mode click into empty space does nothing.
  */
@@ -211,9 +212,9 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
  *   - no sequence in progress → start one at the clicked point.
  *   - otherwise → append the clicked point.
  *
- * Finishing is double-click or Enter (`finishRadiusFromDoubleClick`'s call
- * sites in useMouseControls.ts / useKeyboardShortcuts.ts), the same gesture
- * polyline uses and for the same reason: with an unbounded pick count there
+ * Finishing is double-click, Enter or the Measurements list's Finish
+ * (`finishRadiusFromDoubleClick`, store/finishMeasureSequence.ts, #8991), the
+ * same gestures polyline uses and for the same reason: with an unbounded pick count there
  * is no "last pick" for the store to recognise and finish itself on, unlike
  * angle's fixed count. A miss (no raycast hit) is a no-op.
  */

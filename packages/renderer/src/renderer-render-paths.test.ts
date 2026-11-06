@@ -551,15 +551,20 @@ describe('pick clip revision wiring (#9002)', () => {
         assert.ok(h.renderer.getPickClipRevision() > cutRev + 1, 'removing the section kept the revision');
     });
 
-    it('a capture render with the clip cleared leaves the revision alone', () => {
+    it('a capture render with the clip cleared does not outlive its frame', () => {
         const h = makeHarness();
         h.render(cut(2));
         const before = h.renderer.getPickClipRevision();
         // idsBcfViewpoints captures with the section, extra planes and clip box cleared.
-        assert.strictEqual(h.renderer.renderWithResult({ ...cut(2), sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
-        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'the capture frame bumped the revision');
+        assert.strictEqual(h.renderer.renderWithResult({ sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
+        const during = h.renderer.getPickClipRevision();
+        // A pick until the next frame reads through the cleared clip: it must not match the cut's revision.
+        assert.notStrictEqual(during, before, 'the capture frame\'s cleared clip shares the cut\'s revision');
         h.render(cut(2));
-        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture bumped the revision');
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture left a new revision, ending Live');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before);
+        assert.notStrictEqual(during, before, 'a reading taken during the capture would survive the restore');
     });
 
     it('a real cut change across a capture still bumps the revision', () => {
@@ -567,12 +572,14 @@ describe('pick clip revision wiring (#9002)', () => {
         h.render(cut(2));
         const before = h.renderer.getPickClipRevision();
         h.renderer.renderWithResult({ restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        const during = h.renderer.getPickClipRevision();
         h.render(cut(3));
-        assert.ok(h.renderer.getPickClipRevision() > before, 'a cut moved during the capture kept the revision');
         const moved = h.renderer.getPickClipRevision();
+        assert.ok(moved !== before && moved !== during, 'a cut moved during the capture reused an earlier revision');
         h.renderer.renderWithResult({ ...cut(3), restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        assert.strictEqual(h.renderer.getPickClipRevision(), moved, 'a capture of the same cut moved the revision');
         h.render();
-        assert.ok(h.renderer.getPickClipRevision() > moved, 'removing the cut after a capture kept the revision');
+        assert.ok(h.renderer.getPickClipRevision() !== moved, 'removing the cut after a capture kept the revision');
     });
 });
 

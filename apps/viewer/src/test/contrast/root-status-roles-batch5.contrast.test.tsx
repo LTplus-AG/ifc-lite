@@ -28,7 +28,8 @@ describe('root viewer status roles (Refs #8802)', () => {
   for (const state of states) {
     it(`${state.name} renders its status role`, () => {
       const notice = state.mount().querySelector(state.selector);
-      assert.ok(notice?.textContent?.trim(), 'status is visible');
+      assert.ok(notice, 'status is rendered');
+      assert.ok(notice.textContent?.trim(), 'status is visible');
       assert.ok(notice.classList.contains(`text-${state.role}`), 'status uses its colour role');
     });
     for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {

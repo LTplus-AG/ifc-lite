@@ -47,10 +47,11 @@ export function applyStoreyLevelEdit(
 ): StoreyLevelResult {
   return editor.runAtomic((draft) => {
     const plan = planStoreyLevelEdit(readStoreyInventory(store, draft.getMutationView()), edit);
-    if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
+    // A reviewed plan is answered first: what changed since the review is the news, not what the change now blocks.
     if (expected && storeyLevelPlanSignature(plan) !== storeyLevelPlanSignature(expected)) {
       throw new StoreyEditRefusedError([{ code: 'stale', message: 'The storey edit was planned against a model that has changed since; review it again' }]);
     }
+    if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
     return { plan, reshaped: writeStoreyLevelPlan(store, draft, plan) };
   });
 }

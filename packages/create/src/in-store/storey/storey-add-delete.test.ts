@@ -212,6 +212,26 @@ describe('storey deletion', () => {
     expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, renamed)).toThrow(api('StoreyEditRefusedError'));
   });
 
+  it('refuses a reviewed deletion of a storey renamed since, and answers an emptied review with stale (#9013 review)', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const empty = { kind: 'empty' } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 40, empty);
+    expect(reviewed.refusals).toEqual([]);
+    s.editor.setPositionalAttribute(40, 2, 'Basement');
+    const before = s.snapshot();
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 40, empty, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.snapshot()).toEqual(before);
+    // Reviewed empty, then given a product: the answer is stale, not notEmpty.
+    const again = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 40, empty);
+    const late = s.editor.addEntity('IfcColumn', ['3Oz2e8GZz8RA2h4D8U3fsH', null, 'Late', null, null, '#41', null, null, null]).expressId;
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${late}`], '#40']);
+    let refusal: unknown = null;
+    try { api('applyStoreyDelete')(s.store, s.editor, 40, empty, again); } catch (error) { refusal = error; }
+    expect(refusal).toBeInstanceOf(api('StoreyEditRefusedError'));
+    expect((refusal as InstanceType<typeof create.StoreyEditRefusedError>).refusals.map((r) => r.code)).toEqual(['stale']);
+    expect(s.view.isDeleted(40)).toBe(false);
+  });
+
   it('a deleted product is no longer a storey\'s content (#9013 review)', async () => {
     const s = session(await parse(THIRD_PARTY));
     s.editor.removeEntity(60);

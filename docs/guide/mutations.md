@@ -1040,6 +1040,7 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
   - Contents hanging from the storey placement need no write of their own.
   - Contents placed relative to the building or the world, which is common in exported files, get their own root placement lifted.
   - A product of another storey that hangs from a moved placement is compensated so it stays put.
+  - A product bound to a grid (`IfcGridPlacement`) follows the grid's placement: it moves with a grid on its own storey, and a grid-bound product of another storey under a moved grid is refused, because a grid placement cannot be compensated.
   - Every move is a fresh `IfcCartesianPoint` and `IfcAxis2Placement3D`, so a shared origin point is never moved.
 - An edit is refused before anything is written, with a specific `code` and `message`, when it would:
   - leave no height between storeys (`spacing`);
@@ -1048,7 +1049,7 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
   - move a placement that elements on another storey share (`sharedPlacement`);
   - meet a placement that cannot be read;
   - move a storey holding more than 50,000 products (`tooLarge`).
-- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode, expected?)` delete a storey without orphaning anything. With `expected`, it refuses (code `stale`) when contents were added after the review, or a reviewed product was edited or moved since; the plan's `fingerprint` hashes the contents' records and placement chains. Modes:
+- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode, expected?)` delete a storey without orphaning anything. With `expected`, it refuses (code `stale`, checked before any other refusal) when contents were added after the review, or the storey or a reviewed product was edited or moved since; the plan's `fingerprint` hashes the contents' records and placement chains. Modes:
   - `{ kind: 'empty' }` is refused while the storey holds elements.
   - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above. It is refused for a storey that nests products through `IfcRelNests`, which have no spatial owner to move.
   - `{ kind: 'deleteContents' }` removes them with the storey.

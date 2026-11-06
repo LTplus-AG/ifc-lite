@@ -37,7 +37,7 @@ export interface StoreyDeletePlan {
   /** The storey's direct children: what a move re-parents. */
   readonly roots: readonly number[];
   readonly elementCount: number;
-  /** The reviewed state of the contents (records and placement chains); a later edit to any of them makes the plan stale. */
+  /** The reviewed state of the storey and its contents (records and placement chains); a later edit to any of them makes the plan stale. */
   readonly fingerprint: string;
   readonly refusals: readonly StoreyRefusal[];
 }
@@ -98,12 +98,12 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
       }
     }
   }
-  return { ...base, contents: [...contents], roots, elementCount, fingerprint: storeyStateFingerprint(inventory.reader, contents), refusals };
+  return { ...base, contents: [...contents], roots, elementCount, fingerprint: storeyStateFingerprint(inventory.reader, [storeyId, ...contents]), refusals };
 }
 
 /**
  * What makes two deletion plans the same: the storey, the mode, exactly what
- * would be moved or deleted, and the state those products were reviewed in.
+ * would be moved or deleted, and the state the storey and those products were reviewed in.
  * Contents added after the review, or a reviewed product edited or moved
  * since, change it, so a reviewed deletion never acts on them unseen.
  */
@@ -127,10 +127,11 @@ export function applyStoreyDelete(
 ): StoreyDeletePlan {
   return editor.runAtomic((draft) => {
     const plan = planStoreyDelete(readStoreyInventory(store, draft.getMutationView()), storeyId, mode);
-    if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
+    // A reviewed plan is answered first: what changed since the review is the news, not what the change now blocks.
     if (expected && storeyDeletePlanSignature(plan) !== storeyDeletePlanSignature(expected)) {
       throw new StoreyEditRefusedError([{ code: 'stale', message: 'The storey deletion was planned against a model that has changed since; review it again' }]);
     }
+    if (plan.refusals.length) throw new StoreyEditRefusedError(plan.refusals);
     if (mode.kind === 'move') {
       for (let start = 0; start < plan.roots.length; start += REASSIGN_BATCH) {
         reassignElementsToStoreyInStore(store, draft, plan.roots.slice(start, start + REASSIGN_BATCH), storeyId, mode.targetStoreyId);

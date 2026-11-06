@@ -35,6 +35,7 @@ import {
   type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
+import { gridPlacementParent, gridPlacementsOn } from './storey-grid.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
 import {
   MIN_STOREY_SPACING, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
@@ -170,10 +171,13 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
     for (const id of held) if (!intent.has(id)) intent.set(id, native);
   }
 
+  const referencers = effectiveReferencers(inventory.store, inventory.view);
   const placementOf = (product: number): number | null => refId(reader.entity(product)?.attributes[5]);
+  // A grid placement follows its grid's placement, so grid-bound products inherit the grid's move.
   const parentOf = (placement: number): number | null => {
-    const raw = reader.entity(placement)?.attributes[0];
-    return reader.entity(placement)?.type.toUpperCase() === 'IFCLOCALPLACEMENT' ? refId(raw) : null;
+    const type = reader.entity(placement)?.type.toUpperCase();
+    if (type === 'IFCLOCALPLACEMENT') return refId(reader.entity(placement)?.attributes[0]);
+    return type === 'IFCGRIDPLACEMENT' ? gridPlacementParent(reader, referencers, placement) : null;
   };
   const chainOf = (placement: number): readonly number[] => walkPlacementChain(placement, parentOf).ids;
 
@@ -196,7 +200,6 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   };
   for (const product of intent.keys()) claim(product);
 
-  const referencers = effectiveReferencers(inventory.store, inventory.view);
   const written = new Map<number, number>();
   const solve = () => {
     written.clear();
@@ -269,11 +272,16 @@ function reachedProducts(
     visited.add(id);
     for (const parent of referencers(id)) {
       const type = inventory.reader.entity(parent)?.type.toUpperCase();
-      if (type === 'IFCLOCALPLACEMENT') {
-        // Only PlacementRelTo makes a child placement; RelativePlacement is an axis, never a placement.
-        if (refId(inventory.reader.entity(parent)?.attributes[0]) === id) queue.push(parent);
+      if (type === 'IFCLOCALPLACEMENT' || type === 'IFCGRIDPLACEMENT') {
+        // Only the placement a child follows makes it a child; RelativePlacement is an axis, never a placement.
+        const follows = type === 'IFCLOCALPLACEMENT'
+          ? refId(inventory.reader.entity(parent)?.attributes[0])
+          : gridPlacementParent(inventory.reader, referencers, parent);
+        if (follows === id) queue.push(parent);
       } else if (isProduct(inventory, parent) && refId(inventory.reader.entity(parent)?.attributes[5]) === id) {
         products.add(parent);
+        // What is bound to a grid's axes follows the grid's placement.
+        if (type === 'IFCGRID') queue.push(...gridPlacementsOn(inventory.reader, referencers, parent));
       }
     }
   }

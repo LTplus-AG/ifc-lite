@@ -232,6 +232,43 @@ describe('a reviewed plan pins the placements it writes (#9013 review)', () => {
   });
 });
 
+describe('grid-bound products follow their grid (#9013 review)', () => {
+  /** A grid on Level 2 (#100), hanging from the storey; column #112 on Level 2 sits on its A/1 crossing. */
+  const GRID = THIRD_PARTY.replace('ENDSEC;\nEND-ISO', `#100=IFCGRID('0Gr1dAAAAAAAAAAAAAAAAA',$,'Grid',$,$,#101,$,(#102),(#103),$,$);
+#101=IFCLOCALPLACEMENT(#44,#5);
+#102=IFCGRIDAXIS('A',#104,.T.);
+#103=IFCGRIDAXIS('1',#105,.T.);
+#104=IFCPOLYLINE((#106,#107));
+#105=IFCPOLYLINE((#106,#108));
+#106=IFCCARTESIANPOINT((0.,0.));
+#107=IFCCARTESIANPOINT((10000.,0.));
+#108=IFCCARTESIANPOINT((0.,10000.));
+#109=IFCVIRTUALGRIDINTERSECTION((#102,#103),(0.,0.));
+#110=IFCGRIDPLACEMENT(#109,$);
+#111=IFCLOCALPLACEMENT(#110,#5);
+#112=IFCCOLUMN('0Gr1dCo1AAAAAAAAAAAAAA',$,'Grid column',$,$,#111,$,$,$);
+#116=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Gr1dRe1AAAAAAAAAAAAAA',$,$,$,(#100,#112),#42);
+ENDSEC;
+END-ISO`);
+
+  it('a grid column on the moved storey rides with the grid, with no write of its own', async () => {
+    const s = session(await parse(GRID));
+    const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+    expect(p.refusals).toEqual([]);
+    expect(p.moved).toEqual(expect.arrayContaining([100, 112]));
+    expect(p.placements.map(({ leaf }) => leaf.placementId)).not.toContain(111);
+  });
+
+  it('a column of another storey bound to a moved grid is found and refused, not carried along', async () => {
+    const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
+    const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+    expect(p.refusals.flatMap((r) => r.elementIds ?? [])).toContain(112);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'elevation', storeyId: 42, Elevation: 3.5 })).toThrow(api('StoreyEditRefusedError'));
+    expect(s.snapshot()).toEqual(before);
+  });
+});
+
 describe('adding next to an unreadable placement is refused (#9013 review)', () => {
   it('does not fall back to a default placement', async () => {
     const s = session(await parse(THIRD_PARTY.replace('#47=IFCLOCALPLACEMENT(#31,#49);', '#47=IFCLOCALPLACEMENT(#31,$);')));

@@ -78,6 +78,8 @@ export const commandPaletteRu = {
   "commandPalette.searchPlaceholder": "Что вам нужно?",
   "commandPalette.escKey": "Esc",
   "commandPalette.noResults": "Нет результатов",
+  'commandPalette.noResultsHint': 'Попробуйте другое название или ключевое слово.',
+  'commandPalette.clearSearch': 'Очистить поиск',
   "commandPalette.footer.navigate": "перемещаться",
   "commandPalette.footer.run": "запустить",
   "commandPalette.footer.close": "закрыть",

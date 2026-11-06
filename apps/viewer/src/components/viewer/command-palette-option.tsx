@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
+import { useId } from 'react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
@@ -35,10 +36,12 @@ function paletteDefinition(id: RegisteredPaletteId): SurfaceCommandDefinition {
 }
 
 interface OptionPlacement {
+  id?: string;
   index: number;
   selected: boolean;
   onActivate: () => void;
   onHover: () => void;
+  categoryLabel?: string;
 }
 
 interface OptionChromeProps extends OptionPlacement {
@@ -49,23 +52,28 @@ interface OptionChromeProps extends OptionPlacement {
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, shortcut, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, shortcut, categoryLabel, id, index, selected, onActivate, onHover }: OptionChromeProps) {
+  const fallbackId = useId();
   const registered = 'commandId' in owner;
   return (
-    // The option remains a button so Enter and click use the same command action.
+    // Focus stays on the combobox; pointer activation still uses the native click.
     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-    <button type="button" role="option" data-index={index}
+    <button id={id ?? fallbackId} type="button" role="option" tabIndex={-1} data-index={index}
       data-command-id={registered ? owner.commandId : undefined}
       data-runtime-source={registered ? undefined : owner.runtimeSource}
       data-runtime-command-id={registered ? undefined : owner.runtimeCommandId}
       aria-label={registered ? label : undefined}
       aria-selected={selected}
-      className={cn('flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50')}
+      className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
+        selected ? 'bg-accent text-accent-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary' : 'text-foreground hover:bg-accent/50')}
+      onMouseDown={event => event.preventDefault()}
       onClick={onActivate} onMouseMove={onHover}>
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {detail && <span className="text-xs text-muted-foreground shrink-0">{detail}</span>}
+      <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+        <span className="block truncate sm:min-w-0 sm:flex-1">{label}</span>
+        {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
+      </span>
+      {detail && <span title={detail} className="max-w-[30%] truncate text-xs text-muted-foreground">{detail}</span>}
       {shortcut && <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
         {shortcutLabel(shortcut)}
       </kbd>}

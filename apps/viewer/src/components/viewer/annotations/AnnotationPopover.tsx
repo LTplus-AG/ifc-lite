@@ -233,7 +233,7 @@ export function AnnotationPopover({
         </div>
         <IconButton
           label={t('annotations.popover.closeButtonTitle')}
-          className="h-5 w-5 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+          className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
           onClick={onClose}
         >
           <X className="h-3 w-3" />
@@ -259,14 +259,14 @@ export function AnnotationPopover({
                 'border border-border rounded-sm',
                 'px-2 py-1.5 outline-none focus:ring-1',
                 overHardLimit
-                  ? 'focus:ring-red-400 border-red-300 dark:border-red-700/60'
+                  ? 'focus:ring-red-400 border-danger-border'
                   : 'focus:ring-overlay-accent/50 focus:border-overlay-accent',
               )}
               spellCheck
               autoCorrect="on"
             />
             <div className="mt-1.5 flex items-center justify-between gap-2 text-xs font-mono">
-              <span className="text-zinc-400 dark:text-zinc-500">
+              <span className="text-muted-foreground">
                 {t('annotations.popover.keyHints')}
               </span>
               {charCountVisible && (
@@ -274,10 +274,10 @@ export function AnnotationPopover({
                   className={cn(
                     'tabular-nums',
                     overHardLimit
-                      ? 'text-red-500'
+                      ? 'text-danger'
                       : overSoftLimit
                         ? 'text-status-warn'
-                        : 'text-zinc-400',
+                        : 'text-muted-foreground',
                   )}
                 >
                   {draft.length}/{MAX_NOTE_LEN}
@@ -307,16 +307,16 @@ export function AnnotationPopover({
         ) : (
           <>
             {annotation.note ? (
-              <p className="font-mono text-xs leading-relaxed text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+              <p className="font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                 {annotation.note}
               </p>
             ) : (
-              <p className="font-mono text-xs italic text-zinc-400 dark:text-zinc-500">
+              <p className="font-mono text-xs italic text-muted-foreground">
                 {t('annotations.popover.emptyNoteHint')}
               </p>
             )}
-            <div className="mt-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between gap-2">
-              <span className="text-xs font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+            <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
                 {formatRelativeTime(annotation.updatedAt, t)}
                 {annotation.updatedAt !== annotation.createdAt && (
                   <span className="ml-1">{t('annotations.popover.editedSuffix')}</span>
@@ -325,14 +325,14 @@ export function AnnotationPopover({
               <div className="flex items-center gap-0.5">
                 <IconButton
                   label={t('annotations.popover.editButtonTitle')}
-                  className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                   onClick={() => setEditing(true)}
                 >
                   <Pencil className="h-3 w-3" />
                 </IconButton>
                 <IconButton
                   label={t('annotations.popover.deleteButtonTitle')}
-                  className="h-6 w-6 p-0 text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-danger hover:bg-danger-surface"
                   onClick={onDelete}
                 >
                   <Trash2 className="h-3 w-3" />

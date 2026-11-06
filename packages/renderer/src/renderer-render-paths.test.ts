@@ -1319,11 +1319,25 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         const rebuild = scene['rebuildEvictedBucket'].bind(scene);
         let rebuilds = 0;
         scene['rebuildEvictedBucket'] = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+        // draws[] and the drawIndexed commands stay index-aligned: clear both.
         h.stats.draws.length = 0;
+        h.stats.commands.length = 0;
         h.render({ ...sun });
         assert.strictEqual(rebuilds, 1, 'one rebuild, shared by both passes');
         assert.notStrictEqual(greyOf(h).gpuResident, false);
-        assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
+        // Only the colour pass draws through OPAQUE_PIPELINE; the shadow pass's
+        // draws of the same buffers must not satisfy this.
+        const colourDrawsOf = (vertexBuffer: GPUBuffer): number => {
+            let pipeline: unknown = null;
+            let draw = 0;
+            let n = 0;
+            for (const c of h.stats.commands) {
+                if (c.op === 'setPipeline') pipeline = c.pipeline;
+                if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer && pipeline === OPAQUE_PIPELINE) n++;
+            }
+            return n;
+        };
+        assert.ok(colourDrawsOf(greyOf(h).vertexBuffer) > 0, 'the colour pass draws the rebuilt parent in the transition frame');
         assert.ok(!scene['residencyRestoreQueue'].has(greyOf(h).colorKey), 'grey was not skipped into the queue');
     });
 

@@ -5,6 +5,7 @@
 
 // #8947 R1: add named actual destinations; capture-contexts and its six scenes stay frozen.
 import { expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { SCENES } from '../scenes.mjs';
@@ -31,14 +32,14 @@ async function run(page, id, query) {
   await search.press('Enter');
   await expect(dialog).toBeHidden();
 }
-function flow(id, title, model, viewport, execute) {
-  SCENES.push({ id, title, model, viewport, async run({ page }) {
+function flow(id, title, model, viewport, execute, preserveCamera = false) {
+  SCENES.push({ id, title, model, viewport, preserveCamera, async run({ page }) {
     const outcome = await execute(page);
-    // The common protocol re-homes after scene.run. Preserve the actual tool/camera state first.
+    // Preserve immediate flow state too; the common protocol may re-home for panel layout.
     const theme = await page.locator('html').evaluate(el => el.classList.contains('dark') ? 'dark' : 'light');
     const file = `${id}.${theme}.actual.png`;
-    await page.screenshot({ path: resolve(out, file) });
-    records.push({ id, theme, viewport, file, outcome });
+    const png = await page.screenshot({ path: resolve(out, file) });
+    records.push({ id, theme, viewport, file, sha256: createHash('sha256').update(png).digest('hex'), outcome });
     await writeFile(resolve(out, 'flow-observations.json'), JSON.stringify(records, null, 2) + '\n');
   } });
 }
@@ -89,7 +90,7 @@ flow('flow-blank-wall', 'New blank → parsed IFC and active wall tool', null, d
   await expect(page.getByRole('button', { name: 'Leave the command', exact: true })).toBeVisible();
   return { destination: 'Model / wall.place' };
 });
-flow('flow-camera-corner', 'Keyboard → actual camera corner before common re-home', fixture, desktop, async page => {
+flow('flow-camera-corner', 'Keyboard → actual camera corner', fixture, desktop, async page => {
   const before = await page.evaluate(() => globalThis.__ifc_lite_view_projection__());
   await run(page, 'view:orientation:front-right-top', 'front right top');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_view_projection__())).not.toEqual(before);
@@ -100,6 +101,6 @@ flow('flow-camera-corner', 'Keyboard → actual camera corner before common re-h
     return a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
   }).toBe(true);
   return { matrix: await page.evaluate(() => globalThis.__ifc_lite_view_projection__()) };
-});
+}, true);
 // Appends the unchanged six baseline access contexts and invokes the existing GPU/CDP protocol.
 await import('./capture-contexts.mjs');

@@ -73,13 +73,14 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-describedby={reason ? reasonId : undefined}
       className={cn('relative flex items-start gap-3 w-full px-3 py-2 text-left text-sm',
         selected ? 'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full' : 'hover:bg-accent/50',
-        disabled ? 'text-muted-foreground cursor-not-allowed before:bg-muted-foreground' : 'text-foreground before:bg-primary')}
+        disabled ? 'text-muted-foreground cursor-not-allowed' : 'text-foreground',
+        selected && (disabled ? 'before:bg-muted-foreground' : 'before:bg-primary'))}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
       <Icon className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-3">
-          <span data-command-label className="min-w-0 flex-1 truncate">{label}</span>
+          <span data-command-label className="min-w-0 flex-1 break-words sm:truncate">{label}</span>
           <span className="flex max-w-[55%] shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground">
             {categoryLabel && <span className="truncate">{categoryLabel}</span>}
             {state && <span className="shrink-0">{state}</span>}

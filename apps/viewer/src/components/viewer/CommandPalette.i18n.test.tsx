@@ -116,6 +116,14 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.availability.world',
   // No startBlank host: missing-host refusal precedes the nonempty-session check.
   'commandPalette.availability.blankSession',
+  // Inactive recovery is search-only (#8947); this seed exercises browse and Learn.
+  'commandPalette.file.cancelLoad.label',
+  'commandPalette.file.retryLoad.label',
+  'commandPalette.file.dismissLoadError.label',
+  'commandPalette.availability.noLoadError',
+  'commandPalette.availability.noLoad',
+  // Filter aliases stay searchable; only the brief breadcrumb is rendered.
+  'commandPalette.paths.search.filter',
   // Recovery is bound, but there is no current load error: noLoadError wins first.
   'commandPalette.availability.noLoadRetry',
   // No extension dock contributions are installed in this scenario.

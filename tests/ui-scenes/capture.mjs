@@ -222,8 +222,8 @@ async function captureScene(context, baseUrl, scene, theme, outDir) {
     await scene.run({ page });
     await settle(page);
     // A panel the scene opened resizes the canvas; re-home so the camera fits the final layout
-    // instead of being caught mid-refit.
-    if (scene.model) {
+    // instead of being caught mid-refit. Camera-action scenes preserve their result.
+    if (scene.model && !scene.preserveCamera) {
       await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.home?.());
       await settle(page, 1200);
     }
@@ -233,7 +233,8 @@ async function captureScene(context, baseUrl, scene, theme, outDir) {
     const file = `${scene.id}.${theme}.png`;
     const png = await page.screenshot({ path: join(outDir, file) });
     return { scene: scene.id, title: scene.title, theme, viewport: scene.viewport, file,
-      sha256: createHash('sha256').update(png).digest('hex'), metrics, pageErrors: errors };
+      sha256: createHash('sha256').update(png).digest('hex'), metrics, pageErrors: errors,
+      cameraPolicy: scene.preserveCamera ? 'scene-result' : 'home-after-layout' };
   } catch (error) {
     // Preserve the failed UI, not just a timeout. These are diagnostics, never
     // successful scene results; scene steps and readiness limits stay frozen.

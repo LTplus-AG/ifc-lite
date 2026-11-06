@@ -52,7 +52,8 @@ and behavioral evidence, accept/reject decision and remaining gaps separately.
 | Round | Status | Changes / hypothesis | Evidence / verdict |
 | --- | --- | --- | --- |
 | 1 | REVISE (provisional source `8021801`) | Unified projection, prerequisites and canonical destinations | 12/12 GPU context captures, no page errors; Opus found command labels clipped by reasons and unavailable rows styled as runnable. Full access unaccepted. |
-| 2 | Candidate in progress | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and remaining discovery gaps | Source fixes and browser oracles authored; matching build, full tests, visual review and final source reconciliation pending. |
+| 2 | REVISE (observed UX, source `f8ca13e`) | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and discovery gaps | 36/36 physical-GPU captures, zero page errors; browser 21/22 with extension calibration correction pending. Opus confirms R1 fixes, finds 12px selected-row misalignment and inactive recovery rows crowding browse. Overall coverage remains unaccepted. |
+| 3 | Candidate in progress | Keep row labels aligned during keyboard navigation; show recovery context honestly without crowding browse; preserve searchable access | Implementation and matching validation pending; original R2 evidence retained. |
 
 Implementation batches inside a round are not separate acceptance rounds. Keep
 reviewable PR layers for #8947 if the implementation exceeds roughly 1500 lines.
@@ -696,3 +697,23 @@ repairs require a fresh run; no failure has been reclassified as a pass.
 Root typecheck, build and nine search tests passed on `f8ca13ee1d12f886a0c0179a877fe4470fba7f26` (tree `df0a27616861c418affe0cea3fe8f5c561de3a9f`), original Pop job `a3bf84d3-8b1e-4a10-adc4-84cb45442cd0`. The actual physical-GPU browser suite passed 21/22, with zero skips. All six typo/search viewport cases and the blank-model journey now pass. No matrix/contexts/flows capture phase ran because the extension witness failed.
 
 The extension installed and reached its real widget, but its independent model-absent calibration restored the whole model before measuring extension Hide/Show. That restoration changed the camera; the fixed-matrix assertion correctly rejected the comparison. The revised test measures the independent absent reference last, preserves the identical camera/raster assertions, completes restoration in cleanup, and reframes before each initial/re-enabled activation. This changes test sequencing only. Corrected execution, complete source coverage, fresh Opus R2 judgment and production readiness remain pending.
+
+### Round 2 visual verdict and Round 3 corrections
+
+[Opus R2 review](evidence/opus-access-r2.md) marks observed UX **REVISE**.
+[Qualified capture evidence](evidence/r2-qualification.json) pins all 36 successful
+captures to `f8ca13e`; it also records the 21/22 browser result and missing full
+acceptance. Immediate flow images are identified separately because the common
+protocol re-homed the camera before its manifest screenshot.
+
+![R2 inactive recovery rows crowd File browsing](evidence/r2-palette-browse.dark.png)
+![R2 visible labels and explicit unavailable reasons](evidence/r2-access-unloaded-hide.light.png)
+
+R3 makes selected stripes purely decorative without displacing unselected labels;
+keeps inactive load recovery searchable while omitting it from browse and recents;
+uses truthful no-error reasons and a brief Filter breadcrumb with aliases retained.
+Desktop/narrow browser scenarios measure label alignment through arrow navigation
+and live selection changes. Narrow labels may wrap instead of clipping. The camera
+flow now requests preservation of its actual result in the manifest screenshot;
+other baseline capture behavior is unchanged. These corrections are **UNRUN**
+until the matching candidate validation and GPU capture receipts exist.

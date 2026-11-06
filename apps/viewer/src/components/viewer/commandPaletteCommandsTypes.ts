@@ -32,6 +32,8 @@ export interface CommandPaletteBuildParams {
   cachedNames: React.MutableRefObject<Set<string>>;
   extensionCommands: SlotContribution<CommandContribution>[];
   extensionHost: ExtensionHostService | null;
+  /** Refuse deferred actions after provider replacement. */
+  extensionHostIsCurrent?: () => boolean;
   canEditInSession: boolean;
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;

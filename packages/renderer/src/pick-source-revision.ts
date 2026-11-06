@@ -7,8 +7,8 @@ import type { SourceSnapCurve } from './source-curve-snap.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 /** Same points, same pick identity: the viewer re-stamps `modelIndex` into a fresh object on every merge. */
-const sameAsset = (a: PointCloudAsset, b: PointCloudAsset) =>
-  a.chunk === b.chunk && a.expressId === b.expressId && (a.modelIndex ?? 0) === (b.modelIndex ?? 0);
+type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number];
+const embeddedKey = (a: PointCloudAsset): EmbeddedKey => [a.chunk, a.expressId, a.modelIndex ?? 0];
 
 /** What identifies a curve's snap points: its authored identity and where it evaluates. */
 function curveSetKey(curves: readonly SourceSnapCurve[]): string {
@@ -37,7 +37,7 @@ function sameMask(a: Uint32Array, b: Uint32Array): boolean {
 export class PickSourceRevision {
   private pointClouds = 0;
   /** The IFCx list `setPointClouds` last installed; null once anything else changed the embedded clouds. */
-  private embedded: readonly PointCloudAsset[] | null = [];
+  private embedded: readonly EmbeddedKey[] | null = [];
   private curves = 0;
   private curveKey = curveSetKey([]);
   private readCurveKey = this.curveKey;
@@ -46,16 +46,23 @@ export class PickSourceRevision {
   notePointClouds(): void { this.pointClouds++; }
 
   /** Embedded clouds were added outside `setPointClouds`, or every cloud was cleared (`[]`). */
-  noteEmbeddedChanged(now: readonly PointCloudAsset[] | null = null): void { this.embedded = now; this.pointClouds++; }
+  noteEmbeddedChanged(now: readonly PointCloudAsset[] | null = null): void { this.embedded = now?.map(embeddedKey) ?? null; this.pointClouds++; }
 
   /**
    * The viewer re-pushes the IFCx list on every model-list change, often the
    * same assets or none at all; only a different list changes what a snap can hit.
    */
-  noteEmbeddedClouds(assets: readonly PointCloudAsset[]): void {
+  setEmbeddedClouds(points: PointCloudRenderer, assets: readonly PointCloudAsset[]): void {
     const last = this.embedded;
-    if (last && last.length === assets.length && assets.every((asset, i) => sameAsset(asset, last[i]))) return;
-    this.noteEmbeddedChanged([...assets]);
+    try {
+      points.setAssets(assets);
+    } catch (error) {
+      this.noteEmbeddedChanged(); // the old clouds are gone and the new ones half-uploaded
+      throw error;
+    }
+    const now = assets.map(embeddedKey);
+    if (last && last.length === now.length && now.every((key, i) => key.every((part, j) => part === last[i][j]))) return;
+    this.noteEmbeddedChanged(assets);
   }
 
   /** Runs `place`; counts only when the matrices the ray query reads moved (the placement sync re-pushes unchanged ones). */

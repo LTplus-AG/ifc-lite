@@ -86,6 +86,25 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
     assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the list back after a clear');
   });
 
+  it('a replacement that fails partway counts, and so does the retry of the same list', () => {
+    const { renderer, points, bumps } = setup();
+    const list = [{ expressId: 3, chunk: chunk(4) }];
+    renderer.setPointClouds(list);
+    const upload = points.addAsset;
+    points.addAsset = () => { throw new Error('out of memory'); };
+    assert.equal(bumps(() => assert.throws(() => renderer.setPointClouds(list))), true, 'the old clouds were dropped');
+    points.addAsset = upload;
+    assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the retry rebuilt them');
+  });
+
+  it('a list changed in place after setPointClouds still counts', () => {
+    const { renderer, bumps } = setup();
+    const list = [{ expressId: 3, chunk: chunk(4) }];
+    renderer.setPointClouds(list);
+    list[0].expressId = 1_000_003; // a federation offset applied to the same object
+    assert.equal(bumps(() => renderer.setPointClouds(list)), true);
+  });
+
   it('a hidden scan shown again counts too', () => {
     const { renderer, scan, bumps } = setup();
     renderer.setPointCloudVisibility(scan, false);

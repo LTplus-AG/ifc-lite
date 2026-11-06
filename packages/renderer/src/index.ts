@@ -1013,7 +1013,7 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-        this.pointCloudRenderer.setAssets(assets); this.pickSources.noteEmbeddedClouds(assets);
+        this.pickSources.setEmbeddedClouds(this.pointCloudRenderer, assets);
         this.refreshPlacementBounds();
     }
 

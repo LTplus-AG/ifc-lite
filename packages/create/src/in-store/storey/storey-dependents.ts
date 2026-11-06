@@ -122,7 +122,7 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
     notices.push({ code: 'wallNotResized', elementIds: unreadableWalls, message: `${unreadableWalls.length} attached wall(s) are not simple extrusions, so they move but keep their height` });
   }
   if (unrefittable.length) {
-    notices.push({ code: 'stairNotRefit', elementIds: unrefittable, message: `${unrefittable.length} stair(s) land on a moved storey but are not a single stepped flight this editor can rebuild; they move but are not refit` });
+    notices.push({ code: 'stairNotRefit', elementIds: unrefittable, message: `${unrefittable.length} stair(s) may reach a moved storey but are not a single stepped flight this editor can rebuild; they move but are not refit` });
   }
   return { walls, stairs, refusals, notices };
 }
@@ -135,7 +135,13 @@ function planStairRefit(
   const dims = readStairDimensions(inventory.store, stairId, inventory.view);
   const base = heightAboveStorey(inventory, stairId, storeyId);
   const rise = dims ? dims.NumberOfRisers * dims.RiserHeight : genericRise(inventory, stairId);
-  if (rise === null || base === null) return null;
+  if (rise === null || base === null) {
+    // The file records no rise (a spiral or freeform stair whose body is the
+    // IfcStair itself): it cannot be checked or refit. Report it whenever the
+    // gap above its storey changes, rather than staying silent.
+    const above = inventory.storeys.find((candidate) => candidate.elevation > storey.elevation);
+    return above && Math.abs(delta(above.expressId) - delta(storeyId)) > 1e-9 ? 'unreadable' : null;
+  }
   const top = storey.elevation + base + rise;
   const landing = inventory.storeys.find((candidate) => candidate.expressId !== storeyId
     && Math.abs(candidate.elevation - top) <= LANDING_TOLERANCE);

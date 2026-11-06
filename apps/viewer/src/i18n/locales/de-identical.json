@@ -139,10 +139,6 @@
     "value": "Status",
     "reason": "Same-spelling German label or established UI term (Status); placeholders retain runtime content."
   },
-  "bcf.panel.formatBcfzip": {
-    "value": "BCF",
-    "reason": "Preserved technical syntax/identifier or proper name: BCF. Required for exact control, schema, format, shortcut or product recognition."
-  },
   "bcf.serverConnect.emailPlaceholder": {
     "value": "you@example.com",
     "reason": "Preserved technical syntax/identifier or proper name: you@example.com. Required for exact control, schema, format, shortcut or product recognition."

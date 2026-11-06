@@ -66,7 +66,9 @@ its dialog. Clicking Hide and Show there dispatches the real owner-scoped comman
 through QuickJS. Visibility-input assertions must hide then show the resident wall. Independently, the
 wall is isolated and framed with canonical controls; completed production GPU color
 readbacks must change on Hide and restore on Show with an unchanged camera,
-above repeated-frame noise. A broken draw submission cannot pass from input sets alone. It
+above repeated-frame noise. The hidden output must also agree with an independent wall-absent GPU reference
+captured using model-level visibility at the same camera. Highlight removal
+alone cannot satisfy that reference. This negative oracle still requires execution. It
 then disables the owner through its installed-list switch, requires its destination
 to disappear, and presses Enter on the empty owner search to verify no widget opens or
 wall is hidden. Re-enabling must restore the destination and widget and execute Hide/Show again,

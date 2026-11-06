@@ -1210,7 +1210,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0);
         assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no chunk was rebuilt on the GPU');
         assert.ok(chunks.every((b) => b.gpuResident === false));
-        assert.deepStrictEqual([...scene['warmOnlyRestores']], [], 'no stale warm-only mark');
+        assert.deepStrictEqual([...scene['subsetResidency'].warmOnly], [], 'no stale warm-only mark');
         // The split put {2} in a chunk of its own, which isolate {2} now shows
         // whole: that chunk's own buffers are wanted, the {1} chunk's are not.
         for (const b of chunks) b.bounds = undefined; // the default camera must not cull the fixture
@@ -1270,7 +1270,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([3]) });
         assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed once idle');
         assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)));
-        assert.strictEqual(scene['subsetOnlyParents'].size, 0);
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
         // Showing it again cuts a fresh subset from the warm pieces.
         const drawsBefore = h.stats.draws.length;
         h.render({ isolatedIds: new Set([2]) });
@@ -1289,7 +1289,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.notStrictEqual(greyOf(h).gpuResident, false, 'rebuilt in the transition frame');
         assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
         assert.strictEqual(scene['partialBatchCache'].size, 0);
-        assert.strictEqual(scene['subsetOnlyParents'].size, 0);
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
     });
 
     it('past the per-frame cap, a subset parent shown whole falls back to the queue, which keeps frames coming', () => {
@@ -1299,7 +1299,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         scene.setGpuResidencyBudget(1);
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
-        scene['subsetRebuildBudgetMs'] = 0;
+        scene['subsetResidency'].rebuildBudgetMs = 0;
         h.render({});
         assert.strictEqual(greyOf(h), grey, 'not rebuilt past the cap');
         assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'queued: the app loop rebuilds it and requests a render');
@@ -1316,9 +1316,10 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         const sun = { sunShadows: { enabled: true } } as const;
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
-        const rebuild = scene['rebuildEvictedBucket'].bind(scene);
+        const residency = scene['subsetResidency'];
+        const rebuild = residency.rebuildEvicted.bind(residency);
         let rebuilds = 0;
-        scene['rebuildEvictedBucket'] = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+        residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
         // draws[] and the drawIndexed commands stay index-aligned: clear both.
         h.stats.draws.length = 0;
         h.stats.commands.length = 0;

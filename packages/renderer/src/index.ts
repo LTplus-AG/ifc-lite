@@ -213,6 +213,7 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { batchForWholeDraw } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -2397,12 +2398,9 @@ export class Renderer {
                             if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
-                            // A COLD parent has no CPU meshData, so the partial
-                            // sub-batch above comes back empty — queue the
-                            // restore of its pieces or the visible subset would
-                            // stay missing under hide/isolate forever. Only the
-                            // pieces: the subset never reads the parent's own
-                            // GPU buffers (#9050).
+                            // A COLD parent has no CPU meshData, so the sub-batch above comes back
+                            // empty: restore its pieces (only them, the subset never reads the parent's
+                            // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
                             if (batch.gpuResident === false) {
                                 this.scene.requestBatchPieces(batch);
                             }
@@ -2415,18 +2413,9 @@ export class Renderer {
                     // is skipped for a frame while its rebuild is queued; the partial
                     // path above is unaffected (sub-batches own separate buffers built
                     // from CPU meshData).
-                    if (batch.gpuResident === false) {
-                        // Its subset was on screen last frame: rebuild now, or
-                        // those elements vanish while the queue catches up (#9050).
-                        const rebuilt = this.pipeline ? this.scene.restoreSubsetParentNow(batch, device, this.pipeline) : null;
-                        if (!rebuilt) {
-                            this.scene.requestBatchResidency(batch);
-                            frameBatchesNotResident++;
-                            continue;
-                        }
-                        batch = rebuilt;
-                    }
-                    this.scene.recordBatchDrawn(batch);
+                    const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
+                    if (!whole) { frameBatchesNotResident++; continue; }
+                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
 
                     // X-Ray names entities, not batches: a batch whose entities
                     // resolve to different alphas splits per alpha (#4129) rather

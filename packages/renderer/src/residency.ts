@@ -26,6 +26,9 @@
  * GPU; the Scene owns the actual destroy/rebuild.
  */
 
+import type { RenderPipeline } from './pipeline.js';
+import type { BatchedMesh } from './types.js';
+
 /** Residency view of one bucket-owned batch. */
 export interface ResidencyShell {
   /** Bucket key (identifies the bucket to rebuild from). */
@@ -141,4 +144,29 @@ export class BatchUseFrames {
     this.pieces.clear();
     this.subsetOnScreen.clear();
   }
+}
+
+/** What a whole-batch draw needs from the Scene (#9050). */
+export interface WholeBatchResidency {
+  recordBatchDrawn(batch: BatchedMesh): void;
+  requestBatchResidency(batch: BatchedMesh): void;
+  restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null;
+}
+
+/**
+ * The batch a whole-batch draw reads its own GPU buffers from, recorded as
+ * drawn. A resident batch is itself. An evicted parent whose subset was on
+ * screen last frame is rebuilt now, or those elements vanish while the queue
+ * catches up (#9050). Any other evicted batch gets the time-sliced restore
+ * queued and returns null, so the frame skips it. The colour and shadow passes
+ * share this.
+ */
+export function batchForWholeDraw(scene: WholeBatchResidency, batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline | null): BatchedMesh | null {
+  let drawn: BatchedMesh | null = batch;
+  if (batch.gpuResident === false) {
+    drawn = pipeline ? scene.restoreSubsetParentNow(batch, device, pipeline) : null;
+    if (!drawn) { scene.requestBatchResidency(batch); return null; }
+  }
+  scene.recordBatchDrawn(drawn);
+  return drawn;
 }

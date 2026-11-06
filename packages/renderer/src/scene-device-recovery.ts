@@ -72,8 +72,7 @@ export interface SceneRecoveryHost {
   cachedMaxBufferSize: number;
   lastDrawnFrame: Pick<BatchUseFrames, 'delete' | 'clear'>;
   residencyRestoreQueue: Set<string>;
-  warmOnlyRestores: Set<string>;
-  subsetOnlyParents: Set<BatchedMesh>;
+  subsetResidency: { clear(): void };
   meshDataMap: Map<number, MeshData[]>;
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   appearanceAccessState?: unknown;
@@ -165,8 +164,7 @@ export function discardSceneGpuResourcesForRecovery(
   host.cachedMaxBufferSize = 0;
   host.lastDrawnFrame.clear();
   host.residencyRestoreQueue.clear();
-  host.warmOnlyRestores.clear();
-  host.subsetOnlyParents.clear();
+  host.subsetResidency.clear();
 }
 
 const bucketVertexBytes = (parts: readonly MeshData[]) => parts.reduce(

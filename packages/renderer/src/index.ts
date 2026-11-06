@@ -213,6 +213,7 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { batchForWholeDraw } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -2356,7 +2357,7 @@ export class Renderer {
                 const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
                 const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
-                for (const batch of allBatchedMeshes) {
+                for (let batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         if (!isRteAabbVisible(frustum, batch.bounds, rteCullCamera)) {
@@ -2397,12 +2398,11 @@ export class Renderer {
                             if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
-                            // A COLD parent has no CPU meshData, so the partial
-                            // sub-batch above comes back empty — queue the
-                            // residency restore or the visible subset would
-                            // stay missing under hide/isolate forever.
+                            // A COLD parent has no CPU meshData, so the sub-batch above comes back
+                            // empty: restore its pieces (only them, the subset never reads the parent's
+                            // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
                             if (batch.gpuResident === false) {
-                                this.scene.requestBatchResidency(batch);
+                                this.scene.requestBatchPieces(batch);
                             }
                             continue; // Don't add batch to render list
                         }
@@ -2413,12 +2413,9 @@ export class Renderer {
                     // is skipped for a frame while its rebuild is queued; the partial
                     // path above is unaffected (sub-batches own separate buffers built
                     // from CPU meshData).
-                    if (batch.gpuResident === false) {
-                        this.scene.requestBatchResidency(batch);
-                        frameBatchesNotResident++;
-                        continue;
-                    }
-                    this.scene.recordBatchDrawn(batch);
+                    const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
+                    if (!whole) { frameBatchesNotResident++; continue; }
+                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
 
                     // X-Ray names entities, not batches: a batch whose entities
                     // resolve to different alphas splits per alpha (#4129) rather
@@ -2736,7 +2733,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
+                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a

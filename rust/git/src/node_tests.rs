@@ -126,6 +126,55 @@ fn every_nan_member_payload_hashes_alike() {
     assert_eq!(make(quiet).address(), make(other_payload).address());
 }
 
+// Review on #8265 (CodeRabbit): `value_key` sorted same-named members on the
+// raw `to_bits()` pattern, while the writer canonicalizes `-0.0` and every
+// `NaN` payload before hashing. Two members that write identical bytes could
+// still disagree on sort order, which leaked into the address. `value_key`
+// now sorts on the same canonicalized value `f64_bits` writes.
+
+#[test]
+fn signed_zero_members_sort_and_hash_the_same_regardless_of_order() {
+    let make = |values: [f64; 2]| Node::Set {
+        kind: SetKind::Property,
+        name: "P".to_owned(),
+        members: values
+            .iter()
+            .map(|value| Field {
+                name: "A".to_owned(),
+                value: FieldValue::Number(*value),
+            })
+            .collect(),
+    };
+    assert_eq!(
+        make([-0.0, 1.0]).address(),
+        make([0.0, 1.0]).address(),
+        "-0.0 and 0.0 canonicalize alike, so either paired with 1.0 must sort and hash the same"
+    );
+}
+
+#[test]
+fn signed_nan_members_sort_and_hash_the_same_regardless_of_order() {
+    let quiet = f64::NAN;
+    let signed = f64::from_bits(quiet.to_bits() | (1 << 63));
+    assert!(signed.is_sign_negative());
+    let make = |values: [f64; 2]| Node::Set {
+        kind: SetKind::Property,
+        name: "P".to_owned(),
+        members: values
+            .iter()
+            .map(|value| Field {
+                name: "A".to_owned(),
+                value: FieldValue::Number(*value),
+            })
+            .collect(),
+    };
+    assert_eq!(
+        make([signed, -1.0]).address(),
+        make([quiet, -1.0]).address(),
+        "every NaN payload canonicalizes alike, so pairing either with -1.0 must sort and hash the same"
+    );
+}
+
 #[test]
 fn absent_and_empty_member_values_differ() {
     let absent = pset("P", &[("A", None)]);
@@ -326,6 +375,52 @@ fn ordered_and_unordered_roles_with_the_same_targets_differ() {
         }],
     };
     assert_ne!(unordered.address(), ordered.address());
+}
+
+// Review on #8265 (CodeRabbit): two roles sharing a name and targets but
+// differing only in `ordered` compared equal under the old sort key, so
+// whichever one the producer listed first decided the bytes. The sort key
+// now tie-breaks on `ordered` after name and targets.
+
+#[test]
+fn roles_sharing_name_and_targets_but_not_ordered_are_totally_ordered() {
+    let a = Address::of(b"a");
+    let b = Address::of(b"b");
+    let forward = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![
+            Role {
+                name: "RelatedObjects".to_owned(),
+                targets: vec![a, b],
+                ordered: false,
+            },
+            Role {
+                name: "RelatedObjects".to_owned(),
+                targets: vec![a, b],
+                ordered: true,
+            },
+        ],
+    };
+    let reverse = Node::Relationship {
+        ifc_type: "IfcRelNests".to_owned(),
+        roles: vec![
+            Role {
+                name: "RelatedObjects".to_owned(),
+                targets: vec![a, b],
+                ordered: true,
+            },
+            Role {
+                name: "RelatedObjects".to_owned(),
+                targets: vec![a, b],
+                ordered: false,
+            },
+        ],
+    };
+    assert_eq!(
+        forward.address(),
+        reverse.address(),
+        "the role list's own input order must not decide the bytes"
+    );
 }
 
 #[test]

@@ -25,7 +25,7 @@
 //! `GlobalId`s, 39 added and 39 deleted when paired by key, nothing at all once
 //! identity is content-derived.
 
-use crate::address::{sort_key, Address, CanonicalWriter};
+use crate::address::{canonical_f64, sort_key, Address, CanonicalWriter};
 
 /// Magic announcing this node format. A wire-format change mints a new one.
 pub const NODE_MAGIC: &[u8; 4] = b"IGN1";
@@ -279,11 +279,17 @@ impl Node {
                         (role.name.clone(), role.ordered, targets)
                     })
                     .collect();
-                // Name, then those targets, so two roles sharing a name are
-                // still totally ordered. Cached key for the same reason as
+                // Name, then those targets, then `ordered`, so two roles
+                // sharing a name and targets but differing only in `ordered`
+                // are still totally ordered — `Node` is public and enforces
+                // no uniqueness there, and the flag is written to the bytes,
+                // so leaving it out of the key would let input order decide
+                // them (review on #8265). Cached key for the same reason as
                 // above; the extra `targets.clone()` this needs is one Vec of
                 // `Address` per role, once, not a re-sort per comparison.
-                sorted.sort_by_cached_key(|(name, _, targets)| (sort_key(name), targets.clone()));
+                sorted.sort_by_cached_key(|(name, ordered, targets)| {
+                    (sort_key(name), targets.clone(), *ordered)
+                });
                 w.u32(count(sorted.len()));
                 for (name, ordered, targets) in &sorted {
                     w.string(name);
@@ -332,13 +338,16 @@ fn count(len: usize) -> u32 {
 /// `Absent` sorts below every present value, including empty text. Collapsing
 /// them would make a member's absence indistinguishable from an empty value in
 /// the ordering, which the encoding is careful to distinguish in its bytes. A
-/// number sorts by its bit pattern, which is total where `f64`'s own `Ord` is
-/// absent.
+/// number sorts by the bit pattern of its canonicalized value — the same
+/// value `f64_bits` writes — so two numbers that encode identically also
+/// compare identically; sorting on the raw bits would let `-0.0` vs `0.0`, or
+/// a signed vs unsigned `NaN`, disagree with the bytes on order alone (review
+/// on #8265).
 fn value_key(value: &FieldValue) -> (u8, Vec<u8>, u64) {
     match value {
         FieldValue::Absent => (0, Vec::new(), 0),
         FieldValue::Text(text) => (1, sort_key(text), 0),
-        FieldValue::Number(number) => (2, Vec::new(), number.to_bits()),
+        FieldValue::Number(number) => (2, Vec::new(), canonical_f64(*number).to_bits()),
         FieldValue::Bool(flag) => (3, Vec::new(), u64::from(*flag)),
     }
 }

@@ -246,7 +246,7 @@ impl CanonicalWriter {
 /// Collapse the float identities that IEEE-754 equality already treats as one
 /// value but raw bits do not: `-0.0 == 0.0`, and every `NaN` compares unequal
 /// to everything including itself. See [`CanonicalWriter::f64_bits`].
-fn canonical_f64(value: f64) -> f64 {
+pub(crate) fn canonical_f64(value: f64) -> f64 {
     if value.is_nan() {
         f64::NAN
     } else if value == 0.0 {

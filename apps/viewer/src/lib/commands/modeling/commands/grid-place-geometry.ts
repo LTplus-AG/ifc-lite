@@ -11,7 +11,9 @@
  * lock a side, Shift squares it: the slab tool's rectangle). U axes are the
  * lines x = const along the rectangle, V axes y = const; each family runs at
  * its spacing from the first corner's side and closes on the far side, so the
- * grid always spans the rectangle and its last bay may be the short one.
+ * last bay may be the short one. A dragged side just past a whole bay ends on
+ * that bay instead (#9095): a pointer is not that exact. A typed side is, so it
+ * always closes on the value typed.
  */
 
 import { rectangularGridAxes, type GridInStoreParams } from '@ifc-lite/create';
@@ -25,6 +27,8 @@ export type GridTagScheme = 'numbers' | 'letters';
 
 /** More axes than this is a typo (a 0.01 m spacing), not a grid. */
 export const MAX_GRID_AXES = 200;
+/** A dragged closing bay narrower than this share of the spacing is a sliver: no axis closes it. */
+const MIN_DRAGGED_BAY = 0.1;
 const AXIS_STRIP_WIDTH = 0.06;
 const AXIS_STRIP_HEIGHT = 0.04;
 const GRID_COLOR: [number, number, number, number] = [0.25, 0.6, 1, 0.7];
@@ -62,17 +66,28 @@ function letters(index: number): string {
   return out;
 }
 
-/** How many axes `axisOffsets(extent, spacing)` makes, without making them. */
-export function axisCount(extent: number, spacing: number): number {
-  const count = Math.floor(extent / spacing + 1e-9) + 1;
-  return extent - (count - 1) * spacing > 1e-6 ? count + 1 : count;
+/**
+ * The whole bays across `extent`, and whether an axis closes a shorter one after them.
+ * `dragged`: the extent came from the pointer, so a sliver is dropped; a rectangle
+ * narrower than one bay still closes, since a family needs its far side.
+ */
+function bayLayout(extent: number, spacing: number, dragged: boolean): { bays: number; closes: boolean } {
+  const bays = Math.floor(extent / spacing + 1e-9);
+  const rest = extent - bays * spacing;
+  return { bays, closes: rest > 1e-6 && (!dragged || bays === 0 || rest >= spacing * MIN_DRAGGED_BAY) };
 }
 
-/** Axis offsets across `extent` at `spacing`, closing on the far side. */
-export function axisOffsets(extent: number, spacing: number): number[] {
-  const count = Math.floor(extent / spacing + 1e-9);
-  const offsets = Array.from({ length: count + 1 }, (_, i) => i * spacing);
-  if (extent - offsets[offsets.length - 1] > 1e-6) offsets.push(extent);
+/** How many axes `axisOffsets(extent, spacing, dragged)` makes, without making them. */
+export function axisCount(extent: number, spacing: number, dragged = false): number {
+  const { bays, closes } = bayLayout(extent, spacing, dragged);
+  return bays + (closes ? 2 : 1);
+}
+
+/** Axis offsets across `extent` at `spacing`, closing on the far side (see `bayLayout`). */
+export function axisOffsets(extent: number, spacing: number, dragged = false): number[] {
+  const { bays, closes } = bayLayout(extent, spacing, dragged);
+  const offsets = Array.from({ length: bays + 1 }, (_, i) => i * spacing);
+  if (closes) offsets.push(extent);
   return offsets;
 }
 
@@ -85,9 +100,12 @@ export function planGrid(g: GridPlaceGesture, z: number): GridPlan {
   const rect = rectangleExtent(g);
   if (!rect) return { ok: false, reason: 'noArea' };
   // Count before allocating: a spacing of 1e-12 must be refused, not enumerated.
-  if (axisCount(rect.width, g.spacingU) + axisCount(rect.depth, g.spacingV) > MAX_GRID_AXES) return { ok: false, reason: 'tooManyAxes' };
-  const UOffsets = axisOffsets(rect.width, g.spacingU);
-  const VOffsets = axisOffsets(rect.depth, g.spacingV);
+  // Shift squares a side to the other's typed value, so that side is typed too.
+  const dragU = g.width === null && !(g.square && g.depth !== null);
+  const dragV = g.depth === null && !(g.square && g.width !== null);
+  if (axisCount(rect.width, g.spacingU, dragU) + axisCount(rect.depth, g.spacingV, dragV) > MAX_GRID_AXES) return { ok: false, reason: 'tooManyAxes' };
+  const UOffsets = axisOffsets(rect.width, g.spacingU, dragU);
+  const VOffsets = axisOffsets(rect.depth, g.spacingV, dragV);
   const tag = (i: number, scheme: 'number' | 'letter') => (scheme === 'number' ? String(i + 1) : letters(i));
   // Numbers run along the U axes (the lines across the top of a plan), letters down the side.
   const [uScheme, vScheme] = g.tags === 'numbers' ? (['number', 'letter'] as const) : (['letter', 'number'] as const);

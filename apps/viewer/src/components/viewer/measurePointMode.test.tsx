@@ -709,7 +709,9 @@ describe('Point mode readout staleness (#8828)', () => {
 
   it('hiding a model ends "Live": the effective hidden set the pick reads changes (#8886)', () => {
     const { ctx } = fakeCtx({ current: ON_WALL });
-    useViewerStore.setState(fixtureModels(fixtureModel('m1', { entities: [{ expressId: 5, type: 'IfcWall' }] })));
+    // A model known by its meshes alone: hiding it hides their ids.
+    const model = { ...fixtureModel('m1'), ifcDataStore: undefined, geometryResult: { meshes: [{ expressId: 5 }] } };
+    useViewerStore.setState(fixtureModels(model as unknown as ReturnType<typeof fixtureModel>));
     function Probe() {
       // As Viewport does: its refs follow the effective visibility each render.
       const { hiddenEntities, isolatedEntities } = useVisibilityState();

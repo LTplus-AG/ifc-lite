@@ -6,13 +6,11 @@
 
 import { Play, GraduationCap } from 'lucide-react';
 import { useViewerStore } from '@/store';
-import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
-import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { buildExportCommands } from './commandPaletteExports';
-import { describeRunCommandError } from '@/services/extensions/runtime-errors';
+import { buildPaletteExtensionCommands } from './palette-extension-commands';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
@@ -52,28 +50,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   }
 
   // ── Extension contributions ──
-  for (const contribution of p.extensionCommands) {
-    const payload = contribution.payload;
-    if (!payload?.id || !payload.title) continue;
-    c.push({
-      id: `ext:${payload.id}`,
-      runtimeSource: 'extension-command',
-      label: payload.title,
-      keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
-      category: 'Extensions',
-      icon: resolveExtensionIcon(payload.icon),
-      detail: payload.paletteCategory,
-      action: () => {
-        if (!p.extensionHost) return;
-        void p.extensionHost.dispatcher
-          .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-          .then(() => p.extensionHost?.runCommand(payload.id, contribution.extensionId))
-          .catch((err: unknown) => {
-            paletteToast.error(describeRunCommandError(payload.id, err));
-          });
-      },
-    });
-  }
+  c.push(...buildPaletteExtensionCommands(p.extensionCommands, p.extensionHost, p.extensionHostIsCurrent));
 
   return c;
 }

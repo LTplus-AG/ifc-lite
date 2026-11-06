@@ -199,3 +199,19 @@ unresolved, and candidate behavior coverage is still pending. Source accounting
 is not a completeness verdict. The author-host implementer reclaimed 2,297,930
 bytes of its own redundant dry-run and verbose guard output, retaining compact
 receipts and preserving source, fixtures, evidence and foreign jobs.
+
+## Round 1 extension-command checkpoint
+
+All manifest commands already enter the canonical command slot. Palette rows now
+use an encoded owner/command tuple, show the owner and search the description and
+category. Ambiguous legacy recent IDs are not assigned to an arbitrary owner.
+Palette, toolbar and keyboard dispatch once through the canonical host; they no
+longer pre-fire the activation event. Live checks reject removed/replaced slots
+and a replaced React host before command usage or telemetry is recorded.
+
+New unit and mounted regressions exercise colliding command names, owner routing,
+real wrapped fixture handlers, stale contributions/providers, asynchronous error
+feedback and toolbar/keyboard placement rules. Runtime assertions and typecheck
+remain unexecuted pending dependency builds; no coverage acceptance is claimed.
+The runtime implementer reclaimed 2,239,988 bytes of redundant dry-run output,
+retaining its compact receipt. Original queued validation requests are preserved.

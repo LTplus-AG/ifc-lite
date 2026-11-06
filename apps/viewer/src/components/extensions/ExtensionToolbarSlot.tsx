@@ -77,9 +77,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
   // so the run has to be pinned to the button's extension or the second
   // button silently runs the first extension's handler.
   const handleClick = (commandId: string, extensionId: string) => {
-    void host.dispatcher
-      .fire(`onCommand:${commandId}` as `onCommand:${string}`)
-      .then(() => host.runCommand(commandId, extensionId))
+    void host.runCommand(commandId, extensionId)
       .catch((err) => {
         toast.error(describeRunCommandError(commandId, err));
       });

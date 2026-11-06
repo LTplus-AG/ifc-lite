@@ -53,8 +53,7 @@ export function ExtensionKeyboardBindings(): null {
         when: 'global', layer: 'global', keys: [chord],
         active: () => !when || (when.ok && evaluateWhen(when.value, liveWhenContext())),
         run: () => {
-          void host.dispatcher.fire(`onCommand:${payload.command}` as `onCommand:${string}`)
-            .then(() => host.runCommand(payload.command, extensionId))
+          void host.runCommand(payload.command, extensionId)
             .catch((error: unknown) => toast.error(describeRunCommandError(payload.command, error)));
         },
       }));

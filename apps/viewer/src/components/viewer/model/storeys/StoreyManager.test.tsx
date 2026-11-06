@@ -82,6 +82,21 @@ describe('storey manager (#9013)', () => {
     assert.equal(ui.querySelector('[role="alert"]'), null);
   });
 
+  it('Enter keeps a previewed edit: the preview already shows the typed value (GPU walkthrough regression)', async () => {
+    const ui = await mount();
+    const height = field(rows(ui)[1], 'height');
+    edit(height, '3.50');
+    await advance(400);
+    assert.deepEqual(elevations(), [0, 3.5], 'the preview applied the edit');
+    // The row now displays 3.50, the very text typed: that is still a change from 3.00.
+    press(height, 'Enter');
+    await advance(50);
+    assert.deepEqual(elevations(), [0, 3.5], 'Enter kept the preview');
+    const s = useViewerStore.getState();
+    const stack = s.undoStacks.get(MODEL_ID) ?? [];
+    assert.equal(new Set(stack.map((m) => s.mutationBatchTags.get(m.id))).size, 1, 'one undo step');
+  });
+
   it('Escape cancels a previewed elevation: the model is as it was', async () => {
     const ui = await mount();
     const elevation = field(rows(ui)[0], 'elevation');

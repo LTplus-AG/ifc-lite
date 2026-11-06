@@ -35,33 +35,39 @@ export function StoreyInlineField({
   value, label, suffix, readOnly, onDraft, onCommit, onCancel, error, align = 'start', className, inputRef, dataField,
 }: StoreyInlineFieldProps) {
   const [draft, setDraft] = useState(value);
-  const editing = useRef(false);
+  // State re-syncs the text after editing; the ref answers synchronously,
+  // since Escape and Enter blur the field before React re-renders.
+  const [editing, setEditing] = useState(false);
+  const active = useRef(false);
+  // The value when editing began. A live preview updates `value` to the typed
+  // text while it is typed, so "unchanged" means unchanged from here.
+  const started = useRef(value);
   const errorId = useId();
-  useEffect(() => { if (!editing.current) setDraft(value); }, [value]);
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
 
   // Enter keeps a refused value in the field, with its message, to fix it.
   // Blur and Escape put the stored value back.
   const commit = (): boolean => {
-    if (draft === value) { onCancel?.(); return true; }
+    if (draft === started.current) { onCancel?.(); return true; }
     return onCommit(draft);
   };
-  const revert = () => { setDraft(value); onCancel?.(); };
+  const stop = () => { active.current = false; setEditing(false); };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     event.stopPropagation(); // workspace keys (W, E, S, PageUp) must not fire while typing
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (commit()) { editing.current = false; event.currentTarget.blur(); }
+      if (commit()) { stop(); event.currentTarget.blur(); }
     } else if (event.key === 'Escape') {
       event.preventDefault();
-      editing.current = false;
-      revert();
+      stop();
+      onCancel?.();
       event.currentTarget.blur();
     }
   };
   const onBlur = () => {
-    if (!editing.current) return;
-    editing.current = false;
-    if (!commit()) revert();
+    if (!active.current) return;
+    stop();
+    if (!commit()) onCancel?.();
   };
 
   return (
@@ -75,7 +81,7 @@ export function StoreyInlineField({
           aria-describedby={error ? errorId : undefined}
           readOnly={readOnly}
           data-storey-field={dataField}
-          onFocus={(event) => { if (!readOnly) { editing.current = true; event.currentTarget.select(); } }}
+          onFocus={(event) => { if (!readOnly) { started.current = value; active.current = true; setEditing(true); event.currentTarget.select(); } }}
           onChange={(event) => { setDraft(event.target.value); onDraft?.(event.target.value); }}
           onBlur={onBlur}
           onKeyDown={onKeyDown}

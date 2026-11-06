@@ -84,13 +84,20 @@ export class OpaqueVisibilityPass {
     const pass = encoder.beginRenderPass(descriptor);
     this.bindPadding(pass);
     if (!this.active) return pass;
+    let variant: Variants | undefined;
     const setPipeline = (base: GPURenderPipeline) => {
-      const variant = this.forPipeline(base);
+      variant = this.forPipeline(base);
       pass.setPipeline(variant?.colour ?? base);
+    };
+    // A replayed draw may carry its own padding bind for slot 2 after its
+    // pipeline (#9065 review); decide slot 2 at draw time, as `begin` does.
+    const draw = (name: PropertyKey) => (...args: unknown[]) => {
       pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, variant ? this.binding! : emptyBindGroup(this.device));
+      return Reflect.apply(Reflect.get(pass, name), pass, args);
     };
     return new Proxy(pass, { get: (target, key) => {
       if (key === 'setPipeline') return setPipeline;
+      if (key === 'draw' || key === 'drawIndexed' || key === 'drawIndirect' || key === 'drawIndexedIndirect') return draw(key);
       const member: unknown = Reflect.get(target, key);
       return typeof member === 'function' ? member.bind(target) : member;
     } });

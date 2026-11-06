@@ -20,7 +20,7 @@ integration are separate required checks; historical receipts do not certify the
 
 Proposed stack: German plus shared infrastructure, French, Italian. Keep all
 layers draft until pending acceptance is reconciled; no deployment or merge label
-is applied by release preparation. Preview query: `?lang=de`; English: `?lang=en`.
+is applied by release preparation. Choose Deutsch or English in Settings → General → Language. Auto follows browser preferences; `?lang=` no longer selects a locale (#9075).
 Rollback uses a normal commit per the i18n README; nightly production advances
 from main at 05:45 UTC, so incomplete locales must not enter the merge queue.
 

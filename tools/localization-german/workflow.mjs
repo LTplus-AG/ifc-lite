@@ -30,12 +30,18 @@ page.on('console',m=>{if(m.type()==='error'||/device|GPU/i.test(m.text()))fs.app
 collectPageErrors(page, report);
 page.on('response', r => { if (/\.wasm(?:\?|$)/.test(r.url())) report.wasm.push({ url:r.url(), status:r.status() }); });
 const base = process.env.GERMAN_WORKFLOW_URL ?? 'http://127.0.0.1:5188/';
-const model = '?model=/samples/building-architecture.ifc&lang=de';
+const model = '?model=/samples/building-architecture.ifc';
 const save = async name => { await page.screenshot({path:path.join(out, name+'.png')}); fs.writeFileSync(path.join(out,name+'.txt'), await page.locator('body').innerText()); fs.writeFileSync(path.join(out,name+'-aria.txt'),await page.locator('body').ariaSnapshot()); };
 const check = async (name, fn) => { console.log('START',name); try { const detail = await fn(); report.checks.push({name,status:'pass',detail}); console.log('PASS',name); } catch(e) { report.checks.push({name,status:'fail',error:String(e)}); console.log('FAIL',name,String(e)); await save('failure-'+name.replace(/\W/g,'-')); } };
 try {
   // Readiness bounded to two minutes; no server or build is started by this harness.
   for (let i=0;i<60;i++) { try { const r=await fetch(base); if(r.ok && (await r.text()).includes('<html'))break; } catch(e) { report.readinessError=String(e); } if(i===59)throw Error('Preview did not serve built HTML within 120 seconds'); await new Promise(r=>setTimeout(r,2000)); }
+  await page.goto(base);
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await page.locator('#settings-language').click();
+  await page.getByRole('option',{name:'Deutsch',exact:true}).click();
+  await page.waitForFunction(()=>document.documentElement.lang==='de');
+  await page.keyboard.press('Escape');
   await page.goto(base+model);
   await page.waitForFunction(() => document.documentElement.lang === 'de');
   report.gpu = await page.evaluate(async()=>{ const a=await navigator.gpu.requestAdapter(); if(!a)return null; return {...a.info.toJSON?.(),vendor:a.info.vendor,architecture:a.info.architecture,device:a.info.device,description:a.info.description,isFallbackAdapter:a.info.isFallbackAdapter??a.isFallbackAdapter}; });
@@ -113,17 +119,30 @@ try {
       assert.ok(widths.document<=widths.viewport,'document must not overflow horizontally'); return widths;
     });
     // Workflow steps below exercise the actual UI; store reads are assertions only.
-    await check('locale-url',async()=>{assert.equal(await page.locator('html').getAttribute('lang'),'de');assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'de');});
+    await check('locale-settings',async()=>{assert.equal(await page.locator('html').getAttribute('lang'),'de');assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'de');});
     await check('locale-persistence',async()=>{
       await page.setViewportSize({width:1600,height:1000});
       await page.goto(base); await page.waitForFunction(()=>document.documentElement.lang==='de');
       await page.reload(); await page.waitForFunction(()=>document.documentElement.lang==='de');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'de');
     });
-    await check('locale-english-url',async()=>{
-      await page.goto(base+'?lang=en'); await page.waitForFunction(()=>document.documentElement.lang==='en');
+    await check('locale-english-settings',async()=>{
+      await page.getByRole('button',{name:'Einstellungen',exact:true}).click();
+      await page.locator('#settings-language').click();
+      await page.getByRole('option',{name:'English',exact:true}).click();
+      await page.waitForFunction(()=>document.documentElement.lang==='en');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'en');
+      // Auto removes the saved override and follows this en-US browser again.
+      await page.locator('#settings-language').click();
+      await page.getByRole('option',{name:'Auto (browser language)',exact:true}).click();
+      assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),null);
+      await page.keyboard.press('Escape');
       await page.getByRole('tab',{name:'Home',exact:true}).waitFor();
+      // An obsolete URL parameter must neither select nor pin German (#9075).
+      await page.goto(base+'?lang=de');
+      await page.getByRole('tab',{name:'Home',exact:true}).waitFor();
+      assert.equal(await page.locator('html').getAttribute('lang'),'en');
+      assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),null);
     });
     await check('locale-de-CH-negotiation',async()=>{
       const fresh=await browser.newContext({locale:'de-CH'});

@@ -11,7 +11,7 @@ At most eight improvement rounds; stop when acceptance is demonstrated.
 - Real committed IFC sample loaded and rendered: hierarchy/Geschosse, selection
   and properties, measurement and section, German IDS findings, export.
 - Sample narrow/wide German screens and accessible labels; reload persistence,
-  browser negotiation, URL selection and html lang=de. Screenshots are evidence;
+  browser negotiation, Settings language selection and html lang=de. Screenshots are evidence;
   source text is not evidence of behavior.
 - Root pnpm/Turbo typecheck and tests, applicable repository gates through machine
   admission. Exact commands, source, host, receipts and skips recorded. No Rust

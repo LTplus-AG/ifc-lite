@@ -2,7 +2,7 @@
 
 # German viewer — implemented; final aggregate gates externally blocked
 
-German is usable through the existing `?lang=de`, remembered preference and
+German is selectable through Settings → General → Language, remembered preference and
 browser negotiation (`de-CH` → `de`). No replacement framework or new settings UI.
 The shipping entry composes 158 bounded feature modules; the largest is 377 lines.
 

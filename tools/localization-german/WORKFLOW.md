@@ -45,8 +45,8 @@ contains older Rust package metadata and is not used as runtime provenance.
 | IDS | Selected IDS validation UI, file input loads committed `building-architecture.ids`, clicked run; German Bestanden/Nicht bestanden summary (`ids-findings.png`) |
 | Export | Actual browser download `ids-report-2026-11-05.json`; parsed IDS report asserts 3 specifications, 1 passed / 2 failed, 11 entity results, 8 passed / 3 failed |
 | Narrow layout | 390×844, document width 390; actual rendered model with selection/measurement/section (`narrow.png`); wide viewport 1600×1000 |
-| URL locale | `?model=/samples/building-architecture.ifc&lang=de`, HTML language and stored preference `de` |
-| Persistence / English | Remove language query, reload preserves German; `?lang=en` switches HTML, stored preference and visible Home tab |
+| Settings locale | Choose Deutsch in Settings, then load the sample IFC; HTML language and stored preference are `de` |
+| Persistence / English / Auto | Reload preserves German; Settings switches to English live; Auto removes the stored override; obsolete `?lang=de` is ignored |
 | Negotiation | Fresh isolated context with browser `de-CH`, no stored choice, selects German and renders Start tab |
 
 German accessible names were exercised through role locators (Start, Messen,

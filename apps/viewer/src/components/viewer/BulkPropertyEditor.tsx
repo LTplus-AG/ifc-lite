@@ -154,7 +154,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
 
   // Default to the active model: Undo replays the active model's history (#5958).
   useEffect(() => {
-    if (open && modelList.length > 0 && !selectedModelId) {
+    if (open && !modelList.some(model => model.id === selectedModelId)) {
       setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
   }, [open, modelList, selectedModelId]);

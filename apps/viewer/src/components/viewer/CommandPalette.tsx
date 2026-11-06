@@ -104,6 +104,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
+  const paletteLauncher = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -129,7 +130,10 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
     execute,
-    surfaceContext: { ...toolHosts, ...surfaceContext, ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
+    surfaceContext: { ...toolHosts, ...surfaceContext,
+      openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
+        ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
+      ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
@@ -229,6 +233,15 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent overlayClassName="z-(--z-command-palette)" className="z-(--z-command-palette) flex flex-col p-0 gap-0 translate-y-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
           style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onOpenAutoFocus={event => {
+            event.preventDefault();
+            paletteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            inputRef.current?.focus();
+          }}
+          onCloseAutoFocus={event => {
+            event.preventDefault();
+            if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();
+          }}
           onEscapeKeyDown={event => {
             if (event.isComposing || event.keyCode === 229) event.preventDefault();
           }}>

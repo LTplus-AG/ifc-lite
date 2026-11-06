@@ -35,7 +35,7 @@ export interface SurfaceCommandContext {
   toolHostIsCurrent?: () => boolean;
   openBulkProperties?: () => void;
   openImportData?: () => void;
-  openClassFilter?: () => void;
+  openClassFilter?: (launcher?: HTMLElement | null) => void;
 }
 
 export interface SurfaceCommandState {

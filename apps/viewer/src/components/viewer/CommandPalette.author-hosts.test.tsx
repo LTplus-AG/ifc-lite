@@ -11,10 +11,11 @@ import { IfcParser } from '@ifc-lite/parser';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
+import { activate, advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { posthog } from '@/lib/analytics';
 import { CommandPalette } from './CommandPalette';
-import { PersistentToolHosts } from './PersistentToolHosts';
+import { PersistentToolHosts, usePersistentToolHosts } from './PersistentToolHosts';
+import { ElementsTab } from './ribbon/tabs/ElementsTab';
 import { AuthorTab } from './ribbon/tabs/AuthorTab';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud';
 import { MergeLayersBanner } from './MergeLayersBanner';
@@ -125,15 +126,15 @@ test('role, unload and missing hosts refuse author commands without usage or exe
 test('class destination retains real geometry and layer switches without a selection (#8947)', async () => {
   useViewerStore.setState({ selectedEntityId: null, hasTypeGeometry: true });
   render(<Harness />); await advance(30); await launch('elements:class-filter');
-  assert.ok(document.querySelector('[role="menu"]'));
+  assert.ok(document.querySelector('[role="dialog"]'));
   const merge = document.querySelector<HTMLButtonElement>('[id$="-merge-layers-switch"]'); assert.ok(merge);
   click(merge); assert.equal(useViewerStore.getState().mergeLayers, true);
   assert.equal(useViewerStore.getState().mergeLayersPendingReload, true);
   const fast = document.querySelector<HTMLButtonElement>('[id$="-fast-geometry-switch"]'); assert.ok(fast);
   click(fast); assert.equal(useViewerStore.getState().geometryMode, 'fast');
   assert.equal(useViewerStore.getState().geometryModePendingReload, true);
-  assert.ok(document.querySelector('[role="menu"]'), 'toggles leave the real menu open');
-  press(document.querySelector('[role="menu"]')!, 'Escape'); await advance(0);
+  assert.ok(document.querySelector('[role="dialog"]'), 'toggles leave the real controls open');
+  press(document.querySelector('[role="dialog"]')!, 'Escape'); await advance(0);
   let reloads = 0;
   render(<><ViewportHud /><MergeLayersBanner onReload={() => { reloads++; }} />
     <GeometryModeBanner onReload={() => { reloads++; }} /></>);
@@ -159,8 +160,17 @@ test('workspace undo and redo replay a real bulk edit and update palette availab
   click(button('Palette')); await advance(30); await launch('author:redo'); assert.equal(stage(), 4);
 });
 
-test('a deferred author row refuses its retired host before usage and telemetry (#8947)', async () => {
-  render(<Harness />); await advance(30);
+test('a deferred author row refuses its retired owner while the palette remains mounted (#8947)', async () => {
+  let captured: ReturnType<typeof usePersistentToolHosts> = {};
+  let retire: () => void = () => { throw new Error('Owner not mounted'); };
+  function Capture() { captured = usePersistentToolHosts(); return null; }
+  function Owner() {
+    const [mounted, setMounted] = useState(true); retire = () => setMounted(false);
+    return mounted ? <PersistentToolHosts><Capture /></PersistentToolHosts> : null;
+  }
+  render(<Owner />);
+  render(<CommandPalette open onOpenChange={() => {}} surfaceContext={captured} />); await advance(30);
+  const input = document.querySelector('[role="combobox"]'); assert.ok(input);
   const events: string[] = [];
   mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') events.push(event); });
   const frames: FrameRequestCallback[] = [];
@@ -168,10 +178,52 @@ test('a deferred author row refuses its retired host before usage and telemetry 
   globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
   try {
     click(option('author:bulk-properties'));
-    cleanup();
+    act(retire);
+    assert.equal(document.querySelector('[role="combobox"]'), input, 'palette itself is still mounted');
+    assert.equal(captured.toolHostIsCurrent?.(), false);
     act(() => frames.forEach(frame => frame(0)));
-    assert.equal(localStorage.getItem(RECENT_KEY), null);
-    assert.deepEqual(events, []);
-    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(localStorage.getItem(RECENT_KEY), null); assert.deepEqual(events, []);
+    assert.equal(document.querySelector('input[placeholder="Value"]'), null);
   } finally { globalThis.requestAnimationFrame = originalFrame; }
+});
+
+test('class filter ribbon disclosure returns focus to its visible keyboard trigger (#8947)', async () => {
+  render(<ElementsTab />);
+  const trigger = document.querySelector<HTMLButtonElement>('[data-command-id="elements:class-filter"]'); assert.ok(trigger);
+  activate(trigger); await advance(0);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+  const menu = document.querySelector('[role="menu"]'); assert.ok(menu);
+  press(menu, 'Escape'); await advance(0);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  activate(trigger); await advance(0); assert.ok(document.querySelector('[role="menu"]'));
+});
+
+test('class filter palette destination returns focus to the visible palette launcher (#8947)', async () => {
+  render(<Harness />); await advance(30);
+  press(document.querySelector('[role="combobox"]')!, 'Escape'); await advance(0);
+  const launcher = button('Palette'); activate(launcher); await advance(30);
+  await launch('elements:class-filter');
+  const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
+  assert.ok(dialog.querySelector('[role="switch"]'));
+  press(dialog, 'Escape'); await advance(0);
+  assert.equal(document.activeElement, launcher);
+  activate(launcher); await advance(30); assert.ok(document.querySelector('[role="combobox"]'));
+});
+
+test('persistent bulk editor reconciles a removed model before querying and applying (#8947)', async () => {
+  useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set() });
+  render(<Harness />); await advance(30); await launch('author:bulk-properties');
+  closeDialog(); await advance(0);
+  const b = fixtureModel('b');
+  b.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(step.replace('Wall A', 'Wall B')).buffer, { disableWorkerScan: true });
+  act(() => useViewerStore.setState({ ...fixtureModels(b), selectedEntityId: null, selectedEntityIds: new Set() }));
+  click(button('Palette')); await advance(30); await launch('author:bulk-properties');
+  assert.ok([...document.querySelectorAll('[role="combobox"]')].some(p => p.textContent === 'b'));
+  click(button('Construction stage preset')); await advance(0);
+  const value = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(value); typeInto(value, '6');
+  const apply = [...document.querySelectorAll('button')].find(p => p.textContent?.includes('Apply to')); assert.ok(apply && !apply.disabled);
+  click(apply); await advance(100);
+  assert.equal(useViewerStore.getState().getMutationView('b')?.getPropertyValue(1, 'CESIUM', 'Stage'), 6);
+  assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, 'CESIUM', 'Stage'), null);
 });

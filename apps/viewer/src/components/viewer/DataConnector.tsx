@@ -53,7 +53,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
+import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   CsvConnector,
@@ -74,6 +74,8 @@ import { suggestTableMapping, tableMappingContext } from '@/lib/actions/table-ma
 import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
 import { TableMappingCard } from './actions/TableMappingCard';
 import { DataConnectorMappings, type MappingRow } from './DataConnectorMappings';
+import { useAuthoringOperation } from './authoring-operation';
+import { importCsvDraft } from './import-csv-draft';
 
 type MatchType = 'globalId' | 'expressId' | 'name' | 'tag' | 'property';
 /** Match types a reviewed import can key on (P15); the others import directly only. */
@@ -103,8 +105,6 @@ export function DataConnector(props: ToolDialogProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
-  const lifetime = useMemo(() => ({ active: open }), [open]);
-  useEffect(() => { lifetime.active = open; return () => { lifetime.active = false; }; }, [lifetime, open]);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
     [editEnabled, collabEditRole, selectedModelId, models]);
@@ -175,11 +175,17 @@ export function DataConnector(props: ToolDialogProps) {
   }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
 
   // Default to the active model: Undo replays the active model's history (#5958).
-  useMemo(() => {
-    if (modelList.length > 0 && !selectedModelId) {
+  useEffect(() => {
+    if (open && !modelList.some(model => model.id === selectedModelId)) {
       setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
-  }, [modelList, selectedModelId]);
+  }, [open, modelList, selectedModelId]);
+  const selectedView = mutationViews.get(selectedModelId);
+  const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, selectedView);
+  useEffect(() => { setIsProcessing(false); setSuggesting(false); setImportProgress(null); }, [isCurrent]);
+  useEffect(() => {
+    setImportDirty(true); setImportStats(null); setMatchResults(null); setAiMapping(null); setReview(null); setError(null);
+  }, [selectedModelId, selectedModel?.ifcDataStore, selectedView]);
 
   // Ensure mutation view exists for selected model
   useEffect(() => {
@@ -212,9 +218,9 @@ export function DataConnector(props: ToolDialogProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => lifetime.active && canMutate(useViewerStore.getState(), selectedModelId)
+      () => isCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
     );
-  }, [lifetime, selectedModel, selectedModelId, getMutationView, mutationViews]);
+  }, [isCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,7 +236,7 @@ export function DataConnector(props: ToolDialogProps) {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      if (!lifetime.active) return;
+      if (!isCurrent()) return;
       const text = event.target?.result as string;
       if (!text) return;
 
@@ -323,7 +329,7 @@ export function DataConnector(props: ToolDialogProps) {
 
     reader.readAsText(file);
     e.target.value = ''; // Reset input
-  }, [csvConnector, lifetime]);
+  }, [csvConnector, isCurrent]);
 
   // Re-parse when model changes and we have content
   const handleModelChange = useCallback((modelId: string) => {
@@ -442,40 +448,11 @@ export function DataConnector(props: ToolDialogProps) {
   }, [csvConnector, csvContent, matchColumn, buildDataMapping]);
 
   // Import using CsvConnector.importAsync for non-blocking progress
-  const handleImport = useCallback(async () => {
-    if (!csvConnector || !csvContent || !canEditInSession) return;
-
-    setIsProcessing(true);
-    setImportStats(null);
-    setImportProgress(null);
-    setError(null);
-
-    try {
-      const dataMapping = buildDataMapping();
-      if (!dataMapping) {
-        setError('Invalid mapping configuration');
-        setIsProcessing(false);
-        return;
-      }
-
-      // The connector writes the view directly: record each applied batch as it lands (#5861, #5958).
-      const stats = await csvConnector.importAsync(csvContent, dataMapping, (progress) => setImportProgress(progress), {
-        onApplied: recordRun(useViewerStore.getState, selectedModelId),
-      });
-
-      setImportStats(stats);
-      setImportProgress(null);
-      setImportDirty(false);
-      if (stats.errors.length > 0) {
-        setError(stats.errors.join('\n'));
-      }
-    } catch (err) {
-      console.error('Import failed:', err);
-      setError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [csvConnector, csvContent, canEditInSession, buildDataMapping, selectedModelId]);
+  const handleImport = () => importCsvDraft({
+    connector: csvConnector, content: csvContent, canEdit: canEditInSession, modelId: selectedModelId,
+    isCurrent, mapping: buildDataMapping, processing: setIsProcessing, stats: setImportStats,
+    progress: setImportProgress, error: setError, dirty: setImportDirty,
+  });
 
   const tableRows = useMemo(() => tableRowsOf(csvConnector, csvContent), [csvConnector, csvContent]);
   const headers = useMemo(() => csvColumns.map((c) => c.name), [csvColumns]);
@@ -495,11 +472,11 @@ export function DataConnector(props: ToolDialogProps) {
     const state = useViewerStore.getState();
     const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
       state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
+    if (!isCurrent()) return;
     setSuggesting(false);
-    if (!lifetime.active) return;
     if (outcome.ok) setAiMapping(outcome.mapping);
     else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
-  }, [tableRows, selectedModelId, headers, t, lifetime]);
+  }, [tableRows, selectedModelId, headers, t, isCurrent]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {

@@ -175,7 +175,7 @@ for (const [language, remedy] of [
 ] as const) test(`#8947 palette screenshot gives a visible missing-viewport remedy in ${language}`, async () => {
   await seed();
   const activator = createLocaleActivator({
-    de: () => import('@/i18n/locales/de').then(module => module.default),
+    de: () => import('@/i18n/locales/de/shared-commands').then(module => module.sharedCommandsDe),
     ru: () => import('@/i18n/locales/ru').then(module => module.default),
   });
   await activator.activate([language]);

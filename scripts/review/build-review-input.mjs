@@ -90,8 +90,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { EXCLUDED } from './input-exclusions.mjs';
-export { EXCLUDED } from './input-exclusions.mjs';
+import { isExcluded } from './input-exclusions.mjs';
+export { EXCLUDED, isExcluded } from './input-exclusions.mjs';
 import {
   buildPack,
   retrievalFailed,
@@ -105,7 +105,7 @@ import {
 // copies held together by prose drifted once already: a constant that charged
 // a kept file's path once, where the prompt spends it twice, declared a
 // 600-file long-path diff "fits" 8,476 bytes over the ceiling.
-import { keptRowCharge, unreviewableRowCharge, applicabilityReserve } from './run-reviewer.mjs';
+import { keptRowCharge, unreviewableRowCharge, applicabilityReserve, excludedSectionCharge } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
@@ -197,11 +197,6 @@ export class BuildInputError extends Error {
     super(message);
     this.reason = reason;
   }
-}
-
-/** @param {string} path */
-export function isExcluded(path) {
-  return EXCLUDED.some((re) => re.test(path));
 }
 
 /**
@@ -368,9 +363,10 @@ export function addedLineRanges(patch) {
  *
  * @param {{path: string, patch: string}[]} candidates
  * @param {{path: string}[]} unreviewable rows already recorded for other reasons
+ * @param {string[]} excluded input-excluded paths, disclosed by name in the prompt
  * @returns {{ kept: typeof candidates, omitted: typeof candidates, budget: number }}
  */
-export function fitFilesToPrompt(candidates, unreviewable) {
+export function fitFilesToPrompt(candidates, unreviewable, excluded) {
   // Charged by run-reviewer's own per-row charges, which sit next to the
   // renderers they measure. Re-spelling the arithmetic here is how the two
   // copies would drift apart.
@@ -382,6 +378,7 @@ export function fitFilesToPrompt(candidates, unreviewable) {
   // only shorten the real disclosure, never lengthen it.
   base -= applicabilityReserve(candidates.map((c) => c.path), DEFECT_CLASSES.length);
   for (const u of unreviewable) base -= unreviewableRowCharge(u);
+  base -= excludedSectionCharge(excluded);
 
   const sized = candidates.map((c) => ({
     c,
@@ -418,17 +415,25 @@ export function fitFilesToPrompt(candidates, unreviewable) {
  * Pure over an already-fetched file list, so every branch is reachable in tests
  * without a network.
  *
- * @returns {{ headSha: string, files: object[], unreviewable: string[], excluded: string[] }}
+ * `changedPaths` is every path the PR touches, a rename's old path included,
+ * whatever bucket it lands in. The sibling search reads it, because a sibling is
+ * a site the PR did NOT touch, and rebuilding it from the buckets lost the
+ * excluded ones (#8876, #9027).
+ *
+ * @returns {{ headSha: string, files: object[], unreviewable: {path: string, reason: string, kind: string}[], excluded: string[], changedPaths: string[] }}
  */
 export function buildInput(fileRows, headSha) {
   const candidates = [];
   const unreviewable = [];
   const excluded = [];
+  const changedPaths = [];
   let bytes = 0;
 
   for (const row of fileRows) {
     const path = String(row?.filename ?? '');
     if (!path) continue;
+    changedPaths.push(path);
+    if (row?.previous_filename) changedPaths.push(String(row.previous_filename));
     if (isExcluded(path)) {
       excluded.push(path);
       continue;
@@ -504,7 +509,7 @@ export function buildInput(fileRows, headSha) {
     );
   }
 
-  const { kept, omitted, budget } = fitFilesToPrompt(candidates, unreviewable);
+  const { kept, omitted, budget } = fitFilesToPrompt(candidates, unreviewable, excluded);
   if (kept.length === 0) {
     // NAME THE CAUSE THAT ACTUALLY BIT. One message covered both and was false
     // about one of them: 2,000 files totalling 26 KB of patch were refused with
@@ -514,7 +519,7 @@ export function buildInput(fileRows, headSha) {
     const smallest = Math.min(...candidates.map((c) => Buffer.byteLength(c.patch, 'utf8')));
     const why =
       budget <= 0
-        ? `Listing this PR's ${candidates.length} changed file(s) fills the ${MAX_PROMPT_BYTES}-byte model ` +
+        ? `Listing this PR's ${candidates.length} changed file(s), with the capped excluded-file section, fills the ${MAX_PROMPT_BYTES}-byte model ` +
           'prompt before a single patch is added, so there is no room to review any of them. It is the ' +
           'FILE COUNT, not the diff: the paths alone do not fit.'
         : `No single file's patch fits the ${budget} bytes left of the ${MAX_PROMPT_BYTES}-byte model ` +
@@ -535,7 +540,7 @@ export function buildInput(fileRows, headSha) {
   }
 
   const files = kept.map(({ path, patch }) => ({ path, patch, addedLineRanges: addedLineRanges(patch) }));
-  return { headSha, files, unreviewable, excluded };
+  return { headSha, files, unreviewable, excluded, changedPaths };
 }
 
 function main() {

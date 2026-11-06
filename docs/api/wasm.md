@@ -224,7 +224,9 @@ instance for another model. JavaScript input arrays remain usable after
 Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a `Uint8Array`.
 
 ```typescript
-exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
+exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?, emissive?): Uint8Array;
+// Same parameters; each element one node named by its GlobalId (#9011).
+exportGlbNamedByGlobalId(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?, emissive?): Uint8Array;
 exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(

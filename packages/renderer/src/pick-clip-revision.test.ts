@@ -18,16 +18,25 @@ it('bumps only when the clip a pick mirrors changes, not on each frame\'s fresh 
   assert.ok(cut > none, 'a new cut kept the revision');
   clip.note({ sectionPlane: plane(), extraPlanes: null, clipBox: null }); // the next frame's snapshot: a new object, same cut
   assert.equal(clip.revision, cut);
-  const changes = [
-    { sectionPlane: { ...plane(), distance: 3 } },
-    { sectionPlane: { ...plane(), flipped: true } },
-    { sectionPlane: plane(), extraPlanes: [{ normal: [1, 0, 0] as [number, number, number], distance: 1, flipped: false }] },
-    { sectionPlane: plane(), clipBox: { enabled: true, min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] } },
-    { sectionPlane: plane(), sectionExcludedIds: new Set([7]) },
+  // Each entry differs from one fixed baseline in exactly one field. The
+  // baseline is noted first, so the revision is settled before each entry
+  // and only that entry's own field can bump it.
+  const baseline = { sectionPlane: plane(), extraPlanes: null, clipBox: null };
+  const changes: Array<[string, Parameters<PickClipRevision['note']>[0]]> = [
+    ['distance', { ...baseline, sectionPlane: { ...plane(), distance: 3 } }],
+    ['normal', { ...baseline, sectionPlane: { ...plane(), normal: [1, 0, 0] } }],
+    ['flipped', { ...baseline, sectionPlane: { ...plane(), flipped: true } }],
+    ['sectionPlane removed', { ...baseline, sectionPlane: null }],
+    ['extraPlanes', { ...baseline, extraPlanes: [{ normal: [1, 0, 0], distance: 1, flipped: false }] }],
+    ['clipBox', { ...baseline, clipBox: { enabled: true, min: [0, 0, 0], max: [1, 1, 1] } }],
+    ['sectionExcludedIds', { ...baseline, sectionExcludedIds: new Set([7]) }],
   ];
-  for (const change of changes) {
-    const before = clip.revision;
+  for (const [field, change] of changes) {
+    clip.note(baseline);
+    const settled = clip.revision;
+    clip.note(baseline);
+    assert.equal(clip.revision, settled, `the baseline itself bumped the revision (before ${field})`);
     clip.note(change);
-    assert.ok(clip.revision > before, `no bump for ${JSON.stringify(change, (_k, v) => (v instanceof Set ? [...v] : v))}`);
+    assert.equal(clip.revision, settled + 1, `a change to ${field} alone did not bump the revision`);
   }
 });

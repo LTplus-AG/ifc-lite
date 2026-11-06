@@ -25,7 +25,7 @@ const cursors = new WeakMap<object, MeasureCursor>();
 
 /**
  * Noted by the preview's own move handlers; forgotten by every pointer move
- * first (`routeMousePointers`), a gesture reset and a touch tap, so turning Snap
+ * first (`routeMousePointers`), a Distance start, a gesture reset and a touch tap, so turning Snap
  * off re-picks the preview only where it still follows the cursor (#8992). The
  * cursor leaving the canvas keeps it: the rubber band stays drawn there while
  * the cursor reaches the toolbar's Snap toggle, and Point mode drops its Live

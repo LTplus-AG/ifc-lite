@@ -67,6 +67,7 @@ export function resetMeasurePress(ctx: MouseHandlerContext): void {
 export function beginDistance(ctx: MouseHandlerContext, measurePoint: MeasurePoint, at?: { x: number; y: number }): void {
   ctx.startMeasurement(measurePoint);
   rememberVertexPress(ctx, measurePoint, at);
+  noteMeasureCursor(ctx, null); // an earlier gesture's cursor, as after a pen tap with no move between (#8992)
 
   // Set up orthogonal constraint for Shift - always use world axes
   ctx.setMeasurementConstraintEdge({

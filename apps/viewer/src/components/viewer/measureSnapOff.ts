@@ -5,7 +5,7 @@
 import { useViewerStore } from '@/store';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { cancelMeasureRaycast, moveRubberBand } from './measureHandlers.js';
+import { cancelMeasureRaycast, moveRubberBand, syncMeasureScreenCoords } from './measureHandlers.js';
 import { hoverMeasurePoint } from './measurePointMode.js';
 import { measureCursor } from './measureCursor.js';
 
@@ -15,8 +15,10 @@ import { measureCursor } from './measureCursor.js';
  * have refreshed, Point mode's Live reading or the Distance rubber-band end, is
  * then re-picked once, unsnapped, where a move last drew it, through that
  * move's own pick (#8992). A pending Distance start and the gesture epoch stay.
- * With no preview following the cursor (none shown, a navigation press, a
- * touch gesture, a view or scene change since) nothing is re-picked.
+ * With no preview following the cursor (none shown, a navigation drag, a new
+ * start or a touch gesture since, a view or scene change since) nothing is
+ * re-picked. A press alone moves neither the view nor the cursor, so the pick
+ * under it is the one a move there would give.
  */
 export function measureSnapOff(ctx: MouseHandlerContext): void {
   cancelMeasureRaycast(ctx);
@@ -27,9 +29,11 @@ export function measureSnapOff(ctx: MouseHandlerContext): void {
   const unsnapped = { ...ctx, snapEnabledRef: { current: false }, edgeLockStateRef: { current: getDefaultEdgeLockState() } };
   if (s.measureMode === 'point') {
     if (s.measurePointLive) hoverMeasurePoint(unsnapped, cursor.x, cursor.y);
-  } else if (s.activeMeasurement && cursor.view !== null && cursor.view === ctx.lastCameraStateRef.current) {
+  } else if (s.activeMeasurement && cursor.view !== null) {
     // The animation loop's pass replaces that state on any view or scene change (#8886, #8998), and the
-    // canvas box watch clears it; the Snap toggle itself reaches the pass only on the next frame
-    moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
+    // canvas box watch clears it. Run it now, as the last frame saw Snap (on), so a change since that
+    // frame counts too, and the toggle itself reaches the pass only on the next frame.
+    syncMeasureScreenCoords({ ...ctx, snapEnabledRef: { current: true } });
+    if (cursor.view === ctx.lastCameraStateRef.current) moveRubberBand(unsnapped, cursor.x, cursor.y, cursor.orthogonal);
   }
 }

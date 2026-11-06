@@ -557,6 +557,35 @@ describe('turning Snap off re-picks the live preview unsnapped at the cursor (#8
     assert.equal(locksSeen.length, 0, 'Snap off picked under a moved view');
   });
 
+  it('Distance, the view moved and no frame ran since: the toolbar toggle does not re-pick under the new view', () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    fire(canvas, 'mouseleave', 400, 250);
+    camera.setPosition(2, 1.6, 10); // the animation loop's measure pass has not run since
+    locksSeen.length = 0;
+    act(() => s().toggleSnap());
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked at the exit pixel under a view the pass had not seen');
+    assert.equal(locksSeen.length, 0, 'Snap off picked under a moved view');
+  });
+
+  it('a fresh start at another pixel with no move between (a pen tap): Snap off does not pull its end to the old cursor', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    click(canvas, 400, 250); // finishes that distance; no reset since
+    assert.equal(s().measurements.length, 1, 'setup: a distance was finished');
+    click(canvas, 600, 300); // a pen lifted and tapped here: no pointermove first
+    assert.ok(s().activeMeasurement, 'setup: the tap set a fresh start');
+    const before = `${xy(s().activeMeasurement?.start)} ${xy(s().activeMeasurement?.current)}`;
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(`${xy(s().activeMeasurement?.start)} ${xy(s().activeMeasurement?.current)}`, before, 'Snap off pulled a fresh start\'s end to the last gesture\'s cursor');
+    assert.equal(locksSeen.length, 0, 'Snap off picked at the last gesture\'s cursor');
+  });
+
   it('Distance, the canvas resized since the cursor left: the toolbar toggle does not re-pick at the old pixel', () => {
     const { canvas, ctx } = mount();
     click(canvas, 200, 300);

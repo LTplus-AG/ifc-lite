@@ -20,7 +20,7 @@
  *
  * Surfaces are composited the way Chrome paints them: every ancestor's
  * background, translucent tints included, over white. A layer drawing the
- * HUD's active overlay (`bg-active-overlay`, a background image) is composited
+ * HUD's active overlay (`active-overlay`, a background image) is composited
  * with the active surface colour on top of its own fill.
  */
 
@@ -220,7 +220,10 @@ describe('state language: primary, pressed, active and filtered states (#8802 R4
       );
       const p = await paint(theme, ui.innerHTML, {
         ...SELECT_REFS, chip: '[data-active]', label: '[data-active] > span', neutral: 'div:not([data-active]) > span.truncate',
+        neutralChip: 'div:not([data-active]):has(> span.truncate)',
       });
+      // The overlay is layered on the HUD surface; it must not replace it.
+      assert.equal(p.chip.background, p.neutralChip.background, `active HUD chip in ${theme} keeps the HUD surface fill`);
       assert.equal(p.label.color, p.refActive.color, `active HUD chip label in ${theme} paints the active ink`);
       assert.notEqual(p.chip.backgroundImage, 'none', `active HUD chip in ${theme} layers the active overlay`);
       assert.notEqual(p.label.color, p.neutral.color, `active and neutral HUD chips in ${theme} paint different ink`);

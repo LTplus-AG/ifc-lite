@@ -232,8 +232,9 @@
 
 /* The active state over a surface that must keep its own fill (#8802 R4):
    a HUD chip floats on the model, so its translucent popover surface stays
-   and the active tint is layered on top as an image. */
-@utility bg-active-overlay {
+   and the active tint is layered on top as an image. Named without a `bg-`
+   prefix so tailwind-merge never reads it as a colour that replaces the fill. */
+@utility active-overlay {
   background-image: linear-gradient(var(--color-active-surface), var(--color-active-surface));
 }
 

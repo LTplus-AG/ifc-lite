@@ -48,7 +48,7 @@ export function HudChip({ children, icon, toggle, resume, dismiss, active, role,
       data-active={active ? '' : undefined}
       className={cn(
         'flex max-w-[13rem] items-center gap-1.5 px-2 py-1 text-xs',
-        active && 'border-active-border bg-active-overlay font-medium text-active',
+        active && 'border-active-border active-overlay text-active',
         className,
       )}
       role={role}

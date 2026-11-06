@@ -19,6 +19,7 @@ import { envelopeWasm } from '@/test/space-envelope-oracle';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import type { AlignGesture } from '@/lib/commands/modeling/align-gesture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { isWorkplane } from '@/lib/commands/modeling/workplane';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
@@ -175,9 +176,10 @@ test('#8947 palette multi-split resolves selected IFC geometry and presents its 
 });
 
 test('#8947 palette align reads the parsed beam rendered bounds and exposes edge configuration', async () => {
-  // Stated mesh invariant: #80's rectangle is x=-0.24..0, extruded along
-  // IFC +Y from 0..4 at z=2.5 +/- 0.1. Render coordinates are (x,z,-y).
-  const positions = new Float32Array([-0.24, 0].flatMap(x => [2.4, 2.6].flatMap(y => [0, -4].flatMap(z => [x, y, z]))));
+  // #8947: profile corner (u,v), extrusion d, solid placement #87 and
+  // product placement #81 yield IFC (v,d,2.5+u), then render (v,2.5+u,-d).
+  // This rotates the offset rectangle; its world X range is not its local u.
+  const positions = new Float32Array([-0.1, 0.1].flatMap(x => [2.26, 2.5].flatMap(y => [0, -4].flatMap(z => [x, y, z]))));
   const mesh: MeshData = { expressId: ROTATED_BEAM, ifcType: 'IfcBeam', positions, normals: new Float32Array(positions.length),
     indices: new Uint32Array([0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5,
       0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3]), color: [0.8, 0.8, 0.8, 1] };
@@ -188,6 +190,13 @@ test('#8947 palette align reads the parsed beam rendered bounds and exposes edge
   select(ROTATED_BEAM);
   const bar = await launch('tool:align', 'element.align', en['commandPalette.tool.align.label']);
   hint('align.hint.targets');
+  const gesture = getCommandRuntime().gesture as AlignGesture;
+  assert.equal(gesture.reference, ROTATED_BEAM);
+  const box = gesture.boxes.get(ROTATED_BEAM);
+  assert.ok(box, 'canonical Align resolves the selected beam bounds');
+  const actual = [...box.min, ...box.max, box.z0, box.z1];
+  const expected = [-0.1, 0, 0.1, 4, 2.26, 2.5];
+  actual.forEach((value, i) => assert.ok(Math.abs(value - expected[i]!) < 1e-6, `rotated IFC bound ${i}`));
   assert.ok(bar.querySelector('[data-align-count]'));
   choose(bar, en['align.mode.aria'], en['align.mode.right']);
   cancel(bar);

@@ -112,6 +112,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     const current = useRegistryWorkspace.getState();
     if (current.session && current.models.length) return;
     const controller = new AbortController();
+    pending.current = controller;
     void (async () => {
       try {
         const session = await transport.restore(controller.signal);
@@ -126,6 +127,8 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
         if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
           console.warn('[registry] Could not restore the browser session', error instanceof Error ? error.message : 'unknown error');
         }
+      } finally {
+        if (pending.current === controller) pending.current = null;
       }
     })();
     return () => controller.abort();

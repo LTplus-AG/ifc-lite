@@ -66,7 +66,7 @@ export class RegistryArtifacts {
 
   async tags(repository: string, signal?: AbortSignal): Promise<string[]> {
     const response = await this.transport.request(this.transport.path(repository, 'tags/list'), { signal });
-    const value: unknown = await response.json();
+    const value: unknown = JSON.parse(new TextDecoder().decode(await responseBytes(response, 1024 * 1024)));
     if (!value || typeof value !== 'object' || !('tags' in value) || !Array.isArray(value.tags)) {
       throw new RegistryError('The registry returned an invalid release list.');
     }

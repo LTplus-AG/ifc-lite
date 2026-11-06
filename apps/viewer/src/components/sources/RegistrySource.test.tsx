@@ -137,3 +137,53 @@ test('remembered login restores the source after a fresh viewer mount without op
     assert(button(ui, 'Sign in to registry')); assert.equal(useRegistryWorkspace.getState().session, null);
   } finally { globalThis.fetch = originalFetch; window.open = originalOpen; }
 });
+
+test('a delayed restore cannot overwrite a new session after sign-out and sign-in (#8310)', async () => {
+  clearRegistrySession(); useRegistryWorkspace.setState({ transport: null });
+  const popup = installRegistryPopup(registryCallback);
+  const manifest = (title: string) => JSON.stringify({ schemaVersion: 2, mediaType: OCI_MANIFEST_TYPE,
+    config: { mediaType: 'application/vnd.oci.empty.v1+json', digest: `sha256:${'a'.repeat(64)}`, size: 2 }, layers: [],
+    annotations: { 'org.opencontainers.image.title': title } });
+  let finishRestore: (() => void) | undefined;
+  let restoreBodyRead = false;
+  let manifestRequests = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/oauth/config') return Response.json(registryOAuthConfig('http://127.0.0.1:5000'));
+    if (url.pathname === '/oauth/token') {
+      const restoring = new URLSearchParams(String(init?.body)).get('grant_type') === 'refresh_token';
+      return Response.json(restoring ? registryTokenReply('writer', ['pull', 'push'], true) : registryTokenReply('reader', ['pull']));
+    }
+    if (url.pathname === '/oauth/revoke') return new Response(null, { status: 200 });
+    if (url.pathname === '/v2/_catalog') return Response.json({ repositories: ['project/model'] });
+    if (url.pathname.endsWith('/tags/list')) return Response.json({ tags: ['issued'] });
+    if (url.pathname.endsWith('/manifests/issued')) {
+      if (manifestRequests++ > 0) return new Response(manifest('New reader model'));
+      const bytes = new TextEncoder().encode(manifest('Old writer model'));
+      // The fetch has returned, but its body finishes after the user's new login.
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.subarray(0, 20));
+          finishRestore = () => { controller.enqueue(bytes.subarray(20)); controller.close(); };
+        },
+        pull() { restoreBodyRead = true; },
+      }));
+    }
+    throw new Error(`Unexpected restore-race request ${url.pathname}`);
+  };
+  try {
+    const ui = await mount(); click(button(ui, 'Model registry (experimental)'));
+    await waitFor(() => restoreBodyRead && useRegistryWorkspace.getState().session?.subject === 'writer', 'restore should wait on the old manifest body');
+    click(button(ui, 'Sign out'));
+    await waitFor(() => !useRegistryWorkspace.getState().session && !useRegistryWorkspace.getState().signOutPending, 'sign-out should finish');
+    const form = ui.querySelector('form'); assert(form);
+    act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+    await waitFor(() => Boolean(ui.textContent?.includes('New reader model')), 'the new reader should finish browsing');
+    assert(finishRestore);
+    await act(async () => { finishRestore?.(); await new Promise<void>(resolve => setImmediate(resolve)); });
+    assert.equal(useRegistryWorkspace.getState().session?.subject, 'reader', 'late restoration must not replace the new identity');
+    assert.equal(useRegistryWorkspace.getState().modelTitles['project/model'], 'New reader model');
+    assert(ui.textContent?.includes('New reader model'));
+    assert(!ui.textContent?.includes('Old writer model'));
+  } finally { popup.restore(); }
+});

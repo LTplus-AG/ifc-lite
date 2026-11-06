@@ -249,10 +249,14 @@ pnpm typecheck
 pnpm lint
 ```
 
-The viewer CI shard containing `registry.test.ts` builds Subsoil at pinned
-commit `117c7788fbd839a855f4c324248b930e1b232f02` and uses the checksum-pinned
-ORAS tooling. Missing executables fail that test in CI. Locally, without the
-executable variables, integration/ORAS coverage reports its skipped portion.
+The separate `registry-integration.yml` workflow runs on registry-related pull
+requests or manual dispatch. It uses `ubuntu-latest`, no repository secrets,
+Subsoil commit `117c7788fbd839a855f4c324248b930e1b232f02`, Rust `1.98.1`, and the
+checksum-pinned ORAS tooling. This advisory workflow is independent of the
+required viewer shards and merge queue. Its setup fails if either executable
+is missing. Ordinary viewer tests skip the real-registry roundtrip when
+`OCI_REGISTRY_BINARY` is absent; a local run without `ORAS_BINARY` reports
+that independent retrieval was skipped.
 The real registry roundtrip publishes a pending wall-name edit through the
 viewer exporter, downloads it by digest, reparses the edit and checks the same
 bytes independently with ORAS. The tests cover address parsing, S256

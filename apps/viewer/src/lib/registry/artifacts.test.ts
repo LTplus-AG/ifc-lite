@@ -115,3 +115,14 @@ test('push-only publication is refused before any blob or manifest write (#8310)
   await assert.rejects(artifacts.publish('project/model', 'issued', source, 'model.ifc'), /read access.*existing version/i);
   assert.deepEqual(requests, [], 'missing read access cannot bypass the existing-tag check');
 });
+
+test('tag-list responses enforce the 1 MiB boundary before browsing manifests (#8310)', async context => {
+  const { artifacts, replies, requests } = await registryFixture(context);
+  const json = JSON.stringify({ tags: ['issued', 42] });
+  const atLimit = json.padEnd(1024 * 1024, ' ');
+  replies.set('/v2/project/model/tags/list', { body: atLimit });
+  assert.deepEqual(await artifacts.tags('project/model'), ['issued']);
+  replies.set('/v2/project/model/tags/list', { body: `${atLimit} ` });
+  await assert.rejects(artifacts.releases('project/model'), /response exceeds the supported size/);
+  assert.equal(requests.some(path => path.includes('/manifests/')), false, 'oversized metadata must stop browsing');
+});

@@ -57,3 +57,14 @@ extension contributions, popup policy, role/provider conditions and downstream
 mutation/export results. A complete count cannot clear those unknowns. The
 coordinator must bind actual canonical destinations and behavior receipts before
 claiming complete access.
+
+## Qualified execution overlay
+
+[Executed route bindings](executed-route-bindings.jsonl) associate actual passing
+assertions with specific palette destinations, fixture contexts and original IDs.
+[Provenance](executed-route-provenance.json) pins the executed source, root command,
+log hashes and 382-test focused receipt. This overlay preserves every original
+source record and its historical UNRUN verdict; it does not turn component-level
+links into proof for all child controls. The 48 bindings are evidence relations,
+not a feature count or a completeness percentage. Full-suite, corrected GPU
+extension output, outstanding route witnesses and R2 acceptance remain pending.

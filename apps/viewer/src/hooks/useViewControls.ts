@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
 import { useDrawingWheelNavigation } from './useDrawingWheelNavigation.js';
+import { drawingFitBounds, type DrawingBounds } from '@/lib/drawing/fit-bounds';
 
 interface UseViewControlsParams {
   drawing: Drawing2D | null;
@@ -24,6 +25,8 @@ interface UseViewControlsParams {
   activeSheet: DrawingSheet | null;
   isPinned: boolean;
   cachedSheetTransformRef: React.MutableRefObject<CachedSheetTransform | null>;
+  /** Visible references' extent: Fit always includes them (see `drawingFitBounds`). */
+  referenceBounds?: DrawingBounds | null;
 }
 
 interface UseViewControlsResult {
@@ -73,6 +76,7 @@ function useViewControls({
   activeSheet,
   isPinned,
   cachedSheetTransformRef,
+  referenceBounds = null,
 }: UseViewControlsParams): UseViewControlsResult {
   const [viewTransform, setRawViewTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and on a new plane
@@ -103,6 +107,8 @@ function useViewControls({
     setViewTransform((prev) => ({ ...prev, scale: Math.max(0.01, prev.scale / 1.2) }));
   }, [setViewTransform]);
 
+  const fitBounds = useMemo(() => (drawing ? drawingFitBounds(drawing, referenceBounds) : null), [drawing, referenceBounds]);
+
   const fitToView = useCallback(() => {
     if (!drawing || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -130,8 +136,9 @@ function useViewControls({
       return;
     }
 
-    // Non-sheet mode: fit the drawing bounds
-    const { bounds } = drawing;
+    // Non-sheet mode: fit the building at the cut, not far-off small objects
+    // such as origin and geo-reference markers (#8802; see `drawingFitBounds`).
+    const bounds = fitBounds ?? drawing.bounds;
     const width = bounds.max.x - bounds.min.x;
     const height = bounds.max.y - bounds.min.y;
 
@@ -168,7 +175,7 @@ function useViewControls({
       x: rect.width / 2 - adjustedCenterX * scale,
       y: rect.height / 2 - adjustedCenterY * scale,
     });
-  }, [drawing, sheetEnabled, activeSheet, sectionPlane.axis]);
+  }, [drawing, fitBounds, sheetEnabled, activeSheet, sectionPlane.axis]);
 
   // Track axis changes for forced fit-to-view
   const lastFitAxisRef = useRef(sectionPlane.axis);

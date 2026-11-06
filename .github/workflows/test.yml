@@ -4381,6 +4381,13 @@ jobs:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/check-silent-revert.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}" --pr "${PR_NUMBER}"
+      # #9054: evidence goes in the PR or a CI artifact, not back into the tree.
+      # This job has no path filter, so a docs-only evidence PR cannot skip it.
+      - name: Refuse new files in the retired evidence trees
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-no-retained-evidence.mjs --base "origin/${PR_BASE_REF}" --head "${PR_HEAD_SHA}"
 
   # NATIVE INSTRUCTION CEILINGS (#6982, charter #6954): the `native-instructions`
   # family. perf_probe runs single-threaded under callgrind on AC20-FZK-Haus

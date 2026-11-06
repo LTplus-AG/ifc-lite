@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useState } from 'react';
+import { act, useLayoutEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { RefObject } from 'react';
 import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
@@ -55,6 +55,12 @@ const originalGet = selectedSweptDiskCache.get;
 const originalToast = toast.error;
 /** Every curve set the overlay handed the renderer, in order. */
 let held: string[];
+/** Whether the renderer draws a centreline after each line call, in order. */
+let lineCalls: boolean[];
+/** The line calls before the change under test. */
+let lineMark: number;
+/** What the renderer held when the overlay's own layout pass had run: what the next frame paints and picks. */
+let atLayout: { curves: string; line: boolean };
 let builds: number;
 /** A build waits on this gate when one is set. */
 let gate: Promise<void> | null;
@@ -67,6 +73,7 @@ let fail: { build: boolean; upload: boolean; load: boolean };
 let recover: () => void;
 
 const current = () => held[held.length - 1];
+const lineDrawn = () => lineCalls[lineCalls.length - 1] ?? false;
 /** The curve sets the renderer held from `from` on. */
 const since = (from: number) => held.slice(from);
 
@@ -98,11 +105,10 @@ function select(ids: readonly number[], primary = ids[ids.length - 1], modelId =
 
 /**
  * Commits `patch` and runs its layout and passive effects, but no promise
- * continuation: what the renderer holds afterwards is what the next frame
- * reads, before any swept-disk load or line build can finish. (An async act
- * would drain the whole rebuild first.)
+ * continuation, so no swept-disk load or line build can finish before the
+ * next assertion. (An async act would drain the whole rebuild first.)
  */
-async function commit(patch: Partial<ViewerState>): Promise<void> {
+function commit(patch: Partial<ViewerState>): void {
   act(() => { flushSync(() => useViewerStore.setState(patch)); });
 }
 
@@ -138,6 +144,7 @@ function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
   const renderer = {
     setLineOverlay: (_channel: string, value: unknown) => {
       if (fail.upload && value !== null) throw new Error('device lost');
+      lineCalls.push(value !== null);
     },
     setSourceSnapCurves: (curves: readonly SourceSnapCurve[]) => { held.push(curveKey(curves)); },
   } as unknown as Renderer;
@@ -146,6 +153,8 @@ function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
     const [epoch, setEpoch] = useState(0);
     recover = () => setEpoch((value) => value + 1);
     useCentrelineRendererOverlay(ref, true, epoch, lineBuilder);
+    // Declared after the hook, so it runs after the hook's layout pass and before any passive effect.
+    useLayoutEffect(() => { atLayout = { curves: current() ?? '', line: lineDrawn() }; });
     return null;
   };
   render(<Overlay />);
@@ -157,6 +166,9 @@ const THREE = '3@{"x":3,"y":0,"z":0}';
 beforeEach(() => {
   prior = useViewerStore.getState();
   held = [];
+  lineCalls = [];
+  lineMark = 0;
+  atLayout = { curves: '', line: false };
   builds = 0;
   gate = null;
   emptyBuild = false;
@@ -185,7 +197,15 @@ afterEach(() => {
 async function mountInstalled(ids: readonly number[], expected: string, patch: Partial<ViewerState> = {}): Promise<number> {
   mount(ids, patch);
   await waitFor(() => current() === expected, 'the selected curves install');
+  assert.ok(lineDrawn(), 'their centreline is drawn');
+  lineMark = lineCalls.length;
   return held.length;
+}
+
+/** The drawn centreline stayed up through every line call since the install. */
+function lineKept(): void {
+  assert.ok(lineCalls.slice(lineMark).every(Boolean), 'the drawn centreline never blinks off');
+  assert.ok(lineDrawn());
 }
 
 /** `since(from)` read only after at least one frame, so an every() over it is not vacuous. */
@@ -198,47 +218,51 @@ function sinceSome(from: number): string[] {
 it('Ctrl-adding a product with no swept disk never empties the installed curves (#9086)', async () => {
   const from = await mountInstalled([1], ONE);
   const before = builds;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection');
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'every frame reads the same curve set');
+  lineKept();
 });
 
 it('Ctrl-adding a non-swept product to two swept ones keeps the curve order (#9086)', async () => {
   const from = await mountInstalled([1, 3], `${ONE},${THREE}`);
-  await commit(select([1, 3], 1));
+  commit(select([1, 3], 1));
   await settle();
   const before = builds;
-  await commit(select([1, 3, 2]));
+  commit(select([1, 3, 2]));
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt with product 2 added first in the selection order');
   assert.deepEqual(sinceSome(from), since(from).map(() => `${ONE},${THREE}`), 'every frame reads the same curve set in one order');
+  lineKept();
 });
 
 it('re-selecting the same product never empties the installed curves (#9086)', async () => {
   const from = await mountInstalled([1], ONE);
   const before = builds;
-  await commit(select([1]));
+  commit(select([1]));
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection objects');
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE));
+  lineKept();
 });
 
 it('hiding an unrelated product keeps the curves; hiding the selected one clears them before paint', async () => {
   const from = await mountInstalled([1], ONE);
-  await commit({ hiddenEntities: new Set([OFFSET + 2]) });
+  commit({ hiddenEntities: new Set([OFFSET + 2]) });
   await settle();
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE));
-  await commit({ hiddenEntities: new Set([OFFSET + 1, OFFSET + 2]) });
-  assert.equal(current(), '', 'a hidden product cannot be snapped to');
+  lineKept();
+  commit({ hiddenEntities: new Set([OFFSET + 1, OFFSET + 2]) });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'a hidden product is neither drawn nor snappable before paint');
   await settle();
   assert.equal(current(), '');
 });
 
 it('a switch to another swept product drops the old curves before paint (#5778)', async () => {
   const from = await mountInstalled([1], ONE);
-  await commit(select([3]));
-  assert.equal(current(), '', 'the old product is gone in the selection commit');
+  commit(select([3]));
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'the old product is gone in the selection commit');
   await settle();
   assert.equal(current(), THREE);
   assert.ok(sinceSome(from).every((set) => !set.includes('1@')), 'no frame after the switch can snap to the old product');
@@ -246,25 +270,26 @@ it('a switch to another swept product drops the old curves before paint (#5778)'
 
 it('Ctrl-adding a swept product keeps the old curves, then installs both', async () => {
   const from = await mountInstalled([1], ONE);
-  await commit(select([1, 3]));
-  assert.equal(current(), ONE);
+  commit(select([1, 3]));
+  assert.deepEqual(atLayout, { curves: ONE, line: true }, 'the kept product stays drawn and snappable');
   await settle();
   assert.ok(sinceSome(from).every((set) => set.includes(ONE)), 'the kept product stays snappable throughout');
   assert.equal(current(), `${ONE},${THREE}`, 'both products install');
+  lineKept();
 });
 
 it('deselecting everything clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
-  await commit(select([]));
-  assert.equal(current(), '');
+  commit(select([]));
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'nothing selected, nothing drawn');
   await settle();
   assert.equal(current(), '');
 });
 
 it('turning the overlay off clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
-  await commit({ centrelineOverlayEnabled: false });
-  assert.equal(current(), '');
+  commit({ centrelineOverlayEnabled: false });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'the overlay is off');
   await settle();
   assert.equal(current(), '');
 });
@@ -272,10 +297,10 @@ it('turning the overlay off clears the curves before paint', async () => {
 it('a placement change that moves the curves clears them, then installs the moved set', async () => {
   await mountInstalled([1], ONE);
   const modelPlacement = useViewerStore.getState().modelPlacement;
-  await commit({ modelPlacement: { ...modelPlacement, placements: new Map([[MODEL, {
+  commit({ modelPlacement: { ...modelPlacement, placements: new Map([[MODEL, {
     translation: [0, 5, 0], rotation: ZERO_ROTATION, locked: false,
   }]]) } });
-  assert.equal(current(), '', 'curves at the old place cannot be snapped to');
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'curves at the old place cannot be snapped to');
   await settle();
   assert.notEqual(current(), '');
   assert.notEqual(current(), ONE, 'the reinstalled set is the moved one, so Live ends');
@@ -283,8 +308,8 @@ it('a placement change that moves the curves clears them, then installs the move
 
 it('a georeference edit clears the curves before paint', async () => {
   await mountInstalled([1], ONE);
-  await commit({ georefMutations: new Map(useViewerStore.getState().georefMutations) });
-  assert.equal(current(), '');
+  commit({ georefMutations: new Map(useViewerStore.getState().georefMutations) });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'the georeference moved the source');
 });
 
 it('unloading the model mid-rebuild clears the curves and rejects the late result', async () => {
@@ -292,11 +317,11 @@ it('unloading the model mid-rebuild clears the curves and rejects the late resul
   let release: () => void = () => undefined;
   gate = new Promise((resolve) => { release = resolve; });
   const before = builds;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await waitFor(() => builds > before, 'the rebuild is pending');
   assert.equal(current(), ONE);
-  await commit({ models: new Map() });
-  assert.equal(current(), '', 'an unloaded model cannot be snapped to');
+  commit({ models: new Map() });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'an unloaded model cannot be snapped to');
   gate = null;
   release();
   await settle();
@@ -306,7 +331,7 @@ it('unloading the model mid-rebuild clears the curves and rejects the late resul
 it('a rebuild that draws nothing clears the kept curves', async () => {
   await mountInstalled([1], ONE);
   emptyBuild = true;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await settle();
   assert.equal(current(), '');
 });
@@ -316,9 +341,9 @@ it('a late build for a superseded selection never installs its dropped product (
   let release: () => void = () => undefined;
   gate = new Promise((resolve) => { release = resolve; });
   const before = builds;
-  await commit(select([1, 3]));
+  commit(select([1, 3]));
   await waitFor(() => builds > before, 'the build for products 1 and 3 is pending');
-  await commit(select([1]));
+  commit(select([1]));
   assert.equal(current(), ONE);
   gate = null;
   release();
@@ -336,7 +361,7 @@ it('a switch that also clears the highlight never reinstalls the deselected prod
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
   const before = builds;
-  await commit(select([3]));
+  commit(select([3]));
   await settle();
   assert.equal(useViewerStore.getState().selectedDirectrixSegment, null, 'the switch cleared the highlight');
   assert.equal(builds, before, 'the highlight change does not build the old selection\'s records');
@@ -348,11 +373,11 @@ it('a switch that also clears the highlight never reinstalls the deselected prod
 });
 
 it('replacing the model under the same id waits for its new swept disks', async () => {
-  await mountInstalled([1, 3], `${ONE},${THREE}`);
+  await mountInstalled([1, 3], `${ONE},${THREE}`, select([1, 3], 1));
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
   const before = builds;
-  await commit(fixtureModels(sourceModel()));
+  commit(fixtureModels(sourceModel()));
   const from = held.length;
   assert.equal(builds, before, 'the old model\'s records are not built against the new model');
   await settle();
@@ -368,15 +393,31 @@ it('replacing the model under the same id waits for its new swept disks', async 
 it('a new legacy store clears the curves of the old one before paint', async () => {
   const legacyOne = '1@{"x":1,"y":0,"z":0}';
   await mountInstalled([1, 3], `${legacyOne},${THREE}`,
-    { models: new Map(), activeModelId: null, ...legacyStore(), ...select([1, 3], 3, 'legacy') });
+    { models: new Map(), activeModelId: null, ...legacyStore(), ...select([1, 3], 1, 'legacy') });
   let release: () => void = () => undefined;
   loadGate = new Promise((resolve) => { release = resolve; });
-  await commit(legacyStore());
-  assert.equal(current(), '', 'the replaced store cannot be snapped to');
+  commit(legacyStore());
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'the replaced store cannot be snapped to');
   loadGate = null;
   release();
   await settle();
   assert.equal(current(), `${legacyOne},${THREE}`);
+});
+
+it('a highlight change while the selection reloads does not build the superseded records', async () => {
+  // The highlight re-runs the build before the swept-disk query's new result
+  // renders; only the `current()` stamp tells the old result apart.
+  await mountInstalled([1, 3], `${ONE},${THREE}`, select([1, 3], 1));
+  let release: () => void = () => undefined;
+  loadGate = new Promise((resolve) => { release = resolve; });
+  const before = builds;
+  commit({ selectedDirectrixSegment: { modelId: MODEL, expressId: 1, occurrenceIndex: 0, segmentIndex: 0 } });
+  assert.equal(builds, before, 'the records answering the old query are not built');
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'a highlight re-evaluates the curves');
+  loadGate = null;
+  release();
+  await settle();
+  assert.equal(current(), ONE, 'only the highlighted segment is snappable');
 });
 
 it('a tree click that makes another federated model active keeps the curves (#9086)', async () => {
@@ -388,12 +429,13 @@ it('a tree click that makes another federated model active keeps the curves (#90
     ifcDataStore: model.ifcDataStore, toGlobalId: (modelId, expressId) => (modelId === MODEL ? OFFSET : 2 * OFFSET) + expressId });
   const before = builds;
   // HierarchyPanel: Ctrl-add a product of the other model, which also makes that model active.
-  await commit({ selectedEntitiesSet: new Set([`${MODEL}:1`, 'other:2']), selectedEntity: { modelId: 'other', expressId: 2 },
+  commit({ selectedEntitiesSet: new Set([`${MODEL}:1`, 'other:2']), selectedEntity: { modelId: 'other', expressId: 2 },
     selectedEntityIds: new Set([OFFSET + 1, 2 * OFFSET + 2]), selectedEntityId: 2 * OFFSET + 2,
     activeModelId: 'other', ifcDataStore: other.ifcDataStore });
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection');
   assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'the active model mirror does not move the curves');
+  lineKept();
 });
 
 it('a GPU recovery reinstalls the curves on the recovered device', async () => {
@@ -407,36 +449,37 @@ it('a GPU recovery reinstalls the curves on the recovered device', async () => {
 it('a rebuild that rejects, or whose GPU upload fails, clears the kept curves', async () => {
   await mountInstalled([1], ONE);
   fail.build = true;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await settle();
   assert.equal(current(), '', 'a failed build leaves nothing to snap to');
   fail.build = false;
-  await commit(select([1]));
+  commit(select([1]));
   await settle();
   assert.equal(current(), ONE);
   fail.upload = true;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await settle();
   assert.equal(current(), '', 'curves without their drawn line are not snappable');
+  assert.equal(lineDrawn(), false);
 });
 
 it('a swept-disk load that fails clears the kept curves', async () => {
   await mountInstalled([1], ONE);
   fail.load = true;
-  await commit(select([1, 2]));
+  commit(select([1, 2]));
   await settle();
   assert.equal(current(), '');
 });
 
 it('isolating or lens-hiding away the selected product clears its curves before paint', async () => {
   await mountInstalled([1], ONE);
-  await commit({ isolatedEntities: new Set([OFFSET + 2]) });
-  assert.equal(current(), '', 'an isolated-out product cannot be snapped to');
-  await commit({ isolatedEntities: null });
+  commit({ isolatedEntities: new Set([OFFSET + 2]) });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'an isolated-out product cannot be snapped to');
+  commit({ isolatedEntities: null });
   await settle();
   assert.equal(current(), ONE);
-  await commit({ lensHiddenIds: new Set([OFFSET + 1]) });
-  assert.equal(current(), '', 'a lens-hidden product cannot be snapped to');
+  commit({ lensHiddenIds: new Set([OFFSET + 1]) });
+  assert.deepEqual(atLayout, { curves: '', line: false }, 'a lens-hidden product cannot be snapped to');
 });
 
 it('unmounting the overlay clears its curves', async () => {

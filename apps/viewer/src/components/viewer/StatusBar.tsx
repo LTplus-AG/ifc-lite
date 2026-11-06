@@ -227,7 +227,7 @@ export function StatusBar() {
   }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, mutationViews, mutationVersion, physicalIdsByModel, totalObjects]);
 
   return (
-    <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
+    <div className="h-7 px-3 border-t border-divider bg-panel flex items-center justify-between text-xs text-muted-foreground">
       {/* Left: Status */}
       <div className="flex items-center gap-3">
         {/* A load error shows once, in the viewport's load-error card
@@ -316,13 +316,13 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1">
           {webgpu.checking ? (
-            <Spinner size="sm" className="text-zinc-400" />
+            <Spinner size="sm" className="text-muted-foreground" />
           ) : webgpu.supported ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-ok" />
           ) : (
-            <AlertCircle className="h-3.5 w-3.5 text-[#f7768e]" />
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
           )}
-          <span className={!webgpu.supported && !webgpu.checking ? 'text-[#f7768e]' : ''}>
+          <span className={!webgpu.supported && !webgpu.checking ? 'text-destructive' : ''}>
             {t(
               webgpu.checking
                 ? 'shellChrome.statusBar.webgpuChecking'

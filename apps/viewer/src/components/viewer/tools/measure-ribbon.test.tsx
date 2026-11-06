@@ -186,7 +186,7 @@ function assertNoMeasurePanel(container: HTMLElement, name: string): void {
   assert.deepEqual(modeControls(container), [], `${name} hosts measurement UI of its own`);
   assert.deepEqual(panelTabs(container), [], `${name} hosts measurement UI of its own`);
   assert.equal(
-    container.textContent?.includes('Drag to measure'),
+    container.textContent?.includes('Click to set the start point'),
     false,
     `${name} hosts measurement UI of its own`,
   );
@@ -297,7 +297,6 @@ beforeEach(() => {
     activeTool: 'measure',
     measurements: [],
     activeMeasurement: null,
-    pendingMeasurePoint: null,
     measureReferencePoint: null,
     selectedEntity: null,
     selectedEntitiesSet: new Set<string>(),
@@ -319,7 +318,7 @@ describe('measure tool is hosted once for the ribbon (#5874)', () => {
     useViewerStore.setState({ activeTool: 'select' });
     const container = render();
     assert.deepEqual(modeControls(container), []);
-    assert.equal(container.textContent?.includes('Drag to measure'), false);
+    assert.equal(container.textContent?.includes('Click to set the start point'), false);
   });
 
   it("the bar's List button opens the measurements panel in the sidebar (#5502)", () => {

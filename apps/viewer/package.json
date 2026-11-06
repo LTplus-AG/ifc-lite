@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
     "test": "files=$(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | node ../../scripts/viewer-test-shards.mjs) && tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $files",
     "ai-eval": "tsx --import ./src/test/vite-module-hooks.mjs scripts/ai-eval.ts",
@@ -93,7 +93,6 @@
     "@xyflow/react": "^12.12.0",
     "apache-arrow": "^21.2.0",
     "autoprefixer": "^10.6.2",
-    "beautiful-theme-toggle": "^1.0.1",
     "cesium": "^1.146.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

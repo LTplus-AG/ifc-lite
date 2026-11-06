@@ -12,7 +12,7 @@
  * share a basis.
  */
 
-import { Ruler, X } from 'lucide-react';
+import { Check, Ruler, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore, type Measurement } from '@/store';
@@ -24,6 +24,7 @@ import { inclination, formatInclination } from './measure-modes/inclination';
 import { polylineBasisLabelKey } from './measure-modes/polyline';
 import { projectedEnh, EnhLine } from './measure-modes/geo-readout';
 import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
+import { finishOpenPolyline, finishOpenRadius } from '@/store/finishMeasureSequence';
 import { ANGLE_REQUIRED_PICKS, formatAngleMeasurement, formatRadiusPoints } from './measure-modes/readouts';
 
 const ROW = 'rounded bg-muted/50 px-2 py-1 text-xs';
@@ -31,7 +32,9 @@ const ROW_LIVE = 'flex items-center justify-between gap-2 rounded bg-overlay-acc
 // `size="icon-sm"` (32px) overridden to h-5 w-5 (20px): 2px a side of
 // hit-slop reaches the WCAG 2.2 2.5.8 24px minimum (#5826). Each of these
 // buttons is the last (or only) item in its `justify-between` row, so
-// there is no neighbour to overlap.
+// there is no neighbour to overlap; a live row's Finish and Cancel pair sits
+// in a `gap-2` group, which leaves 4px between their slops so a finger aimed
+// at Finish does not land on the destructive Cancel.
 const HIT_SLOP = 'relative after:absolute after:-inset-0.5 after:content-[""]';
 const DELETE = `h-5 w-5 shrink-0 hover:bg-destructive/20 ${HIT_SLOP}`;
 
@@ -99,9 +102,7 @@ export function MeasurementList() {
       {activePolyline && (
         <div className={ROW_LIVE}>
           <span className="tabular-nums">{t('measure.polyline.inProgress', { count: activePolyline.points.length })}</span>
-          <IconButton label={t('measure.cancelEsc')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={cancelPolyline}>
-            <X className="h-3 w-3" />
-          </IconButton>
+          <LiveRowActions onFinish={finishOpenPolyline} onCancel={cancelPolyline} />
         </div>
       )}
       {polylineMeasurements.map((pl, i) => (
@@ -169,12 +170,28 @@ export function MeasurementList() {
           <span className="tabular-nums">
             {t('measure.radius.inProgress', { count: activeRadius.points.length })} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
           </span>
-          <IconButton label={t('measure.cancelEsc')} variant="ghost" size="icon-sm" className={`h-5 w-5 shrink-0 ${HIT_SLOP}`} onClick={cancelRadius}>
-            <X className="h-3 w-3" />
-          </IconButton>
+          <LiveRowActions onFinish={finishOpenRadius} onCancel={cancelRadius} />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Finish and Cancel for an open Polyline or Radius. Finish is the same call as
+ * Enter, and the only finish a touch user has (#8991).
+ */
+function LiveRowActions({ onFinish, onCancel }: { onFinish: () => void; onCancel: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      <IconButton label={t('measure.finishEnter')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={onFinish}>
+        <Check className="h-3 w-3" />
+      </IconButton>
+      <IconButton label={t('measure.cancelEsc')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={onCancel}>
+        <X className="h-3 w-3" />
+      </IconButton>
+    </span>
   );
 }
 

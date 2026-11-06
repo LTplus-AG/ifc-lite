@@ -10,6 +10,7 @@
  * dispatches to this component for `model-header` nodes.
  */
 
+import { PositionedDownload } from '../PositionedDownload';
 import { Move3D, ChevronRight, Eye, EyeOff, FileBox, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -115,6 +116,7 @@ export function ModelHeaderRow({
             {formatLocaleNumber(locale, node.elementCount)}
           </span>
         )}
+        <PositionedDownload modelId={modelId} />
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
         <button

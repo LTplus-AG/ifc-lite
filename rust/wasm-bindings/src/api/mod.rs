@@ -50,6 +50,7 @@ mod parsing;
 mod retained_browser;
 mod pipeline_diagnostics;
 mod simplify;
+mod skip_voids;
 mod swept_disk_descriptions;
 mod space_plate;
 mod space_plate_input;
@@ -121,6 +122,7 @@ pub struct IfcAPI {
     /// full density. Default off ⇒ every cut runs (byte-identical to before). Applied
     /// to the per-batch `GeometryRouter` via `GeometryRouter::set_skip_small_cuts`.
     skip_small_cuts: std::sync::atomic::AtomicBool,
+    skip_voids: std::sync::atomic::AtomicBool,
 
     /// Distinct refused record identities for the current load; repeated reads
     /// and batches are unioned before publishing the diagnostics counter.
@@ -160,6 +162,7 @@ impl IfcAPI {
             ),
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
+            skip_voids: std::sync::atomic::AtomicBool::new(false),
             pipeline_refusals: std::sync::Mutex::default(),
             pipeline_omitted_type_records: std::sync::Mutex::default(),
             pipeline_diagnostics: std::sync::Mutex::new(

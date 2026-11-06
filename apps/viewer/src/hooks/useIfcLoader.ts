@@ -79,6 +79,7 @@ import {
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
 import { inspectGaussianAdmission } from './ingest/gaussianAdmission.js';
+import { loadGaussianCapture } from './ingest/gaussianLoad.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
@@ -447,7 +448,7 @@ export function useIfcLoader() {
 
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
-    const retryThisLoad = () => { void loadFile(file, target, options); };
+    const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = (message: string, code: string, retry = retryThisLoad) =>
       reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retry, file);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
@@ -530,7 +531,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: import('./ingest/landXmlSemantics.js').LandXmlSchema; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization; landXmlAssumptions?: import('./ingest/landXmlGeorefAssumptions.js').LandXmlGeorefAssumptions } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; gaussianSplat?: import('./ingest/gaussianIngest.js').GaussianSplatModel; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: import('./ingest/landXmlSemantics.js').LandXmlSchema; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization; landXmlAssumptions?: import('./ingest/landXmlGeorefAssumptions.js').LandXmlGeorefAssumptions } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -633,7 +634,7 @@ export function useIfcLoader() {
             sourceHandle: options?.sourceHandle,
             idOffset,
             maxExpressId,
-            pointCloudHandleId: patch?.pointCloudHandleId,
+            pointCloudHandleId: patch?.pointCloudHandleId, gaussianSplat: patch?.gaussianSplat,
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
             federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
@@ -686,7 +687,7 @@ export function useIfcLoader() {
           loadState: patch?.loadState ?? 'complete',
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
-          pointCloudHandleId: patch?.pointCloudHandleId,
+          pointCloudHandleId: patch?.pointCloudHandleId, gaussianSplat: patch?.gaussianSplat,
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch, omittedTypeRecords),
         });
@@ -698,13 +699,10 @@ export function useIfcLoader() {
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
       if (isStale()) return;
-      if (gaussianAdmission.kind !== 'ordinary') {
-        const message = gaussianAdmission.kind === 'invalid' ? gaussianAdmission.reason
-          : 'Gaussian splat loading is disabled pending the native rendering contract.';
-        showLoadError(message, gaussianAdmission.kind === 'invalid' ? 'gaussian_invalid_input' : 'gaussian_disabled');
-        if (target.kind === 'primary') updateModel(modelId, { loadState: 'error', loadError: message });
-        setLoading(false);
-        return;
+      if (gaussianAdmission.kind !== 'ordinary') { // #8565: every entry reaches this one admission decision
+        const outcome = await loadGaussianCapture({ file, admission: gaussianAdmission, target, modelId, options,
+          signal: metadataAbort.signal, isCurrent, showLoadError, finalize: finalizeModel });
+        options?.onGaussianLoadSettled?.(isCurrent() ? outcome : 'cancelled'); return;
       }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 

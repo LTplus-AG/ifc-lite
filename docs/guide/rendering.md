@@ -1248,9 +1248,18 @@ not change a material’s shadow-casting classification.
 
 `Renderer.getGaussianReadiness()` reports `initializing`, `blocked`, `lost`, or
 `disposed`, with the renderer's lifetime generation. A ready IFC renderer still
-reports Gaussian `blocked`: the exact mixed-transparency, scalable global-order,
-and native-viewer contracts are not qualified. No flag or successful decode
-changes that result. There is no production Gaussian upload/draw API yet.
+reports Gaussian `blocked`, listing its release blockers in `reasons` and what the
+internal adapter implements in `capabilities`. There is no `ready` state: exact
+mixed transparency, scalable global ordering and the qualified native-viewer
+contract are outstanding. No flag, decode or successful upload changes that. The
+capability `nearest-glass-split` means splats compose exactly with one transparent
+layer; `exact-mixed-transparency` stays in `reasons` because splats between two
+transparent layers, and splats in X-ray, remain approximate. The reasons describe
+what the adapter does not prove; since the 2026-11-03 release decision they are
+disclosed limitations, not launch gates.
+`upstream` is `missing` once the backend has loaded and found that the installed
+upstream renderer cannot order reverse-Z depth, normally on the first valid
+`add()`. Before that check it is `unknown`.
 
 `normalizeGaussianAttributes({ count, shDegree, columns })` converts upstream
 PLY-space float32 columns to source-local render arrays. It exponentiates
@@ -1259,10 +1268,120 @@ converts `f_dc_0..2` to unclamped float RGBA radiance. The alpha channel is one;
 opacity remains separate. Non-DC `f_rest_*` columns are repacked from PLY
 channel-major order to row-major, basis-major RGB triplets. Missing, non-finite,
 degenerate, or non-representable covariance data throws. No coordinate flip,
-reconstruction scale, placement, or RTC translation is inferred. These transforms
-still require an explicit placement contract before upload.
+reconstruction scale, placement, or RTC translation is inferred.
 
 Normalization allocates independent CPU arrays and borrows the raw inputs without
-mutation or detachment. Ingestion owns decoded buffers; an eventual native adapter
-must own its uploaded buffers and ordering resources while borrowing the viewer's
-device, encoder and attachments. Successful normalization is not render readiness.
+mutation or detachment. Successful normalization is not render readiness.
+
+### Internal Gaussian adapter (unqualified)
+
+`Renderer.gaussianSplats` is an internal adapter for qualification work, not a
+public feature. Every call to `add()` must pass
+`{ qualification: 'internal-unqualified' }`; it never changes readiness.
+
+<!-- docs-check: skip -->
+```ts
+const handle = await renderer.gaussianSplats.add(
+  { attributes, placement: { matrix }, modelIndex },
+  { qualification: 'internal-unqualified', signal },
+);
+// After a successful add() the renderer owns `attributes` and reads them again on
+// setPlacement(): keep them unchanged during add() and do not touch them afterwards.
+renderer.gaussianSplats.setVisible(handle, false);
+await renderer.gaussianSplats.setPlacement(handle, { matrix: next });
+renderer.gaussianSplats.remove(handle);
+```
+
+- **Rendering.** Upstream luma.gl `SplatRenderer` draws on the renderer's own
+  `GPUDevice` inside its frame: one extra pass after the main pass loads the
+  colour target, tests the shared reverse-Z depth read-only and performs the MSAA
+  resolve. There is no second canvas or device. The adapter never destroys the
+  device, command encoder or attachments it borrows.
+- **Composition with transparent IFC (nearest-glass split).** When a frame draws
+  splats and transparent IFC (glass, X-Ray ghosts, translucent overrides), the main
+  pass holds back every draw from its first transparent one to its end (transparent
+  IFC, the selection highlight, then points, reference images and overlays), recorded
+  as issued. After the main pass:
+  1. the held transparent draws replay depth-only (same vertex stage and depth
+     nudge, same fragment discards, no colour) into P1, the nearest transparent
+     depth per sample (far where there is none);
+  2. splats whose depth is at or behind P1 draw, testing opaque depth as before;
+  3. the held draws replay exactly as recorded, in their established order;
+  4. splats in front of P1 draw and the MSAA resolve runs.
+
+  Each splat sample is drawn exactly once: both splat passes compare the same
+  depth with the same P1 value, with complementary tests. The result is exact
+  where a sample has at most one transparent layer in front of opaque geometry, and
+  for splats behind or in front of every layer. Splats lying between two
+  transparent layers are drawn before all of them (approximate). Frames without
+  transparent IFC keep the single splat pass, unchanged, and frames without visible
+  splats record nothing extra. Perspective and orthographic views, 1x and 4x MSAA,
+  batched, instanced, individual, quantized and X-Ray ghost draws, and section
+  clipping all take part.
+
+  `getStats().compositionReport` describes the last splat frame: `composition` is
+  `nearest-glass-split`, `no-transparent`, or `over-transparent-approximate` with a
+  `fallback` (`single-pass-mode`, `pipelines-compiling` while the depth-only
+  variants compile, `unsupported-draw`, `upstream-interval-missing`, `split-failed`
+  after a split failure). A failing frame reports `composition: 'split-failed'` and
+  may be incomplete: already recorded draws cannot be retracted, so no further splat
+  pass is attempted. A redraw requests a clean single pass; this stays sticky until
+  device recovery or a renderer rebuild (`GaussianGlassComposer.release()`), or a new
+  device. Changing composition mode does not reset the failure.
+  `transparentLayers` is `multiple` when an occlusion query found a sample with two
+  or more transparent surfaces in front of opaque geometry: a closed glass solid
+  counts as two, and X-Ray ghosts report `multiple` almost always. It describes only
+  the frame that issued the query: `unknown` until that frame's own result reads back
+  (the report then updates without another frame), and a later frame starts `unknown`
+  again. Only zero versus non-zero is portable, so no sample count is reported.
+  `setCompositionMode('single-pass')` keeps the single pass over transparent IFC.
+
+  Rules in split frames: the selection highlight still draws over transparent IFC,
+  so it also covers splats behind the nearest transparent layer on the highlighted
+  surface (`highlightOverSplats`). Points, reference images and overlays keep their
+  place after transparent IFC, so the IFC look never depends on splats; they draw after
+  the splats behind the nearest layer, covering those where they lie behind them, and
+  before the splats in front of it (`laterOverBehindSplats`). Only transparent IFC
+  meshes define P1: translucent overlays and reference images draw over behind-glass
+  splats, while front-glass splats draw over them.
+  The split costs a depth32float target at the drawing-buffer size and sample count
+  (about 33 MB at 1920x1080 with 4x MSAA), two depth-only replays of the transparent
+  draws, one more transparent-pass load/store and two splat draws over one sort.
+- **Ordering.** All assets are packed into one upstream source, so upstream sorts
+  and draws them globally without a draw-run limit. Equal depths draw the earlier
+  added asset first, then source row order. The CPU sort runs per camera change.
+- **Placement.** `matrix` is a column-major 4×4 (translation at indices 12–14,
+  like the renderer's other matrices) mapping source-local coordinates to renderer
+  world space (Y-up metres) before the model's translation. Only similarity transforms are
+  accepted; reflections, shear and non-uniform scale are rejected. Covariances and
+  spherical-harmonic bands 1–3 are rotated with the placement. `placement.matrix`
+  is required; pass an explicit identity matrix for raw source coordinates. Nothing
+  is inferred: no axis flip, units, metric scale or alignment.
+- **Bounds.** `getBounds()` returns Gaussian centres in world space, for framing
+  only. It ignores Gaussian extent; never use it for geometry or measurement, and
+  frame an explicit Fit All with it. Gaussian centres never enter
+  `Renderer.getModelBounds()`, so hidden or removed captures cannot widen fits that
+  read it; the current visible centres only widen the camera's orthographic depth
+  range and, while a section or clip plane is active, its slider range. Section
+  rendering never writes that transient union back into model or camera scene
+  bounds, and preserves annotation extents.
+- **Lifecycle.** Handles are validated by identity and ids are never reused.
+  `getState()` reports `resident` only after upload on the current device;
+  during a device loss and recovery assets are `pending`, and a failed re-upload
+  reports `failed` with `reload-required`.
+- **Limitations (internal demo semantics).** Splats between two transparent layers
+  are approximate (see above). Section planes, extra planes
+  and the clip box keep or remove whole Gaussians by centre; footprints are not
+  cut and no caps are drawn. Splats write no depth or object ids: they are not
+  pickable, picks pass through them, and post-effects that read depth or ids
+  (edges, ambient occlusion, outlines) see only IFC and point geometry and are
+  drawn over splats.
+
+The workspace applies luma.gl #3619 (`depthConvention`) to `@luma.gl/splats@9.4.2`
+through `patches/@luma.gl__splats@9.4.2.patch` until an upstream release includes it.
+The same patch adds an opt-in depth-interval hook (a proposal for upstream): a
+renderer built with `depthIntervalSamples` writes only the samples whose depth
+compares to a bound depth texture as requested (`greater`, or its complement
+`less-equal`). The split reaches it only through `GaussianBackendScene.encode(…,
+interval)`, so another backend (for example a GPU-sorting one) can implement the
+same hook.

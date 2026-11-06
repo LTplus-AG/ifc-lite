@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { GAUSSIAN_LAUNCH_LIMITS } from './gaussianLaunchLimits.js';
 
 /** Canonical upstream PLY-space channels. Placement is a separate, explicit step. */
 export interface GaussianDecoded {
@@ -7,6 +8,8 @@ export interface GaussianDecoded {
   columns: Record<string, Float32Array>;
   /** Bounds of centers, not a claim about the infinite Gaussian support. */
   centerBounds: { min: [number, number, number]; max: [number, number, number] };
+  /** Source-space centre removed in f64 before narrowing position columns. */
+  decodeOrigin: readonly [number, number, number];
 }
 
 const BASE = ['x', 'y', 'z', 'rot_0', 'rot_1', 'rot_2', 'rot_3',
@@ -22,9 +25,10 @@ export function validateGaussianDecoded(
   count: number,
   shDegree: number,
   input: readonly { name: string; data: ArrayLike<number> }[],
+  source?: { origin: readonly [number, number, number]; bounds: GaussianDecoded['centerBounds'] },
 ): GaussianDecoded {
-  if (!Number.isSafeInteger(count) || count < 1 || count > 2_000_000
-    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > 3) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > GAUSSIAN_LAUNCH_LIMITS.maxSceneSplats
+    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > GAUSSIAN_LAUNCH_LIMITS.maxShDegree) {
     throw new Error('Invalid decoded Gaussian dimensions.');
   }
   const degree = shDegree as 0 | 1 | 2 | 3;
@@ -60,5 +64,11 @@ export function validateGaussianDecoded(
       max[axis] = Math.max(max[axis], value);
     }
   }
-  return { count, shDegree: degree, columns, centerBounds: { min, max } };
+  const centerBounds = source?.bounds ?? { min, max };
+  const decodeOrigin = source?.origin ?? centerBounds.min.map((value, axis) => value / 2 + centerBounds.max[axis] / 2) as [number, number, number];
+  if (!source) for (const name of ['x', 'y', 'z'] as const) {
+    const axis = ['x', 'y', 'z'].indexOf(name);
+    for (let i = 0; i < count; i++) columns[name][i] -= decodeOrigin[axis];
+  }
+  return { count, shDegree: degree, columns, centerBounds, decodeOrigin };
 }

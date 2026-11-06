@@ -72,6 +72,7 @@ import { geometryExportDialogsRu } from './ru/geometry-export-dialogs';
 import { georeferencingRu } from './ru/georeferencing';
 import { groupReviewRu } from './ru/group-review';
 import { hierarchyRu } from './ru/hierarchy';
+import { gaussianCaptureRu } from './ru/gaussian-capture';
 import { hostedPlaceRu } from './ru/hosted-place';
 import { idsAgentRu } from './ru/ids-agent';
 import { idsPanelRu } from './ru/ids-panel';
@@ -227,6 +228,7 @@ export default {
   ...georeferencingRu,
   ...groupReviewRu,
   ...hierarchyRu,
+  ...gaussianCaptureRu,
   ...hostedPlaceRu,
   ...idsAgentRu,
   ...idsPanelRu,

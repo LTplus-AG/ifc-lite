@@ -1,0 +1,53 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const propertiesPanelDe = {
+  "properties.panel.positionLabel": "Position",
+  "properties.panel.crsLabel": "CRS",
+  "properties.panel.localCoordinates": "Lokal",
+  "properties.panel.entityActionsLabel": "Elementaktionen",
+  "properties.panel.title": "Eigenschaften",
+  "properties.panel.findLabel": "Eigenschaften suchen",
+  "properties.panel.findPlaceholder": "Eigenschaft oder Wert suchen",
+  "properties.panel.clearFindLabel": "Eigenschaftssuche leeren",
+  "properties.panel.findEmpty": "Keine passenden Eigenschaften oder Attribute",
+  "properties.panel.emptyTitle": "Keine Auswahl",
+  "properties.panel.emptyHintMultiModel": "Modell oder Bauteil auswählen, um Details anzuzeigen",
+  "properties.panel.emptyHintSingleModel": "Bauteil auswählen, um Details anzuzeigen",
+  "properties.panel.layersMergedBadge": "Schichten zusammengeführt",
+  "properties.panel.layersMergedTooltip": "Mehrschichtige Wandteile wurden mit dem übergeordneten Volumenkörper zusammengeführt.",
+  "properties.panel.associatedTypeFallback": "Typ",
+  "properties.panel.worldCoordinates": "Weltkoordinaten",
+  "properties.panel.worldCoordinatesDetails": "Details",
+  "properties.panel.sizeLabel": "Größe",
+  "properties.panel.sizeDisplay": "{x} x {y} x {z}",
+  "properties.panel.attributesHeading": "Attribute",
+  "properties.panel.structureHeading": "Struktur",
+  "properties.panel.zonesHeading": "Zonen",
+  "properties.panel.tab.properties": "Eigenschaften",
+  "properties.panel.tab.quantities": "Mengen",
+  "properties.panel.tab.bsdd": "bSDD",
+  "properties.panel.tab.rawStepTitle": "STEP-Rohdaten — Entwicklersicht auf Positionsargumente",
+  "properties.panel.tab.rawStepLabel": "STEP-Rohdaten",
+  "properties.panel.noPropertySets": "Keine Eigenschaftensätze",
+  "properties.panel.noQuantities": "Keine Mengen",
+  "properties.panel.occurrenceUnavailable": "Exemplarmengen sind nicht verfügbar ({reason}).",
+  "properties.panel.selectEntityForRawStep": "Entität auswählen, um STEP-Rohargumente zu prüfen",
+  "properties.panel.occurrencePropertiesHeading": "Exemplareigenschaften:",
+  "properties.panel.typePropertiesHeading": "Typeigenschaften:",
+  "properties.panel.typePropertiesGroupHeading": "Typeigenschaften ({typeName})",
+  "properties.panel.materialPropertiesGroupHeading": "Materialeigenschaften ({materialName})",
+  "properties.panel.multiEntity.heading": "Zusammengefasstes Geschoss",
+  "properties.panel.multiEntity.modelCount": "{count} Modelle",
+  "properties.panel.multiEntity.loadFailed": "Entitätsdaten konnten nicht geladen werden",
+  "properties.panel.multiEntity.elevationMeters": "{sign}{value}m",
+  "properties.panel.multiEntity.attributesHeading": "Attribute",
+  "properties.panel.multiEntity.propertiesHeading": "Eigenschaften",
+  "properties.panel.multiEntity.propertySetsCount": "{count} Sätze",
+  "properties.panel.multiEntity.quantitiesHeading": "Mengen",
+  "properties.panel.multiEntity.quantitySetsCount": "{count} Sätze",
+  "properties.panel.saveAttributeLabel": "{attrName} speichern"
+} satisfies Catalogue;

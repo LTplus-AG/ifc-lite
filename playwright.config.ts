@@ -60,14 +60,15 @@ export default withMergify(defineConfig({
         timeout: 90000,
         env: {
           BROWSER: 'none',
-          ...(retainedProject ? { VITE_RETAINED_GEOMETRY: 'on' } : {}),
+          // `lazy` runs the same spec against the production opt-in build (#7955).
+          ...(retainedProject ? { VITE_RETAINED_GEOMETRY: process.env.VITE_RETAINED_GEOMETRY === 'lazy' ? 'lazy' : 'on' } : {}),
         },
       },
   projects: [
     {
       // Opt-in real-engine acceptance, run only by geometry-platform.
       name: 'viewer-retained',
-      testMatch: /retained-viewer\.e2e\.spec\.ts/,
+      testMatch: /retained-(viewer|setting)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,
@@ -96,7 +97,7 @@ export default withMergify(defineConfig({
     },
     {
       name: 'viewer-e2e',
-      testMatch: /(assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|document-block-jump-8227|content-storage|document-chart-source-6629|saved-clash-reports-6947|validation-colors|ids-bcf-export|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|selection-mask-depth|projection-depth|projection-texture|reporter-6729|section-extra-planes|selective-clipping|symbolic-parse-outcomes|flow-ai-review|semantic-assist|review-workspace|retained-browser-never-fetch|omitted-type-records-8341)\.e2e\.spec\.ts/,
+      testMatch: /(gaussian-browser-journey|assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|document-block-jump-8227|content-storage|document-chart-source-6629|saved-clash-reports-6947|validation-colors|ids-bcf-export|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|command-palette-ux|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|selection-mask-depth|projection-depth|perspective-distance-depth|projection-texture|reporter-6729|section-extra-planes|selective-clipping|symbolic-parse-outcomes|flow-ai-review|semantic-assist|review-workspace|retained-browser-never-fetch|omitted-type-records-8341)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -117,7 +118,7 @@ export default withMergify(defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /(assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|document-block-jump-8227|content-storage|document-chart-source-6629|saved-clash-reports-6947|validation-colors|ids-bcf-export|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|selection-mask-depth|projection-depth|projection-texture|reporter-6729|section-extra-planes|selective-clipping|symbolic-parse-outcomes|flow-ai-review|semantic-assist|review-workspace|retained-browser-never-fetch|omitted-type-records-8341)\.e2e\.spec\.ts/,
+      testMatch: /(gaussian-browser-journey|assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|document-block-jump-8227|content-storage|document-chart-source-6629|saved-clash-reports-6947|validation-colors|ids-bcf-export|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|command-palette-ux|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|selection-mask-depth|projection-depth|perspective-distance-depth|projection-texture|reporter-6729|section-extra-planes|selective-clipping|symbolic-parse-outcomes|flow-ai-review|semantic-assist|review-workspace|retained-browser-never-fetch|omitted-type-records-8341)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,

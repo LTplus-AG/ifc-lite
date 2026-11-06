@@ -20,7 +20,7 @@
  */
 
 import { CapGeometry } from './section-cap-geometry.js';
-import { packExtraClip, EXTRA_CLIP_FLOATS } from './extra-clip-planes.js';
+import { packExtraClip, CAP_CLIP_FLOATS, MAX_CAP_CLIP_PLANES } from './extra-clip-planes.js';
 import type { ExtraClipPlane } from './clip-types.js';
 import { tryPackRteDrawableDelta } from './relative-to-eye.js';
 import {
@@ -66,7 +66,7 @@ export class SectionCapSet {
   private readonly primary = new CapGeometry();
   private readonly extras = new Map<string, CapGeometry>();
   private readonly uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
-  private readonly clipScratch = new Float32Array(EXTRA_CLIP_FLOATS);
+  private readonly clipScratch = new Float32Array(CAP_CLIP_FLOATS);
   /** The elements whose cap is painted in a highlight colour; carried over every re-upload. */
   private highlight: CapHighlight | null = null;
 
@@ -226,7 +226,7 @@ export class SectionCapSet {
     // The planes that remove this cap's fragments, in the frame the shader works in
     // (eye-relative on the RTE path, world otherwise). Written first: the cap's own
     // uniform record stays the last write of the draw.
-    packExtraClip(clippedBy, rte ? rteCamera : null, this.clipScratch, 0);
+    packExtraClip(clippedBy, rte ? rteCamera : null, this.clipScratch, 0, MAX_CAP_CLIP_PLANES);
     const clipOffset = clipSlot * res.clipStride;
     res.device.queue.writeBuffer(res.clipBuffer, clipOffset, this.clipScratch);
     const uniformOffset = uniformSlot * res.uniformStride;

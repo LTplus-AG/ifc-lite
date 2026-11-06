@@ -68,7 +68,7 @@ export function LocationMapSearchBar({
                 onChange={e => onQueryChange(e.target.value)}
                 aria-label={placeholder}
                 placeholder={placeholder}
-                className="w-full text-2xs px-2 py-1 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
+                className="w-full text-2xs px-2 py-1 border border-border bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
               />
@@ -97,13 +97,13 @@ export function LocationMapSearchBar({
                 if (target instanceof Node && anchorRef.current?.contains(target)) e.preventDefault();
               }}
               style={{ width: 'var(--radix-popper-anchor-width)' }}
-              className="max-h-[160px] overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0 shadow-lg"
+              className="max-h-[160px] overflow-y-auto bg-white dark:bg-muted border border-border p-0 shadow-lg"
             >
               {results.map((r, i) => (
                 <button
                   key={i}
                   onClick={() => onSelect(r)}
-                  className="w-full text-left px-2 py-1.5 text-2xs text-zinc-700 dark:text-zinc-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-zinc-100 dark:border-zinc-800 last:border-0 transition-colors"
+                  className="w-full text-left px-2 py-1.5 text-2xs text-muted-foreground hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-border last:border-0 transition-colors"
                 >
                   <div className="flex items-start gap-1.5">
                     <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
@@ -118,7 +118,7 @@ export function LocationMapSearchBar({
           label={t('properties.locationMap.closeSearch')}
           size="icon-xs"
           onClick={onClose}
-          className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          className="p-0.5 text-muted-foreground hover:text-foreground"
         >
           <X className="h-3 w-3" />
         </IconButton>

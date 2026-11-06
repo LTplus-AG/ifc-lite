@@ -601,15 +601,15 @@ export function LocationMap({
   }
 
   return (
-    <div className="border-t border-zinc-100 dark:border-zinc-900">
+    <div className="border-t border-border">
       {/* Header with search */}
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <MapIcon className="h-3 w-3 text-teal-500 shrink-0" />
-        <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1">
+        <MapIcon className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-xs font-semibold text-foreground flex-1">
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
+          <span className="text-xs font-mono text-muted-foreground" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -617,7 +617,7 @@ export function LocationMap({
           <IconButton
             label={t('properties.locationMap.searchTooltip')} size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
-            className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Search className="h-3 w-3" />
           </IconButton>
@@ -643,16 +643,16 @@ export function LocationMap({
 
       {/* Map container */}
       {mapState === 'loading' && (
-        <div className="flex items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50">
+        <div className="flex items-center justify-center h-[180px] bg-muted">
           <Spinner size="md" className="text-teal-500" />
-          <span className="text-xs text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
+          <span className="text-xs text-muted-foreground ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
 
       {mapState === 'error' && (
-        <div className="flex items-center justify-center h-[60px] bg-zinc-50 dark:bg-zinc-900/50 gap-2 px-3">
-          <MapPinOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-          <span className="text-xs text-zinc-400">{errorKey && t(errorKey)}</span>
+        <div className="flex items-center justify-center h-[60px] bg-muted gap-2 px-3">
+          <MapPinOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">{errorKey && t(errorKey)}</span>
         </div>
       )}
 
@@ -663,12 +663,12 @@ export function LocationMap({
                GPU stays: the coordinate readout above, the external map links
                and the KMZ export below, and — in edit mode — place search,
                which still drives the reverse projection and the Apply button. */
-            <div className="flex flex-col items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50 gap-1.5 px-4 text-center">
-              <MapPinOff className="h-4 w-4 text-zinc-400" />
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="flex flex-col items-center justify-center h-[180px] bg-muted gap-1.5 px-4 text-center">
+              <MapPinOff className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
                 {t('properties.locationMap.unavailableOnDevice')}
               </span>
-              <span className="text-xs text-zinc-400 dark:text-zinc-500 max-w-[240px]">
+              <span className="text-xs text-muted-foreground max-w-[240px]">
                 {mapUnavailable === 'map_load_failed' ? t('properties.locationMap.mapLoadFailed') : t('properties.locationMap.graphicsUnavailable')}
               </span>
             </div>
@@ -681,7 +681,7 @@ export function LocationMap({
               />
               {/* Edit mode hint overlay */}
               {editable && !pickedLatLon && (
-                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
+                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-xs text-muted-foreground pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
                   {t('properties.locationMap.clickToPlacePin')}
                 </div>
               )}
@@ -706,25 +706,25 @@ export function LocationMap({
               </div>
 
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs font-mono mb-2">
-                <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.latLon')}</div>
+                <div className="text-muted-foreground">{t('properties.locationMap.latLon')}</div>
                 <div className="text-foreground text-right">
                   {formatLocaleNumber(locale, pickedLatLon.lat, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}, {formatLocaleNumber(locale, pickedLatLon.lon, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                 </div>
 
                 {projectedCoords && (
                   <>
-                    <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.easting')}</div>
+                    <div className="text-muted-foreground">{t('properties.locationMap.easting')}</div>
                     <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.easting, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
-                    <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.northing')}</div>
+                    <div className="text-muted-foreground">{t('properties.locationMap.northing')}</div>
                     <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.northing, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                   </>
                 )}
 
-                <div title={t('properties.locationMap.terrainHeightHelp')} className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                <div title={t('properties.locationMap.terrainHeightHelp')} className="text-muted-foreground flex items-center gap-1">
                   <Mountain className="h-2.5 w-2.5" />
                   {t('properties.locationMap.elevation')}
                 </div>
@@ -734,7 +734,7 @@ export function LocationMap({
                   ) : pickedElevation !== null ? (
                     t('properties.locationMap.elevationMeters', { value: formatLocaleNumber(locale, pickedElevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
                   ) : (
-                    <span className="text-zinc-400">—</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </div>
               </div>
@@ -756,7 +756,7 @@ export function LocationMap({
           )}
 
           {/* Action links */}
-          <div className="flex items-center gap-3 px-3 py-1.5 border-t border-zinc-100 dark:border-zinc-900">
+          <div className="flex items-center gap-3 px-3 py-1.5 border-t border-border">
             {googleMapsUrl && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -807,7 +807,7 @@ export function LocationMap({
             {!mapUnavailable && (
               <button
                 onClick={handleStyleToggle}
-                className="ml-auto text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 {t('properties.locationMap.toggleStyle')}
               </button>

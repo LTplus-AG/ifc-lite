@@ -1,0 +1,11 @@
+--- a/scripts/fetch-retained-engine.mjs
++++ b/scripts/fetch-retained-engine.mjs
+@@ -54,7 +54,7 @@
+   if (existsSync(out)) throw new Error(`Output already exists: ${out}`);
+   const lock = readLock(lockPath);
+   const bytes = archive ? readFileSync(archive) : await get(lock.url);
+-  if (bytes.length !== lock.archiveBytes) {
++  if (bytes.length !== lock.archiveBytes || sha256(bytes) !== lock.archiveSha256) {
+     throw new Error(`archive ${archive ?? lock.url} does not match the lock (${bytes.length} bytes, sha256 ${sha256(bytes)})`);
+   }
+   const scratch = mkdtempSync(join(dirname(out), '.retained-engine-'));

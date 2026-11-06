@@ -94,7 +94,7 @@ describe('Section bar: Box entry (#5513, #7545)', () => {
     assert.equal(s().inactiveSectionPlanes.length, 1);
     assert.equal(bar().querySelector('[data-testid="section-box-size"]')?.textContent?.trim(), '10.00 × 4.00 × 8.00 m');
     assert.equal(bar().querySelector('[role="spinbutton"]'), null, 'no distance field in box mode');
-    assert.equal(button('Cap'), undefined, 'a box has no cap');
+    assert.ok(button('Cap'), 'a box has the Cap popover, for the caps on its faces (#8696)');
     assert.equal(button('Fit')?.title, 'Fit the box to the model');
     assert.equal(hint(), 'Drag a face handle to resize the box · Fit snaps it to the selection · Esc to finish');
   });

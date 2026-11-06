@@ -43,12 +43,16 @@ import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
 import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
 import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
+
+/** Hierarchy's minimum width, % of the main row. */
+const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
+import { useEmptyStartFold, useIsEmptyStart } from './welcome/useEmptyStartFold';
 import { WorkspaceMigrationNotice } from './WorkspaceMigrationNotice';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
@@ -202,13 +206,32 @@ export function ViewerLayout() {
   // own collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a react-resizable Panel here.
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Sync store state → left Panel collapse/expand on desktop
+  // Sync store state → left Panel collapse/expand on desktop. The empty
+  // start screen folds Hierarchy on top of the stored state, never into it.
+  const emptyFold = useEmptyStartFold();
+  const emptyStart = useIsEmptyStart();
+  // A lift lasts one empty session: the next time the viewer is empty, fold again.
+  useEffect(() => { if (!emptyStart) useViewerStore.getState().setStartFoldLifted({ left: false, right: false }); }, [emptyStart]);
+  const foldRestorePct = useRef<number | null>(null);
   useEffect(() => {
     const panel = leftPanelRef.current;
     if (!panel) return;
-    if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
-    else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
-  }, [leftPanelCollapsed]);
+    const collapse = leftPanelCollapsed || emptyFold;
+    if (collapse && !panel.isCollapsed()) {
+      if (!leftPanelCollapsed) foldRestorePct.current = panel.getSize().asPercentage;
+      panel.collapse();
+    } else if (!collapse && panel.isCollapsed()) {
+      const restore = foldRestorePct.current;
+      foldRestorePct.current = null;
+      panel.expand();
+      // Folded before its first layout, the panel has no real width to go
+      // back to and `expand()` lands near 0 — give it its width back.
+      // `!(x >= min)` rather than `x < min`: an unmeasured group reports NaN.
+      if (!(panel.getSize().asPercentage >= LEFT_PANEL_MIN_SIZE)) {
+        panel.resize(`${restore !== null && restore >= LEFT_PANEL_MIN_SIZE ? restore : LEFT_PANEL_DEFAULT_SIZE}%`);
+      }
+    }
+  }, [leftPanelCollapsed, emptyFold]);
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
   useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
@@ -278,16 +301,17 @@ export function ViewerLayout() {
                   <Panel
                     id="left-panel"
                     defaultSize={LEFT_PANEL_DEFAULT_SIZE}
-                    minSize={10}
+                    minSize={LEFT_PANEL_MIN_SIZE}
                     collapsible
                     collapsedSize={0}
                     panelRef={leftPanelRef}
                     onResize={() => {
+                      if (emptyFold) return; // the start-screen fold is not the user's choice
                       const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
                       if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
                     }}
                   >
-                    <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                    <div className="shell-dock-left h-full w-full overflow-hidden panel-container flex flex-col">
                       <div className="flex-1 min-h-0 overflow-hidden">
                         <HierarchyPanel />
                       </div>
@@ -297,7 +321,7 @@ export function ViewerLayout() {
                     </div>
                   </Panel>
 
-                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                  <PanelResizeHandle className="shell-splitter-v" />
 
                   {/* Center - Viewport */}
                   <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
@@ -319,7 +343,7 @@ export function ViewerLayout() {
                           <Panel id="viewport-3d-panel" defaultSize="60%" minSize="20%">
                             <ViewportContainer />
                           </Panel>
-                          <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                          <PanelResizeHandle className="shell-splitter-v" />
                           <Panel id="drawing-side-panel" defaultSize="40%" minSize="20%">
                             <BottomStrip
                               dockedPanel={dockedBottomPanel}

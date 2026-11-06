@@ -56,12 +56,14 @@ describe('Drawing panel localization (#4918)', () => {
   it('updates mounted panel chrome and accessibility titles on a live locale change', () => {
     assert.ok(section2dEn, 'section-2d.en.ts catalogue must exist');
     const ui = render(<DrawingPanel />);
-    assert.match(ui.textContent ?? '', /Drawing/);
+    // The panel's own visible chrome: the cut label (the host's tab names the panel, #8802 R3b).
+    assert.match(ui.textContent ?? '', /Cut plane:/);
 
     registerLocale('section-2d-pseudo', pseudoLocale());
     act(() => setLocale('section-2d-pseudo'));
 
-    assert.match(ui.textContent ?? '', /⟦Drawing⟧/);
+    assert.match(ui.textContent ?? '', /⟦Cut plane: /);
+    assert.match(ui.textContent ?? '', /⟦Fit⟧/);
     const labels = [...ui.querySelectorAll('[aria-label]')].map((element) => element.getAttribute('aria-label'));
     assert.ok(labels.includes(marked(CATALOGUE['section2d.zoom.fit'])));
     assert.ok(labels.includes(marked(CATALOGUE['section2d.tools.distance'])));

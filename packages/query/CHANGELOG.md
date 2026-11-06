@@ -1,5 +1,11 @@
 # @ifc-lite/query
 
+## 2.5.4
+
+### Patch Changes
+
+- [#8675](https://github.com/LTplus-AG/ifc-lite/pull/8675) [`8eefa8e`](https://github.com/LTplus-AG/ifc-lite/commit/8eefa8ec68c25b595bf3bce92f406b767c3f9f1f) Thanks [@louistrue](https://github.com/louistrue)! - `ofType()` no longer returns the whole Unknown bucket for a real IFC class that `IfcTypeEnum` has no member for (`IfcPipeFitting`, `IfcDistributionPort`, ...). Such names now answer only the entities of that class. Pass `'Unknown'` for the whole bucket.
+
 ## 2.5.3
 
 ### Patch Changes

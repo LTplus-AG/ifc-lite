@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-pass-recorder.ts",
+  "mutation": "tests/evidence/gaussian-8564-review-later-order/behaviour.oracle.patch",
+  "test": "packages/renderer/src/renderer-render-paths.test.ts",
+  "why": "#8564 review F3: reverse applying draws points, reference images and overlays in the main pass, before the held glass, in split frames; the split-order witness must fail."
+}

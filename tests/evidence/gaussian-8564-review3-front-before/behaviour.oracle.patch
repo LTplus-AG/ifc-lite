@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/gaussian/gaussian-glass-frame.ts
++++ b/packages/renderer/src/gaussian/gaussian-glass-frame.ts
+@@ -138,7 +138,7 @@
+       failed = true;
+       console.error('[Gaussian] splats in front of transparent IFC failed; frame may be incomplete:', error);
+     }
+-    if (failed) this.finish(recorder, false);
++    if (failed) this.fail(recorder);
+     else this.finish(recorder, true);
+     encodeResolveOnly(target); // keep MSAA stored until either split outcome is known
+     return !failed;

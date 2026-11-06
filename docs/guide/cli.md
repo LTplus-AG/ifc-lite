@@ -381,6 +381,9 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 # IFC STEP re-export with schema conversion
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 
+# GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
+ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -405,6 +408,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
 
 ---
@@ -1842,6 +1846,19 @@ ifc-lite export model.ifc --format obj --kernel retained --retained-engine /path
 The CLI checks every staged asset against `engine-manifest.json` before loading it.
 Use only an engine you trust: these hashes detect changed assets, not build provenance.
 Existing `--type`, `--where`, `--storey`, and `--limit` filters apply.
+The retained export runs in a separate Node process. Its OBJ and optional report
+are staged privately and published only after that process exits successfully.
+A crash reports `RETAINED_PROCESS_FAILED` with its exit code or signal, leaves
+existing destination files unchanged, and publishes no stdout payload. The CLI
+does not retry the export or switch kernels. This contains process crashes; it
+does not make the two final file copies an atomic transaction against disk errors.
+Cancellation before publication leaves destinations unchanged. Once publication
+starts, cancellation is deferred until output and staging cleanup finish.
+The child inherits `NODE_OPTIONS` and selected explicit Node heap-limit and fatal-report
+flags. Parent eval programs, loaders, and debugger ports are not forwarded.
+On Node 24, the retained child disables V8 WASM code garbage collection to avoid
+the wrapper-code reclamation race tracked in [Node #66366](https://github.com/nodejs/node/issues/66366).
+Generated code remains allocated until the export child exits.
 Retained publishes complete products only, with no exact fallback. Orphan type products
 are included once per type, with all unreferenced maps placed at their MappingOrigin.
 One unsupported map refuses the entire type. Instanced type-library shapes and

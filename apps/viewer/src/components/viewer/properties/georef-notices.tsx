@@ -23,9 +23,9 @@ export function isReadOnlyCoordinateOperation(georef: GeoreferenceInfo | null | 
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-3 py-1.5 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900">
-      <Globe className="h-3 w-3 text-zinc-400 shrink-0" />
-      <span className="text-xs text-zinc-500 dark:text-zinc-400">{children}</span>
+    <div className="px-3 py-1.5 flex items-center gap-2 border-b border-border">
+      <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
+      <span className="text-xs text-muted-foreground">{children}</span>
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function WellKnownTextRow({ wkt }: { wkt: string | undefined }) {
     <>
       <GeorefRow label="WellKnownText" value={`${wkt.slice(0, 96)}…`} />
       <details className="px-3 py-1.5 text-xs">
-        <summary className="cursor-pointer text-zinc-500 dark:text-zinc-400">{t('properties.georef.showFullWellKnownText')}</summary>
+        <summary className="cursor-pointer text-muted-foreground">{t('properties.georef.showFullWellKnownText')}</summary>
         <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-2xs text-teal-700 dark:text-teal-400">{wkt}</pre>
       </details>
     </>

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/renderer/src/gaussian/gaussian-composition.ts",
+  "mutation": "tests/evidence/gaussian-8564-split-report/behaviour.oracle.patch",
+  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
+  "why": "#8564 option B: reverse applying reports fallback frames as nearest-glass-split, hiding the approximation; the reporting witness must fail."
+}

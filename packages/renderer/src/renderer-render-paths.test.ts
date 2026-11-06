@@ -16,6 +16,7 @@ import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_BYTES, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { GaussianBackend } from './gaussian/gaussian-backend.js';
 
 async function requireColorTable() {
     const module = await import('./entity-color-table.js').catch(() => null);
@@ -261,7 +262,7 @@ function makeHarness(): Harness {
         get(_t, prop) {
             switch (prop) {
                 case 'lost': return lost;
-                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024 };
+                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024, maxStorageBufferBindingSize: 128 * 1024 * 1024 };
                 case 'queue': return queue;
                 case 'pushErrorScope': return () => { stats.push++; };
                 case 'popErrorScope': return () => {
@@ -417,6 +418,72 @@ function seedBatches(h: Harness): { grey: BatchedMesh; red: BatchedMesh } {
     return { grey, red };
 }
 
+// #8564 round 5: section resolution used to persist the visible Gaussian union
+// into fit bounds. Exercise the real render/submit path, not just layer callbacks.
+for (const action of ['hide', 'remove'] as const) {
+    for (const keepSection of [false, true]) {
+        it(`#8564 section render preserves model/annotation bounds after ${action}, section=${keepSection}`, async () => {
+            const h = makeHarness();
+            const fields = h.renderer as unknown as Record<string, unknown>;
+            fields.ready = true;
+            const layer = fields.gaussianLayer as Record<string, unknown>;
+            (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+                upstreamReverseZ: true,
+                createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+            });
+            const mesh = triangle(1, GREY);
+            mesh.positions = new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 100]);
+            assert.equal(h.renderer.loadGeometry([mesh]).ok, true);
+            // Keep the real overlay/bounds facade, stubbing only its GPU renderer.
+            (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = new Proxy({}, { get: () => () => undefined });
+            h.renderer.setLineOverlay('annotation', new Float32Array([-20, -20, -20, 120, 120, 120]));
+            const persistent = structuredClone(h.renderer.getModelBounds());
+            assert.deepEqual(persistent, { min: { x: -20, y: -20, z: -20 }, max: { x: 120, y: 120, z: 120 } });
+            const camera = h.renderer.getCamera();
+            camera.setProjectionMode('orthographic');
+            camera.setPosition(-200, 50, 50);
+            camera.setTarget(0, 50, 50);
+            const attributes = {
+                count: 1, positions: new Float32Array([500, 50, 50]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            const handle = await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+            const render = (enabled: boolean) => {
+                const before = h.stats.submissions;
+                h.render({ sectionPlane: { enabled, axis: 'side', position: 50 } });
+                assert.equal(h.stats.submissions, before + 1, 'the actual section frame submits successfully');
+            };
+            // Reverse-Z orthographic clip depth for a point 700m along +X from
+            // this eye: view z=-700, and the public projection must map to [0,1].
+            const centreClipDepth = () => {
+                const m = camera.getProjMatrix().m;
+                return -700 * m[10] + m[14];
+            };
+            try {
+                render(true);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 250, 'transient slider spans IFC 0..100 plus the visible centre at 500');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'section rendering cannot pollute fit bounds or drop annotations');
+                assert.deepEqual(camera.getSceneBounds(), persistent, 'persistent camera bounds also retain annotations');
+                assert.ok(centreClipDepth() >= 0 && centreClipDepth() <= 1, 'visible centre is inside the rendered near/far interval');
+                render(keepSection);
+                if (action === 'hide') h.renderer.gaussianSplats.setVisible(handle, false);
+                else h.renderer.gaussianSplats.remove(handle);
+                render(keepSection);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 50, 'slider returns to IFC bounds after withdrawal');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'fits retain only model/annotation bounds');
+                assert.deepEqual(camera.getSceneBounds(), persistent);
+                assert.ok(centreClipDepth() < 0, 'withdrawn far centre no longer inflates the rendered depth interval');
+                assert.equal(h.renderer.getDiagnostics().errors, 0);
+            } finally {
+                h.renderer.gaussianSplats.remove(handle);
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+}
+
 describe('canonical render submission result (#6709)', () => {
     it('reports a new submitted frame while preserving render() void behavior', () => {
         const h = makeHarness();
@@ -459,6 +526,60 @@ describe('canonical render submission result (#6709)', () => {
             assert.strictEqual(h.renderer.renderWithResult({ visualEnhancement: { enabled: false } }), true);
             assert.strictEqual(h.stats.submissions, 1);
         } finally { restore.mock.restore(); warn.mock.restore(); }
+    });
+});
+
+// #9002: render() is what notes the pick clip, so a cut change moves
+// getPickClipRevision() (the viewer's Measure Point Live reading, #8886). A
+// capture render's cleared or swapped clip is restored by the next frame, so it
+// must not count as a change; a real change around a capture still does.
+describe('pick clip revision wiring (#9002)', () => {
+    const cut = (distance: number): RenderOptions => ({ sectionPlane: { axis: 'side', position: 50, enabled: true, normal: [0, 1, 0], distance } });
+
+    it('a cut change bumps the revision; the same cut on the next frame does not', () => {
+        const h = makeHarness();
+        h.render();
+        const uncut = h.renderer.getPickClipRevision();
+        h.render(cut(2));
+        const cutRev = h.renderer.getPickClipRevision();
+        assert.ok(cutRev > uncut, 'adding a section kept the revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), cutRev, 'an unchanged cut bumped the revision');
+        h.render(cut(3));
+        assert.ok(h.renderer.getPickClipRevision() > cutRev, 'moving the section kept the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() > cutRev + 1, 'removing the section kept the revision');
+    });
+
+    it('a capture render with the clip cleared does not outlive its frame', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        // idsBcfViewpoints captures with the section, extra planes and clip box cleared.
+        assert.strictEqual(h.renderer.renderWithResult({ sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
+        const during = h.renderer.getPickClipRevision();
+        // A pick until the next frame reads through the cleared clip: it must not match the cut's revision.
+        assert.notStrictEqual(during, before, 'the capture frame\'s cleared clip shares the cut\'s revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture left a new revision, ending Live');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before);
+        assert.notStrictEqual(during, before, 'a reading taken during the capture would survive the restore');
+    });
+
+    it('a real cut change across a capture still bumps the revision', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        h.renderer.renderWithResult({ restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        const during = h.renderer.getPickClipRevision();
+        h.render(cut(3));
+        const moved = h.renderer.getPickClipRevision();
+        assert.ok(moved !== before && moved !== during, 'a cut moved during the capture reused an earlier revision');
+        h.renderer.renderWithResult({ ...cut(3), restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        assert.strictEqual(h.renderer.getPickClipRevision(), moved, 'a capture of the same cut moved the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() !== moved, 'removing the cut after a capture kept the revision');
     });
 });
 
@@ -825,6 +946,68 @@ describe('visibility epoch drives the batched draw path', () => {
         for (const buf of h.stats.createdBuffers) {
             assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
         }
+    });
+});
+
+describe('residency records a batch drawn only as a partial sub-batch (#9034)', () => {
+    const lastDrawn = (h: Harness, batch: BatchedMesh) => sceneOf(h)['lastDrawnFrame'].get(batch.id);
+    const frame = (h: Harness) => sceneOf(h)['residencyFrame'];
+    const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
+
+    for (const [label, filter] of [
+        ['hide', { hiddenIds: new Set([1, 3]) }],
+        ['isolate', { isolatedIds: new Set([2]) }],
+    ] as const) {
+        it(`${label}: the partially visible batch stays fresh and resident; the undrawn batch still ages out`, () => {
+            const h = makeHarness();
+            const { grey, red } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1); // everything is over budget
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(filter);
+
+            // grey {1,2} draws only as its {2} sub-batch.
+            assert.strictEqual(scene['partialBatchCache'].size, 1, 'grey draws as a partial sub-batch');
+            assert.strictEqual(lastDrawn(h, grey), frame(h), 'partial-only batch is recorded as drawn this frame');
+            assert.notStrictEqual(grey.gpuResident, false, 'partial-only batch is not evicted by the GPU budget pass');
+            // red {3} is hidden / not isolated: never drawn, so it must still age out.
+            assert.strictEqual(red.gpuResident, false, 'a batch that is truly not drawn is still evicted');
+            assert.strictEqual(lastDrawn(h, red), undefined);
+        });
+    }
+
+    it('a GPU-evicted parent drawn as a partial sub-batch is not demoted cold by the host pass', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        const scene = sceneOf(h);
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return []; } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+
+        // Everything hidden: both batches age out of the GPU tier (warm: CPU kept).
+        // The host pass runs on the first post-submit hook only, before anything
+        // is GPU-evicted, so nothing goes cold yet.
+        for (let i = 0; i < 40; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        assert.strictEqual(grey.gpuResident, false);
+        assert.strictEqual(red.gpuResident, false);
+        assert.ok(scene.getMeshDataPieces(2), 'still warm before the host pass');
+
+        // Reveal id 2: grey draws its {2} sub-batch from CPU meshData while the
+        // parent stays GPU-evicted (nothing processes the restore queue here).
+        // Run past the host pass cadence (every 120 post-submit hooks).
+        for (let i = 0; i < 130; i++) h.render({ hiddenIds: new Set([1, 3]) });
+        assert.ok(scene['partialBatchCache'].size >= 1, 'grey draws as a partial sub-batch');
+        assert.strictEqual(lastDrawn(h, grey), frame(h), 'GPU-evicted parent of a drawn sub-batch is recorded');
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'on-screen geometry keeps its CPU pieces (picks, snaps)');
+        assert.ok(!scene['coldBuckets'].has(grey.colorKey), 'on-screen bucket is not demoted cold');
+        // red is never drawn: the host pass still demotes it.
+        assert.strictEqual(scene.getMeshDataPieces(3), undefined, 'undrawn bucket is still demoted cold');
+        assert.ok(scene['coldBuckets'].has(red.colorKey));
+        // Drain the restore queue the draw loop filled: grey comes back from its
+        // warm CPU pieces; had it gone cold this would hit the provider instead.
+        scene.processResidencyRestores(h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, Infinity);
+        assert.strictEqual(coldLoads, 0, 'on-screen geometry never needed a cold restore');
+        assert.notStrictEqual(scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))?.gpuResident, false);
     });
 });
 
@@ -2514,4 +2697,226 @@ describe('the GPU picker allocates on its first pick', () => {
         await h.renderer.pick(20, 20);
         assert.strictEqual(h.stats.textures.filter((t) => t.label.startsWith('pick-')).length, 2, 'a same-size pick reuses them');
     });
+});
+
+// #8564 option B: the nearest-glass split driven through the REAL renderFrame. The stub
+// pass log shows where transparent IFC draws: held out of the main pass, replayed
+// depth-only for P1 and the layer count, and drawn between the two splat passes.
+describe('#8564 nearest-glass split in the render loop', () => {
+    const GLASS: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+    const glassDescriptor = {
+        layout: {}, vertex: { module: {}, entryPoint: 'vs_main' },
+        fragment: { module: {}, entryPoint: 'fs_main', targets: [{ format: 'bgra8unorm' }, { format: 'rgba8unorm' }] },
+        depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: false, depthCompare: 'greater' }, multisample: { count: 1 },
+    } as unknown as GPURenderPipelineDescriptor;
+
+    async function splitHarness(options: { transparent?: boolean; splats?: boolean; depthInterval?: boolean } = {}) {
+        const h = makeHarness();
+        const fields = h.renderer as unknown as Record<string, unknown>;
+        fields.ready = true;
+        const stub = fields.pipeline as Record<string, unknown>;
+        fields.pipeline = new Proxy(stub, { get: (target, key) => key === 'getDepthFormat' ? () => 'depth24plus-stencil8' : Reflect.get(target, key) });
+        (stub.visibility as OpaqueVisibilityPass).register(TRANSPARENT_PIPELINE as unknown as GPURenderPipeline, glassDescriptor, mainShaderSource);
+        const layer = fields.gaussianLayer as Record<string, unknown>;
+        (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+            upstreamReverseZ: true, upstreamDepthInterval: options.depthInterval ?? true,
+            createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, destroy() {},
+                encode: (_target, _camera, interval) => { h.stats.commands.push({ op: `splats:${interval?.compare ?? 'all'}` }); } }),
+        });
+        const passes = h.stats.passes;
+        const push = passes.push.bind(passes);
+        passes.push = (...labels: string[]) => { for (const label of labels) h.stats.commands.push({ op: `pass:${label}` }); return push(...labels); };
+        const scene = sceneOf(h);
+        scene.appendToBatches([triangle(1, GREY), ...(options.transparent === false ? [] : [triangle(2, GLASS)])], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        if (options.splats !== false) {
+            const attributes = {
+                count: 1, positions: new Float32Array([0, 0, 0]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+        }
+        const named = (pipeline: unknown) => (pipeline as { label?: string } | undefined)?.label;
+        const frame = (options: RenderOptions = {}) => { h.stats.commands.length = 0; h.render(options); return h.stats.commands.map((c) => c.op === 'setPipeline'
+            ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : ['overlay', 'reference-image'].includes(named(c.pipeline) ?? '') ? named(c.pipeline)! : 'variant')
+            : c.op).filter((op) => op !== 'setBindGroup'); };
+        const report = () => h.renderer.gaussianSplats.getStats().compositionReport;
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+        return { h, frame, report, tick };
+    }
+    /** The ops from the main pass's first draw to its end, i.e. before any Gaussian pass. */
+    const mainPass = (ops: string[]) => ops.slice(0, ops.findIndex((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+
+    it('splits a splat frame around transparent IFC once the depth-only variants exist', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        try {
+            const first = frame();
+            assert.ok(mainPass(first).includes('glass'), 'while compiling, transparent IFC draws in the main pass as before');
+            assert.deepEqual(first.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'over-transparent-approximate');
+            assert.equal(report()?.fallback, 'pipelines-compiling');
+            await tick();
+            const ops = frame();
+            assert.ok(!mainPass(ops).includes('glass'), 'transparent IFC is held out of the main pass');
+            const at = (op: string) => ops.indexOf(op);
+            assert.deepEqual(['pass:ifc-lite-gaussian-nearest-transparent', 'pass:ifc-lite-gaussian-transparent-layers', 'splats:less-equal', 'pass:ifc-lite-gaussian-transparent', 'splats:greater'].map(at).every((index, i, all) => index >= 0 && (i === 0 || index > all[i - 1])), true, ops.join(' '));
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-nearest-transparent') + 1, at('pass:ifc-lite-gaussian-transparent-layers')), ['variant', 'drawIndexed'], 'P1 replays the glass draw depth-only');
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-transparent') + 1, at('splats:greater')), ['glass', 'drawIndexed'], 'the held draw replays between the splat passes');
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.transparentLayers, 'unknown');
+            await tick();
+            assert.equal(report()?.transparentLayers, 'single', 'the frame\'s own occlusion count read back as zero and was published');
+            assert.equal(h.renderer.getDiagnostics().errors, 0);
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    it('keeps the single splat pass, unchanged, without transparent IFC', async () => {
+        const { h, frame, report, tick } = await splitHarness({ transparent: false });
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian')));
+            assert.deepEqual(ops.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'no-transparent');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    /** Spy every pass descriptor, texture and pipeline compile of the stub device. */
+    function spyDevice(h: Harness) {
+        const wdev = h.renderer['device'] as unknown as Record<string, unknown>;
+        const raw = wdev['device'] as Record<string, unknown>;
+        const spy = { passes: [] as GPURenderPassDescriptor[], textures: [] as string[], compiles: 0, querySets: 0 };
+        wdev['device'] = new Proxy(raw, { get: (target, key) => {
+            const member = Reflect.get(target, key) as (...args: unknown[]) => unknown;
+            if (key === 'createCommandEncoder') return () => new Proxy(member() as Record<string, unknown>, { get: (encoder, method) => method === 'beginRenderPass'
+                ? (d: GPURenderPassDescriptor) => { spy.passes.push(d); return (encoder.beginRenderPass as (d: unknown) => unknown)(d); } : Reflect.get(encoder, method) });
+            if (key === 'createTexture') return (d: GPUTextureDescriptor) => { spy.textures.push(d.label ?? ''); return member(d); };
+            if (key === 'createRenderPipelineAsync') return (d: unknown) => { spy.compiles++; return member(d); };
+            if (key === 'createQuerySet') return (d: unknown) => { spy.querySets++; return member(d); };
+            return member;
+        } });
+        return spy;
+    }
+
+    // #8564 review: IFC-only scenes must provably pay nothing for the split.
+    for (const scene of ['no splats', 'hidden splats'] as const) {
+        it(`records no extra pass, attachment, texture, query or pipeline with ${scene}`, async () => {
+            const { h, frame } = await splitHarness({ splats: scene === 'hidden splats' });
+            try {
+                if (scene === 'hidden splats') {
+                    const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { records: Map<unknown, { handle: unknown }> };
+                    assert.equal(layer.records.size, 1, 'a resident asset exists, only hidden');
+                    for (const record of layer.records.values()) h.renderer.gaussianSplats.setVisible(record.handle as never, false);
+                }
+                const spy = spyDevice(h);
+                for (let i = 0; i < 3; i++) {
+                    const ops = frame();
+                    assert.ok(mainPass(ops).includes('glass') && ops.indexOf('glass') > ops.indexOf('opaque'), 'transparent IFC draws in the main pass');
+                    assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+                assert.deepEqual(spy.passes.filter((d) => d.label?.startsWith('ifc-lite-gaussian')), []);
+                const main = spy.passes.filter((d) => d.colorAttachments.length === 2);
+                assert.equal(main.length, 3, 'one main pass per frame');
+                for (const d of main) {
+                    const [colour, ids] = d.colorAttachments as GPURenderPassColorAttachment[];
+                    assert.equal(colour.loadOp, 'clear');
+                    assert.equal(colour.storeOp, 'store', 'the stub has no MSAA, so the swapchain is stored as before');
+                    assert.equal(ids.loadOp, 'clear');
+                    assert.equal(d.depthStencilAttachment?.stencilStoreOp, 'discard');
+                }
+                assert.deepEqual(spy.textures.filter((label) => label.includes('gaussian')), []);
+                assert.equal(spy.compiles, 0, 'no depth-only variant compiles');
+                assert.equal(spy.querySets, 0);
+                const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { glass: { split: unknown } };
+                assert.equal(layer.glass.split, null, 'the split never allocated its per-device state');
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    for (const [why, setup] of [
+        ['single-pass-mode', (h: Harness) => h.renderer.gaussianSplats.setCompositionMode('single-pass')],
+        ['upstream-interval-missing', () => {}],
+    ] as const) {
+        it(`reports ${why} and composites over transparent IFC in one pass`, async () => {
+            const { h, frame, report, tick } = await splitHarness({ depthInterval: why !== 'upstream-interval-missing' });
+            try {
+                setup(h);
+                frame();
+                await tick();
+                const ops = frame();
+                assert.ok(mainPass(ops).includes('glass'));
+                assert.deepEqual(ops.filter((op) => op.startsWith('splats:') || op.startsWith('pass:ifc-lite-gaussian')), ['splats:all']);
+                assert.equal(report()?.composition, 'over-transparent-approximate');
+                assert.equal(report()?.fallback, why);
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    it('#8564 review F3: split frames draw reference images and overlays after transparent IFC and before the splats in front, as single passes do', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        const fields = h.renderer as unknown as Record<string, Record<string, unknown>>;
+        const drawsWith = (label: string) => (pass: GPURenderPassEncoder) => { pass.setPipeline({ label } as unknown as GPURenderPipeline); pass.draw(3); };
+        fields.referenceImages.draw = drawsWith('reference-image');
+        fields.overlays.draw = drawsWith('overlay');
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            const at = (op: string, from = 0) => ops.indexOf(op, from);
+            const glassPass = at('pass:ifc-lite-gaussian-transparent');
+            assert.ok(glassPass > 0 && !mainPass(ops).includes('overlay') && !mainPass(ops).includes('reference-image'), ops.join(' '));
+            assert.deepEqual(ops.slice(glassPass + 1, at('splats:greater')), ['glass', 'drawIndexed', 'reference-image', 'draw', 'overlay', 'draw'],
+                'glass, then reference images and overlays in their established order, then the splats in front');
+            assert.ok(at('splats:less-equal') < glassPass);
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.laterOverBehindSplats, true, 'drawing them after the splats behind the glass is disclosed');
+            h.renderer.gaussianSplats.setCompositionMode('single-pass');
+            const single = frame();
+            assert.deepEqual(single.filter((op) => ['glass', 'reference-image', 'overlay', 'splats:all'].includes(op)), ['glass', 'reference-image', 'overlay', 'splats:all'],
+                'the single pass has the same relative order');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+});
+
+// #8564 review (Codex on 372b9ec): established draw order is preserved.
+describe('#8564 review: draw order around transparent IFC', () => {
+    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before selection hydration and transparent instances', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const glassColour: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, glassColour), triangle(4, glassColour)], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const hydrate = h.renderer.createMeshFromData.bind(h.renderer);
+        h.renderer.createMeshFromData = (piece) => { h.stats.commands.push({ op: 'hydrate' }); return hydrate(piece); };
+        try {
+            h.stats.commands.length = 0;
+            h.render({ hiddenIds: new Set([4]), selectedId: 1 }); // glass {3,4} with 4 hidden: one transparent sub-batch
+            const ops = h.stats.commands.map((c) => c.op === 'setPipeline' && c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.op);
+            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate');
+            assert.ok(glass >= 0 && hydration >= 0, ops.join(' '));
+            assert.equal(ops[glass + 1], 'setBindGroup');
+            assert.ok(ops.indexOf('drawIndexed', glass) < hydration, `transparent sub-batch draws before selection hydration, as at 750b33165a: ${ops.join(' ')}`);
+        } finally {
+            h.renderer.destroy();
+        }
+    });
+
 });

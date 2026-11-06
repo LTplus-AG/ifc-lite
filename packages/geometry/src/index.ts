@@ -121,42 +121,8 @@ import { omittedTypeRecordsField, readOmittedTypeRecords } from './omitted-type-
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
 
-export interface GeometryProcessorOptions {
-  preferNative?: boolean; // Default: true in Tauri
-  /**
-   * When true, the underlying IFC-Lite WASM API merges Revit-style
-   * multilayer walls — `IfcBuildingElementPart` meshes whose parent
-   * wall is sliceable are suppressed. Default `false` keeps the
-   * existing per-layer rendering behaviour. See issue #540.
-   */
-  mergeLayers?: boolean;
-  /**
-   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
-   * the renderer's instanced path is primary-model only, so a federated model must
-   * keep all geometry on the flat path or its opaque repeated occurrences are dropped.
-   */
-  enableInstancing?: boolean;
-  /**
-   * Tessellation detail level for curved geometry (issue #976):
-   * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
-   * reproduces the engine's historical densities byte-for-byte. Lower
-   * levels trade curved-surface smoothness for throughput; higher levels
-   * reduce faceting on pipes / cylinders / NURBS at a proportional
-   * triangle-count cost. Applies to the WASM paths (main-thread, streaming
-   * and worker-pool); the native desktop path does not consume it yet.
-   */
-  tessellationQuality?: TessellationQuality;
-  /**
-   * Tier-independent small-cut skip (issue #1286). When true, the WASM mesh pass
-   * drops `IfcBooleanResult` differences whose cutter is tiny relative to its
-   * host (steel copes/notches, minor detail recesses) WITHOUT lowering the
-   * tessellation tier — so curves keep full density while the dominant
-   * boolean-heavy load cost is skipped. Default false ⇒ every cut runs
-   * (byte-identical to before). The viewer enables it for the on-screen load;
-   * exporters/drawings leave it off so their geometry stays full fidelity.
-   */
-  skipSmallCuts?: boolean;
-}
+export type { GeometryProcessorOptions } from './geometry-processor-options.js';
+import type { GeometryProcessorOptions } from './geometry-processor-options.js';
 
 /**
  * Dynamic batch configuration for streaming.
@@ -256,6 +222,7 @@ export class GeometryProcessor {
   private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
   private skipSmallCuts: boolean;
+  private skipVoids: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -265,6 +232,10 @@ export class GeometryProcessor {
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     this.skipSmallCuts = options.skipSmallCuts === true;
+    this.skipVoids = options.skipVoids === true;
+    if (this.isNative && this.skipVoids) {
+      throw new Error("skipVoids requires preferNative: false; the third-party native bridge has no gross-geometry contract.");
+    }
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
@@ -276,6 +247,7 @@ export class GeometryProcessor {
       this.bridge.setTessellationQuality(this.tessellationQuality);
       // …and the tier-independent small-cut skip (#1286).
       this.bridge.setSkipSmallCuts(this.skipSmallCuts);
+      this.bridge.setSkipVoids(this.skipVoids);
     }
   }
 
@@ -791,6 +763,7 @@ export class GeometryProcessor {
       // same tiny detail cuts as the main-thread paths. Forwarded every run, so
       // an export processor (default false) never inherits a prior load's skip.
       skipSmallCuts: this.skipSmallCuts,
+      skipVoids: this.skipVoids,
       wasmUrls,
       workerCountOverride,
     });
@@ -1124,6 +1097,11 @@ export class GeometryProcessor {
    * Export render geometry as a binary GLB. Fails closed: a model whose visible
    * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
    * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   *
+   * `nameByGlobalId` (default `false`) makes each element one top-level node
+   * named by its IFC `GlobalId`, with its mesh parts as children, so tools
+   * that identify objects by node name can map them back to the element
+   * (#9011). Placement, geometry and materials are unchanged.
    */
   exportGlb(
     buffer: Uint8Array,
@@ -1133,9 +1111,10 @@ export class GeometryProcessor {
     hiddenTypesCsv = '',
     lit = true,
     emissive = false,
+    nameByGlobalId = false,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive, nameByGlobalId);
   }
 
   /**

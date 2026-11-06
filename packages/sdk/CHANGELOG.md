@@ -1,5 +1,13 @@
 # @ifc-lite/sdk
 
+## 9.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`a75b717`](https://github.com/LTplus-AG/ifc-lite/commit/a75b71705172edb0cc1b04e595ad3d274bc257c5), [`2fa7dc6`](https://github.com/LTplus-AG/ifc-lite/commit/2fa7dc6d2640cd62dc212d40976ace7721e0f566), [`8eefa8e`](https://github.com/LTplus-AG/ifc-lite/commit/8eefa8ec68c25b595bf3bce92f406b767c3f9f1f)]:
+  - @ifc-lite/drawing-2d@5.0.0
+  - @ifc-lite/query@2.5.4
+
 ## 9.6.0
 
 ### Minor Changes

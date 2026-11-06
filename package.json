@@ -10,6 +10,8 @@
     "apps/*"
   ],
   "scripts": {
+    "ui-drift": "node scripts/check-ui-drift.mjs --report",
+    "ui-drift:update": "node scripts/check-ui-drift.mjs --update",
     "dev": "pnpm build && pnpm --filter viewer dev",
     "dev:api": "zsh -lc 'set -a; source \"api/.env.local\"; set +a; PORT=3001 tsx scripts/dev-chat-api.ts'",
     "dev:bcf-test-server": "tsx scripts/dev-bcf-test-server.ts",
@@ -200,7 +202,8 @@
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
       "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch",
-      "typedoc@0.28.20": "patches/typedoc@0.28.20.patch"
+      "typedoc@0.28.20": "patches/typedoc@0.28.20.patch",
+      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch"
     }
   }
 }

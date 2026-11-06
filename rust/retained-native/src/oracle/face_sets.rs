@@ -14,7 +14,9 @@ pub struct AuthoredFaceSet { pub first: [f64; 3], pub rows: Vec<Row>,
     /// source's own answer to whether these rows can bound a solid, whatever `Closed` says.
     pub open_edges: usize,
     /// Each row's own edges, for what its dropped rows leave open (`face_set_zero_rows`).
-    pub row_edges: Vec<Vec<Edge>> }
+    pub row_edges: Vec<Vec<Edge>>,
+    /// Each row's ring ends within `Row::points`: its outer ring, then each hole.
+    pub row_rings: Vec<Vec<usize>> }
 /// An undirected edge, by exact coordinates with -0 read as +0.
 pub type Edge = ([u64; 3], [u64; 3]);
 
@@ -80,6 +82,7 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
     let points: Vec<[f64; 3]> = points.iter().map(|p| std::array::from_fn(|i| (p[i] - first[i]) * metres_per_unit)).collect();
     let edges = std::cell::RefCell::new(BTreeMap::<Edge, usize>::new());
     let row_edges = std::cell::RefCell::new(Vec::new());
+    let row_rings = std::cell::RefCell::new(Vec::new());
     let row = |outer: Option<Vec<[f64; 3]>>, inner: Vec<Vec<[f64; 3]>>| match outer {
         Some(outer) if outer.len() >= 3 => {
             let area_m2 = planar_area(&outer, &inner);
@@ -94,12 +97,14 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
                 }
             }
             row_edges.borrow_mut().push(own);
+            let mut end = 0;
+            row_rings.borrow_mut().push(std::iter::once(&outer).chain(&inner).map(|ring| { end += ring.len(); end }).collect::<Vec<_>>());
             let outer_count = outer.len();
             let mut all = outer;
             all.extend(inner.into_iter().flatten());
             Row { points: all, outer: outer_count, area_m2 }
         }
-        _ => { row_edges.borrow_mut().push(Vec::new()); Row { points: Vec::new(), outer: 0, area_m2: None } }
+        _ => { row_edges.borrow_mut().push(Vec::new()); row_rings.borrow_mut().push(Vec::new()); Row { points: Vec::new(), outer: 0, area_m2: None } }
     };
     let rows = if polygonal {
         let pn = item.attr(slot::IfcPolygonalFaceSet::PN_INDEX).and_then(AttributeValue::as_list);
@@ -117,7 +122,7 @@ pub fn authored(item: &DecodedEntity, decoder: &mut EntityDecoder, metres_per_un
             .map(|t| Some(row(corners(t.as_list()?, pn, &points), Vec::new()))).collect::<Option<Vec<_>>>()?
     };
     let open_edges = edges.into_inner().into_values().filter(|&n| n != 2).count();
-    Some(AuthoredFaceSet { first, rows, open_edges, row_edges: row_edges.into_inner() })
+    Some(AuthoredFaceSet { first, rows, open_edges, row_edges: row_edges.into_inner(), row_rings: row_rings.into_inner() })
 }
 
 /// Each row's plane, mapped through `world` from raw file units: a point and the
@@ -281,7 +286,7 @@ pub fn deviation(set: &AuthoredFaceSet, positions: &[f64], indices: &[u32], keys
 mod tests {
     use super::*;
     fn sheet() -> AuthoredFaceSet {
-        AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), rows: vec![
+        AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), row_rings: Vec::new(), rows: vec![
             Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
             Row { points: vec![[1., 0., 0.], [1., 1., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) },
         ] }
@@ -289,7 +294,7 @@ mod tests {
     const POSITIONS: [f64; 12] = [0., 0., 0., 1., 0., 0., 0., 1., 0., 1., 1., 0.];
     #[test]
     fn issue_8291_a_dropped_triangle_of_a_warped_row_is_observed() {
-        let warped = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), rows: vec![Row {
+        let warped = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), row_rings: Vec::new(), rows: vec![Row {
             points: vec![[0., 0., 0.], [1., 0., 0.], [1., 1., 0.5], [0., 1., 0.]], outer: 4, area_m2: None }] };
         let positions = [0., 0., 0., 1., 0., 0., 1., 1., 0.5, 0., 1., 0.];
         assert_eq!(deviation(&warped, &positions, &[0, 1, 2, 0, 2, 3], &[Some(0), Some(0)]).missing_rows, 0);
@@ -316,19 +321,19 @@ mod tests {
         // A 1 m long sliver of 1e-15 m2, as real slabs author: its published area can differ
         // by 1e-18 m2, which is 0.1% of it and still only noise.
         let (width, nudge) = (2e-15, 2e-18);
-        let set = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), rows: vec![Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., width, 0.]], outer: 3, area_m2: Some(width / 2.) }] };
+        let set = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), row_rings: Vec::new(), rows: vec![Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., width, 0.]], outer: 3, area_m2: Some(width / 2.) }] };
         let positions = [0., 0., 0., 1., 0., 0., 0., width + nudge, 0.];
         assert_eq!(deviation(&set, &positions, &[0, 1, 2], &[Some(0)]).area_relative, 0.);
         // A real area loss still counts.
         let row = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]], outer: 3, area_m2: Some(0.5) };
         let halved = [0., 0., 0., 1., 0., 0., 0., 0.5, 0.];
-        assert!(deviation(&AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
+        assert!(deviation(&AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), row_rings: Vec::new(), rows: vec![row] }, &halved, &[0, 1, 2], &[Some(0)]).area_relative > 0.4);
     }
     #[test]
     fn issue_8291_a_lost_thin_row_is_observed() {
         // 1 m long and 1e-7 m high is thin, but its area is a measurement, not noise.
         let thin = Row { points: vec![[0., 0., 0.], [1., 0., 0.], [0., 1e-7, 0.]], outer: 3, area_m2: Some(5e-8) };
-        let set = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), rows: vec![thin] };
+        let set = AuthoredFaceSet { first: [0.; 3], open_edges: 0, row_edges: Vec::new(), row_rings: Vec::new(), rows: vec![thin] };
         assert_eq!(deviation(&set, &[], &[], &[]).missing_rows, 1);
     }
     #[test]

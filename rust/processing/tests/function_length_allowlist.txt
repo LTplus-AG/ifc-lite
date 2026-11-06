@@ -24,8 +24,8 @@
    184 rust/export/src/collada.rs try_export_collada_from_meshes
    186 rust/export/src/collada_document.rs write_dae
    373 rust/export/src/gltf.rs build_gltf
-   211 rust/export/src/gltf.rs export_gltf_streaming_impl
-   634 rust/export/src/gltf.rs plan_bounded_glb
+   190 rust/export/src/gltf.rs export_gltf_streaming_impl
+   619 rust/export/src/gltf.rs plan_bounded_glb
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
    260 rust/export/src/merged/mod.rs export_merged_models

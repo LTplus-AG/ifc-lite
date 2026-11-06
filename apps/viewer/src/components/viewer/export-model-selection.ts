@@ -5,6 +5,7 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
+import { exportableModels } from '@/lib/export/capture-export';
 
 export interface ExportModelListItem {
   id: string;
@@ -36,7 +37,7 @@ export function listExportModels(
   dirtyModels: ReadonlySet<string>,
   legacyStore: IfcDataStore | null,
 ): ExportModelListItem[] {
-  const list = Array.from(models.values(), (model) => ({
+  const list = exportableModels(models).map((model) => ({
     id: model.id,
     name: model.name,
     isDirty: dirtyModels.has(model.id),

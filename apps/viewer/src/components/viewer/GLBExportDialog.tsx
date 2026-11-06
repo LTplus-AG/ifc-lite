@@ -44,6 +44,7 @@ import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
+import { exportableModels } from '@/lib/export/capture-export';
 import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 type ColorSource = 'rendering' | 'shading';
@@ -89,10 +90,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   // the flat apparent base colour. Default lit — most users expect shading.
   const [lit, setLit] = useState(true);
 
-  // Model list: federated models first, falling back to the legacy single
-  // model when nothing is registered. Mirrors ExportDialog.
+  // Federated models except captures (#8568), else the legacy single model. Mirrors ExportDialog.
   const modelList = useMemo(() => {
-    const list = Array.from(models.values()).map((m) => ({
+    const list = exportableModels(models).map((m) => ({
       id: m.id,
       name: m.name,
       geometryResult: m.geometryResult,

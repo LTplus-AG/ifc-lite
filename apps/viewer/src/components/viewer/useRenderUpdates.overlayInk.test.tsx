@@ -28,10 +28,11 @@ import type { SectionPlane } from '@/store';
 import { cleanup, render } from '@/test/render.js';
 import { OVERLAY_PALETTES, tokenToRgba } from '@/lib/viewport-ui/overlay-theme';
 import { useRenderUpdates } from './useRenderUpdates.js';
+import { getThemeClearColor } from '@/utils/viewportUtils';
 
 afterEach(cleanup);
 
-const BACKDROP = { light: [0.96, 0.96, 0.97], dark: [0.102, 0.106, 0.149] } as const;
+const BACKDROP = { light: getThemeClearColor('light').slice(0, 3), dark: getThemeClearColor('dark').slice(0, 3) } as const;
 function luminance([r, g, b]: readonly number[]): number {
   const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);

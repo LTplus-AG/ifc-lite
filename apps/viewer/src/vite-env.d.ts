@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_REGISTRY_ADDRESS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
+  /** Gaussian capture admission (#8568): unset = committed default, 'disabled' = kill switch, 'internal-unqualified' = presenter build. */
+  readonly VITE_GAUSSIAN_SPLATS?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
   readonly VITE_CLOUD_HOSTED?: string;
   /** 'false' removes the BIMcollab Documents source (it needs the /api/bimcollab relay). */

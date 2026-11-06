@@ -118,6 +118,8 @@ export const commandPaletteEn = {
   'commandPalette.searchPlaceholder': 'What do you need?',
   'commandPalette.escKey': 'Esc',
   'commandPalette.noResults': 'No results',
+  'commandPalette.noResultsHint': 'Try a different name or keyword.',
+  'commandPalette.clearSearch': 'Clear search',
   'commandPalette.footer.navigate': 'navigate',
   'commandPalette.footer.run': 'run',
   'commandPalette.footer.close': 'close',

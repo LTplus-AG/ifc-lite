@@ -511,9 +511,14 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # Corpus documentation is read by the Node guards.
+              - 'tests/models/README.md'
               # The path-coverage regression harness mirrors tracked evidence,
               # and conservative gate inputs include the committed archive tree.
               - 'tests/evidence/**'
+              # The UI overhaul's scene/council tooling (#8802) is walked by the
+              # same conservative gate inputs as every other tests/ subtree.
+              - 'tests/ui-scenes/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.
@@ -1075,6 +1080,11 @@ jobs:
           # module's wiring. Keep it; drop only the omitted-Axis2 +Y default.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8308/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8308/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/8308/behaviour.oracle.patch --test rust/geometry/src/router/transforms/operator_axis2_tests.rs --test rust/processing/tests/issue_8308_omitted_axis2.rs)
+          # #8753: a whole-change revert deletes the CAP_FILL_VERTEX_ATTRIBUTES /
+          # CAP_HATCH_OVERRIDE exports the new hatch test imports. Keep them; drop
+          # only the per-polygon hatch floats, so every cap falls back to capStyle.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/8753/behaviour.oracle.patch | grep -Fxq 'tests/evidence/8753/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/8753/behaviour.oracle.patch --test packages/renderer/src/section-cap-hatch.test.ts)
           # #7955 (#8475): the bounded check's measurement lives in the
           # retained_compare example, whose #[path] modules no cargo target owns.
           # Its integration witness drives that check directly; keep the
@@ -2041,6 +2051,20 @@ jobs:
             oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/key-ignores-filter.oracle.patch --test apps/viewer/src/components/viewer/sceneSnapshotOwnership.test.ts)
             oracle_args+=(--mutation tests/evidence/scene-snapshot-filter/clear-any-write.oracle.patch --test apps/viewer/src/services/ifc-cache.test.ts)
           fi
+          # #8781: a whole revert removes the reframe export imported by the
+          # witnesses. Keep the API and independently break frame subtraction,
+          # registry application, and scan-only candidate filtering.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch | grep -Fxq 'tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/offset-subtraction.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/reframe-apply.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+            oracle_args+=(--mutation tests/evidence/scan-render-frame-8781/scan-candidate.oracle.patch --test apps/viewer/src/hooks/ingest/pointCloudRenderFrame.test.ts)
+          fi
+          # #8802: the UI drift scanner and its test are both new, so a blunt
+          # revert leaves the test unable to load. Break one behaviour at a time.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ui-drift/no-comment-strip.oracle.patch | grep -Fxq 'tests/evidence/ui-drift/no-comment-strip.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/ui-drift/no-comment-strip.oracle.patch --test scripts/check-ui-drift.test.mjs)
+            oracle_args+=(--mutation tests/evidence/ui-drift/string-spans-lines.oracle.patch --test scripts/check-ui-drift.test.mjs)
+          fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
           mapfile -d '' -t slice_args < "$RUNNER_TEMP/oracle-args"
@@ -2132,7 +2156,9 @@ jobs:
     # defined one, so it passed in 20s having checked nothing, and dead imports
     # shipped through it.
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 10
+    # Setup alone took ~6.5 min on a slow hosted fetch (run 41724386818), so
+    # 10 min left too little for the lint itself.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2160,6 +2186,11 @@ jobs:
           name: build-output
           path: packages
       - run: pnpm lint
+        env:
+          # The unused-locals guard compiles apps/viewer standalone; since
+          # #8790 that exceeds Node's default ~4 GiB heap and the guard reports
+          # the package as uncompilable. Same allowance as Typecheck.
+          NODE_OPTIONS: --max-old-space-size=8192
       # THE ARTIFACT CLASS NOBODY REVIEWED. PR #3175 corrected twelve changesets
       # by hand that would have shipped breaking changes as `patch`, with the
       # release one command from publishing; its own body names the cause --
@@ -2457,6 +2488,10 @@ jobs:
       # scripts/check-module-size.mjs; this comment is its summary.
       - name: Check TypeScript module size ratchet
         run: node scripts/check-module-size.mjs
+      # #8802: objective hill-climb score for the viewer UI overhaul.
+      # Totals ratchet down as styling migrates to tokens and primitives.
+      - name: Check UI style drift ratchet
+        run: node scripts/check-ui-drift.mjs
       - name: Check for hardcoded viewer UI literals
         run: node scripts/check-i18n-literals.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for
@@ -3238,6 +3273,20 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+      # #8811: the full workspace test link exhausted an ubuntu-latest disk
+      # before any verdict. These preinstalled SDKs are unused by this Rust
+      # job; never remove software from persistent/self-hosted runners.
+      - name: Reclaim unused SDKs on the hosted Rust runner
+        if: runner.environment == 'github-hosted' && runner.os == 'Linux'
+        run: |
+          df -h /
+          for sdk in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup; do
+            if [ -d "$sdk" ]; then
+              sudo du -sh "$sdk"
+              sudo rm -rf -- "$sdk"
+            fi
+          done
+          df -h /
       # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
       # target dir per job on the runner's rust-target volume, outside the
       # workspace that the runner wipes. A job killed mid-compile (reboot) can
@@ -4165,14 +4214,25 @@ jobs:
     name: AGENTS.md ratchet
     needs: changes
     if: (needs.changes.outputs.agents_md == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 5
+    # This tiny gate uses a partial clone. Keep it ephemeral so promisor state
+    # cannot leak into full checkouts in later self-hosted jobs (e.g. semver).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
+          # Keep every tracked instruction file, including future nested files,
+          # while avoiding unrelated model/evidence blobs in this tiny gate.
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.github/
+            /AGENTS.md
+            /**/AGENTS.md
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

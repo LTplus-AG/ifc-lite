@@ -369,7 +369,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
               {registrationFailures.map((failure) => (
                 <li
                   key={failure.provider}
-                  className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400"
+                  className="flex items-start gap-2 text-xs text-danger"
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>

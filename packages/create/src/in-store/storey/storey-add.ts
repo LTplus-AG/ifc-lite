@@ -18,6 +18,7 @@ import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { ownerHistoryRef } from '../_emit-helpers.js';
 import { refId } from '../host-geometry-frame.js';
+import { assertHostedGlobalIdAvailable } from '../hosted-global-id.js';
 import { readStoreyInventory, ref, type StoreyInventory, type StoreyRecord } from './storey-model.js';
 import { readPlacementLeaf, worldLiftInParent } from './storey-placement.js';
 import { MIN_STOREY_SPACING, describeElevation } from './storey-validation.js';
@@ -68,21 +69,6 @@ function nearest(inventory: StoreyInventory, elevation: number, parentId: number
   return best;
 }
 
-/**
- * The live entity already carrying `globalId`, or null: the parsed index and
- * every record the overlay created or edited, read through the effective view
- * (a deleted entity no longer holds its GlobalId, an edited one holds its new one).
- */
-function globalIdOwner(inventory: StoreyInventory, globalId: string): number | null {
-  const { reader, store, view } = inventory;
-  const carries = (id: number) => reader.entity(id)?.attributes[0] === globalId;
-  const indexed = store.entities.getExpressIdByGlobalId?.(globalId) ?? -1;
-  if (indexed > 0 && carries(indexed)) return indexed;
-  for (const entity of view.getNewEntities()) if (carries(entity.expressId)) return entity.expressId;
-  for (const change of view.getEffectiveChanges()) if (carries(change.entityId)) return change.entityId;
-  return null;
-}
-
 /** The building the new storey joins, refusing a reference and a `buildingId` that disagree. */
 function joinedBuilding(inventory: StoreyInventory, params: AddStoreyParams): { parentId: number; requested: StoreyRecord | null } {
   if (params.referenceStoreyId === undefined) {
@@ -119,8 +105,8 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
     const inventory = readStoreyInventory(store, draft.getMutationView());
     if (params.GlobalId !== undefined) {
       if (!isValidIfcGuid(params.GlobalId)) throw new Error(`${OP}: GlobalId "${params.GlobalId}" is not a valid IFC GUID`);
-      const owner = globalIdOwner(inventory, params.GlobalId);
-      if (owner !== null) throw new Error(`${OP}: GlobalId "${params.GlobalId}" already belongs to #${owner}; a GlobalId must be unique`);
+      // Every live IfcRoot owner, relationships included (the table index omits their GUIDs).
+      assertHostedGlobalIdAvailable(store, draft.getMutationView(), params.GlobalId);
     }
     const ownerHistoryId = inventory.reader.firstId('IFCOWNERHISTORY');
     if (inventory.schema === 'IFC2X3' && ownerHistoryId === null) throw new Error(`${OP}: IFC2X3 requires IfcOwnerHistory`);
@@ -184,10 +170,13 @@ function emitStoreyPlacement(
     const axis = draft.addEntity('IfcAxis2Placement3D', [ref(point), directionRef(leaf.axis), directionRef(leaf.refDirection)]).expressId;
     return draft.addEntity('IfcLocalPlacement', [leaf.parentId === null ? null : ref(leaf.parentId), ref(axis)]).expressId;
   }
-  // No neighbour placement to copy: hang from the parent's own placement, as IfcCreator does.
+  // No neighbour placement to copy: hang from the parent's own placement, as
+  // IfcCreator does, lifted along WORLD +Z however that placement is turned.
   const parent = inventory.reader.entity(parentId);
   const parentPlacement = parent ? refId(parent.attributes[5]) : null;
-  const point = draft.addEntity('IfcCartesianPoint', [[0, 0, roundNative(elevation / inventory.scale)]]).expressId;
+  const lift = worldLiftInParent(inventory.reader, parentPlacement, elevation / inventory.scale);
+  if (!lift) throw new Error(`${OP}: the placement of building #${parentId} cannot be read, so the new storey cannot be placed in it`);
+  const point = draft.addEntity('IfcCartesianPoint', [lift.map((v) => roundNative(v) + 0)]).expressId;
   const axis = draft.addEntity('IfcAxis2Placement3D', [ref(point), null, null]).expressId;
   return draft.addEntity('IfcLocalPlacement', [parentPlacement === null ? null : ref(parentPlacement), ref(axis)]).expressId;
 }

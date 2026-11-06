@@ -60,16 +60,19 @@ describe('addStoreyInStore', () => {
     const before = s.snapshot();
     // The column's GlobalId, from the parsed index.
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, GlobalId: '0Oz2e8GZz8RA2h4D8U3fsH' }))
-      .toThrow('GlobalId "0Oz2e8GZz8RA2h4D8U3fsH" already belongs to #60');
+      .toThrow("GlobalId '0Oz2e8GZz8RA2h4D8U3fsH' is already used by #60");
     expect(s.snapshot()).toEqual(before);
     // An entity authored in this session.
     const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, GlobalId: '3x4Kp9QeT0ZvYc1mN8bR2a' });
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '3x4Kp9QeT0ZvYc1mN8bR2a' }))
-      .toThrow(`already belongs to #${added.storeyId}`);
+      .toThrow(`is already used by #${added.storeyId}`);
     // A source entity whose GlobalId was edited holds the new one, not the old one.
     s.editor.setPositionalAttribute(70, 0, '2Zq8Lm4Nr6Tv0Xy3Bc5Df7');
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2Zq8Lm4Nr6Tv0Xy3Bc5Df7' }))
-      .toThrow('already belongs to #70');
+      .toThrow('is already used by #70');
+    // A relationship's GlobalId, which the parsed table index does not hold.
+    expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2tI3d7B1T4ivX8X0SA4yuM' }))
+      .toThrow('is already used by #90');
     s.editor.removeEntity(80);
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2Hh6l7AY56SAGC9IQvMEv6' })).not.toThrow();
   });
@@ -80,6 +83,19 @@ describe('addStoreyInStore', () => {
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, referenceStoreyId: 46 }))
       .toThrow('Level 3 is not aggregated under a building');
     expect(s.snapshot()).toEqual(before);
+  });
+
+  it('the first storey of a turned building is lifted along world Z (#9013 review)', async () => {
+    // Building #31 is turned so its local Z runs along world X; the building holds no storey yet.
+    const text = THIRD_PARTY
+      .replace('#31=IFCLOCALPLACEMENT(#21,#5);', '#31=IFCLOCALPLACEMENT(#21,#32);\n#32=IFCAXIS2PLACEMENT3D(#4,#33,#34);\n#33=IFCDIRECTION((1.,0.,0.));\n#34=IFCDIRECTION((0.,0.,1.));')
+      .replace(/#4[0-9]=IFCBUILDINGSTOREY[^\n]*\n/g, '')
+      .replace(/#(50|9[01])=IFCREL[^\n]*\n/g, '');
+    const s = session(await parse(text));
+    expect(api('readStoreyInventory')(s.store, s.view).storeys).toEqual([]);
+    const r = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 1', Elevation: 3 });
+    expect(s.view.getNewEntity(r.storeyId)!.attributes[9]).toEqual({ real: 3000 });
+    expect(s.worldZ(r.storeyId)).toBeCloseTo(3000, 9);
   });
 
   it('renames through the named Name attribute', async () => {
@@ -182,6 +198,30 @@ describe('storey deletion', () => {
     expect(s.view.isDeleted(late)).toBe(false);
   });
 
+  it('refuses a reviewed move once a product it moves was edited or moved since', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const mode = { kind: 'move', targetStoreyId: 40 } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    // The column's placement point, raised after review: ids, contents and roots are unchanged.
+    s.editor.setPositionalAttribute(62, 0, [1000, 0, 4000]);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.snapshot()).toEqual(before);
+    const renamed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    s.editor.setPositionalAttribute(70, 2, 'Renamed slab');
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, renamed)).toThrow(api('StoreyEditRefusedError'));
+  });
+
+  it('a deleted product is no longer a storey\'s content (#9013 review)', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    s.editor.removeEntity(60);
+    const rows = () => api('summarizeStoreys')(api('readStoreyInventory')(s.store, s.view)).map((row) => [row.Name, row.elementCount]);
+    expect(rows()).toEqual([['Level 3', 1], ['Level 2', 1], ['Level 1', 0]]);
+    s.editor.removeEntity(70);
+    expect(rows()).toEqual([['Level 3', 1], ['Level 2', 0], ['Level 1', 0]]);
+    expect(api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, { kind: 'empty' }).refusals).toEqual([]);
+  });
+
   it('keeps the last storey', async () => {
     const s = session(await helloWall());
     const plan = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, { kind: 'deleteContents' });
@@ -201,7 +241,15 @@ describe('storey content limit (#9013 review)', () => {
 
   it('planning walks up to the limit and refuses beyond it', () => {
     expect(api('storeyContents')(crowded(50_000), 1).size).toBe(50_000);
-    expect(() => api('storeyContents')(crowded(50_001), 1)).toThrow('Storey #1 holds more than 50,000 products');
+    expect(() => api('storeyContents')(crowded(50_001), 1)).toThrow('Crowded holds more than 50,000 products');
+  });
+
+  it('planners refuse a storey beyond the limit with a typed refusal, not an exception', () => {
+    for (const mode of [{ kind: 'empty' }, { kind: 'deleteContents' }] as const) {
+      expect(api('planStoreyDelete')(crowded(50_001), 1, mode).refusals.map((r) => [r.code, r.elementIds])).toEqual([['tooLarge', [1]]]);
+    }
+    expect(api('planStoreyLevelEdit')(crowded(50_001), { kind: 'elevation', storeyId: 1, Elevation: 0.5 }).refusals.map((r) => r.code)).toEqual(['tooLarge']);
+    expect(api('planStoreyDelete')(crowded(50_000), 1, { kind: 'deleteContents' }).refusals.map((r) => r.code)).not.toContain('tooLarge');
   });
 
   it('listing still counts a storey beyond the limit', () => {

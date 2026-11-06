@@ -217,6 +217,21 @@ describe('a reviewed plan is refused when the model changed under it (#9013 revi
   });
 });
 
+describe('a reviewed plan pins the placements it writes (#9013 review)', () => {
+  it('rotating a written placement after review makes the plan stale', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const edit = { kind: 'elevation', storeyId: 42, Elevation: 3.5 } as const;
+    const reviewed = plan(s, edit);
+    expect(reviewed.placements.map(({ leaf }) => leaf.axisPlacementId)).toContain(45);
+    // Level 2's axis placement #45 turned a quarter turn about Z: same ids, same offsets.
+    const turn = s.editor.addEntity('IfcDirection', [[0, 1, 0]]).expressId;
+    s.editor.setPositionalAttribute(45, 2, `#${turn}`);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.snapshot()).toEqual(before);
+  });
+});
+
 describe('adding next to an unreadable placement is refused (#9013 review)', () => {
   it('does not fall back to a default placement', async () => {
     const s = session(await parse(THIRD_PARTY.replace('#47=IFCLOCALPLACEMENT(#31,#49);', '#47=IFCLOCALPLACEMENT(#31,$);')));

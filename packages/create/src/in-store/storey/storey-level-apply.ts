@@ -13,10 +13,10 @@ const micro = (value: number): number => Math.round(value * 1e6);
 
 /**
  * What makes two plans the same edit: where everything starts, the writes,
- * and which products they move or hold. A placement point edited after the
- * review keeps the ids and offsets but changes where the write lands, and a
- * product attached to a moved placement changes the outcome without changing
- * the writes, so both are part of it.
+ * and which products they move or hold. A placement point moved or an axis
+ * rotated after the review keeps the ids and offsets but changes where the
+ * write lands (the fingerprint), and a product attached to a moved placement
+ * changes the outcome without changing the writes, so both are part of it.
  */
 export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
   return JSON.stringify({
@@ -26,6 +26,7 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
     placements: plan.placements.map(({ leaf, offset }) => [
       leaf.placementId, leaf.parentId, leaf.axisPlacementId, leaf.location.map(micro), offset.map(micro),
     ]),
+    fingerprint: plan.fingerprint,
   });
 }
 

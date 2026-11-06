@@ -19,7 +19,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { refId } from '../host-geometry-frame.js';
 import { planStoreyReassignment } from '../storey-reassignment-plan.js';
 import { reassignElementsToStoreyInStore } from '../storey-reassignment.js';
-import { countedElements, readStoreyInventory, ref, storeyContents, type StoreyInventory } from './storey-model.js';
+import { boundedStoreyContents, countedElements, readStoreyInventory, ref, storeyTooLarge, type StoreyInventory } from './storey-model.js';
+import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { StoreyEditRefusedError, type StoreyRefusal } from './storey-validation.js';
 
 export type StoreyDeleteMode =
@@ -36,6 +37,8 @@ export interface StoreyDeletePlan {
   /** The storey's direct children: what a move re-parents. */
   readonly roots: readonly number[];
   readonly elementCount: number;
+  /** The reviewed state of the contents (records and placement chains); a later edit to any of them makes the plan stale. */
+  readonly fingerprint: string;
   readonly refusals: readonly StoreyRefusal[];
 }
 
@@ -54,9 +57,10 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
   const storey = inventory.storeys.find((candidate) => candidate.expressId === storeyId);
   const base = { storeyId, mode, Name: storey?.Name ?? `#${storeyId}` };
   if (!storey) {
-    return { ...base, contents: [], roots: [], elementCount: 0, refusals: [{ code: 'notFound', message: `#${storeyId} is not a live IfcBuildingStorey in this model` }] };
+    return { ...base, contents: [], roots: [], elementCount: 0, fingerprint: '', refusals: [{ code: 'notFound', message: `#${storeyId} is not a live IfcBuildingStorey in this model` }] };
   }
-  const contents = storeyContents(inventory, storeyId);
+  const contents = boundedStoreyContents(inventory, storeyId);
+  if (!contents) return { ...base, contents: [], roots: [], elementCount: 0, fingerprint: '', refusals: [storeyTooLarge(storey)] };
   const roots = directChildren(inventory, storeyId);
   const elementCount = countedElements(inventory, contents);
   const refusals: StoreyRefusal[] = [];
@@ -94,13 +98,14 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
       }
     }
   }
-  return { ...base, contents: [...contents], roots, elementCount, refusals };
+  return { ...base, contents: [...contents], roots, elementCount, fingerprint: storeyStateFingerprint(inventory.reader, contents), refusals };
 }
 
 /**
- * What makes two deletion plans the same: the storey, the mode and exactly
- * what would be moved or deleted. Contents added to the storey after the
- * review change it, so a reviewed `deleteContents` never deletes them.
+ * What makes two deletion plans the same: the storey, the mode, exactly what
+ * would be moved or deleted, and the state those products were reviewed in.
+ * Contents added after the review, or a reviewed product edited or moved
+ * since, change it, so a reviewed deletion never acts on them unseen.
  */
 export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
   return JSON.stringify({
@@ -108,6 +113,7 @@ export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
     mode: plan.mode.kind === 'move' ? ['move', plan.mode.targetStoreyId] : [plan.mode.kind],
     contents: [...plan.contents].sort((x, y) => x - y),
     roots: [...plan.roots].sort((x, y) => x - y),
+    fingerprint: plan.fingerprint,
   });
 }
 

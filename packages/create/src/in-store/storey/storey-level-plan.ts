@@ -31,8 +31,10 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refId, type Vec3 } from '../host-geometry-frame.js';
 import {
-  countedElements, siblingStoreys, storeyContents, storeyNeighbour, storeyRecord, type StoreyInventory, type StoreyRecord,
+  boundedStoreyContents, countedElements, siblingStoreys, storeyNeighbour, storeyRecord, storeyTooLarge,
+  type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
+import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
 import {
   MIN_STOREY_SPACING, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
@@ -83,12 +85,18 @@ export interface StoreyLevelPlan {
   readonly movedElementCount: number;
   readonly refusals: readonly StoreyRefusal[];
   readonly notices: readonly StoreyNotice[];
+  /**
+   * The reviewed state of what the writes start from: the moved storeys and
+   * every written placement's chain (points, axes, directions). An edit to
+   * any of them after review makes the plan stale.
+   */
+  readonly fingerprint: string;
 }
 
 const EPS = 1e-9;
 
 function emptyPlan(edit: StoreyLevelEdit, refusals: StoreyRefusal[]): StoreyLevelPlan {
-  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], movedElementCount: 0, refusals, notices: [] };
+  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], movedElementCount: 0, refusals, notices: [], fingerprint: '' };
 }
 
 /** Neighbour checks for one storey landing at `target` metres. */
@@ -156,7 +164,8 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   for (const [storeyId, delta] of deltas) {
     const native = delta / scale;
     intent.set(storeyId, native);
-    const held = storeyContents(inventory, storeyId);
+    const held = boundedStoreyContents(inventory, storeyId);
+    if (!held) return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
     contents.set(storeyId, held);
     for (const id of held) if (!intent.has(id)) intent.set(id, native);
   }
@@ -243,6 +252,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   return {
     edit, storeys, placements, moved, held, spacing: spacingChanges(inventory, deltas), movedElementCount,
     refusals, notices: [],
+    fingerprint: storeyStateFingerprint(reader, [...deltas.keys()], placements.map(({ leaf }) => leaf.placementId)),
   };
 }
 

@@ -18,6 +18,7 @@ import { AnchorEntityReader } from '../resolve-anchor.js';
 import { refId } from '../host-geometry-frame.js';
 import { safeLengthUnitScale } from '../length-unit-scale.js';
 import { effectiveStoreyElevation } from '../room-storey-elevation.js';
+import type { StoreyRefusal } from './storey-validation.js';
 
 /** A mutation plan refuses a storey holding more products than this; read-only listings count past it. */
 export const STOREY_CONTENT_LIMIT = 50_000;
@@ -84,7 +85,8 @@ function realValue(value: unknown): number | null {
   return null;
 }
 
-function relationshipsOf(reader: AnchorEntityReader): StoreyRelationship[] {
+/** Live relationships only, and only their live ends: a deleted product is nobody's content. */
+function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number>): StoreyRelationship[] {
   const result: StoreyRelationship[] = [];
   for (const type of SPATIAL_RELATIONSHIPS) {
     for (const id of reader.ids(type)) {
@@ -95,8 +97,9 @@ function relationshipsOf(reader: AnchorEntityReader): StoreyRelationship[] {
       const listIndex = contained ? 4 : 5;
       const parent = refId(entity.attributes[parentIndex]);
       const raw = entity.attributes[listIndex];
-      const children = (Array.isArray(raw) ? raw : [raw]).map(refId).filter((child): child is number => child !== null);
-      if (parent === null || children.length === 0) continue;
+      const children = (Array.isArray(raw) ? raw : [raw]).map(refId)
+        .filter((child): child is number => child !== null && !deleted.has(child));
+      if (parent === null || deleted.has(parent) || children.length === 0) continue;
       result.push({ id, type, parent, children, parentIndex, listIndex });
     }
   }
@@ -109,7 +112,7 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
   const scale = store.source.byteLength > 0
     ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
     : store.lengthUnitScale ?? 1;
-  const relationships = relationshipsOf(reader);
+  const relationships = relationshipsOf(reader, view.getTombstones());
   const outgoing = new Map<number, StoreyRelationship[]>();
   const incoming = new Map<number, StoreyRelationship[]>();
   const append = (map: Map<number, StoreyRelationship[]>, key: number, rel: StoreyRelationship) => {
@@ -179,6 +182,13 @@ export function storeySpacingAbove(inventory: StoreyInventory, storeyId: number)
  * refused. Read-only callers pass `Infinity`.
  */
 export function storeyContents(inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT): Set<number> {
+  const contents = boundedStoreyContents(inventory, storeyId, limit);
+  if (!contents) throw new Error(storeyTooLarge(storeyRecord(inventory, storeyId), limit).message);
+  return contents;
+}
+
+/** `storeyContents`, or null past `limit` (the walk stops there): planners turn that into a refusal. */
+export function boundedStoreyContents(inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT): Set<number> | null {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
   const contents = new Set<number>();
   const queue = [storeyId];
@@ -186,15 +196,22 @@ export function storeyContents(inventory: StoreyInventory, storeyId: number, lim
     for (const rel of inventory.outgoing.get(queue[index]) ?? []) {
       for (const child of rel.children) {
         if (child === storeyId || contents.has(child) || storeyIds.has(child)) continue;
-        if (contents.size >= limit) {
-          throw new Error(`Storey #${storeyId} holds more than ${limit.toLocaleString('en')} products`);
-        }
+        if (contents.size >= limit) return null;
         contents.add(child);
         queue.push(child);
       }
     }
   }
   return contents;
+}
+
+/** The refusal for a storey whose contents pass the planning limit. */
+export function storeyTooLarge(storey: Pick<StoreyRecord, 'expressId' | 'Name'>, limit = STOREY_CONTENT_LIMIT): StoreyRefusal {
+  return {
+    code: 'tooLarge', elementIds: [storey.expressId],
+    message: `${storey.Name} holds more than ${limit.toLocaleString('en')} products, more than one storey edit may write`,
+    params: { storey: storey.Name, limit },
+  };
 }
 
 /** Elements a person counts: the contents minus openings and aggregated parts. */

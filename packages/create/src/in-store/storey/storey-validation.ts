@@ -26,7 +26,9 @@ export type StoreyRefusalCode =
   | 'onlyStorey'
   | 'dependent'
   /** A reviewed plan no longer matches the model: review the edit again. */
-  | 'stale';
+  | 'stale'
+  /** The storey holds more products than one plan may write. */
+  | 'tooLarge';
 
 export interface StoreyRefusal {
   readonly code: StoreyRefusalCode;

@@ -9,6 +9,7 @@ import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/r
 import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
+import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 import type { Command } from './commandPaletteSearch';
 
@@ -52,11 +53,15 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (id === 'tool:space-envelope' && s.selectedEntityId === null) return blocked('spaceEnvelope.refused');
   // These legacy handlers consume the property ref; renderer selection alone cannot launch them.
   if (selectedModelTools.has(id) && !s.selectedEntity) return blocked('commandPalette.availability.entity');
+  // Push/Pull initializes its actual target from the scalar renderer channel.
+  if (id === 'tool:push-pull' && s.selectedEntityId === null) return blocked('commandPalette.availability.selection');
   if (modelTools.has(id)) {
     const target = s.session ?? modelWorkspaceTarget(s);
     if (!target) return blocked('commandPalette.availability.ifc');
-    if (!planeFreeTools.has(id) && (s.session ? sessionWorkplaneBlock(s) : target.storeyId === null)) {
-      return blocked('commandPalette.availability.workplane');
+    if (!planeFreeTools.has(id)) {
+      const planeBlocked = s.session ? sessionWorkplaneBlock(s) : target.storeyId === null
+        || 'refused' in resolveWorkplane(s, target.modelId, { kind: 'storey', storeyId: target.storeyId, offset: 0 });
+      if (planeBlocked) return blocked('commandPalette.availability.workplane');
     }
   }
   if ((id.startsWith('vis:') && id !== 'vis:toggle-presentation') || id === 'model:reposition'

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
 import { hasRetainedGeometryModel, hasRetainedShapeOnlyModel,
@@ -12,10 +12,17 @@ import type { PaletteAvailability } from './palette-availability';
 
 /** Recheck the export registry's prerequisites before palette telemetry/recents (#8947).
  * Format-specific configuration remains in the existing runner and dialogs. */
-export function paletteExportAvailability(command: RegisteredExportCommand): PaletteAvailability {
+export function paletteExportAvailability(command: RegisteredExportCommand,
+  activationContext?: Pick<ViewerState, 'activeModelId' | 'ifcDataStore' | 'models'>): PaletteAvailability {
   const s = useViewerStore.getState();
   const disabled = (reasonKey: Extract<PaletteAvailability, { status: 'disabled' }>['reasonKey']): PaletteAvailability =>
     ({ status: 'disabled', reasonKey });
+  // A deferred row retains its render's export runner. Refuse a different
+  // model snapshot rather than combine old source data with a new filename.
+  if (activationContext && (activationContext.activeModelId !== s.activeModelId
+    || activationContext.ifcDataStore !== s.ifcDataStore || activationContext.models !== s.models)) {
+    return disabled('commandPalette.export.unavailable');
+  }
   if (hasRetainedShapeOnlyModel(s.models) && ['glb', 'kmz', 'ion', 'usd'].includes(command.id)) {
     return disabled(RETAINED_SHAPE_ONLY_REASON);
   }

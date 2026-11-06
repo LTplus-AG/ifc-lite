@@ -132,3 +132,29 @@ tree and 2,447,178 bytes of generated files were retired.
 Next: admitted root validation, then real file/activity and author/filter hosts,
 canonical omitted actions, modeling/subflows and runtime owners. This checkpoint
 is neither complete feature access nor a round-1 acceptance verdict.
+
+## Round 1 independent foundation review (pending correction validation)
+
+A fresh Astra review of `307fbc5..2e2c35e` found three P2 refusal-boundary
+gaps: an existing storey can still have an unusable drawing plane; Push/Pull
+requires the scalar renderer selection as well as the property reference; and a
+deferred export can retain an old model runner after the active model changes.
+These are blocking objections for this foundation, not an access acceptance.
+Corrections and parsed-fixture mounted regressions are included in the foundation
+review-fix commit. Their behavior has not yet been executed.
+
+Draft PR #8956 targets `feat/command-palette`. Its review-signal reports 49
+missing lanes because the full test workflow only runs for base `main`; adding
+`ci:full` does not change that trigger. A draft-skipped bot has supplied no
+review verdict. Neither condition is counted as success. Keep the stack intact
+until #8950 lands, then retarget and run the full graph. Original admitted fleet
+request `auto-aa39caddc30843a5bdc17dc42199a0cb` remains the validation request for
+`2e2c35e`; no replacement or duplicate request was submitted. Later corrections
+require their own matching-source validation before release.
+
+Parent reported full UX-head `307fbc5` run `42130748653` completed with Build,
+Typecheck, all 16 viewer shards, all 8 E2E shards, lint, Node guards, provenance,
+revert oracle and performance ratchet passing. Node shard 2/4 failed nine BCF
+fixture tests, and its dependent aggregate failed; Rust/path-gated lanes skipped
+as configured. This is not a full-CI pass. Separate test-only repair PR #8959
+and its original admitted validation are parent-owned; UX head remains frozen.

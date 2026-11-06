@@ -362,7 +362,7 @@ export function BCFServerConnectForm({
       </p>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-2 rounded-md bg-danger-surface px-3 py-2 text-sm text-danger">
           <XCircle className="h-4 w-4 shrink-0" />
           <span className="min-w-0 break-words">{error}</span>
         </div>

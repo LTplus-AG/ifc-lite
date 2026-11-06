@@ -6,7 +6,7 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
-import { quantizeInterleaved } from './quantize.js';
+import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
@@ -76,7 +76,10 @@ export function createSceneBatch(
   try {
     let quantized: { min: [number, number, number]; step: number } | undefined;
     let vertexBuffer: GPUBuffer;
-    const quantizedData = options.quantized !== 'off'
+    // `auto` also stays f32 when the ~1 mm lattice would collapse an entity's
+    // shape (#9068); `required` keeps its source batch's decision (#4832).
+    const quantizedData = options.quantized === 'required' || (options.quantized === 'auto'
+      && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices))
       ? quantizeInterleaved(
           merged.vertexData,
           BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,

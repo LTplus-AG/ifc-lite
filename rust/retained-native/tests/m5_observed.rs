@@ -117,15 +117,15 @@ fn issue_7955_m5_lineage_boundary_and_atomic_refusal(){
     println!("sdk witness executed: m5_lineage");
 }
 #[test]
-fn issue_7955_m5_burkwil_beam_4548_two_clip_witness(){
-    let Some(path)=std::env::var_os("IFCLITE_BURKWIL") else {
-        assert!(std::env::var_os("IFCLITE_REQUIRE_BURKWIL").is_none(),"IFCLITE_REQUIRE_BURKWIL set: supply IFCLITE_BURKWIL");
-        eprintln!("SKIP M5 BURKWIL #4548: supply local IFC; not corpus evidence");return;
+fn issue_7955_m5_beam_4548_two_clip_witness(){
+    let Some(path)=std::env::var_os("IFCLITE_M5_BEAM_MODEL") else {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_M5_BEAM_MODEL").is_none(),"IFCLITE_REQUIRE_M5_BEAM_MODEL set: supply IFCLITE_M5_BEAM_MODEL");
+        eprintln!("SKIP M5 beam #4548: supply local IFC; not corpus evidence");return;
     };
     let text=std::fs::read_to_string(path).unwrap();
     let Some((outcomes,rows))=observed(&text,Some(vec![4548]),None) else{return};
     assert_eq!(outcomes.len(),1);assert_eq!(rows[0]["clips"],2);
-    let ProductOutcome::Published(shape)=&outcomes[0] else{panic!("BURKWIL refusal: {}",rows[0]["code"])};
+    let ProductOutcome::Published(shape)=&outcomes[0] else{panic!("beam #4548 refusal: {}",rows[0]["code"])};
     let mut measurement=metrics::Metrics::default();
     for part in &shape.parts {
         let points:Vec<_>=part.positions.chunks_exact(3).map(|p|metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect();
@@ -134,9 +134,9 @@ fn issue_7955_m5_burkwil_beam_4548_two_clip_witness(){
     assert_eq!(measurement.defects,0);
     let sources=ifc_lite_processing::extract_analytic_quantity_sources(text.as_bytes(),None);
     let expected=ifc_lite_retained_native::oracle::clips::ClipOracle::new(&SourceBundle::new(text.as_bytes().to_vec()),&sources).expected(4548).unwrap().unwrap();
-    let volume=expected.section_volume().expect("BURKWIL source integral required");
+    let volume=expected.section_volume().expect("beam #4548 source integral required");
     assert!(metrics::relative(measurement.volume,volume)<1e-6,"{} vs {volume}",measurement.volume);
-    println!("sdk witness executed: m5_burkwil");
+    println!("sdk witness executed: m5_beam_4548");
 }
 #[test]
 fn issue_7955_m5_issue1155_delta_requires_unclipped_profile_admission(){

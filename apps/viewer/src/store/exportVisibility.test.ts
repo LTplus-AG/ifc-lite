@@ -205,4 +205,29 @@ describe('typeVisibility over the model as edited (#5249)', () => {
     assert.ok(hidden.has(9), 'a wall retyped to a space follows its new class');
     assert.ok(!hidden.has(8), 'a deleted space is not an export candidate at all');
   });
+
+  it('an element authored this session answers hide and isolate, above the parse range (#9026 item 18)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(100);
+    const authored = view.createEntity('IfcWall', []).expressId;
+    const offset = 1000;
+    const global = authored + offset;
+    const notOurs = 5000;
+    assert.ok(authored > 100, 'overlay ids are allocated above the parse range');
+    useViewerStore.setState({
+      models: new Map([['m1', createFederatedModel({ idOffset: offset, maxExpressId: 100 })]]),
+      mutationViews: new Map([['m1', view]]),
+      classFilter: null,
+    });
+
+    useViewerStore.setState({ hiddenEntities: new Set([global, notOurs]), isolatedEntities: null });
+    const hidden = resolveExportVisibility(useViewerStore.getState(), 'm1');
+    assert.deepStrictEqual(hidden.hiddenLocalIds, new Set([authored]), 'hidden, and no other model\'s id comes with it');
+    assert.deepStrictEqual(hidden.hiddenGlobalIds, new Set([global]));
+
+    useViewerStore.setState({ hiddenEntities: new Set(), isolatedEntities: new Set([global, notOurs]) });
+    const isolated = resolveExportVisibility(useViewerStore.getState(), 'm1');
+    assert.deepStrictEqual(isolated.isolatedLocalIds, new Set([authored]), 'isolating it does not empty the export');
+    assert.deepStrictEqual(isolated.isolatedGlobalIds, new Set([global]));
+  });
 });

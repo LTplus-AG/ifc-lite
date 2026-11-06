@@ -16,6 +16,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { measureEn } from '@/i18n/catalogues/measure.en';
 import { measureRu } from '@/i18n/locales/ru/measure';
+import { measureDe } from '@/i18n/locales/de/measure';
 import { initialPointerInput } from '@/store/slices/uiSlice.helpers';
 import { measureHintKey, type MeasureHintState } from './tools/measure-modes/readouts.js';
 import type { ActiveAngle, AngleKind, MeasurePoint } from '@/store/types';
@@ -101,12 +102,14 @@ describe('the input assumed before any is seen (#8879)', () => {
   });
 });
 
-describe('ru carries the tap-worded hints (#8879)', () => {
-  it('every touch hint key has a ru string, with no Shift, Esc or Enter', () => {
-    const touchKeys = Object.keys(measureEn).filter((k) => k.startsWith('measure.hint.') && k.endsWith('Touch'));
-    assert.ok(touchKeys.includes('measure.hint.dragStartTouch') && touchKeys.includes('measure.hint.dragActiveTouch'), touchKeys.join(', '));
-    const ru = measureRu as Record<string, unknown>;
-    assert.deepEqual(touchKeys.filter((k) => typeof ru[k] !== 'string' || ru[k] === ''), [], 'ru keys missing');
-    assert.deepEqual(touchKeys.filter((k) => /Shift|Esc|Enter/.test(String(ru[k]))), [], 'ru touch hints must not name keys');
-  });
+describe('ru and de carry the tap-worded hints (#8879)', () => {
+  const touchKeys = Object.keys(measureEn).filter((k) => k.startsWith('measure.hint.') && k.endsWith('Touch'));
+  for (const [locale, catalogue] of [['ru', measureRu], ['de', measureDe]] as const) {
+    it(`every touch hint key has a ${locale} string, with no Shift, Esc or Enter`, () => {
+      assert.ok(touchKeys.includes('measure.hint.dragStartTouch') && touchKeys.includes('measure.hint.dragActiveTouch'), touchKeys.join(', '));
+      const strings = catalogue as Record<string, unknown>;
+      assert.deepEqual(touchKeys.filter((k) => typeof strings[k] !== 'string' || strings[k] === ''), [], `${locale} keys missing`);
+      assert.deepEqual(touchKeys.filter((k) => /Shift|Umschalt|Esc|Enter/.test(String(strings[k]))), [], `${locale} touch hints must not name keys`);
+    });
+  }
 });

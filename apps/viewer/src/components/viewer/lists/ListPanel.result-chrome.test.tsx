@@ -111,7 +111,7 @@ it('#7166 nonempty authored IFC with no matching doors reports no findings rathe
 });
 it('#7166 actual rejected native rerun retains visible failure and valid recovery source', async () => {
   const run = await setup(); await run.run();
-  const back = run.ui.querySelector('button[aria-label="Back to Lists"]'); assert.ok(back); click(back);
+  const back = run.ui.querySelector('button[aria-label="Back to lists"]'); assert.ok(back); click(back);
   const invalid: ListDefinition = { ...run.own, id: 'rejected', name: 'Rejected pattern', columns: [{ id: 'bad', source: 'property', psetName: 'Pset_WallCommon', propertyName: '/(a+)+$/', label: 'Rejected' }] };
   await act(async () => { useViewerStore.setState({ listDefinitions: [invalid, run.own] }); });
   await run.run(invalid.name);

@@ -24,6 +24,16 @@ export const getDefaultEdgeLockState = (): EdgeLockState => ({
   cornerValence: 0,
 });
 
+/**
+ * The pick's snap target, edge lock and glyph. A gesture reset clears them with
+ * the rest; turning Snap off clears only these, keeping a pending start (#8881).
+ */
+export const snapStateReset = () => ({
+  snapTarget: null,
+  snapVisualization: null,
+  edgeLockState: getDefaultEdgeLockState(),
+});
+
 /** The fields of a gesture reset, with the epoch bumped past `state`'s. */
 export const gestureReset = (state: { measureGestureEpoch: number }) => ({
   activeMeasurement: null,
@@ -31,9 +41,7 @@ export const gestureReset = (state: { measureGestureEpoch: number }) => ({
   activeAngle: null,
   activeRadius: null,
   measurePointLive: null, // the placed point stays readable, like the last distance
-  snapTarget: null,
-  snapVisualization: null,
-  edgeLockState: getDefaultEdgeLockState(),
+  ...snapStateReset(),
   measurementConstraintEdge: null,
   measureGestureEpoch: state.measureGestureEpoch + 1,
 });

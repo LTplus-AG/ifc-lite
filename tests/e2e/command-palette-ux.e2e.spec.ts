@@ -7,6 +7,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+// English labels below: pin the browser language the viewer's Auto locale follows (#9061).
+test.use({ locale: 'en-US' });
+
 const sizes = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'narrow', width: 390, height: 844 },
@@ -93,7 +96,7 @@ test.describe('#8946 unloaded palette UX', () => {
       test(`${size.name} ${theme}: bounded dialog and stable search across result heights`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width: size.width, height: size.height });
         await page.addInitScript(value => localStorage.setItem('ifc-lite-theme', value), theme);
-        await page.goto('/?lang=en');
+        await page.goto('/');
         if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/\bdark\b/);
         else await expect(page.locator('html')).not.toHaveClass(/\b(dark|colorful)\b/);
         const { dialog, search, options } = await openPalette(page);
@@ -154,7 +157,7 @@ test.describe('#8946 unloaded palette UX', () => {
   }
 
   test('native Tab and Shift+Tab stay in the dialog and skip result options', async ({ page }) => {
-    await page.goto('/?lang=en');
+    await page.goto('/');
     const { search, close, dialog } = await openPalette(page);
     // Two complete cycles catch both a leaked focus trap and tabbable rows.
     for (let cycle = 0; cycle < 2; cycle++) {
@@ -186,7 +189,7 @@ test.describe('#8946 unloaded palette UX', () => {
 
   test('short viewport: arrow keys scroll the active row into view without moving focus', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 800, height: 400 });
-    await page.goto('/?lang=en');
+    await page.goto('/');
     const { options, list, search } = await openPalette(page);
     const count = await options.count();
     expect(count).toBeGreaterThan(10);
@@ -204,7 +207,7 @@ test.describe('#8946 unloaded palette UX', () => {
   });
 
   test('Escape/reopen resets query and active row; Enter opens the canonical Settings UI', async ({ page }, testInfo) => {
-    await page.goto('/?lang=en');
+    await page.goto('/');
     const { dialog, search, options } = await openPalette(page);
     await search.fill('view');
     await expect.poll(() => options.count()).toBeGreaterThan(1);
@@ -234,7 +237,7 @@ test('#8946 loaded bundled IFC: keyboard command reaches real Settings UI', asyn
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
   // Do not disable WebGPU here: this must traverse the actual sample loader.
-  await page.goto('/?lang=en&model=/samples/building-architecture.ifc');
+  await page.goto('/?model=/samples/building-architecture.ifc');
   await expect.poll(() => page.evaluate(() => {
     // Read-only readiness signal used by the existing authored-model specs.
     const store = (globalThis as typeof globalThis & {
@@ -262,7 +265,7 @@ test('#8946 short viewport: privacy notice stays below palette and survives clos
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
     localStorage.removeItem('ifclite.extensions.privacy-disclosure.v2');
   });
-  await page.goto('/?lang=en');
+  await page.goto('/');
   const notice = page.locator('[data-toast-seq]').filter({ hasText: 'IFClite stores an action log' });
   await expect(notice).toBeVisible({ timeout: 20_000 });
   const noticeSequence = await notice.getAttribute('data-toast-seq');

@@ -8,7 +8,8 @@
  * while the actual code lives in:
  *
  *   - `placement-core.ts` — attribute reader, chain walker,
- *     generic IfcProduct translate / rotate helpers
+ *     generic IfcProduct translate helpers
+ *   - `placement-rotate.ts` — generic IfcProduct yaw rotation
  *   - `wall-edit.ts` — rectangle-profile wall resize
  *
  * The split keeps each module under the ~400-line per-file limit
@@ -25,14 +26,18 @@ export {
   resolvePlacementChain,
   translateProduct,
   setProductPosition,
-  resolveRotationState,
-  rotateProductYaw,
   type SourceAttrsReader,
   type PlacementChain,
   type TranslateResult,
+} from './placement-core.js';
+
+export {
+  resolveRotationState,
+  rotateProductYaw,
+  verticalRefDirectionRefusal,
   type RotationState,
   type RotateResult,
-} from './placement-core.js';
+} from './placement-rotate.js';
 
 export {
   resolveWallEditChain,

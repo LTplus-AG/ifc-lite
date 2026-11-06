@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { captureLifecycle } from '@/test/capture-lifecycle';
 import { useViewerStore } from '@/store';
 import { captureViewportFrame, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
-import { GPU_FRAMES_IN_FLIGHT } from './gpuFramePacer.js';
+import { GPU_FRAMES_IN_FLIGHT, GPU_FRAME_STALE_MS } from './gpuFramePacer.js';
 
 type Lifecycle = Awaited<ReturnType<typeof captureLifecycle>>;
 
@@ -111,7 +111,29 @@ it('a tick after a capture that the GPU backlog holds back keeps a resting Live 
     h.step(); h.step();
     assert.equal(h.gpu.stats.submissions, submissions, 'fixture: the frame pacer must hold these frames back');
     assert.deepEqual(passes, [], 'a backlogged tick read the capture\'s clip and ended Live');
+    // The held-back frames go stale, so the pacer lets the loop draw again.
+    const now = performance.now.bind(performance);
+    performance.now = () => now() + GPU_FRAME_STALE_MS + 1;
+    try { assertLiveFrameResumes(h, passes, clip, 'GPU backlog'); }
+    finally { performance.now = now; }
   } finally { await h.dispose(); }
+});
+
+it('a capture whose own frame is refused asks the loop to draw, and keeps a resting Live reading (#9031)', async () => {
+  const { h, passes, clip } = await restingReading();
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const restore = h.gpu.refuse('texture');
+    const shot = captureViewportFrame(h.renderer, { options: { sectionPlane: undefined }, read: canvas => canvas.toDataURL() });
+    await h.flush();
+    assert.equal(await shot, null, 'fixture: the capture frame must be refused');
+    assert.equal(viewportCaptureOwnsFrame(h.renderer), false);
+    assert.equal(h.renderer.peekRenderRequest(), true, 'the refused capture asked for no frame');
+    h.step(); // the loop's frame is refused too
+    assert.deepEqual(passes, [], 'a tick after a refused capture ended Live');
+    restore();
+    assertLiveFrameResumes(h, passes, clip, 'refused capture');
+  } finally { warn.mock.restore(); await h.dispose(); }
 });
 
 it('a capture whose session is replaced keeps a resting Live reading until the loop draws again (#9031)', async () => {

@@ -72,10 +72,14 @@ function capturing(t: TestContext) {
       edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: true, isCorner: false, cornerValence: 0 },
     }),
   }) as unknown as Renderer;
-  t.after(registerViewportCapture(renderer, ui.canvas, () => ({})));
+  let unregister = registerViewportCapture(renderer, ui.canvas, () => ({}));
+  t.after(() => unregister());
   const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
   return {
+    flush,
     picks: () => picks,
+    /** The loop re-registers its capture session, which aborts a capture in flight. */
+    replaceSession: () => { unregister(); unregister = registerViewportCapture(renderer, ui.canvas, () => ({})); },
     renderRequests: () => renderRequests,
     move: (x: number) => act(() => { ui.canvas.dispatchEvent(mousePointer('pointermove', 0, x, 40, { buttons: 0 })); }),
     leave: () => act(() => { ui.canvas.dispatchEvent(new MouseEvent('mouseleave')); }),
@@ -128,6 +132,23 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     assert.deepEqual(live(), [7, 1, -2], 'the resting cursor lost its Live reading');
   });
 
+  it('a held-back hover asks for the frame it waits on when the capture released none (replaced session)', async (t) => {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    h.tick(100);
+    const { shot } = await h.capture();
+    h.replaceSession(); // the aborted capture's finally requests no render
+    h.runFrames(); await h.flush();
+    assert.equal(await shot, null, 'fixture: the replaced capture must abort');
+    const requests = h.renderRequests();
+    h.move(70); h.runFrames(); // held back: the pickers still mirror the capture's clip
+    assert.ok(h.renderRequests() > requests, 'a held-back hover left the idle loop with no frame to draw');
+    h.liveFrame(); // the frame it asked for
+    h.tick(100); h.runFrames();
+    assert.deepEqual(live(), [7, 1, -2], 'the held-back hover never read the resting cursor');
+  });
+
   it('a held-back hover frame leaves a trailing pick for a later cursor position in place', async (t) => {
     const h = capturing(t);
     h.move(30); h.runFrames();
@@ -136,7 +157,9 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     h.move(30); // a hover frame for the old position, queued
     h.tick(10);
     h.move(70); // throttled: the trailing pick for the later position
+    const picks = h.picks();
     await h.present(shot); // the queued frame is held back
+    assert.equal(h.picks(), picks, 'a hover picked through the capture\'s camera and clip');
     h.liveFrame();
     h.tick(200); h.runFrames();
     assert.deepEqual(live(), [7, 1, -2], 'the held-back frame replaced the later position\'s pick');
@@ -149,6 +172,7 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     const { shot } = await h.capture();
     h.move(30); // held back when its frame runs
     await h.present(shot);
+    assert.equal(h.picks(), 0, 'fixture: the hover must be held back');
     h.leave();
     h.liveFrame();
     const picks = h.picks();
@@ -162,6 +186,7 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     const { shot } = await h.capture();
     h.move(30);
     await h.present(shot);
+    assert.equal(h.picks(), 0, 'fixture: the hover must be held back');
     act(() => { useViewerStore.getState().setMeasureMode('polyline'); });
     h.liveFrame();
     const picks = h.picks();

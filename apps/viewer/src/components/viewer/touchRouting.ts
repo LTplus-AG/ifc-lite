@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
+import { cancelMeasureRaycast } from './measureHandlers.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
@@ -37,7 +38,8 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * Registered by the mouse controls, which own the measure context; null on
  * unmount. While registered, every Measure gesture reset (the store's
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
- * reposition) reaches the context's press state and queued frame (#8786).
+ * reposition) reaches the context's press state and queued frame (#8786),
+ * and turning Snap off drops the queued frame (#8881).
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
@@ -45,6 +47,7 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
   if (!ctx) return;
   const stop = useViewerStore.subscribe((state, prev) => {
     if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
+    else if (prev.snapEnabled && !state.snapEnabled) cancelMeasureRaycast(ctx); // a queued hover would re-lock (#8881)
   });
   measureContexts.set(canvas, { ctx, stop });
 }

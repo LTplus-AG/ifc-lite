@@ -315,7 +315,7 @@ export function AnnotationPopover({
                 {t('annotations.popover.emptyNoteHint')}
               </p>
             )}
-            <div className="mt-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between gap-2">
+            <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
               <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
                 {formatRelativeTime(annotation.updatedAt, t)}
                 {annotation.updatedAt !== annotation.createdAt && (

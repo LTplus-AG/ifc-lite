@@ -446,8 +446,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     const after = new Set<string>();
     walk(after);
 
-    assertStaticCoverage(english, after);
+    // Credit only the tap-worded hints here: Point mode moves the panel to its
+    // Point tab for the second pass, so other keys are left to their own states.
     const touchKeys = STATIC_KEYS.filter((key) => key.startsWith('measure.hint.') && key.endsWith('Touch'));
+    assertStaticCoverage(english, after, STATIC_KEYS.filter((key) => !touchKeys.includes(key)));
     assert.deepEqual(touchKeys.filter((key) => !coveredStatic.has(key)), [], 'every tap-worded hint renders translated');
   });
 

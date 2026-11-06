@@ -37,6 +37,12 @@ if pnpm typecheck >"$logs/typecheck.log" 2>&1; then tail -12 "$logs/typecheck.lo
 else tail -150 "$logs/typecheck.log"; exit 1; fi
 if pnpm build:e2e >"$logs/build.log" 2>&1; then tail -12 "$logs/build.log";
 else tail -150 "$logs/build.log"; exit 1; fi
+# Check the repaired consumer contracts first, before the broader palette suite.
+# This is additive: neither the expanded focus nor any full shard is omitted.
+unset TEST_SHARD TEST_SHARDS
+export TEST_PATTERN='CommandPalette[.](document-panel-access|source-panel-access|export-child-access|interaction|native-export-access)[.]test'
+if pnpm test --filter=@ifc-lite/viewer >"$logs/consumer-contracts.log" 2>&1; then tail -24 "$logs/consumer-contracts.log";
+else tail -180 "$logs/consumer-contracts.log"; exit 1; fi
 # Fail early on the changed command surfaces, then retain the full four-shard gate.
 # Turbo test.env forwards these filename selectors; they are not test-name filters.
 unset TEST_SHARD TEST_SHARDS

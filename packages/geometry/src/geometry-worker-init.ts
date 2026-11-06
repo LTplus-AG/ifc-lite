@@ -73,5 +73,6 @@ export function postGeometryWorkerInit(
   worker.postMessage({
     type: 'set-skip-small-cuts',
     enabled: options?.skipSmallCuts === true,
+    skipVoids: options?.skipVoids === true,
   });
 }

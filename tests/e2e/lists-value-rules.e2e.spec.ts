@@ -132,7 +132,7 @@ test('a saved exact-Container List value rule is created, reopened and run on on
   expect(storeys, 'the authored file has both storeys').toEqual([EXCLUDED, KEPT]);
 
   // Create: name, a Name column, and a List value rule on the exact Container level.
-  await page.getByRole('button', { name: 'New List', exact: true }).first().click();
+  await page.getByRole('button', { name: 'New list', exact: true }).first().click();
   await page.getByPlaceholder('List name…').fill(LIST);
   await page.getByRole('button', { name: 'Name', exact: true }).first().click();
   await page.getByRole('button', { name: 'Add rule' }).click();
@@ -188,7 +188,7 @@ test('a saved exact-Container List value rule is created, reopened and run on on
   await waitForModels(page, 2);
   const alignmentNotice = page.locator('[role="alert"] button').first();
   if (await alignmentNotice.isVisible()) await alignmentNotice.click();
-  await page.getByRole('button', { name: 'Back to Lists' }).first().click();
+  await page.getByRole('button', { name: 'Back to lists' }).first().click();
   const two = await runAndReadRows(page, 2);
   const perModel = new Map<string, number>();
   for (const row of two) perModel.set(row.modelId, (perModel.get(row.modelId) ?? 0) + 1);

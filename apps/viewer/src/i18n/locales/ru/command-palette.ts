@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
   'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены (история IDS и календарного плана ведётся отдельно)',
   'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора (история IDS и календарного плана ведётся отдельно)',
   'commandPalette.aliases.bulk': 'массовое редактирование свойства запрос атрибут этап строительства',

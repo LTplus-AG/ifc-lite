@@ -3,8 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MutableRefObject } from 'react';
-import { useViewerStore } from '@/store';
-import type { SectionPlane } from '@/store/types.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 
 /**
@@ -27,21 +25,23 @@ export interface MeasureCameraState {
   canvasWidth: number;
   canvasHeight: number;
   /**
-   * What a pick at the cursor filters by (#8886), compared by identity: the
-   * effective hidden and isolated sets the pick reads (model visibility and
-   * storey context fold into them) and the section state the render clips by.
+   * What a pick at the cursor filters by (#8886): the effective hidden and
+   * isolated sets the pick reads (model visibility and storey context fold
+   * into them), by identity, and the revision of the section/box clip the
+   * renderer last drew, which the pick mirrors. The store's section state
+   * leads that clip by a render, so a hover in between would pick through
+   * the old cut and record the new one.
    */
   scene: {
     hidden: ReadonlySet<number>;
     isolated: ReadonlySet<number> | null;
-    sectionVisible: boolean;
-    sectionPlane: SectionPlane;
-    inactiveSectionPlanes: readonly SectionPlane[];
+    clip: number;
   };
 }
 
-/** The refs Viewport hands both the animation loop and the pointer handlers. */
+/** What Viewport hands both the animation loop and the pointer handlers. */
 interface MeasurePassRefs {
+  renderer: { getPickClipRevision(): number };
   lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
   hiddenEntitiesRef: MutableRefObject<ReadonlySet<number>>;
   isolatedEntitiesRef: MutableRefObject<ReadonlySet<number> | null>;
@@ -61,7 +61,6 @@ interface CameraPose {
 export function measureCameraState(
   camera: CameraPose, canvas: { width: number; height: number }, refs: Omit<MeasurePassRefs, 'lastCameraStateRef'>,
 ): MeasureCameraState {
-  const s = useViewerStore.getState();
   return {
     position: camera.getPosition(),
     rotation: camera.getRotation(),
@@ -75,9 +74,7 @@ export function measureCameraState(
     scene: {
       hidden: refs.hiddenEntitiesRef.current,
       isolated: refs.isolatedEntitiesRef.current,
-      sectionVisible: s.sceneState.section.visible,
-      sectionPlane: s.sectionPlane,
-      inactiveSectionPlanes: s.inactiveSectionPlanes,
+      clip: refs.renderer.getPickClipRevision(),
     },
   };
 }
@@ -94,9 +91,7 @@ export function sameMeasureCameraPose(a: MeasureCameraState | null, b: MeasureCa
   return a !== null && sameAspect(a, b) &&
     a.scene.hidden === b.scene.hidden &&
     a.scene.isolated === b.scene.isolated &&
-    a.scene.sectionVisible === b.scene.sectionVisible &&
-    a.scene.sectionPlane === b.scene.sectionPlane &&
-    a.scene.inactiveSectionPlanes === b.scene.inactiveSectionPlanes &&
+    a.scene.clip === b.scene.clip &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
     a.position.z === b.position.z &&

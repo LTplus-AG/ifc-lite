@@ -50,6 +50,8 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     projectionMode: 'perspective' as 'perspective' | 'orthographic', orthoSize: 10,
     fov: 45, up: { x: 0, y: 1, z: 0 },
   };
+  /** The renderer's pick-clip revision; a test redraws a new cut by bumping it. */
+  const clip = { revision: 0 };
   const ctx = {
     canvas: document.createElement('canvas'),
     camera: {
@@ -63,6 +65,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
       getUp: () => ({ ...pose.up }),
     },
     renderer: {
+      getPickClipRevision: () => clip.revision,
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (
         locks.push(lock.edge !== null), snapOptions.push(opts.snapOptions), {
         intersection: hit.current ? { point: hit.current } : null,
@@ -89,7 +92,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
     clearEdgeLock: () => {},
     setSnapVisualization: () => {},
   } as unknown as MouseHandlerContext;
-  return { ctx, snapTargets, locks, snapOptions, pose };
+  return { ctx, snapTargets, locks, snapOptions, pose, clip };
 }
 
 const ON_WALL = { x: 3, y: 4, z: -5 };
@@ -586,13 +589,9 @@ describe('Point on the Measure mode strip (#8770)', () => {
 });
 
 /** What the camera pass records about the scene a pick filters by (#8886). */
-const sceneOf = (ctx: MouseHandlerContext) => {
-  const s = useViewerStore.getState();
-  return {
-    hidden: ctx.hiddenEntitiesRef.current, isolated: ctx.isolatedEntitiesRef.current,
-    sectionVisible: s.sceneState.section.visible, sectionPlane: s.sectionPlane, inactiveSectionPlanes: s.inactiveSectionPlanes,
-  };
-};
+const sceneOf = (ctx: MouseHandlerContext) => ({
+  hidden: ctx.hiddenEntitiesRef.current, isolated: ctx.isolatedEntitiesRef.current, clip: ctx.renderer.getPickClipRevision(),
+});
 /** A camera pass that last ran for some older camera, over the current scene. */
 const olderView = (ctx: MouseHandlerContext) => ({
   position: { x: 9, y: 9, z: 9 }, rotation: { azimuth: 1, elevation: 1 }, distance: 1,
@@ -674,21 +673,19 @@ describe('Point mode readout staleness (#8828)', () => {
     assert.ok(useViewerStore.getState().measurePointLive !== null);
   });
 
-  it('hiding, isolating or a section change ends "Live" under a resting cursor; an unrelated change keeps it (#8886)', () => {
-    const changes: Array<[string, (ctx: MouseHandlerContext) => void]> = [
+  it('hiding, isolating or a redrawn cut ends "Live" under a resting cursor; an unrelated change keeps it (#8886)', () => {
+    const changes: Array<[string, (ctx: MouseHandlerContext, clip: { revision: number }) => void]> = [
       ['hide', (ctx) => { ctx.hiddenEntitiesRef.current = new Set([1]); }],
       ['isolate', (ctx) => { ctx.isolatedEntitiesRef.current = new Set([2]); }],
-      ['section plane moved', () => useViewerStore.setState((s) => ({ sectionPlane: { ...s.sectionPlane, position: s.sectionPlane.position + 10 } }))],
-      ['section shown', () => useViewerStore.setState((s) => ({ sceneState: { ...s.sceneState, section: { ...s.sceneState.section, visible: !s.sceneState.section.visible } } }))],
-      ['another cutting plane', () => useViewerStore.setState((s) => ({ inactiveSectionPlanes: [...s.inactiveSectionPlanes, { ...s.sectionPlane, enabled: true }] }))],
+      ['a section or box cut drawn', (_ctx, clip) => { clip.revision++; }],
     ];
     for (const [name, change] of changes) {
-      const { ctx } = fakeCtx({ current: ON_WALL });
+      const { ctx, clip } = fakeCtx({ current: ON_WALL });
       hoverMeasurePoint(ctx, 3, 4);
       useViewerStore.setState({ snapTarget: { type: SnapType.VERTEX, position: ON_WALL, expressId: 1, confidence: 1 }, selectedEntityId: 7 });
       syncMeasureScreenCoords(ctx); // an unrelated store change (a selection) moves nothing under the cursor
       assert.ok(useViewerStore.getState().measurePointLive !== null, `a pass with the scene unchanged ended Live (${name})`);
-      change(ctx);
+      change(ctx, clip);
       syncMeasureScreenCoords(ctx); // the pass, as the next animation frame runs it
       const s = useViewerStore.getState();
       assert.equal(s.measurePointLive, null, `Live outlived: ${name}`);
@@ -696,6 +693,18 @@ describe('Point mode readout staleness (#8828)', () => {
       useViewerStore.setState(initialState, true);
       useViewerStore.setState(RESET);
     }
+  });
+
+  it('a section change ends "Live" once the renderer draws the cut the pick mirrors, even after a hover in between (#8886)', () => {
+    const { ctx, clip } = fakeCtx({ current: ON_WALL });
+    hoverMeasurePoint(ctx, 3, 4);
+    useViewerStore.setState((s) => ({ sectionPlane: { ...s.sectionPlane, enabled: true, position: s.sectionPlane.position + 10 } }));
+    // Before the next render the pick still clips by the old cut: a hover now reads that.
+    hoverMeasurePoint(ctx, 3, 4);
+    assert.ok(useViewerStore.getState().measurePointLive !== null);
+    clip.revision++; // the frame that draws the new cut
+    syncMeasureScreenCoords(ctx);
+    assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived a section change a hover read before the redraw');
   });
 
   it('hiding a model ends "Live": the effective hidden set the pick reads changes (#8886)', () => {
@@ -710,8 +719,10 @@ describe('Point mode readout staleness (#8828)', () => {
     }
     render(<Probe />);
     hoverMeasurePoint(ctx, 3, 4);
+    // Re-renders that change nothing a pick filters by keep the sets' identity, and Live.
+    act(() => { useViewerStore.setState((s) => ({ selectedEntityId: 9, models: new Map(s.models) })); });
     syncMeasureScreenCoords(ctx);
-    assert.ok(useViewerStore.getState().measurePointLive !== null);
+    assert.ok(useViewerStore.getState().measurePointLive !== null, 'an unrelated re-render ended Live');
     act(() => { useViewerStore.getState().setModelVisibility('m1', false); });
     syncMeasureScreenCoords(ctx);
     assert.equal(useViewerStore.getState().measurePointLive, null, 'Live outlived hiding its model');

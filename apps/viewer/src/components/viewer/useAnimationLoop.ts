@@ -105,6 +105,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
 
     const camera = renderer.getCamera();
     const scene = renderer.getScene();
+    const measurePass = { ...params, renderer };
     let aborted = false;
     const unregisterCapture = registerViewportCapture(renderer, canvas, () => viewportRenderOptions(renderer, params, false));
 
@@ -291,7 +292,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
         hasPendingMeasurements()
       ) {
-        reprojectMeasurementsForCamera(camera, canvas, params, updateMeasurementScreenCoords);
+        reprojectMeasurementsForCamera(camera, canvas, measurePass, updateMeasurementScreenCoords);
       }
 
       animationFrameRef.current = requestAnimationFrame(animate);

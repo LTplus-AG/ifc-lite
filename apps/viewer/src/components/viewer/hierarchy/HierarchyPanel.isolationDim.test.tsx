@@ -34,8 +34,8 @@ afterEach(() => {
 
 /** Project(1)/Site(2)/Building(3) with Storey 1 (4) holding wall 7 and
  *  Room (6), which holds desk 9, and Storey 2 (5) holding wall 8. */
-function twoStoreyHierarchy() {
-  const room = { expressId: 6, type: IfcTypeEnum.IfcSpace, name: 'Room', children: [], elements: [9] };
+function twoStoreyHierarchy(roomType: IfcTypeEnum = IfcTypeEnum.IfcSpace) {
+  const room = { expressId: 6, type: roomType, name: 'Room', children: [], elements: [9] };
   const lower = { expressId: 4, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 1', children: [room], elements: [7] };
   const upper = { expressId: 5, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 2', children: [], elements: [8] };
   const building = { expressId: 3, type: IfcTypeEnum.IfcBuilding, name: 'Building', children: [lower, upper], elements: [] };
@@ -165,19 +165,20 @@ describe('hierarchyNodeAppearance isolation dim', () => {
   });
 });
 
-// #8802: a spatial IfcSpace row must include parts of its contained assemblies.
-describe('IfcSpace isolation subtree (#8802)', () => {
-  it('keeps the room normal when only an aggregated child is isolated', () => {
+// #8802: a room row must include parts of its contained assemblies. IfcSpace
+// and IfcSpatialZone rows share their member lookup, so both need the subtree.
+describe('room row isolation subtree (#8802)', () => {
+  for (const [rowType, ifcType] of [['IfcSpace', IfcTypeEnum.IfcSpace], ['IfcSpatialZone', IfcTypeEnum.IfcSpatialZone]] as const) it(`keeps the ${rowType} row normal when only an aggregated child is isolated`, () => {
     const store = fixtureDataStore([
-      { expressId: 6, type: 'IfcSpace', name: 'Room' },
+      { expressId: 6, type: rowType, name: 'Room' },
       { expressId: 9, type: 'IfcElementAssembly', name: 'Desk assembly' },
       { expressId: 10, type: 'IfcFurniture', name: 'Desk part' },
     ], { aggregates: { 9: [10] } });
-    store.spatialHierarchy = twoStoreyHierarchy();
+    store.spatialHierarchy = twoStoreyHierarchy(ifcType);
     const models = new Map();
     const nodes = buildTreeData(models, store,
       new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4']), false, []);
-    const room = nodes.find(node => node.type === 'IfcSpace');
+    const room = nodes.find(node => node.type === rowType);
     assert.ok(room, 'use the actual spatial tree row');
     const resolve = createSpatialSubtreeResolver(models, store);
     let calls = 0;

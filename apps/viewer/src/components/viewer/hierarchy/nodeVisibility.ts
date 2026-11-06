@@ -36,9 +36,9 @@ function isStoreyRow(node: TreeNode): boolean {
 
 const NO_IDS: readonly number[] = [];
 
-/** Resolves storey and IfcSpace rows' spatial subtrees as global ids,
- *  including space geometry and aggregated parts (#8802). Storey rows use
- *  the same set as storey isolation. Other rows resolve to nothing.
+/** Resolves storey, IfcSpace and IfcSpatialZone rows' spatial subtrees as
+ *  global ids, including space geometry and aggregated parts (#8802). Storey
+ *  rows use the same set as storey isolation. Other rows resolve to nothing.
  *  Cached per row for the lifetime of the given models. */
 export function createSpatialSubtreeResolver(
   models: Map<string, FederatedModel>,
@@ -46,11 +46,11 @@ export function createSpatialSubtreeResolver(
 ): (node: TreeNode) => readonly number[] {
   const cache = new Map<string, readonly number[]>();
   return (node) => {
-    if (!isStoreyRow(node) && node.type !== 'IfcSpace') return NO_IDS;
+    const isRoomRow = node.type === 'IfcSpace' || node.type === 'IfcSpatialZone';
+    if (!isStoreyRow(node) && !isRoomRow) return NO_IDS;
     const cached = cache.get(node.id);
     if (cached) return cached;
-    const collect = node.type === 'IfcSpace'
-      ? collectSpatialSubtreeElementsWithIfcSpace : collectIfcBuildingStoreyElementsWithIfcSpace;
+    const collect = isRoomRow ? collectSpatialSubtreeElementsWithIfcSpace : collectIfcBuildingStoreyElementsWithIfcSpace;
     const ids: number[] = [];
     node.expressIds.forEach((spatialId, i) => {
       const modelId = node.modelIds[i];
@@ -73,7 +73,7 @@ export function createSpatialSubtreeResolver(
  * (`useVisibilityIsolation`): storey Solo rides `selectedStoreys`, not
  * `isolatedEntities`, so the store's manual isolation alone left Solo's other
  * storeys undimmed. Containers of an isolated element stay normal; `null`
- * means nothing is isolated. A storey or IfcSpace row also counts its spatial subtree,
+ * means nothing is isolated. A storey, IfcSpace or IfcSpatialZone row also counts its spatial subtree,
  * resolved only when its direct members alone would dim it. */
 export function hierarchyNodeAppearance(
   node: TreeNode,

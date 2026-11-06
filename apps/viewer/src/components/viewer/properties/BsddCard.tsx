@@ -311,7 +311,7 @@ export function BsddCard({
   // Loading state
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-6 text-xs text-zinc-400">
+      <div className="flex items-center gap-2 px-3 py-6 text-xs text-muted-foreground">
         <Spinner size="sm" />
         <span>{t('properties.bsdd.loading', { entityType })}</span>
       </div>
@@ -321,7 +321,7 @@ export function BsddCard({
   // Error state
   if (error !== null) {
     return (
-      <div className="px-3 py-4 text-xs text-red-500/70">
+      <div className="px-3 py-4 text-xs text-danger">
         <p>{t('properties.bsdd.loadFailed', { error: error || t('properties.bsdd.fetchFailed') })}</p>
       </div>
     );
@@ -330,7 +330,7 @@ export function BsddCard({
   // No data
   if (!classInfo || groupedProps.size === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center px-4 py-8 text-xs text-zinc-400 gap-2">
+      <div className="flex flex-col items-center justify-center text-center px-4 py-8 text-xs text-muted-foreground gap-2">
         <BookOpen className="h-6 w-6 text-zinc-300 dark:text-zinc-600" />
         <p>{t('properties.bsdd.noData', { entityType })}</p>
       </div>
@@ -341,7 +341,7 @@ export function BsddCard({
     <div className="space-y-2 w-full min-w-0 overflow-hidden">
       {/* Header with class description */}
       {classInfo.definition && (
-        <div className="px-1 pb-1 text-2xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        <div className="px-1 pb-1 text-2xs text-muted-foreground leading-relaxed">
           {classInfo.definition}
         </div>
       )}
@@ -355,7 +355,7 @@ export function BsddCard({
         <button
           type="button"
           onClick={goToProperties}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-emerald-300/70 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-ok-border bg-ok-surface px-3 py-2 text-xs font-semibold text-ok hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
         >
           <Check className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{t('properties.bsdd.editedCount', localeCount(locale, editableAddedCount))}</span>
@@ -418,7 +418,7 @@ export function BsddCard({
                 </IconButton>
               )}
               {allAlreadyExist && (
-                <Check className="h-3 w-3 text-emerald-500 shrink-0" />
+                <Check className="h-3 w-3 text-ok shrink-0" />
               )}
             </button>
 
@@ -435,13 +435,13 @@ export function BsddCard({
                       key={prop.name}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs overflow-hidden ${
                         alreadyExists
-                          ? 'bg-emerald-50/30 dark:bg-emerald-950/10'
+                          ? 'bg-ok-surface'
                           : 'hover:bg-sky-50/50 dark:hover:bg-sky-900/20'
                       }`}
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="font-medium text-zinc-600 dark:text-zinc-400 cursor-help truncate flex-1 min-w-0">
+                          <span className="font-medium text-muted-foreground cursor-help truncate flex-1 min-w-0">
                             {prop.name}
                           </span>
                         </TooltipTrigger>
@@ -458,7 +458,7 @@ export function BsddCard({
                           created with its correct bSDD data type; the value is
                           edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <Check className="h-3.5 w-3.5 text-ok shrink-0" />
                       ) : isQto ? (
                         <BsddQuantityAdd name={prop.name} onAdd={(value) => handleAddProperty(psetName, prop, value)} />
                       ) : (

@@ -20,13 +20,13 @@ import { coveredFraction } from '@/lib/terrain-imagery/drape-state';
 import type { TileSourceSpec } from '@/lib/terrain-imagery/tile-source';
 import { terrainCrsOf } from '@/hooks/ingest/terrainImageryPlan';
 
-const FIELD = 'w-full rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-1 text-xs font-mono';
+const FIELD ='w-full rounded border border-border bg-white dark:bg-muted px-2 py-1 text-xs font-mono';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start gap-3 px-3 py-2">
-      <span className="text-xs text-zinc-500 shrink-0">{label}</span>
-      <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto text-right break-all">{value}</span>
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className="text-xs font-mono text-foreground ml-auto text-right break-all">{value}</span>
     </div>
   );
 }
@@ -60,29 +60,29 @@ function TileSourceForm({ model }: { model: FederatedModel }) {
 
   return (
     <div className="px-3 py-2 space-y-2">
-      <p className="text-xs text-zinc-500">{t('terrainImagery.tiles.viewerOnly')}</p>
+      <p className="text-xs text-muted-foreground">{t('terrainImagery.tiles.viewerOnly')}</p>
       <div className="flex gap-2">
-        <label htmlFor={`${idPrefix}-kind`} className="text-xs text-zinc-500 self-center">{t('terrainImagery.tiles.kind')}</label>
+        <label htmlFor={`${idPrefix}-kind`} className="text-xs text-muted-foreground self-center">{t('terrainImagery.tiles.kind')}</label>
         <select id={`${idPrefix}-kind`} className={FIELD} value={kind} onChange={(event) => setKind(event.target.value as 'xyz' | 'wms')}>
           <option value="xyz">{t('terrainImagery.tiles.kindXyz')}</option>
           <option value="wms">{t('terrainImagery.tiles.kindWms')}</option>
         </select>
       </div>
-      <label htmlFor={`${idPrefix}-url`} className="block text-xs text-zinc-500">
+      <label htmlFor={`${idPrefix}-url`} className="block text-xs text-muted-foreground">
         {kind === 'xyz' ? t('terrainImagery.tiles.template') : t('terrainImagery.tiles.wmsUrl')}
       </label>
       <input id={`${idPrefix}-url`} className={FIELD} value={url} onChange={(event) => setUrl(event.target.value)}
         placeholder={kind === 'xyz' ? t('terrainImagery.tiles.templatePlaceholder') : t('terrainImagery.tiles.wmsPlaceholder')} />
       {kind === 'xyz' ? (
         <>
-          <label htmlFor={`${idPrefix}-zoom`} className="block text-xs text-zinc-500">{t('terrainImagery.tiles.zoom')}</label>
+          <label htmlFor={`${idPrefix}-zoom`} className="block text-xs text-muted-foreground">{t('terrainImagery.tiles.zoom')}</label>
           <input id={`${idPrefix}-zoom`} className={FIELD} type="number" min={0} max={24} value={zoom} onChange={(event) => setZoom(event.target.value)} />
         </>
       ) : (
         <>
-          <label htmlFor={`${idPrefix}-layers`} className="block text-xs text-zinc-500">{t('terrainImagery.tiles.layers')}</label>
+          <label htmlFor={`${idPrefix}-layers`} className="block text-xs text-muted-foreground">{t('terrainImagery.tiles.layers')}</label>
           <input id={`${idPrefix}-layers`} className={FIELD} value={layers} onChange={(event) => setLayers(event.target.value)} />
-          <label htmlFor={`${idPrefix}-resolution`} className="block text-xs text-zinc-500">{t('terrainImagery.tiles.resolution')}</label>
+          <label htmlFor={`${idPrefix}-resolution`} className="block text-xs text-muted-foreground">{t('terrainImagery.tiles.resolution')}</label>
           <input id={`${idPrefix}-resolution`} className={FIELD} type="number" min={0} step="any" value={resolution} onChange={(event) => setResolution(event.target.value)} />
         </>
       )}
@@ -99,14 +99,14 @@ export function TerrainImageryCard({ model }: { model: FederatedModel }) {
   const crs = terrainCrsOf(model.landXmlDocument ?? {});
   const unit = model.landXmlDocument?.units?.linearUnit ?? '';
   return (
-    <div className="border-b border-zinc-200 dark:border-zinc-800">
-      <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 flex items-center gap-2">
-        <ImageIcon className="h-3.5 w-3.5 text-zinc-400" />
-        <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">{t('terrainImagery.heading')}</h4>
+    <div className="border-b border-border">
+      <div className="p-3 bg-muted flex items-center gap-2">
+        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+        <h4 className="font-bold text-xs uppercase tracking-wide text-muted-foreground">{t('terrainImagery.heading')}</h4>
       </div>
-      {!crs.ok && <p className="px-3 py-2 text-xs text-amber-700 dark:text-amber-400">{crs.reason}</p>}
+      {!crs.ok && <p className="px-3 py-2 text-xs text-warn">{crs.reason}</p>}
       {drape ? (
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+        <div className="divide-y divide-border">
           <Row label={t('terrainImagery.source')}
             value={drape.source === 'tiles' ? t('terrainImagery.sourceTiles', { name: drape.sourceName }) : drape.sourceName} />
           <Row label={t('terrainImagery.crs')} value={drape.reprojected
@@ -121,7 +121,7 @@ export function TerrainImageryCard({ model }: { model: FederatedModel }) {
           })} />
         </div>
       ) : (
-        <p className="px-3 py-2 text-xs text-zinc-500">{t('terrainImagery.none')}</p>
+        <p className="px-3 py-2 text-xs text-muted-foreground">{t('terrainImagery.none')}</p>
       )}
       {crs.ok && <TileSourceForm model={model} />}
     </div>

@@ -17,13 +17,18 @@ import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { effectiveSpatialProject } from '@/components/viewer/hierarchy/effectiveStoreyNodes';
-import { addStoreyNextTo, deleteStorey } from '@/lib/storeys/storey-actions';
-import { keepStoreyPreview, previewStoreyLevel, revertStoreyPreview } from '@/lib/storeys/storey-preview';
 import '@/lib/commands/modeling/builtin.js';
 import { commandPointerDown, commandPointerMove } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
-import { commitStoreyOp } from './mutation-storey.js';
+import { requiredModule } from '@/i18n/__tests__/required-module';
+
+/** The new write path, loaded per test so a production revert fails an assertion, not the file load. */
+const storey = () => requiredModule(async () => ({
+  ...(await import('./mutation-storey.js')),
+  ...(await import('@/lib/storeys/storey-actions')),
+  ...(await import('@/lib/storeys/storey-preview')),
+  ...(await import('@/components/viewer/hierarchy/effectiveStoreyNodes')),
+}), 'the viewer storey write path exists (#9013)');
 
 const fallback = (index: number) => `Level ${index}`;
 let remeshed: RemeshRequest[] = [];
@@ -45,15 +50,16 @@ const batches = () => {
 };
 
 describe('storey ops in the viewer (#9013)', () => {
-  it('adds a storey above the top one, makes it the drawing storey, and lists it in the tree', () => {
-    const outcome = addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
+  it('adds a storey above the top one, makes it the drawing storey, and lists it in the tree', async () => {
+    const m = await storey();
+    const outcome = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(outcome.ok);
     assert.ok(outcome.storeyId !== null);
     assert.equal(useViewerStore.getState().session?.storeyId, outcome.storeyId, 'the new storey is the one being drawn on');
     assert.equal(storeys().at(-1)?.[1], 6, 'spacing repeats the storey below');
     assert.equal(batches(), 1, 'one undo step');
     const s = useViewerStore.getState();
-    const project = effectiveSpatialProject(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID));
+    const project = m.effectiveSpatialProject(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID));
     const found: number[] = [];
     const walk = (node: NonNullable<typeof project>) => { found.push(node.expressId); node.children.forEach(walk); };
     walk(project!);
@@ -63,8 +69,9 @@ describe('storey ops in the viewer (#9013)', () => {
     assert.equal(storeys().length, 2, 'undo removes it again');
   });
 
-  it('draws a wall on a new storey: the wall is contained there', () => {
-    const outcome = addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
+  it('draws a wall on a new storey: the wall is contained there', async () => {
+    const m = await storey();
+    const outcome = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(outcome.ok && outcome.storeyId !== null);
     const wall = useViewerStore.getState().addWall(MODEL_ID, outcome.storeyId!, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok(!('error' in wall));
@@ -73,12 +80,13 @@ describe('storey ops in the viewer (#9013)', () => {
     assert.equal(inventory.storeys.find((s) => s.expressId === outcome.storeyId)?.elevation, 6);
   });
 
-  it('re-levels as one undo step and re-meshes what moved', () => {
+  it('re-levels as one undo step and re-meshes what moved', async () => {
+    const m = await storey();
     const wall = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok(!('error' in wall));
     const depth = undoDepth();
     remeshed = [];
-    const outcome = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } });
+    const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } });
     assert.ok(outcome.ok);
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.5]);
     assert.ok(remeshed.some((r) => r.expressIds.includes(wall.expressId)), 'the wall on the moved storey is re-meshed');
@@ -89,35 +97,38 @@ describe('storey ops in the viewer (#9013)', () => {
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.5]);
   });
 
-  it('refuses an invalid edit with the reason and leaves history untouched', () => {
+  it('refuses an invalid edit with the reason and leaves history untouched', async () => {
+    const m = await storey();
     const depth = undoDepth();
-    const outcome = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: -1 } });
+    const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: -1 } });
     assert.ok(!outcome.ok);
     assert.equal(outcome.refusals[0]?.code, 'crossing');
     assert.equal(undoDepth(), depth);
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3]);
   });
 
-  it('previews for real, reverts on cancel with the redo history restored, and keeps on Enter as one step', () => {
+  it('previews for real, reverts on cancel with the redo history restored, and keeps on Enter as one step', async () => {
+    const m = await storey();
     const depth = undoDepth();
-    const preview = previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 });
+    const preview = m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 });
     assert.ok(preview.applied);
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.4], 'the model shows the edit while it is typed');
-    revertStoreyPreview(useViewerStore);
+    m.revertStoreyPreview(useViewerStore);
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3]);
     assert.equal(undoDepth(), depth);
     assert.equal(useViewerStore.getState().redoStacks.get(MODEL_ID)?.length ?? 0, 0, 'cancelling leaves nothing to redo');
 
-    previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.2 });
-    previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.6 });
-    assert.ok(keepStoreyPreview());
+    m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.2 });
+    m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.6 });
+    assert.ok(m.keepStoreyPreview());
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.6]);
     assert.equal(batches(), 1, 'typing two values then Enter is one undo step');
   });
 
-  it('deleting the drawing storey moves the session to a live one first', () => {
+  it('deleting the drawing storey moves the session to a live one first', async () => {
+    const m = await storey();
     useViewerStore.getState().setSessionStorey(UPPER_STOREY);
-    const outcome = deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'empty' });
+    const outcome = m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'empty' });
     assert.ok(outcome.ok);
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
     assert.deepEqual(storeys().map(([name]) => name).length, 1);
@@ -141,25 +152,27 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
   };
   const height = (wallId: number) => useViewerStore.getState().readWallEndpoints(MODEL_ID, wallId)?.height;
 
-  it('records the storey above and follows its floor-to-floor edit; a fixed wall keeps its height', () => {
+  it('records the storey above and follows its floor-to-floor edit; a fixed wall keeps its height', async () => {
+    const m = await storey();
     useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
     const attached = draw(0);
     assert.equal(attachment(attached)?.targetStoreyId, UPPER_STOREY);
     useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
     const fixed = draw(5);
     assert.equal(attachment(fixed), null);
-    const outcome = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } });
+    const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } });
     assert.ok(outcome.ok);
     assert.equal(Math.round(height(attached)! * 1000), 3500);
     assert.equal(Math.round(height(fixed)! * 1000), 3000);
   });
 
-  it('on the top storey records NextStoreyAbove, which the first storey added above binds', () => {
+  it('on the top storey records NextStoreyAbove, which the first storey added above binds', async () => {
+    const m = await storey();
     useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
     useViewerStore.getState().setSessionStorey(UPPER_STOREY);
     const wall = draw(0);
     assert.deepEqual(attachment(wall), { targetStoreyId: null, source: 'ifclite' });
-    const added = addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
+    const added = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(added.ok);
     assert.equal(attachment(wall)?.targetStoreyId, added.storeyId);
   });

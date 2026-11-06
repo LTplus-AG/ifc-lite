@@ -20,7 +20,7 @@ import { advance, cleanup, click, press, render, type, waitFor } from '@/test/re
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { StoreyManager } from './StoreyManager';
+import { requiredModule } from '@/i18n/__tests__/required-module';
 
 let restore: () => void = () => {};
 beforeEach(async () => {
@@ -35,6 +35,8 @@ const field = (row: HTMLElement, name: string) => row.querySelector<HTMLInputEle
 const elevations = () => modelStoreys(useViewerStore.getState(), MODEL_ID).map((s) => s.elevation);
 
 async function mount() {
+  // Loaded here so a production revert fails an assertion, not the file load (#9013).
+  const { StoreyManager } = await requiredModule(() => import('./StoreyManager'), 'the storey manager exists (#9013)');
   const ui = render(<StoreyManager onBack={() => {}} />);
   await waitFor(() => rows(ui).length > 0, 'the rows load');
   return ui;

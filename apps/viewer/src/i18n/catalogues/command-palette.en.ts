@@ -206,6 +206,10 @@ export const commandPaletteEn = {
 
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
+  "commandPalette.search.inline.label": "Quick search",
+  "commandPalette.search.inline.aliases": "inline recent queries history clear filters next previous cycle",
+  "commandPalette.pref.colorful.label": "Colorful theme",
+  "commandPalette.pref.colorful.aliases": "colorful colour rainbow theme appearance on off",
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
   'commandPalette.pref.hoverOutline.label': 'Hover Outline',
   'commandPalette.pref.settings.label': 'Settings…',

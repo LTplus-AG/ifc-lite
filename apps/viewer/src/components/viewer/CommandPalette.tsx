@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useInlineSearchHost } from './inline-search-focus';
 import { useRetainedReportHost } from './retained-report-destination';
 import { useSplitWidth } from './model/model-layout';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -101,6 +102,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const dockDestinations = useExtensionDockDestinations();
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
+  const inlineSearchHost = useInlineSearchHost();
   const retainedReportHost = useRetainedReportHost();
   const splitWidth = useSplitWidth();
   const placementGeoref = usePlacementGeorefContext();
@@ -153,9 +155,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), ...dockDestinations.commands], [dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
-
-
+  }), ...dockDestinations.commands], [dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.

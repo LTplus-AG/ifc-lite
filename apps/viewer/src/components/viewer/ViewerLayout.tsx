@@ -8,6 +8,7 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
+import { MobileSearchInline } from './MobileSearchInline';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
@@ -263,7 +264,6 @@ export function ViewerLayout() {
         <SettingsDialogHost />
         <FlavorDialogHost />
         <ConfirmDialogHost />
-        {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
@@ -279,7 +279,7 @@ export function ViewerLayout() {
         <AnonymizedExportDialog surface="context_menu" />
         {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile
-          ? <MobileToolbar />
+          ? <><MobileToolbar /><MobileSearchInline /></>
           : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
         <WorkspaceMigrationNotice />
 

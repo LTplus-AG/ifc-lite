@@ -423,3 +423,14 @@ These new assertions remain unexecuted. Original request
 `auto-733abcb75900474aaf129393bb4e0edf` / job
 `835cba3b-6fb4-4f09-88b3-0a347ca04560` is still queued for older source `8021801`;
 it cannot certify these corrections. Other original requests remain preserved.
+
+### R1 inline search and colorful theme — source candidate
+
+U1/U2/U3 now have canonical quick-search host dispatch on desktop and mobile,
+a discoverable colorful-theme toggle with live state, and native click activation
+for inline controls previously bound only to mousedown. Mounted regressions cover
+recents, real search scanning/cycle, stale hosts, theme parity and locale aliases.
+Two browser scenarios additionally exercise actual palette close/focus, native Tab,
+Space/Enter, selected-model cycling, history clearing and real Filter destination.
+Cheap source guards pass; runtime/typecheck/browser execution remains UNRUN.
+Fresh review and matching full validation are required; R1 is not accepted.

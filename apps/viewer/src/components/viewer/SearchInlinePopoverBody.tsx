@@ -46,10 +46,8 @@ export function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps)
         type="button"
         className="ml-auto rounded p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         aria-label={t('searchModal.inline.exitCycleAriaLabel')}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onExit();
-        }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onExit}
       >
         <X className="h-3 w-3" />
       </button>
@@ -78,10 +76,8 @@ export function RecentsPopoverBody({ recents, onPick, onClear }: RecentsPopoverP
         <button
           type="button"
           className="text-2xs normal-case hover:underline"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onClear();
-          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onClear}
         >
           {t('searchModal.inline.clearRecents')}
         </button>
@@ -92,10 +88,8 @@ export function RecentsPopoverBody({ recents, onPick, onClear }: RecentsPopoverP
           type="button"
           role="option"
           aria-selected={false}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onPick(q);
-          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onPick(q)}
           className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
         >
           <Search className="h-3 w-3 text-muted-foreground" />
@@ -150,11 +144,8 @@ export function SearchPopoverBody({
           role="option"
           aria-selected={i === highlightIndex}
           onMouseEnter={() => onHover(i)}
-          onMouseDown={(e) => {
-            // mousedown so the input doesn't blur first and tear down the popover.
-            e.preventDefault();
-            onSelect(r, i, e.shiftKey);
-          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => onSelect(r, i, e.shiftKey)}
           className={cn(
             'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',
             i === highlightIndex
@@ -188,10 +179,8 @@ export function SearchPopoverBody({
         <button
           type="button"
           className="ml-auto hover:underline"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onOpenAdvanced();
-          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onOpenAdvanced}
         >
           {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{shortcutLabel('search.openAdvancedFromField')}</kbd>
         </button>

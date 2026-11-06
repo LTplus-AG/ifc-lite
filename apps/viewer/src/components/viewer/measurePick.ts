@@ -9,10 +9,26 @@
  * a clicked one.
  */
 
-import type { SnapTarget } from '@ifc-lite/renderer';
+import type { SnapOptions, SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint, SnapVisualization } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+
+/**
+ * The snap options of every Measure point raycast. With Snap off nothing
+ * snaps, Shift included (#8995): the axis constrains the point, an edge or
+ * vertex never pulls it, so the raycast can set no edge lock or glyph. On the
+ * Shift axis an edge or vertex may pull it before it is projected (no faces);
+ * `reduced` drops vertex snap after a slow frame.
+ */
+export function measureSnapOptions(
+  ctx: Pick<MouseHandlerContext, 'snapEnabledRef'>,
+  { axis = false, reduced = false }: { axis?: boolean; reduced?: boolean } = {},
+): Partial<SnapOptions> {
+  if (!ctx.snapEnabledRef.current) return { snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 };
+  if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40 };
+  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: reduced ? 40 : 60 };
+}
 
 /**
  * Compute snap visualization (edge highlights, sliding dot, corner rings, plane indicators).
@@ -92,17 +108,7 @@ export function pickMeasurePoint(ctx: MouseHandlerContext, x: number, y: number)
   }, {
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: ctx.snapEnabledRef.current ? {
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: true,
-      screenSnapRadius: 60,
-    } : {
-      snapToVertices: false,
-      snapToEdges: false,
-      snapToFaces: false,
-      screenSnapRadius: 0,
-    },
+    snapOptions: measureSnapOptions(ctx),
   });
 
   const snapPoint = result.snapTarget || result.intersection;

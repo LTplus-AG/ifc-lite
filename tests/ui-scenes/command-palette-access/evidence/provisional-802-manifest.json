@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "label": "8021801b6bbb7a087ea5cdace71bdfb3629bb21b-provisional-not-final",
+  "capturedAt": "2026-11-06T03:48:49.294Z",
+  "distIndexSha256": "db2ebd9c8e17990ee8ac225c0236ec49af073d5c2c9a38276055fb708c5aabf7",
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "blackwell",
+    "description": ""
+  },
+  "results": [
+    {
+      "scene": "access-unloaded-hide",
+      "title": "unloaded: hide",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-unloaded-hide.light.png",
+      "sha256": "e5c3534a2a2c85a90a6a15731778afb0c66f5ebaae3762da5c33e75362a517ae",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 108
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-unloaded-hide",
+      "title": "unloaded: hide",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-unloaded-hide.dark.png",
+      "sha256": "e1b211eedc7a37bd8d5f84dc5635abf26b4174fc5676a0ef969a9bce31896fcb",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 108
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-loaded-hide",
+      "title": "loaded: hide",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-loaded-hide.light.png",
+      "sha256": "1362a0944a56e5ac6b6d65f140ff32f226fa83dcb894b9e489a7bc6d2615d6ae",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 151
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-loaded-hide",
+      "title": "loaded: hide",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-loaded-hide.dark.png",
+      "sha256": "e74e6e5aff2f6e5c816a0539dd9702b4194d204f6805031ae19694c446a5e3b5",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 151
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-selected-hide",
+      "title": "selected: hide",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-selected-hide.light.png",
+      "sha256": "9c8e44d1a4b79bddf74e7daba91ec45e5ed21395f787e128c75164cb264e4856",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 238
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-selected-hide",
+      "title": "selected: hide",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-selected-hide.dark.png",
+      "sha256": "cdae630a6342ca8f1cceea20aaebac9e270b471b36c01472b013013d9bdf4486",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 238
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-selected-hide-run",
+      "title": "selected: hide then execute Hide Selection",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-selected-hide-run.light.png",
+      "sha256": "714736ec1966682feac6d89c2784e9e98e358883fe85f710e3693429df88f607",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 187
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-selected-hide-run",
+      "title": "selected: hide then execute Hide Selection",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-selected-hide-run.dark.png",
+      "sha256": "8502543c8d0ff51d89191ce4848557044ef588728f77f68459d08ec048faa985",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 187
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-history",
+      "title": "loaded: undo",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-history.light.png",
+      "sha256": "66d62523151e8cd426119d17b8a685c3516ddb44299b4453cfa082b3a1b1e1b9",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 116
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-history",
+      "title": "loaded: undo",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-history.dark.png",
+      "sha256": "c7db233c7ab4adf19a8a561a02fdb15c1232813c3ac977a99f3fd1104c980173",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 116
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-settings-privacy",
+      "title": "unloaded: privacy",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-settings-privacy.light.png",
+      "sha256": "f064ab22350fda522e5abff69a0f1041ef30f96da08ae48866f7921f717a9962",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 71
+      },
+      "pageErrors": []
+    },
+    {
+      "scene": "access-settings-privacy",
+      "title": "unloaded: privacy",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "access-settings-privacy.dark.png",
+      "sha256": "35848630e97328b620090f5286ec885119388c2d2c80f84fc56bc881c9662f47",
+      "metrics": {
+        "modelVisibleFraction": 0,
+        "minFontPx": 11,
+        "smallTextShare": 0,
+        "visibleTextNodes": 71
+      },
+      "pageErrors": []
+    }
+  ],
+  "failures": []
+}

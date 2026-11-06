@@ -461,3 +461,25 @@ The old `307fbc5` full run passed build, typecheck, all 16 viewer and 8 E2E shar
 lint and Node guards; Node shard 2 failed nine BCF fixture collisions, and the
 aggregate failed. Path-gated Rust lanes skipped. That is not a full pass, and
 results for the new integration head remain separate. Access R1 is unaccepted.
+
+### R1 provisional GPU observations — older source only
+
+On PC's real NVIDIA Blackwell adapter, all twelve fixed context captures completed
+with zero scene failures and zero page errors against built source
+`8021801b6bbb7a087ea5cdace71bdfb3629bb21b`. This is provisional R1 evidence,
+not validation of the later integration or test repairs. The original admitted
+job built this artifact; the untimed GPU helper only served and captured it.
+
+Compared with the access baseline, Hide Selection now explains “Load a model
+first” when unloaded and “Select elements in the viewer first” without selection.
+It becomes available for parsed wall 262 and clicking it adds that wall to the
+canonical hidden set in both themes. This is a dispatch/state witness, not an
+independent GPU disappearance oracle. Undo now explains its empty workspace
+history; Privacy search finds the actual Settings destination. These captures
+do not execute the privacy destination or certify the other child tools.
+
+Manifest, observations and three representative images are preserved under
+`evidence/provisional-802-*`; all twelve original captures remain in coordinator
+evidence for fresh Opus critique. Source reconstruction retains all 813 identities
+and 3,994 anchors. The newly focused 141 records retain all 989 per-site actions;
+78 component records still need focused semantic tracing. R1 remains unaccepted.

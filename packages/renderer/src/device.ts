@@ -4,6 +4,7 @@
 
 /** WebGPU device initialization */
 import { requestAdapterWithTimeout } from './adapter-request.js';
+export { ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './adapter-request.js';
 import { meterGpuDevice } from './gpu-counters.js';
 
 /**

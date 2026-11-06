@@ -17,11 +17,7 @@ import type { ViewerState } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, storeyOpRefusals, type StoreyOpOutcome } from '@/store/slices/mutation-storey';
 
-/** Show the storey manager in the Model inspector. */
-export function openStoreyManager(s: Pick<ViewerState, 'setStoreyManagerOpen' | 'showWorkspacePanel' | 'sidebarActivePanel'>): void {
-  s.setStoreyManagerOpen(true);
-  if (s.sidebarActivePanel !== 'model') s.showWorkspacePanel('model');
-}
+export { openStoreyManager } from './storey-manager-open';
 
 /** The rows a storey manager lists, highest first; empty when the model has no editable data. */
 export function storeyRows(s: ViewerState, modelId: string): StoreySummary[] {

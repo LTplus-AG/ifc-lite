@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { mutationDenial } from '@/store/mutation-permission';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { addStoreyNextTo, openStoreyManager } from '@/lib/storeys/storey-actions';
+import { openStoreyManager } from '@/lib/storeys/storey-manager-open';
 import { HudPopoverClose } from '../../../viewport-ui/hud';
 
 export function StoreyPickerActions() {
@@ -29,8 +29,13 @@ export function StoreyPickerActions() {
     const storeys = modelStoreys(state, session.modelId);
     const reference = session.storeyId ?? storeys[storeys.length - 1]?.expressId;
     if (reference === undefined) { openStoreyManager(state); return; }
-    const outcome = addStoreyNextTo(useViewerStore, session.modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
-    if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
+    // The storey write path loads on first use, so the picker costs the boot bundle nothing.
+    void import('@/lib/storeys/storey-actions').then(({ addStoreyNextTo }) => {
+      const outcome = addStoreyNextTo(useViewerStore, session.modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
+      if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
+    }, (error: unknown) => {
+      toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));
+    });
   };
 
   return (

@@ -3,58 +3,57 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `bim.store` storey methods in the viewer (#9013): the same write path the
- * storey manager uses (`commitStoreyOp`), so a script's storey edit is one
- * undo step, re-meshes what it moved, and is refused by the same plan.
+ * The `bim.store` storey methods, kept off the viewer's boot path (#9013).
+ *
+ * The SDK host is built at boot and its methods are synchronous, so the
+ * storey write path cannot be imported on first call. Building the host
+ * starts loading it (`store-adapter-storey-impl.ts`) in its own chunk; it is
+ * ready long before a script runs. A call that still comes first is refused
+ * with a message, never answered from a partial implementation.
  */
 
-import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
-import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { commitStoreyOp, type StoreyOp } from '@/store/slices/mutation-storey';
-import { storeyRows } from '@/lib/storeys/storey-actions';
 import type { StoreApi } from './types.js';
-import { normalizeMutationModelId } from './mutation-view.js';
+import type { StoreyMethods } from './store-adapter-storey-impl.js';
 
-type Methods = ReturnType<typeof createModellingStoreBackend>;
+type Impl = typeof import('./store-adapter-storey-impl.js');
 
-export function storeyMutationTracking(store: StoreApi): Pick<Methods,
-  'listStoreyLevels' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'> {
-  const inventory = (modelId: string) => {
-    const normalized = normalizeMutationModelId(store.getState(), modelId);
-    const target = modelEditTarget(store.getState(), normalized);
-    if (!target) throw new Error(`No model loaded for id "${modelId}"`);
-    return readStoreyInventory(target.dataStore, target.view);
+let impl: Impl | null = null;
+let failure: unknown = null;
+let loading: Promise<Impl> | null = null;
+
+/** Load the storey write path; resolves once `bim.store` storey methods can run. */
+export function loadStoreyAdapter(): Promise<Impl> {
+  loading ??= import('./store-adapter-storey-impl.js').then(
+    (loaded) => { impl = loaded; failure = null; return loaded; },
+    (error: unknown) => { failure = error; loading = null; throw error; },
+  );
+  return loading;
+}
+
+export function storeyMutationTracking(store: StoreApi): StoreyMethods {
+  loadStoreyAdapter().catch((error: unknown) => {
+    // Reported again, with the cause, by the first storey call that needs it.
+    console.warn('[bim.store] storey authoring failed to load', error);
+  });
+  let methods: StoreyMethods | null = null;
+  const live = (name: string): StoreyMethods => {
+    if (methods) return methods;
+    if (!impl) {
+      const cause = failure instanceof Error ? failure.message : failure === null ? null : String(failure);
+      throw new Error(cause === null
+        ? `bim.store.${name}: storey authoring is still loading; run the script again in a moment`
+        : `bim.store.${name}: storey authoring failed to load (${cause})`);
+    }
+    methods = impl.storeyMethods(store);
+    return methods;
   };
-  const commit = (op: string, modelId: string, storeyOp: StoreyOp) => {
-    const normalized = normalizeMutationModelId(store.getState(), modelId);
-    const setState = store.setState;
-    if (!setState) throw new Error(`bim.store.${op}: the adapter requires a writable store`);
-    const outcome = commitStoreyOp({ ...store, setState }, normalized, storeyOp);
-    if (!outcome.ok) throw new Error(`bim.store.${op}: ${outcome.reason}`);
-    return { normalized, outcome };
-  };
-  const refs = (modelId: string, ids: readonly number[]): EntityRef[] => [...new Set(ids)].map((expressId) => ({ modelId, expressId }));
   return {
-    listStoreyLevels: (modelId) => storeyRows(store.getState(), normalizeMutationModelId(store.getState(), modelId)),
-    addStorey(modelId, params) {
-      const { normalized, outcome } = commit('addStorey', modelId, { kind: 'add', params });
-      if (outcome.storeyId === null) throw new Error('bim.store.addStorey: the storey was not written');
-      return { modelId: normalized, expressId: outcome.storeyId };
-    },
-    renameStorey(ref, Name) {
-      const { normalized } = commit('renameStorey', ref.modelId, { kind: 'rename', storeyId: ref.expressId, Name });
-      return { modelId: normalized, expressId: ref.expressId };
-    },
-    planStoreyEdit: (modelId, edit) => planStoreyLevelEdit(inventory(modelId), edit),
-    editStorey(modelId, edit, expected) {
-      const { normalized, outcome } = commit('editStorey', modelId, { kind: 'level', edit, expected });
-      return refs(normalized, [edit.storeyId, ...outcome.remeshed]);
-    },
-    planStoreyDelete: (ref, mode) => planStoreyDelete(inventory(ref.modelId), ref.expressId, mode),
-    deleteStorey(ref, mode, expected) {
-      const { normalized } = commit('deleteStorey', ref.modelId, { kind: 'delete', storeyId: ref.expressId, mode, expected });
-      return refs(normalized, [ref.expressId]);
-    },
+    listStoreyLevels: (...args) => live('listStoreyLevels').listStoreyLevels(...args),
+    addStorey: (...args) => live('addStorey').addStorey(...args),
+    renameStorey: (...args) => live('renameStorey').renameStorey(...args),
+    planStoreyEdit: (...args) => live('planStoreyEdit').planStoreyEdit(...args),
+    editStorey: (...args) => live('editStorey').editStorey(...args),
+    planStoreyDelete: (...args) => live('planStoreyDelete').planStoreyDelete(...args),
+    deleteStorey: (...args) => live('deleteStorey').deleteStorey(...args),
   };
 }

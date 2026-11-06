@@ -409,6 +409,16 @@ describe('turning Snap off drops the lock and the snap glyph (#8881)', () => {
     assert.equal(s().measurements.length, 1, 'a press held through Snap off still finishes the distance');
   });
 
+  it('in another tool, Snap off leaves its queued frame alone (a command preview owns it)', () => {
+    act(() => s().setActiveTool('select'));
+    const { params } = mount();
+    params.measureRaycastFrameRef.current = requestAnimationFrame(() => {});
+    params.measureRaycastPendingRef.current = true;
+    act(() => s().toggleSnap());
+    assert.equal(frames.size, 1, 'Snap off outside Measure dropped a frame it does not own');
+    assert.equal(params.measureRaycastPendingRef.current, true);
+  });
+
   it('turning Snap back on locks and shows the glyph as before', async () => {
     const { canvas } = mount();
     // A hover lock from before; the one real hover below is not throttled behind it.

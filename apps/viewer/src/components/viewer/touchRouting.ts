@@ -47,7 +47,8 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
   if (!ctx) return;
   const stop = useViewerStore.subscribe((state, prev) => {
     if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
-    else if (prev.snapEnabled && !state.snapEnabled) cancelMeasureRaycast(ctx); // a queued hover would re-lock (#8881)
+    // A queued Measure hover would re-lock (#8881); a command's preview frame is its own
+    else if (prev.snapEnabled && !state.snapEnabled && ctx.activeToolRef.current === 'measure') cancelMeasureRaycast(ctx);
   });
   measureContexts.set(canvas, { ctx, stop });
 }

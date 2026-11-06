@@ -16,6 +16,7 @@
  */
 
 import { ElementMovePlan, ElementMoveScene } from '@/components/viewer/tools/command/ElementMoveLayers';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitElementTransform } from '@/lib/element-transform/commit';
 import type { Vec2 } from '@/lib/snap/types';
 import { commandGhostId } from '../ghost.js';
@@ -28,6 +29,9 @@ import type { CommandContext, CommandField, ModelingCommand, Workplane } from '.
 const MIN_MOVE = 1e-4;
 
 function init(ctx: CommandContext): ElementMoveGesture {
+  const selection = readTransformSelection(ctx.get());
+  // #8947: inspection stays read-only; actual initialization registers the selected model.
+  if (selection && !selection.refusal) modelEditTarget(ctx.get(), selection.modelId);
   return { selection: readTransformSelection(ctx.get()), base: null, cursor: null, distance: null, angle: null };
 }
 

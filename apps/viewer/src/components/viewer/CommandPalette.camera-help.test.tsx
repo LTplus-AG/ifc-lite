@@ -9,7 +9,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { Camera } from '@ifc-lite/renderer';
-import { cleanup, click, advance } from '@/test/render';
+import { cleanup, click, advance, waitFor } from '@/test/render';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { useViewerStore } from '@/store';
 import { setLocale } from '@/i18n';
@@ -26,7 +26,7 @@ afterEach(async () => {
 
 for (const [name, direction] of [
   ['front-top', { x: 0, y: 1, z: 1 }],
-  ['back-left-bottom', { x: -1, y: -1, z: -1 }],
+  ['back-bottom-left', { x: -1, y: -1, z: -1 }],
 ] as const) test(`#8947 palette ${name} preset reaches the real renderer camera`, async () => {
   const camera = new Camera();
   const bounds = { min: { x: -5, y: 0, z: -5 }, max: { x: 5, y: 10, z: 5 } };
@@ -78,8 +78,20 @@ for (const [id, query, label] of [['about', 'about', 'About'], ['whatsnew', 'rel
     for (let pass = 0; pass < 2; pass++) {
       await launchDestination(`learn:${id}`, query);
       assert.equal(document.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim(), label);
-      assert.ok(document.querySelector('[role="tabpanel"][data-state="active"]'));
+      await waitFor(() => Boolean(document.querySelector('[role="tabpanel"][data-state="active"]')?.textContent?.trim()), 'real help tab content appears');
       const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
       click(namedButton('Close', dialog)); await advance(30);
     }
   });
+
+test('#8947 help receiver alternates real tabs and retains toggle semantics', async () => {
+  hosts.push(mountDestinations(<InfoHost />));
+  for (const [id, query, label] of [['about', 'about', 'About'], ['shortcuts', 'keyboard shortcuts', 'Shortcuts'], ['whatsnew', 'release notes', "What's New"], ['about', 'about', 'About']] as const) {
+    await launchDestination(`learn:${id}`, query);
+    assert.equal(document.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim(), label);
+    await waitFor(() => Boolean(document.querySelector('[role="tabpanel"][data-state="active"]')?.textContent?.trim()), 'real alternating help content appears');
+    act(() => window.dispatchEvent(new CustomEvent('ifc-lite:show-shortcuts')));
+    await advance(30);
+    assert.equal(document.querySelector('[role="dialog"]'), null, 'undirected event closes the existing dialog');
+  }
+});

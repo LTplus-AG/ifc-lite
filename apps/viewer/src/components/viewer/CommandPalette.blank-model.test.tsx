@@ -10,6 +10,8 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { skip } from '@/test/blank-ifc-loader-harness';
 import { useViewerStore } from '@/store';
+import { setLocale } from '@/i18n';
+import { createLocaleActivator } from '@/i18n/locale-activation';
 import { advance, cleanup, click, render, waitFor } from '@/test/render';
 import '@/lib/commands/modeling/builtin';
 import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
@@ -20,11 +22,12 @@ import { getMountedFileHost, registerMountedFileHost } from './toolbar/mounted-f
 const gpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 const secure = Object.getOwnPropertyDescriptor(window, 'isSecureContext');
 beforeEach(() => {
+  setLocale('en');
   Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({}) } });
 });
 afterEach(() => {
-  cleanup(); mock.restoreAll(); localStorage.clear();
+  cleanup(); mock.restoreAll(); setLocale('en'); localStorage.clear();
   for (const [object, key, descriptor] of [[navigator, 'gpu', gpu], [window, 'isSecureContext', secure]] as const) {
     if (descriptor) Object.defineProperty(object, key, descriptor); else Reflect.deleteProperty(object, key);
   }
@@ -117,4 +120,49 @@ test('held real blank load cannot enter workspace before completion or after can
   } finally { release(); await settle(); }
   assert.equal(useViewerStore.getState().session, null);
   assert.equal(useViewerStore.getState().models.size, 0, 'late read cannot publish cancelled blank');
+});
+
+for (const retire of [false, true]) test(`blank callback refresh survives real loading but retired owner cannot enter authoring: retire=${retire} (#8947)`, { skip }, async () => {
+  const nativeSlice = File.prototype.slice;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let held = false;
+  mock.method(File.prototype, 'slice', function (this: File, ...args: Parameters<File['slice']>) {
+    const blob = nativeSlice.apply(this, args);
+    if (this.name === 'Untitled_Project.ifc') {
+      const read = blob.arrayBuffer.bind(blob);
+      Object.defineProperty(blob, 'arrayBuffer', { value: async () => { held = true; await gate; return read(); } });
+    }
+    return blob;
+  });
+  render(<Harness />); await settle();
+  const originalHost = getMountedFileHost(); assert.ok(originalHost?.owner);
+  let removeReplacement = () => {};
+  try {
+    click(row()); await waitFor(() => held, 'real blank source read is pending');
+    const locale = createLocaleActivator({ de: () => import('@/i18n/locales/de').then(module => module.default) });
+    await act(async () => { await locale.activate(['de']); });
+    const refreshedHost = getMountedFileHost();
+    assert.notEqual(refreshedHost, originalHost, 'translated file callbacks actually refreshed');
+    assert.equal(refreshedHost?.owner, originalHost.owner, 'toolbar lifetime survived callback refresh');
+    assert.equal(useViewerStore.getState().session, null, 'pending real load cannot enter authoring');
+    if (retire) act(() => {
+      removeReplacement = registerMountedFileHost({ owner: {}, openFiles() {}, addModel() {}, async refreshModels() {} });
+    });
+    release();
+    await waitFor(() => {
+      const state = useViewerStore.getState();
+      return !state.loading && state.models.get(state.activeModelId ?? '')?.loadState === 'complete';
+    }, 'actual blank model completes after source read');
+    await settle();
+    const state = useViewerStore.getState();
+    assert.ok(state.ifcDataStore?.entityIndex.byType.get('IFCPROJECT')?.length);
+    if (retire) {
+      assert.equal(state.session, null, 'retired host must not activate authoring after completion');
+    } else {
+      assert.equal(getMountedFileHost()?.owner, originalHost.owner, 'metadata publication keeps the same toolbar lifetime');
+      assert.equal(state.session?.modelId, state.activeModelId);
+      assert.equal(getCommandRuntime().command?.id, 'wall.place');
+    }
+  } finally { release(); act(removeReplacement); await settle(); }
 });

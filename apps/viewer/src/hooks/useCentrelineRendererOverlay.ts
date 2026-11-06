@@ -12,7 +12,7 @@ import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines';
 import { selectedCentrelineSnapCurves } from '@/lib/analytic/selected-centreline-snaps';
 import { setSourceSegmentScreenProbe } from '@/lib/viewport-debug-hooks';
-import { selectedSweptDiskProducts, useSelectedSweptDisks } from './useSelectedSweptDisks';
+import { selectedSweptDiskProducts, useSelectedSweptDisks, type SelectedSweptDisksState } from './useSelectedSweptDisks';
 
 /**
  * The selection order moves the primary product first, so the same curves can
@@ -26,6 +26,16 @@ function bySourceIdentity(a: SourceSnapCurve, b: SourceSnapCurve): number {
     : x.expressId - y.expressId || x.occurrenceIndex - y.occurrenceIndex || x.segmentIndex - y.segmentIndex;
 }
 
+/** The curves of the products the swept-disk query loads now; a product it dropped cannot be snapped to (#5778). */
+function stillQueried(curves: readonly SourceSnapCurve[]): SourceSnapCurve[] {
+  if (curves.length === 0) return [];
+  const { grouped } = selectedSweptDiskProducts(useViewerStore.getState());
+  const loaded = new Set([...grouped].flatMap(([modelId, ids]) => ids.map((expressId) => entityRefToString({ modelId, expressId }))));
+  return curves.filter(({ identity }) => loaded.has(entityRefToString(identity)));
+}
+
+const sameValues = (a: readonly unknown[], b: readonly unknown[]) => a.every((value, index) => Object.is(value, b[index]));
+
 /** Keep the optional selected-source overlay in its own renderer channel. */
 export function useCentrelineRendererOverlay(
   rendererRef: RefObject<Renderer | null>, isInitialized: boolean,
@@ -34,6 +44,7 @@ export function useCentrelineRendererOverlay(
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
   const models = useViewerStore((state) => state.models);
+  const legacyStore = useViewerStore((state) => state.ifcDataStore);
   const placement = useViewerStore((state) => state.modelPlacement);
   const georefMutations = useViewerStore((state) => state.georefMutations);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
@@ -53,9 +64,17 @@ export function useCentrelineRendererOverlay(
   const installedCurves = useRef<readonly SourceSnapCurve[]>([]);
   /** The inputs that place the curves, as the last layout pass saw them (#9086). */
   const lastFrame = useRef<readonly unknown[] | null>(null);
+  /** The swept-disk query inputs `selected` answers; see the build below. */
+  const selectedQuery = useRef<{ selected: SelectedSweptDisksState; query: readonly unknown[] } | null>(null);
+  const query = [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
+    hidden, isolated, classFilter, lensHidden];
   const installCurves = (renderer: Renderer | null | undefined, curves: readonly SourceSnapCurve[]) => {
-    installedCurves.current = [...curves].sort(bySourceIdentity);
-    renderer?.setSourceSnapCurves(installedCurves.current);
+    const next = [...curves].sort(bySourceIdentity);
+    const held = installedCurves.current;
+    // The renderer keys a set by its content; skip that when it already holds these very curves.
+    if (next.length > 0 && next.length === held.length && sameValues(next, held)) return;
+    installedCurves.current = next;
+    renderer?.setSourceSnapCurves(next);
   };
 
   // Selection and visibility can change while the previous async source still
@@ -68,20 +87,14 @@ export function useCentrelineRendererOverlay(
   useLayoutEffect(() => {
     sourceEpoch.current++;
     setSourceSegmentScreenProbe(null);
-    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, models, placement, georefMutations,
-      highlightedSegment];
-    const sameFrame = lastFrame.current?.every((value, index) => Object.is(value, frame[index])) ?? false;
+    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, models, legacyStore, placement,
+      georefMutations, highlightedSegment];
+    const sameFrame = lastFrame.current !== null && sameValues(lastFrame.current, frame);
     lastFrame.current = frame;
     if (!isInitialized) return;
     rendererRef.current?.setLineOverlay('centreline', null);
-    let kept: readonly SourceSnapCurve[] = [];
-    if (sameFrame && installedCurves.current.length > 0) {
-      const { grouped } = selectedSweptDiskProducts(useViewerStore.getState());
-      const loaded = new Set([...grouped].flatMap(([modelId, ids]) => ids.map((id) => entityRefToString({ modelId, expressId: id }))));
-      kept = installedCurves.current.filter(({ identity }) => loaded.has(entityRefToString(identity)));
-    }
-    installCurves(rendererRef.current, kept);
-  }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations,
+    installCurves(rendererRef.current, sameFrame ? stillQueried(installedCurves.current) : []);
+  }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, legacyStore, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
     highlightedSegment]);
 
@@ -95,8 +108,14 @@ export function useCentrelineRendererOverlay(
     let active = true;
     const epoch = sourceEpoch.current;
     renderer.setLineOverlay('centreline', null);
+    // This effect also re-runs for a highlight, model, placement or georef
+    // change while `selected` still answers an older selection; a newer
+    // `selected` is on its way, so building the old products would install
+    // curves the selection dropped or a model replaced.
+    if (selectedQuery.current?.selected !== selected) selectedQuery.current = { selected, query };
+    const current = sameValues(selectedQuery.current.query, query);
     // A pending rebuild keeps the curves the selection still shows (#9086).
-    if (!enabled || (!selected.loading && selected.items.length === 0)) installCurves(renderer, []);
+    if (!enabled || (current && !selected.loading && selected.items.length === 0)) installCurves(renderer, []);
     if (!enabled) lastNotice.current = null;
     const report = (messages: readonly string[]) => {
       if (messages.length === 0) return;
@@ -107,7 +126,7 @@ export function useCentrelineRendererOverlay(
       if (messages.length > 10) console.warn(`[ifc-lite] ${messages.length - 10} additional centreline diagnostics omitted from the console`);
       toast.error(t('ribbon.view.centrelineOmitted', { reason: messages[0]?.slice(0, 240) ?? '' }));
     };
-    if (enabled && !selected.loading && selected.items.length > 0) {
+    if (enabled && current && !selected.loading && selected.items.length > 0) {
       const state = useViewerStore.getState();
       void lineBuilder(selected.items, state, highlightedSegment).then(async ({ vertices, diagnostics, renderedOccurrences }) => {
         if (!active || epoch !== sourceEpoch.current) return;
@@ -122,7 +141,7 @@ export function useCentrelineRendererOverlay(
           renderer.setLineOverlay('centreline', anchorWorldLineVertices(vertices));
           return true;
         });
-        installCurves(renderer, uploaded ? curves : []);
+        installCurves(renderer, uploaded ? stillQueried(curves) : []);
         if (uploaded) {
           setSourceSegmentScreenProbe((modelId, expressId, segmentIndex, t) => {
             const curve = curves.find((entry) => entry.identity.modelId === modelId
@@ -140,7 +159,7 @@ export function useCentrelineRendererOverlay(
         installCurves(renderer, []);
         report([`Could not draw selected centreline: ${String(error)}`]);
       });
-    } else if (enabled && selected.error) {
+    } else if (enabled && current && selected.error) {
       report([selected.error]);
     }
     return () => {

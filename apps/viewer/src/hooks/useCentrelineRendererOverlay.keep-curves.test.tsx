@@ -9,7 +9,7 @@ import { act } from 'react';
 import { flushSync } from 'react-dom';
 import type { RefObject } from 'react';
 import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
 import { entityRefToString, useViewerStore, type ViewerState } from '@/store/index.js';
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
@@ -56,6 +56,8 @@ let builds: number;
 /** A build waits on this gate when one is set. */
 let gate: Promise<void> | null;
 let emptyBuild: boolean;
+/** A swept-disk load that includes product 3 waits on this gate when one is set. */
+let loadGate: Promise<void> | null;
 
 const current = () => held[held.length - 1];
 /** The curve sets the renderer held from `from` on. */
@@ -77,10 +79,10 @@ const lineBuilder: typeof selectedCentrelineWorldLines = async (items) => {
   return lines(items);
 };
 
-function select(ids: readonly number[], primary = ids[ids.length - 1]): Partial<ViewerState> {
+function select(ids: readonly number[], primary = ids[ids.length - 1], modelId = MODEL): Partial<ViewerState> {
   return {
-    selectedEntitiesSet: new Set(ids.map((expressId) => entityRefToString({ modelId: MODEL, expressId }))),
-    selectedEntity: primary === undefined ? null : { modelId: MODEL, expressId: primary },
+    selectedEntitiesSet: new Set(ids.map((expressId) => entityRefToString({ modelId, expressId }))),
+    selectedEntity: primary === undefined ? null : { modelId, expressId: primary },
     selectedEntityIds: new Set(ids.map((id) => OFFSET + id)),
     selectedEntityId: primary === undefined ? null : OFFSET + primary,
   };
@@ -99,17 +101,30 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 6; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
-function mount(ids: readonly number[]): void {
+const zero = { x: 0, y: 0, z: 0 };
+const box = { min: zero, max: zero };
+const geometry = (): NonNullable<ViewerState['geometryResult']> => ({ meshes: [], totalVertices: 0, totalTriangles: 0,
+  coordinateInfo: { originShift: zero, wasmRtcOffset: zero, hasLargeCoordinates: false,
+    originalBounds: box, shiftedBounds: box } }) as NonNullable<ViewerState['geometryResult']>;
+
+function sourceModel() {
   const model = fixtureModel(MODEL, { idOffset: OFFSET });
   model.maxExpressId = 3;
   Object.assign(model.ifcDataStore!, { source: { byteLength: 1 } });
-  const zero = { x: 0, y: 0, z: 0 };
-  const box = { min: zero, max: zero };
-  model.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0,
-    coordinateInfo: { originShift: zero, wasmRtcOffset: zero, hasLargeCoordinates: false,
-      originalBounds: box, shiftedBounds: box } };
-  useViewerStore.setState({ ...fixtureModels(model), centrelineOverlayEnabled: true, ...select(ids),
-    toGlobalId: (_modelId, expressId) => OFFSET + expressId });
+  model.geometryResult = geometry();
+  return model;
+}
+
+/** A single-file legacy store: no federated models, products keyed `legacy:<expressId>`. */
+function legacyStore(): Partial<ViewerState> {
+  const ifcDataStore = fixtureDataStore();
+  Object.assign(ifcDataStore, { source: { byteLength: 1 }, schemaVersion: 'IFC4' });
+  return { ifcDataStore, geometryResult: geometry() } as Partial<ViewerState>;
+}
+
+function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
+  useViewerStore.setState({ ...fixtureModels(sourceModel()), centrelineOverlayEnabled: true, ...select(ids),
+    toGlobalId: (_modelId, expressId) => OFFSET + expressId, ...patch });
   const renderer = {
     setLineOverlay: () => undefined,
     setSourceSnapCurves: (curves: readonly SourceSnapCurve[]) => { held.push(curveKey(curves)); },
@@ -131,10 +146,15 @@ beforeEach(() => {
   builds = 0;
   gate = null;
   emptyBuild = false;
-  selectedSweptDiskCache.get = async (_model, ids) => new Map(ids.flatMap((id) => {
+  loadGate = null;
+  selectedSweptDiskCache.get = async (_model, ids) => {
+    const wait = ids.includes(3) ? loadGate : null;
+    if (wait) await wait;
+    return new Map(ids.flatMap((id) => {
     const source = SOURCES.get(id);
-    return [[id, source ?? { occurrences: [], diagnostics: [] }] as const];
-  }));
+      return [[id, source ?? { occurrences: [], diagnostics: [] }] as const];
+    }));
+  };
 });
 
 afterEach(() => {
@@ -143,10 +163,17 @@ afterEach(() => {
   useViewerStore.setState(prior);
 });
 
-async function mountInstalled(ids: readonly number[], expected: string): Promise<number> {
-  mount(ids);
+async function mountInstalled(ids: readonly number[], expected: string, patch: Partial<ViewerState> = {}): Promise<number> {
+  mount(ids, patch);
   await waitFor(() => current() === expected, 'the selected curves install');
   return held.length;
+}
+
+/** `since(from)` read only after at least one frame, so an every() over it is not vacuous. */
+function sinceSome(from: number): string[] {
+  const sets = since(from);
+  assert.ok(sets.length > 0, 'the renderer received at least one curve set');
+  return sets;
 }
 
 it('Ctrl-adding a product with no swept disk never empties the installed curves (#9086)', async () => {
@@ -155,7 +182,7 @@ it('Ctrl-adding a product with no swept disk never empties the installed curves 
   await commit(select([1, 2]));
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection');
-  assert.deepEqual(since(from), since(from).map(() => ONE), 'every frame reads the same curve set');
+  assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'every frame reads the same curve set');
 });
 
 it('Ctrl-adding a non-swept product to two swept ones keeps the curve order (#9086)', async () => {
@@ -165,8 +192,8 @@ it('Ctrl-adding a non-swept product to two swept ones keeps the curve order (#90
   const before = builds;
   await commit(select([1, 3, 2]));
   await settle();
-  assert.ok(builds > before, 'the overlay rebuilt with product 2 leading the query');
-  assert.deepEqual(since(from), since(from).map(() => `${ONE},${THREE}`), 'every frame reads the same curve set in one order');
+  assert.ok(builds > before, 'the overlay rebuilt with product 2 added first in the selection order');
+  assert.deepEqual(sinceSome(from), since(from).map(() => `${ONE},${THREE}`), 'every frame reads the same curve set in one order');
 });
 
 it('re-selecting the same product never empties the installed curves (#9086)', async () => {
@@ -175,14 +202,14 @@ it('re-selecting the same product never empties the installed curves (#9086)', a
   await commit(select([1]));
   await settle();
   assert.ok(builds > before, 'the overlay rebuilt for the new selection objects');
-  assert.deepEqual(since(from), since(from).map(() => ONE));
+  assert.deepEqual(sinceSome(from), since(from).map(() => ONE));
 });
 
 it('hiding an unrelated product keeps the curves; hiding the selected one clears them before paint', async () => {
   const from = await mountInstalled([1], ONE);
   await commit({ hiddenEntities: new Set([OFFSET + 2]) });
   await settle();
-  assert.deepEqual(since(from), since(from).map(() => ONE));
+  assert.deepEqual(sinceSome(from), since(from).map(() => ONE));
   await commit({ hiddenEntities: new Set([OFFSET + 1, OFFSET + 2]) });
   assert.equal(current(), '', 'a hidden product cannot be snapped to');
   await settle();
@@ -195,7 +222,7 @@ it('a switch to another swept product drops the old curves before paint (#5778)'
   assert.equal(current(), '', 'the old product is gone in the selection commit');
   await settle();
   assert.equal(current(), THREE);
-  assert.ok(since(from).every((set) => !set.includes('1@')), 'no frame after the switch can snap to the old product');
+  assert.ok(sinceSome(from).every((set) => !set.includes('1@')), 'no frame after the switch can snap to the old product');
 });
 
 it('Ctrl-adding a swept product keeps the old curves, then installs both', async () => {
@@ -203,7 +230,7 @@ it('Ctrl-adding a swept product keeps the old curves, then installs both', async
   await commit(select([1, 3]));
   assert.equal(current(), ONE);
   await settle();
-  assert.ok(since(from).every((set) => set.includes(ONE)), 'the kept product stays snappable throughout');
+  assert.ok(sinceSome(from).every((set) => set.includes(ONE)), 'the kept product stays snappable throughout');
   assert.equal(current(), `${ONE},${THREE}`, 'both products install');
 });
 
@@ -278,5 +305,52 @@ it('a late build for a superseded selection never installs its dropped product (
   release();
   await settle();
   assert.equal(current(), ONE);
-  assert.ok(since(from).every((set) => set === ONE), 'product 3 was never snappable once deselected');
+  assert.ok(sinceSome(from).every((set) => set === ONE), 'product 3 was never snappable once deselected');
+});
+
+it('a highlight cleared by a switch does not rebuild the old product from the old query', async () => {
+  // Switching away from a highlighted product clears the highlight in a second
+  // commit, which re-runs the build while the swept-disk query still answers
+  // the old selection.
+  const from = await mountInstalled([1], ONE, { selectedDirectrixSegment: {
+    modelId: MODEL, expressId: 1, occurrenceIndex: 0, segmentIndex: 0 } });
+  let release: () => void = () => undefined;
+  loadGate = new Promise((resolve) => { release = resolve; });
+  await commit(select([3]));
+  await settle();
+  assert.equal(useViewerStore.getState().selectedDirectrixSegment, null, 'the switch cleared the highlight');
+  assert.ok(sinceSome(from).every((set) => !set.includes('1@')), 'the deselected product is never reinstalled');
+  loadGate = null;
+  release();
+  await settle();
+  assert.equal(current(), THREE);
+});
+
+it('replacing the model under the same id waits for its new swept disks', async () => {
+  await mountInstalled([1, 3], `${ONE},${THREE}`);
+  let release: () => void = () => undefined;
+  loadGate = new Promise((resolve) => { release = resolve; });
+  await commit(fixtureModels(sourceModel()));
+  const from = held.length;
+  await settle();
+  assert.equal(current(), '', 'curves of the replaced model cannot be snapped to');
+  assert.ok(since(from).every((set) => set === ''), 'the old model\'s records are not rebuilt for the new one');
+  loadGate = null;
+  release();
+  await settle();
+  assert.equal(current(), `${ONE},${THREE}`);
+});
+
+it('a new legacy store clears the curves of the old one before paint', async () => {
+  const legacyOne = '1@{"x":1,"y":0,"z":0}';
+  await mountInstalled([1, 3], `${legacyOne},${THREE}`,
+    { models: new Map(), activeModelId: null, ...legacyStore(), ...select([1, 3], 3, 'legacy') });
+  let release: () => void = () => undefined;
+  loadGate = new Promise((resolve) => { release = resolve; });
+  await commit(legacyStore());
+  assert.equal(current(), '', 'the replaced store cannot be snapped to');
+  loadGate = null;
+  release();
+  await settle();
+  assert.equal(current(), `${legacyOne},${THREE}`);
 });

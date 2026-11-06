@@ -63,7 +63,7 @@ export function HudChip({ children, icon, toggle, resume, dismiss, active, role,
           onClick={toggle.onClick}
           aria-label={toggle['aria-label']}
           title={toggle.title}
-          className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent"
+          className={cn('rounded-sm p-0.5 hover:bg-accent', active ? 'text-active' : 'text-muted-foreground')}
         >
           {toggle.icon}
         </button>

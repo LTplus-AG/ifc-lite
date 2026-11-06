@@ -977,17 +977,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   ['isolate', 'clashPanel.focusMode.isolateLabel', 'clashPanel.focusMode.isolateTooltip'],
                   ['ghost', 'clashPanel.focusMode.ghostLabel', 'clashPanel.focusMode.ghostTooltip'],
                 ] as [ClashFocusMode, TranslationKey, TranslationKey][]).map(([m, labelKey, tipKey]) => (
-                  <button
-                    key={m}
-                    title={t(tipKey)}
-                    onClick={() => changeFocusMode(m)}
-                    className={cn(
-                      'px-1.5 py-0.5 transition-colors',
-                      focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  <Button key={m} type="button" variant="toggle" aria-pressed={focusMode === m} title={t(tipKey)}
+                    onClick={() => changeFocusMode(m)} className="h-auto rounded-none px-1.5 py-0.5 text-xs font-normal">
                     {t(labelKey)}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

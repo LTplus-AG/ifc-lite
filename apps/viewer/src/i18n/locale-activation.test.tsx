@@ -182,6 +182,48 @@ describe('locale activation from contributed catalogues (#4785)', () => {
     assert.equal(getLocale(), 'en');
   });
 
+  it('#9075 review: a locale that fails to load is not remembered and the previous choice comes back', async () => {
+    const storage = memoryStorage({ [LOCALE_STORAGE_KEY]: 'fr' });
+    const html = { lang: 'en' };
+    const activator = createLocaleActivator({
+      fr: async () => ({ 'mergeLayersBanner.reloadButton': 'Recharger' }),
+      de: async () => { throw new Error('chunk 404'); },
+    }, html);
+    const env = environment({ storage, languages: ['en'] });
+    assert.equal(await activateStartupLocale(activator, env), 'fr');
+    const choice = createLocaleChoice(activator, env);
+
+    await assert.rejects(choice.choose('de'), /Could not load locale "de"/);
+    assert.equal(storage.values.get(LOCALE_STORAGE_KEY), 'fr', 'the failed locale is not stored');
+    assert.equal(choice.chosen(), 'fr', 'the displayed choice is the one that applies');
+    assert.equal(getLocale(), 'fr', 'the previous language is back on screen, not an English fallback');
+    assert.equal(html.lang, 'fr');
+  });
+
+  it('#9075 review: a slower earlier choice cannot overwrite a newer choice or Auto', async () => {
+    let releaseGerman: (catalogue: Catalogue) => void = () => {};
+    const loaders = {
+      de: () => new Promise<Catalogue>((settle) => { releaseGerman = settle; }),
+      fr: async () => ({}),
+    };
+    const storage = memoryStorage();
+    const choice = createLocaleChoice(createLocaleActivator(loaders), environment({ storage, languages: ['en'] }));
+    const slow = choice.choose('de');
+    assert.equal(await choice.choose('fr'), 'fr');
+    releaseGerman(GERMAN);
+    await slow;
+    assert.equal(storage.values.get(LOCALE_STORAGE_KEY), 'fr');
+    assert.equal(choice.chosen(), 'fr');
+    assert.equal(getLocale(), 'fr');
+
+    const slowAgain = choice.choose('de');
+    assert.equal(await choice.clear(), 'en');
+    releaseGerman(GERMAN);
+    await slowAgain;
+    assert.equal(storage.values.has(LOCALE_STORAGE_KEY), false, 'Auto chosen last stays Auto');
+    assert.equal(choice.chosen(), null);
+  });
+
   it('keeps English and warns when a locale fails to load or is not a catalogue', async () => {
     const html = { lang: 'en' };
     const broken = createLocaleActivator({

@@ -25,7 +25,7 @@ function installLocaleChoice(choice: LocaleChoice | null): void {
   if (typeof install === 'function') activation.installLocaleChoice(choice);
 }
 
-function install(languages: readonly string[]) {
+function install(languages: readonly string[], failing: readonly string[] = []) {
   const values = new Map<string, string>();
   const storage = {
     values,
@@ -33,7 +33,8 @@ function install(languages: readonly string[]) {
     setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); },
   };
-  const loaders = { de: async () => GERMAN, fr: async () => ({}), ru: async () => ({}) };
+  const loaders: Record<string, () => Promise<Catalogue>> = { de: async () => GERMAN, fr: async () => ({}), ru: async () => ({}) };
+  for (const tag of failing) loaders[tag] = async () => { throw new Error(`chunk for ${tag} failed`); };
   const create: unknown = Reflect.get(activation, 'createLocaleChoice');
   assert.equal(typeof create, 'function', 'Settings → Language needs createLocaleChoice (#9061)');
   installLocaleChoice(activation.createLocaleChoice(createLocaleActivator(loaders, document.documentElement), { storage, languages }));
@@ -101,5 +102,30 @@ describe('Settings → Language (#9061)', () => {
     const storage = install(['en']);
     storage.values.set(LOCALE_STORAGE_KEY, 'ru');
     assert.equal(openGeneral().textContent, 'Русский');
+  });
+  it('#9075 review: a locale that fails to load is not shown as chosen, and the failure is announced', async () => {
+    const storage = install(['en'], ['fr']);
+    const trigger = openGeneral();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await pick(trigger, 'Français');
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(getLocale(), 'en');
+    assert.equal(storage.values.has(LOCALE_STORAGE_KEY), false, 'nothing is remembered');
+    assert.equal(trigger.textContent, AUTO, 'the combobox shows what applies, not the failed locale');
+    const status = document.querySelector('[data-settings-dialog] [role="status"]');
+    assert.equal(status?.textContent, settingsEn['settings.general.languageFailed']);
+  });
+
+  it('#9075 review: the Language label belongs to the combobox', () => {
+    install(['en']);
+    const trigger = openGeneral();
+    const label = document.querySelector<HTMLLabelElement>('label[for="settings-language"]');
+    assert.ok(label, 'the visible Language text is a label for the combobox');
+    assert.equal(label.textContent, settingsEn['settings.general.language']);
+    assert.equal(label.control, trigger, 'clicking the label activates the combobox');
   });
 });

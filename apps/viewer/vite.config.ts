@@ -4,6 +4,7 @@
 
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
+import { collectPackageVersions } from './vite-package-versions';
 import { legacyManualChunk, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
@@ -39,11 +40,6 @@ interface PackageRelease {
 interface PackageChangelog {
   name: string;
   releases: PackageRelease[];
-}
-
-interface PackageVersion {
-  name: string;
-  version: string;
 }
 
 const SKIP_BOLD_LOWER = new Set([
@@ -183,30 +179,6 @@ function parseChangelogs(): PackageChangelog[] {
   });
 }
 
-// Collect all package versions
-function collectPackageVersions(): PackageVersion[] {
-  const packagesDir = path.resolve(__dirname, '../../packages');
-  let dirs: string[];
-  try {
-    dirs = fs.readdirSync(packagesDir);
-  } catch {
-    return [];
-  }
-
-  const versions: PackageVersion[] = [];
-  for (const dir of dirs) {
-    const pkgPath = path.join(packagesDir, dir, 'package.json');
-    if (!fs.existsSync(pkgPath)) continue;
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-      if (pkg.name && pkg.version) {
-        versions.push({ name: pkg.name, version: pkg.version });
-      }
-    } catch { /* skip unreadable packages */ }
-  }
-  return versions.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 // Read version from viewer package.json (primary app version) with root fallback
 const viewerPkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8')
@@ -221,7 +193,7 @@ const appVersion = viewerPkg.version || rootPkg.version;
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
 export default defineConfig(({ mode }) => {
-  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL']), ...process.env };
+  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL', 'VITE_REGISTRY_ENABLED', 'IFC_REGISTRY_TARGET']), ...process.env };
   // #7955: `on` (retained preview: the retained module is eager), `lazy`
   // (production opt-in: only a choice and dynamic imports are eager) or off.
   const retainedMode = env.VITE_RETAINED_GEOMETRY === 'on' || env.VITE_RETAINED_GEOMETRY === 'lazy' ? env.VITE_RETAINED_GEOMETRY : 'off';
@@ -285,7 +257,7 @@ export default defineConfig(({ mode }) => {
     __BUILD_SHA__: JSON.stringify(buildSha),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
     __RELEASE_HISTORY__: JSON.stringify(parseChangelogs()),
-    __PACKAGE_VERSIONS__: JSON.stringify(collectPackageVersions()),
+    __PACKAGE_VERSIONS__: JSON.stringify(collectPackageVersions(path.resolve(__dirname, '../../packages'))),
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {

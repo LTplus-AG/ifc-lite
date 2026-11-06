@@ -16,7 +16,6 @@ import {
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
   filterNodes,
   splitNodes,
-  type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
 import { buildTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
@@ -26,6 +25,7 @@ import {
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
+import { collectAuthoredProducts } from './authoredProducts';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
 export type { HierarchyMode } from '@/store';
@@ -217,31 +217,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const builderReady = (groupingMode !== 'material' || materialReady) && presentationLayers.ready;
   const groupingReady = builderReady && (groupingMode !== 'presentation-layers'
     || presentationMetadataReady(models, ifcDataStore, loading));
-  const authoredProducts = useMemo<AuthoredProduct[]>(() => {
-    const out: AuthoredProduct[] = [];
-    const state = useViewerStore.getState();
-    for (const [modelId, view] of mutationViews) {
-      const getNew = (view as { getNewEntities?: () => Iterable<{ expressId: number; type: string; attributes: unknown[] }> }).getNewEntities;
-      if (typeof getNew !== 'function') continue;
-      for (const ent of getNew.call(view)) {
-        const globalId = modelId === 'legacy' || !models.has(modelId)
-          ? ent.expressId
-          : state.toGlobalId(modelId, ent.expressId);
-        if (!geometricIds.has(globalId)) continue;
-        const rawName = ent.attributes?.[2];
-        out.push({
-          modelId,
-          expressId: ent.expressId,
-          globalId,
-          ifcType: ent.type,
-          name: typeof rawName === 'string' && rawName ? rawName : `${ent.type} #${ent.expressId}`,
-        });
-      }
-    }
-    return out;
+  const authoredProducts = useMemo(
+    () => collectAuthoredProducts(mutationViews, models, ifcDataStore, geometricIds),
     // mutationVersion bumps on every authoring edit; geometricIds tracks the mesh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mutationViews, models, geometricIds, mutationVersion]);
+    [mutationViews, models, ifcDataStore, geometricIds, mutationVersion],
+  );
   // Build the structural tree once per model/mode/mutation input. Search uses
   // this same complete tree; reveal uses it too. A chevron click only projects
   // visible rows and never calls the builder.

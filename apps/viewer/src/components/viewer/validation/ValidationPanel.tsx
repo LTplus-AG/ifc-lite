@@ -284,7 +284,7 @@ function AuthoringState({ info, models }: AuthoringStateProps) {
       <div className="flex-1 min-h-0 overflow-auto p-3" {...tourAnchor(TOUR_ANCHORS.ruleEditor)}>
         <RuleSetEditor file={info.file} onChange={info.setFile} models={models} />
       </div>
-      {info.error && <p className="px-3 pb-1 text-xs text-red-600">{info.error}</p>}
+      {info.error && <p className="px-3 pb-1 text-xs text-danger">{info.error}</p>}
       {info.idsSummary && <IdsSummary summary={info.idsSummary} onDismiss={info.dismissIdsSummary} />}
       <div className="flex items-center gap-2 p-3 border-t">
         <Button type="button" size="sm" variant="outline" className="h-8" onClick={info.save}>

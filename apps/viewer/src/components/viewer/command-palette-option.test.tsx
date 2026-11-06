@@ -21,7 +21,7 @@ async function loadOptions() {
   return options;
 }
 
-const placement = { index: 0, selected: true, onActivate: () => {}, onHover: () => {} };
+const placement = { index: 0, selected: true, query: '', onActivate: () => {}, onHover: () => {} };
 
 // #5878: a registered palette option cannot acquire a second name or invented id.
 function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: string }>): void {

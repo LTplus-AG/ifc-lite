@@ -55,7 +55,7 @@ for (const [locale, catalogue, label, alias, inlineAlias] of [
 ] as const) it(`registry labels and aliases reach both new routes in ${locale} (#8947)`, () => {
   if (locale !== 'en') registerLocale(locale, catalogue);
   setLocale(locale);
-  const ui = render(<RegisteredPaletteOption commandId="pref:colorful" id="colorful" index={0} selected={false} onActivate={() => colorful().action()} onHover={() => {}} />);
+  const ui = render(<RegisteredPaletteOption commandId="pref:colorful" query="" id="colorful" index={0} selected={false} onActivate={() => colorful().action()} onHover={() => {}} />);
   assert.ok(ui.textContent?.includes(label));
   act(() => useViewerStore.setState({ theme: 'light' }));
   activate(ui.querySelector('button')!, ' ');

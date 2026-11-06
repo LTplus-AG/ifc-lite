@@ -31,7 +31,7 @@ import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from '
 import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
-import { ignoreTouchPointers, setMeasureContext } from './touchRouting.js';
+import { noteMouseSideInput, routeMousePointers, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
@@ -43,7 +43,7 @@ import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
-import { flyLook } from './flyNavigation.js';
+import { applyDragNavigation, dragNavigationFor } from './dragNavigation.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -631,16 +631,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           return; // fly's onChange signals the render only when the look actually turned the view
         }
 
-        // Always update camera state immediately (feels responsive)
-        if (mouseState.isPanning) {
-          camera.pan(dx, dy, false);
-        } else if (activeToolRef.current === 'walk') {
-          // Walk mode looks around the eye; the walker owns where it stands.
-          const look = flyLook({ position: camera.getPosition(), target: camera.getTarget() }, dx, dy);
-          if (look) camera.setTarget(look.target.x, look.target.y, look.target.z);
-        } else {
-          camera.orbit(dx, dy, false);
-        }
+        // Always update camera state immediately (feels responsive); the touch controls share this (#9042)
+        applyDragNavigation(camera, dragNavigationFor(activeToolRef.current, mouseState.isPanning), dx, dy);
 
         mouseState.lastX = e.clientX;
         mouseState.lastY = e.clientY;
@@ -794,6 +786,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     });
 
     const handleWheel = (e: WheelEvent) => {
+      noteMouseSideInput('mouse'); // the Measure hint follows the last input, and a wheel or pinch is a mouse's (#8999)
       if (fly.isActive()) return fly.wheel(e); // while flying the wheel sets fly speed, not zoom
       const wheel = resolveWheelNavigation(useViewerStore.getState().navigationPreset, e);
       // Cancels the browser's own Ctrl+wheel page zoom as well as scrolling;
@@ -834,20 +827,22 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleDoubleClick = (e: MouseEvent) => handleMeasureDoubleClick(ctx, e);
 
-    // Touch belongs to useTouchControls; a Measure tap comes back through the measure context (#5856).
-    const onPointerDown = ignoreTouchPointers(handleMouseDown), onPointerMove = ignoreTouchPointers(handleMouseMove), onPointerUp = ignoreTouchPointers(handleMouseUp);
+    // Touch, and a pen press that also arrives as touch, belong to useTouchControls;
+    // a Measure tap comes back through the measure context (#5856, #9000).
+    const pointers = routeMousePointers(canvas, { down: handleMouseDown, move: handleMouseMove, up: handleMouseUp, cancel: handlePointerCancel });
+    const onContextMenu = pointers.after(handleContextMenu), onClick = pointers.after(handleClick), onDoubleClick = pointers.after(handleDoubleClick);
     setMeasureContext(canvas, ctx);
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', handlePointerCancel);
+    canvas.addEventListener('pointerdown', pointers.down);
+    canvas.addEventListener('pointermove', pointers.move);
+    canvas.addEventListener('pointerup', pointers.up);
+    canvas.addEventListener('pointercancel', pointers.cancel);
     canvas.addEventListener('lostpointercapture', handleLostPointerCapture);
     window.addEventListener('blur', handleWindowBlur);
     canvas.addEventListener('mouseleave', handleMouseLeave);
-    canvas.addEventListener('contextmenu', handleContextMenu);
+    canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
-    canvas.addEventListener('click', handleClick);
-    canvas.addEventListener('dblclick', handleDoubleClick);
+    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('dblclick', onDoubleClick);
 
     return () => {
       disposed = true;
@@ -855,17 +850,18 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       invalidateSelectionPick(canvas);
       hoverPicker.dispose();
       setMeasureContext(canvas, null);
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', handlePointerCancel);
+      canvas.removeEventListener('pointerdown', pointers.down);
+      canvas.removeEventListener('pointermove', pointers.move);
+      canvas.removeEventListener('pointerup', pointers.up);
+      canvas.removeEventListener('pointercancel', pointers.cancel);
+      pointers.dispose();
       canvas.removeEventListener('lostpointercapture', handleLostPointerCapture);
       window.removeEventListener('blur', handleWindowBlur);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
-      canvas.removeEventListener('contextmenu', handleContextMenu);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', handleWheel);
-      canvas.removeEventListener('click', handleClick);
-      canvas.removeEventListener('dblclick', handleDoubleClick);
+      canvas.removeEventListener('click', onClick);
+      canvas.removeEventListener('dblclick', onDoubleClick);
       commandPress.dispose();
       fineZoomModifier.dispose();
       fly.dispose();

@@ -19,6 +19,7 @@ import {
   type ActiveRadius,
   type AngleKind,
   type AngleMeasurement,
+  type PointerInput,
   type MeasureMode,
   type MeasurePoint,
   type Measurement,
@@ -75,15 +76,47 @@ export interface MeasureHintState {
   activeRadius: ActiveRadius | null;
   activeMeasurement: ActiveMeasurement | null;
   measurePointLast: MeasurePoint | null;
+  pointerInput: PointerInput;
 }
+
+/**
+ * Tap wording for the hints a tap can act on (#8879): no click, Shift, Esc or
+ * Enter, none of which a touch user has. Polyline and Radius in progress name
+ * the ✓ in List, touch's finish (#8991).
+ */
+const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
+  'measure.hint.dragStart': 'measure.hint.dragStartTouch',
+  'measure.hint.dragActive': 'measure.hint.dragActiveTouch',
+  'measure.hint.pointStart': 'measure.hint.pointStartTouch',
+  'measure.hint.pointActive': 'measure.hint.pointActiveTouch',
+  'measure.hint.polylineStart': 'measure.hint.polylineStartTouch',
+  'measure.hint.radiusStart': 'measure.hint.radiusStartTouch',
+  'measure.hint.polylineActive': 'measure.hint.polylineActiveTouch',
+  'measure.hint.radiusActive': 'measure.hint.radiusActiveTouch',
+  'measure.hint.faces.first': 'measure.hint.faces.firstTouch',
+  'measure.hint.faces.second': 'measure.hint.faces.secondTouch',
+  'measure.hint.edges.firstStart': 'measure.hint.edges.firstStartTouch',
+  'measure.hint.edges.firstEnd': 'measure.hint.edges.firstEndTouch',
+  'measure.hint.edges.secondStart': 'measure.hint.edges.secondStartTouch',
+  'measure.hint.edges.secondEnd': 'measure.hint.edges.secondEndTouch',
+  'measure.hint.points.apex': 'measure.hint.points.apexTouch',
+  'measure.hint.points.first': 'measure.hint.points.firstTouch',
+  'measure.hint.points.second': 'measure.hint.points.secondTouch',
+};
 
 /**
  * The one hint line for the HUD's bottom-center region. In angle and radius
  * modes `activeMeasurement` is always null (the drag gate refuses to start
  * one), so those branches name the gesture that actually works instead of
- * falling through to "Click to set the start point".
+ * falling through to "Click to set the start point". After a tap the hint is
+ * tap-worded where {@link TOUCH_HINT_KEYS} has a variant (#8879).
  */
 export function measureHintKey(s: MeasureHintState): TranslationKey {
+  const key = mouseHintKey(s);
+  return s.pointerInput === 'touch' ? TOUCH_HINT_KEYS[key] ?? key : key;
+}
+
+function mouseHintKey(s: MeasureHintState): TranslationKey {
   switch (s.measureMode) {
     case 'polyline':
       return s.activePolyline ? 'measure.hint.polylineActive' : 'measure.hint.polylineStart';

@@ -25,8 +25,8 @@ const OPERATION_KEYS = {
   createComment: 'bcfDrafts.operation.createComment', createViewpoint: 'bcfDrafts.operation.createViewpoint',
 } as const satisfies Record<OutboxEntry['operation'], TranslationKey>;
 const STATE_TONE: Record<OutboxEntry['state'], string> = {
-  queued: 'text-muted-foreground', sending: 'text-muted-foreground', done: 'text-green-700 dark:text-green-400',
-  failed: 'text-red-700 dark:text-red-400', uncertain: 'text-amber-700 dark:text-amber-400', blocked: 'text-amber-700 dark:text-amber-400',
+  queued: 'text-muted-foreground', sending: 'text-muted-foreground', done: 'text-ok',
+  failed: 'text-danger', uncertain: 'text-warn', blocked: 'text-warn',
 };
 
 export interface BCFOutboxEntryProps {
@@ -101,7 +101,7 @@ export function BCFOutboxEntry({ record, entry, label, connection }: BCFOutboxEn
           )}
         </output>
       )}
-      {error && <span role="alert" className="text-2xs text-red-700 dark:text-red-400">{error}</span>}
+      {error && <span role="alert" className="text-2xs text-danger">{error}</span>}
     </li>
   );
 }

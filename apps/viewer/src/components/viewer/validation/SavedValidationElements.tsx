@@ -26,7 +26,7 @@ export function SavedValidationElements({ snapshot, rowId, request }: {
     <p className="text-muted-foreground">{t('validationPanel.history.elements', {
       shown: rows.length, saved: evidence.rows.length, omitted: evidence.omitted,
     })}</p>
-    {evidence.gaps.map(gap => <p key={gap} className="text-amber-600 dark:text-amber-400">{gap}</p>)}
+    {evidence.gaps.map(gap => <p key={gap} className="text-warn">{gap}</p>)}
     {rows.map(row => <article key={row.id} ref={row.id === rowId ? focused : undefined} tabIndex={-1}
       aria-current={row.id === rowId ? 'true' : undefined} data-saved-validation-row={row.id}
       className="break-words rounded border border-border p-2 focus:outline focus:outline-2 focus:outline-primary">

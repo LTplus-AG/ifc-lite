@@ -1308,6 +1308,10 @@ pub use gltf::{export_gltf_streaming, try_export_glb, try_export_glb_from_meshes
 // assembler carries them; `quantize`, the bounded GLB and multi-buffer glTF
 // refuse with `ExportError::UnsupportedOption`, and a textured mesh whose
 // appearance is incomplete is `ExportError::IncompleteAppearance`, never solid colour.
+// `GltfOptions::with_name_by_global_id(true)` (default off, #9011) makes each IFC
+// element one node under the scene, named by its `GlobalId`, holding its part
+// nodes, with a copy of the root's translation and site rotation, so poses,
+// geometry and materials are unchanged. All three from-bytes assemblers apply it.
 pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
@@ -1581,7 +1585,12 @@ impl IfcAPI {
         isolated: &[u32],
         hidden_types_csv: String,
         lit: Option<bool>,
+        emissive: Option<bool>,
     ) -> Result<Vec<u8>, JsValue>;
+
+    /// `export_glb` with each element one node named by its GlobalId (#9011)
+    #[wasm_bindgen(js_name = exportGlbNamedByGlobalId)]
+    pub fn export_glb_named_by_global_id(/* the same parameters */) -> Result<Vec<u8>, JsValue>;
 
     /// Export CSV (entities / properties / quantities / spatial)
     #[wasm_bindgen(js_name = exportCsv)]

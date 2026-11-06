@@ -207,9 +207,6 @@ preview is also limited to 200,000 triangles. UVs must lie within `[0,1]`; tinte
 or translucent material factors must first be baked into the source image.
 Creation is available outside shared rooms; the saved IFC can then be shared.
 
-For implementation status, shared workflow boundaries and future scan/PDF options,
-see the [appearance roadmap](../architecture/appearance-roadmap.md).
-
 ## Appearance on evaluated occurrences
 
 Select an image or PDF page, choose the IFC scope, and enable **Convert supported

@@ -308,6 +308,39 @@ describe('Pan and Walk drags (#9042)', () => {
     assert.notEqual(viewDirection(camera), direction, 'the next drag, in Select, orbits');
   });
 
+  it('a tool switch mid-drag holds when a second finger lands and lifts again', () => {
+    const { canvas, camera, activeToolRef } = mountViewportControls('pan');
+    const direction = viewDirection(camera);
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]]));
+      canvas.dispatchEvent(touchEvent('touchmove', canvas, [[420, 300]]));
+    });
+    activeToolRef.current = 'select';
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[420, 300], [500, 300]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, [[420, 300]]));
+      for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[420 + 20 * i, 300 + 10 * i]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    assert.equal(viewDirection(camera), direction, 'the second finger re-read the tool and the one left orbited');
+  });
+
+  it('after a pinch in Pan, the finger left picks no orbit pivot (no surface raycast)', () => {
+    let casts = 0;
+    const { canvas } = mountViewportControls('pan', null, { renderer: { raycastScene: () => { casts++; return null; } } });
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[420, 300], [500, 300]]));
+      for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[420 - 10 * i, 300], [500 + 10 * i, 300]]));
+    });
+    casts = 0; // only what the lift to one finger casts
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchend', canvas, [[380, 300]]));
+      for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[380 + 20 * i, 300]]));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    assert.equal(casts, 0, 'the lift to one finger raycast for an orbit pivot a pan never uses');
+  });
+
   it('a Pan press picks no orbit pivot (no surface raycast), as a mouse Pan press does', () => {
     let casts = 0;
     const { canvas } = mountViewportControls('pan', null, { renderer: { raycastScene: () => { casts++; return null; } } });

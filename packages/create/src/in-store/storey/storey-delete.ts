@@ -98,7 +98,11 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
       }
     }
   }
-  return { ...base, contents: [...contents], roots, elementCount, fingerprint: storeyStateFingerprint(inventory.reader, [storeyId, ...contents]), refusals };
+  // The reverse lookup is built only if a content product hangs from a grid placement.
+  let referencers: ((id: number) => readonly number[]) | null = null;
+  const lazyReferencers = (id: number) => (referencers ??= effectiveReferencers(inventory.store, inventory.view))(id);
+  const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, [storeyId, ...contents]);
+  return { ...base, contents: [...contents], roots, elementCount, fingerprint, refusals };
 }
 
 /**

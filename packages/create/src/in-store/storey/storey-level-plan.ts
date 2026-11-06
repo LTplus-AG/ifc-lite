@@ -255,7 +255,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   return {
     edit, storeys, placements, moved, held, spacing: spacingChanges(inventory, deltas), movedElementCount,
     refusals, notices: [],
-    fingerprint: storeyStateFingerprint(reader, [...deltas.keys()], placements.map(({ leaf }) => leaf.placementId)),
+    fingerprint: storeyStateFingerprint(reader, referencers, [...deltas.keys()], placements.map(({ leaf }) => leaf.placementId)),
   };
 }
 

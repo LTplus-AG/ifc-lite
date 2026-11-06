@@ -259,6 +259,23 @@ END-ISO`);
     expect(p.placements.map(({ leaf }) => leaf.placementId)).not.toContain(111);
   });
 
+  it('a reviewed deletion is stale once the grid its column is bound to has moved', async () => {
+    // The grid now stands on Level 3; the column it binds stays on Level 2.
+    const text = GRID.replace('#101=IFCLOCALPLACEMENT(#44,#5);', '#101=IFCLOCALPLACEMENT(#47,#5);')
+      .replace('(#100,#112),#42);', '(#112),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#100),#46);');
+    const s = session(await parse(text));
+    const mode = { kind: 'deleteContents' } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    expect(reviewed.contents).toContain(112);
+    // Move the grid: a new point under its own placement.
+    const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, 100]]).expressId;
+    const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+    s.editor.setPositionalAttribute(101, 1, `#${axis}`);
+    const before = s.snapshot();
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.snapshot()).toEqual(before);
+  });
+
   it('a column of another storey bound to a moved grid is found and refused, not carried along', async () => {
     const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
     const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });

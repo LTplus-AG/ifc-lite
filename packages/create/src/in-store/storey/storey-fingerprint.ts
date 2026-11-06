@@ -11,15 +11,29 @@
  * whole placement chain (local placements up to the root, their axis
  * placements, points and directions), read through the live overlay, so any
  * such edit changes it and the apply refuses the plan as stale.
+ *
+ * A grid placement is followed through its intersection, axes and axis
+ * curves to the grid's own placement, so moving a grid after review is seen
+ * by every product bound to it.
  */
 
 import type { AnchorEntityReader } from '../resolve-anchor.js';
 import { refId } from '../host-geometry-frame.js';
+import { gridPlacementParent } from './storey-grid.js';
 
 type Reader = Pick<AnchorEntityReader, 'entity'>;
+type Referencers = (id: number) => readonly number[];
 
-/** Records of the placement graph below and above `placementId`, into `out`. */
-function collectPlacement(reader: Reader, placementId: number, out: Map<number, string>): void {
+function references(attributes: readonly unknown[]): number[] {
+  return attributes.flatMap((value) => (Array.isArray(value) ? value : [value]).map(refId)).filter((id): id is number => id !== null);
+}
+
+/**
+ * Records of the placement graph above `placementId`, into `out`: every
+ * record a placement refers to (parents, axes, points, directions; grid
+ * intersections, axes and their curves), and a grid placement's grid placement.
+ */
+function collectPlacement(reader: Reader, referencers: Referencers, placementId: number, out: Map<number, string>): void {
   const queue = [placementId];
   while (queue.length) {
     const id = queue.pop()!;
@@ -27,14 +41,10 @@ function collectPlacement(reader: Reader, placementId: number, out: Map<number, 
     const entity = reader.entity(id);
     out.set(id, entity ? `${entity.type.toUpperCase()}${JSON.stringify(entity.attributes)}` : 'missing');
     if (!entity) continue;
-    const type = entity.type.toUpperCase();
-    // PlacementRelTo and RelativePlacement; Location, Axis and RefDirection.
-    const follow = type === 'IFCLOCALPLACEMENT' ? [0, 1]
-      : type.startsWith('IFCAXIS2PLACEMENT') ? [0, 1, 2]
-        : [];
-    for (const index of follow) {
-      const next = refId(entity.attributes[index]);
-      if (next !== null) queue.push(next);
+    queue.push(...references(entity.attributes));
+    if (entity.type.toUpperCase() === 'IFCGRIDPLACEMENT') {
+      const grid = gridPlacementParent(reader, referencers, id);
+      if (grid !== null) queue.push(grid);
     }
   }
 }
@@ -54,17 +64,20 @@ function hash(text: string): string {
 
 /**
  * Fingerprint of `products` (their records and placement chains) and of the
- * extra `placements` (chains only), read through `reader`.
+ * extra `placements` (chains only), read through `reader`; `referencers`
+ * resolves a grid placement's grid.
  */
-export function storeyStateFingerprint(reader: Reader, products: Iterable<number>, placements: Iterable<number> = []): string {
+export function storeyStateFingerprint(
+  reader: Reader, referencers: Referencers, products: Iterable<number>, placements: Iterable<number> = [],
+): string {
   const records = new Map<number, string>();
   for (const product of products) {
     const entity = reader.entity(product);
     records.set(product, entity ? `${entity.type.toUpperCase()}${JSON.stringify(entity.attributes)}` : 'missing');
     const placement = entity ? refId(entity.attributes[5]) : null;
-    if (placement !== null) collectPlacement(reader, placement, records);
+    if (placement !== null) collectPlacement(reader, referencers, placement, records);
   }
-  for (const placement of placements) collectPlacement(reader, placement, records);
+  for (const placement of placements) collectPlacement(reader, referencers, placement, records);
   const text = [...records].sort(([a], [b]) => a - b).map(([id, record]) => `${id}:${record}`).join('\n');
   return hash(text);
 }

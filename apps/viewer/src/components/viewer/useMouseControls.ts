@@ -31,7 +31,7 @@ import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from '
 import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
-import { ignoreTouchPointers, setMeasureContext } from './touchRouting.js';
+import { ignoreTouchPointers, noteMouseSideInput, setMeasureContext } from './touchRouting.js';
 import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js';
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
@@ -794,6 +794,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     });
 
     const handleWheel = (e: WheelEvent) => {
+      noteMouseSideInput('mouse'); // the Measure hint follows the last input, and a wheel or pinch is a mouse's (#8999)
       if (fly.isActive()) return fly.wheel(e); // while flying the wheel sets fly speed, not zoom
       const wheel = resolveWheelNavigation(useViewerStore.getState().navigationPreset, e);
       // Cancels the browser's own Ctrl+wheel page zoom as well as scrolling;

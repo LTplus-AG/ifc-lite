@@ -34,9 +34,18 @@ export { beginMeasurePress } from './distanceClick.js';
 export function ignoreTouchPointers(handler: (e: PointerEvent) => unknown): (e: PointerEvent) => void {
   return (e) => {
     if (e.pointerType === 'touch') return;
-    useViewerStore.getState().setPointerInput(e.pointerType === 'pen' ? 'touch' : 'mouse');
+    noteMouseSideInput(e.pointerType);
     void handler(e);
   };
+}
+
+/**
+ * Notes a mouse-side input as the one the viewport saw last (#8879). The wheel
+ * passes `'mouse'`: a wheel or trackpad scroll, and a trackpad pinch (a
+ * ctrl+wheel), is mouse-class input (#8999).
+ */
+export function noteMouseSideInput(pointerType: string): void {
+  useViewerStore.getState().setPointerInput(pointerType === 'pen' ? 'touch' : 'mouse');
 }
 
 const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContext; stop: () => void }>();

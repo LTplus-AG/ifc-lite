@@ -56,10 +56,14 @@ export interface StoreyDependents {
 
 const WALL_TYPES = new Set(['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE']);
 
-/** Products on each storey, by the storey that holds them. */
+/**
+ * Products on each storey, by the storey that holds them. A read, so not
+ * bounded: the planner has already refused (`tooLarge`) any MOVED storey past
+ * the limit, and what this finds is written only for attached walls and stairs.
+ */
 function productsByStorey(inventory: StoreyInventory): Map<number, number[]> {
   const result = new Map<number, number[]>();
-  for (const storey of inventory.storeys) result.set(storey.expressId, [...storeyContents(inventory, storey.expressId)]);
+  for (const storey of inventory.storeys) result.set(storey.expressId, [...storeyContents(inventory, storey.expressId, Infinity)]);
   return result;
 }
 
@@ -204,7 +208,8 @@ export function planAttachmentBindings(inventory: StoreyInventory, elevation: nu
   if (above && above.elevation < elevation) return [];
   const target = { dataStore: inventory.store, view: inventory.view, editor: new StoreEditor(inventory.store, inventory.view) };
   const changes: WallHeightChange[] = [];
-  for (const id of storeyContents(inventory, below.expressId)) {
+  // A read of the storey below; only its unbound attached walls are written.
+  for (const id of storeyContents(inventory, below.expressId, Infinity)) {
     if (!WALL_TYPES.has(inventory.reader.entity(id)?.type.toUpperCase() ?? '')) continue;
     const attachment = readTopAttachment(inventory, id);
     if (!attachment || attachment.targetStoreyId !== null) continue;

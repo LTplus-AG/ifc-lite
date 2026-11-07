@@ -21,7 +21,7 @@ import { act } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { mountViewportControls, pointer, tap, click } from '@/test/touch-controls-fixture.js';
+import { mountViewportControls, pointer, tap, click, pencilTap } from '@/test/touch-controls-fixture.js';
 import { mousePointer } from '@/test/mouse-controls-fixture';
 import { captureViewportFrame, noteLiveFrameSubmitted, registerViewportCapture, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
@@ -204,7 +204,7 @@ describe('a click or tap just after a capture is refused, and the next one picks
     const menu = () => new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 });
     await h.send(menu());
     assert.equal(h.count.picks, 0, 'a context-menu pick read the capture\'s clip');
-    assert.deepEqual(h.menus, [], 'a context menu opened for an entity on the capture\'s frame');
+    assert.equal(h.menus.length, 0, 'a context menu opened for an entity on the capture\'s frame');
     h.liveFrame();
     await h.send(menu());
     assert.deepEqual(h.menus.map(m => m.id), [42], 'the right-click after the live frame opened no menu');
@@ -225,5 +225,37 @@ describe('a click or tap just after a capture is refused, and the next one picks
     h.liveFrame();
     await h.send(...rectangle());
     assert.deepEqual([...s().selectedEntityIds].sort(), [41, 42], 'the rectangle after the live frame selected nothing');
+  });
+
+  it('a Polyline double-click whose clicks were refused finishes nothing, then the next one finishes with its point', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', polylineMeasurements: [] });
+    const h = rig('measure');
+    await h.mouseClick(100, 300);
+    await h.mouseClick(200, 300);
+    assert.equal(s().activePolyline?.points.length, 2, 'fixture: two points must be placed');
+    const doubleClick = async (x: number) => {
+      await h.mouseClick(x, 300);
+      await h.mouseClick(x, 300);
+      await h.send(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: x, clientY: 300 }));
+    };
+    await h.capture();
+    await doubleClick(400);
+    assert.equal(s().polylineMeasurements.length, 0, 'a refused double-click finished the polyline without its last point');
+    assert.equal(s().activePolyline?.points.length, 2, 'a refused double-click changed the polyline');
+    h.liveFrame();
+    await doubleClick(400);
+    assert.equal(s().polylineMeasurements.length, 1, 'the double-click after the live frame did not finish');
+    assert.equal(s().polylineMeasurements[0].points.length, 3, 'the finished polyline lost its last point');
+  });
+
+  it('an Apple Pencil tap in Select is refused, then the next one selects once', async () => {
+    const h = rig('select', 42);
+    await h.capture();
+    await pencilTap(h.canvas, 200, 300);
+    assert.equal(h.count.picks, 0, 'a pen tap picked through the capture\'s clip');
+    assert.equal(h.selectionCount(), 0, 'a refused pen tap selected');
+    h.liveFrame();
+    await pencilTap(h.canvas, 200, 300);
+    assert.equal(h.selectionCount(), 1, 'the pen tap after the live frame did not select once');
   });
 });

@@ -9,12 +9,15 @@
  * dashed extension / axis / parallel line running to the point, the lock
  * (ortho line, typed-length circle) — plus a dotted drop line when the
  * target sits above or below the workplane (a roof corner snapped in plan).
+ * A point aimed through to the workplane carries its own glyph and a tag, so
+ * it isn't mistaken for the surface in front of it (#9201).
  *
  * Standalone: it reads nothing but its props, so any command HUD can mount
  * it; the 2D plan paints the same shapes (`SnapHudShapes`). Overlay tokens only.
  */
 
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { SnapGlyphShape, useProjectorTick } from '../../../viewport-ui/scene';
@@ -29,6 +32,7 @@ const CIRCLE_STEPS = 72;
 const GLYPH_GAP_PX = 8;
 /** Targets closer to the plane than this get no drop line. */
 const DROP_MIN_M = 0.01;
+const TAG_OFFSET_PX = 12;
 
 const CLASS: Record<'edge' | 'guide' | 'lock', string> = {
   edge: 'stroke-overlay-accent-soft',
@@ -67,6 +71,7 @@ export function SnapHud({ snap, plane }: SnapHudProps) {
  * so both views show the same snap the same way.
  */
 export function SnapHudShapes({ snap, screen }: { snap: SnapResult; screen: (p: Vec2, z?: number) => Screen | null }) {
+  const { t } = useTranslation();
   const glyph = glyphFor(snap);
   const at = glyph ? screen(snap.local) : null;
   const winner = snap.winner;
@@ -87,6 +92,16 @@ export function SnapHudShapes({ snap, screen }: { snap: SnapResult; screen: (p: 
       {glyph && at && (
         <g transform={`translate(${at.x} ${at.y})`} data-scene-primitive="snap-glyph" data-snap-kind={glyph}>
           <SnapGlyphShape kind={glyph} />
+          {glyph === 'workplane' && (
+            <text
+              x={TAG_OFFSET_PX} y={-TAG_OFFSET_PX}
+              className="fill-overlay-accent stroke-overlay-halo text-2xs font-medium"
+              strokeWidth={3} style={{ paintOrder: 'stroke' }}
+              data-snap-tag=""
+            >
+              {t('modelingCommand.aim.tag')}
+            </text>
+          )}
         </g>
       )}
     </>

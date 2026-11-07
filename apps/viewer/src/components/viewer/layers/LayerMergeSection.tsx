@@ -118,16 +118,15 @@ function ConflictRow({
         <span className="truncate text-2xs text-muted-foreground">{conflict.componentKey ?? conflict.kind}</span>
         <span className="ml-auto inline-flex overflow-hidden rounded border">
           {options.map((option) => (
-            <button
+            <Button
               key={option}
-              type="button"
+              type="button" variant="toggle" size="segment"
+              aria-pressed={choice === option}
+              className="rounded-none px-1.5 py-px"
               onClick={() => onChoose(option)}
-              className={`px-1.5 py-px text-2xs font-medium transition-colors ${
-                choice === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/60'
-              }`}
             >
               {t(OPTION_LABEL_KEYS[option])}
-            </button>
+            </Button>
           ))}
         </span>
       </div>

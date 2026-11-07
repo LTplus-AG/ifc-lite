@@ -168,6 +168,15 @@ export function commandPointerDown(snap: SnapResult): void {
   applyStep(command.pointerDown(moved, snap, ctx));
 }
 
+/**
+ * A move whose ray meets nothing to land on (the sky past the horizon with
+ * Alt held): the last snap is no longer where the pointer is, so the HUD
+ * stops marking it (#9201). The gesture keeps its last point.
+ */
+export function commandPointerMissed(): void {
+  if (state.command && state.snap) publish({ snap: null });
+}
+
 /** A button release, for a command that follows one (a drag); refreshed like a down. */
 export function commandPointerUp(snap: SnapResult): void {
   const { command, ctx } = state;

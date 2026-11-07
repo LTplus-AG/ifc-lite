@@ -15,13 +15,14 @@
 import type { ReactNode } from 'react';
 import { Contrast, ExternalLink, Globe2 } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 
 // `min-h-6`: a single-line link is only 16 px tall, under the 24 px target
 // minimum (#5826). The 24 px style IconButton already sets the row's height,
 // so the taller links do not grow the row.
-const LINK = 'flex min-h-6 items-center gap-1 whitespace-nowrap text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors';
+const LINK = `flex min-h-6 items-center gap-1 whitespace-nowrap text-xs ${TEXT_LINK_CLASS}`;
 
 function Tipped({ tip, children }: { tip: string; children: ReactNode }) {
   return (

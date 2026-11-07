@@ -28,7 +28,7 @@ export function StaleDeploymentNotice(): ReactNode {
   return (
     <div
       role="alert"
-      className="fixed left-1/2 top-4 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-800 shadow-lg dark:border-zinc-700 dark:text-zinc-200"
+      className="fixed left-1/2 top-4 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
     >
       <span>{t('viewerShell.staleDeployment.notice')}</span>
       <button

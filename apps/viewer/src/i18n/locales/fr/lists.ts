@@ -218,5 +218,5 @@ export const listsFr = {
   'lists.builder.malformedCondition': 'Condition enregistrée mal formée',
   'lists.builder.removeUnreadable': 'Supprimer le filtre enregistré',
   "lists.library.emptyTitle": "Aucune liste enregistrée pour le moment",
-  "lists.library.emptyDescription": "Partez d’un modèle ou créez votre propre liste.",
+  "lists.library.emptyDescription": "Partez d’un modèle de liste ou créez votre propre liste.",
 } satisfies Catalogue;

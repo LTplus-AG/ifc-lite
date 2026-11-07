@@ -270,6 +270,16 @@ describe('storey deletion', () => {
     expect(s.view.isDeleted(42)).toBe(false);
   });
 
+  it('a reviewed move is stale once the destination\'s placement changed', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const mode = { kind: 'move', targetStoreyId: 40 } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, -500]]).expressId;
+    const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+    s.editor.setPositionalAttribute(41, 1, `#${axis}`);
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+  });
+
   it('a deleted product is no longer a storey\'s content (#9013 review)', async () => {
     const s = session(await parse(THIRD_PARTY));
     s.editor.removeEntity(60);

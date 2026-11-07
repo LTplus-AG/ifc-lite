@@ -30,7 +30,13 @@ export interface PlacementLeaf {
 function readableDirection(reader: GeometryEntityReader, value: unknown): boolean {
   if (value === null || value === undefined) return true;
   const id = refId(value);
-  return id !== null && reader.entity(id)?.type.toUpperCase() === 'IFCDIRECTION';
+  const direction = id === null ? null : reader.entity(id);
+  if (direction?.type.toUpperCase() !== 'IFCDIRECTION') return false;
+  // A direction needs finite ratios of non-zero length: (0,0,0) defines no axis.
+  const ratios = direction.attributes[0];
+  if (!Array.isArray(ratios)) return false;
+  const values = ratios.map((v) => (typeof v === 'number' ? v : Number.NaN));
+  return values.every(Number.isFinite) && Math.hypot(...values) > 1e-12;
 }
 
 /** An IfcLocalPlacement whose RelativePlacement is a readable IfcAxis2Placement3D, or null. */

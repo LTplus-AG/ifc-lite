@@ -19,7 +19,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { refId } from '../host-geometry-frame.js';
 import { planStoreyReassignment } from '../storey-reassignment-plan.js';
 import { reassignElementsToStoreyInStore } from '../storey-reassignment.js';
-import { boundedStoreyContents, countedElements, readStoreyInventory, ref, storeyTooLarge, type StoreyInventory } from './storey-model.js';
+import { countedElements, crossStoreyRefusal, readStoreyInventory, ref, storeyTooLarge, walkStoreyContents, type StoreyInventory } from './storey-model.js';
+import { productsOnGrid } from './storey-grid.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { StoreyEditRefusedError, type StoreyRefusal } from './storey-validation.js';
 
@@ -59,8 +60,9 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
   if (!storey) {
     return { ...base, contents: [], roots: [], elementCount: 0, fingerprint: '', refusals: [{ code: 'notFound', message: `#${storeyId} is not a live IfcBuildingStorey in this model` }] };
   }
-  const contents = boundedStoreyContents(inventory, storeyId);
-  if (!contents) return { ...base, contents: [], roots: [], elementCount: 0, fingerprint: '', refusals: [storeyTooLarge(storey)] };
+  const walked = walkStoreyContents(inventory, storeyId);
+  const contents = walked?.contents;
+  if (!walked || !contents) return { ...base, contents: [], roots: [], elementCount: 0, fingerprint: '', refusals: [storeyTooLarge(storey)] };
   const roots = directChildren(inventory, storeyId);
   const elementCount = countedElements(inventory, contents);
   const refusals: StoreyRefusal[] = [];
@@ -74,6 +76,11 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
   }
   if (mode.kind === 'empty' && contents.size > 0) {
     refusals.push({ code: 'notEmpty', elementIds: [...contents], message: `${storey.Name} holds ${elementCount} element(s): move them to another storey or delete them with it`, params: { storey: storey.Name, count: elementCount } });
+  }
+  // Elements of other storeys hosted here (a window filling an opening in a wall of this storey) would lose their host.
+  if (mode.kind !== 'empty') {
+    const split = crossStoreyRefusal(inventory, storey, walked.foreign);
+    if (split) refusals.push(split);
   }
   if (mode.kind === 'move') {
     const nested = [...new Set((inventory.outgoing.get(storeyId) ?? []).filter((rel) => rel.type === 'IFCRELNESTS').flatMap((rel) => rel.children))];
@@ -98,14 +105,24 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
       }
     }
   }
-  // The reverse lookup is built only if a content product hangs from a grid placement.
+  // The reverse lookup is built only when a grid or a grid placement needs it.
   let referencers: ((id: number) => readonly number[]) | null = null;
   const lazyReferencers = (id: number) => (referencers ??= effectiveReferencers(inventory.store, inventory.view))(id);
-  // A move also pins its destination and the relationships it re-points.
-  const others = mode.kind === 'move'
-    ? [mode.targetStoreyId, ...(inventory.outgoing.get(storeyId) ?? []).map((rel) => rel.id)]
-    : [];
-  const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, [storeyId, ...contents], [], others);
+  if (mode.kind === 'deleteContents') {
+    // A grid deleted with the storey must not leave another storey's products bound to its axes.
+    const bound = [...contents].filter((id) => inventory.reader.entity(id)?.type.toUpperCase() === 'IFCGRID')
+      .flatMap((grid) => productsOnGrid(inventory.reader, lazyReferencers, grid)).filter((id) => !contents.has(id));
+    if (bound.length) {
+      refusals.push({
+        code: 'dependent', elementIds: [...new Set(bound)],
+        message: `${bound.length} element(s) of other storeys are placed on a grid ${storey.Name} holds; move them off the grid or move the grid first`,
+      });
+    }
+  }
+  // A move also pins its destination (with its placement chain) and the relationships it re-points.
+  const pinned = mode.kind === 'move' ? [storeyId, ...contents, mode.targetStoreyId] : [storeyId, ...contents];
+  const others = mode.kind === 'move' ? (inventory.outgoing.get(storeyId) ?? []).map((rel) => rel.id) : [];
+  const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, pinned, [], others);
   return { ...base, contents: [...contents], roots, elementCount, fingerprint, refusals };
 }
 

@@ -301,6 +301,12 @@ END-ISO`);
     expect(s.snapshot()).toEqual(before);
   });
 
+  it('deleting a storey with its grid is refused while another storey\'s column stands on that grid', async () => {
+    const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
+    const deletion = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, { kind: 'deleteContents' });
+    expect(deletion.refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [112]]]);
+  });
+
   it('a column of another storey bound to a moved grid is found and refused, not carried along', async () => {
     const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
     const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
@@ -311,7 +317,53 @@ END-ISO`);
   });
 });
 
+/** A Level 2 wall #200 whose opening #202 is filled by window #204, which Level 3 contains. */
+const CROSS_STOREY_FILLING = THIRD_PARTY.replace('ENDSEC;\nEND-ISO', `#200=IFCWALL('0Xs1WaLLAAAAAAAAAAAAAA',$,'Wall',$,$,#201,$,$,$);
+#201=IFCLOCALPLACEMENT(#44,#5);
+#202=IFCOPENINGELEMENT('0Xs1OpENAAAAAAAAAAAAAA',$,'Opening',$,$,#203,$,$,$);
+#203=IFCLOCALPLACEMENT(#201,#5);
+#204=IFCWINDOW('0Xs1WiNDAAAAAAAAAAAAAA',$,'Window',$,$,#205,$,$,$,$,$,$,$);
+#205=IFCLOCALPLACEMENT(#203,#5);
+#206=IFCRELVOIDSELEMENT('0Xs1VoIDAAAAAAAAAAAAAA',$,$,$,#200,#202);
+#207=IFCRELFILLSELEMENT('0Xs1FiLLAAAAAAAAAAAAAA',$,$,$,#202,#204);
+#208=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Xs1CoN2AAAAAAAAAAAAAA',$,$,$,(#200),#42);
+#209=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Xs1CoN3AAAAAAAAAAAAAA',$,$,$,(#204),#46);
+ENDSEC;
+END-ISO`);
+
+describe('elements another storey contains stay with their host (#9013 review)', () => {
+  it('a window contained in Level 3 filling a Level 2 wall is Level 3\'s, and a Level 2 move that would split them is refused', async () => {
+    const s = session(await parse(CROSS_STOREY_FILLING));
+    const inventory = api('readStoreyInventory')(s.store, s.view);
+    expect(api('summarizeStoreys')(inventory).map((row) => [row.Name, row.elementCount])).toEqual([['Level 3', 2], ['Level 2', 3], ['Level 1', 0]]);
+    const moved = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+    expect(moved.refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [204]]]);
+    // Raising Level 1's floor-to-floor moves Level 2 and Level 3 together: nothing comes apart.
+    expect(plan(s, { kind: 'floorHeight', storeyId: 40, Height: 3.5 }).refusals).toEqual([]);
+    const deletion = api('planStoreyDelete')(inventory, 42, { kind: 'deleteContents' });
+    expect(deletion.contents).not.toContain(204);
+    expect(deletion.refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [204]]]);
+  });
+});
+
+describe('a reviewed level edit pins the gaps it changes (#9013 review)', () => {
+  it('a neighbour moved after review makes the plan stale', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const edit = { kind: 'elevation', storeyId: 42, Elevation: 3.5 } as const;
+    const reviewed = plan(s, edit);
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'elevation', storeyId: 40, Elevation: -0.5 });
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+  });
+});
+
 describe('a dangling axis direction makes a placement unreadable (#9013 review)', () => {
+  it('a zero-length Axis is as unreadable as a dangling one', async () => {
+    const text = THIRD_PARTY.replace('#45=IFCAXIS2PLACEMENT3D(#43,$,$);', '#45=IFCAXIS2PLACEMENT3D(#43,#300,$);\n#300=IFCDIRECTION((0.,0.,0.));')
+      .replace(/#8[0-3]=[^\n]*\n/g, '').replace(/#91=[^\n]*\n/, '');
+    const s = session(await parse(text));
+    expect(plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 }).refusals.map((r) => r.code)).toContain('unreadablePlacement');
+  });
+
   it('a re-level of a storey whose Axis does not resolve is refused, not copied forward', async () => {
     // Without the beam that hangs from Level 2 for Level 3, nothing else would read the broken frame.
     const text = THIRD_PARTY.replace('#45=IFCAXIS2PLACEMENT3D(#43,$,$);', '#45=IFCAXIS2PLACEMENT3D(#43,#999,$);')

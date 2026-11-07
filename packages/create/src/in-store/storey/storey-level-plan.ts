@@ -31,7 +31,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refId, type Vec3 } from '../host-geometry-frame.js';
 import {
-  boundedStoreyContents, countedElements, siblingStoreys, storeyNeighbour, storeyRecord, storeyTooLarge,
+  countedElements, crossStoreyRefusal, siblingStoreys, walkStoreyContents, storeyNeighbour, storeyRecord, storeyTooLarge,
   type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
@@ -172,8 +172,13 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   for (const [storeyId, delta] of deltas) {
     const native = delta / scale;
     intent.set(storeyId, native);
-    const held = boundedStoreyContents(inventory, storeyId);
-    if (!held) return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
+    const walked = walkStoreyContents(inventory, storeyId);
+    if (!walked) return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
+    const held = walked.contents;
+    // A product another storey contains, hosted here, comes apart unless its storey moves by as much.
+    const apart = new Map([...walked.foreign].filter(([, own]) => Math.abs((deltas.get(own) ?? 0) - delta) > EPS));
+    const split = crossStoreyRefusal(inventory, storeyRecord(inventory, storeyId), apart);
+    if (split) refusals.push(split);
     contents.set(storeyId, held);
     for (const id of held) if (!intent.has(id)) intent.set(id, native);
   }

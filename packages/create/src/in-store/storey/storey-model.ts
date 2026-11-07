@@ -192,20 +192,49 @@ export function storeyContents(inventory: StoreyInventory, storeyId: number, lim
 
 /** `storeyContents`, or null past `limit` (the walk stops there): planners turn that into a refusal. */
 export function boundedStoreyContents(inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT): Set<number> | null {
+  return walkStoreyContents(inventory, storeyId, limit)?.contents ?? null;
+}
+
+/**
+ * The storey's contents, and the products another storey contains that its
+ * elements reach through voids, fillings or nesting (a window contained in
+ * Level 3 filling an opening in a Level 2 wall), each with its own storey.
+ * Those are not this storey's contents; an edit that would separate them
+ * from their host is refused by the planners.
+ */
+export function walkStoreyContents(
+  inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT,
+): { contents: Set<number>; foreign: Map<number, number> } | null {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
+  const containedIn = (product: number) => (inventory.incoming.get(product) ?? [])
+    .find((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' && storeyIds.has(rel.parent))?.parent;
   const contents = new Set<number>();
+  const foreign = new Map<number, number>();
   const queue = [storeyId];
   for (let index = 0; index < queue.length; index++) {
     for (const rel of inventory.outgoing.get(queue[index]) ?? []) {
       for (const child of rel.children) {
-        if (child === storeyId || contents.has(child) || storeyIds.has(child)) continue;
+        if (child === storeyId || contents.has(child) || foreign.has(child) || storeyIds.has(child)) continue;
+        const own = rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' ? undefined : containedIn(child);
+        if (own !== undefined && own !== storeyId) { foreign.set(child, own); continue; }
         if (contents.size >= limit) return null;
         contents.add(child);
         queue.push(child);
       }
     }
   }
-  return contents;
+  return { contents, foreign };
+}
+
+/** The refusal for products of other storeys that `storey`'s elements host, when they would come apart. */
+export function crossStoreyRefusal(inventory: StoreyInventory, storey: StoreyRecord, foreign: ReadonlyMap<number, number>): StoreyRefusal | null {
+  if (foreign.size === 0) return null;
+  const names = [...new Set([...foreign.values()].map((id) => inventory.storeys.find((s) => s.expressId === id)?.Name ?? `#${id}`))];
+  return {
+    code: 'dependent', elementIds: [...foreign.keys()],
+    message: `${foreign.size} element(s) contained in ${names.join(', ')} fill or hang from elements of ${storey.Name}; move them with it or re-host them first`,
+    params: { storey: storey.Name },
+  };
 }
 
 /** The refusal for a storey whose contents pass the planning limit. */

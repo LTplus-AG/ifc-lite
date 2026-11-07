@@ -71,3 +71,25 @@ export function gridPlacementsOn(reader: Reader, referencers: Referencers, gridI
   }
   return [...placements];
 }
+
+/** Every product placed on `gridId`: on one of its grid placements, or below one through local placements. */
+export function productsOnGrid(reader: Reader, referencers: Referencers, gridId: number): number[] {
+  const products = new Set<number>();
+  const visited = new Set<number>();
+  const queue = gridPlacementsOn(reader, referencers, gridId);
+  while (queue.length) {
+    const id = queue.pop()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    for (const parent of referencers(id)) {
+      const entity = reader.entity(parent);
+      if (!entity) continue;
+      if (entity.type.toUpperCase() === 'IFCLOCALPLACEMENT') {
+        if (refId(entity.attributes[0]) === id) queue.push(parent);
+      } else if (entity.names[5] === 'ObjectPlacement' && refId(entity.attributes[5]) === id) {
+        products.add(parent);
+      }
+    }
+  }
+  return [...products];
+}

@@ -26,6 +26,8 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
     placements: plan.placements.map(({ leaf, offset }) => [
       leaf.placementId, leaf.parentId, leaf.axisPlacementId, leaf.location.map(micro), offset.map(micro),
     ]),
+    // The floor-to-floor gaps as reviewed: a neighbour moved since changes them.
+    spacing: plan.spacing.map(({ lowerId, upperId, from, to }) => [lowerId, upperId, micro(from), micro(to)]),
     fingerprint: plan.fingerprint,
   });
 }

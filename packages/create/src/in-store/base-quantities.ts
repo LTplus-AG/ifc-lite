@@ -18,7 +18,9 @@
  * (`step-derived-quantities.ts`), so the tab and the file cannot disagree.
  *
  * Only overlay-created elements qualify, so a loaded file reads as it always did.
- * A copy of a loaded element reads its source's sets, as it always did.
+ * A copy of a loaded element reads its source's sets, as it always did. A loaded
+ * element's set is refreshed from the same readers only on request
+ * (`base-quantities-refresh.ts`, behind the viewer's opt-in setting).
  */
 
 import { QuantityType, type QuantitySet } from '@ifc-lite/data';
@@ -39,12 +41,10 @@ import { resolveLinearElementChain } from './edit/linear-element-edit.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { slabExtrusionFrame } from './edit/slab-edit-frame.js';
 import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
+import { fileOpeningsOf } from './base-quantities-openings.js';
+import { BASE_QUANTITY_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
 import { wallBodyOutline } from './wall-join.js';
 import { readWallJoinTarget } from './wall-join-read.js';
-
-const WALL_TYPES = new Set(['IFCWALL', 'IFCWALLSTANDARDCASE']);
-const SLAB_TYPES = new Set(['IFCSLAB', 'IFCROOF']);
-const LINEAR_TYPES = new Set(['IFCCOLUMN', 'IFCBEAM']);
 
 /** A quantity in SI, on its way to the file's own units. */
 type Row = readonly [name: string, type: QuantityType.Length | QuantityType.Area | QuantityType.Volume, value: number];
@@ -54,7 +54,8 @@ interface Reading {
   readonly view: MutablePropertyView;
   readonly editor: StoreEditor;
   readonly scale: number;
-  readonly openings: ReadonlyMap<number, readonly number[]>;
+  /** The openings voiding a host; null when they cannot be known, which leaves its net values out. */
+  readonly openingsOf: (hostId: number) => readonly number[] | null;
 }
 
 interface Revision {
@@ -62,6 +63,8 @@ interface Revision {
   readonly revision: number;
   readonly editor: StoreEditor;
   readonly sets: Map<number, QuantitySet[]>;
+  /** `deriveBaseQuantitySet`'s answers, which also count the file's openings. */
+  readonly withFileOpenings: Map<number, QuantitySet | null>;
   openings: ReadonlyMap<number, readonly number[]> | null;
 }
 
@@ -75,7 +78,7 @@ function revisionOf(dataStore: IfcDataStore, view: MutablePropertyView): Revisio
   if (sameStore && known.revision === revision) return known;
   // The editor scans the source once for its id floor, so it outlives a revision of its store.
   const editor = sameStore ? known.editor : new StoreEditor(dataStore, view);
-  const next: Revision = { dataStore, revision, editor, sets: new Map(), openings: null };
+  const next: Revision = { dataStore, revision, editor, sets: new Map(), withFileOpenings: new Map(), openings: null };
   revisions.set(view, next);
   return next;
 }
@@ -146,7 +149,9 @@ const boxVolume = (box: HostBounds): number => (box.max[0] - box.min[0]) * (box.
  */
 function openingBoxes(reading: Reading, hostId: number): HostBounds[] | null {
   const boxes: HostBounds[] = [];
-  for (const openingId of reading.openings.get(hostId) ?? []) {
+  const openingIds = reading.openingsOf(hostId);
+  if (openingIds === null) return null;
+  for (const openingId of openingIds) {
     const extent = placedBodyExtent(reading.dataStore, openingId, reading.view);
     const own = extent && localBodyExtent(reading.dataStore, openingId, reading.view);
     if (!extent || !own) {
@@ -313,36 +318,69 @@ function linearSet(reading: Reading, id: number, type: string): QuantitySet | nu
   return toQuantitySet(dataStore, scale, type === 'IFCCOLUMN' ? 'Qto_ColumnBaseQuantities' : 'Qto_BeamBaseQuantities', rows);
 }
 
+/** One element's set off its live geometry, or null when its body is not one the readers understand. */
+function deriveSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number, type: string,
+  revision: Revision, openingsOf: (reading: { editor: StoreEditor }, hostId: number) => readonly number[] | null): { set: QuantitySet; reading: Reading } | null {
+  try {
+    const { editor } = revision;
+    const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openingsOf: (hostId) => openingsOf({ editor }, hostId) };
+    const set = WALL_TYPES.has(type) ? wallSet(reading, expressId)
+      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') : linearSet(reading, expressId, type);
+    return set ? { set, reading } : null;
+  } catch (error) {
+    console.warn(`[quantities] #${expressId} has no base quantities: its geometry could not be read`, error);
+    return null;
+  }
+}
+
+/** Host id to the openings the overlay voids it with. */
+function sessionOpenings(dataStore: IfcDataStore, view: MutablePropertyView, revision: Revision): ReadonlyMap<number, readonly number[]> {
+  return revision.openings ??= overlayOpenings(dataStore, view, revision.editor);
+}
+
 /**
  * The base quantity sets `expressId` has from its geometry: a wall, slab, roof,
  * column or beam created in this overlay with a body these readers understand.
  * Empty for anything else, including every element of a loaded file.
  */
 export function deriveAuthoredBaseQuantities(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number): QuantitySet[] {
-  const created = view.getNewEntity(expressId);
-  if (!created || !view.getNewEntity(view.resolveBaseEntityId(expressId))) return [];
+  if (!view.getNewEntity(expressId) || !view.getNewEntity(view.resolveBaseEntityId(expressId))) return [];
   // A retype's class is the one the export writes.
-  const type = (view.getEntityTypeMutation(expressId)?.newType ?? created.type).toUpperCase();
-  const isWall = WALL_TYPES.has(type);
-  const isSlabLike = SLAB_TYPES.has(type);
-  if (!isWall && !isSlabLike && !LINEAR_TYPES.has(type)) return [];
+  const type = effectiveElementType(dataStore, view, expressId);
+  if (!BASE_QUANTITY_TYPES.includes(type)) return [];
 
   const revision = revisionOf(dataStore, view);
   const known = revision.sets.get(expressId);
   if (known) return known;
+  const openings = sessionOpenings(dataStore, view, revision);
+  const derived = deriveSet(dataStore, view, expressId, type, revision, (_reading, hostId) => openings.get(hostId) ?? []);
   let sets: QuantitySet[] = [];
-  try {
-    const { editor } = revision;
-    revision.openings ??= overlayOpenings(dataStore, view, editor);
-    const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openings: revision.openings };
-    const set = isWall ? wallSet(reading, expressId) : isSlabLike ? slabLikeSet(reading, expressId, type === 'IFCROOF') : linearSet(reading, expressId, type);
-    if (set) {
-      const globalId = setGlobalId(reading, expressId, set.name);
-      sets = [globalId ? { ...set, globalId } : set];
-    }
-  } catch (error) {
-    console.warn(`[quantities] #${expressId} has no base quantities: its geometry could not be read`, error);
+  if (derived) {
+    const globalId = setGlobalId(derived.reading, expressId, derived.set.name);
+    sets = [globalId ? { ...derived.set, globalId } : derived.set];
   }
   revision.sets.set(expressId, sets);
   return sets;
+}
+
+/**
+ * The base quantity set `expressId`'s geometry gives as `view` sees it, for any
+ * element of a supported class, loaded or authored. Openings count whether the
+ * file or the session voids the host with them. No GlobalId: the caller keeps
+ * whichever set it replaces. Null for another class or an unreadable body.
+ */
+export function deriveBaseQuantitySet(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number): QuantitySet | null {
+  const type = effectiveElementType(dataStore, view, expressId);
+  if (!BASE_QUANTITY_TYPES.includes(type)) return null;
+  const revision = revisionOf(dataStore, view);
+  const known = revision.withFileOpenings.get(expressId);
+  if (known !== undefined) return known;
+  const openings = sessionOpenings(dataStore, view, revision);
+  const derived = deriveSet(dataStore, view, expressId, type, revision, ({ editor }, hostId) => {
+    const file = view.getNewEntity(hostId) ? [] : fileOpeningsOf(dataStore, view, editor, hostId);
+    return file === null ? null : [...file, ...(openings.get(hostId) ?? [])];
+  });
+  const set = derived?.set ?? null;
+  revision.withFileOpenings.set(expressId, set);
+  return set;
 }

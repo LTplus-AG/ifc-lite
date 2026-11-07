@@ -17,6 +17,10 @@ import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
 import { quantityDisplayValue } from './propertyDisplayValue';
 import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorRow, InspectorSectionTrigger } from './inspector-ui';
+import { QuantitySetSourceBadge, type QuantityEntityRef } from './edited-quantities';
+
+/** The Quantities tab's switch sits above these cards. */
+export { EditedQuantitiesSwitch } from './edited-quantities';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
@@ -36,9 +40,11 @@ export interface QuantitySetCardProps {
    *  `PropertySetCardProps.unitDisplayOverrides`. */
   unitDisplayOverrides?: Record<string, string>;
   searchQuery?: string;
+  /** The element the set is on, when it is the selection's own: its card then says when the set was updated from edited geometry. */
+  entity?: QuantityEntityRef | null;
 }
 
-export function QuantitySetCard({ qset, projectUnits, projectUnitsAvailable = true, unitDisplayOverrides, searchQuery }: QuantitySetCardProps) {
+export function QuantitySetCard({ qset, projectUnits, projectUnitsAvailable = true, unitDisplayOverrides, searchQuery, entity }: QuantitySetCardProps) {
   const { t, locale } = useTranslation();
   const [open, setOpen] = usePersistentDisclosure(`qset:${qset.name}`);
   return (
@@ -46,6 +52,7 @@ export function QuantitySetCard({ qset, projectUnits, projectUnitsAvailable = tr
       <InspectorSectionTrigger
         title={<PropertySearchHighlight text={setDisplayName(qset.name, t('properties.quantitySet.unnamed'))} query={searchQuery} />}
         count={formatLocaleNumber(locale, qset.quantities.length)}
+        trailing={entity ? <QuantitySetSourceBadge entity={entity} qsetName={qset.name} /> : undefined}
       />
       <CollapsibleContent>
         <div className={INSPECTOR_ROWS}>

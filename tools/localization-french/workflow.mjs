@@ -173,10 +173,34 @@ try {
       await page.setViewportSize({width:390,height:844});
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await page.waitForTimeout(500);
+      // #8891: a retained model/store and a 390px document can still show a blank canvas.
+      // Inspect the composited canvas pixels where this fixture's selected blue wall
+      // or orange roof must remain visible, away from toolbar and privacy overlays.
+      const canvasPng=await page.locator('canvas').first().screenshot();
+      const modelPixels=await page.evaluate(async encoded=>{
+        const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+        const bitmap=await createImageBitmap(new Blob([bytes],{type:'image/png'}));
+        try {
+          const canvas=new OffscreenCanvas(bitmap.width,bitmap.height);
+          const context=canvas.getContext('2d');
+          context.drawImage(bitmap,0,0);
+          const {data}=context.getImageData(0,0,bitmap.width,bitmap.height);
+          let painted=0;
+          for(let y=Math.floor(bitmap.height*0.4);y<bitmap.height*0.7;y++) {
+            for(let x=Math.floor(bitmap.width*0.2);x<bitmap.width*0.8;x++) {
+              const offset=(y*bitmap.width+x)*4;
+              const [r,g,b]=data.subarray(offset,offset+3);
+              if ((b>r+35 && b>g+10) || (r>g+25 && g>b+20)) painted++;
+            }
+          }
+          return painted;
+        } finally {bitmap.close();}
+      },canvasPng.toString('base64'));
+      assert.ok(modelPixels>200,'the real house must paint blue wall or orange roof pixels after narrow resize');
       await save('narrow');
       fs.writeFileSync(path.join(out,'narrow-aria.txt'),await page.locator('body').ariaSnapshot());
       const widths=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
-      assert.ok(widths.document<=widths.viewport,'document must not overflow horizontally'); return widths;
+      assert.ok(widths.document<=widths.viewport,'document must not overflow horizontally'); return {...widths,modelPixels};
     });
     // Workflow steps below exercise the actual UI; store reads are assertions only.
     await check('locale-persistence',async()=>{

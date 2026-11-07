@@ -24,13 +24,14 @@ test('Italian startup synchronizes IDS descriptions and later English switching'
     await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('it');
     const service = () => createTranslationService(useViewerStore.getState().idsLocale);
     assert.equal(service().t('status.fail'), 'NON CONFORME');
-    assert.match(service().describeFacet({ type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } }, 'requirement'), /IFCWALL/);
+    assert.equal(service().describeFacet({ type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } }, 'requirement'), 'Deve essere di tipo "IFCWALL"');
     // Lazy registration must not reset an explicit IDS locale choice.
     useViewerStore.getState().setIdsLocale('de');
     registerEnglish({});
     assert.equal(service().locale, 'de');
     await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('en');
     assert.equal(service().t('status.fail'), 'FAIL');
+    assert.equal(service().describeFacet({ type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } }, 'requirement'), 'Must be of type "IFCWALL"');
   } finally { setLocale('en'); }
 });
 

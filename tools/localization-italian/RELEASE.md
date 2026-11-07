@@ -20,3 +20,7 @@ Integration adds current-main translations and shared test/verdict helpers.
 Final-head root checks and full viewer suite remain required. IFCX dependency
 build verification previously skipped four absent external fixtures; no IFCX,
 Rust or full-monorepo acceptance is claimed. Select Italiano or English in Settings → General → Language. Auto clears the saved choice; obsolete `?lang=` overrides are ignored. Merge after French; rollback via normal commit per i18n README.
+
+For a fresh accepted run, set `ITALIAN_WORKFLOW_ATTEMPT` to a new directory name.
+Reports go to `evidence/<attempt>/`; an existing attempt is refused to preserve
+its evidence. Without that variable, the harness generates a unique name.

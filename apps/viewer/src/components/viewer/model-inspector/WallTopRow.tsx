@@ -22,6 +22,7 @@ import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorRow } from './InspectorControls';
 import { runInspectorEdit, setWallDimensions } from './inspector-edits';
 import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
+import { MIN_ATTACHED_HEIGHT } from '@/lib/commands/modeling/wall-top';
 
 function readWallTop(modelId: string, wallId: number): { top: WallTop; target: string | null } {
   const s = useViewerStore.getState();
@@ -65,6 +66,8 @@ export function setWallTop(modelId: string, wallId: number, top: WallTop): boole
       if (typeof guid !== 'string' || !guid) throw new Error(`The storey above has no GlobalId`);
       attachTo = guid;
       const height = above.elevation - storeys[index].elevation - wall.start[2];
+      // As the Wall tool (`resolveWallTop`): a wall that would be a sliver stays fixed-height.
+      if (height < MIN_ATTACHED_HEIGHT) throw new Error(`Wall #${wallId} would reach the storey above at under ${MIN_ATTACHED_HEIGHT} m: it stays fixed-height`);
       if (Math.abs(height - wall.height) > 1e-6) {
         const outcome = commitElementSize(useViewerStore, modelId, wallId, { kind: 'wall', height });
         if (!outcome.ok) throw new Error(outcome.reason);

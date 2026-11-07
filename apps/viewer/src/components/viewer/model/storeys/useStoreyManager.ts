@@ -74,6 +74,14 @@ export function useStoreyLevelEditing(modelId: string | null) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewed = useRef<string | null>(null);
   const clearTimer = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
+  // Every way out of a preview: a buried one whose restore is refused stays applied
+  // as an ordinary edit (Undo takes it back), and the user is told so, whatever ended it.
+  const revertPreview = useCallback(() => {
+    const refused = revertStoreyPreview(useViewerStore);
+    if (refused && !refused.ok) {
+      toast.error(refused.refusals[0] ? refusalText(t, refused.refusals[0]) : t('storeyManager.refusal.other', { reason: refused.reason }));
+    }
+  }, [t]);
 
   const parse = useCallback((field: LevelField, text: string) => {
     const metres = parseStoreyLength(text, { signed: field === 'elevation' });
@@ -100,14 +108,14 @@ export function useStoreyLevelEditing(modelId: string | null) {
     clearTimer();
     const { metres, error } = parse(field, text);
     if (metres === null) {
-      revertStoreyPreview(useViewerStore);
+      revertPreview();
       previewed.current = null;
       setDraft({ storeyId, field, plan: null, previewing: false, error });
       return;
     }
     setDraft((current) => ({ storeyId, field, plan: current?.storeyId === storeyId ? current.plan : null, previewing: false, error: null }));
     timer.current = setTimeout(() => preview(storeyId, field, metres), PREVIEW_DELAY_MS);
-  }, [parse, preview]);
+  }, [parse, preview, revertPreview]);
 
   /** Enter or blur: keep the preview, or apply the edit now. False keeps the field open with why. */
   const onCommit = useCallback((storeyId: number, field: LevelField, text: string): boolean => {
@@ -121,7 +129,7 @@ export function useStoreyLevelEditing(modelId: string | null) {
       setDraft(null);
       return true;
     }
-    revertStoreyPreview(useViewerStore);
+    revertPreview();
     previewed.current = null;
     const outcome = commitStoreyOp(useViewerStore, modelId, { kind: 'level', edit });
     if (!outcome.ok) {
@@ -131,21 +139,17 @@ export function useStoreyLevelEditing(modelId: string | null) {
     }
     setDraft(null);
     return true;
-  }, [modelId, parse, t]);
+  }, [modelId, parse, revertPreview, t]);
 
   const onCancel = useCallback(() => {
     clearTimer();
-    const refused = revertStoreyPreview(useViewerStore);
+    revertPreview();
     previewed.current = null;
     setDraft(null);
-    // A buried preview that cannot be put back stays applied: say so rather than close quietly.
-    if (refused && !refused.ok) {
-      toast.error(refused.refusals[0] ? refusalText(t, refused.refusals[0]) : t('storeyManager.refusal.other', { reason: refused.reason }));
-    }
-  }, [t]);
+  }, [revertPreview]);
 
   // Leaving the manager (or the model) never leaves a provisional edit behind.
-  useEffect(() => () => { clearTimer(); revertStoreyPreview(useViewerStore); }, [modelId]);
+  useEffect(() => () => { clearTimer(); revertPreview(); }, [modelId, revertPreview]);
   // Nor a draft or refusal: express ids repeat across models, so another model's
   // storey would show it. (Its rows load first, so nothing renders it meanwhile.)
   useEffect(() => { previewed.current = null; setDraft(null); }, [modelId]);

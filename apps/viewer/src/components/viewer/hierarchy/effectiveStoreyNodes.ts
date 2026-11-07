@@ -44,8 +44,13 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
   const live = new Map(inventory.storeys.map((storey) => [storey.expressId, storey]));
   const placed = new Set<number>();
   // Direct containment, live: a storey added this session has no parsed entry.
-  const contained = (storeyId: number) => [...new Set((inventory.outgoing.get(storeyId) ?? [])
-    .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))];
+  // A partial/native source can list a storey's contents without the containment
+  // relationships behind them: there the parsed contents stand.
+  const liveContainment = inventory.relationships.some((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  const contained = (storeyId: number, parsed: number[] = []): number[] => (liveContainment
+    ? [...new Set((inventory.outgoing.get(storeyId) ?? [])
+      .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))]
+    : parsed);
 
   const rebuild = (node: SpatialNode): SpatialNode | null => {
     const storey = node.type === IfcTypeEnum.IfcBuildingStorey;
@@ -73,7 +78,7 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
     const record = live.get(node.expressId)!;
     const name = effectiveTreeEntityName(store, view, node.expressId, node.name);
     // Live direct containment: an element moved here (or away) this session is listed where it now is.
-    const elements = contained(node.expressId);
+    const elements = contained(node.expressId, node.elements);
     const sameElements = elements.length === node.elements.length && elements.every((id, i) => id === node.elements[i]);
     if (!changed && sameElements && name === node.name && record.elevation === node.elevation) return node;
     return { ...node, children, name, elevation: record.elevation, elements };

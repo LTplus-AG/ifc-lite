@@ -159,6 +159,22 @@ describe('storey manager (#9013)', () => {
     await waitFor(() => /L1 would pass Mid/.test(document.body.textContent ?? ''), 'Escape reports that L1 could not go back');
   });
 
+  it('typing an invalid length over a stuck buried preview still says it stays applied (#9037 review)', async () => {
+    const { StoreyManager } = await requiredModule(() => import('./StoreyManager'), 'the storey manager exists (#9013)');
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    const ui = render(<><StoreyManager onBack={() => {}} /><Toaster /></>);
+    await waitFor(() => rows(ui).length > 0, 'the rows load');
+    const elevation = field(rows(ui)[0], 'elevation');
+    edit(elevation, '3.4');
+    await advance(400);
+    // A name no other test uses: toasts are module-wide and merge identical messages.
+    act(() => { assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Gallery', Elevation: 3.2, referenceStoreyId: STOREY } }).ok); });
+    assert.equal(/L1 would pass Gallery/.test(document.body.textContent ?? ''), false);
+    edit(elevation, 'three');
+    await waitFor(() => /L1 would pass Gallery/.test(document.body.textContent ?? ''), 'the refused restore is reported');
+    assert.deepEqual(elevations(), [0, 3.2, 3.4], 'the previewed elevation stays applied');
+  });
+
   it('explains a refused value next to the field and keeps the model unchanged', async () => {
     const ui = await mount();
     const elevation = field(rows(ui)[0], 'elevation');

@@ -18,7 +18,7 @@ import { authoringDim } from '@/store/slices/authoringDefaultsSlice';
 import { modelStoreys, type WorkspaceStorey } from './workspace-storeys.js';
 
 /** Below this an attached wall would be a sliver: draw the default height instead. */
-const MIN_ATTACHED_HEIGHT = 0.1;
+export const MIN_ATTACHED_HEIGHT = 0.1;
 
 export interface WallTopResolution {
   /** Metres from the workplane up. */

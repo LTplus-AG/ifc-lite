@@ -20,6 +20,7 @@ import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
+import { resolveWallTop } from '@/lib/commands/modeling/wall-top';
 import '@/lib/commands/modeling/builtin.js';
 import { commandPointerDown, commandPointerMove, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
@@ -189,6 +190,30 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
     const project = m.effectiveSpatialProject(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID));
     const find = (node: NonNullable<typeof project>): typeof project => node.expressId === STOREY ? node : node.children.map(find).find(Boolean);
     assert.ok(find(project!)?.elements.includes(wall.expressId), 'the remaining storey lists the moved wall');
+  });
+
+  it('a source without containment relationships keeps its parsed storey contents through an edit (#9037 review)', async () => {
+    const m = await storey();
+    const s0 = useViewerStore.getState();
+    const target = modelEditTarget(s0, MODEL_ID)!;
+    const ds = s0.models.get(MODEL_ID)!.ifcDataStore!;
+    const parsedL0 = (function find(node): number[] | undefined {
+      if (node.expressId === STOREY) return node.elements;
+      for (const child of node.children) { const hit = find(child); if (hit) return hit; }
+      return undefined;
+    })(ds.spatialHierarchy!.project!);
+    assert.ok(parsedL0 && parsedL0.length > 0, 'the fixture lists contents under L0');
+    // A native/partial source: the listing is there, the relationships behind it are not.
+    for (const rel of readStoreyInventory(target.dataStore, target.view).relationships) {
+      if (rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') target.view.deleteEntity(rel.id);
+    }
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Ground' }).ok);
+    const s = useViewerStore.getState();
+    const project = m.effectiveSpatialProject(ds, s.mutationViews.get(MODEL_ID));
+    const find = (node: NonNullable<typeof project>): typeof project => node.expressId === STOREY ? node : node.children.map(find).find(Boolean);
+    const l0 = find(project!);
+    assert.equal(l0?.name, 'Ground');
+    assert.deepEqual(l0?.elements, parsedL0, 'a rename does not empty the parsed contents');
   });
 
   it('levels the parsed rows had that are not building storeys survive an edit', async () => {
@@ -529,6 +554,20 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     const { setWallTop } = await import('@/components/viewer/model-inspector/WallTopRow');
     assert.ok(setWallTop(MODEL_ID, fixed.expressId, 'storeyAbove'));
     assert.equal(Math.round(height(fixed.expressId)! * 1000), 3000, 'the inspector');
+  });
+
+  it('the inspector, like the Wall tool, keeps a wall fixed-height when the storey above is under 0.1 m away (#9037 review)', async () => {
+    await storey();
+    // A wall starting 2.95 m above L0, with L1 at 3 m: attaching would make it 0.05 m tall.
+    const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 7, 2.95], End: [4, 7, 2.95], Thickness: 0.2, Height: 0.5 });
+    assert.ok(!('error' in wall));
+    const { setWallTop } = await import('@/components/viewer/model-inspector/WallTopRow');
+    assert.equal(setWallTop(MODEL_ID, wall.expressId, 'storeyAbove'), false, 'refused, not attached as a sliver');
+    assert.equal(attachment(wall.expressId), null);
+    assert.equal(height(wall.expressId), 0.5);
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    const tool = resolveWallTop(useViewerStore.getState(), MODEL_ID, STOREY, 2.95);
+    assert.equal(tool.attachTo, null, 'the Wall tool falls back to fixed height for the same input');
   });
 
   it('typing the storey spacing itself still makes the wall fixed at that height', () => {

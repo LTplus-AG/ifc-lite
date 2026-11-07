@@ -416,10 +416,13 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const { models, x, a } = federation();
     const toX = await realign(models, 'X');
     assert.equal(a.federationAlignmentStatus, 'same-crs', 'fixture: A is re-baked into X');
-    assert.equal(a.alignmentReference, toX.anchorGeoref, 'A records the georef it was actually aligned to');
+    assert.deepEqual(a.alignmentReference, toX.anchorGeoref, 'A records the georef it was actually aligned to');
+    assert.notEqual(a.alignmentReference?.coordinateInfo, x.geometryResult!.coordinateInfo,
+      'a copy: an in-place edit of the anchor\'s frame cannot rewrite the record');
     assert.equal(x.alignmentReference, undefined);
     const toA = await realign(models, 'A');
-    assert.equal(x.alignmentReference, toA.anchorGeoref, 'X records A once re-baked into it');
+    assert.deepEqual(x.alignmentReference, toA.anchorGeoref, 'X records A once re-baked into it');
+    const recorded = x.alignmentReference;
     assert.equal(a.alignmentReference, undefined, 'the restored anchor is in its own frame again');
     // A pass back to X that is superseded once it has restored X as the anchor.
     const anchor = models.get('X')!;
@@ -429,7 +432,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
       anchorModel: anchor, anchorGeoref: resolveGeoref('X', anchor), resolveGeoref,
       updateModel: (modelId, fields) => { patch(modelId, fields); live = false; }, isCurrent: () => live });
     assert.equal(stale.stale, true);
-    assert.equal(x.alignmentReference, toA.anchorGeoref, 'the rollback restores the record with the mesh');
+    assert.equal(x.alignmentReference, recorded, 'the rollback restores the record with the mesh');
   });
 
   it('places a model the same way no matter which anchor came before', async () => {

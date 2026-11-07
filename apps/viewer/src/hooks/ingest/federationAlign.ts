@@ -41,6 +41,16 @@ export interface ModelSpatialPlacement {
   coordinateInfo?: CoordinateInfo;
 }
 
+/**
+ * The record a model keeps of the placement its geometry was re-baked into
+ * (`FederatedModel.alignmentReference`). A copy: the placement handed to an
+ * alignment shares the anchor's own frame objects, and a later in-place edit
+ * of those must not move every model's record with it (#9229).
+ */
+export function alignmentReferenceRecord(reference: ModelSpatialPlacement): ModelSpatialPlacement {
+  return structuredClone(reference);
+}
+
 export function extractModelSpatialPlacement(
   dataStore: IfcDataStore,
   coordinateInfo?: CoordinateInfo,

@@ -37,7 +37,7 @@
 import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied } from './ifcGeorefAssumptions.js';
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { alignGeometryToReference, alignmentReferenceRecord, type ModelSpatialPlacement } from './federationAlign.js';
 import {
   capturePreAlignment,
   restorePreAlignment,
@@ -360,7 +360,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         preAlignment: snapshot,
         federationAlignmentStatus: status,
         // What the selected centreline maps into until the next re-align (#9229).
-        alignmentReference: status === 'same-crs' || status === 'reprojected' ? anchorGeoref : undefined,
+        alignmentReference: status === 'same-crs' || status === 'reprojected' ? alignmentReferenceRecord(anchorGeoref) : undefined,
         ifcSharedVerticalDatumAssumed: ifcSharedVerticalDatumApplied(georef.spatialReference, anchorGeoref.spatialReference, status, assumeIfc),
       })) return stale();
       if (restoredFromSnapshot || status === 'same-crs' || status === 'reprojected') {

@@ -316,4 +316,3 @@ describe('requestRemesh (#6232)', () => {
     assert.ok(Math.abs(Math.abs(realigned - aligned) - 100) < 0.01, `the re-mesh follows the re-align 100 m (x ${aligned} -> ${realigned})`);
   });
 });
-

@@ -256,12 +256,35 @@ describe('federated LandXML spatial finalization (#5048)', () => {
       dataStore: {} as IfcDataStore, geometry: geometry(), modelId: 'ifc', fileName: 'source.ifc',
       spatialReference: spatialReference(eastings), isCurrent: () => true, setProgress: () => undefined,
     });
-    const reference = findReferenceSpatialModel()!.placement;
+    const reference = structuredClone(findReferenceSpatialModel()!.placement);
     const moved = await load(10);
     assert.equal(moved?.federationAlignmentStatus, 'same-crs');
     assert.deepEqual(moved?.alignmentReference, reference, 'the anchor placement the mesh now lies in');
     const kept = await load(0);
     assert.equal(kept?.federationAlignmentStatus, 'identity');
     assert.equal(kept?.alignmentReference, undefined);
+    // A copy: editing the anchor's frame in place later must not rewrite the record.
+    anchor.geometryResult!.coordinateInfo.originShift.x = 99;
+    assert.equal(moved?.alignmentReference?.coordinateInfo?.originShift.x, 0, 'the record keeps the frame the mesh was aligned into');
+  });
+
+  it('records the reference a streamed LandXML document was re-baked into, and none for an identity one (#9229)', async () => {
+    const reference = { spatialReference: spatialReference(0), coordinateInfo: coordinateInfo() };
+    const plan = (status: FederatedLandXmlStreamingFinalization['federationAlignmentStatus']): FederatedLandXmlStreamingFinalization => ({
+      coordinateInfo: coordinateInfo(), federationAlignmentStatus: status,
+      sourcePlacement: { spatialReference: spatialReference(10), coordinateInfo: coordinateInfo() },
+      referencePlacement: reference,
+      preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo(), instancedGeometryAabbs: undefined },
+      verify: () => undefined,
+    });
+    const finalize = (status: FederatedLandXmlStreamingFinalization['federationAlignmentStatus']) => finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore, modelId: 'terrain', fileName: 'terrain.xml',
+      geometry: { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() },
+      federatedLandXmlStreamingPlan: plan(status), isCurrent: () => true, setProgress: () => undefined,
+    });
+    const moved = await finalize('same-crs');
+    assert.deepEqual(moved?.alignmentReference, reference, 'the reference its components were aligned into');
+    assert.notEqual(moved?.alignmentReference?.coordinateInfo, reference.coordinateInfo, 'a copy, not the anchor\'s own frame object');
+    assert.equal((await finalize('identity'))?.alignmentReference, undefined);
   });
 });

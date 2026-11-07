@@ -785,6 +785,18 @@ it('pinning another anchor without a re-align keeps the curves on the meshes, ev
   assert.ok(current() !== '' && current() !== aligned, 'the curves move into the re-aligned frame');
 });
 
+it('replacing a room model, whose id has colons, under the same id clears its curves before paint (#9229)', async () => {
+  // A collab room registers `room:<roomId>:<slotId>`, so its product keys hold more than one colon.
+  const ROOM = 'room:r1:s1';
+  const room = Object.assign(sourceModel(), { id: ROOM, name: ROOM });
+  await mountInstalled([1], ONE, { ...fixtureModels(room), ...select([1], 1, ROOM) });
+  const placed = useViewerStore.getState().models.get(ROOM)!;
+  commit({ models: new Map([[ROOM, { ...placed, geometryResult: geometry() }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new geometry result re-places the room model\'s curves');
+  await settle();
+  assert.equal(current(), ONE, 'the replaced model\'s curves install');
+});
+
 it('a model aligned with no recorded reference follows the anchor the federation picks, pin included (#9229)', async () => {
   mount([1], alignedFederation(false));
   await waitFor(() => (current() ?? '') !== '', 'the aligned curves install');

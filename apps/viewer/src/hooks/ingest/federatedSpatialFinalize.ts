@@ -12,7 +12,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import type { LandXmlTinDocument } from './landXmlSemantics';
 import { reframeLandXmlGeometry } from './landXmlLoad';
-import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
+import { alignGeometryToReference, alignmentReferenceRecord, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
 import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming';
@@ -38,7 +38,8 @@ function appliedPatch(applied: readonly LandXmlGeorefAssumption[] | undefined): 
 function alignmentReferencePatch(
   status: FederatedModel['federationAlignmentStatus'], reference: ModelSpatialPlacement | null,
 ): Pick<FederatedSpatialFinalizeResult, 'alignmentReference'> {
-  return reference && (status === 'same-crs' || status === 'reprojected') ? { alignmentReference: reference } : {};
+  return reference && (status === 'same-crs' || status === 'reprojected')
+    ? { alignmentReference: alignmentReferenceRecord(reference) } : {};
 }
 
 /** Keep the index-aligned restore baseline in lock-step with reframe clipping. */

@@ -11,8 +11,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { collectPageErrors, workflowFailed } from './workflow-verdict.mjs';
 const root = process.cwd();
-const out = path.join(root, 'tools/localization-french/evidence');
-fs.mkdirSync(out, { recursive: true });
+const attempt = process.env.FRENCH_WORKFLOW_ATTEMPT ?? `run-${Date.now()}-${process.pid}`;
+assert.match(attempt, /^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'Use a single attempt directory name');
+const out = path.join(root, 'tools/localization-french/evidence', attempt);
+fs.mkdirSync(path.dirname(out), { recursive: true });
+// Preserve prior reports: an existing attempt must never be overwritten.
+fs.mkdirSync(out);
 const dependency = fs.readdirSync('node_modules/.pnpm').find(n => /^playwright@/.test(n));
 const { chromium } = await import(pathToFileURL(path.resolve('node_modules/.pnpm', dependency, 'node_modules/playwright/index.mjs')));
 assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use ifc-gpu-check; do not bypass GPU admission');

@@ -1635,6 +1635,108 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             assert.strictEqual(rebuilds.n, 0);
             assert.strictEqual(scene['partialBatchCache'].size, 2, 'the colour pass still splits it');
         });
+
+        describe('a transparent batch with mixed promotion that cannot be partitioned draws whole (#9220)', () => {
+            /** The pipeline of every colour-pass draw from `vertexBuffer`, in order. */
+            const pipelinesDrawing = (h: Harness, vertexBuffer: GPUBuffer): unknown[] => {
+                const out: unknown[] = [];
+                let pipeline: unknown = null;
+                let draw = 0;
+                for (const c of h.stats.commands) {
+                    if (c.op === 'setPipeline') pipeline = c.pipeline;
+                    if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer) out.push(pipeline);
+                }
+                return out;
+            };
+            /** Indices the colour pass drew from `batch` and every sub-batch cut from it (any slot). */
+            const indicesDrawnFrom = (h: Harness, batch: BatchedMesh): number => {
+                const scene = sceneOf(h);
+                const subs = subBatchKeys(h)
+                    .filter((k) => k === `${batch.colorKey}:${batch.id}` || k.startsWith(`${batch.colorKey}:${batch.id}:`))
+                    .map((k) => scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(k)!) as BatchedMesh);
+                return [batch, ...subs].reduce((n, b) => n + b.indexCount * pipelinesDrawing(h, b.vertexBuffer).length, 0);
+            };
+            const clearFrame = (h: Harness) => { h.stats.draws.length = 0; h.stats.commands.length = 0; };
+            /**
+             * Glass {4, 5} whose merged piece holds BOTH entities, tagged per vertex, beside a
+             * plain piece of {5}: the batch lists 4 and 5, and {4} carries a promoting override.
+             * Promoted {4} and remaining {5} would each pull the merged piece in.
+             */
+            const seedMergedGlass = (h: Harness, extra: MeshData[] = []): BatchedMesh => {
+                const scene = sceneOf(h);
+                const merged = { ...triangle(4, TRANSPARENT), entityIds: new Uint32Array([4, 5, 5]) } as MeshData;
+                scene.appendToBatches([merged, triangle(5, TRANSPARENT), ...extra], device(h), pipeline(h), false);
+                const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+                glass.bounds = undefined;
+                assert.deepStrictEqual([...new Set(glass.expressIds)].sort(), [4, 5, ...extra.map((m) => m.expressId)].sort(), 'setup: one batch');
+                assert.strictEqual(scene.canPartitionBatch(glass), false, 'setup: a colour-merged piece');
+                scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+                return glass;
+            };
+
+            it('under geometryReleased, a transparent batch with one promoted member still draws, whole', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                const glass = seedGlass(h);
+                scene.releaseGeometryData();
+                assert.strictEqual(scene.isGeometryDataReleased(), true, 'setup: released');
+                clearFrame(h);
+                h.render({});
+                assert.deepStrictEqual(pipelinesDrawing(h, glass.vertexBuffer), [TRANSPARENT_PIPELINE], 'drawn once, whole, at its native routing');
+                assert.strictEqual(indicesDrawnFrom(h, glass), 6, 'both triangles');
+                assert.strictEqual(scene['partialBatchCache'].size, 0, 'no sub-batch asked for: there is no CPU geometry to cut one from');
+            });
+
+            it('a colour-merged piece in a fully visible batch is drawn exactly once, and the batch keeps its own buffers', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                const glass = seedMergedGlass(h);
+                assert.strictEqual(glass.indexCount, 6, 'setup: the merged piece and the plain {5}');
+                scene.setGpuResidencyBudget(1);
+                const rebuilds = countRebuilds(scene, 4);
+                for (let i = 0; i < IDLE_FRAMES; i++) frame(h, {});
+                clearFrame(h);
+                h.render({});
+                assert.strictEqual(indicesDrawnFrom(h, glass), 6, 'each triangle once: the merged piece is not drawn again');
+                assert.deepStrictEqual(pipelinesDrawing(h, glass.vertexBuffer), [TRANSPARENT_PIPELINE], 'whole, at its native routing');
+                assert.strictEqual(scene['partialBatchCache'].size, 0);
+                assert.notStrictEqual(glass.gpuResident, false, 'the whole draw reads its own buffers, so they stay');
+                assert.strictEqual(scene.getBatchedMeshes().find((b) => b.expressIds.includes(4)), glass, 'never rebuilt');
+                assert.strictEqual(rebuilds.n, 0, 'no evict/rebuild cycle');
+            });
+
+            it('under hide, a colour-merged piece in the visible subset is drawn exactly once', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                const glass = seedMergedGlass(h, [triangle(6, TRANSPARENT)]);
+                clearFrame(h);
+                h.render({ hiddenIds: new Set([6]) });
+                assert.deepStrictEqual(subBatchKeys(h).filter((k) => k.startsWith(`${glass.colorKey}:${glass.id}:`)), [], 'no :promoted / :remaining slots');
+                const slot = scene['partialBatchCacheKeys'].get(`${glass.colorKey}:${glass.id}`);
+                assert.ok(slot !== undefined, 'one sub-batch for the visible subset');
+                const sub = scene['partialBatchCache'].get(slot) as BatchedMesh;
+                assert.strictEqual(sub.indexCount, 6, 'the merged piece once, beside the plain {5}');
+                assert.deepStrictEqual(pipelinesDrawing(h, sub.vertexBuffer), [TRANSPARENT_PIPELINE]);
+                assert.strictEqual(indicesDrawnFrom(h, glass), 6);
+            });
+
+            it('regression guard: a partitionable transparent batch under hide still splits by promotion', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                scene.appendToBatches([4, 5, 6].map((id) => triangle(id, TRANSPARENT)), device(h), pipeline(h), false);
+                const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+                glass.bounds = undefined;
+                assert.strictEqual(scene.canPartitionBatch(glass), true, 'setup');
+                scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+                h.render({ hiddenIds: new Set([6]) });
+                const slots = subBatchKeys(h).filter((k) => k.startsWith(`${glass.colorKey}:${glass.id}`));
+                assert.deepStrictEqual(slots.map((k) => k.slice(k.lastIndexOf(':'))).sort(), [':promoted', ':remaining']);
+            });
+        });
     });
 });
 

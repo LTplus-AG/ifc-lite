@@ -10,6 +10,7 @@
 //! Decoder-only: this module meshes nothing and owns no cache. The router,
 //! RTC-vote probes and the layer slicer are all callers of it.
 
+pub(crate) mod first_seen;
 pub(crate) mod mapped_transform;
 pub(crate) mod product_budget;
 mod refusal;

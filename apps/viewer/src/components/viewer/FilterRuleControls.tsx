@@ -37,22 +37,21 @@ export function CombinatorToggle({
   const { t } = useTranslation();
   return (
     <div
-      className="inline-flex rounded border border-border bg-white p-0.5 text-2xs"
+      className="inline-flex rounded border border-border bg-card p-0.5"
       title={t('filterRuleControls.combinatorTitle')}
     >
       {(['AND', 'OR'] as const).map((c) => (
-        <button
+        <Button
           key={c}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === c}
+          className="font-mono"
           onClick={() => onChange(c)}
-          className={`rounded px-2 py-0.5 font-mono font-medium transition-colors ${
-            value === c
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {c}
-        </button>
+        </Button>
       ))}
     </div>
   );

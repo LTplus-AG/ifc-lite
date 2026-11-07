@@ -231,5 +231,6 @@ jobs:
       jobs: frames
       result: frames=${{ needs.frames.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

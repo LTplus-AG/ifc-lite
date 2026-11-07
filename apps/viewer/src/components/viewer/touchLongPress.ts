@@ -3,10 +3,30 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Single-finger long press without an orbit, tap, or duplicate native menu (#5859). */
-const HOLD_MS = 500;
-const TAP_SLOP_PX = 10;
+import { TAP_SLOP_PX } from './tapSlop.js';
 
-export function createTouchLongPress(onHold: (x: number, y: number) => void): {
+const HOLD_MS = 500;
+/** How long after a long press fires, and how near its point (CSS px), the touch's own native menu may still come. */
+const MENU_MS = 1_000, MENU_RADIUS_PX = 24;
+
+/** A point whose native menu is the touch's; `mouse` once a mouse or trackpad menu press near it was seen (#9087). */
+interface MenuPoint { x: number; y: number; mouse: boolean }
+
+const longPresses = new WeakMap<HTMLCanvasElement, { forget: (clientX: number, clientY: number) => void }>();
+
+/**
+ * A mouse or trackpad press near a held or just-fired long press, as the
+ * mouse controls see it (the same press that closes a Pencil lift's click
+ * window, #9043). A right press, or a ctrl+click, opens a menu: the next
+ * untyped context menu near it is that press's own, so the long press lets it
+ * through once (#9087). The touch's own menu, typed `touch` or `pen`, stays
+ * suppressed; one typed `mouse` is never the touch's.
+ */
+export function forgetTouchLongPress(canvas: HTMLCanvasElement, e: MouseEvent): void {
+  if (e.button === 2 || e.ctrlKey) longPresses.get(canvas)?.forget(e.clientX, e.clientY);
+}
+
+export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: number, y: number) => void): {
   begin: (touch: Touch) => void;
   move: (touch: Touch) => boolean;
   end: () => boolean;
@@ -15,11 +35,11 @@ export function createTouchLongPress(onHold: (x: number, y: number) => void): {
   dispose: () => void;
 } {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let start: { id: number; x: number; y: number } | null = null;
+  let start: (MenuPoint & { id: number }) | null = null;
   let fired = false;
-  let suppressNativeUntil = 0;
-  let suppressPoint: { x: number; y: number } | null = null;
+  let menuWindow: (MenuPoint & { until: number }) | null = null;
 
+  const near = (point: MenuPoint, x: number, y: number) => Math.hypot(x - point.x, y - point.y) <= MENU_RADIUS_PX;
   const clearTimer = () => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
@@ -29,18 +49,23 @@ export function createTouchLongPress(onHold: (x: number, y: number) => void): {
     start = null;
     fired = false;
   };
+  const registration = {
+    forget(x: number, y: number) {
+      for (const point of [start, menuWindow]) if (point && near(point, x, y)) point.mouse = true;
+    },
+  };
+  longPresses.set(canvas, registration);
 
   return {
     begin(touch) {
       cancel();
       fired = false;
-      start = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+      start = { id: touch.identifier, x: touch.clientX, y: touch.clientY, mouse: false };
       timer = setTimeout(() => {
         timer = null;
         if (!start) return;
         fired = true;
-        suppressNativeUntil = Date.now() + 1_000;
-        suppressPoint = { x: start.x, y: start.y };
+        menuWindow = { ...start, until: Date.now() + MENU_MS };
         onHold(start.x, start.y);
       }, HOLD_MS);
     },
@@ -60,11 +85,21 @@ export function createTouchLongPress(onHold: (x: number, y: number) => void): {
     },
     cancel,
     suppressNativeMenu(event) {
-      const point = start ?? (Date.now() < suppressNativeUntil ? suppressPoint : null);
-      if (!point || Math.hypot(event.clientX - point.x, event.clientY - point.y) > 24) return;
+      const point = start ?? (menuWindow && Date.now() < menuWindow.until ? menuWindow : null);
+      if (!point || !near(point, event.clientX, event.clientY)) return;
+      const source = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };
+      const touchTyped = source.pointerType === 'touch' || source.pointerType === 'pen' || source.sourceCapabilities?.firesTouchEvents;
+      // Marked as from touch first, as `isTouchSelectionClick` reads it: never the mouse's
+      if (!touchTyped && (source.pointerType === 'mouse' || point.mouse)) {
+        for (const p of [start, menuWindow]) if (p) p.mouse = false; // the press's one menu
+        return;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
     },
-    dispose: cancel,
+    dispose() {
+      cancel();
+      if (longPresses.get(canvas) === registration) longPresses.delete(canvas);
+    },
   };
 }

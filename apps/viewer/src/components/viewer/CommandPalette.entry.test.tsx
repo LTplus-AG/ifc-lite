@@ -42,6 +42,9 @@ test('the visible ribbon Commands button opens the palette (#5862)', async () =>
   const pending = document.body.querySelector('[role="dialog"]');
   assert.ok(pending, 'first open mounts the loading dialog');
   assert.ok(pending.querySelector('output'), 'first open exposes the cancellable loading shell');
+  const loadingInput = pending.querySelector('input');
+  assert.ok(loadingInput, 'cold activation accepts typing before the chunk arrives (#8947)');
+  typeInto(loadingInput, 'discard this query');
   press(pending, 'Escape');
   // Await the same module as React.lazy, then flush its settled render instead
   // of guessing how long the chunk takes (#8947, review5810158119).
@@ -55,16 +58,18 @@ test('the visible ribbon Commands button opens the palette (#5862)', async () =>
     'the first Commands activation must load and open the palette');
   await waitFor(() => document.activeElement?.getAttribute('role') === 'combobox',
     'the lazily mounted search input must receive keyboard focus');
+  assert.equal(document.querySelector<HTMLInputElement>('[role="combobox"]')?.value, '',
+    'cancelling the loading dialog must discard its query on reopen (#8947)');
 });
 
 test('Cost and AI Chat palette rows open their panels (#5862)', async () => {
   render(
     <BimReactContext.Provider value={{} as BimContext}>
-      <CommandPalette open onOpenChange={() => {}} />
+      <CommandPalette open initialQuery="cost" onOpenChange={() => {}} />
     </BimReactContext.Provider>,
   );
   const input = document.body.querySelector('input') as HTMLInputElement;
-  typeInto(input, 'cost');
+  assert.equal(input.value, 'cost', 'the first-load query reaches the real command search (#8947)');
   const cost = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
     .find((row) => row.getAttribute('aria-label') === 'Cost');
   assert.ok(cost, 'Cost is searchable');

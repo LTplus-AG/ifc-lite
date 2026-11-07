@@ -5049,6 +5049,7 @@
     "createCopyContext: function",
     "createRoomsInStore: function",
     "curtainWallLayout: function",
+    "deriveAuthoredBaseQuantities: function",
     "describeElevation: function",
     "detectEnclosedAreas: function",
     "duplicateInStore: function",

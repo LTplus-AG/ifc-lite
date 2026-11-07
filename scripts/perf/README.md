@@ -4,6 +4,10 @@
 
 # Performance diagnosis kit
 
+Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` paths resolve
+at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
+bundles left the tree in #9054.
+
 ## Opt-in gross host geometry (#8875)
 
 **Default worker-pool path qualified: no material regression within the preset
@@ -13,7 +17,7 @@ and mesh/vertex/triangle counts across base and branch. Optional MeshData fields
 (materials, shading colours, UVs, textures and geometry classes) were not compared;
 complete MeshData identity is not established. The bounded timing scope is
 four workers with flat geometry; renderer/GPU upload and enabled gross-mode
-performance are not claimed. [Reports, raw samples and reproduction helpers](../../tests/evidence/skip-voids-8875/worker-pool/provenance.json)
+performance are not claimed. [Reports, raw samples and reproduction helpers](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/skip-voids-8875/worker-pool/provenance.json)
 record source identities, WASM hashes, acceptance thresholds and host checks.
 
 Lesson: more rounds did not fix the original short-model native variance;
@@ -22,7 +26,7 @@ rounded to zero, so those reports remain inconclusive. Full-viewer runs also
 failed GPU initialization/device-lifetime checks on both base and branch.
 Neither failure was relabelled a pass: the successful qualification measures
 the actual geometry worker pipeline separately and hashes output after timing.
-The [earlier rejected native evidence](../../tests/evidence/skip-voids-8875/performance.json)
+The [earlier rejected native evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/skip-voids-8875/performance.json)
 is retained; this is not a speedup claim or a full-viewer qualification.
 
 ## Retained qualification runners (#7955)
@@ -56,7 +60,7 @@ Lesson: on this engine, time the passes separately before touching transport.
 The cost sat in one pass and one per-call constructor, and both were invisible
 in boundary-level splits. Output identity was gated before timing in every run.
 These are ordinary interleaved diagnostics, not a protocol v4 cohort; the
-[sources, WASM hashes, receipts and per-run medians](../../tests/evidence/diff-8351/warm-handle-diagnostics.json)
+[sources, WASM hashes, receipts and per-run medians](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/diff-8351/warm-handle-diagnostics.json)
 record the limits.
 
 ## Scenoptic-axes viewer levers (`scenoptic-bench.mjs`, 2026-10-31)
@@ -107,7 +111,7 @@ of a large host and must be recomputed.
 
 Measured on ISSUE_129 at base `ea0139026b` with callgrind, cross-checked with a
 throwaway counter patch. Counts, estimates, sources and receipts:
-[evidence](../../tests/evidence/router-21/README.md). Do not re-spike without a
+[evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/router-21/README.md). Do not re-spike without a
 mechanism that removes the body walk or the extension itself, not its repeats.
 
 ## C4-14 independent levers (#8341)
@@ -117,7 +121,7 @@ index read the file twice, once per record kind; one scan now records both and
 decodes in the old order. Callgrind puts `extract_symbolic_data` roughly a
 seventh lower on Haus, HouseZ, dental_clinic, duplex and schependomlaan with
 byte-identical symbolic JSON, because entity scans dominate that extractor.
-Counts, sources and receipts: [evidence](../../tests/evidence/c4-14-symbolic-style/README.md).
+Counts, sources and receipts: [evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/c4-14-symbolic-style/README.md).
 Instructions only, no wall-time claim.
 
 **Declined: opening filter allocations (PROCESSING-17).** "Filter after the
@@ -172,7 +176,7 @@ Peak RSS is lower on the CSG model and marginally higher, within spread, on the 
 models. One reporter flag remains: later spatial-tree readiness on the CSG model,
 offset by earlier first paint. The window also contains retained and diff commits, so no
 single lane is attributed. Both native C4-10b layers show identical counts and no phase
-outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](../../tests/evidence/c4-browser-8341/README.md).
+outside noise; the reporter stays inconclusive on sub-millisecond phases. Evidence: [c4-browser-8341](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/c4-browser-8341/README.md).
 
 Lessons: pass `page.evaluate` bodies as source text, because tsx wraps named closures
 in a `__name` helper that is absent in the page. Chrome rewrites process titles, so
@@ -191,7 +195,7 @@ An instrumented WASM split places most cost in native compare/result constructio
 with encoding a small share. Native work alone exceeds the requested margin
 against the supplied compiled TypeScript oracle in these diagnostics, so removing
 transport cannot establish that target. This is not an official cohort or an
-acceptance verdict. The [source pins, method, counts, medians and receipts](../../tests/evidence/diff-8042/a3-retained-diagnostics.json)
+acceptance verdict. The [source pins, method, counts, medians and receipts](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/diff-8042/a3-retained-diagnostics.json)
 preserve the changed oracle/warm-up conditions and measurement limits.
 
 Lesson: remeasure the cost premise after introducing resident ownership. Keep
@@ -534,7 +538,7 @@ WebGPU drawing buffer. An asynchronous reader can recreate that bug despite a
 generic synchronous-looking signature, so reject promise-like types/results
 and consume refused rejections without poisoning the next capture. A real
 lifecycle regression and visible model PNG establish more than dimensions alone.
-[Original cohort, compact traces, images and reviewed verdict](../../tests/evidence/hidpi-navigation-6709/native-20261023/result-20261024/reviewed-verdict.json)
+[Original cohort, compact traces, images and reviewed verdict](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/hidpi-navigation-6709/native-20261023/result-20261024/reviewed-verdict.json)
 retain the measured limitation and the collapsed-sidebar scope. This establishes
 no loading-regression resolution for #6516.
 
@@ -582,7 +586,7 @@ existing durations at higher precision on both sides and retains every reporter
 and host guard. A stale identical binary, a zero-resolution timing campaign,
 missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
 Numerical observations, scope, source applicability and evidence references are
-in [the qualification record](../../tests/evidence/issue-7943/performance.json).
+in [the qualification record](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/issue-7943/performance.json).
 
 ## Independent diff WASM payload (#8042)
 
@@ -750,7 +754,7 @@ retain the real adapter, rendered-frame, asset, payload and stability checks.
 ## Sloped coincident-sided differences (#7292)
 
 **Restored-O3 frozen-pair qualification complete; workload-dependent cost.**
-The [completed evidence](../../docs/architecture/evidence/issue-7292/final-43ec-qualified-runtime.json)
+The [completed evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/issue-7292/final-43ec-qualified-runtime.json)
 binds fresh interleaved worker-pool comparisons on the small model, the void-heavy
 regression fixture and the larger tower. Exact flat typed fingerprints and
 canonical instanced metadata match on the small model and tower. The void-heavy
@@ -849,7 +853,7 @@ exclude instancing, text, material definitions, UVs and textures. Lesson: retain
 healthy neighbors in ordinary seam conformance, preserve the baseline replay's
 closure checks and budget-failure signals before opening oracle scopes, and
 qualify actual worker-pool cost before claiming neutrality.
-See the [correctness evidence and performance disposition](../../docs/architecture/evidence/issue-7292/README.md).
+See the [correctness evidence and performance disposition](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/issue-7292/README.md).
 
 ## TL;DR
 
@@ -936,7 +940,7 @@ Timing neutrality is not established. These are historical, inconclusive
 observations for that older pair, not acceptance of a native cost. The exact
 current-source performance verdict remains pending, including per-phase
 instruction counts and a neutral end-to-end A/B verdict. See the
-[retained R comparison](evidence/placement-7779/recovery-r-native/README.md).
+[retained R comparison](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/placement-7779/recovery-r-native/README.md).
 
 All four original helpers completed, but the original preparation failed its
 strict compiler guard when R reused unchanged core from X. A separately reviewed
@@ -1090,7 +1094,7 @@ from the host's received-buffer estimate. Both worker trace factories use the
 same message meter and publish increments before data messages, so a terminal
 transport survives immediate host termination. Parser phase traces also carry
 WASM ingress; a successful entity-index handoff avoids that scan. The
-[real-model receipt](evidence/worker-accounting-6993/README.md) records both
+[real-model receipt](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/worker-accounting-6993/README.md) records both
 the canonical load and a separate actual parser scan. Lesson: receiving an
 ArrayBuffer does not prove it was transferred, and flushing before constructing
 the terminal message cannot account for that message. This is instrumentation
@@ -1098,7 +1102,7 @@ qualification, with no throughput verdict; GPU count repeatability remains open.
 
 The bounded count cohort (#6993) uses one streaming fragment per mesh, with
 mesh-count and index-volume bounds. Actual production FZK/Snowdon pairs
-[repeat allocation and static-upload totals](evidence/count-uploads-6993/README.md)
+[repeat allocation and static-upload totals](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/count-uploads-6993/README.md)
 despite different drain/finalization boundaries. Mutable table writes still
 vary, so the shared static-buffer uploader has a distinct counter instead of
 classifying all non-uniform writes as structural. Count-mode samples carry a
@@ -1118,7 +1122,7 @@ React and unmounted the viewport. Independent symbolic line/fill/text effects
 now use the same upload guard and recovery epoch. Resource owners release
 unregistered allocations before propagating failure. This is failure
 containment and resource ownership, with no throughput claim.
-The [native GPU receipt](evidence/recovery-replay-6993/README.md) compares the
+The [native GPU receipt](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/recovery-replay-6993/README.md) compares the
 exact base, healthy control and candidate through the canonical file loader.
 The candidate restores the healthy scene's geometry and appearance identity;
 the base remains empty after the same controlled loss. Lesson: replacing a
@@ -1157,14 +1161,14 @@ runtime fiber census unattributable, and mounted counts move with UI state).
 
 ## GPU point-pick depth readback qualification (#6881)
 
-The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
+The [same-submission GPU oracles](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/bounded-depth-readback-6881/README.md)
 qualify single-texel extraction against a full-depth copy on hardware, including
 concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
 match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
 Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. At that stage real federated viewer qualification was outstanding and no speedup or shipping verdict was accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 
-The [resumed qualification](../../tests/evidence/point-depth-6881-20261025/README.md)
+The [resumed qualification](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/point-depth-6881-20261025/README.md)
 retains successful source-matched builds and a common geometry engine for the
 full-copy inverse and production viewer. The exclusive request expired awaiting
 existing work before its controller started, yielding no new GPU or timing
@@ -1221,7 +1225,7 @@ deadlines and refusals remain recorded; the focused-performance hold stood until
 
 Mounted base and original-draft hover controls also reproduce stale hits and
 misses after newer input, pointer exit/cancel, unmount and ownership changes.
-The [CPU hover archive](evidence/bounded-depth-readback-6881/hover-ownership-cpu-20261010.json.gz)
+The [CPU hover archive](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/bounded-depth-readback-6881/hover-ownership-cpu-20261010.json.gz)
 retains those inverses and the corrected shared viewport validity contract.
 Selection and hover retain independent request generations. The diagnostic
 recorder now retains resolved IFC identity and source provenance; serialization
@@ -1247,7 +1251,7 @@ open.
 ## Worker warm-up candidate removed (#7036)
 
 **Rejected by the recorded-build acceptance rule; experiment removed.** The
-[preserved real-GPU comparison](evidence/worker-warmup-7036/decision-20261026/README.md)
+[preserved real-GPU comparison](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/worker-warmup-7036/decision-20261026/README.md)
 uses interleaved fresh-browser production builds and the same source-built WASM
 binary. First geometry improved on the small house, and full readiness improved
 on the structural model, but full metadata/render readiness regressed beyond
@@ -1275,7 +1279,7 @@ Lesson: earlier worker readiness and a small-fixture first-paint improvement do
 not establish an acceptable end-to-end tradeoff for large-model readiness.
 Keep the full-readiness boundary and a decision rule recorded before results;
 remove an unsuccessful experiment rather than carrying it indefinitely behind
-a disabled flag. The historical [fresh-worker captures](evidence/worker-warmup-7036/README.md)
+a disabled flag. The historical [fresh-worker captures](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/worker-warmup-7036/README.md)
 remain historical evidence, without a performance or reuse acceptance claim.
 
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
@@ -1312,7 +1316,7 @@ instead of trusting the "incremental" comment.
 ## Federated appearance-source rebuilding candidate (#6537 / #7021)
 
 **Merged in #7369; end-to-end performance held.** The
-[real FZK/Snowdon mounted controls](evidence/federated-appearance-6537/README.md)
+[real FZK/Snowdon mounted controls](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/federated-appearance-6537/README.md)
 demonstrate repeated accumulated/peer mesh visits and ownership wrapper copies
 in the remaining multi-model appearance list. Canonical producer stamping and
 a retained ordered list remove that repeated source work; replacement, content,
@@ -1323,7 +1327,7 @@ accepted: actual worker-pool federation A/B and focused GPU acceptance remain
 outstanding. Lesson: borrowing producer objects removes wrapper allocation,
 but grouped ordering still has a movement cost; qualify the real federation
 journey instead of a single-model cold load.
-The [removal gate and idle admission](evidence/federated-appearance-6537/gate-and-admission-20261010/README.md)
+The [removal gate and idle admission](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/federated-appearance-6537/gate-and-admission-20261010/README.md)
 are recorded separately: global Knip failed with unrelated source findings
 adjudicated by the campaign root; the timing cohort stopped at actual CPU,
 paging and swap admission before any model or probe ran. Lesson: a campaign
@@ -1388,7 +1392,7 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
 
 ## Deterministic frame evidence admission (#6975)
 
-The [historical artifact audit](evidence/gpu-frame-timing-6975/frame-admission/historical-artifact-audit.json)
+The [historical artifact audit](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/gpu-frame-timing-6975/frame-admission/historical-artifact-audit.json)
 found changing streaming counts and main-thread totals across actual hosted
 runs. Those builds differed, so they do not establish same-build repeatability;
 no frame ceiling is justified by this audit. The workflow's former scenario
@@ -1407,7 +1411,7 @@ outstanding; for which rows now carry ceilings, see the next section.
 
 Verdict: the `browser-frames` ratchet family gates one row, the Snowdon
 streaming-load `gpu_write_kib`. All other rows stay informational. The
-evidence is [repeatability.json](evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json):
+evidence is [repeatability.json](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json):
 hosted runs of two builds (current `main`, which seeds the ceiling, and the
 #7601 retry head), with raw per-run values, run ids, artifact sha256s,
 per-build stats and a verdict for each of the 96 rows.
@@ -1572,7 +1576,7 @@ including rectangle selection and its readback-error fallback. Physical drawing
 buffer changes with unchanged CSS mapping remain valid. This is a correctness
 prerequisite, not a measured speed improvement or an explanation of the earlier
 spontaneous miss. Keep functional qualification separate from timing admission.
-[Original actual-GPU observations and compiled qualification](evidence/redundant-aspect-pick-6882/README.md)
+[Original actual-GPU observations and compiled qualification](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/redundant-aspect-pick-6882/README.md)
 preserve the source identities and evidence boundaries.
 
 ## Historical CSG job observations (#6516)
@@ -1634,7 +1638,7 @@ This is a scoped SDK result, not a universal speed, RSS or full-viewer verdict.
 The lesson is to share cold acquisition without breaking public glue's warm
 fast path, preserve failure contracts, and qualify actual worker-pool completion
 separately from cached-artifact functional proofs. [All raw cohorts, compatibility
-failures, corrected proofs and limits](evidence/bundled-wasm-init-6537/README.md)
+failures, corrected proofs and limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/bundled-wasm-init-6537/README.md)
 remain available without replacing or pooling earlier evidence.
 
 ## Direct vertex packing: do not ship the current candidate (#6537)
@@ -1661,7 +1665,7 @@ Measure eligible vertex volume, float-fallback work and renderer completion
 before revisiting this candidate. Preserve interrupted runs, their exclusion
 reasons and unchanged output witnesses. Source controls, the unshipped patch,
 all raw attempts and paired derivations are in
-[`evidence/packing-verdict-6537/`](./evidence/packing-verdict-6537/README.md).
+[`evidence/packing-verdict-6537/`](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/packing-verdict-6537/README.md).
 
 ## Affinity admission and compact worker packets: defer (#6537)
 
@@ -1683,7 +1687,7 @@ load. A sparse reference list is not a safe packet or physical-memory result.
 Lesson: separate scheduling credit, dependency completeness and geometry
 representation from the final load metric. Preserve true sticky keys and the
 canonical parser; defer mechanisms whose correctness or end-to-end verdict
-remains incomplete. [Raw dispositions and prerequisites](evidence/deferred-worker-mechanisms-6537/README.md)
+remains incomplete. [Raw dispositions and prerequisites](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
 ## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
@@ -1702,7 +1706,7 @@ Lesson: a scoped CSG signal cannot justify a regression on a heavy public model.
 Instruction attribution and avoided dispatch do not establish consumer benefit.
 Stop this candidate, preserve every pair and refusal, and keep the rejected patch
 as data so the mechanism is not proposed again without genuinely new evidence.
-The [lossless rejection record](evidence/explicit-orientation-6537/README.md)
+The [lossless rejection record](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/explicit-orientation-6537/README.md)
 retains immutable sources, correctness controls, historical SDK/native cohorts
 and the new integrated comparison. No universal, full-viewer, physical-memory or
 complete IFC fidelity benefit is claimed.
@@ -2053,7 +2057,7 @@ This is a positive end-to-end verdict for those models; the original larger
 still need their own acceptance run. The lesson is to measure both draw calls
 and GPU-process private memory after applying a lens: the renderer's resident
 geometry counter alone omits the allocation that dominated the old path.
-See the [browser evidence](evidence/color-overrides-6148/README.md).
+See the [browser evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/color-overrides-6148/README.md).
 
 ## Reusable swept-disk source definitions (#5785)
 
@@ -2525,7 +2529,7 @@ AC20-FZK-Haus base/branch probe found equal reported parse/geometry/total phase
 medians and a full-wall median difference within the observed run spread. Every
 ordered mesh fingerprint and mesh/vertex/triangle count matched. The verdict is
 no material regression observed on that fixture, not a load optimization or a
-browser worker-pool speed claim. See the [raw measurement](../../docs/architecture/evidence/scan-registration/native-load-perf.json).
+browser worker-pool speed claim. See the [raw measurement](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-registration/native-load-perf.json).
 
 Independent numerical review also ruled out the specialized small-matrix SVD:
 its squared-matrix path lost thin but valid correspondence directions. The
@@ -2818,7 +2822,7 @@ XKT/XGF); that stays out of scope per the issue.
 
 ## Five-avenue cold-load audit (#5331)
 
-The [audit record](evidence/cold-load-audit-5331/README.md) compares current
+The [audit record](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/cold-load-audit-5331/README.md) compares current
 source and prior shipped, rejected and parked levers. Sparse spline samples
 qualified for native cold load; direct attribute construction was rejected;
 multipart mapped parts remain unqualified after correctness verification.
@@ -2948,7 +2952,7 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   between the existing closure decisions without making hairline analysis eager.
   Raw samples, executable and source hashes, environment, schedule, and metric
   semantics are in
-  [`docs/architecture/evidence/closure-verdict/performance-controlled.json`](../../docs/architecture/evidence/closure-verdict/performance-controlled.json).
+  [`docs/architecture/evidence/closure-verdict/performance-controlled.json`](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/closure-verdict/performance-controlled.json).
   The superseded uncontrolled run is retained beside it as `performance.json`.
 - **Entity indexes built and never read** (`index_vs_scan.rs`): `relationships()`
   built a full parallel index and handed it to the decoder, but every decode in it
@@ -3287,7 +3291,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   tested complete GLBs, including site/RTC behavior; its shared-host timings do
   not establish an end-to-end win. A production opt-out must be export-scoped
   and preserve public options compatibility. See the
-  [source, observations and qualification limits](evidence/export-delivery-5357/README.md).
+  [source, observations and qualification limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/export-delivery-5357/README.md).
 - **Bounded GLB geometry replay** (NOT SHIPPED after #5557 screen): recording
   the planning pass's meshes on native scratch and replaying them through the
   existing writer avoided a second meshing pass, with complete artifact identity
@@ -3298,7 +3302,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   native-only public API without an actual consumer; a future attempt needs a
   consumer and a portable scratch/error policy, or a separately qualified
   memory-bounded WASM design. No browser or CLI gain is established. See the
-  [#5557 screen and archived patches](../../docs/architecture/evidence/bounded-glb-replay-5557/README.md)
+  [#5557 screen and archived patches](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/bounded-glb-replay-5557/README.md)
   and the earlier #5357 archive above.
 - **Brotli quality 11 on the served bundle** (PARKED after #5357 observation):
   the actual deployed WASM response already negotiates Brotli and compiles in
@@ -4002,7 +4006,7 @@ so these are smoke evidence only, not a speedup, regression or browser worker-po
 latency claim. The lesson is to compare triangle-corner geometry and UVs across
 capture authoring and normal import: valid canonical welding may change vertex
 layout while preserving the surface and seams. [Raw source-matched samples and
-limitations](../../docs/architecture/evidence/captured-mesh/native-load.json)
+limitations](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/captured-mesh/native-load.json)
 record the experiment; capture-creation and integrated UI timing remain separate.
 
 ### Appearance preparation input scheduling (#4336)
@@ -4025,7 +4029,7 @@ load probes found no resolvable regression at the probe's integer-millisecond
 phase precision, with identical ordered mesh fingerprints and geometry counts.
 This is native load evidence, not a worker-pool speedup or conversion-latency
 claim. Preserve the opt-in boundary and measure broad authoring separately when
-its host UI lands. [Raw samples and measurement limits](../../docs/architecture/evidence/evaluated-occurrences/native-load.json)
+its host UI lands. [Raw samples and measurement limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-occurrences/native-load.json)
 record the comparison.
 
 The F6 composite-allocation follow-up keeps compaction inside authoring only.
@@ -4034,7 +4038,7 @@ probe's measurement precision and identical ordered mesh fingerprints. This
 supports no resolvable native-load regression, not an authoring or worker-pool
 speedup. Preserve literal-versus-reference schema slots when compacting plans;
 never trade semantic fidelity for convenient generic string rewriting.
-[Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
+[Follow-up samples and limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
 
 ### Evaluated face masks and tessellatable-body policy (#4404)
 
@@ -4054,7 +4058,7 @@ ordered geometry fingerprints. Tool lesson: at the time of this probe
 zero rounds and a vacuous "within noise" verdict; the probe drove `roundOrder`
 directly and checked the run count. #4541 fixed the guard with
 `pathToFileURL`; always check the round count `ab.sh` reports.
-[Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
+[Raw rounds](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
 
 The #4550 native/wasm fingerprint-parity follow-up makes the existing
 per-element local frame explicit only inside opt-in appearance planning. Fresh
@@ -4079,7 +4083,7 @@ probes found no resolvable ordinary-load regression, with identical geometry
 counts and ordered fingerprints. This is a load-path isolation verdict, not a
 browser worker-pool speedup or authoring-capacity claim. Keep expensive source
 matching opt-in and separately bounded; broad transfer needs its own measured
-candidate-reuse work. [Raw probes and limits](../../docs/architecture/evidence/shared-atlas/native-load.json)
+candidate-reuse work. [Raw probes and limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/shared-atlas/native-load.json)
 record the comparison.
 
 
@@ -4089,7 +4093,7 @@ A bounded prefix qualifies the surface/UV and unknown-coverage behavior; it does
 not establish broad authoring capacity. The next mechanism to evaluate is
 conservative candidate reuse across target triangles/tiles, retaining nearest
 surface refusal and one atomic result, rather than enlarging the work ceiling.
-[Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
+[Real-surface coverage and refusal evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
 keeps that limitation separate from the ordinary-load measurements.
 
 The emitted-texel applicability follow-up separates geometric centroid evidence
@@ -4098,7 +4102,7 @@ show mixed subphase differences at the probe's millisecond precision, with the
 same ordered mesh payload fingerprint; no consistently directed change or
 worker-pool speedup is claimed. The correctness result is refusing an all-old
 atlas despite positive centroid coverage while retaining byte-identical dense
-transfer output. [Samples, fingerprints and PNG evidence](../../docs/architecture/evidence/mesh-transfer-texel-gate/README.md)
+transfer output. [Samples, fingerprints and PNG evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-texel-gate/README.md)
 record that distinction.
 
 Canonical occurrence source snapshots reuse the mesh already evaluated by the
@@ -4108,7 +4112,7 @@ native AC20 probes found no resolvable ordinary-load change and identical geomet
 counts. This establishes load-path isolation, not a browser worker-pool speedup
 or conversion throughput claim; the additional authored payload remains governed
 by the existing aggregate geometry budget.
-[Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
+[Source-mesh payload probe](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
 records source heads, precision limits and the unchanged census.
 
 Candidate reuse for registered transfer was tested through whole-triangle leaf
@@ -4118,7 +4122,7 @@ the complete captured-boulder work quota; none was merged. A calculation-only
 fresh-worker diagnostic separates actual traversal latency/memory from the work
 proxy, without authorizing a larger quota or producing an applicable plan.
 Do not repeat those cache mechanisms unchanged or infer broad capacity from a
-small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
+small target prefix. [Recorded experiments and worker evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-capacity/README.md)
 state the remaining gate and the limits of the measurement.
 
 
@@ -4128,7 +4132,7 @@ exact observation memoization. It still refused the full selected boulder under
 the existing work cap, so the runtime experiment remains unmerged. A tighter
 candidate search alone did not establish complete-target capacity; do not
 reintroduce this variant as a shipped optimization without new end-to-end
-acceptance. [Reproducible refusal](../../docs/architecture/evidence/mesh-transfer-capacity/README.md#nearest-first-traversal-follow-up).
+acceptance. [Reproducible refusal](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-capacity/README.md#nearest-first-traversal-follow-up).
 
 ### Product-scoped polygonal annotation fills (#4406)
 
@@ -4138,7 +4142,7 @@ The ordinary AC20 source-matched A/B/A/B probe found identical paired reported
 best-of-five phase timings and identical mesh fingerprints/counts; this is a normal-load regression
 check, not annotation throughput or worker-pool speedup evidence. Keep style
 lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
-[Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).
+[Exact inputs and paired runs](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/annotation-fills/native-load.json).
 
 ### PDF vector graphics-state preparation (#4406)
 
@@ -4148,7 +4152,7 @@ variation with identical ordered mesh fingerprints and counts. It does not
 establish zero overhead, a worker-pool speedup or vector-page preparation
 throughput. Keep page operator/path/stack limits distinct from PDF.js decoder
 allocation limits; post-decode counting cannot bound the decoder's earlier work.
-See [exact source IDs, five-iteration samples and identity evidence](../../docs/architecture/evidence/pdf-vector-state/native-load.json).
+See [exact source IDs, five-iteration samples and identity evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-vector-state/native-load.json).
 
 ## Reference opening semantics (#4433)
 
@@ -4170,7 +4174,7 @@ Two interleaved base/branch native probe pairs on AC20 and ISSUE_129 resolved no
 consistent material normal-load regression, with unchanged mesh/vertex/triangle
 counts and existing CSG diagnostics. This is a correctness fix, not a browser
 worker-pool speedup claim; small overhead below run-to-run variation remains
-unresolved. [Exact revisions, probe results and limits](../../docs/architecture/evidence/evaluated-openings/reference-textures.json)
+unresolved. [Exact revisions, probe results and limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-openings/reference-textures.json)
 are recorded with the fixture evidence. Do not infer that a nonempty void-index
 entry implies actual subtraction: the opening representation identifier matters.
 
@@ -4183,7 +4187,7 @@ complete plans for the checked annotation/captured controls. This is a reuse
 prerequisite, not an optimization or an authoring-throughput claim. Reuse the
 canonical source, placement and row author when adding non-image geometry; do
 not introduce a dummy texture to access shared setup. See the [raw native
-measurements](../../docs/architecture/evidence/authored-context/native-load.json)
+measurements](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/authored-context/native-load.json)
 and adjacent plan identity evidence.
 
 ### Complete selected-target mesh transfer (#4381)
@@ -4199,7 +4203,7 @@ still bounded, including padding scratch, and overlapping/dense cases refuse
 before publication. Ordinary-load paired probes had a slower first candidate
 pair and matching second pair with identical ordered geometry; no consistent
 regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
-speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
+speedup. [Worker, independent-reader and refusal evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-full-target/README.md).
 
 ### Behind-surface refusal for thin-wall transfer (#4381)
 
@@ -4217,7 +4221,7 @@ counts; the sampler is not on the load path, so this is only a no-regression
 control, not a transfer-throughput claim. The lesson is that nearest-first
 matching needs a signed depth bound, not a larger symmetric one: relaxing the
 distance bound to reach the opposite face reintroduces every far-side bleed.
-See the [controls and raw probe samples](../../docs/architecture/evidence/mesh-transfer-surfaces/README.md).
+See the [controls and raw probe samples](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-surfaces/README.md).
 
 ### RGB point-cloud transfer source (#4381)
 
@@ -4244,7 +4248,7 @@ only a control: the sampler is not on the load path. Lesson: for point sources
 the per-sample cost is set by point density times the support area, not by the
 point count, so the grid cell must follow the support radius and any per-point
 occlusion test must be replaced by a per-sample one. See the
-[real-pair evidence](../../docs/architecture/evidence/scan-registration-cras/README.md).
+[real-pair evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-registration-cras/README.md).
 
 ## Qualified PDF fill composition (#4406)
 
@@ -4255,7 +4259,7 @@ and counts. This resolves no consistent normal-load regression and does not
 establish zero overhead or browser-worker throughput. The composition budget
 precharges pairwise overlay work and separately limits generated contours and
 transport; do not tune those caps using unrelated normal-load timings. See
-[raw samples and source identity](../../docs/architecture/evidence/pdf-fill-annotations/native-load.json).
+[raw samples and source identity](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-fill-annotations/native-load.json).
 
 ## Qualified curved PDF fill boundaries (#4406)
 
@@ -4267,7 +4271,7 @@ Do not silently coarsen to fit it. A global exact convex-control-polygon check
 rejected a real sheared control on tiny near-collinear turns; exact per-piece
 hull separation admitted that control without snapping or ignoring features.
 Keep finite-chord error bounds: infinite-line flatness incorrectly collapses
-backtracking curves. See [source-matched samples](../../docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
+backtracking curves. See [source-matched samples](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
 and the adjacent independently decoded PDF evidence.
 
 ### Evaluated post-opening appearance and companion history (#4404)
@@ -4278,7 +4282,7 @@ Controlled native normal-load A/B probes retained equal geometry counts. The
 small AC20 fixture showed a slight absolute increase at coarse phase resolution;
 the opening-heavy control stayed close across both interleaved pairs. No speedup
 or browser worker-pool timing claim is made. See the
-[measured source revisions and results](../../docs/architecture/evidence/evaluated-openings/authoring-performance.json).
+[measured source revisions and results](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-openings/authoring-performance.json).
 This changes the authoring path, not the normal-load mesh evaluator; future
 optimization should measure the explicit conversion workload independently.
 
@@ -4296,7 +4300,7 @@ measurement. The useful lesson is semantic: the effective PDF version must be
 bound before geometry because the compatibility policy caps a PDF 1.x
 closed-dash seam while PDF 2.0 explicitly requires a join, and a mature
 independent reader may still render the capped form for both. See the
-[paired raw runs and reader evidence](../../docs/architecture/evidence/pdf-closed-dash-annotations/README.md).
+[paired raw runs and reader evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-closed-dash-annotations/README.md).
 
 ## Qualified solid straight PDF strokes (#4406)
 
@@ -4313,7 +4317,7 @@ of segment rectangles and join wedges was rejected by existing conservative
 contact/intersection guards even on ordinary joins; direct offset contours
 retain the same guards and avoid manufacturing those internal boundaries.
 Collapsed/reversing offsets and unresolved joins refuse rather than repairing
-an unqualified stroke arrangement. See the [source-specific raw controls](../../docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
+an unqualified stroke arrangement. See the [source-specific raw controls](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
 and original PDF/independent IFC evidence alongside them.
 
 ## Symbolic fill routing for native annotation meshes (#4459)
@@ -4324,7 +4328,7 @@ coarse phase resolution; the second pair matches. This is normal-load
 isolation, not a symbolic-extraction or browser worker-pool performance claim.
 The lesson is to carry qualified item provenance once, then filter the 3D
 overlay output; deleting the shared drawing primitives would hide the duplicate
-at the cost of 2D content. See the [raw runs and immutable binary identities](../../docs/architecture/evidence/annotation-fill-routing/native-load.json).
+at the cost of 2D content. See the [raw runs and immutable binary identities](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/annotation-fill-routing/native-load.json).
 
 ## One integer lattice for registered PDF composition (#4458)
 
@@ -4337,7 +4341,7 @@ a false topology refusal. Source qualification now happens once, and every stage
 still checks finite-edge topology. A separate finite-segment separation
 certificate avoids treating an unrelated infinite-line side change as an edge
 intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
-[Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
+[Source-matched raw samples and original PDF evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-composition-lattice/README.md)
 record the control and prevent repeating the float-roundtrip approach.
 
 ## Regime-1 coincidence requires near-parallel planes (#4439)
@@ -4357,7 +4361,7 @@ line of two transversal faces sits in both planes' bands with no orientation to
 agree with, and a `dot > 0` verdict there is a coin flip that can override an
 exact ray-cast. Add the angle premise per candidate face rather than gating on
 a parent flag (the parent-flag gate was measured to cost 20+ census hosts).
-[Raw interleaved runs and fingerprints](../../docs/architecture/evidence/csg-coincident-planes/native-load.json).
+[Raw interleaved runs and fingerprints](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/csg-coincident-planes/native-load.json).
 Found while measuring: on Windows `ab.sh` ran ZERO rounds and still printed a
 "within noise, counts matched" verdict, because `ab-order.mjs`'s CLI guard
 compared `import.meta.url` with a backslash `argv[1]` and never fired. Fixed in
@@ -4381,7 +4385,7 @@ which the raw record states. The verdict is no material regression on that
 fixture, not a PDF-preparation throughput claim: the report interpreter is
 bounded by the existing operation, path-number and save-depth budgets plus a
 4,096-entry listed-omission cap with complete summary counts. See the
-[raw runs](../../docs/architecture/evidence/pdf-fidelity-report/native-load.json).
+[raw runs](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-fidelity-report/native-load.json).
 
 ## Mixed planar and residual opening compatibility (#4610)
 
@@ -4627,7 +4631,7 @@ memory improvement is established. The lesson is to qualify the whole decode
 consumer, including final vector capacity and existing cache fast paths, rather
 than infer load improvement from removing an intermediate tree.
 
-[Complete rejected source, measurements and limits](evidence/direct-attributes-5324/README.md).
+[Complete rejected source, measurements and limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/direct-attributes-5324/README.md).
 
 ## Surface spline sample reuse (#5321)
 
@@ -4646,7 +4650,7 @@ load/GPU errors on the same target and controls. Readiness changes were mixed
 within run variation and target geometry-streaming was flat: no demonstrated
 browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
 owned processes through a fixed post-readiness tail, not cache-settled memory.
-See [evidence and measurement limits](evidence/spline-5321/README.md).
+See [evidence and measurement limits](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/spline-5321/README.md).
 
 
 ## Multipart mapped occurrences: parked (#5328)
@@ -4659,7 +4663,7 @@ signals reversed across an A/A-controlled follow-up, native export timings were
 mixed and later overlapped unrelated host work, and a browser timing attempt was
 interrupted for the same contention. Smaller serialized output is not a load
 win. Preserve the rejected source, observer failures, completed functional checks
-and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
+and every timing cohort in [the experiment record](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/multipart-5328/README.md).
 No runtime change from this prototype ships.
 
 ## Physical summary membership scan (#5477)
@@ -4678,7 +4682,7 @@ readiness, not worker geometry alone. AC20 and ISSUE_129 control medians stayed
 close to base, with matching output counts and functional checks. The lesson is to profile React
 publication work on large entity stores: repeated whole-store scans can
 dominate after worker geometry has finished. See the
-[sample-level browser evidence](evidence/physical-summary-5477/README.md).
+[sample-level browser evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/physical-summary-5477/README.md).
 
 ## Edge-grazing half-space cap repair (#5314)
 
@@ -4710,7 +4714,7 @@ later transient uploads before normal finalization; it improved both pairs but
 missed the predeclared investment gate for a larger renderer redesign. That
 diagnostic deliberately reduces progressive display and must not ship.
 
-Both patches remain unapplied in the [complete screen evidence](../../docs/architecture/evidence/viewer-ancestor-screen-5555/README.md).
+Both patches remain unapplied in the [complete screen evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/viewer-ancestor-screen-5555/README.md).
 The experiment reused identical frozen WASM with current JavaScript, so it is
 an investment screen, not source-matched shipping qualification. All attempts
 and provenance are retained. Lesson: a large inclusive React sample bucket does
@@ -4796,7 +4800,7 @@ the full call.
 
 ### Fresh-process analytic cache control (#6442)
 
-The [raw five-pair A/B runs and reproduction commands](evidence/analytic-cache-6442/README.md)
+The [raw five-pair A/B runs and reproduction commands](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/analytic-cache-6442/README.md)
 now measure the combined opt-in analytic call itself, using the `cfg(test)`
 uncached control in a separate process for every run. The catalogued Snowdon
 IFC yielded 1,073 → 128 source loads and identical ordered analytic JSON
@@ -4855,7 +4859,7 @@ The lesson is that an unchanged solid classification does not make its
 retessellation disposable. Any reuse must preserve validated topology repair
 as well as cuts, welded-operand identity, and budget rejection. A small volume
 delta or close sampled surfaces cannot excuse reopening a closed mesh.
-[Evidence and release provenance](evidence/opening-work-6516/README.md) also
+[Evidence and release provenance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/opening-work-6516/README.md) also
 distinguish accepted-open-output telemetry from actual kernel rejection; those
 diagnostic labels alone do not identify which work can be removed.
 
@@ -4883,7 +4887,7 @@ performance qualification. The published release comparison also locates a
 separate output increase at the small-hole retention policy; do not delete
 corrective geometry to recover a former triangle count. The private reporter's
 complete slowdown remains unresolved. [All samples, identities, limits and
-reproduction commands](evidence/opening-work-6516/README.md) are retained together.
+reproduction commands](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/opening-work-6516/README.md) are retained together.
 
 
 ## Optional per-face geometry export colors (#6601)
@@ -4938,11 +4942,11 @@ samples. Background Chrome contention and an earlier baseline-only renderer
 completion timeout limit the inference; the evidence preserves qualification
 failures rather than discarding them. The lesson is to measure the actual default
 worker pool even for opt-in APIs, and to separate post-timing byte witnesses from
-the completion boundary. See [the evidence](../../docs/architecture/evidence/alignment-sections-6603/README.md).
+the completion boundary. See [the evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/alignment-sections-6603/README.md).
 
 ### Checked direct-record prepass projection screen (#6537)
 
-The [canonical-parser census](evidence/prepass-projection-6537/README.md) found
+The [canonical-parser census](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/prepass-projection-6537/README.md) found
 no unused nested attribute containers in the screened direct prepass record
 families across the small, CSG, heavy and large public controls. The separate Revit
 medical capture had no covered void/fill records. Snowdon's covered pairs had
@@ -5085,7 +5089,7 @@ release now follows weak aliases at the existing shallow-copy/provenance seam,
 clearing only shared fields and preserving independent updates, retained counts,
 GPU content version and the global streaming prefix.
 
-The [retained controls and earlier negative measurements](evidence/owner-cache-6537/README.md)
+The [retained controls and earlier negative measurements](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/owner-cache-6537/README.md)
 prove reference removal and collectability; they do not measure OS peak memory
 or establish a current end-to-end speedup. Lesson: invalidate shared CPU owners
 at release rather than repairing only the current rendering cache.
@@ -5116,12 +5120,12 @@ trusting a cached preview page. A scheduled opportunity stopped before timing
 when the benchmark server and its forwarding route were missing; restoring them
 does not turn that unlaunched cohort into performance evidence.
 The three October 16 opportunities are distinct failed cohorts, not replacement
-samples for that original report; the [evidence index](../../docs/architecture/evidence/opening-tears-6940/README.md)
+samples for that original report; the [evidence index](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/opening-tears-6940/README.md)
 identifies each plan and disposition. Their local receipts are not included in
 the original published packet. All scheduled opportunities are exhausted.
 Lesson: retain cohort identity through PR summaries and stop at the original
 admission budget; later host quietness cannot qualify a refused case.
-The [V6 supplemental join](../../docs/architecture/evidence/opening-tears-6940/recording-checker-v6/README.md)
+The [V6 supplemental join](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/opening-tears-6940/recording-checker-v6/README.md)
 now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
@@ -5225,7 +5229,7 @@ conservative diagnostic/texture refusals require separately attributed load-cost
 and real-model qualification, recorded below.
 Retained face colours use bounded BVH attribution after the exact topology cut.
 
-The [historical export cohort](evidence/section-export-7711/README.md) retains
+The [historical export cohort](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/section-export-7711/README.md) retains
 its original source attribution and operation timings. Its identical native
 controls do not qualify changed native code; the fresh comparison below does.
 
@@ -5241,7 +5245,7 @@ Disposition: accept the disclosed ordinary native cost for the section-export
 capability demonstrated by the separate fresh Haus real-WASM crop and external
 IfcOpenShell/OCC witness. Ordinary sinks allocate no audit receipts, but the
 changed diagnostic drain order and unsupported-map key cloning therefore required this
-full-load measurement. The [retained native evidence](evidence/section-export-7711/recovery-native-load/README.md)
+full-load measurement. The [retained native evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/section-export-7711/recovery-native-load/README.md)
 separates that cost from the requested crop operation. It establishes no browser,
 GPU, crop-throughput or opt-in-audit throughput verdict. Existing native-instruction,
 bundle, parity and required CI gates remain binding; no baseline or ceiling was
@@ -5252,9 +5256,9 @@ and keep actual crop behavior proof separate from load-cost acceptance.
 
 The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
 
-[Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
+[Retained native observations](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
 
-The separate [historical recovery cohort](../../tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md)
+The separate [historical recovery cohort](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md)
 binds its own frozen base and candidate, with matching complete declared payload
 and diagnostic witnesses. Its stock report is inconclusive; faster entity-scan
 flags coexist with adverse geometry and complete-call observations. Raw block
@@ -5346,7 +5350,7 @@ three controls. No speed or neutrality claim follows.
 
 Disposition: accept the disclosed native cost for canonical placement/direction
 consumer fixes with exact preserved geometry/refusal output. This is an accepted
-cost, not a required-gate waiver. The [own-layer evidence](evidence/placement-7779/recovery-x-native/README.md)
+cost, not a required-gate waiver. The [own-layer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/placement-7779/recovery-x-native/README.md)
 retains every phase/sample and distinguishes the stock selected report from
 all-inner outer-block statistics. Both actual selected sources retain original
 core/geometry/processing and example compiler proof; the original X preparation's
@@ -5384,7 +5388,7 @@ ceiling, acceptance band or output pin is changed by this disposition.
 
 ## Allplan polyline full-path compatibility (#7983)
 
-The [original native comparison](evidence/allplan-polyline-7983/summary.json)
+The [original native comparison](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/allplan-polyline-7983/summary.json)
 against the branch base passed its pre-timing idle guard, but the unchanged
 reporter rejected the timing spread. Parse medians were unchanged; geometry
 and total medians increased within that wide spread. The verdict is unqualified,
@@ -5398,7 +5402,7 @@ timing or establish byte identity. Preserve the original adverse observations
 and their source identity rather than treating a successful probe exit as
 performance acceptance.
 
-The [sole final-source comparison](evidence/allplan-polyline-7983/final-891152455a/README.md)
+The [sole final-source comparison](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/allplan-polyline-7983/final-891152455a/README.md)
 measures the merged candidate against its matching main parent under exclusive
 Pop admission. The unchanged reporter again rejects the timing spread. Ordered
 mesh payload fingerprints match on every sample, with the fingerprint's declared
@@ -5438,7 +5442,7 @@ separate evidence, and do not label an architectural refactor performance-neutra
 
 ### Owned immutable production contexts (E2a, #7955, #8059)
 
-The [source-qualified comparison](evidence/model-context-e2a/summary.json)
+The [source-qualified comparison](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/model-context-e2a/summary.json)
 preserves ordered geometry fingerprints and counts on FZK, ISSUE_129 and Holter
 in both default and local frames. The fingerprint excludes text, material
 definitions, UVs, textures and instancing; historical full-payload and WASM
@@ -5539,7 +5543,7 @@ has no runtime, oracle or performance qualification; all acceptance holds remain
 
 ### Native/browser run snapshots (E2b, #7955)
 
-The [source-qualified evidence](evidence/run-snapshot-e2b/summary.json) records
+The [source-qualified evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/run-snapshot-e2b/summary.json) records
 matching native flat/instanced payload fingerprints and actual source-built
 WASM getter fingerprints. These scopes exclude complete result serialization
 and separate native material definitions.
@@ -5601,7 +5605,7 @@ replacing samples until the headline turns green.
 
 The human approved retaining the section-export stack at its measured local
 engine budget, with the inherited tolerance and viewer budgets unchanged.
-The [decision evidence](../../docs/architecture/evidence/section-export-budget/README.md)
+The [decision evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/section-export-budget/README.md)
 binds the source, runtime custody, original size failure and completed consumer
 proof. Accepting this budget does not establish isolated feature cost or browser
 runtime cost. Preserve the original failures and unknown consumer attempt;

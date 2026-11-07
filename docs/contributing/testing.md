@@ -76,7 +76,7 @@ The runtime consumer queries a model, edits a declared property, exports/reopens
 
 The same external install also builds a browser entry with Vite and verifies that geometry workers and the WASM binary are emitted. This catches missing worker URLs that a Node-only geometry pass cannot detect.
 
-The check removes its temporary installation on success or failure. Capture its JSON receipt with `pnpm --silent test:packed > packed-receipt.json`. A real captured run is in `tests/evidence/packed-workflows/receipt.json`; it records package versions and fixture hashes, with no model bytes.
+The check removes its temporary installation on success or failure. Capture its JSON receipt with `pnpm --silent test:packed > packed-receipt.json`. The receipt records package versions and fixture hashes, with no model bytes.
 
 ### Local BCF publication peer
 

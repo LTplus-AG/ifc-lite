@@ -15,7 +15,6 @@
  * write, so the correction is converted to the project unit, and the overlay
  * reads it back in that unit. Converted to the entry's own unit instead, the
  * session passed and the exported file was 1000 times off.
- * docs/architecture/evidence/7542-type-quantity-sets has the exported lines.
  *
  * A property the entity holds in its own property set keeps its own `Unit`.
  */

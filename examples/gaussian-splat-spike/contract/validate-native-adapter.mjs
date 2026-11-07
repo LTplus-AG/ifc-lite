@@ -4,12 +4,12 @@
 // #8564 internal, unqualified native Gaussian adapter: browser GPU witness.
 // Correctness evidence only; never timing, hardware performance or production
 // qualification. Serialize GPU use:
-//   ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs \
+//   node examples/gaussian-splat-spike/contract/validate-native-adapter.mjs \
 //     [--backend=auto|swiftshader|hardware] [--allow-pending-adapter]
 //     [--demo [--capture=seem]] [--ifc-regression=/abs/base/checkout] [--scenes=a,b]
 //     [--real-glass=/abs/k-layer/checkout]  (FZK-Haus + capture behind a window; needs prepare.mjs fixtures)
-// auto = hardware when IFC_GPU_CDP_URL is set (ifc-gpu-check exports it for
-// Windows Chrome on the PC GPU), else Playwright Chromium on SwiftShader.
+// auto = hardware when IFC_GPU_CDP_URL names a hardware Chrome endpoint, else
+// Playwright Chromium on SwiftShader.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
@@ -28,7 +28,7 @@ const flag = name => args.includes(name);
 const requested = args.find(a => a.startsWith('--backend='))?.slice('--backend='.length) ?? 'auto';
 const backend = requested === 'auto' ? (process.env.IFC_GPU_CDP_URL ? 'hardware' : 'swiftshader') : requested;
 if (!['swiftshader', 'hardware'].includes(backend)) throw new Error(`Unknown --backend=${requested}`);
-if (backend === 'hardware' && !process.env.IFC_GPU_CDP_URL) throw new Error('--backend=hardware needs IFC_GPU_CDP_URL; run under ~/build-workers/ifc-gpu-check');
+if (backend === 'hardware' && !process.env.IFC_GPU_CDP_URL) throw new Error('--backend=hardware needs IFC_GPU_CDP_URL');
 const option = name => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const regressionBase = option('ifc-regression');
 const realGlassRoot = option('real-glass');

@@ -130,7 +130,7 @@ software adapter (SwiftShader) is named; viewer `--require-hardware-gpu` refuses
 Browser-memory does not record adapter/software/device-loss fields and does not
 support `--require-hardware-gpu`.
 
-`exclusivity.exclusive` is **true** only inside an `ifc-fleet --kind benchmark` job
+`exclusivity.exclusive` is **true** only inside an exclusive benchmark job
 (`IFC_WORKER_KIND=benchmark`, the job id becomes the receipt) or when the submitter passes
 `--exclusive-receipt ID`; the runner records `verified: false` (it cannot verify
 admission) and refuses a flag that contradicts an ordinary job. Every other run,

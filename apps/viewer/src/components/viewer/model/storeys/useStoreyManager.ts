@@ -88,8 +88,11 @@ export function useStoreyLevelEditing(modelId: string | null) {
     const edit = levelEdit(storeyId, field, metres);
     const result = previewStoreyLevel(useViewerStore, modelId, edit);
     previewed.current = result.applied ? JSON.stringify(edit) : null;
-    const refusal = result.plan?.refusals[0];
-    setDraft({ storeyId, field, plan: result.plan, previewing: result.applied, error: refusal ? refusalText(t, refusal) : null });
+    // A plan's refusal, or the earlier preview that could not be put back first.
+    const stuck = !result.plan && result.outcome && !result.outcome.ok ? result.outcome : null;
+    const refusal = result.plan?.refusals[0] ?? stuck?.refusals[0];
+    const error = refusal ? refusalText(t, refusal) : stuck ? t('storeyManager.refusal.other', { reason: stuck.reason }) : null;
+    setDraft({ storeyId, field, plan: result.plan, previewing: result.applied, error });
   }, [modelId, t]);
 
   /** A keystroke: validate now, preview once typing pauses. */

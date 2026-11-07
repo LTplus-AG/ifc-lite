@@ -53,16 +53,17 @@ export interface StoreyPreview {
   readonly outcome: StoreyOpOutcome | null;
 }
 
-/** Plan an edit against the model as it is without any running preview. */
-export function planStoreyPreview(store: TransactionStore, modelId: string, edit: StoreyLevelEdit): StoreyLevelPlan | null {
-  revertStoreyPreview(store);
-  const target = modelEditTarget(store.getState(), modelId);
-  return target ? planStoreyLevelEdit(readStoreyInventory(target.dataStore, target.view), edit) : null;
-}
-
-/** Replace the running preview with `edit`. A refused plan reverts and applies nothing. */
+/**
+ * Replace the running preview with `edit`. A refused plan reverts and applies
+ * nothing. If the running preview cannot be put back first (another write
+ * buried it and its restore is refused), nothing new is applied either: the
+ * refusal is returned as `outcome`, so the field says the old edit stands.
+ */
 export function previewStoreyLevel(store: TransactionStore, modelId: string, edit: StoreyLevelEdit): StoreyPreview {
-  const plan = planStoreyPreview(store, modelId, edit);
+  const refused = revertStoreyPreview(store);
+  if (refused && !refused.ok) return { plan: null, applied: false, outcome: refused };
+  const target = modelEditTarget(store.getState(), modelId);
+  const plan = target ? planStoreyLevelEdit(readStoreyInventory(target.dataStore, target.view), edit) : null;
   if (!plan || plan.refusals.length > 0 || plan.storeys.length === 0 || store.getState().collabSession) {
     return { plan, applied: false, outcome: null };
   }
@@ -103,20 +104,33 @@ export function revertStoreyPreview(store: TransactionStore): StoreyOpOutcome | 
   if (!top || state.mutationBatchTags.get(top.id) !== batchId) {
     // Something else (a script, another tool) was written on top of the preview, so undoing
     // would undo that instead. Cancel still means the level goes back: re-level it as it was.
+    // All or nothing: if one storey cannot go back, the ones already restored are undone
+    // again (each is the newest step), so the preview is left whole rather than half-cancelled.
+    const redoBeforeRestore = state.redoStacks.get(modelId);
+    let restoredSteps = 0;
     for (const edit of inverse) {
       const restored = commitStoreyOp(store, modelId, { kind: 'level', edit });
-      if (!restored.ok) return restored;
+      if (!restored.ok) {
+        for (; restoredSteps > 0; restoredSteps--) store.getState().undo(modelId);
+        setRedo(store, modelId, redoBeforeRestore);
+        return restored;
+      }
+      restoredSteps++;
     }
     return null;
   }
   state.undo(modelId);
+  setRedo(store, modelId, redoBefore);
+  return null;
+}
+
+function setRedo(store: TransactionStore, modelId: string, stack: RedoStack): void {
   store.setState((s) => {
     const redoStacks = new Map(s.redoStacks);
-    if (redoBefore) redoStacks.set(modelId, redoBefore);
+    if (stack) redoStacks.set(modelId, stack);
     else redoStacks.delete(modelId);
     return { redoStacks };
   });
-  return null;
 }
 
 export function hasStoreyPreview(): boolean {

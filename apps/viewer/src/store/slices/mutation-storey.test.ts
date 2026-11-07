@@ -315,6 +315,29 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.deepEqual(storeys(), [['L0', 0], ['Mid', 3.2], ['L1', 3.4]]);
   });
 
+  it('a new preview is not applied while the buried one cannot be put back (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Mid', Elevation: 3.2, referenceStoreyId: STOREY } }).ok);
+    const next = m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.5 });
+    assert.equal(next.applied, false);
+    assert.ok(next.outcome && !next.outcome.ok, 'the stuck restore is reported');
+    assert.deepEqual(storeys(), [['L0', 0], ['Mid', 3.2], ['L1', 3.4]], 'no second provisional edit on top');
+  });
+
+  it('a buried multi-storey restore is all or nothing: a refusal partway leaves the preview whole (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L2', Elevation: 6, referenceStoreyId: UPPER_STOREY } }).ok);
+    // L0 0 / L1 3 / L2 6; a 4 m gap above L0 moves L1 to 4 and L2 to 7.
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'floorHeight', storeyId: STOREY, Height: 4 }).applied);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Mid', Elevation: 6.5, referenceStoreyId: UPPER_STOREY } }).ok);
+    const redoBefore = useViewerStore.getState().redoStacks.get(MODEL_ID)?.length ?? 0;
+    const refused = m.revertStoreyPreview(useViewerStore);
+    assert.ok(refused && !refused.ok, 'L2 cannot go back across the storey at 6.5 m');
+    assert.deepEqual(storeys(), [['L0', 0], ['L1', 4], ['Mid', 6.5], ['L2', 7]], 'L1 is not left half-cancelled');
+    assert.equal(useViewerStore.getState().redoStacks.get(MODEL_ID)?.length ?? 0, redoBefore, 'the rolled-back restore leaves no redo');
+  });
+
   it('a preview a script has undone is not reported as kept (#9037 review)', async () => {
     const m = await storey();
     assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);

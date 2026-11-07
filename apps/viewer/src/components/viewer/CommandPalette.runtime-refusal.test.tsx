@@ -220,7 +220,9 @@ for (const transition of ['removed', 'replaced', 'contribution-removed'] as cons
 
       // A fresh current contribution still executes after the refused handoff.
       const current = replacement ?? oldHost;
-      act(() => current.slotRegistry.register(owner, [command]));
+      if (transition === 'contribution-removed') {
+        act(() => current.slotRegistry.register(owner, [command]));
+      }
       surface.replace(current);
       click(row(command.payload.title));
       await flushFrames();

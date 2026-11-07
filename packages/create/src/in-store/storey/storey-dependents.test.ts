@@ -13,6 +13,7 @@ import * as create from '../../index.js';
 import { describe, expect, it } from 'vitest';
 import { recordCompoundMutation, undoRecordedMutationOperations, StoreEditor } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcCreator } from '../../ifc-creator.js';
 import { addOrdinaryElementInStore } from '../ordinary-element.js';
 import { addHostedElementInStore } from '../hosted-element.js';
@@ -146,6 +147,24 @@ describe('quantities and stairs as the file records them (#9036 review)', () => 
     api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'floorHeight', storeyId: level1, Height: 4 });
     const qto = s.view.getQuantitiesForEntity(wall).find((set) => set.name === 'Qto_WallBaseQuantities')!;
     expect(qto.quantities.find((q) => q.name === 'NetSideArea')?.value).toBeCloseTo(14, 9);
+  });
+
+  it('quantities that exist only in the source file are kept true, with no quantity extractor on the view', async () => {
+    const { s, anchor } = await blank();
+    const drawn = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    s.view.setQuantity(drawn, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+    s.view.setQuantity(drawn, 'Qto_WallBaseQuantities', 'GrossSideArea', 12, QuantityType.Area);
+    api('writeTopAttachment')(s.view, drawn, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    // Reload: the set now lives in the source file only; this session's view has no quantity extractor.
+    const r = session(await parse(s.text()));
+    expect(r.view.hasQuantityBase()).toBe(false);
+    const inventory = api('readStoreyInventory')(r.store, r.view);
+    const wall = inventory.store.entityIndex.byType.get('IFCWALL')![0];
+    api('applyStoreyLevelEdit')(r.store, r.editor, { kind: 'floorHeight', storeyId: inventory.storeys[0].expressId, Height: 4 });
+    const qto = r.view.getQuantitiesForEntity(wall, (id) => extractQuantitiesOnDemand(r.store, id)).find((set) => set.name === 'Qto_WallBaseQuantities')!;
+    expect(qto.quantities.find((q) => q.name === 'Height')?.value).toBeCloseTo(4, 9);
+    expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(16, 9);
   });
 
   it('a flight that sits above its stair\'s placement lands, and refits, at its own top', async () => {

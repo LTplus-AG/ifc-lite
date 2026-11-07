@@ -161,7 +161,7 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
         throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} is attached to the storey above but cannot reach the new storey: ${outcome.reason}` }]);
       }
       // The same quantity upkeep as a re-level: Height, areas and volumes follow the new height.
-      scaleWallQuantities(draft.getMutationView(), wall.wallId, wall.to / wall.from);
+      scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from);
       reshaped.push(...outcome.remesh);
     }
     return { storeyId, placementId, relAggregatesId, boundWalls, reshaped };

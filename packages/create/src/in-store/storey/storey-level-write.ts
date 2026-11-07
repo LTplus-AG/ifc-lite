@@ -10,7 +10,7 @@
  */
 
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { editStairDimensionsInStore } from '../stair-edit.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import type { StoreyLevelPlan } from './storey-level-plan.js';
@@ -32,7 +32,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
     if (!outcome.ok) {
       throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} cannot follow its storey: ${outcome.reason}` }]);
     }
-    scaleWallQuantities(view, wall.wallId, wall.to / wall.from);
+    scaleWallQuantities(store, view, wall.wallId, wall.to / wall.from);
     reshaped.push(...outcome.remesh);
   }
   for (const stair of plan.stairs) {
@@ -53,9 +53,12 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
  * and volume scale by `k`; the net values lose the same openings before and
  * after, so they change by exactly the gross change. Unit-free, since every
  * value keeps the unit it was written in. A wall without the set gets none.
+ * A view with no quantity base of its own reads the source quantities here,
+ * so a set that exists only in the file is kept true too.
  */
-export function scaleWallQuantities(view: MutablePropertyView, wallId: number, k: number): void {
-  const qto = view.getQuantitiesForEntity(wallId).find((set) => set.name === WALL_QTO);
+export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number): void {
+  const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
+  const qto = view.getQuantitiesForEntity(wallId, base).find((set) => set.name === WALL_QTO);
   if (!qto || !Number.isFinite(k)) return;
   const value = (name: string) => qto.quantities.find((q) => q.name === name);
   const set = (name: string, next: number) => {

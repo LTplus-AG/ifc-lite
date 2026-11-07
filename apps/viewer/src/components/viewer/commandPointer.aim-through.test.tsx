@@ -186,12 +186,14 @@ describe('the Alt key while a command runs (#9201)', () => {
   });
 
   it('turning snapping off with the pointer still moves the point at once', async () => {
-    render(<Key />);
     const ctx = pointer();
+    // The viewport writes its snap ref while it renders (`useLatestRef`); so does this stand-in.
+    function Viewport() { ctx.snapEnabledRef.current = useViewerStore((st) => st.snapEnabled); useAimKey(true); return null; }
+    render(<Viewport />);
     routeCommandPointer(ctx, 'move', 300, -300, { shiftKey: false, altKey: false });
     await nextFrame();
     assert.equal(landed().winner, 'face');
-    (ctx.snapEnabledRef as { current: boolean }).current = false;
+    // Only the store changes, as when S is pressed.
     useViewerStore.setState({ snapEnabled: false });
     await nextFrame();
     assert.deepEqual(landed(), { local: [3, 3], winner: 'workplane' });

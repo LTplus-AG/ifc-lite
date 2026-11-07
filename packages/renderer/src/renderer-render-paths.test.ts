@@ -1501,7 +1501,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             coldGrey(h);
             const rebuilds = countRebuilds(scene, 1);
             h.render(XRAY);
-            assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'the split needs the pieces back');
+            assert.ok(scene['subsetResidency'].warmOnly.has(greyOf(h).colorKey), 'queued for its pieces only');
             scene.processResidencyRestores(device(h), pipeline(h), Infinity);
             await Promise.all(scene['coldRestoresInFlight'].values());
             scene.processResidencyRestores(device(h), pipeline(h), Infinity);
@@ -1592,7 +1592,24 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             assert.ok(!scene['residencyRestoreQueue'].has(rebuilt.colorKey));
         });
 
-        it('a batch that cannot be partitioned still draws whole under X-Ray and keeps its own buffers', () => {
+        it('an evicted batch that cannot be partitioned is restored whole under X-Ray, not left waiting for pieces', () => {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1);
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) }); // grey undrawn: evicted, still warm
+            assert.strictEqual(grey.gpuResident, false);
+            scene.canPartitionBatch = () => false; // e.g. a colour-merged piece
+            frame(h, XRAY);
+            assert.ok(!scene['subsetResidency'].warmOnly.has(grey.colorKey), 'no pieces-only restore for a warm batch');
+            const rebuilt = greyOf(h);
+            assert.notStrictEqual(rebuilt.gpuResident, false, 'the whole-batch fallback asked for its own buffers back');
+            h.stats.draws.length = 0;
+            h.render(XRAY);
+            assert.ok(h.stats.draws.includes(rebuilt.vertexBuffer), 'drawn whole at the batch-wide alpha');
+        });
+
+        it('regression guard: a resident batch that cannot be partitioned still draws whole under X-Ray and keeps its own buffers', () => {
             const h = makeHarness();
             const { grey } = seedBatches(h);
             const scene = sceneOf(h);

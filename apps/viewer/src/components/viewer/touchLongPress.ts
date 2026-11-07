@@ -6,7 +6,7 @@
 import { TAP_SLOP_PX } from './tapSlop.js';
 
 const HOLD_MS = 500;
-/** How long after a long press fires, and how near its point (CSS px), the touch's own native menu may still come. */
+/** How long after a long press fires or lifts, and how near its point (CSS px), the touch's own native menu may still come. */
 const MENU_MS = 1_000, MENU_RADIUS_PX = 24;
 
 /** A point whose native menu is the touch's; `mouse` once a mouse or trackpad menu press near it was seen (#9087). */
@@ -19,8 +19,12 @@ const longPresses = new WeakMap<HTMLCanvasElement, { forget: (clientX: number, c
  * mouse controls see it (the same press that closes a Pencil lift's click
  * window, #9043). A right press, or a ctrl+click, opens a menu: the next
  * untyped context menu near it is that press's own, so the long press lets it
- * through once (#9087). The touch's own menu, typed `touch` or `pen`, stays
- * suppressed; one typed `mouse` is never the touch's.
+ * through once (#9087), and a hold still pending opens no menu of its own
+ * (#9223). A press with no long press near it yet is kept for a finger that
+ * lands near it within `MENU_MS`: on Windows its menu comes at the release,
+ * untyped in an engine whose contextmenu is no PointerEvent (#9223). The
+ * touch's own menu, typed `touch` or `pen`, stays suppressed; one typed
+ * `mouse` is never the touch's.
  */
 export function forgetTouchLongPress(canvas: HTMLCanvasElement, e: MouseEvent): void {
   if (e.button === 2 || e.ctrlKey) longPresses.get(canvas)?.forget(e.clientX, e.clientY);
@@ -37,9 +41,13 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   let timer: ReturnType<typeof setTimeout> | null = null;
   let start: (MenuPoint & { id: number }) | null = null;
   let fired = false;
+  /** A mouse or trackpad menu press near the finger stopped its hold: the menu is the press's (#9223). */
+  let muted = false;
   let menuWindow: (MenuPoint & { until: number }) | null = null;
+  /** A menu press that came before any long press near it, waiting for its menu or a finger. */
+  let pressBefore: { x: number; y: number; time: number } | null = null;
 
-  const near = (point: MenuPoint, x: number, y: number) => Math.hypot(x - point.x, y - point.y) <= MENU_RADIUS_PX;
+  const near = (point: { x: number; y: number }, x: number, y: number) => Math.hypot(x - point.x, y - point.y) <= MENU_RADIUS_PX;
   const clearTimer = () => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
@@ -48,10 +56,15 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
     clearTimer();
     start = null;
     fired = false;
+    muted = false;
   };
   const registration = {
     forget(x: number, y: number) {
-      for (const point of [start, menuWindow]) if (point && near(point, x, y)) point.mouse = true;
+      let armed = false;
+      for (const point of [start, menuWindow]) if (point && near(point, x, y)) point.mouse = armed = true;
+      // The press's menu is the one asked for: a hold still pending must not replace it (#9223).
+      if (start && !fired && near(start, x, y)) { clearTimer(); muted = true; }
+      pressBefore = armed ? null : { x, y, time: Date.now() };
     },
   };
   longPresses.set(canvas, registration);
@@ -61,6 +74,12 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       cancel();
       fired = false;
       start = { id: touch.identifier, x: touch.clientX, y: touch.clientY, mouse: false };
+      // A finger landing next to a menu press whose menu has not come yet: that menu is the press's (#9223).
+      if (pressBefore && Date.now() - pressBefore.time <= MENU_MS && near(start, pressBefore.x, pressBefore.y)) {
+        pressBefore = null;
+        start.mouse = muted = true;
+        return;
+      }
       timer = setTimeout(() => {
         timer = null;
         if (!start) return;
@@ -80,11 +99,16 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
     },
     end() {
       const held = fired;
+      // Windows sends a held touch's own menu at the lift, however long the hold, and whether or
+      // not a mouse press muted it (#9223): its window runs from the lift.
+      if (fired && menuWindow) menuWindow.until = Date.now() + MENU_MS;
+      else if (muted && start) menuWindow = { ...start, until: Date.now() + MENU_MS };
       cancel();
       return held;
     },
     cancel,
     suppressNativeMenu(event) {
+      if (pressBefore && near(pressBefore, event.clientX, event.clientY)) pressBefore = null; // its menu came
       const point = start ?? (menuWindow && Date.now() < menuWindow.until ? menuWindow : null);
       if (!point || !near(point, event.clientX, event.clientY)) return;
       const source = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };

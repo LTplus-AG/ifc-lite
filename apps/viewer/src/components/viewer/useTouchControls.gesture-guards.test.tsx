@@ -11,6 +11,8 @@
  *   window (#9043).
  * - #9122: only the fingers on the canvas make a canvas gesture; a thumb
  *   resting on a side panel neither keeps it multi-touch nor keeps its drag.
+ * - #9223: a menu press next to a finger stops its hold, in either order, and
+ *   a touch's own menu at the lift is suppressed however long the hold.
  *
  * Mounts the real `useMouseControls` and `useTouchControls` on one canvas.
  */
@@ -202,20 +204,22 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     assert.equal(menus.length, 1, `the long press opened ${menus.length} viewer menus`);
   });
 
-  it('a trackpad right-click lets one menu through: the touch\'s untyped native menu after it stays suppressed', async () => {
+  it('a trackpad right-click lets one menu through and stops the held finger\'s hold: no long-press menu replaces it (#9223)', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     const { canvas, menus } = rig('select', 42);
     act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
     await trackpadRightClick(canvas, 210, 300);
     assert.equal(menus.length, 1, 'the trackpad right-click opened no menu');
-    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
-    assert.equal(menus.length, 2, 'the long press opened its menu');
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 1, 'BUG (#9223): the finger still held opened its long-press menu over the trackpad\'s');
     assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the touch\'s untyped native menu passed after the trackpad\'s');
     act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
     assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the trailing untyped native menu passed');
+    // Windows sends the held touch's own menu at the lift, typed `touch`
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG (#9223): the touch\'s menu at the lift passed');
     mock.timers.reset();
     await act(settle);
-    assert.equal(menus.length, 2);
+    assert.equal(menus.length, 1);
   });
 
   it('a trackpad left click near a held finger does not let its native menu through', async () => {
@@ -294,6 +298,81 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     mock.timers.reset();
     await act(settle);
     assert.equal(menus.length, 1);
+  });
+});
+
+describe('a long press and a mouse or trackpad menu press, in every engine\'s order (#9223)', () => {
+  it('Windows order, untyped menu: a right press, a finger landing next to it, the menu at the release opens one viewer menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+    });
+    // An engine whose contextmenu is no PointerEvent: the menu after the release carries no pointerType
+    await act(async () => { canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2)); await flushPick(); });
+    assert.equal(menus.length, 1, `BUG: the mouse's own untyped menu next to a finger that landed after its press opened ${menus.length} menus`);
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 1, 'BUG: the finger held on opened its long-press menu over the mouse\'s');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  // Guard: fails if a press whose menu already came at the press still mutes the next finger near it.
+  it('macOS order: a right press whose menu came at the press leaves a finger landing after it free to long-press', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, 'the right-click opened its menu');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await flushPick(); });
+    assert.equal(menus.length, 2, 'the long press after a finished right-click opened no menu');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  it('a Windows touch hold of 1.6 s: the touch\'s own menu at the lift opens no second viewer menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await flushPick(); });
+    assert.equal(menus.length, 1, 'the long press opened its menu');
+    // Android sends the touch's own menu during the hold, typed `touch`, with no mouse press involved
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s menu during the hold was shown');
+    await act(async () => { mock.timers.tick(1_100); await flushPick(); });
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    // Windows sends it at the lift, however long the hold
+    await act(async () => {
+      assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG (#9223): the touch\'s menu at the lift of a long hold was shown');
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, `BUG (#9223): a long hold opened ${menus.length} viewer menus`);
+  });
+
+  // Guard: the Pencil lift window widened from 5 to 10 px in #9218. A slow press is no tap, so the
+  // selection-mark guard does not cover it and only the pen gate drops its click.
+  it('a slow Pencil press: its untyped click 8 px from the lift is dropped', async () => {
+    mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    const { canvas, selectionCount } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+    });
+    mock.timers.tick(350);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 0, 'the slow press selected as a tap');
+    await act(async () => { canvas.dispatchEvent(click(208, 300, null)); await settle(); });
+    assert.equal(selectionCount(), 0, 'BUG: the Pencil\'s compatibility click 8 px from its lift selected');
+    await act(async () => { canvas.dispatchEvent(click(212, 300, null)); await settle(); });
+    assert.equal(selectionCount(), 1, 'an untyped click past the slop of the lift is not the Pencil\'s (control)');
   });
 });
 

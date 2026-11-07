@@ -9,6 +9,11 @@ export const copyArrayIt = {
   "commands.model.paste": "Incolla gli elementi copiati al cursore (spazio Modello)",
   "commands.model.pasteInPlace": "Incolla gli elementi copiati nella stessa posizione, al piano attuale (spazio Modello)",
   "commands.model.array": "Ripeti gli elementi selezionati in fila o attorno a un centro (spazio Modello)",
+  "copyArray.cameFree": {
+    "one": "{countDisplay} copia non è stata posizionata su un’intersezione della griglia e non è più collegata alla griglia",
+    "other": "{countDisplay} copie non sono state posizionate su un’intersezione della griglia e non sono più collegate alla griglia",
+    "many": "{countDisplay} copie non sono state posizionate su un’intersezione della griglia e non sono più collegate alla griglia",
+  },
   "copyArray.copied": {
     "one": "Copiato {countDisplay} elemento",
     "other": "Copiati {countDisplay} elementi",

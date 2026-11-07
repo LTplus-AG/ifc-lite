@@ -157,7 +157,7 @@ export const extensionsPanelsIt = {
   "extensionsPanels.privacyPanel.extractFromChat": "Estrai dalla chat",
   "extensionsPanels.privacyPanel.storeHeading": "Cosa memorizziamo localmente",
   "extensionsPanels.privacyPanel.storeBody1": "ifc-lite mantiene un registro privo di contenuti delle azioni di alto livello che esegui (caricamenti di modelli, applicazioni di Lens, esportazioni). Lo usiamo per rilevare sequenze ricorrenti e suggerire strumenti con un clic. Il registro non memorizza mai contenuti dei modelli, contenuti delle chat, nomi di file o chiavi API.",
-  "extensionsPanels.privacyPanel.storeBody2": "Suggerimenti, registro di audit, istruzioni aggiuntive e libreria dei profili sono tutti memorizzati nell'IndexedDB del browser: nulla di quanto mostrato qui viene inviato fuori dal dispositivo salvo esportazione esplicita.",
+  "extensionsPanels.privacyPanel.storeBody2": "Suggerimenti, registro di audit, istruzioni aggiuntive e libreria dei profili sono memorizzati nell'IndexedDB del browser. Il registro delle azioni rimane locale, salvo esportazione. Le istruzioni aggiuntive vengono inviate con le richieste alla chat IA.",
   "extensionsPanels.privacyPanel.actionLogHeading": "Registro delle azioni",
   "extensionsPanels.privacyPanel.actionLogStats": "{events} eventi · {kib} KiB",
   "extensionsPanels.privacyPanel.exportJsonButton": "Esporta JSON",

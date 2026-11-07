@@ -302,7 +302,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             )}
             <div className="flex flex-col gap-2">
               <Label>{t('shareDialog.anyoneCanLabel')}</Label>
-              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('shareDialog.accessLevelAriaLabel')}>
+              <div className="grid grid-cols-3 gap-0.5 rounded-md border p-0.5" role="radiogroup" aria-label={t('shareDialog.accessLevelAriaLabel')}>
                 {ROLE_OPTIONS.map((opt) => (
                   <Button
                     key={opt.role}
@@ -311,7 +311,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
                     role="radio"
                     aria-checked={role === opt.role}
-                    variant={role === opt.role ? 'default' : 'outline'}
+                    variant="toggle"
                     size="sm"
                     // Only the room admin mints role-scoped links; a joiner
                     // forwards the invite they hold, so the role is fixed.

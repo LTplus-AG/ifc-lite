@@ -113,6 +113,7 @@ import { propertiesSelectionDe } from './de/properties-selection';
 import { propertiesDe } from './de/properties';
 import { propertyEditorDe } from './de/property-editor';
 import { pushPullAlignDe } from './de/push-pull-align';
+import { registryDe } from './de/registry';
 import { relationshipCardDe } from './de/relationship-card';
 import { remeshDe } from './de/remesh';
 import { repositionPanelDe } from './de/reposition-panel';
@@ -273,6 +274,7 @@ export default {
   ...propertiesDe,
   ...propertyEditorDe,
   ...pushPullAlignDe,
+  ...registryDe,
   ...relationshipCardDe,
   ...remeshDe,
   ...repositionPanelDe,

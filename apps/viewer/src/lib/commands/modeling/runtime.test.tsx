@@ -12,7 +12,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
-import { cleanup, press, render, type } from '@/test/render.js';
+import { activate, cleanup, press, render, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
@@ -102,6 +102,17 @@ describe('modeling command session (#6232 WP2)', () => {
     assert.equal(commits.length, 1);
     assert.deepEqual(commits[0].points, [[0, 0]]);
     assert.equal(gesture().points.length, 0, 'a fresh gesture follows the commit');
+  });
+
+  it('Enter activates a focused panel button without committing (#9233)', () => {
+    useViewerStore.getState().startCommand('test.polyline');
+    commandPointerDown(at(1, 2));
+    let presses = 0;
+    const ui = render(<><CommandFieldsBar /><button onClick={() => { presses++; }}>Panel action</button></>);
+    activate(ui.querySelector('button')!);
+    assert.equal(presses, 1, 'the button owns Enter');
+    assert.equal(commits.length, 0, 'the modelling gesture is still pending');
+    assert.deepEqual(gesture().points, [[1, 2]]);
   });
 
   it('switching tools ends the command and its keys', () => {

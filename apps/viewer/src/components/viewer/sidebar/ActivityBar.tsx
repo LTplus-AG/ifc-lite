@@ -12,9 +12,11 @@
  * tooltip), and exactly one icon, the panel shown in the right pane, carries
  * the active state (`ActivityBarItem`). Icons that don't fit the rail's height
  * go into an overflow menu rather than being clipped (#8802 R1). With no model
- * loaded, model-dependent panels sit quiet. The footer toggles customize mode,
- * collapse, and a layout menu. In customize mode every icon becomes
- * drag-reorderable and gains an eye toggle inline (the rail scrolls then).
+ * loaded, model-dependent panels wait in that menu, marked as needing one, so
+ * the first screen's rail shows only what works without a model (#8802 R6).
+ * The footer toggles customize mode, collapse, and a layout menu. In customize
+ * mode every icon becomes drag-reorderable and gains an eye toggle inline (the
+ * rail scrolls then).
  */
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -43,13 +45,14 @@ import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, panelGroupDefinition, panelModelGateMode, type WorkspacePanelId } from '@/lib/panels/registry';
 import { useRailPanelIds } from '@/hooks/useRailPanelIds';
+import { useRenderedPanelIds } from '@/hooks/useRenderedPanelIds';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { isViewerEmpty } from '@/lib/tours/demo-kit';
 import { useTourStore } from '@/lib/tours/tour-store';
 import { getTour } from '@/lib/tours/registry';
 import { ActivityBarItem } from './ActivityBarItem';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
-import { fitRail } from './rail-overflow';
+import { layoutRail } from './rail-overflow';
 import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
 const CustomizeSidebar = lazy(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
 
@@ -142,11 +145,19 @@ export function ActivityBar() {
     }),
     [visibleIds],
   );
+  // Every panel drawn on screen stays on the rail (`useRenderedPanelIds`, the
+  // rule the dock, pane and strip draw by); on the empty start screen the
+  // panels that need a model wait in More (`layoutRail`).
+  const rendered = useRenderedPanelIds();
   const fit = useMemo(
     () => (customizing
-      ? { visible: entries.map((e) => e.id), overflow: [] }
-      : fitRail(entries, listHeight, [tourRailAnchor, primaryId])),
-    [customizing, entries, listHeight, primaryId, tourRailAnchor],
+      ? { visible: entries.map((e) => e.id), overflow: [], waiting: [] }
+      : layoutRail(entries, listHeight, {
+        anchors: [tourRailAnchor, primaryId && rendered.has(primaryId) ? primaryId : null],
+        rendered,
+        waits: viewerEmpty ? needsModel : null,
+      })),
+    [customizing, entries, listHeight, primaryId, rendered, tourRailAnchor, viewerEmpty],
   );
 
   const onIconClick = (id: WorkspacePanelId) => {
@@ -237,7 +248,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
+          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} waiting={fit.waiting} />
         )}
       </div>
 

@@ -48,17 +48,25 @@ export function railHeight<Id extends string>(entries: readonly RailEntry<Id>[])
  * `pinned` icons take priority in array order (tour anchor first, then active
  * panel). Pins past the fold replace unpinned icons; when even the pins do
  * not fit beside More, the lowest-priority pin yields first.
+ *
+ * `moreRequired` says the overflow button will be shown whatever fits, as it
+ * is when panels wait in it for a model (`foldModelPanels`). Its row is then
+ * reserved before deciding what fits: measured without it, a rail that only
+ * just fits kept every icon and pushed More past the rail's clipped bottom
+ * edge, where the panels waiting in it could not be reached (#8802 R6).
  */
 export function fitRail<Id extends string>(
   entries: readonly RailEntry<Id>[],
   availablePx: number,
   pinned: readonly (Id | null | undefined)[] = [],
+  { moreRequired = false }: { moreRequired?: boolean } = {},
 ): RailFit<Id> {
   const all = entries.map((entry) => entry.id);
-  if (availablePx <= 0 || railHeight(entries) <= availablePx) return { visible: all, overflow: [] };
-
   // Reserve one row for the overflow button itself.
   const budget = availablePx - RAIL_ITEM_PX;
+  const room = moreRequired ? budget : availablePx;
+  if (availablePx <= 0 || railHeight(entries) <= room) return { visible: all, overflow: [] };
+
   const keep = new Set(pinned.filter((id): id is Id => !!id));
   let count = 0;
   while (count < entries.length && railHeight(entries.slice(0, count + 1)) <= budget) count += 1;
@@ -89,4 +97,65 @@ export function fitRail<Id extends string>(
   }
 
   return { visible: all.filter((id) => shown.has(id)), overflow: all.filter((id) => !shown.has(id)) };
+}
+
+/**
+ * The empty start screen's rail (#8802 R6): panels that `waits` (they show
+ * only "open a model first" without one) leave the rail for the overflow
+ * menu, after the icons that work now, so twenty quiet icons do not
+ * outnumber the few ways in. Order within each half is rail order.
+ *
+ * A `pinned` id stays on the rail whatever it is: the current tour step's
+ * anchor must be there for the tour to point at, and the open panel keeps its
+ * active mark.
+ */
+export function foldModelPanels<Id extends string>(
+  entries: readonly RailEntry<Id>[],
+  waits: (id: Id) => boolean,
+  pinned: readonly (Id | null | undefined)[] = [],
+): { rail: RailEntry<Id>[]; waiting: Id[] } {
+  const keep = new Set(pinned.filter((id): id is Id => !!id));
+  const rail: RailEntry<Id>[] = [];
+  const waiting: Id[] = [];
+  for (const entry of entries) {
+    if (waits(entry.id) && !keep.has(entry.id)) waiting.push(entry.id);
+    else rail.push(entry);
+  }
+  return { rail, waiting };
+}
+
+/**
+ * The rail as `ActivityBar` lays it out, in one place:
+ *
+ * - **Pins**: `anchors` (the current tour step's anchor first, then the
+ *   right-pane panel) and every panel in `rendered`: the panels actually
+ *   DRAWN, in the left slot, the right pane's primary and split halves, the
+ *   bottom strip, a floating or popped-out window (`renderedPanelIds`, the
+ *   rule `SidebarDock`, `SidebarPanelHost` and `ViewerLayout` draw by). A
+ *   drawn panel's icon is never folded away or pushed into More while there
+ *   is room for it. A panel that is only nominally open (left active in a
+ *   collapsed sidebar) is not pinned: it would hide usable icons behind an
+ *   invisible one. Pins yield only when even they do not fit beside More,
+ *   lowest priority (last) first, as `fitRail` documents.
+ * - **Fold**: on the empty start screen, `waits` names the panels that need a
+ *   model; unless pinned they wait in More (`foldModelPanels`). `null` folds
+ *   none (a model is loaded).
+ * - **Fit**: the rest is fitted to the height with More's row reserved
+ *   whenever something waits in it, and the overflow is listed in rail order
+ *   so the menu's group headings stay one run each.
+ */
+export function layoutRail<Id extends string>(
+  entries: readonly RailEntry<Id>[],
+  availablePx: number,
+  { anchors = [], rendered = new Set<Id>(), waits = null }: {
+    anchors?: readonly (Id | null | undefined)[];
+    rendered?: ReadonlySet<Id>;
+    waits?: ((id: Id) => boolean) | null;
+  } = {},
+): RailFit<Id> & { waiting: Id[] } {
+  const pinned = [...new Set([...anchors.filter((id): id is Id => !!id), ...entries.map((e) => e.id).filter((id) => rendered.has(id))])];
+  const { rail, waiting } = waits ? foldModelPanels(entries, waits, pinned) : { rail: [...entries], waiting: [] as Id[] };
+  const fit = fitRail(rail, availablePx, pinned, { moreRequired: waiting.length > 0 });
+  const over = new Set([...fit.overflow, ...waiting]);
+  return { visible: fit.visible, overflow: entries.map((e) => e.id).filter((id) => over.has(id)), waiting };
 }

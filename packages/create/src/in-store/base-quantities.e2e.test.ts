@@ -160,6 +160,29 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities').NetArea).toBe(45);
   });
 
+  it('a void through a column lowers its net volume and leaves out the net surface it cannot know', async () => {
+    const s = await session();
+    const wall = addWallToStore(s.editor, s.anchor, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 }).wallId;
+    const opening = addOpeningToStore(s.editor, resolveHostAnchor(s.store, wall, s.view), { Offset: 0, Sill: 1, Width: 1, Height: 1 });
+    const column = addColumnToStore(s.editor, s.anchor, { Position: [1, 1, 0], Width: 0.3, Depth: 0.4, Height: 3 }).columnId;
+    s.view.setPositionalAttribute(opening.relVoidsId, 4, `#${column}`);
+    const set = values(s.view, column, 'Qto_ColumnBaseQuantities');
+    // 0.3 wide, the 0.3 deep cut, 1 high, out of 0.3 x 0.4 x 3.
+    expect(set.NetVolume).toBeCloseTo(0.27, 9);
+    expect(set.GrossVolume).toBe(0.36);
+    expect(set.NetSurfaceArea).toBeUndefined();
+  });
+
+  it('starts over when the view is rebound to another store', async () => {
+    const metres = await session();
+    const wall = wallAt(metres).wallId;
+    const sideArea = (store: IfcDataStore) => deriveAuthoredBaseQuantities(store, metres.view, wall)[0].quantities.find((q) => q.name === 'GrossSideArea')?.value;
+    expect(sideArea(metres.store)).toBe(15);
+    const mm = await session('IFC4', (text) => text.replace(/IFCSIUNIT\(\*,\.LENGTHUNIT\.,\$,\.METRE\.\)/, 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)'));
+    // The same overlay read against a millimetre store, with no write in between.
+    expect(sideArea(mm.store)).toBeCloseTo(1.5e-5, 12);
+  });
+
   it('reads both pieces of a split, for each way of splitting', async () => {
     const s = await session();
     const wall = splitElementInStore(s.store, s.editor, wallAt(s).wallId, { kind: 'wall', distance: 2 });

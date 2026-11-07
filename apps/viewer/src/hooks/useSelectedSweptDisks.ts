@@ -9,7 +9,7 @@ import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
-import { loadSelectedSourceGroups, overlayRefsWithoutQuantities, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, selectedSourceProducts, withoutMeasuredOverlayItems } from '@/lib/analytic/selected-source-products';
 import { selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
@@ -103,7 +103,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     const state = useViewerStore.getState();
     const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
-    const createdInOverlay: SelectedSweptDisk[] = overlayRefsWithoutQuantities(state, overlayRefs).map((ref) => ({ ref, occurrences: [], diagnostics: [
+    const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
     ] }));
     if (grouped.size === 0) {
@@ -130,5 +130,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   }, [enabled, frame, shown, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
     hidden, isolated, classFilter, lensHidden]);
 
-  return result;
+  const mutationVersion = useViewerStore((state) => state.mutationVersion);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the version is what a set gained or lost changes.
+  return useMemo(() => withoutMeasuredOverlayItems(useViewerStore.getState(), result), [result, mutationVersion]);
 }

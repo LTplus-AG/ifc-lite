@@ -11,6 +11,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { QuantityType } from '@ifc-lite/data';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcParser, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -80,6 +81,17 @@ describe('the Quantities tab on an authored element', () => {
     const panel = render(<SourceQuantityInspection />);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.match(panel.textContent ?? '', /created in the overlay/);
+  });
+
+  it('a set gained by an edit clears the warning with no change of selection', async () => {
+    const id = made(s().addMember(MODEL_ID, STOREY, { Start: [0, 3, 0], End: [0, 3, 3], Width: 0.1, Height: 0.1 }));
+    select(id);
+    const panel = render(<SourceQuantityInspection />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.match(panel.textContent ?? '', /created in the overlay/);
+    act(() => { s().createQuantitySet(MODEL_ID, id, 'Qto_MemberBaseQuantities', [{ name: 'Length', value: 3, quantityType: QuantityType.Length }]); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.doesNotMatch(panel.textContent ?? '', /created in the overlay/);
   });
 
   it('the Measure Quantities tab reads the same numbers', async () => {

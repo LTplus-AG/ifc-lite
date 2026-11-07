@@ -56,22 +56,24 @@ interface Reading {
 }
 
 interface Revision {
+  readonly dataStore: IfcDataStore;
   readonly revision: number;
   readonly editor: StoreEditor;
   readonly sets: Map<number, QuantitySet[]>;
   openings: ReadonlyMap<number, readonly number[]> | null;
 }
 
-/** Per view and overlay revision: a list or an export reads every element, and any write starts over. */
+/** Per view, store and overlay revision: a list or an export reads every element, and a write or a store swap starts over. */
 const revisions = new WeakMap<MutablePropertyView, Revision>();
 
 function revisionOf(dataStore: IfcDataStore, view: MutablePropertyView): Revision {
   const revision = view.getMutationRevision();
   const known = revisions.get(view);
-  if (known?.revision === revision) return known;
-  // The editor scans the source once for its id floor, so it outlives a revision.
-  const editor = known?.editor ?? new StoreEditor(dataStore, view);
-  const next: Revision = { revision, editor, sets: new Map(), openings: null };
+  const sameStore = known?.dataStore === dataStore;
+  if (sameStore && known.revision === revision) return known;
+  // The editor scans the source once for its id floor, so it outlives a revision of its store.
+  const editor = sameStore ? known.editor : new StoreEditor(dataStore, view);
+  const next: Revision = { dataStore, revision, editor, sets: new Map(), openings: null };
   revisions.set(view, next);
   return next;
 }
@@ -234,12 +236,14 @@ function linearSet(reading: Reading, id: number, type: string): QuantitySet | nu
     ['GrossSurfaceArea', QuantityType.Area, gross],
     ['GrossVolume', QuantityType.Volume, volume],
   ];
-  // The authoring tools cut only walls and slabs; a void written some other way still lowers the net volume.
+  // The authoring tools cut only walls and slabs. A void written some other way lowers the net volume,
+  // but which outer faces it removes is not knowable from its box, so the net surface is left out.
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
   if (boxes && (boxes.length === 0 || body)) {
     const cut = boxes.reduce((sum, box) => sum + axisOverlap(box, body!, 0) * axisOverlap(box, body!, 1) * axisOverlap(box, body!, 2), 0);
-    rows.push(['NetSurfaceArea', QuantityType.Area, gross], ['NetVolume', QuantityType.Volume, Math.max(0, volume - cut)]);
+    if (boxes.length === 0) rows.push(['NetSurfaceArea', QuantityType.Area, gross]);
+    rows.push(['NetVolume', QuantityType.Volume, Math.max(0, volume - cut)]);
   }
   return toQuantitySet(dataStore, scale, type === 'IFCCOLUMN' ? 'Qto_ColumnBaseQuantities' : 'Qto_BeamBaseQuantities', rows);
 }

@@ -56,6 +56,7 @@ import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { forgetEmptyModelFrames, rebuildSceneBatches } from './scene-batch-rebuild.js';
 import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
+import { StreamingFragmentPieces, groupStreamingPieces } from './scene-fragment-pieces.js';
 import { perfCount, perfCounters, perfTally, type LoadTrace } from '@ifc-lite/load-trace';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
@@ -388,6 +389,7 @@ export class Scene {
   // Temporary fragment batches created during streaming for immediate rendering.
   // Destroyed and replaced by proper merged batches in finalizeStreaming().
   private streamingFragments: BatchedMesh[] = [];
+  private readonly fragmentPieces = new StreamingFragmentPieces();
   // Buckets that received streamed meshes since the last finalize — the only
   // ones a finalize re-groups and rebuilds (#5358).
   private streamedBucketKeys: Set<string> = new Set();
@@ -405,7 +407,7 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; this.fragmentPieces.retainOnly(this.streamingFragments); }
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.pickGeometryRevision++; }
 
   /**
@@ -1951,26 +1953,12 @@ export class Scene {
    */
   private createStreamingFragments(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline): void {
     if (meshDataArray.length === 0) return;
-
-    // Group new meshes by color (and grid cell, when chunking) for efficient
-    // fragment batches. Fragments of one mesh share the PARENT's key: they
-    // are vertex subsets of the same element, and the mesh-never-splits rule
-    // applies to cells exactly like it does to buckets.
-    const colorGroups = new Map<string, MeshData[]>();
-    for (const meshData of meshDataArray) {
-      const key = this.meshDataBucket.get(meshData)?.key ?? this.bucketBaseKey(meshData);
-      for (const fragment of this.splitMeshForStreaming(meshData)) {
-        let group = colorGroups.get(key);
-        if (!group) {
-          group = [];
-          colorGroups.set(key, group);
-        }
-        group.push(fragment);
-      }
-    }
+    const { groups, sourceOf } = groupStreamingPieces(meshDataArray,
+      (meshData) => this.meshDataBucket.get(meshData)?.key ?? this.bucketBaseKey(meshData),
+      (meshData) => this.splitMeshForStreaming(meshData));
 
     // Create one fragment batch per color group (with buffer limit splitting)
-    for (const [key, group] of colorGroups) {
+    for (const [key, group] of groups) {
       const chunks = this.splitMeshDataForBufferLimit(group, this.cachedMaxBufferSize);
       for (const chunk of chunks) {
         const color = chunk[0].color;
@@ -1980,6 +1968,8 @@ export class Scene {
         );
         this.batchedMeshes.push(fragment);
         this.streamingFragments.push(fragment); this.pickGeometryRevision++;
+        // Ephemeral mode registers no meshes to filter, and keeps no geometry alive.
+        if (!this.ephemeralStreamingMode) this.fragmentPieces.record(fragment, chunk, sourceOf);
       }
     }
   }
@@ -2075,6 +2065,7 @@ export class Scene {
     // already retired by rebuildPendingBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
+    this.fragmentPieces.retainOnly(this.streamingFragments);
     // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
     if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
@@ -2210,6 +2201,7 @@ export class Scene {
             ...scene.streamingFragments,
           ];
           scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
+          scene.fragmentPieces.retainOnly(scene.streamingFragments);
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
@@ -2263,7 +2255,7 @@ export class Scene {
     }
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
-    this.streamingFragments = [];
+    this.streamingFragments = []; this.fragmentPieces.retainOnly([]);
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear(); this.pickGeometryRevision++;
@@ -2674,13 +2666,16 @@ export class Scene {
     // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
     // Matching the base key (suffix "#N" stripped) pulled sibling overflow
     // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
-    // A streaming fragment carries its owning bucket's key too (`ownerKey`).
+    // A streaming fragment draws only its own pieces (#9081): fragments share
+    // a bucket, and after a finalize regroup it may hold other meshes.
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
+    const own = this.fragmentPieces.forSlot(sourceBatchKey, colorKey);
     const visibleMeshData: MeshData[] = [];
     for (const expressId of visibleIds) {
       for (const piece of this.meshDataMap.get(expressId) ?? []) {
-        if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) {
+        if (own) own.collect(piece, visibleMeshData);
+        else if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) {
           visibleMeshData.push(piece);
         }
       }
@@ -2693,8 +2688,9 @@ export class Scene {
     // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
+    const source = own ? own.fragment : bucket?.batchedMesh;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
-      inheritedQuantization(this.quantizedBatchesEnabled, bucket?.batchedMesh), bucket?.batchedMesh?.origin);
+      inheritedQuantization(this.quantizedBatchesEnabled, source), source?.origin);
 
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);
@@ -3735,7 +3731,7 @@ export class Scene {
     this.dropAllPartialCaches();
     this.colorOverrideGeneration++;
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
-    this.streamingFragments = [];
+    this.streamingFragments = []; this.fragmentPieces.retainOnly([]);
     this.colorOverrides = null;
     this.entityColorTable.clear();
     this.entityColorTable.releaseGpu();

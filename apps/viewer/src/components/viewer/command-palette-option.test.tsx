@@ -152,7 +152,8 @@ it('keeps runtime detail alongside a category without renaming registered comman
 it('registered options preserve projected detail, toggle state and disabled description (#8947)', async () => {
   const { RegisteredPaletteOption } = await loadOptions();
   let calls = 0;
-  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement}
+  const label = resolveEnglish(surfaceCommand('pref:tooltips', 'palette').labelKey);
+  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement} query={label}
     projection={{ detail: 'Projected detail', stateKey: 'commandPalette.state.off',
       availability: { status: 'disabled', reasonKey: 'commandPalette.availability.editor' } }}
     onActivate={() => { calls++; }} />);
@@ -163,4 +164,15 @@ it('registered options preserve projected detail, toggle state and disabled desc
   assert.match(document.getElementById(row.getAttribute('aria-describedby')!)?.textContent ?? '', /Requires editor access/);
   click(row);
   assert.equal(calls, 0);
+  assert.equal(row.querySelector('[data-command-label]')?.textContent, label);
+  assert.equal(row.querySelector('mark[data-match]'), null, 'unavailable names stay muted even for an exact query');
+  assert.ok(row.classList.contains('bg-accent'), 'unavailable selection uses the neutral surface');
+  assert.equal(row.classList.contains('bg-active-surface'), false);
+
+  cleanup();
+  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement} query={label} />);
+  const enabled = document.querySelector<HTMLButtonElement>('[role="option"]')!;
+  assert.equal(enabled.querySelector('mark[data-match]')?.textContent, label,
+    'runnable commands retain the shared query highlight');
+  assert.ok(enabled.classList.contains('bg-active-surface'));
 });

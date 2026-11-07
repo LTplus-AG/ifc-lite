@@ -14,7 +14,6 @@
 import type { Feature } from 'geojson';
 // Type-only: erased at compile time, so this module never pulls maplibre in.
 import type { AddLayerObject, SourceSpecification } from 'maplibre-gl';
-import { mapMarkerColor } from './location-map-colors';
 
 /** The MapLibre surface these two need. Structural, so a test can stand in. */
 export interface FootprintMap {
@@ -27,6 +26,16 @@ export interface FootprintMap {
   getLayer(id: string): unknown;
   removeLayer(id: string): void;
   removeSource(id: string): void;
+  getContainer?(): HTMLElement;
+}
+
+/** The footprint is drawn in the map container's ink, which LocationMap sets
+ *  against the basemap (#8802 R5): dark on light tiles, light on dark ones,
+ *  so it follows a theme switch or a style flip and carries no decorative hue.
+ *  The layer is re-added after every style change, so the ink is re-read. */
+function footprintInk(map: FootprintMap): string {
+  const container = map.getContainer?.();
+  return container ? getComputedStyle(container).color : 'rgb(0, 0, 0)';
 }
 
 export const FOOTPRINT_SOURCE = 'building-footprint';
@@ -35,6 +44,7 @@ export const FOOTPRINT_OUTLINE_LAYER = 'building-footprint-outline';
 
 /** Add or update the building footprint GeoJSON polygon on a MapLibre map */
 export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
+  const ink = footprintInk(map);
   const geojson: Feature = {
     type: 'Feature',
     properties: {},
@@ -57,7 +67,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'fill',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'fill-color': mapMarkerColor('--color-foreground'),
+      'fill-color': ink,
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.15, 18, 0.25],
     },
   });
@@ -67,7 +77,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'line',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'line-color': mapMarkerColor('--color-foreground'),
+      'line-color': ink,
       'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 2.5],
       'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7, 18, 1],
     },

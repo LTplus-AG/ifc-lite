@@ -14,9 +14,6 @@
  */
 
 // See `loadMaplibre` below for why the worker URL is threaded in by hand.
-import { mapMarkerColor } from './location-map-colors';
-
-export { mapMarkerColor };
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 // Lazy-load maplibre-gl to avoid bloating the initial bundle
@@ -103,6 +100,12 @@ export function purgeMapContainer(container: HTMLElement) {
   container.classList.remove('maplibregl-map');
 }
 
+/** Map pins paint `currentColor` (#8802 R5), so they follow CSS rather than
+ *  a hue fixed at creation: the origin pin inherits the map container's ink,
+ *  which LocationMap sets against the basemap (dark on light tiles, light on
+ *  dark ones); the picked position wears the active ink with a white outline. */
+export const MAP_PICKED_PIN_CLASS = 'text-active';
+
 /** Show a declared-origin marker only when that origin was resolved. A map
  * centred on physical geometry (#6698) must not relabel it as the origin. */
 export function updateOriginMarker(
@@ -117,6 +120,6 @@ export function updateOriginMarker(
     return null;
   }
   if (marker) return marker.setLngLat([position.lon, position.lat]);
-  return new library.Marker({ color: mapMarkerColor('--color-foreground') })
+  return new library.Marker({ color: 'currentColor' })
     .setLngLat([position.lon, position.lat]).addTo(map);
 }

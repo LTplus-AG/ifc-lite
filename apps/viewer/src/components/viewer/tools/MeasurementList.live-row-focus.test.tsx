@@ -261,12 +261,40 @@ describe('a focused button acts on its own Enter (#9113)', () => {
     });
   }
 
-  it('Enter on a focused Finish records the polyline once', () => {
+  it('Enter on a focused Finish finishes the polyline exactly once', () => {
     useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
+    // Finishing twice records once (the second finds nothing open), so count
+    // the calls: the button's press and the Enter command must not both run.
+    const finishPolyline = useViewerStore.getState().finishPolyline;
+    let finishes = 0;
+    useViewerStore.setState({ finishPolyline: (closed) => { finishes += 1; return finishPolyline(closed); } });
     const container = mount();
     activate(button(container, 'Finish (Enter)'), 'Enter');
+    assert.equal(finishes, 1, 'one finish');
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 1);
-    assert.equal(useViewerStore.getState().activePolyline, null);
+    useViewerStore.setState({ finishPolyline });
+  });
+
+  it('a held Enter after an Enter-delete leaves the open polyline open', () => {
+    useViewerStore.setState({ polylineMeasurements: [PL1, { ...PL1, id: 'pl2' }], activePolyline: OPEN_POLYLINE });
+    const container = mount();
+    activate(button(container, 'Delete polyline measurement 1'), 'Enter');
+    // Focus is on the next row now, which is no button; the key's repeats reach it.
+    press(document.activeElement ?? window, 'Enter', { repeat: true });
+    press(document.activeElement ?? window, 'Enter', { repeat: true });
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 1, 'one row deleted, none recorded');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 3, 'the repeats finished nothing');
+  });
+
+  it('a held Enter from the canvas finishes once', () => {
+    useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
+    const container = mount();
+    const target = canvas(container);
+    target.focus();
+    press(target, 'Enter');
+    useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
+    press(target, 'Enter', { repeat: true });
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 1, 'only the first press finished');
   });
 
   it('Enter on a focused delete button deletes that row and leaves the open polyline open', () => {
@@ -279,28 +307,35 @@ describe('a focused button acts on its own Enter (#9113)', () => {
 });
 
 describe('one Esc on a focused live-row button cancels (#9169)', () => {
-  for (const label of ['Finish (Enter)', 'Cancel (Esc)']) {
-    it(`one Esc on ${label} with its tooltip open cancels the polyline`, () => {
-      useViewerStore.setState({ polylineMeasurements: [PL1], activePolyline: OPEN_POLYLINE });
-      const container = mount();
-      tabTo(button(container, label));
-      assert.equal(tooltipOpen(), true, 'focus opened the tooltip');
-      press(document.activeElement ?? window, 'Escape');
-      assert.equal(useViewerStore.getState().activePolyline, null, 'the first Esc cancelled the polyline');
-      assert.equal(useViewerStore.getState().polylineMeasurements.length, 1, 'nothing recorded');
-      assert.equal(tooltipOpen(), false, 'the tooltip closed');
-      assert.equal(focused(), 'Measurements taken');
-    });
+  for (const [mode, open] of [['polyline', { activePolyline: OPEN_POLYLINE }], ['radius', { activeRadius: OPEN_RADIUS }]] as const) {
+    for (const label of ['Finish (Enter)', 'Cancel (Esc)']) {
+      it(`one Esc on ${label} with its tooltip open cancels the ${mode}, and only that`, () => {
+        useViewerStore.setState({ measureMode: mode, polylineMeasurements: [PL1], selectedEntityId: 7, ...open });
+        const container = mount();
+        tabTo(button(container, label));
+        assert.equal(tooltipOpen(), true, 'focus opened the tooltip');
+        press(document.activeElement ?? window, 'Escape');
+        const state = useViewerStore.getState();
+        assert.equal(mode === 'polyline' ? state.activePolyline : state.activeRadius, null, `the first Esc cancelled the ${mode}`);
+        assert.equal(state.polylineMeasurements.length + state.radiusMeasurements.length, 1, 'nothing recorded');
+        // Run once: a second run would be the global Esc, leaving Measure.
+        assert.equal(state.activeTool, 'measure', 'still in Measure');
+        assert.equal(state.selectedEntityId, 7, 'the selection is kept');
+        assert.equal(tooltipOpen(), false, 'the tooltip closed');
+        assert.equal(focused(), 'Measurements taken');
+      });
+    }
   }
 
-  it('one Esc on a focused radius Cancel cancels the radius', () => {
-    useViewerStore.setState({ measureMode: 'radius', activeRadius: OPEN_RADIUS });
+  it('an Esc aimed elsewhere while a live-row tooltip is open only closes the tooltip', () => {
+    useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
     const container = mount();
-    tabTo(button(container, 'Cancel (Esc)'));
+    tabTo(button(container, 'Finish (Enter)'));
     assert.equal(tooltipOpen(), true, 'focus opened the tooltip');
-    press(document.activeElement ?? window, 'Escape');
-    assert.equal(useViewerStore.getState().activeRadius, null);
-    assert.equal(useViewerStore.getState().radiusMeasurements.length, 0);
+    // As with a tooltip opened by hover: the Esc's target is not the button.
+    press(canvas(container), 'Escape');
+    assert.equal(tooltipOpen(), false, 'the tooltip closed');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 3, 'the polyline stays open');
   });
 
   it('elsewhere the first Esc still only closes the tooltip', () => {

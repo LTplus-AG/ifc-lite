@@ -253,19 +253,6 @@ function useReportFocusOnUnmount(ref: RefObject<HTMLElement | null>, report: () 
 }
 
 /**
- * #9169: while a focused button's tooltip is open it takes Esc first (Radix
- * prevents its default, so the keyboard dispatcher skips it), and cancelling
- * took two presses. On the live row's two buttons, whose labels name Enter
- * and Esc, Esc runs its key command at once, exactly as it would with no
- * tooltip open; ending the row closes the tooltip with it. Nowhere else: on
- * other buttons the first Esc still only closes the tooltip (WCAG 1.4.13),
- * so it never also clears a selection or a tool.
- */
-function runEscapeCommand(event: KeyboardEvent): void {
-  dispatchKeyboardDown(event);
-}
-
-/**
  * Finish and Cancel for an open Polyline or Radius. Finish is the same call as
  * Enter, and the only finish a touch user has (#8991).
  */
@@ -278,6 +265,17 @@ function LiveRowActions({ kind, onFinish, onCancel, lostFocus }: {
   const { t } = useTranslation();
   const ref = useRef<HTMLSpanElement>(null);
   useReportFocusOnUnmount(ref, () => { lostFocus.current = { live: kind }; });
+  // #9169: while a focused button's tooltip is open it takes Esc first (Radix
+  // prevents its default, so the keyboard dispatcher skips it), and cancelling
+  // took two presses. Here, whose labels name Enter and Esc, an Esc pressed ON
+  // one of these buttons runs its key command at once, as it would with no
+  // tooltip open; ending the row closes the tooltip with it. An Esc from
+  // elsewhere while the pointer only hovers a button, and an Esc on any other
+  // button, still just closes the tooltip (WCAG 1.4.13), so it never also
+  // clears a selection or a tool.
+  const runEscapeCommand = useCallback((event: KeyboardEvent) => {
+    if (ref.current?.contains(event.target as Node | null)) dispatchKeyboardDown(event);
+  }, []);
   return (
     <span ref={ref} className="flex shrink-0 items-center gap-2">
       <IconButton label={t('measure.finishEnter')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={onFinish} onTooltipEscapeKeyDown={runEscapeCommand}>

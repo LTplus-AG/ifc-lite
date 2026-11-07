@@ -9,6 +9,7 @@
 import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group, Layer } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { openSelectedEntityActions } from '../../selected-entity-actions';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
@@ -30,7 +31,6 @@ export function ElementsTab() {
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const openContextMenu = useViewerStore((state) => state.openContextMenu);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const hoverHighlightEnabled = useViewerStore((state) => state.hoverHighlightEnabled);
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
@@ -110,13 +110,8 @@ export function ElementsTab() {
             disabled={!hasSelection}
             commandContext={(event) => ({
               contextAction: () => {
-                const targetId = selectedEntityIds.size > 0
-                  ? (selectedEntityId !== null && selectedEntityIds.has(selectedEntityId)
-                      ? selectedEntityId : selectedEntityIds.values().next().value)
-                  : selectedEntityId;
-                if (targetId === undefined || targetId === null) return;
                 const rect = event.currentTarget.getBoundingClientRect();
-                openContextMenu(targetId, Math.max(1, rect.left + rect.width / 2), Math.max(1, rect.bottom));
+                openSelectedEntityActions({ x: Math.max(1, rect.left + rect.width / 2), y: Math.max(1, rect.bottom) });
               },
             })}
           />

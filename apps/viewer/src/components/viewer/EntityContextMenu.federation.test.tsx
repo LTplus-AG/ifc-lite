@@ -92,7 +92,7 @@ function openRibbonEntityActions(container: HTMLElement, selectedId: number): vo
   const button = container.querySelector<HTMLButtonElement>('[data-command-id="elements:entity-actions"]');
   assert.ok(button, 'the Elements ribbon exposes selected-entity actions');
   assert.equal(button.getAttribute('aria-label'),
-    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
+    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').ribbonLabelKey ?? surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
     'the ribbon announces the registered command name');
   assert.ok(button.querySelector('svg'), 'the ribbon renders its entity-actions icon');
   assert.equal(button.disabled, false);

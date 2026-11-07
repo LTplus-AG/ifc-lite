@@ -32,6 +32,8 @@ export interface SurfaceCommandContext {
   openShareDialog?: () => void;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
+  /** Explicit focus return target for the selected-entity destination. */
+  entityActionsLauncher?: () => HTMLElement | null;
   toolHostIsCurrent?: () => boolean;
   openBulkProperties?: () => void;
   openImportData?: () => void;

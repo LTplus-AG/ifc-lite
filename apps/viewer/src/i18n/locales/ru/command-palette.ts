@@ -5,6 +5,22 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  "commandPalette.elements.entityActions": "Действия с выбранным элементом…",
+  "commandPalette.aliases.entityActions": "копировать GlobalId выбрать тот же тип этаж дублировать X Y Z плюс минус удалить экспорт обезличенной выборки",
+  "commandPalette.model.array": "Массив выбранных элементов…",
+  "commandPalette.model.move": "Переместить выбранные элементы…",
+  "commandPalette.model.rotate": "Повернуть выбранные элементы…",
+  "commandPalette.model.copy": "Копировать выбранные элементы",
+  "commandPalette.model.paste": "Вставить элементы у курсора…",
+  "commandPalette.model.pasteInPlace": "Вставить элементы на месте на текущем этаже",
+  "commandPalette.model.storeyUp": "Работать на этаже выше",
+  "commandPalette.model.storeyDown": "Работать на этаже ниже",
+  "commandPalette.availability.workspace": "Сначала откройте рабочую область модели",
+  "commandPalette.availability.storeyBoundary": "Нет следующего этажа в этом направлении",
+  "commandPalette.availability.copyTarget": "Выберите элементы с копируемым размещением; зависимым элементам нужен хозяин",
+  "commandPalette.availability.textSelection": "Снимите выделение текста перед копированием элементов",
+  "commandPalette.availability.rendererEntity": "Выберите доступный элемент в модели; ссылка только в свойствах не открывает действия",
+  "commandPalette.availability.world": "Сначала включите доступный 3D-контекст мира",
   'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
   'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены (история IDS и календарного плана ведётся отдельно)',
   'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора (история IDS и календарного плана ведётся отдельно)',

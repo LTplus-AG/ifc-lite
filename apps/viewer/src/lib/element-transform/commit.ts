@@ -26,7 +26,7 @@ import type { AuthoringTransaction, CommitResult, Vec3 } from '@/lib/commands/mo
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformPlan } from './plan.js';
 import { transformElementsInStore, describeTransformRefusal } from '../../../../../packages/create/src/in-store/element-transform-edit.js';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { modelEditTarget, readModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { alignElementsInStore, type ElementAlignParams, type PlanBox } from '@ifc-lite/create';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { carryWallJoins } from './wall-join-carrier.js';
@@ -59,7 +59,7 @@ export function setTransformJoinCarrier(carrier: TransformJoinCarrier | null): (
 
 /** Plan a transform of `selected` (model-local ids) as the store sees it now. */
 export function planSelectionTransform(s: ViewerState, modelId: string, selected: readonly number[]): TransformPlan | null {
-  const target = modelEditTarget(s, modelId);
+  const target = readModelEditTarget(s, modelId);
   if (!target) return null;
   return planElementTransform({ dataStore: target.dataStore, view: target.view, selected, storeyOf: (id) => elementStoreyId(s, modelId, id) });
 }

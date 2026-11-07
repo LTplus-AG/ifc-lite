@@ -1,19 +1,21 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { usePersistentToolHosts } from './PersistentToolHosts';
 
 /** Ctrl/Cmd+K command search with scoring and recent usage. Command DATA
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
 import { useShallow } from 'zustand/react/shallow';
+import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
 import { useMountedFileHost, getMountedFileHost } from './toolbar/mounted-file-host';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -103,6 +105,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
 
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
+  const placementGeoref = usePlacementGeorefContext();
   const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
@@ -123,6 +126,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   }, [open]);
 
   // Retain export ownership while closed without following invisible command prerequisites.
+  const copyClipboard = useSyncExternalStore(subscribeCopyClipboard, readCopyClipboard, readCopyClipboard);
   const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
   const collabRole = prerequisites?.role ?? null;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
@@ -136,6 +140,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
+      entityActionsLauncher: () => paletteLauncher.current,
       openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
         ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
       ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
@@ -150,7 +155,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, surfaceContext, toolHosts, placementGeoref, locale, revision]);
 
 
   // ── Search: score, filter, sort ──

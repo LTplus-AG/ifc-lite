@@ -40,6 +40,16 @@ export interface ModelEditTarget {
   readonly editor: StoreEditor;
 }
 
+/** Read-only target for planners: cold inspection must not register live edit state (#8947). */
+export function readModelEditTarget(state: ViewerState, modelId: string): ModelEditTarget | null {
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  if (!dataStore) return null;
+  const view = state.mutationViews.get(modelId) ?? new MutablePropertyView(dataStore.properties || null, modelId);
+  if (!state.mutationViews.has(modelId)) configureMutationView(view, dataStore);
+  const editor = state.storeEditors.get(modelId) ?? new StoreEditor(dataStore, view);
+  return { modelId, dataStore, view, editor };
+}
+
 /** A model's parsed data, its mutation view and the store's cached editor, created on first use. */
 export function modelEditTarget(state: ViewerState, modelId: string): ModelEditTarget | null {
   const dataStore = state.models.get(modelId)?.ifcDataStore;

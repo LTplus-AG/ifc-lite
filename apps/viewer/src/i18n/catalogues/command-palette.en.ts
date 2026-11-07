@@ -24,6 +24,22 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  "commandPalette.elements.entityActions": "Selected entity actions…",
+  "commandPalette.aliases.entityActions": "Copy GlobalId select same type storey duplicate X Y Z positive negative delete anonymized selection export",
+  "commandPalette.model.array": "Array selected elements…",
+  "commandPalette.model.move": "Move selected elements…",
+  "commandPalette.model.rotate": "Rotate selected elements…",
+  "commandPalette.model.copy": "Copy selected elements",
+  "commandPalette.model.paste": "Paste elements at cursor…",
+  "commandPalette.model.pasteInPlace": "Paste elements in place on current storey",
+  "commandPalette.model.storeyUp": "Work on storey above",
+  "commandPalette.model.storeyDown": "Work on storey below",
+  "commandPalette.availability.workspace": "Open the Model workspace first",
+  "commandPalette.availability.storeyBoundary": "No next storey in this direction",
+  "commandPalette.availability.copyTarget": "Select elements with a copyable placement; hosted elements need their host",
+  "commandPalette.availability.textSelection": "Clear the selected page text before copying elements",
+  "commandPalette.availability.rendererEntity": "Select a resolvable element in the model; a property-only reference cannot open entity actions",
+  "commandPalette.availability.world": "Enable the available 3D world context first",
   'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
   'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',

@@ -19,6 +19,12 @@
  * 2. Revit's own export, `Constraints` › `Top Constraint` = `Up to level:
  *    <name>`: what the authoring tool recorded, matched to a storey by name.
  *    `Unconnected` (or no record) is a fixed-height wall.
+ *
+ * `Fixed` in the IfcLite record is an explicit fixed-height wall: it
+ * overrides a Revit record, so making a Revit-attached wall fixed sticks.
+ * A record that names no single live storey (a deleted storey's GlobalId, a
+ * Revit level renamed or shared by two storeys) is not guessed at:
+ * `topAttachmentProblem` reports it and the plan lists it as a notice.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
@@ -28,6 +34,7 @@ import type { StoreyInventory } from './storey-model.js';
 export const STOREY_ATTACHMENT_PSET = 'IfcLite_StoreyAttachment';
 export const TOP_CONSTRAINT = 'TopConstraint';
 export const NEXT_STOREY_ABOVE = 'NextStoreyAbove';
+export const FIXED_HEIGHT = 'Fixed';
 
 const REVIT_PSET = 'Constraints';
 const REVIT_TOP = 'Top Constraint';
@@ -48,6 +55,7 @@ export function readTopAttachment(inventory: StoreyInventory, wallId: number): T
   const view = inventory.view;
   const own = text(view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
   if (own) {
+    if (own === FIXED_HEIGHT) return null;
     if (own === NEXT_STOREY_ABOVE) return { targetStoreyId: null, source: 'ifclite' };
     const storey = inventory.storeys.find((candidate) => candidate.GlobalId === own);
     // A GlobalId naming no live storey (it was deleted) leaves the wall fixed.
@@ -61,14 +69,41 @@ export function readTopAttachment(inventory: StoreyInventory, wallId: number): T
   return named.length === 1 ? { targetStoreyId: named[0].expressId, source: 'revit' } : null;
 }
 
+/**
+ * Why a wall's recorded attachment cannot be followed, or null when it can
+ * (or the wall records none): the record names no single live storey.
+ */
+export function topAttachmentProblem(inventory: StoreyInventory, wallId: number): string | null {
+  const view = inventory.view;
+  const own = text(view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
+  if (own) {
+    if (own === FIXED_HEIGHT || own === NEXT_STOREY_ABOVE) return null;
+    return inventory.storeys.some((storey) => storey.GlobalId === own) ? null : `its top is attached to a storey that no longer exists (${own})`;
+  }
+  const level = REVIT_LEVEL.exec(text(view.getPropertyValue(wallId, REVIT_PSET, REVIT_TOP)) ?? '')?.[1];
+  if (!level) return null;
+  const named = inventory.storeys.filter((storey) => storey.Name.trim().toLowerCase() === level.toLowerCase()).length;
+  if (named === 1) return null;
+  return named === 0
+    ? `Revit records its top up to level "${level}", which no storey is called`
+    : `Revit records its top up to level "${level}", which ${named} storeys are called`;
+}
+
 /** Record a wall as attached to `target` (a storey GlobalId or `NextStoreyAbove`). */
 export function writeTopAttachment(view: MutablePropertyView, wallId: number, target: string): void {
   view.setProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, target, PropertyValueType.Label);
 }
 
-/** Make a wall fixed-height again. */
+/**
+ * Make a wall fixed-height again. A wall Revit recorded as attached gets an
+ * explicit `Fixed` record (the Revit property is the file's own and stays);
+ * any other wall simply loses the IfcLite record.
+ */
 export function clearTopAttachment(view: MutablePropertyView, wallId: number): void {
-  if (view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null) {
+  const revit = text(view.getPropertyValue(wallId, REVIT_PSET, REVIT_TOP));
+  if (revit && REVIT_LEVEL.test(revit)) {
+    view.setProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, FIXED_HEIGHT, PropertyValueType.Label);
+  } else if (view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null) {
     view.deleteProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT);
   }
 }

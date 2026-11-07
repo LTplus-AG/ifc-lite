@@ -214,7 +214,7 @@ export {
   planStoreyLevelEdit, applyStoreyLevelEdit, storeyLevelPlanSignature,
   planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, suggestStorey, DEFAULT_STOREY_HEIGHT,
   planAttachmentBindings, readTopAttachment, writeTopAttachment, clearTopAttachment,
-  STOREY_ATTACHMENT_PSET, NEXT_STOREY_ABOVE,
+  STOREY_ATTACHMENT_PSET, NEXT_STOREY_ABOVE, FIXED_HEIGHT, topAttachmentProblem,
   type StoreyLevelResult, type StoreyLevelPlanOptions, type WallHeightChange, type StairRefit, type TopAttachment,
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,
   type StoreyInventory, type StoreyRecord, type StoreySummary, type AddStoreyParams, type AddStoreyResult,

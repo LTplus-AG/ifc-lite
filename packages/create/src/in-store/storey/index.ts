@@ -19,7 +19,7 @@ export {
   type StoreyDependents, type WallHeightChange, type StairRefit,
 } from './storey-dependents.js';
 export {
-  readTopAttachment, writeTopAttachment, clearTopAttachment, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, NEXT_STOREY_ABOVE,
+  readTopAttachment, writeTopAttachment, clearTopAttachment, topAttachmentProblem, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, NEXT_STOREY_ABOVE, FIXED_HEIGHT,
   type TopAttachment,
 } from './storey-attachment.js';
 export { planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, type StoreyDeleteMode, type StoreyDeletePlan } from './storey-delete.js';

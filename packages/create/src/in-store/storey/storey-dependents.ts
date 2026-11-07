@@ -20,7 +20,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { readStairDimensions } from '../stair-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
-import { readTopAttachment } from './storey-attachment.js';
+import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
 import { siblingStoreys, storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 import { describeLength, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
 
@@ -91,7 +91,14 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
   const refusals: StoreyRefusal[] = [];
   const notices: StoreyNotice[] = [];
   const unreadableWalls: number[] = [];
+  const unresolved: Array<{ id: number; problem: string }> = [];
   const unrefittable: number[] = [];
+  // Whether an edit changes the spacing above a storey: it moves, or a storey above it moves by another amount.
+  const spacingAboveChanges = (storeyId: number) => {
+    const record = inventory.storeys.find((storey) => storey.expressId === storeyId);
+    return !!record && inventory.storeys.some((storey) => storey.parentId === record.parentId
+      && storey.elevation > record.elevation && Math.abs(delta(storey.expressId) - delta(storeyId)) > 1e-9);
+  };
   // The wall readers take an edit target; this one is only read through.
   const target = { dataStore: inventory.store, view: inventory.view, editor: new StoreEditor(inventory.store, inventory.view) };
 
@@ -100,7 +107,13 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
       const type = inventory.reader.entity(id)?.type.toUpperCase() ?? '';
       if (WALL_TYPES.has(type)) {
         const attachment = readTopAttachment(inventory, id);
-        if (!attachment || attachment.targetStoreyId === null || attachment.targetStoreyId === storeyId) continue;
+        if (!attachment) {
+          // A record naming no single storey is reported, not guessed at.
+          const problem = spacingAboveChanges(storeyId) ? topAttachmentProblem(inventory, id) : null;
+          if (problem) unresolved.push({ id, problem });
+          continue;
+        }
+        if (attachment.targetStoreyId === null || attachment.targetStoreyId === storeyId) continue;
         const change = delta(attachment.targetStoreyId) - delta(storeyId);
         if (Math.abs(change) < 1e-9) continue;
         const wall = readWallMetres(target, id);
@@ -124,6 +137,12 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
   }
   if (unreadableWalls.length) {
     notices.push({ code: 'wallNotResized', elementIds: unreadableWalls, message: `${unreadableWalls.length} attached wall(s) are not simple extrusions, so they move but keep their height` });
+  }
+  if (unresolved.length) {
+    notices.push({
+      code: 'wallAttachmentUnresolved', elementIds: unresolved.map(({ id }) => id),
+      message: `${unresolved.length} wall(s) record a top attachment that names no single storey, so they keep their height: ${unresolved.map(({ id, problem }) => `#${id} ${problem}`).join('; ')}`,
+    });
   }
   if (unrefittable.length) {
     notices.push({ code: 'stairNotRefit', elementIds: unrefittable, message: `${unrefittable.length} stair(s) may reach a moved storey but are not a single stepped flight this editor can rebuild; they move but are not refit` });

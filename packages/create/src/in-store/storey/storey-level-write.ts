@@ -54,7 +54,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
  * after, so they change by exactly the gross change. Unit-free, since every
  * value keeps the unit it was written in. A wall without the set gets none.
  */
-function scaleWallQuantities(view: MutablePropertyView, wallId: number, k: number): void {
+export function scaleWallQuantities(view: MutablePropertyView, wallId: number, k: number): void {
   const qto = view.getQuantitiesForEntity(wallId).find((set) => set.name === WALL_QTO);
   if (!qto || !Number.isFinite(k)) return;
   const value = (name: string) => qto.quantities.find((q) => q.name === name);

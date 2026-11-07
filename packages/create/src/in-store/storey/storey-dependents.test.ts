@@ -12,6 +12,7 @@
 import * as create from '../../index.js';
 import { describe, expect, it } from 'vitest';
 import { recordCompoundMutation, undoRecordedMutationOperations, StoreEditor } from '@ifc-lite/mutations';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { IfcCreator } from '../../ifc-creator.js';
 import { addOrdinaryElementInStore } from '../ordinary-element.js';
 import { addHostedElementInStore } from '../hosted-element.js';
@@ -75,6 +76,48 @@ describe('adding the storey above binds walls drawn attached', () => {
     const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 });
     expect(added.boundWalls.map(({ wallId, from, to }) => [wallId, from, Math.round(to * 1e6) / 1e6])).toEqual([[wall, 3, 3.2]]);
     expect(readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height).toBeCloseTo(3.2, 9);
+  });
+});
+
+describe('wall attachments are followed exactly as recorded (#9036 review)', () => {
+  /** Blank Level 1 with one 3 m wall; returns the session and ids. */
+  async function oneWall() {
+    const creator = new IfcCreator({ Name: 'Blank' });
+    creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
+    const s = session(await parse(creator.toIfc().content));
+    const level1 = api('readStoreyInventory')(s.store, s.view).storeys[0].expressId;
+    const wall = addOrdinaryElementInStore(s.editor, (draft) => resolveSpatialAnchor(s.store, level1, draft.getMutationView()),
+      { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    return { s, level1, wall };
+  }
+
+  it('a wall bound to a new storey keeps its quantities true', async () => {
+    const { s, wall } = await oneWall();
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'GrossSideArea', 12, QuantityType.Area);
+    api('writeTopAttachment')(s.view, wall, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 });
+    const qto = s.view.getQuantitiesForEntity(wall).find((set) => set.name === 'Qto_WallBaseQuantities')!;
+    expect(qto.quantities.find((q) => q.name === 'Height')?.value).toBeCloseTo(3.2, 9);
+    expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(12.8, 9);
+  });
+
+  it('making a Revit-attached wall fixed sticks; a Revit level no storey matches is reported, not guessed', async () => {
+    const { s, level1, wall } = await oneWall();
+    const level2 = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 }).storeyId;
+    s.view.setProperty(wall, 'Constraints', 'Top Constraint', 'Up to level: Level 2', PropertyValueType.Label);
+    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: level2, source: 'revit' });
+    api('clearTopAttachment')(s.view, wall);
+    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toBeNull();
+
+    // A Revit record naming a level that was renamed: listed as a notice, height left as it is.
+    s.view.setProperty(wall, 'IfcLite_StoreyAttachment', 'TopConstraint', '', PropertyValueType.Label);
+    api('renameStoreyInStore')(s.store, s.editor, level2, 'Roof');
+    const inventory = api('readStoreyInventory')(s.store, s.view);
+    expect(api('topAttachmentProblem')(inventory, wall)).toBe('Revit records its top up to level "Level 2", which no storey is called');
+    const plan = api('planStoreyLevelEdit')(inventory, { kind: 'floorHeight', storeyId: level1, Height: 3.5 });
+    expect(plan.walls).toEqual([]);
+    expect(plan.notices.map((n) => [n.code, n.elementIds])).toEqual([['wallAttachmentUnresolved', [wall]]]);
   });
 });
 

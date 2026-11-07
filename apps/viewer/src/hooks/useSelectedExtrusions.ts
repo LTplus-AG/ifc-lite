@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useViewerStore, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { selectedExtrusionCache, type ProductExtrusions } from '@/lib/analytic/extrusion-cache';
 import type { AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
-import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, selectedSourceProducts, withoutMeasuredOverlayItems } from '@/lib/analytic/selected-source-products';
 
 export interface SelectedExtrusion {
   ref: EntityRef;
@@ -77,5 +77,7 @@ export function useSelectedExtrusions(enabled: boolean): SelectedExtrusionsState
   }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef,
     hidden, isolated, classFilter, lensHidden]);
 
-  return result;
+  const mutationVersion = useViewerStore((state) => state.mutationVersion);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the version is what a set gained or lost changes.
+  return useMemo(() => withoutMeasuredOverlayItems(useViewerStore.getState(), result), [result, mutationVersion]);
 }

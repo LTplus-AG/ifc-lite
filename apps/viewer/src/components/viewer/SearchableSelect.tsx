@@ -89,7 +89,7 @@ export function SearchableSelect({
           type="button"
           className={cn(
             'w-full flex items-center justify-between gap-1 text-left',
-            'text-xs px-1.5 py-1 bg-white dark:bg-muted border border-zinc-300 dark:border-zinc-600 text-foreground rounded-sm',
+            'text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 text-foreground rounded-sm',
             !value && 'text-muted-foreground',
             className,
           )}
@@ -132,7 +132,7 @@ export function SearchableSelect({
           // an opaque background and disables the `backdrop-filter` that would
           // otherwise create a stacking context and invert paint order.
           // Removing this class silently reopens #1924.
-          className="popover-surface z-[120] p-0 bg-white dark:bg-muted border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
+          className="popover-surface z-[120] p-0 bg-white border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
         >
           {options.length > 8 && (
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border">

@@ -67,7 +67,7 @@ const SEVERITY_TOKENS: Record<
     labelKey: 'idsPanel.audit.severity.error',
     pluralLabelKey: 'idsPanel.audit.severity.errors',
     dot: 'bg-red-500',
-    rail: 'border-l-red-500',
+    rail: 'border-l-danger-border',
     chipBg: 'bg-danger-surface',
     chipFg: 'text-danger',
     chipBorder: 'border-danger-border',
@@ -78,7 +78,7 @@ const SEVERITY_TOKENS: Record<
     labelKey: 'idsPanel.audit.severity.warning',
     pluralLabelKey: 'idsPanel.audit.severity.warnings',
     dot: 'bg-amber-500',
-    rail: 'border-l-amber-500',
+    rail: 'border-l-warn-border',
     chipBg: 'bg-warn-surface',
     chipFg: 'text-warn',
     chipBorder: 'border-warn-border',
@@ -89,8 +89,8 @@ const SEVERITY_TOKENS: Record<
     labelKey: 'idsPanel.audit.severity.note',
     pluralLabelKey: 'idsPanel.audit.severity.notes',
     dot: 'bg-sky-400',
-    rail: 'border-l-sky-400',
-    chipBg: 'bg-sky-400/10',
+    rail: 'border-l-info-border',
+    chipBg: 'bg-info-surface',
     chipFg: 'text-info',
     chipBorder: 'border-info-border',
     icon: <Info className="h-4 w-4" aria-hidden="true" />,
@@ -168,7 +168,7 @@ export function IDSAuditSummary({
     return (
       <div
         className={cn(
-          'flex items-center gap-2 rounded-md border border-ok-border bg-emerald-500/5 px-3 py-2 text-xs text-ok',
+          'flex items-center gap-2 rounded-md border border-ok-border bg-ok-surface px-3 py-2 text-xs text-ok',
           'animate-fade-in-up',
           className
         )}

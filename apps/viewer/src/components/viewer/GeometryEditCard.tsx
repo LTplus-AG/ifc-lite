@@ -363,7 +363,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 flex-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  className="h-7 flex-1 text-xs text-danger hover:bg-danger-surface"
                   onClick={onDelete}
                 >
                   <Trash2 className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.deleteButton')}

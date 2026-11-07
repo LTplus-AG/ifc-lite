@@ -86,3 +86,12 @@ test('#9016: a run with no failed job says so instead of an empty list', () => {
   const jobs = JSON.stringify({ jobs: [{ name: 'passed', conclusion: 'success', steps: [] }] });
   assert.match(reportScheduledFailure(env, fakeGh([], [], jobs)).body, /No failed job in the run/);
 });
+
+test('#9235 review: a job that times out is named, with how it ended', () => {
+  const jobs = JSON.stringify({
+    jobs: [{ name: 'measure', conclusion: 'timed_out', steps: [{ name: 'setup', conclusion: 'success' }, { name: 'Measure large set', conclusion: 'cancelled' }, { name: 'after', conclusion: 'skipped' }] }],
+  });
+  const { body } = reportScheduledFailure(env, fakeGh([], [], jobs));
+  assert.ok(body.includes('Failed steps:\n- measure › Measure large set (timed out)'), body);
+  assert.ok(!body.includes('No failed job') && !body.includes('after'), body);
+});

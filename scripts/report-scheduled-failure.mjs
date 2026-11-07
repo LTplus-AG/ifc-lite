@@ -11,6 +11,10 @@ const required = (env, name) => {
   return value;
 };
 
+/** Conclusions a lane can end in without succeeding. A job that reaches
+ * `timeout-minutes` ends `timed_out`, and its running step `cancelled`. */
+const UNSUCCESSFUL = new Set(['failure', 'timed_out', 'cancelled', 'startup_failure']);
+
 /**
  * Names what failed, so a report can be triaged without opening the run: #8774
  * and #8894 were closed as not planned, titled "not reporting", while the lane
@@ -24,9 +28,10 @@ function failedSteps(env, repo, gh) {
     const listed = gh(['api', `repos/${repo}/actions/runs/${runId}/jobs?filter=latest&per_page=100`]);
     const jobs = JSON.parse(listed)?.jobs;
     if (!Array.isArray(jobs)) throw new Error('the jobs listing has no jobs array');
-    const lines = jobs.filter((job) => job?.conclusion === 'failure').flatMap((job) => {
-      const steps = (Array.isArray(job.steps) ? job.steps : []).filter((step) => step?.conclusion === 'failure');
-      return steps.length > 0 ? steps.map((step) => `- ${job.name} › ${step.name}`) : [`- ${job.name}`];
+    const lines = jobs.filter((job) => UNSUCCESSFUL.has(job?.conclusion)).flatMap((job) => {
+      const steps = (Array.isArray(job.steps) ? job.steps : []).filter((step) => UNSUCCESSFUL.has(step?.conclusion));
+      const how = job.conclusion === 'failure' ? '' : ` (${job.conclusion.replace(/_/g, ' ')})`;
+      return steps.length > 0 ? steps.map((step) => `- ${job.name} › ${step.name}${how}`) : [`- ${job.name}${how}`];
     });
     return lines.length > 0 ? lines.join('\n') : '- No failed job in the run; see the results above.';
   } catch (err) {

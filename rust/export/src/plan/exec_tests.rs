@@ -46,7 +46,9 @@ fn ifc2x3_plan_output_places_one_product_per_placement() {
     for schema in ["IFC2X3", "IFC4"] {
         let shared = String::from_utf8(wall_with_own_pset(schema)).unwrap();
         let wall = super::test_fixtures::wall(schema, 11, "Wall 2", 20);
-        let content = shared.replacen("ENDSEC;", &format!("{wall}ENDSEC;"), 1).into_bytes();
+        // Before the DATA section's ENDSEC, not the header's.
+        let (head, tail) = shared.rsplit_once("ENDSEC;").unwrap();
+        let content = format!("{head}{wall}ENDSEC;{tail}").into_bytes();
         let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Preserve)], context: PlanContext::attributed() };
         let mut out = Vec::new();
         let report = execute(&content, &plan, &mut out).expect(schema);

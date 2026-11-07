@@ -1075,4 +1075,4 @@ function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId
 }
 ```
 
-The same operations are exposed to scripts as `bim.store.listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.
+The SDK's headless backend exposes the same operations on `bim.store`: `listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. The viewer and its script sandbox gain them with the storey manager (#9037) and the CLI work (#9121). `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.

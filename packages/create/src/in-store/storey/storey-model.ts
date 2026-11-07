@@ -206,8 +206,21 @@ export function walkStoreyContents(
   inventory: StoreyInventory, storeyId: number, limit = STOREY_CONTENT_LIMIT,
 ): { contents: Set<number>; foreign: Map<number, number> } | null {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
-  const containedIn = (product: number) => (inventory.incoming.get(product) ?? [])
-    .find((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' && storeyIds.has(rel.parent))?.parent;
+  // The storey a product's spatial container belongs to: the container itself, or the storey a
+  // space (or other spatial element) is aggregated under, however deep.
+  const storeyOf = (spatial: number): number | undefined => {
+    const seen = new Set<number>();
+    for (let id: number | undefined = spatial; id !== undefined && !seen.has(id);) {
+      if (storeyIds.has(id)) return id;
+      seen.add(id);
+      id = (inventory.incoming.get(id) ?? []).find((rel) => rel.type === 'IFCRELAGGREGATES')?.parent;
+    }
+    return undefined;
+  };
+  const containedIn = (product: number) => {
+    const rel = (inventory.incoming.get(product) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    return rel ? storeyOf(rel.parent) : undefined;
+  };
   const contents = new Set<number>();
   const foreign = new Map<number, number>();
   const queue = [storeyId];

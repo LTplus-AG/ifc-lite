@@ -358,6 +358,20 @@ describe('elements another storey contains stay with their host (#9013 review)',
   });
 });
 
+describe('elements contained in a space of another storey stay with their host (#9013 review)', () => {
+  it('a window contained in a Level 3 space filling a Level 2 wall is refused like one contained in Level 3', async () => {
+    const text = CROSS_STOREY_FILLING
+      .replace("#209=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Xs1CoN3AAAAAAAAAAAAAA',$,$,$,(#204),#46);", `#209=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Xs1CoN3AAAAAAAAAAAAAA',$,$,$,(#204),#210);
+#210=IFCSPACE('0Xs1SpACAAAAAAAAAAAAAA',$,'Room',$,$,#211,$,$,.ELEMENT.,$,$);
+#211=IFCLOCALPLACEMENT(#47,#5);
+#212=IFCRELAGGREGATES('0Xs1AgGRAAAAAAAAAAAAAA',$,$,$,#46,(#210));`);
+    const s = session(await parse(text));
+    expect(plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 }).refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [204]]]);
+    const deletion = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, { kind: 'deleteContents' });
+    expect(deletion.contents).not.toContain(204);
+  });
+});
+
 describe('a reviewed level edit pins the gaps it changes (#9013 review)', () => {
   it('a neighbour moved after review makes the plan stale', async () => {
     const s = session(await parse(THIRD_PARTY));

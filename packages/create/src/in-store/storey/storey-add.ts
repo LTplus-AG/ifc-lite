@@ -25,7 +25,7 @@ import { MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation } from '.
 import { planAttachmentBindings, type WallHeightChange } from './storey-dependents.js';
 import { writeTopAttachment } from './storey-attachment.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
-import { scaleWallQuantities } from './storey-level-write.js';
+import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
 
 export interface AddStoreyParams {
   readonly Name: string;
@@ -160,12 +160,13 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
     for (const wall of boundWalls) {
       writeTopAttachment(draft.getMutationView(), wall.wallId, guid);
       if (Math.abs(wall.to - wall.from) < 1e-9) continue;
+      const geometry = wallGeometry(store, draft.getMutationView(), draft, wall.wallId);
       const outcome = setWallSectionInStore({ dataStore: store, view: draft.getMutationView(), editor: draft }, wall.wallId, { height: wall.to });
       if (!outcome.ok) {
         throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} is attached to the storey above but cannot reach the new storey: ${outcome.reason}` }]);
       }
       // The same quantity upkeep as a re-level: Height, areas and volumes follow the new height.
-      scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from);
+      scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from, geometry);
       reshaped.push(...outcome.remesh);
     }
     return { storeyId, placementId, relAggregatesId, boundWalls, unresizedWalls: bindings.unreadable, reshaped };

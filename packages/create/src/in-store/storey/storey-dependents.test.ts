@@ -167,6 +167,18 @@ describe('quantities and stairs as the file records them (#9036 review)', () => 
     expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(16, 9);
   });
 
+  it('a set with only a net side area takes the gross change from the wall itself', async () => {
+    const { s, level1, anchor } = await blank();
+    const wall = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    // A 4 m x 3 m wall with a 2 m2 opening; the set records nothing but the net area.
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetSideArea', 10, QuantityType.Area);
+    api('writeTopAttachment')(s.view, wall, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'floorHeight', storeyId: level1, Height: 4 });
+    const qto = s.view.getQuantitiesForEntity(wall).find((set) => set.name === 'Qto_WallBaseQuantities')!;
+    expect(qto.quantities.find((q) => q.name === 'NetSideArea')?.value).toBeCloseTo(14, 9);
+  });
+
   it('a net side area in mm² beside a gross one in m² changes by the gross change, converted', async () => {
     const { s, anchor } = await blank();
     const drawn = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });

@@ -14,6 +14,7 @@ import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type I
 import type { QuantityType } from '@ifc-lite/data';
 import { editStairDimensionsInStore } from '../stair-edit.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
+import { readWallMetres } from '../wall-size-edit.js';
 import type { StoreyLevelPlan } from './storey-level-plan.js';
 import { writeShiftedPlacement } from './storey-placement.js';
 import { StoreyEditRefusedError } from './storey-validation.js';
@@ -29,11 +30,12 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
   }
   const view = draft.getMutationView();
   for (const wall of plan.walls) {
+    const geometry = wallGeometry(store, view, draft, wall.wallId);
     const outcome = setWallSectionInStore({ dataStore: store, view, editor: draft }, wall.wallId, { height: wall.to });
     if (!outcome.ok) {
       throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} cannot follow its storey: ${outcome.reason}` }]);
     }
-    scaleWallQuantities(store, view, wall.wallId, wall.to / wall.from);
+    scaleWallQuantities(store, view, wall.wallId, wall.to / wall.from, geometry);
     reshaped.push(...outcome.remesh);
   }
   for (const stair of plan.stairs) {
@@ -55,9 +57,13 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
  * after, so they change by exactly the gross change. Unit-free, since every
  * value keeps the unit it was written in. A wall without the set gets none.
  * A view with no quantity base of its own reads the source quantities here,
- * so a set that exists only in the file is kept true too.
+ * so a set that exists only in the file is kept true too. Without a gross
+ * value, the wall's own `geometry` (metres, read before the resize) gives
+ * the gross prism, else the set's Length, Height and Width.
  */
-export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number): void {
+export function scaleWallQuantities(
+  store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number, geometry?: WallGeometry,
+): void {
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   const qto = view.getQuantitiesForEntity(wallId, base).find((set) => set.name === WALL_QTO);
   if (!qto || !Number.isFinite(k)) return;
@@ -84,7 +90,10 @@ export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyVi
   };
   // Without the gross value, the set's own Length × Height (× Width) is the gross prism it stands for.
   const length = si(value('Length')), width = si(value('Width')), h = si(height);
-  const grossFromSet = {
+  const grossFromSet = geometry ? {
+    GrossSideArea: geometry.length * geometry.height,
+    GrossVolume: geometry.length * geometry.thickness * geometry.height,
+  } : {
     GrossSideArea: length !== undefined && h !== undefined ? length * h : undefined,
     GrossVolume: length !== undefined && width !== undefined && h !== undefined ? length * width * h : undefined,
   };
@@ -97,4 +106,16 @@ export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyVi
     const netScale = scaleOf(n);
     set(net, beforeSi !== undefined && netScale !== undefined ? n.value + beforeSi * (k - 1) / netScale : n.value * k);
   }
+}
+
+/** A wall's prism in metres (SI), for quantity upkeep. */
+export interface WallGeometry { readonly length: number; readonly thickness: number; readonly height: number }
+
+/** The wall's length, thickness and height before a resize, or undefined when it cannot be read. */
+export function wallGeometry(store: IfcDataStore, view: MutablePropertyView, editor: StoreEditor, wallId: number): WallGeometry | undefined {
+  const wall = readWallMetres({ dataStore: store, view, editor }, wallId);
+  if (!wall) return undefined;
+  const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1], wall.end[2] - wall.start[2]);
+  return [length, wall.thickness, wall.height].every((v) => Number.isFinite(v) && v > 0)
+    ? { length, thickness: wall.thickness, height: wall.height } : undefined;
 }

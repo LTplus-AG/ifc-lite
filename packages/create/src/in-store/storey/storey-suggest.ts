@@ -47,14 +47,20 @@ export function suggestStorey(
   const height = side === 'above'
     ? (above ? above.elevation - elevation : spacing)
     : reference.elevation - elevation;
-  return { Name: suggestName(inventory, reference.Name, side, fallbackName), Elevation: elevation, Height: height, referenceStoreyId: storeyId };
+  return { Name: suggestName(inventory, reference.Name, side, fallbackName, reference.parentId), Elevation: elevation, Height: height, referenceStoreyId: storeyId };
 }
 
-/** `Level 2` → `Level 3` above / `Level 1` below, skipping names already taken. */
+/**
+ * `Level 2` → `Level 3` above / `Level 1` below, skipping names already taken
+ * in the same building (`parentId`; every storey when omitted): each
+ * building keeps its own naming sequence.
+ */
 export function suggestName(
   inventory: StoreyInventory, referenceName: string, side: 'above' | 'below', fallbackName: (index: number) => string,
+  parentId?: number | null,
 ): string {
-  const taken = new Set(inventory.storeys.map((storey) => storey.Name.trim().toLowerCase()));
+  const peers = parentId === undefined ? inventory.storeys : inventory.storeys.filter((storey) => storey.parentId === parentId);
+  const taken = new Set(peers.map((storey) => storey.Name.trim().toLowerCase()));
   const step = side === 'above' ? 1 : -1;
   const match = /^(.*?)(-?\d+)(\D*)$/.exec(referenceName.trim());
   if (match) {
@@ -66,9 +72,9 @@ export function suggestName(
       if (!taken.has(name.toLowerCase())) return name;
     }
   }
-  for (let index = inventory.storeys.length + 1; index < inventory.storeys.length + 1000; index++) {
+  for (let index = peers.length + 1; index < peers.length + 1000; index++) {
     const name = fallbackName(index);
     if (!taken.has(name.toLowerCase())) return name;
   }
-  return fallbackName(inventory.storeys.length + 1);
+  return fallbackName(peers.length + 1);
 }

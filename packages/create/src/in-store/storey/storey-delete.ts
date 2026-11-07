@@ -101,7 +101,11 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
   // The reverse lookup is built only if a content product hangs from a grid placement.
   let referencers: ((id: number) => readonly number[]) | null = null;
   const lazyReferencers = (id: number) => (referencers ??= effectiveReferencers(inventory.store, inventory.view))(id);
-  const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, [storeyId, ...contents]);
+  // A move also pins its destination and the relationships it re-points.
+  const others = mode.kind === 'move'
+    ? [mode.targetStoreyId, ...(inventory.outgoing.get(storeyId) ?? []).map((rel) => rel.id)]
+    : [];
+  const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, [storeyId, ...contents], [], others);
   return { ...base, contents: [...contents], roots, elementCount, fingerprint, refusals };
 }
 

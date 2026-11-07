@@ -155,8 +155,11 @@ export function storeyRecord(inventory: StoreyInventory, storeyId: number): Stor
  * one building's ground floor is not the other's storey above or below.
  */
 export function siblingStoreys(inventory: StoreyInventory, storeyId: number): StoreyRecord[] {
-  const parentId = storeyRecord(inventory, storeyId).parentId;
-  return inventory.storeys.filter((storey) => storey.parentId === parentId);
+  const record = storeyRecord(inventory, storeyId);
+  // A storey no building aggregates belongs to no sequence: two such storeys
+  // may stand in different buildings, so neither is the other's neighbour.
+  if (record.parentId === null) return [record];
+  return inventory.storeys.filter((storey) => storey.parentId === record.parentId);
 }
 
 /** The storey directly above / below in elevation order within its building, or null. */

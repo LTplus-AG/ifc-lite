@@ -63,14 +63,19 @@ function hash(text: string): string {
 }
 
 /**
- * Fingerprint of `products` (their records and placement chains) and of the
- * extra `placements` (chains only), read through `reader`; `referencers`
- * resolves a grid placement's grid.
+ * Fingerprint of `products` (their records and placement chains), of the
+ * extra `placements` (chains only) and of plain `others` (their own records:
+ * a destination storey, a relationship), read through `reader`;
+ * `referencers` resolves a grid placement's grid.
  */
 export function storeyStateFingerprint(
-  reader: Reader, referencers: Referencers, products: Iterable<number>, placements: Iterable<number> = [],
+  reader: Reader, referencers: Referencers, products: Iterable<number>, placements: Iterable<number> = [], others: Iterable<number> = [],
 ): string {
   const records = new Map<number, string>();
+  for (const id of others) {
+    const entity = reader.entity(id);
+    records.set(id, entity ? `${entity.type.toUpperCase()}${JSON.stringify(entity.attributes)}` : 'missing');
+  }
   for (const product of products) {
     const entity = reader.entity(product);
     records.set(product, entity ? `${entity.type.toUpperCase()}${JSON.stringify(entity.attributes)}` : 'missing');

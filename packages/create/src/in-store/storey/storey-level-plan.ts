@@ -130,6 +130,13 @@ function storeyDeltas(inventory: StoreyInventory, edit: StoreyLevelEdit): Map<nu
     const refusals = neighbourRefusals(storey, edit.Elevation, below, above);
     return refusals.length ? refusals : new Map([[storey.expressId, edit.Elevation - storey.elevation]]);
   }
+  if (storey.parentId === null) {
+    return [{
+      code: 'dependent', elementIds: [storey.expressId],
+      message: `${storey.Name} is not aggregated under a building, so there is no sequence of storeys above it to shift; edit its elevation instead`,
+      params: { storey: storey.Name },
+    }];
+  }
   if (!above) {
     return [{ code: 'topStorey', message: `${storey.Name} is the top storey: there is no storey above to measure its height to`, params: { storey: storey.Name } }];
   }
@@ -291,7 +298,8 @@ function reachedProducts(
 function spacingChanges(inventory: StoreyInventory, deltas: ReadonlyMap<number, number>): SpacingChange[] {
   const changes: SpacingChange[] = [];
   const at = (storey: StoreyRecord) => storey.elevation + (deltas.get(storey.expressId) ?? 0);
-  const parents = new Set(inventory.storeys.map((storey) => storey.parentId));
+  // Only storeys of one building form a sequence; unaggregated ones have no gaps.
+  const parents = new Set(inventory.storeys.map((storey) => storey.parentId).filter((id) => id !== null));
   for (const parentId of parents) {
     // Gaps are measured between consecutive storeys of one building.
     const storeys = inventory.storeys.filter((storey) => storey.parentId === parentId);

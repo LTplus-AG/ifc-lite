@@ -251,6 +251,19 @@ describe('storey deletion', () => {
     expect(s.view.isDeleted(40)).toBe(false);
   });
 
+  it('a reviewed move is stale once its destination or a re-pointed relationship changed', async () => {
+    const s = session(await parse(THIRD_PARTY));
+    const mode = { kind: 'move', targetStoreyId: 40 } as const;
+    const review = () => api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    let reviewed = review();
+    s.editor.setPositionalAttribute(40, 0, '1Zq8Lm4Nr6Tv0Xy3Bc5Df8');
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    reviewed = review();
+    s.editor.setPositionalAttribute(90, 0, '0Zq8Lm4Nr6Tv0Xy3Bc5Df9');
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.view.isDeleted(42)).toBe(false);
+  });
+
   it('a deleted product is no longer a storey\'s content (#9013 review)', async () => {
     const s = session(await parse(THIRD_PARTY));
     s.editor.removeEntity(60);

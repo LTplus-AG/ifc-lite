@@ -178,6 +178,24 @@ describe('storey edits stay within their building (#9013 review)', () => {
       .toThrow('Annex 1 is already at +3.00 m');
   });
 
+  it('names continue each building\'s own sequence', async () => {
+    const s = session(await parse(TWO_BUILDINGS));
+    // The main building already has an "Annex 2"; the Annex does not.
+    s.editor.setPositionalAttribute(42, 2, 'Annex 2');
+    const inventory = api('readStoreyInventory')(s.store, s.view);
+    expect(api('suggestStorey')(inventory, 142, 'above', (n) => `Level ${n}`).Name).toBe('Annex 2');
+  });
+
+  it('storeys no building aggregates are not each other\'s neighbours', async () => {
+    const s = session(await parse(THIRD_PARTY.replace('(#40,#42,#46));', '(#40));')));
+    // Level 2 and Level 3 belong to no building: no floor-to-floor sequence to shift.
+    expect(plan(s, { kind: 'floorHeight', storeyId: 42, Height: 3.5 }).refusals.map((r) => r.message))
+      .toEqual(['Level 2 is not aggregated under a building, so there is no sequence of storeys above it to shift; edit its elevation instead']);
+    // An elevation edit of Level 2 up to Level 3's elevation is not a clash between neighbours.
+    expect(plan(s, { kind: 'elevation', storeyId: 42, Elevation: 6.5 }).refusals).toEqual([]);
+    expect(plan(s, { kind: 'elevation', storeyId: 42, Elevation: 6.5 }).spacing).toEqual([]);
+  });
+
   it('with several buildings and no reference, buildingId chooses the building', async () => {
     const s = session(await parse(TWO_BUILDINGS));
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Annex 2', Elevation: 6 })).toThrow('choose the one the storey belongs to');

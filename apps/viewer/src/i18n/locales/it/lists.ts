@@ -244,4 +244,6 @@ export const listsIt = {
   'lists.builder.unreadableWarning': 'Questi filtri salvati non possono essere letti, quindi l’elenco non può essere eseguito. Rimuovili per eseguirlo.',
   'lists.builder.malformedCondition': 'Condizione salvata malformata',
   'lists.builder.removeUnreadable': 'Rimuovi il filtro salvato',
+  "lists.library.emptyTitle": "Nessun elenco salvato",
+  "lists.library.emptyDescription": "Parti da un modello o crea il tuo elenco.",
 } satisfies Catalogue;

@@ -70,5 +70,6 @@ export const modelInspectorIt = {
   "modelInspector.layers.defaultsHint": "I nuovi elementi ricevono questi strati.",
   "modelInspector.layers.needName": "Assegna un nome a ogni nuovo materiale",
   "modelInspector.layers.needLayer": "Assegna a ogni strato uno spessore maggiore di zero",
-  "modelInspector.hosting.title": "Elemento ospitante"
+  "modelInspector.hosting.title": "Elemento ospitante",
+  "modelInspector.empty.command": "Questo strumento non ha impostazioni predefinite da modificare qui. Le sue opzioni si trovano nella barra sopra la vista 3D.",
 } satisfies Catalogue;

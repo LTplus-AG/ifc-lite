@@ -685,3 +685,16 @@ it('hiding the drawn model mid-rebuild clears before paint and rejects the late 
   assert.equal(current(), '', 'the pending build never installs the hidden product');
   assert.equal(lineDrawn(), false);
 });
+
+it('a product selected through the renderer ids alone keeps its model\'s visibility in the key (#9158)', async () => {
+  // An empty basket: the query resolves the renderer's global ids to `other:1`.
+  await mountInstalled([], ONE, { ...federated([], [1]), selectedEntitiesSet: new Set(), selectedEntity: null,
+    selectedEntityIds: new Set([2 * OFFSET + 1]), selectedEntityId: null });
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'live holds no selected product');
+  await settle();
+  assert.equal(builds, before);
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the resolved product\'s model is hidden');
+});

@@ -8,7 +8,8 @@ import { selectedSourceRefs } from './selected-source-products';
 
 /**
  * Every model field read by the selected-source query, the centreline build,
- * its snap curves and the federation anchor they align to, except `visible`.
+ * its snap curves and the federation anchor search, except `visible`. (The
+ * anchor override is store state, not a model field, and is not keyed here.)
  * A model row's own fields (`name`, `collapsed`) are not among them, so a new
  * `models` Map that only changes those neither moves nor rebuilds the selected
  * curves (#9158). `source-model-key.test.ts` checks that list against what

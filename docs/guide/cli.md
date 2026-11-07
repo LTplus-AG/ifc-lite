@@ -909,6 +909,37 @@ ifc-lite generate-spaces model.ifc --list-storeys
 
 ---
 
+### `storey` - Author Storeys
+
+List, add, rename, re-level and delete `IfcBuildingStorey` in an IFC file, through the same `bim.store` path as the viewer's storey manager and the MCP `storey_*` tools. Geometry follows storeys. A storey's contents move with it, walls attached to the storey above resize, and stairs that land on a moved storey are refit. Any refusal is reported before anything is written.
+
+```bash
+ifc-lite storey model.ifc list
+ifc-lite storey model.ifc add --from "Level 1" --out with-level-2.ifc
+ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.ifc
+ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
+ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
+ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+```
+
+`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its express ID or exact name. Lengths are metres.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC (omit with `--dry-run`) |
+| `--name <n>` / `--elevation <m>` | Name and elevation of a storey to add; `--name` also renames |
+| `--from <storey>` / `--below` | Add above (or below) a storey with its neighbours' naming and spacing |
+| `--storey <storey>` | The storey to rename, edit or delete |
+| `--floor-height <m>` | New floor-to-floor height of `--storey` |
+| `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
+| `--delete-contents` | Delete the storey and everything it holds |
+| `--dry-run` | Plan the edit or delete and report it; write nothing |
+| `--json` | Machine-readable output |
+
+---
+
 ### `merge` — Merge IFC Files
 
 Combine multiple IFC files into a single federated model.
@@ -1803,6 +1834,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |

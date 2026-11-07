@@ -65,6 +65,7 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results

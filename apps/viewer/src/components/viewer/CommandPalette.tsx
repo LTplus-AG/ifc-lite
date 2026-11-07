@@ -244,12 +244,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
           onOpenAutoFocus={event => {
             event.preventDefault();
             paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-            inputRef.current?.focus();
-          }}
-          onOpenAutoFocus={event => {
-            // #8947: Radix selects all input text by default. A cold-load query
-            // must keep accepting typing instead of replacing the buffered text.
-            event.preventDefault();
+            // #8947: Preserve launcher capture and continue a buffered cold query
+            // at its insertion caret instead of Radix selecting all of its text.
             const input = inputRef.current;
             input?.focus();
             input?.setSelectionRange(input.value.length, input.value.length);

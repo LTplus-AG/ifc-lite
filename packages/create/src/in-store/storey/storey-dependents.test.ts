@@ -253,6 +253,47 @@ END-ISO`);
     expect(plan.notices.find((n) => n.code === 'stairNotRefit')?.elementIds).toEqual([stair]);
   });
 
+  it('a reviewed plan is stale once a notice appears since (an unrefittable stair added)', async () => {
+    const { s, level1 } = await blank();
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    const edit = { kind: 'floorHeight', storeyId: level1, Height: 3.5 } as const;
+    const reviewed = api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), edit);
+    expect(reviewed.notices).toEqual([]);
+    // An imported stair that lands on Level 2 but has no flight this editor can rebuild.
+    const storeyPlacement = refId(new AnchorEntityReader(s.store, s.view).entity(level1)?.attributes[5])!;
+    const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+    const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+    const placement = s.editor.addEntity('IfcLocalPlacement', [`#${storeyPlacement}`, `#${axis}`]).expressId;
+    const stair = s.editor.addEntity('IfcStair', ['2LaTeStAIRAAAAAAAAAAAA', null, 'Late stair', null, null, `#${placement}`, null, null, '.STRAIGHT_RUN_STAIR.']).expressId;
+    const flight = s.editor.addEntity('IfcStairFlight', ['2LaTeFLiGHTAAAAAAAAAAA', null, 'Flight', null, null, `#${placement}`, null, null, 15, 15, 0.2, 0.27, '.STRAIGHT.']).expressId;
+    s.editor.addEntity('IfcRelAggregates', ['2LaTeAgGRAAAAAAAAAAAAA', null, null, null, `#${stair}`, [`#${flight}`]]);
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['2LaTeCoNTAAAAAAAAAAAAA', null, null, null, [`#${stair}`], `#${level1}`]);
+    expect(api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), edit).notices.map((n) => n.code)).toEqual(['stairNotRefit']);
+    expect(() => api('applyStoreyLevelEdit')(s.store, s.editor, edit, reviewed)).toThrow('planned against a model that has changed');
+  });
+
+  it('a resized wall with two Qto_WallBaseQuantities sets is named in a notice', async () => {
+    const { s, anchor } = await blank();
+    const drawn = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    api('writeTopAttachment')(s.view, drawn, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    let text = s.text();
+    const wallRef = /^#(\d+)=IFCWALL\(/m.exec(text)![1];
+    text = text.replace('ENDSEC;\nEND-ISO', `#900001=IFCQUANTITYLENGTH('Height',$,$,3.,$);
+#900002=IFCELEMENTQUANTITY('3QtoOnEEAAAAAAAAAAAAAA',$,'Qto_WallBaseQuantities',$,$,(#900001));
+#900003=IFCRELDEFINESBYPROPERTIES('3QtoOnERAAAAAAAAAAAAAA',$,$,$,(#${wallRef}),#900002);
+#900004=IFCQUANTITYLENGTH('Height',$,$,3.,$);
+#900005=IFCELEMENTQUANTITY('3QtoTwOEAAAAAAAAAAAAAA',$,'Qto_WallBaseQuantities',$,$,(#900004));
+#900006=IFCRELDEFINESBYPROPERTIES('3QtoTwORAAAAAAAAAAAAAA',$,$,$,(#${wallRef}),#900005);
+ENDSEC;
+END-ISO`);
+    const r = session(await parse(text));
+    const inventory = api('readStoreyInventory')(r.store, r.view);
+    const plan = api('planStoreyLevelEdit')(inventory, { kind: 'floorHeight', storeyId: inventory.storeys[0].expressId, Height: 4 });
+    expect(plan.walls.map((w) => w.wallId)).toEqual([Number(wallRef)]);
+    expect(plan.notices.find((n) => n.code === 'wallQuantitiesPartial')?.elementIds).toEqual([Number(wallRef)]);
+  });
+
   it('a flight that sits above its stair\'s placement lands, and refits, at its own top', async () => {
     const { s, level1, anchor } = await blank();
     const built = s.editor.runAtomic((draft) => addStairToStore(draft, anchor(draft), {

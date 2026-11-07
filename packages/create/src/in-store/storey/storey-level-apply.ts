@@ -32,6 +32,8 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
     stairs: plan.stairs.map(({ stairId, flightId, landingStoreyId, from, to }) => [
       stairId, flightId, landingStoreyId, from.NumberOfRisers, Math.round(from.RiserHeight * 1e9), to.NumberOfRisers, Math.round(to.RiserHeight * 1e9),
     ]),
+    // What the review was told about: a notice that appears since (an unrefittable stair added) changes the plan.
+    notices: plan.notices.map(({ code, elementIds }) => [code, [...elementIds].sort((x, y) => x - y)]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     fingerprint: plan.fingerprint,
     refusals: refusalSignature(plan.refusals),
   });

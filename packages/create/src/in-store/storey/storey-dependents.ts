@@ -21,6 +21,7 @@ import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { readStairDimensions } from '../stair-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
+import { wallQuantitySetCount } from './storey-level-write.js';
 import { siblingStoreys, storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 import { describeLength, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
 
@@ -137,6 +138,14 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
   }
   if (unreadableWalls.length) {
     notices.push({ code: 'wallNotResized', elementIds: unreadableWalls, message: `${unreadableWalls.length} attached wall(s) are not simple extrusions, so they move but keep their height` });
+  }
+  // The overlay keeps one same-named quantity set per wall true; a second instance would keep old values.
+  const partial = walls.filter((wall) => wallQuantitySetCount(inventory.store, inventory.view, wall.wallId) > 1).map((wall) => wall.wallId);
+  if (partial.length) {
+    notices.push({
+      code: 'wallQuantitiesPartial', elementIds: partial,
+      message: `${partial.length} resized wall(s) carry more than one Qto_WallBaseQuantities set; only the first is updated, the others keep their old values`,
+    });
   }
   if (unresolved.length) {
     notices.push({

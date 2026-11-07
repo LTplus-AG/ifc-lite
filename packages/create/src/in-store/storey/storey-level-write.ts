@@ -19,7 +19,13 @@ import type { StoreyLevelPlan } from './storey-level-plan.js';
 import { writeShiftedPlacement } from './storey-placement.js';
 import { StoreyEditRefusedError } from './storey-validation.js';
 
-const WALL_QTO = 'Qto_WallBaseQuantities';
+export const WALL_QTO = 'Qto_WallBaseQuantities';
+
+/** How many `Qto_WallBaseQuantities` instances a wall has, source ones included. Only the first is kept true by a resize. */
+export function wallQuantitySetCount(store: IfcDataStore, view: MutablePropertyView, wallId: number): number {
+  const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
+  return view.getQuantitiesForEntity(wallId, base).filter((set) => set.name === WALL_QTO).length;
+}
 
 /** Returns every product whose mesh the write changed beyond a pure move. */
 export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, plan: StoreyLevelPlan): number[] {

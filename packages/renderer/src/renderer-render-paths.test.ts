@@ -1730,6 +1730,20 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
                 h.render({});
                 for (const sub of subs) assert.deepStrictEqual(pipelinesOf(h, sub.vertexBuffer), [TRANSPARENT_PIPELINE]);
             });
+            it('#9227: with sun shadows on, a stand-in casts its shadow as well as drawing (review of #9262)', () => {
+                const h = makeHarness();
+                h.renderer.setModelBounds(UNIT_BOUNDS);
+                const sun = { sunShadows: { enabled: true } } as const;
+                const { subs } = evictedUnderXRay(h, { ...XRAY, ...sun });
+                sceneOf(h)['subsetResidency'].rebuildBudgetMs = 0;
+                h.stats.draws.length = 0; h.stats.commands.length = 0;
+                h.render({ ...sun });
+                for (const sub of subs) {
+                    const pipelines = pipelinesOf(h, sub.vertexBuffer);
+                    assert.ok(pipelines.includes(OPAQUE_PIPELINE), 'the colour pass draws the stand-in');
+                    assert.ok(pipelines.some((p) => p !== OPAQUE_PIPELINE && p !== TRANSPARENT_PIPELINE), 'the shadow pass casts it');
+                }
+            });
             it('#9227: a stand-in frame keeps the parent eligible for the next frame\'s capped rebuild; no double draw', () => {
                 const h = makeHarness();
                 const { grey, subs } = evictedUnderXRay(h);

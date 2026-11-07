@@ -11,6 +11,7 @@
 
 import '@/test/setup-dom.js';
 import { strict as assert } from 'node:assert';
+import { act } from 'react';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { readTopAttachment, readStoreyInventory } from '@ifc-lite/create';
 import { IfcTypeEnum, PropertyValueType, type SpatialHierarchy } from '@ifc-lite/data';
@@ -131,7 +132,7 @@ describe('storey ops in the viewer (#9013)', () => {
 
     m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.2 });
     m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.6 });
-    assert.ok(m.keepStoreyPreview());
+    assert.ok(m.keepStoreyPreview(useViewerStore));
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.6]);
     // The hierarchy follows each preview, though every one adds as many records as the last (#9037 review).
     const s = useViewerStore.getState();
@@ -293,6 +294,14 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     m.revertStoreyPreview(useViewerStore);
     assert.deepEqual(storeys(), [['L0', 0], ['L1', 3]], 'the cancelled elevation is gone');
     assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(wall.expressId), false, 'the later write stays');
+  });
+
+  it('a preview a script has undone is not reported as kept (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);
+    act(() => { useViewerStore.getState().undo(MODEL_ID); });
+    assert.equal(m.keepStoreyPreview(useViewerStore), false, 'Enter must apply the edit itself');
+    assert.deepEqual(storeys(), [['L0', 0], ['L1', 3]]);
   });
 
   it('without a project tree, a unified storey row shows the live name and elevation, and a deleted storey is gone', async () => {

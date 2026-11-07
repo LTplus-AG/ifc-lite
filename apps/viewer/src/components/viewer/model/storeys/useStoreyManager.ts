@@ -112,7 +112,7 @@ export function useStoreyLevelEditing(modelId: string | null) {
     const { metres, error } = parse(field, text);
     if (metres === null) { setDraft({ storeyId, field, plan: null, previewing: false, error }); return false; }
     const edit = levelEdit(storeyId, field, metres);
-    if (previewed.current === JSON.stringify(edit) && keepStoreyPreview()) {
+    if (previewed.current === JSON.stringify(edit) && keepStoreyPreview(useViewerStore)) {
       previewed.current = null;
       setDraft(null);
       return true;
@@ -142,7 +142,7 @@ export function useStoreyLevelEditing(modelId: string | null) {
   return { draft, onDraft, onCommit, onCancel };
 }
 
-export interface RenameError { readonly storeyId: number; readonly message: string }
+export interface RenameError { readonly modelId: string; readonly storeyId: number; readonly message: string }
 
 /**
  * Rename, with a refusal (an empty name, or the core's reason) shown beside
@@ -153,13 +153,14 @@ export function useStoreyRename(modelId: string | null) {
   const [error, setError] = useState<RenameError | null>(null);
   const rename = useCallback((storeyId: number, name: string): boolean => {
     if (!modelId) return false;
-    if (!name.trim()) { setError({ storeyId, message: t('storeyManager.invalid.name') }); return false; }
+    if (!name.trim()) { setError({ modelId, storeyId, message: t('storeyManager.invalid.name') }); return false; }
     const outcome = commitStoreyOp(useViewerStore, modelId, { kind: 'rename', storeyId, Name: name });
-    setError(outcome.ok ? null : { storeyId, message: t('storeyManager.refusal.other', { reason: outcome.reason }) });
+    setError(outcome.ok ? null : { modelId, storeyId, message: t('storeyManager.refusal.other', { reason: outcome.reason }) });
     return outcome.ok;
   }, [modelId, t]);
   const clear = useCallback(() => setError(null), []);
-  return { rename, error, clear };
+  // A refusal belongs to the model it came from: express ids repeat across models.
+  return { rename, error: error?.modelId === modelId ? error : null, clear };
 }
 
 /** Why storeys cannot be edited right now, or null. */

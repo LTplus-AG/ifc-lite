@@ -248,17 +248,16 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                       className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground"
                     />
                   </div>
-                  <Button
-                    type="button"
+                  <IconButton
                     variant="toggle"
                     size="icon-xs"
                     onClick={togglePlaying}
-                    aria-label={playing ? t('viewportLighting.sunSkyPanel.sunStudy.pauseAria') : t('viewportLighting.sunSkyPanel.sunStudy.playAria')}
+                    label={playing ? t('viewportLighting.sunSkyPanel.sunStudy.pauseAria') : t('viewportLighting.sunSkyPanel.sunStudy.playAria')}
                     aria-pressed={playing}
                     className="shrink-0 rounded [&_svg]:size-3.5"
                   >
                     {playing ? <Pause /> : <Play />}
-                  </Button>
+                  </IconButton>
                 </div>
 
                 {/* Time of day */}

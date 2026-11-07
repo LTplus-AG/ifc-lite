@@ -17,4 +17,6 @@ export const analysisPanelFr = {
   "analysisPanel.demo.try": "Essayer avec les données de démonstration",
   "analysisPanel.demo.loading": "Chargement des données de démonstration…",
   "analysisPanel.demo.failed": "Impossible de charger les données de démonstration.",
+  "panelHeader.moreActions": "Autres actions",
+  "panelHeader.close": "Fermer",
 } satisfies Catalogue;

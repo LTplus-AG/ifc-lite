@@ -127,7 +127,6 @@ export const clashPanelFr = {
     'Vérifiez ce modèle en quelques secondes : « Détecter toutes les collisions » trouve chaque chevauchement qu’il contient, et « Rechercher les doublons » repère les objets coïncidents — aucune configuration de disciplines n’est nécessaire.',
   'clashPanel.empty.multiModelHint':
     'Détectez toutes les collisions, exécutez la matrice des disciplines ou choisissez un préréglage pour trouver les conflits entre les modèles chargés.',
-  'clashPanel.empty.hint': 'Cliquez sur un résultat pour mettre en évidence les deux éléments ; développez une ligne pour parcourir chaque objet.',
   'clashPanel.matrixNoMatch.title': 'La matrice ne s’appliquait pas à ce modèle — elle n’a PAS été exécutée.',
   'clashPanel.matrixNoMatch.description':
     'Aucune des {count} règle(s) ne correspondait à des éléments ici ; « 0 collision » ne signifie donc pas que ce modèle est exempt de problèmes — rien n’a réellement été vérifié. Ce jeu de règles est conçu pour la coordination MEP/CVC/électricité/incendie ; il ne décrit peut-être pas les disciplines de ce modèle.',

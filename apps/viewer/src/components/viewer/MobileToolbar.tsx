@@ -26,7 +26,6 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
-import { cn } from '@/lib/utils';
 import { useExportRunner } from './useExportRunner';
 import { buildExportCommands } from './commandPaletteExports';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
@@ -185,9 +184,14 @@ export function MobileToolbar() {
           <Button
             key={id}
             data-command-id={id}
-            variant={active ? 'default' : 'ghost'}
+            // The shared active state (#8802), as on the desktop ribbon's
+            // latched tool: tinted surface, active ink and an inset edge,
+            // driven by `aria-pressed` so what is announced is what is shown.
+            // At rest it keeps the foreground ink of the actions beside it.
+            variant="toggle"
             size="icon-sm"
-            className={cn('h-9 w-9 flex-shrink-0', active && 'bg-primary text-primary-foreground')}
+            className="h-9 w-9 flex-shrink-0 text-foreground"
+            aria-pressed={active}
             onClick={() => runMobile(command)}
             aria-label={mobileLabel(command)}
           >

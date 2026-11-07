@@ -32,16 +32,19 @@ export function DefinitionLibraryToolbar({ kind, onNew, onImport, onImportFile }
     if (entry.kind === 'ids') loadIdsContent(useViewerStore, entry.xml, entry.id);
     else useViewerStore.getState().selectValidationDefinition(id);
   }
-  return <div className="border-b p-2">
+  // The picker has its own full-width row (#8802): sharing a wrapping row with
+  // the four or five actions let them squeeze its label to a clipped stub
+  // ("Select IDS documer") and its select to a sliver.
+  return <div className="flex flex-col gap-2 border-b p-2">
+    <label className="flex flex-col gap-1 text-xs">
+      {label}
+      <select aria-label={label} className="h-7 w-full min-w-0 rounded border border-input bg-background px-1.5"
+        value={current?.id ?? ''} onChange={event => select(event.target.value)}>
+        <option value="" disabled>{t('validationPanel.library.none')}</option>
+        {entries.map(entry => <option key={entry.id} value={entry.id}>{definitionTitle(entry).trim() || t('validationPanel.library.untitled')}</option>)}
+      </select>
+    </label>
     <div className="flex flex-wrap items-center gap-2">
-      <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
-        {label}
-        <select aria-label={label} className="h-7 min-w-0 rounded border border-input bg-background px-1.5"
-          value={current?.id ?? ''} onChange={event => select(event.target.value)}>
-          <option value="" disabled>{t('validationPanel.library.none')}</option>
-          {entries.map(entry => <option key={entry.id} value={entry.id}>{definitionTitle(entry).trim() || t('validationPanel.library.untitled')}</option>)}
-        </select>
-      </label>
       {onNew && <Button size="sm" variant="outline" onClick={onNew}>{t('validationPanel.library.new')}</Button>}
       <Button size="sm" variant="outline" onClick={() => onImport ? onImport() : input.current?.click()}>{t('validationPanel.library.import')}</Button>
       {onImportFile && <input ref={input} type="file" accept=".rules.json,.json" className="hidden" onChange={async event => {
@@ -67,6 +70,6 @@ export function DefinitionLibraryToolbar({ kind, onNew, onImport, onImportFile }
         downloadFile(current.xml, `${sanitizeFilename(current.document.info.title, { fallback: 'check' })}.ids`, 'application/xml');
       }}>{t('validationPanel.library.idsDownload')}</Button>}
     </div>
-    {error && <p role="alert" className="pt-1 text-xs text-danger">{error}</p>}
+    {error && <p role="alert" className="text-xs text-danger">{error}</p>}
   </div>;
 }

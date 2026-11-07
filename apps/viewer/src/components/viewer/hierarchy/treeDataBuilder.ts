@@ -4,8 +4,7 @@
 
 import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
-import { addedStoreyRows, effectiveSpatialProject, effectiveStoreyRows } from './effectiveStoreyNodes.js';
-import { effectiveStoreyElevation } from '@ifc-lite/create';
+import { effectiveSpatialProject, liveStoreyRows } from './effectiveStoreyNodes.js';
 export { buildGroupTree, resolveMemberGeometry, type ResolvedMemberGeometry } from './groupTreeBuilder.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
 // from here; the tables themselves live in ./groupEntityTypes.ts.
@@ -152,7 +151,6 @@ export function buildUnifiedStoreys(
     if (!dataStore?.spatialHierarchy) continue;
 
     const hierarchy = dataStore.spatialHierarchy;
-    const { storeyElevations } = hierarchy;
     // Partial/native metadata stores can expose the lookup maps before (or
     // without) a project tree. Keep their previous byStorey-only behaviour.
     const view = overlayViewFor(overlay, modelId);
@@ -161,21 +159,7 @@ export function buildUnifiedStoreys(
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
 
-    const listedRows = effectiveStoreyRows(hierarchy, project, spatialNodes);
-    // A storey added this session that neither the parsed rows nor the (possibly
-    // partial) tree lists, e.g. under a building the partial tree omits.
-    const listed = new Set(listedRows.map(([id]) => id));
-    const storeyRows = [
-      ...listedRows,
-      ...addedStoreyRows(dataStore, view, hierarchy).filter(([id]) => !listed.has(id)),
-    ];
-    for (const [storeyId, elements, live] of storeyRows) {
-      // A row with no live node (no project tree, or a partial one without it): read this session's edits (#9013) directly.
-      if (!live && view?.isDeleted(storeyId)) continue;
-      const elevation = live?.elevation
-        ?? (view ? effectiveStoreyElevation(dataStore, view, storeyId) : storeyElevations.get(storeyId)) ?? 0;
-      const fallbackName = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
-      const name = live?.name || (view ? effectiveTreeEntityName(dataStore, view, storeyId, fallbackName) : fallbackName);
+    for (const { storeyId, elements, name, elevation } of liveStoreyRows(dataStore, view, hierarchy, project, spatialNodes)) {
       const key = elevationKey(elevation);
       const storeyNode = spatialNodes.get(storeyId);
       const directElements = storeyNode

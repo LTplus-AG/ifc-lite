@@ -15,7 +15,7 @@
 import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { readStoreyInventory } from '@ifc-lite/create';
+import { effectiveStoreyElevation, readStoreyInventory } from '@ifc-lite/create';
 import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
 
 const cache = new WeakMap<SpatialNode, { view: MutablePropertyView; revision: string; project: SpatialNode }>();
@@ -130,4 +130,37 @@ export function addedStoreyRows(
     .filter((storey) => !hierarchy.byStorey.has(storey.expressId))
     .map((storey) => [storey.expressId, [...new Set((inventory.outgoing.get(storey.expressId) ?? [])
       .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))], undefined]);
+}
+
+export interface LiveStoreyRow {
+  readonly storeyId: number;
+  readonly elements: readonly number[];
+  readonly name: string;
+  /** Metres, as authored this session. */
+  readonly elevation: number;
+}
+
+/**
+ * Every storey row of a model with its live name and elevation (#9013): the
+ * parsed or effective-tree rows, plus storeys added this session that neither
+ * lists (e.g. under a building a partial tree omits). A row with no live node
+ * reads the session's edits directly; one deleted this session is dropped.
+ */
+export function liveStoreyRows(
+  store: IfcDataStore, view: MutablePropertyView | null | undefined, hierarchy: SpatialHierarchy,
+  project: SpatialNode | undefined, index: ReadonlyMap<number, SpatialNode>,
+): LiveStoreyRow[] {
+  const listedRows = effectiveStoreyRows(hierarchy, project, index);
+  const listed = new Set(listedRows.map(([id]) => id));
+  const rows = [...listedRows, ...addedStoreyRows(store, view, hierarchy).filter(([id]) => !listed.has(id))];
+  const out: LiveStoreyRow[] = [];
+  for (const [storeyId, elements, live] of rows) {
+    if (!live && view?.isDeleted(storeyId)) continue;
+    const elevation = live?.elevation
+      ?? (view ? effectiveStoreyElevation(store, view, storeyId) : hierarchy.storeyElevations.get(storeyId)) ?? 0;
+    const fallbackName = store.entities.getName(storeyId) || `Storey #${storeyId}`;
+    const name = live?.name || (view ? effectiveTreeEntityName(store, view, storeyId, fallbackName) : fallbackName);
+    out.push({ storeyId, elements, name, elevation });
+  }
+  return out;
 }

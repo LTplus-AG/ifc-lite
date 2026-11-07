@@ -44,13 +44,18 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
   const live = new Map(inventory.storeys.map((storey) => [storey.expressId, storey]));
   const placed = new Set<number>();
   // Direct containment, live: a storey added this session has no parsed entry.
-  // A partial/native source can list a storey's contents without the containment
-  // relationships behind them: there the parsed contents stand.
-  const liveContainment = inventory.relationships.some((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
-  const contained = (storeyId: number, parsed: number[] = []): number[] => (liveContainment
-    ? [...new Set((inventory.outgoing.get(storeyId) ?? [])
-      .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))]
-    : parsed);
+  // Direct containment, live, element by element: a parsed element stays listed unless a
+  // containment relationship now places it on another storey or it was deleted (a partial or
+  // native source may list contents with no relationship behind them), and whatever live
+  // containment places on the storey is added.
+  const containerOf = new Map<number, number>();
+  for (const rel of inventory.relationships) {
+    if (rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') for (const child of rel.children) containerOf.set(child, rel.parent);
+  }
+  const contained = (storeyId: number, parsed: readonly number[] = []): number[] => [...new Set([
+    ...parsed.filter((id) => (containerOf.get(id) ?? storeyId) === storeyId && !view.isDeleted(id)),
+    ...(inventory.outgoing.get(storeyId) ?? []).filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children),
+  ])];
 
   const rebuild = (node: SpatialNode): SpatialNode | null => {
     const storey = node.type === IfcTypeEnum.IfcBuildingStorey;

@@ -192,7 +192,7 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
     assert.ok(find(project!)?.elements.includes(wall.expressId), 'the remaining storey lists the moved wall');
   });
 
-  it('a source without containment relationships keeps its parsed storey contents through an edit (#9037 review)', async () => {
+  it('a source without containment relationships keeps its parsed storey contents through an edit, element by element (#9037 review)', async () => {
     const m = await storey();
     const s0 = useViewerStore.getState();
     const target = modelEditTarget(s0, MODEL_ID)!;
@@ -207,13 +207,18 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
     for (const rel of readStoreyInventory(target.dataStore, target.view).relationships) {
       if (rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') target.view.deleteEntity(rel.id);
     }
+    // One authored wall elsewhere brings a containment relationship of its own.
+    const wall = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
     assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Ground' }).ok);
     const s = useViewerStore.getState();
     const project = m.effectiveSpatialProject(ds, s.mutationViews.get(MODEL_ID));
     const find = (node: NonNullable<typeof project>): typeof project => node.expressId === STOREY ? node : node.children.map(find).find(Boolean);
     const l0 = find(project!);
     assert.equal(l0?.name, 'Ground');
-    assert.deepEqual(l0?.elements, parsedL0, 'a rename does not empty the parsed contents');
+    assert.deepEqual(l0?.elements, parsedL0, 'a rename does not empty the parsed contents, even once another storey has live containment');
+    const l1 = (function find(node: NonNullable<typeof project>): typeof project { return node.expressId === UPPER_STOREY ? node : node.children.map(find).find(Boolean); })(project!);
+    assert.ok(l1?.elements.includes(wall.expressId), 'and the authored wall is listed on its storey');
   });
 
   it('levels the parsed rows had that are not building storeys survive an edit', async () => {

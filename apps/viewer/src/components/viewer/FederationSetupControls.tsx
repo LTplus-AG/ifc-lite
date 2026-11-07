@@ -169,7 +169,7 @@ export function FederationSetupControls() {
               return (
                 <div
                   key={match.slotIndex}
-                  className="flex items-center gap-2 px-2 py-1.5 border border-zinc-200 dark:border-zinc-800 rounded text-sm"
+                  className="flex items-center gap-2 px-2 py-1.5 border border-border rounded text-sm"
                 >
                   {match.slot.anchor && <Anchor className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />}
                   <span className="truncate flex-1">{match.slot.name}</span>

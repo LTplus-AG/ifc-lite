@@ -770,8 +770,8 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
                   transform: `translateY(${vRow.start}px)`,
                 }}
                 className={cn(
-                  'flex w-full items-center border-b border-zinc-100 px-3 text-left text-2xs dark:border-zinc-900 focus-visible:ring-2 focus-visible:ring-ring',
-                  clickable && 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800',
+                  'flex w-full items-center border-b border-border px-3 text-left text-2xs focus-visible:ring-2 focus-visible:ring-ring',
+                  clickable && 'cursor-pointer hover:bg-muted',
                 )}
                 onClick={() => onRowClick(row)}
               >

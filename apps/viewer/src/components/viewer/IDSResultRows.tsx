@@ -107,7 +107,7 @@ function RequirementResultRow({ result }: RequirementResultRowProps) {
       <div className="flex-1 min-w-0">
         <div className="text-muted-foreground">{result.checkedDescription}</div>
         {result.failureReason && (
-          <div className="text-red-600 mt-0.5">{reasonLabel(result.failureReason)}</div>
+          <div className="text-danger mt-0.5">{reasonLabel(result.failureReason)}</div>
         )}
       </div>
     </div>
@@ -147,12 +147,12 @@ export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRo
             <span className="text-xs truncate">{group.checkedDescription}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            <span className="text-green-600">{t('idsPanel.passedCount', {
+            <span className="text-ok">{t('idsPanel.passedCount', {
               count: group.passedCount,
               countDisplay: formatLocaleNumber(locale, group.passedCount),
             })}</span>
             {' · '}
-            <span className="text-red-600">{t('idsPanel.failedCount', {
+            <span className="text-danger">{t('idsPanel.failedCount', {
               count: group.failedCount,
               countDisplay: formatLocaleNumber(locale, group.failedCount),
             })}</span>
@@ -186,7 +186,7 @@ export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRo
                 {entity.globalId ? ` · ${entity.globalId}` : ''}
               </span>
               {entity.failureReason && (
-                <span className="text-red-600">{reasonLabel(entity.failureReason)}</span>
+                <span className="text-danger">{reasonLabel(entity.failureReason)}</span>
               )}
             </button>
           ))}
@@ -241,7 +241,7 @@ export function SetResultRow({ result, onIsolate }: SetResultRowProps) {
                 countDisplay: formatLocaleNumber(locale, result.members.length),
               })}
               {result.failureReason && (
-                <span className="text-red-600"> · {reasonLabel(result.failureReason)}</span>
+                <span className="text-danger"> · {reasonLabel(result.failureReason)}</span>
               )}
             </div>
           </div>

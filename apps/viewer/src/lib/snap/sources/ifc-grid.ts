@@ -19,6 +19,7 @@
  * dozen axes, so collection scans instead of indexing.
  */
 
+import { gridAxisIntersections, type GridCrossing } from '@ifc-lite/create';
 import { mayLandNear } from '../constraints.js';
 import type { CollectHint, SnapCandidate, SnapQuery, SnapSource, Vec2 } from '../types.js';
 import { closestOnSegment } from './linework.js';
@@ -32,42 +33,6 @@ export interface GridAxisLine {
   family: 'U' | 'V' | 'W';
   a: Vec2;
   b: Vec2;
-}
-
-export interface GridIntersectionPoint {
-  gridId: number;
-  IntersectingAxes: readonly [number, number];
-  /** Tags of the two crossing axes, first family first ('2', 'B'). */
-  tags: readonly [string, string];
-  at: Vec2;
-}
-
-const EPS = 1e-9;
-
-/**
- * Where axes of DIFFERENT families of the same grid cross, within both
- * segments (a few millimetres of slack for axes drawn end to end). Axes of one
- * family are parallel by construction and never counted.
- */
-export function gridAxisIntersections(axes: readonly GridAxisLine[], slack = 1e-6): GridIntersectionPoint[] {
-  const out: GridIntersectionPoint[] = [];
-  for (let i = 0; i < axes.length; i++) {
-    for (let j = i + 1; j < axes.length; j++) {
-      const p = axes[i], q = axes[j];
-      if (p.gridId !== q.gridId || p.family === q.family) continue;
-      const rx = p.b[0] - p.a[0], ry = p.b[1] - p.a[1];
-      const sx = q.b[0] - q.a[0], sy = q.b[1] - q.a[1];
-      const denom = rx * sy - ry * sx;
-      if (Math.abs(denom) < EPS * Math.hypot(rx, ry) * Math.hypot(sx, sy)) continue;
-      const qpx = q.a[0] - p.a[0], qpy = q.a[1] - p.a[1];
-      const t = (qpx * sy - qpy * sx) / denom;
-      const u = (qpx * ry - qpy * rx) / denom;
-      const lo = -slack, hi = 1 + slack;
-      if (t < lo || t > hi || u < lo || u > hi) continue;
-      out.push({ gridId: p.gridId, IntersectingAxes: [p.axisId, q.axisId], tags: [p.AxisTag, q.AxisTag], at: [p.a[0] + t * rx, p.a[1] + t * ry] });
-    }
-  }
-  return out;
 }
 
 export interface IfcGridSourceDeps {
@@ -87,7 +52,7 @@ export interface IfcGridSource extends SnapSource {
 
 export function createIfcGridSource(deps: IfcGridSourceDeps, id = 'ifc-grid'): IfcGridSource {
   let axes: readonly GridAxisLine[] = [];
-  let crossings: readonly GridIntersectionPoint[] = [];
+  let crossings: readonly GridCrossing[] = [];
   let builtFor: string | null = null;
   let rebuilds = 0;
 

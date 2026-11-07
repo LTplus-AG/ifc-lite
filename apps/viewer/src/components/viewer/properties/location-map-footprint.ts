@@ -26,16 +26,19 @@ export interface FootprintMap {
   getLayer(id: string): unknown;
   removeLayer(id: string): void;
   removeSource(id: string): void;
+  setPaintProperty(layerId: string, name: string, value: unknown): void;
   getContainer?(): HTMLElement;
 }
 
 /** The footprint is drawn in the map container's ink, which LocationMap sets
  *  against the basemap (#8802 R5): dark on light tiles, light on dark ones,
- *  so it follows a theme switch or a style flip and carries no decorative hue.
- *  The layer is re-added after every style change, so the ink is re-read. */
+ *  with no decorative hue. The ink is read on every call: a style flip
+ *  re-adds the layers, and a theme switch that keeps the tiles (light <->
+ *  colorful) repaints the existing ones, so the footprint never keeps a stale
+ *  ink. */
 function footprintInk(map: FootprintMap): string {
   const container = map.getContainer?.();
-  return container ? getComputedStyle(container).color : 'rgb(0, 0, 0)';
+  return (container && getComputedStyle(container).color) || 'rgb(0, 0, 0)';
 }
 
 export const FOOTPRINT_SOURCE = 'building-footprint';
@@ -57,6 +60,8 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
   const existing = map.getSource(FOOTPRINT_SOURCE) as { setData(data: Feature): void } | undefined;
   if (existing) {
     existing.setData(geojson);
+    if (map.getLayer(FOOTPRINT_FILL_LAYER)) map.setPaintProperty(FOOTPRINT_FILL_LAYER, 'fill-color', ink);
+    if (map.getLayer(FOOTPRINT_OUTLINE_LAYER)) map.setPaintProperty(FOOTPRINT_OUTLINE_LAYER, 'line-color', ink);
     return;
   }
 

@@ -36,7 +36,8 @@ import {
 import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
-import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker, MAP_PICKED_PIN_CLASS } from './location-map-lifecycle';
+import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
+import { mapInkClass, mapInkStyle, pickedPinElement } from './location-map-ink';
 import { LocationMapSearchBar } from './location-map-search';
 import { LocationMapLinks } from './location-map-links';
 import { useViewerStore } from '@/store';
@@ -285,10 +286,7 @@ export function LocationMap({
     if (pickedMarkerRef.current) {
       pickedMarkerRef.current.setLngLat([pos.lon, pos.lat]);
     } else {
-      const el = document.createElement('div');
-      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
-      el.className = MAP_PICKED_PIN_CLASS; el.style.cursor = 'grab';
-      const marker = new maplibregl.Marker({ element: el, draggable: true })
+      const marker = new maplibregl.Marker({ element: pickedPinElement(), draggable: true })
         .setLngLat([pos.lon, pos.lat])
         .addTo(mapRef.current);
       marker.on('dragend', () => {
@@ -508,7 +506,8 @@ export function LocationMap({
     };
   }, [latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
 
-  // Add/update building footprint GeoJSON layer when footprint or style changes
+  // Add/update the footprint when it or the style changes, and repaint it when the theme
+  // changes the container ink without a style reload (light <-> colorful keep the tiles).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -522,7 +521,7 @@ export function LocationMap({
     } else {
       map.once('style.load', () => addFootprintToMap(map, footprint));
     }
-  }, [footprint, styleVersion]);
+  }, [footprint, styleVersion, theme]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -685,8 +684,8 @@ export function LocationMap({
             <div className="relative">
               <div
                 ref={containerRef}
-                className={`h-[180px] w-full ${darkBasemap ? 'text-scrim-foreground' : 'text-scrim'} [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-popover/40 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal`}
-                style={{ minHeight: 180 }}
+                className={`h-[180px] w-full ${mapInkClass(darkBasemap)} [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-popover/40 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal`}
+                style={{ minHeight: 180, ...mapInkStyle(darkBasemap) }}
               />
               {/* Edit mode hint overlay */}
               {editable && !pickedLatLon && (

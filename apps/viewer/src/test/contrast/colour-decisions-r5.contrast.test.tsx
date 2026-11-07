@@ -31,9 +31,11 @@ import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { CombinatorToggle } from '@/components/viewer/FilterRuleControls';
 import { SettingsChoice } from '@/components/viewer/settings/SettingsGroup';
 import { PassRateBar } from '@/components/viewer/IDSPanelStatus';
+import { PresentationViewCard } from '@/components/viewer/presentation/PresentationViewCard';
+import { mapInkClass, mapInkStyle, pickedPinElement } from '@/components/viewer/properties/location-map-ink';
 import { cleanup, render } from '@/test/render.js';
 import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from './render-harness.js';
-import { contrastRatio } from './wcag.js';
+import { contrastRatio, parseRgba } from './wcag.js';
 
 const THEMES: readonly Theme[] = ['light', 'dark', 'colorful'];
 const AA_TEXT = 4.5;
@@ -90,10 +92,15 @@ async function paint(theme: Theme, bodyHtml: string, selectors: Record<string, s
         if (!el) throw new Error(`no element for ${name} (${selector})`);
         const style = getComputedStyle(el);
         const surface = surfaceOf(el);
+        // Text is painted at its own and its ancestors' opacity.
+        let opacity = 1;
+        for (let a: Element | null = el; a; a = a.parentElement) opacity *= Number(getComputedStyle(a).opacity);
         ctx.fillStyle = `rgb(${surface[0]}, ${surface[1]}, ${surface[2]})`;
         ctx.fillRect(0, 0, 1, 1);
+        ctx.globalAlpha = opacity;
         ctx.fillStyle = style.color;
         ctx.fillRect(0, 0, 1, 1);
+        ctx.globalAlpha = 1;
         out[name] = { color: style.color, background: style.backgroundColor, underline: style.textDecorationLine, surface, ink: read() };
       }
       return out as Record<string, Painted>;
@@ -187,5 +194,40 @@ describe('R5 colour decisions (Refs 8802)', () => {
       assert.equal(p.link.color, p.refPlain.color, `link in ${theme} paints the plain foreground ink, no hue`);
       assertClears('link', ratio(p.link.ink, p.link.surface), AA_TEXT, theme);
     });
+
+    // #8802 R5 review: a caption over a bright thumbnail (a white wall close-up)
+    // must keep AA, so the scrim is measured over pure white.
+    it(`presentation caption text clears AA on its scrim over a white thumbnail in ${theme}`, async () => {
+      const noop = () => {};
+      const ui = render(
+        <div style={{ background: 'rgb(255, 255, 255)' }}>
+          <PresentationViewCard view={{ id: 'v1', name: 'North wall', entityRefs: [], thumbnailDataUrl: null } as never}
+            isActive={false} isEditing={false} editingName="" onSelect={noop} onStartRename={noop} onCommitRename={noop}
+            onCancelRename={noop} onEditingNameChange={noop} onSetTransition={noop} onDelete={noop} />
+        </div>,
+      );
+      const p = await paint(theme, ui.innerHTML, { ...REFS, name: '.text-xs.font-medium', count: '.font-medium + .text-2xs' });
+      assertClears('view name on the caption scrim', ratio(p.name.ink, p.name.surface), AA_TEXT, theme);
+      assertClears('object count on the caption scrim', ratio(p.count.ink, p.count.surface), AA_TEXT, theme);
+    });
+
+    // #8802 R5 review: the picked pin follows the tiles actually showing, not the
+    // theme ("Toggle style" puts light tiles under dark and dark under light).
+    for (const [tiles, tile, dark] of [['light', 'rgb(250, 250, 248)', false], ['dark', 'rgb(14, 14, 14)', true]] as const) {
+      it(`map pins clear 3:1 on ${tiles} tiles, and the picked pin carries an opposite-ink outline, in ${theme}`, async () => {
+        const halo = Object.values(mapInkStyle(dark))[0] as string;
+        const html = `<div style="background: ${tile}"><div id="map" class="${mapInkClass(dark)}" style="--map-pin-halo: ${halo}">${pickedPinElement().outerHTML}</div></div>`;
+        const read = await withThemedPage(theme, html, (page) => page.evaluate(() => {
+          const path = document.querySelector('[data-map-pin] path')!;
+          const s = getComputedStyle(path);
+          return { origin: getComputedStyle(document.getElementById('map')!).color, fill: s.fill, stroke: s.stroke };
+        }));
+        const c = (css: string) => { const { r, g, b } = parseRgba(css); return [r, g, b]; };
+        const t = c(tile);
+        assertClears(`origin pin on ${tiles} tiles`, ratio(c(read.origin), t), AA_NON_TEXT, theme);
+        assertClears(`picked pin on ${tiles} tiles`, ratio(c(read.fill), t), AA_NON_TEXT, theme);
+        assertClears(`picked pin outline against its fill on ${tiles} tiles`, ratio(c(read.stroke), c(read.fill)), AA_NON_TEXT, theme);
+      });
+    }
   }
 });

@@ -779,7 +779,9 @@ body {
   --color-ok: #3e5228;
   --color-danger: #93193d;
   --color-info: #00516d;
-  --color-scrim: #1a1b2e;
+  /* The theme's ink, deep enough that white text on `bg-scrim/60` over a
+     white image clears 4.5:1 (5.05:1), as the black scrim does elsewhere. */
+  --color-scrim: #0d0e1a;
 
   /* Tokyo Night accent palette — used only where colour already exists */
   --cf-blue: #7aa2f7;

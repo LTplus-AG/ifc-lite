@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/section_net.rs",
-  "mutation": "tests/evidence/layered-chain-bands-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/section_net_oracle_7955.rs",
-  "why": "Without the Boolean chain a layered bounded wall has no band expectation again, so its witness reports the gap."
-}

@@ -13,8 +13,7 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { Extension, EditElement, EditProperty, ImportData, Undo, Redo, Appearance, Layer } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { BulkPropertyEditor } from '../../BulkPropertyEditor';
-import { DataConnector } from '../../DataConnector';
+import { usePersistentToolHosts } from '../../PersistentToolHosts';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
   RibbonGroup,
@@ -30,7 +29,8 @@ const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-in
 
 export function AuthorTab() {
   const { t } = useTranslation();
-  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const toolHosts = usePersistentToolHosts();
+  const hasData = useViewerStore(s => s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null));
   // Edit mode is the Model workspace (#6232): this button enters and leaves it.
   const inModelWorkspace = useViewerStore((state) => state.editEnabled);
   // Collab role: editing is reserved for editor/admin. Derive from the
@@ -100,26 +100,10 @@ export function AuthorTab() {
 
       <RibbonGroup label={t('ribbon.author.propertiesGroup')}>
         <RibbonSmallStack>
-          <BulkPropertyEditor
-            trigger={
-              <RibbonCommandSmallButton
-                commandId="author:bulk-properties"
-                triggerOnly
-                icon={EditProperty}
-                disabled={!ifcDataStore}
-              />
-            }
-          />
-          <DataConnector
-            trigger={
-              <RibbonCommandSmallButton
-                commandId="author:import-data"
-                triggerOnly
-                icon={ImportData}
-                disabled={!ifcDataStore}
-              />
-            }
-          />
+          <RibbonCommandSmallButton commandId="author:bulk-properties" icon={EditProperty}
+            disabled={!hasData || !canEditInSession || !toolHosts.openBulkProperties} commandContext={toolHosts} />
+          <RibbonCommandSmallButton commandId="author:import-data" icon={ImportData}
+            disabled={!hasData || !canEditInSession || !toolHosts.openImportData} commandContext={toolHosts} />
         </RibbonSmallStack>
       </RibbonGroup>
 

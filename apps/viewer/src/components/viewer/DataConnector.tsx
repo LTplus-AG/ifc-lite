@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 /**
  * Data Connector UI - Import data from CSV files and map to IFC properties
  *
@@ -52,9 +52,8 @@ import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
-import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
+import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   CsvConnector,
@@ -75,6 +74,8 @@ import { suggestTableMapping, tableMappingContext } from '@/lib/actions/table-ma
 import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
 import { TableMappingCard } from './actions/TableMappingCard';
 import { DataConnectorMappings, type MappingRow } from './DataConnectorMappings';
+import { useAuthoringOperation } from './authoring-operation';
+import { importCsvDraft } from './import-csv-draft';
 
 type MatchType = 'globalId' | 'expressId' | 'name' | 'tag' | 'property';
 /** Match types a reviewed import can key on (P15); the others import directly only. */
@@ -83,22 +84,17 @@ const COLUMN_TYPES: Partial<Record<PropertyValueType, ColumnValueType>> = {
   [PropertyValueType.String]: 'text', [PropertyValueType.Real]: 'real', [PropertyValueType.Integer]: 'integer', [PropertyValueType.Boolean]: 'boolean',
 };
 
-interface DataConnectorProps {
-  trigger?: React.ReactNode;
-}
-
 interface CsvColumn {
   name: string;
   sampleValues: string[];
 }
 
-export function DataConnector({ trigger }: DataConnectorProps) {
+export function DataConnector(props: ToolDialogProps) {
   const { t, locale } = useTranslation();
-  const { models } = useIfc();
+  const models = useViewerStore(s => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
+  const mutationViews = useViewerStore(s => s.mutationViews);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  // CSV writes bypass mutationSlice, so both its live guard and the Import
-  // affordance use the same edit-mode, collaboration, and model policy.
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
@@ -106,8 +102,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileReadGeneration = useRef(0);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const { trigger } = props;
+  const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
     [editEnabled, collabEditRole, selectedModelId, models]);
@@ -178,15 +176,21 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
 
   // Default to the active model: Undo replays the active model's history (#5958).
-  useMemo(() => {
-    if (modelList.length > 0 && !selectedModelId) {
+  useEffect(() => {
+    if (open && !modelList.some(model => model.id === selectedModelId)) {
       setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
-  }, [modelList, selectedModelId]);
+  }, [open, modelList, selectedModelId]);
+  const selectedView = mutationViews.get(selectedModelId);
+  const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, selectedView);
+  useEffect(() => { setIsProcessing(false); setSuggesting(false); setImportProgress(null); }, [isCurrent]);
+  useEffect(() => {
+    setImportDirty(true); setImportStats(null); setMatchResults(null); setAiMapping(null); setReview(null); setError(null);
+  }, [selectedModelId, selectedModel?.ifcDataStore, selectedView]);
 
   // Ensure mutation view exists for selected model
   useEffect(() => {
-    if (!selectedModel?.ifcDataStore || !selectedModelId) return;
+    if (!open || !selectedModel?.ifcDataStore || !selectedModelId) return;
 
     // Check if mutation view already exists
     let mutationView = getMutationView(selectedModelId);
@@ -200,7 +204,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);
-  }, [selectedModel, selectedModelId, getMutationView, registerMutationView]);
+  }, [open, selectedModel, selectedModelId, getMutationView, registerMutationView]);
 
   // Create CsvConnector instance
   const csvConnector = useMemo(() => {
@@ -215,27 +219,30 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => canMutate(useViewerStore.getState(), selectedModelId)
+      () => isCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
     );
-  }, [selectedModel, selectedModelId, getMutationView]);
+  }, [isCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setFileName(file.name);
-    setMatchResults(null);
-    setImportStats(null);
-    setError(null);
-    setImportDirty(true);
-    setAiMapping(null);
-
+    const generation = ++fileReadGeneration.current;
     const reader = new FileReader();
     reader.onload = (event) => {
+      if (!isCurrent() || generation !== fileReadGeneration.current) return;
       const text = event.target?.result as string;
       if (!text) return;
 
+      // Publish the accepted file and its payload together. A retired read must
+      // leave the previous draft intact, including the filename shown to users.
+      setFileName(file.name);
+      setMatchResults(null);
+      setImportStats(null);
+      setError(null);
+      setImportDirty(true);
+      setAiMapping(null);
       setCsvContent(text);
 
       // Use CsvConnector to parse if available, otherwise do basic parsing for preview
@@ -325,7 +332,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
     reader.readAsText(file);
     e.target.value = ''; // Reset input
-  }, [csvConnector]);
+  }, [csvConnector, isCurrent]);
 
   // Re-parse when model changes and we have content
   const handleModelChange = useCallback((modelId: string) => {
@@ -444,40 +451,11 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   }, [csvConnector, csvContent, matchColumn, buildDataMapping]);
 
   // Import using CsvConnector.importAsync for non-blocking progress
-  const handleImport = useCallback(async () => {
-    if (!csvConnector || !csvContent || !canEditInSession) return;
-
-    setIsProcessing(true);
-    setImportStats(null);
-    setImportProgress(null);
-    setError(null);
-
-    try {
-      const dataMapping = buildDataMapping();
-      if (!dataMapping) {
-        setError('Invalid mapping configuration');
-        setIsProcessing(false);
-        return;
-      }
-
-      // The connector writes the view directly: record each applied batch as it lands (#5861, #5958).
-      const stats = await csvConnector.importAsync(csvContent, dataMapping, (progress) => setImportProgress(progress), {
-        onApplied: recordRun(useViewerStore.getState, selectedModelId),
-      });
-
-      setImportStats(stats);
-      setImportProgress(null);
-      setImportDirty(false);
-      if (stats.errors.length > 0) {
-        setError(stats.errors.join('\n'));
-      }
-    } catch (err) {
-      console.error('Import failed:', err);
-      setError(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [csvConnector, csvContent, canEditInSession, buildDataMapping, selectedModelId]);
+  const handleImport = () => importCsvDraft({
+    connector: csvConnector, content: csvContent, canEdit: canEditInSession, modelId: selectedModelId,
+    isCurrent, mapping: buildDataMapping, processing: setIsProcessing, stats: setImportStats,
+    progress: setImportProgress, error: setError, dirty: setImportDirty,
+  });
 
   const tableRows = useMemo(() => tableRowsOf(csvConnector, csvContent), [csvConnector, csvContent]);
   const headers = useMemo(() => csvColumns.map((c) => c.name), [csvColumns]);
@@ -497,10 +475,11 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     const state = useViewerStore.getState();
     const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
       state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
+    if (!isCurrent()) return;
     setSuggesting(false);
     if (outcome.ok) setAiMapping(outcome.mapping);
     else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
-  }, [tableRows, selectedModelId, headers, t]);
+  }, [tableRows, selectedModelId, headers, t, isCurrent]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -597,14 +576,14 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+      {(props.open === undefined || trigger) && <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
             <Upload className="h-4 w-4 mr-2" />
             {t('dataConnector.triggerButton')}
           </Button>
         )}
-      </DialogTrigger>
+      </DialogTrigger>}
       <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col p-0 gap-0">
         {/* Fixed Header */}
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">

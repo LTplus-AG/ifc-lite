@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { usePersistentToolHosts } from './PersistentToolHosts';
 
 /** Ctrl/Cmd+K command search with scoring and recent usage. Command DATA
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
@@ -101,10 +102,12 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const fileHost = useMountedFileHost();
+  const toolHosts = usePersistentToolHosts();
   const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
+  const paletteLauncher = useRef<HTMLElement | null>(null);
   const currentExtensionHost = useRef(extensionHost);
   currentExtensionHost.current = extensionHost;
 
@@ -126,13 +129,16 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   // Cesium only has something to show once a model carries georeferencing.
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
-  const { t } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
-    surfaceContext: { ...surfaceContext, ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
+    surfaceContext: { ...toolHosts, ...surfaceContext,
+      openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
+        ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
+      ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
@@ -144,7 +150,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──
@@ -233,11 +239,14 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent overlayClassName="z-(--z-command-palette)" className={`${PALETTE_DIALOG_LAYOUT} flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none`}
           style={{ top: PALETTE_DIALOG_TOP, maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onOpenAutoFocus={event => {
+            event.preventDefault();
+            paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+            inputRef.current?.focus();
+          }}
           onCloseAutoFocus={event => {
-            if (hostLauncher?.current?.isConnected) {
-              event.preventDefault();
-              hostLauncher.current.focus();
-            }
+            event.preventDefault();
+            if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();
           }}
           onEscapeKeyDown={event => {
             if (event.isComposing || event.keyCode === 229) event.preventDefault();

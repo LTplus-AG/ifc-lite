@@ -70,23 +70,7 @@ export interface Mesh {
    *  for when it is absent. */
   geometryItemId?: number;
   /** A highlight merging many pieces (#9192), and what it covers. */
-  mergedSelection?: MergedSelectionCoverage;
-}
-
-/**
- * What a merged selection highlight was built from (#9192), so staleness is an
- * identity check rather than a count: the selection scope it answers, and the
- * entity's listed pieces at build time. Shared by every mesh of one merge.
- */
-export interface MergedSelectionCoverage {
-  /** The item filter it was built for; undefined = the whole product. */
-  itemId: number | undefined;
-  /** The model scope it was built for; undefined = every model. */
-  modelIndex: number | undefined;
-  /** The entity's listed pieces (`Scene.getMeshDataPieceList`) when built. Weak, so an evicted piece is not kept alive. */
-  pieces: WeakSet<object>;
-  /** `Scene.getPickGeometryRevision()` when `pieces` last covered the list; listing a piece bumps it. */
-  revision: number;
+  mergedSelection?: import('./selection-hydration.js').MergedSelectionCoverage;
 }
 
 /**

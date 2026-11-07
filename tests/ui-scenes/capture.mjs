@@ -36,8 +36,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { SCENES } from './scenes.mjs';
+import { startOwnedPreview } from './capture-preview.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const ROOT = process.env.IFC_CAPTURE_CHECKOUT ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WIN_CHROME = '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe';
 
 function parseArgs(argv) {
@@ -70,12 +71,13 @@ function parseArgs(argv) {
 
 const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
 
-async function waitForHttp(url, timeoutMs) {
+async function waitForHttp(url, timeoutMs, signal) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000) });
       if (response.ok) return;
     } catch (error) {
       lastError = error;
@@ -85,17 +87,7 @@ async function waitForHttp(url, timeoutMs) {
   throw new Error(`timed out waiting for ${url}${lastError ? `: ${lastError.message}` : ''}`, { cause: lastError });
 }
 
-function startPreview(dist) {
-  const port = randomPort();
-  const child = spawn('pnpm', ['--filter', '@ifc-lite/viewer', 'exec', 'vite', 'preview', '--outDir', dist,
-    '--port', String(port), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-  let log = '';
-  child.stdout.on('data', (d) => { log += d; });
-  child.stderr.on('data', (d) => { log += d; });
-  return { url: `http://127.0.0.1:${port}`, child, log: () => log };
-}
-
-async function launchWindowsChrome() {
+async function launchWindowsChrome(signal) {
   if (!existsSync(WIN_CHROME)) throw new Error(`Windows Chrome not found at ${WIN_CHROME}; pass --cdp <url> instead`);
   const port = randomPort();
   const profile = `ifclite-ui-scenes-${process.pid}-${port}`;
@@ -127,7 +119,7 @@ async function launchWindowsChrome() {
   let launchError;
   child.on('error', (error) => { launchError = error; });
   try {
-    await waitForHttp(`${cdp}/json/version`, 30000);
+    await waitForHttp(`${cdp}/json/version`, 30000, signal);
     if (launchError) throw launchError;
     return chrome;
   } catch (error) {
@@ -242,6 +234,19 @@ async function captureScene(context, baseUrl, scene, theme, outDir) {
     const png = await page.screenshot({ path: join(outDir, file) });
     return { scene: scene.id, title: scene.title, theme, viewport: scene.viewport, file,
       sha256: createHash('sha256').update(png).digest('hex'), metrics, pageErrors: errors };
+  } catch (error) {
+    // Preserve the failed UI, not just a timeout. These are diagnostics, never
+    // successful scene results; scene steps and readiness limits stay frozen.
+    if (!page.isClosed()) {
+      try {
+        await page.screenshot({ path: join(outDir, `${scene.id}.${theme}.failed.png`), timeout: 5000 });
+        await writeFile(join(outDir, `${scene.id}.${theme}.failure.json`), JSON.stringify({
+          error: String(error), pageErrors: errors,
+          uiText: (await page.locator('body').innerText({ timeout: 5000 })).slice(0, 16000),
+        }, null, 2) + '\n');
+      } catch (diagnosticError) { console.warn(`Failure diagnostics: ${diagnosticError}`); }
+    }
+    throw error;
   } finally {
     await page.close();
   }
@@ -252,15 +257,29 @@ async function main() {
   const scenes = args.scenes ? SCENES.filter((s) => args.scenes.includes(s.id)) : SCENES;
   await mkdir(args.out, { recursive: true });
 
-  const preview = startPreview(args.dist);
-  let chrome;
+  const controller = new AbortController();
+  let preview; let chrome; let browser;
+  const contexts = new Set();
+  const onSignal = signal => {
+    controller.abort(new Error(`Capture interrupted: ${signal}`));
+    process.exitCode = signal === 'SIGINT' ? 130 : 143;
+    // Closing owned contexts interrupts pending navigation without closing a
+    // helper-managed browser. The normal finally block awaits all cleanup.
+    for (const context of contexts) context.close().catch(error => console.warn(`Context interruption: ${error}`));
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   const results = [];
   const failures = [];
+  let cleanupErrors = [];
   try {
-    chrome = args.cdp ? null : await launchWindowsChrome();
-    await waitForHttp(preview.url, 90000).catch((error) => { throw new Error(`${error.message}\n${preview.log()}`); });
-    const browser = await chromium.connectOverCDP(args.cdp ?? chrome.cdp);
+    preview = await startOwnedPreview({ root: ROOT, dist: args.dist, signal: controller.signal });
+    chrome = args.cdp ? null : await launchWindowsChrome(controller.signal);
+    controller.signal.throwIfAborted();
+    browser = await chromium.connectOverCDP(args.cdp ?? chrome.cdp);
+    controller.signal.throwIfAborted();
     const probeContext = await browser.newContext();
+    contexts.add(probeContext);
     const adapter = await probeContext.newPage().then(async (p) => {
       // navigator.gpu only exists in a secure context, which about:blank is not.
       await p.goto(`${preview.url}/favicon.ico`).catch(() => p.goto(preview.url));
@@ -269,33 +288,50 @@ async function main() {
         return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, description: a.info?.description } : null;
       });
       await probeContext.close();
+      contexts.delete(probeContext);
       return info;
     });
     if (!adapter) throw new Error('no WebGPU adapter in the capture browser; screenshots would have an empty model canvas');
     for (const scene of scenes) {
       for (const theme of args.themes) {
+        preview.assertAlive();
         const context = await browser.newContext({ viewport: scene.viewport, deviceScaleFactor: 1 });
+        contexts.add(context);
         try {
+          preview.assertAlive();
           results.push(await captureScene(context, preview.url, scene, theme, args.out));
+          preview.assertAlive();
           console.log(`ok   ${scene.id}.${theme}`);
         } catch (error) {
           failures.push({ scene: scene.id, theme, error: String(error).slice(0, 2000) });
           console.log(`FAIL ${scene.id}.${theme}: ${String(error).split('\n')[0]}`);
         } finally {
           await context.close();
+          contexts.delete(context);
         }
       }
     }
+    preview.assertAlive();
     await browser.close();
+    browser = null;
     const dist = await readFile(join(args.dist, 'index.html'));
     await writeFile(join(args.out, 'manifest.json'), `${JSON.stringify({
       version: 1, label: args.label, capturedAt: new Date().toISOString(),
-      distIndexSha256: createHash('sha256').update(dist).digest('hex'), adapter, results, failures,
+      distIndexSha256: createHash('sha256').update(dist).digest('hex'), preview: preview.identity, adapter, results, failures,
     }, null, 2)}\n`);
   } finally {
-    try { process.kill(-preview.child.pid); } catch (error) { if (error.code !== 'ESRCH') console.warn(`preview kill: ${error.message}`); }
-    await chrome?.close();
+    // All resources are scoped to this run. CDP close disconnects only;
+    // contexts are closed explicitly, and only our preview group is signalled.
+    const cleanup = await Promise.allSettled([
+      ...[...contexts].map(context => context.close()),
+      browser?.close(), preview?.close(), chrome?.close(),
+    ]);
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    cleanupErrors = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+    for (const error of cleanupErrors) console.error('Capture cleanup:', error);
   }
+  if (cleanupErrors.length) throw new AggregateError(cleanupErrors, 'Capture cleanup failed');
   console.log(`${results.length} captured, ${failures.length} failed -> ${args.out}`);
   if (failures.length > 0) process.exitCode = 1;
 }

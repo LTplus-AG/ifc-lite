@@ -200,6 +200,9 @@ fn emit<W: std::io::Write>(
     // family's file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
     let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &schema);
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
+    // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
+    use std::io::Write as _;
+    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
 
     let mut written = 0usize;
     for id in order {
@@ -223,11 +226,11 @@ fn emit<W: std::io::Write>(
                         &mut slot_fill,
                         Some(&mut checks),
                     )?;
-                    out.write_all(converted.as_bytes())?;
+                    body.write_all(converted.as_bytes())?;
                 } else {
-                    out.write_all(edited.as_bytes())?;
+                    body.write_all(edited.as_bytes())?;
                 }
-                out.write_all(b"\n")?;
+                body.write_all(b"\n")?;
                 written += 1;
             }
         }
@@ -255,11 +258,11 @@ fn emit<W: std::io::Write>(
                     &mut slot_fill,
                     Some(&mut checks),
                 )?;
-                out.write_all(converted.as_bytes())?;
+                body.write_all(converted.as_bytes())?;
             } else {
-                out.write_all(renumbered.as_bytes())?;
+                body.write_all(renumbered.as_bytes())?;
             }
-            out.write_all(b"\n")?;
+            body.write_all(b"\n")?;
             written += 1;
         }
     }
@@ -298,7 +301,7 @@ fn emit<W: std::io::Write>(
         let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
         for (pname, value) in props {
             let line = format!("#{next}=IFCPROPERTYSINGLEVALUE({},$,{},$);", quoted(pname), value);
-            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+            write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
             prop_refs.push(next);
             next += 1;
             written += 1;
@@ -311,15 +314,16 @@ fn emit<W: std::io::Write>(
             quoted(pset_name),
             refs_str
         );
-        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
         let line = format!(
             "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
             crate::schema_convert::placeholder_guid(rid),
         );
-        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
         written += 2;
     }
 
+    written = written.checked_add_signed(body.finish()?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok(StepStats {

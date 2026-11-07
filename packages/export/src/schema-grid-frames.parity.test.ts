@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { convertStepLine } from './schema-converter.js';
 import { StyleFlatten, convertStepLineFlattening } from './schema-style-flatten.js';
+import { placeEachObjectOnce } from './schema-ifc2x3-placements.js';
 
 interface Case { why: string; from: IfcSchemaVersion; to: IfcSchemaVersion; records: string[]; expect: string[] }
 
@@ -29,13 +30,15 @@ const I = '#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));';
 describe('IfcGridPlacement across IFC4X3 matches the shared vectors (#9026 item 14)', () => {
   it('the fixture is not trivial', () => {
     expect(fixture.cases.length).toBeGreaterThanOrEqual(8);
+    expect(fixture.cases.filter((c) => c.to === 'IFC2X3' && c.records.some((r) => !c.expect.includes(r))).length).toBeGreaterThanOrEqual(8);
   });
 
   for (const c of fixture.cases) {
     it(`${c.from} -> ${c.to}: ${c.why}`, () => {
       const styles = StyleFlatten.applies(c.from, c.to) ? StyleFlatten.fromRecords(c.records) : undefined;
       const out = c.records.map((r) => convertStepLineFlattening(styles, r, c.from, c.to)).filter((r) => r !== null);
-      expect(out).toEqual(c.expect);
+      // Every IFC2X3 output goes through the one-product-per-placement pass (#9209).
+      expect(c.to === 'IFC2X3' ? placeEachObjectOnce(out) ?? out : out).toEqual(c.expect);
     });
   }
 

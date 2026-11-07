@@ -6,6 +6,10 @@ import type { Catalogue } from '../../registry';
 
 export const modelingCommandFr = {
   "modelingCommand.closeAria": "Quitter la commande",
+  "modelingCommand.aim.tag": "Sur le plan de travail",
+  "modelingCommand.aim.holdAlt": "Maintenez {key} pour ignorer les accrochages et les surfaces : le point se place sur le plan de travail",
+  "modelingCommand.aim.altHeld": "{key} maintenue : le point se place sur le plan de travail, en ignorant les accrochages et les surfaces devant",
+  "modelingCommand.aim.snapOff": "L’accrochage est désactivé : le point se place sur le plan de travail, en ignorant les surfaces devant",
   "modelingCommand.unit.m": "m",
   "modelingCommand.unit.deg": "°",
   "modelingCommand.unit.count": "",

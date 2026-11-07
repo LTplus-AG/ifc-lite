@@ -82,7 +82,7 @@ export function MobileToolbar() {
   };
 
   return (
-    <div data-command-surface="mobile" className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50 overflow-x-auto">
+    <div data-command-surface="mobile" className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
       {fileCommands.fileInputs}
 
       {/* Open File */}

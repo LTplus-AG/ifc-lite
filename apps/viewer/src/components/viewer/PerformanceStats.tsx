@@ -69,7 +69,7 @@ export function FpsMemoryStats() {
 
   return (
     <>
-      <span className={fps < 30 ? 'text-destructive' : fps < 50 ? 'text-yellow-500' : ''}>
+      <span className={fps < 30 ? 'text-destructive' : fps < 50 ? 'text-warn' : ''}>
         {fps} {t('shellChrome.statusBar.fpsUnit')}
       </span>
       {memory > 0 && (

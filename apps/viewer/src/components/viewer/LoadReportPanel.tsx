@@ -36,9 +36,9 @@ function statusLabel(report: LoadReportSummary): { labelKey: TranslationKey; cla
     return { labelKey: 'loadReportPanel.status.unavailable', className: 'text-muted-foreground' };
   }
   if (report.isClean) {
-    return { labelKey: 'loadReportPanel.status.clean', className: 'text-emerald-600 dark:text-emerald-400' };
+    return { labelKey: 'loadReportPanel.status.clean', className: 'text-ok' };
   }
-  return { labelKey: 'loadReportPanel.status.issuesFound', className: 'text-amber-600 dark:text-amber-400' };
+  return { labelKey: 'loadReportPanel.status.issuesFound', className: 'text-warn' };
 }
 
 function AffectedEntityRow({
@@ -153,7 +153,7 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
   return (
     <section aria-label={t('loadReportPanel.title')} className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
-        <FileWarning className="h-4 w-4 text-amber-600" />
+        <FileWarning className="h-4 w-4 text-warn" />
         <span className="flex-1 text-sm font-medium">{t('loadReportPanel.title')}</span>
         <AssistantAction />
         <IconButton

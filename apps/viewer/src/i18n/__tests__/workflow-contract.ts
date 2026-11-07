@@ -18,8 +18,8 @@ export function workflowContract(locale: string, negotiationCheck: string, loadV
   // independently of the verdict's exported list; an empty runner cannot pass.
   const names = [
     'render-device-health', 'hierarchy-properties', 'measurement', 'section',
-    'ids-findings-export', 'narrow-layout', 'locale-url', 'locale-persistence',
-    'locale-english-url', negotiationCheck,
+    'ids-findings-export', 'narrow-layout', 'locale-settings', 'locale-persistence',
+    'locale-english-settings', negotiationCheck,
   ];
   const complete = (): WorkflowReport => ({ mode: 'acceptance', errors: [],
     checks: names.map(name => ({ name, status: 'pass' })) });

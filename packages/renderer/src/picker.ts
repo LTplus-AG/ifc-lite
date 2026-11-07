@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * GPU-based object picking
  */
@@ -429,7 +429,7 @@ export class Picker {
 
     sectionExclusions(this.device).update(clip?.sectionExcludedIds);
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+    bindSectionExclusions(pass, this.device, 1);
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       if (!mesh) continue;
@@ -471,7 +471,7 @@ export class Picker {
         clip,
       );
       pass.setPipeline(this.instancedPickPipeline);
-      pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+      bindSectionExclusions(pass, this.device, 1);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const [i, it] of instancedTemplates.entries()) {
         pass.setVertexBuffer(0, it.vertexBuffer);

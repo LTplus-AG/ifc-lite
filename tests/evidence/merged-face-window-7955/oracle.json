@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/face_set_zero_rows.rs",
-  "mutation": "tests/evidence/merged-face-window-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/comparison_rulings_7955.rs",
-  "why": "With the old 2-4 mm window a 0.831 mm collinear side fails again, so the ruling 16 witness fails."
-}

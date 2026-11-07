@@ -642,7 +642,7 @@ export function DataConnector(props: ToolDialogProps) {
                 </SelectContent>
               </Select>
               {selectedModelId && !csvConnector && (
-                <p className="text-xs text-amber-600">
+                <p className="text-xs text-warn">
                   {t('dataConnector.mutationViewUnavailableNote')}
                 </p>
               )}
@@ -869,7 +869,7 @@ export function DataConnector(props: ToolDialogProps) {
                         <Badge variant="outline">{t('dataConnector.rowsUnmatchedCount', localeCount(locale, importStats.unmatchedRows))}</Badge>
                       </div>
                       {importStats.warnings.length > 0 && (
-                        <div className="mt-2 text-xs text-amber-600">
+                        <div className="mt-2 text-xs text-warn">
                           {t('dataConnector.warningsCount', localeCount(locale, importStats.warnings.length))}
                         </div>
                       )}

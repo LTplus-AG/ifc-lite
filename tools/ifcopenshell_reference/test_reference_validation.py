@@ -23,7 +23,7 @@ except ImportError:
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-EVIDENCE = HERE/'evidence/7723'
+EVIDENCE = HERE/'fixtures/7723'
 
 
 def engine_log(entity_id):
@@ -343,7 +343,7 @@ class ReferenceCliContracts(unittest.TestCase):
             self.assertEqual(len(retained['calls'][0]['diagnostics']['terminalBooleanFailure']),1)
             candidate = folder/'candidate.json'
             candidate.write_text(json.dumps(raw))
-            status,log = cli(ROOT/'docs/architecture/evidence/issue-7292/compare_surface.py',
+            status,log = cli(ROOT/'tools/ifcopenshell_reference/compare_surface.py',
                              '--prepared-fixture',derived,'--candidate',candidate,'--output',folder/'surface',
                              log_path=folder/'surface-cli.log')
             self.assertEqual(status,2,log)

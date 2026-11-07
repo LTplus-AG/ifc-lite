@@ -25,7 +25,7 @@ import { reprojectMeasurementsForCamera, type MeasureCameraState } from './measu
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-import { registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
+import { noteLiveFrameSubmitted, registerViewportCapture, viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { GpuFramePacer } from './gpuFramePacer';
@@ -125,6 +125,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let wasInteracting = false;
     let residencyRestoreErrorLogged = false;
     let renderErrorLogged = false;
+    /** Frames since a capture that asked again for the live frame its picks wait on (#9031). */
+    let liveFrameRetries = 0;
 
     // Adaptive render throttle (continuousRenderThrottle.ts): caps the
     // continuous-render cadence (interaction + inertia) from the measured
@@ -223,9 +225,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // rest of the session with nothing on screen to say why. Latched to one
         // warning per session — a dead device fails every frame.
         let submitted = false;
+        let threw = false;
         try {
           submitted = renderer.renderWithResult(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
         } catch (err) {
+          threw = true;
           if (!renderErrorLogged) {
             renderErrorLogged = true;
             offerErrorReport({ errorCode: 'renderer_frame_failed' });
@@ -260,7 +264,17 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         const stats = renderer.getFrameStats();
         throttle.noteRenderCost(stats && stats.timestamp >= renderStart ? stats.cpuMs : performance.now() - renderStart);
         // Only a frame that really reached the queue can owe the page a completion.
-        if (submitted) framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+        if (submitted) {
+          framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+          noteLiveFrameSubmitted(renderer); // the measure pass below may compare picks again (#9031)
+          liveFrameRetries = 0;
+        } else if (!threw && viewportPicksAwaitLiveFrame(renderer) && liveFrameRetries++ < LIVE_FRAME_RETRIES) {
+          // The pickers still mirror a capture, and the measure pass waits on
+          // a live frame: ask again, a few times (#9031). A frame that keeps
+          // failing is the renderer's own bounded retry, and device recovery
+          // and a resize ask for their frame; a throw keeps its single retry above.
+          renderer.requestRender();
+        }
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback
@@ -313,5 +327,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     };
   }, [isInitialized]);
 }
+
+/** Like the renderer's own degraded-frame retries: a transient miss, not a permanent one. */
+const LIVE_FRAME_RETRIES = 3;
 
 export default useAnimationLoop;

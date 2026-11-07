@@ -93,12 +93,13 @@ jobs:
           filters: |
             surface:
               - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
-              - "docs/architecture/evidence/issue-7292/**"
+              - "tools/ifcopenshell_reference/compare_surface.py"
+              - "tools/ifcopenshell_reference/finite_coverage.py"
               - "tools/ifcopenshell_reference/test_surface_coverage.py"
               - "tools/ifcopenshell_reference/reference_validation.py"
               - "tools/ifcopenshell_reference/reference_worker.py"
               - "tools/ifcopenshell_reference/test_reference_validation.py"
-              - "tools/ifcopenshell_reference/evidence/7723/**"
+              - "tools/ifcopenshell_reference/fixtures/7723/**"
               - "tools/ifcopenshell_reference/requirements.lock"
               - ".github/workflows/ifcopenshell-parity.yml"
             geometry:

@@ -1,0 +1,164 @@
+{
+  "_comment": "Shared cross-language vectors for IfcGridPlacement across IFC4X3 (#9026 item 14). IFC4X3 puts the inherited PlacementRelTo first. Below IFC4X3 the placement sits in the frame of the IfcGrid owning its axes, and in IFC4X3 $ means the world frame, so an upgrade names the owning grid's ObjectPlacement. Run by packages/export/src/schema-grid-frames.parity.test.ts and rust/export/tests/schema_grid_frames_parity.rs.",
+  "cases": [
+    {
+      "why": "the owning grid's placement becomes PlacementRelTo",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);"
+      ]
+    },
+    {
+      "why": "a grid may follow the placement on it",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#40=IFCGRIDPLACEMENT(#30,$);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);"
+      ],
+      "expect": [
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);"
+      ]
+    },
+    {
+      "why": "PlacementRefDirection stays in its own slot, either select member",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#41=IFCGRIDPLACEMENT(#30,#30);",
+        "#42=IFCGRIDPLACEMENT(#30,#7);"
+      ],
+      "expect": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#41=IFCGRIDPLACEMENT(#10,#30,#30);",
+        "#42=IFCGRIDPLACEMENT(#10,#30,#7);"
+      ]
+    },
+    {
+      "why": "a grid with no placement sits in the world frame on both sides",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,$,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,$,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT($,#30,$);"
+      ]
+    },
+    {
+      "why": "axes no grid lists have no owner: the reader's identity frame, spelled $",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT($,#30,$);"
+      ]
+    },
+    {
+      "why": "an axis in two grids belongs to the first in file order, as the reader says",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#21=IFCGRID('2$abcdefghijklmnopqrst2',$,$,$,$,#11,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#21=IFCGRID('2$abcdefghijklmnopqrst2',$,$,$,$,#11,$,(#1),(#2),$,.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);"
+      ]
+    },
+    {
+      "why": "the V and W rows own axes too",
+      "from": "IFC4",
+      "to": "IFC4X3",
+      "records": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#3),(#4),(#1),.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#3),(#4),(#1),.NOTDEFINED.);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);"
+      ]
+    },
+    {
+      "why": "IFC2X3 places it in the grid's frame too",
+      "from": "IFC2X3",
+      "to": "IFC4X3",
+      "records": [
+        "#3=IFCOWNERHISTORY(#5,#6,$,.NOCHANGE.,$,$,$,0);",
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',#3,$,$,$,#10,$,(#1),(#2),$);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#3=IFCOWNERHISTORY(#5,#6,$,.NOCHANGE.,$,$,$,0);",
+        "#20=IFCGRID('2$abcdefghijklmnopqrst1',#3,$,$,$,#10,$,(#1),(#2),$,$);",
+        "#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));",
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);"
+      ]
+    },
+    {
+      "why": "downgrade drops PlacementRelTo: the owning grid's frame takes over",
+      "from": "IFC4X3",
+      "to": "IFC4",
+      "records": [
+        "#40=IFCGRIDPLACEMENT(#10,#30,$);",
+        "#41=IFCGRIDPLACEMENT($,#30,#7);"
+      ],
+      "expect": [
+        "#40=IFCGRIDPLACEMENT(#30,$);",
+        "#41=IFCGRIDPLACEMENT(#30,#7);"
+      ]
+    },
+    {
+      "why": "IFC2X3 has the same list as IFC4",
+      "from": "IFC4X3",
+      "to": "IFC2X3",
+      "records": [
+        "#40=IFCGRIDPLACEMENT(#10,#30,#31);"
+      ],
+      "expect": [
+        "#40=IFCGRIDPLACEMENT(#30,#31);"
+      ]
+    },
+    {
+      "why": "between IFC2X3 and IFC4 the list does not change",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "records": [
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ],
+      "expect": [
+        "#40=IFCGRIDPLACEMENT(#30,$);"
+      ]
+    }
+  ]
+}

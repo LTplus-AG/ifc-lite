@@ -145,7 +145,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           // compare. Until "Compute deviation" runs, that buffer is all
           // zeros, so every point maps to the ramp centre (grey). Nudge
           // the user toward the compute button below.
-          <span className="text-2xs text-amber-500 px-2 leading-tight">
+          <span className="text-2xs text-warn px-2 leading-tight">
             {triangleCount > 0
               ? t('pointCloudPanel.deviation.computeHint')
               : t('pointCloudPanel.deviation.needsModelHint')}

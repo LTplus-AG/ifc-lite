@@ -4,7 +4,7 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { sectionExclusionImage, sectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, emptyBindGroup, emptyBindGroupLayout, sectionExclusionImage, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 import { entityIdPageKey, entityIdAnchor, resolveLaneEntityId } from './entity-color-table.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = { STORAGE: 128, COPY_DST: 8 };
@@ -40,4 +40,43 @@ it('uploads only changed exclusions, grows safely and frees shared resources aft
   assert.deepEqual(uploads.at(-1), [0]);
   table.release(); assert.equal(buffers.at(-1)!.destroyed, 0, 'other GPU pass still owns it');
   table.release(); assert.equal(buffers.at(-1)!.destroyed, 1);
+});
+
+/**
+ * Pre-gpuweb#4946 validation (#9060): an EMPTY bind group layout is still a
+ * slot that needs a bound group, which is what the failing browsers enforce.
+ */
+function strictDevice() {
+  const device = { limits: {}, createBuffer: () => ({ destroy() {} }),
+    createBindGroupLayout: (d: { entries: unknown[] }) => ({ entries: d.entries }),
+    createBindGroup: (d: { layout: unknown }) => ({ layout: d.layout }),
+  } as unknown as GPUDevice;
+  const bound: unknown[] = [];
+  const pass = { setBindGroup: (slot: number, group: unknown) => { bound[slot] = group; } } as unknown as GPURenderPassEncoder;
+  const unbound = (layouts: GPUBindGroupLayout[]) => layouts.flatMap((_, slot) => bound[slot] ? [] : [slot]);
+  return { device, pass, bound, unbound };
+}
+
+it('binds every padded slot so the layout validates where empty layouts are not holes (#9060)', () => {
+  const strict = strictDevice();
+  const own = strict.device.createBindGroupLayout({ entries: [{ binding: 0 }] } as GPUBindGroupLayoutDescriptor);
+  const layouts = withSectionExclusions(strict.device, [own]);
+  assert.equal(layouts.length, 4);
+  strict.pass.setBindGroup(0, {} as GPUBindGroup);
+  assert.deepEqual(strict.unbound(layouts), [1, 2, 3], 'the defect: groups 1 and 2 are padding nobody bound');
+  bindSectionExclusions(strict.pass, strict.device, 1);
+  assert.deepEqual(strict.unbound(layouts), []);
+  assert.equal(strict.bound[1], emptyBindGroup(strict.device));
+  assert.equal(strict.bound[2], emptyBindGroup(strict.device));
+  assert.equal(layouts[1], emptyBindGroupLayout(strict.device), 'padding shares the empty bound layout');
+  assert.equal(strict.bound[3], sectionExclusions(strict.device).bindGroup);
+});
+
+it('leaves caller-owned groups below the first padded slot alone (#9060)', () => {
+  const strict = strictDevice();
+  const environment = {} as GPUBindGroup;
+  strict.pass.setBindGroup(1, environment);
+  bindSectionExclusions(strict.pass, strict.device, 2);
+  assert.equal(strict.bound[1], environment, 'the main pass environment at group 1 survives');
+  assert.equal(strict.bound[2], emptyBindGroup(strict.device));
 });

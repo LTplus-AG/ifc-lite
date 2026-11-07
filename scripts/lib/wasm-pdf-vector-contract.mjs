@@ -26,7 +26,7 @@ export function checkPdfVectorContract(IfcAPI) {
   // Calibrated model metres back to the oracle's unrotated physical-point frame.
   const toOracle = (x, y) => [(x/scale-10)*2, (220-y/scale)*2];
   try {
-    const evidence = new URL('../../docs/architecture/evidence/pdf-vector-state/', import.meta.url);
+    const evidence = new URL('../../tests/fixtures/appearance/pdf-vector-state/', import.meta.url);
     const decoded = JSON.parse(readFileSync(new URL('control-request.json', evidence), 'utf8'));
     const oracle = JSON.parse(readFileSync(new URL('conforming-oracle.json', evidence), 'utf8'));
     const actual = prepare(decoded);

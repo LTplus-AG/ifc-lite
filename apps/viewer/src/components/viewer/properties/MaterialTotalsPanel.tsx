@@ -304,11 +304,11 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   }
 
   return (
-    <div className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black">
+    <div className="h-full flex flex-col border-l-2 border-border bg-white">
       {/* Header */}
       <div className="p-4 border-b-2 border-border bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
         <div className="flex items-start gap-3">
-          <div className="p-2 border-2 border-amber-200 dark:border-amber-800 bg-white dark:bg-muted shrink-0">
+          <div className="p-2 border-2 border-amber-200 dark:border-amber-800 bg-white shrink-0">
             <Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
@@ -320,7 +320,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
         </div>
       </div>
 
-      <ScrollArea className="flex-1 bg-white dark:bg-black">
+      <ScrollArea className="flex-1 bg-white">
         <div className="p-3 space-y-3 w-full overflow-hidden">
           {pendingEditsMissing && <output className="block text-xs text-warn">{t('properties.materialTotals.pendingEditsMissing')}</output>}
           {/* Totals */}

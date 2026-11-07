@@ -330,8 +330,8 @@ export function IDSCorrectionDialog({
                         </span>
                         {result && (
                           result.applied
-                            ? <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label={t('idsPanel.correction.applied')} />
-                            : <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" aria-label={result.error} />
+                            ? <Check className="h-3.5 w-3.5 text-ok shrink-0" aria-label={t('idsPanel.correction.applied')} />
+                            : <AlertCircle className="h-3.5 w-3.5 text-danger shrink-0" aria-label={result.error} />
                         )}
                       </label>
                     );

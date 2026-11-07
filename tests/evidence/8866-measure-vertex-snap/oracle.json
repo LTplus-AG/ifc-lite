@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "apps/viewer/src/components/viewer/measurePress.ts",
-  "mutation": "tests/evidence/8866-measure-vertex-snap/behaviour.oracle.patch",
-  "test": "apps/viewer/src/components/viewer/selectionHandlers.vertex-snap.test.tsx",
-  "why": "Reverse application keeps the snapped pick for a press away from the previous vertex and for a repeat of an unsnapped one, so Polyline, Angle, Radius and Distance drop or double the vertex and the vertex-snap witnesses must fail."
-}

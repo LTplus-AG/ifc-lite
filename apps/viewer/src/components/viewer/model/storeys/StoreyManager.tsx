@@ -46,7 +46,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
   const rowsState = useStoreyRows(modelId);
   const denial = useStoreyEditDenial(modelId);
   const editing = useStoreyLevelEditing(modelId);
-  const rename = useStoreyRename(modelId);
+  const renaming = useStoreyRename(modelId);
   // `reviewed`: what the open delete panel shows, and all that confirming it may delete.
   const [deleting, setDeleting] = useState<{ storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null } | null>(null);
   const review = (storeyId: number) => (modelId ? reviewStoreyDeletion(useViewerStore.getState(), modelId, storeyId) : null);
@@ -190,7 +190,9 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
                 draft={editing.draft}
                 onActivate={() => activate(row.expressId)}
                 onArrow={(direction) => arrow(index, direction)}
-                onRename={(name) => rename(row.expressId, name)}
+                onRename={(name) => renaming.rename(row.expressId, name)}
+                nameError={renaming.error?.storeyId === row.expressId ? renaming.error.message : null}
+                onNameEdit={renaming.clear}
                 onLevelDraft={(field, text) => editing.onDraft(row.expressId, field, text)}
                 onLevelCommit={(field, text) => editing.onCommit(row.expressId, field, text)}
                 onLevelCancel={editing.onCancel}

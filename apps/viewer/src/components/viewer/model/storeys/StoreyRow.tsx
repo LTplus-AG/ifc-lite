@@ -30,6 +30,10 @@ interface StoreyRowProps {
   onActivate: () => void;
   onArrow: (direction: 1 | -1) => void;
   onRename: (name: string) => boolean;
+  /** Why the last rename of this storey was refused, shown beside its name. */
+  nameError?: string | null;
+  /** The name is being typed again, or the edit was cancelled: the refusal is stale. */
+  onNameEdit?: () => void;
   onLevelDraft: (field: LevelField, text: string) => void;
   onLevelCommit: (field: LevelField, text: string) => boolean;
   onLevelCancel: () => void;
@@ -46,7 +50,7 @@ function fromControl(event: MouseEvent<HTMLElement>): boolean {
 }
 
 export function StoreyRow({
-  row, active, tabbable, readOnly, draft, onActivate, onArrow, onRename, onLevelDraft, onLevelCommit, onLevelCancel,
+  row, active, tabbable, readOnly, draft, onActivate, onArrow, onRename, nameError, onNameEdit, onLevelDraft, onLevelCommit, onLevelCancel,
   onAdd, onDelete, radioRef, nameRef, children,
 }: StoreyRowProps) {
   const { t } = useTranslation();
@@ -91,7 +95,10 @@ export function StoreyRow({
           value={row.Name}
           label={t('storeyManager.field.name', { storey })}
           readOnly={readOnly}
+          error={nameError}
+          onDraft={onNameEdit}
           onCommit={onRename}
+          onCancel={onNameEdit}
           inputRef={nameRef}
           dataField="name"
         />

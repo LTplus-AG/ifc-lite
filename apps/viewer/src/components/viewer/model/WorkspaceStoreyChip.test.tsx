@@ -60,6 +60,36 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(chipButton(), null);
   });
 
+  it('Add storey above adds nothing once the session has moved to another model (#9037 review)', async () => {
+    const first = useViewerStore.getState().models.get(MODEL_ID)!;
+    const firstView = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
+    const parsedSecond = useViewerStore.getState().models.get(MODEL_ID)!;
+    const second = { ...parsedSecond, id: 'structural', name: 'Structural', idOffset: 1_000_000 };
+    const secondView = new MutablePropertyView(second.ifcDataStore!.properties, second.id);
+    act(() => {
+      useViewerStore.setState({
+        ...fixtureModels(first, second),
+        mutationViews: new Map([[first.id, firstView], [second.id, secondView]]),
+      });
+      useViewerStore.getState().enterModelWorkspace({ modelId: first.id, storeyId: STOREY });
+    });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    const added = (view: MutablePropertyView) => view.getNewEntities().filter((e) => e.type.toUpperCase() === 'IFCBUILDINGSTOREY').length;
+    // The click starts the module load; the session moves to the other model before it resolves.
+    act(() => {
+      click(add);
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
+    });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(added(firstView), 0, 'no storey was written to the model left behind');
+    assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
+  });
+
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY, command: 'wall.place' }); });
     const rows = openList();

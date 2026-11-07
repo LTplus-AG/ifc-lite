@@ -31,6 +31,8 @@ export function StoreyPickerActions() {
     if (reference === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
     void import('@/lib/storeys/storey-actions').then(({ addStoreyNextTo }) => {
+      // The session may have moved while the module loaded: add nothing to a model left behind.
+      if (useViewerStore.getState().session?.modelId !== session.modelId) return;
       const outcome = addStoreyNextTo(useViewerStore, session.modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
       if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
     }, (error: unknown) => {

@@ -13,7 +13,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StoreyLevelEdit, StoreyLevelPlan, StoreySummary } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { toast } from '@/components/ui/toast';
 import { mutationDenial } from '@/store/mutation-permission';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { keepStoreyPreview, previewStoreyLevel, revertStoreyPreview } from '@/lib/storeys/storey-preview';
@@ -141,16 +140,24 @@ export function useStoreyLevelEditing(modelId: string | null) {
   return { draft, onDraft, onCommit, onCancel };
 }
 
-/** Rename with the core's refusal (empty name) surfaced as a toast. */
+export interface RenameError { readonly storeyId: number; readonly message: string }
+
+/**
+ * Rename, with a refusal (an empty name, or the core's reason) shown beside
+ * the name field it came from until the name is typed again or cancelled.
+ */
 export function useStoreyRename(modelId: string | null) {
   const { t } = useTranslation();
-  return useCallback((storeyId: number, name: string): boolean => {
+  const [error, setError] = useState<RenameError | null>(null);
+  const rename = useCallback((storeyId: number, name: string): boolean => {
     if (!modelId) return false;
-    if (!name.trim()) { toast.error(t('storeyManager.invalid.name')); return false; }
+    if (!name.trim()) { setError({ storeyId, message: t('storeyManager.invalid.name') }); return false; }
     const outcome = commitStoreyOp(useViewerStore, modelId, { kind: 'rename', storeyId, Name: name });
-    if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
+    setError(outcome.ok ? null : { storeyId, message: t('storeyManager.refusal.other', { reason: outcome.reason }) });
     return outcome.ok;
   }, [modelId, t]);
+  const clear = useCallback(() => setError(null), []);
+  return { rename, error, clear };
 }
 
 /** Why storeys cannot be edited right now, or null. */

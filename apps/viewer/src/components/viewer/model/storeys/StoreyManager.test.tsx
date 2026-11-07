@@ -156,6 +156,22 @@ describe('storey manager (#9013)', () => {
     assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Enter a length/);
   });
 
+  it('a refused rename is explained beside the name field, and typing clears it (#9037 review)', async () => {
+    const ui = await mount();
+    const name = field(rows(ui)[1], 'name');
+    edit(name, '   ');
+    press(name, 'Enter');
+    assert.equal(name.getAttribute('aria-invalid'), 'true');
+    const alert = rows(ui)[1].querySelector('[role="alert"]');
+    assert.equal(alert?.textContent, 'A storey needs a name');
+    assert.equal(rows(ui)[0].querySelector('[role="alert"]'), null, 'only the refused row says so');
+    assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID)[0].name, 'L0', 'nothing was renamed');
+    type(name, 'Ground');
+    assert.equal(rows(ui)[1].querySelector('[role="alert"]'), null);
+    press(name, 'Enter');
+    assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID)[0].name, 'Ground');
+  });
+
   it('deletes an empty storey straight away, with Undo', async () => {
     const ui = await mount();
     const remove = rows(ui)[0].querySelector<HTMLButtonElement>('button[aria-label^="Delete"]')!;

@@ -30,3 +30,8 @@ Lens Auto-Color. `CommandPalette.split-numeric-access.test.tsx` adds the C1243
 scalar-input path in 1/N models. These supplement the historical child bindings;
 they do not convert any row to a passed route without matching execution. Saved
 federation setup remains a distinct open parent/child join.
+
+Saved federation setup now has three authored parent/serializer/match-review
+witnesses, pending execution. Export joins similarly add actual CSV writers and
+configuration/refusal witnesses; a new GPU screenshot-output case is pending.
+Do not mark these rows passed before their matching receipts.

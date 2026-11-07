@@ -71,4 +71,5 @@ export const modelInspectorFr = {
   "modelInspector.layers.needName": "Nommez chaque nouveau matériau",
   "modelInspector.layers.needLayer": "Donnez à chaque couche une épaisseur supérieure à zéro",
   "modelInspector.hosting.title": "Élément hôte",
+  "modelInspector.empty.command": "Cet outil n’a pas de paramètres par défaut à modifier ici. Ses options se trouvent dans la barre au-dessus de la vue 3D.",
 } satisfies Catalogue;

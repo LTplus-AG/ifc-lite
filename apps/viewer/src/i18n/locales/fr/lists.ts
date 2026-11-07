@@ -217,4 +217,6 @@ export const listsFr = {
   'lists.builder.unreadableWarning': 'Ces filtres enregistrés sont illisibles ; la liste ne peut donc pas s’exécuter. Supprimez-les pour l’exécuter.',
   'lists.builder.malformedCondition': 'Condition enregistrée mal formée',
   'lists.builder.removeUnreadable': 'Supprimer le filtre enregistré',
+  "lists.library.emptyTitle": "Aucune liste enregistrée pour le moment",
+  "lists.library.emptyDescription": "Partez d’un modèle ou créez votre propre liste.",
 } satisfies Catalogue;

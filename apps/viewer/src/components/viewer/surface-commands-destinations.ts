@@ -54,7 +54,7 @@ export const DESTINATION_SURFACE_COMMANDS = [
   ...(['filter', 'libraries'] as const).map(tab => ({
     ...base, id: `search:${tab}` as const,
     labelKey: tab === 'filter' ? 'searchModal.shell.filterTab' : 'searchModal.library.title',
-    keywords: `search ${tab}`, keywordsKey: `commandPalette.paths.search.${tab}` as const, detailKey: `commandPalette.paths.search.${tab}` as const,
+    keywords: `search ${tab}`, keywordsKey: `commandPalette.paths.search.${tab}` as const, detailKey: tab === 'filter' ? 'commandPalette.paths.search.filterHint' : 'commandPalette.paths.search.libraries',
     category: 'Tools', icon: Search,
     run: () => {
       const s = useViewerStore.getState();

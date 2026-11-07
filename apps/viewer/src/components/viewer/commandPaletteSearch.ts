@@ -98,8 +98,13 @@ const CATEGORY_POSITION = {
 export const CATEGORY_ORDER = (Object.keys(CATEGORY_POSITION) as Category[])
   .sort((a, b) => CATEGORY_POSITION[a] - CATEGORY_POSITION[b]);
 
+// Recovery is useful in browse only while it can act. Search keeps the full catalogue.
+const LOAD_RECOVERY_IDS = new Set(['file:cancel-load', 'file:retry-load', 'file:dismiss-load-error']);
+
 /** Group browse rows, including extension and Learn commands, in one place. */
 export function browseCommands(commands: readonly Command[], recentIds: readonly string[]) {
+  const browseRows = commands.filter(command =>
+    !LOAD_RECOVERY_IDS.has(command.id) || command.availability?.status === 'available');
   const grouped: { category: Category; items: FlatItem[] }[] = [];
   const flatItems: FlatItem[] = [];
   const addGroup = (category: Category, rows: readonly Command[]) => {
@@ -112,11 +117,11 @@ export function browseCommands(commands: readonly Command[], recentIds: readonly
     grouped.push({ category, items });
   };
 
-  addGroup('Recent', recentIds.slice(0, MAX_RECENT)
-    .map((id) => commands.find((command) => command.id === id))
-    .filter((command): command is Command => command !== undefined));
+  addGroup('Recent', recentIds
+    .map((id) => browseRows.find((command) => command.id === id))
+    .filter((command): command is Command => command !== undefined).slice(0, MAX_RECENT));
   for (const category of CATEGORY_ORDER) {
-    if (category !== 'Recent') addGroup(category, commands.filter((command) => command.category === category));
+    if (category !== 'Recent') addGroup(category, browseRows.filter((command) => command.category === category));
   }
   return { grouped, flatItems };
 }

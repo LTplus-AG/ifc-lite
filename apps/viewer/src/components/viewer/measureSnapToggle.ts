@@ -7,7 +7,7 @@ import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, moveRubberBand, syncMeasureScreenCoords } from './measureHandlers.js';
 import { hoverMeasurePoint } from './measurePointMode.js';
-import { measureCursor, noteMeasureCursor } from './measureCursor.js';
+import { measureCursor } from './measureCursor.js';
 
 /**
  * Snap turned off or back on in the Measure tool. A queued hover or rubber-band
@@ -42,5 +42,6 @@ export function measureSnapToggle(ctx: MouseHandlerContext, snap: boolean): void
     syncMeasureScreenCoords(picking);
     moveRubberBand(picking, cursor.x, cursor.y, cursor.orthogonal);
   }
-  noteMeasureCursor(ctx, { ...cursor, view: ctx.lastCameraStateRef.current });
+  // In place, as Shift is noted: a Point retry the re-pick armed (a capture holding the frame, #9031) keeps its record
+  cursor.view = ctx.lastCameraStateRef.current;
 }

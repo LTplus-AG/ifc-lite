@@ -151,7 +151,7 @@ export function buildUnifiedStoreys(
     if (!dataStore?.spatialHierarchy) continue;
 
     const hierarchy = dataStore.spatialHierarchy;
-    const { byStorey, storeyElevations } = hierarchy;
+    const { storeyElevations } = hierarchy;
     // Partial/native metadata stores can expose the lookup maps before (or
     // without) a project tree. Keep their previous byStorey-only behaviour.
     const view = overlayViewFor(overlay, modelId);

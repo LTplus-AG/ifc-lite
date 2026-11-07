@@ -280,5 +280,6 @@ export const propertiesIt = {
   "properties.locationMap.googleEarthTooltip": "Scarica KMZ per Google Earth Pro (desktop), collocato nella posizione del modello. Google Earth sul web non può mostrare modelli KMZ 3D: usa Esporta GLB per il web.",
   "properties.locationMap.toggleStyle": "Cambia stile",
   "properties.locationMap.projectionUnresolved": "Impossibile risolvere la proiezione: il codice EPSG potrebbe non essere supportato",
-  "properties.locationMap.elevationMeters": "{value} m"
+  "properties.locationMap.elevationMeters": "{value} m",
+  "properties.modelMetadata.fileSizeAsLoaded": "Dimensione del file (al caricamento)",
 } satisfies Catalogue;

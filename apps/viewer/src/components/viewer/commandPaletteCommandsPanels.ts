@@ -8,6 +8,7 @@ import { Play, GraduationCap } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { toast as paletteToast } from '@/components/ui/toast';
+import { resolve } from '@/i18n/registry';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
@@ -79,7 +80,16 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
         if (checkAvailability().status === 'disabled' || !p.extensionHost) return;
         void p.extensionHost.dispatcher
           .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-          .then(() => p.extensionHost?.runCommand(payload.id, contribution.extensionId))
+          .then(() => {
+            // Activation can await a bundle while the provider or contribution
+            // is retired. Never hand that stale row to the captured host.
+            const availability = checkAvailability();
+            if (availability.status === 'disabled') {
+              paletteToast.info(resolve(availability.reasonKey));
+              return;
+            }
+            return p.extensionHost?.runCommand(payload.id, contribution.extensionId);
+          })
           .catch((err: unknown) => {
             paletteToast.error(describeRunCommandError(payload.id, err));
           });

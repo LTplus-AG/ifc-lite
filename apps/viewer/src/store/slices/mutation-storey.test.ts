@@ -342,6 +342,25 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.deepEqual([row.name, row.elevation], ['Upper', 3.5]);
   });
 
+  it('an empty storey added under a building a partial tree omits is still listed (#9037 review)', async () => {
+    const m = await storey();
+    const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');
+    const added = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Roof', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+    assert.ok(added.ok && added.storeyId !== null);
+    const s = useViewerStore.getState();
+    const base = s.models.get(MODEL_ID)!;
+    const ds = base.ifcDataStore!;
+    // A tree that exists but never reaches the storeys' parent.
+    const root = { expressId: 999_998, type: IfcTypeEnum.IfcProject, name: 'Partial', children: [], elements: [] };
+    const partial = { ...base, ifcDataStore: { ...ds, spatialHierarchy: { ...ds.spatialHierarchy!, project: root } } };
+    const view = s.mutationViews.get(MODEL_ID)!;
+    const models = new Map([[MODEL_ID, partial], ['peer', { ...partial, id: 'peer', name: 'Peer' }]]) as unknown as Parameters<typeof buildUnifiedStoreys>[0];
+    const rows = buildUnifiedStoreys(models, undefined, undefined, undefined, undefined, (id) => (id === MODEL_ID ? view : null))
+      .flatMap((unified) => unified.storeys).filter((r) => r.modelId === MODEL_ID);
+    assert.ok(rows.some((r) => r.storeyId === added.storeyId), 'the new storey is listed');
+    assert.equal(rows.filter((r) => r.storeyId === added.storeyId).length, 1, 'once');
+  });
+
   it('without a project tree, a unified storey row shows the live name and elevation, and a deleted storey is gone', async () => {
     const m = await storey();
     const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');

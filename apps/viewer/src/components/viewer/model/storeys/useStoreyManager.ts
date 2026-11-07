@@ -138,6 +138,9 @@ export function useStoreyLevelEditing(modelId: string | null) {
 
   // Leaving the manager (or the model) never leaves a provisional edit behind.
   useEffect(() => () => { clearTimer(); revertStoreyPreview(useViewerStore); }, [modelId]);
+  // Nor a draft or refusal: express ids repeat across models, so another model's
+  // storey would show it. (Its rows load first, so nothing renders it meanwhile.)
+  useEffect(() => { previewed.current = null; setDraft(null); }, [modelId]);
 
   return { draft, onDraft, onCommit, onCancel };
 }

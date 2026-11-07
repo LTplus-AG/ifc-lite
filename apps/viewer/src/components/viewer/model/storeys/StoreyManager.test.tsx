@@ -275,6 +275,30 @@ describe('storey manager (#9013)', () => {
     assert.equal(ui.querySelector('[data-storey-row] [role="alert"]'), null, 'the second model never refused anything');
   });
 
+  it('a refused level edit in one model is not shown on another model\'s storey with the same id (#9037 review)', async () => {
+    const first = useViewerStore.getState().models.get(MODEL_ID)!;
+    const firstView = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    const second = { ...first, id: 'structural', name: 'Structural' };
+    const secondView = new MutablePropertyView(second.ifcDataStore!.properties, second.id);
+    act(() => {
+      useViewerStore.setState({
+        models: new Map([[first.id, first], [second.id, second]]),
+        mutationViews: new Map([[first.id, firstView], [second.id, secondView]]),
+      });
+    });
+    const ui = await mount();
+    const elevation = field(rows(ui)[0], 'elevation');
+    edit(elevation, '-1');
+    press(elevation, 'Enter');
+    assert.ok(rows(ui)[0].querySelector('[role="alert"]'), 'refused in the first model');
+    act(() => {
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
+    });
+    await waitFor(() => rows(ui).length > 0, 'the second model\'s rows load');
+    assert.equal(ui.querySelector('[data-storey-row] [role="alert"]'), null, 'the second model never refused anything');
+  });
+
   it('asks what to do with the elements of a storey that holds some', async () => {
     const wall = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok(!('error' in wall));

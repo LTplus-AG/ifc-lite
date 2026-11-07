@@ -161,9 +161,13 @@ export function buildUnifiedStoreys(
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
 
+    const listedRows = effectiveStoreyRows(hierarchy, project, spatialNodes);
+    // A storey added this session that neither the parsed rows nor the (possibly
+    // partial) tree lists, e.g. under a building the partial tree omits.
+    const listed = new Set(listedRows.map(([id]) => id));
     const storeyRows = [
-      ...effectiveStoreyRows(hierarchy, project, spatialNodes),
-      ...(project ? [] : addedStoreyRows(dataStore, view, hierarchy)),
+      ...listedRows,
+      ...addedStoreyRows(dataStore, view, hierarchy).filter(([id]) => !listed.has(id)),
     ];
     for (const [storeyId, elements, live] of storeyRows) {
       // A row with no live node (no project tree, or a partial one without it): read this session's edits (#9013) directly.

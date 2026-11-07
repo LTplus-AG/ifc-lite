@@ -54,7 +54,7 @@ export const geometryExportDialogsFr = {
   "geometryExport.kmz.placementClampToGround": "Poser au sol",
   "geometryExport.kmz.placementAbsolute": "Altitude réelle (niveau moyen de la mer)",
   "geometryExport.kmz.placementClampHint": "Pose le modèle sur le terrain pour éviter qu’il flotte. Recommandé.",
-  "geometryExport.kmz.placementAbsoluteHint": "Place le modèle à sa hauteur orthogonale au-dessus du niveau de la mer. À utiliser uniquement si l’altitude du modèle est une véritable valeur par rapport au niveau moyen de la mer.",
+  "geometryExport.kmz.placementAbsoluteHint": "Place le modèle à son altitude par rapport au niveau moyen de la mer. À utiliser uniquement si l’altitude du modèle est une véritable valeur par rapport au niveau moyen de la mer.",
   "geometryExport.kmz.suggestTrueElevationHint": "Ce modèle semble porter des altitudes absolues dans sa géométrie ; Altitude réelle le placera donc correctement ici.",
   "geometryExport.kmz.successTitle": "Réussite",
   "geometryExport.kmz.errorTitle": "Erreur",

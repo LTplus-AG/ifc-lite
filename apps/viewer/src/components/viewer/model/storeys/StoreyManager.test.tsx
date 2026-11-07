@@ -143,6 +143,22 @@ describe('storey manager (#9013)', () => {
     assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, 0, 'nothing reached the undo history');
   });
 
+  it('Escape on a buried preview that cannot be put back says so (#9037 review)', async () => {
+    const { StoreyManager } = await requiredModule(() => import('./StoreyManager'), 'the storey manager exists (#9013)');
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    const ui = render(<><StoreyManager onBack={() => {}} /><Toaster /></>);
+    await waitFor(() => rows(ui).length > 0, 'the rows load');
+    const elevation = field(rows(ui)[0], 'elevation');
+    edit(elevation, '3.4');
+    await advance(400);
+    assert.deepEqual(elevations(), [0, 3.4], 'previewing');
+    // A script adds a storey at 3.2 m: putting L1 back to 3.0 m would cross it.
+    act(() => { assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Mid', Elevation: 3.2, referenceStoreyId: STOREY } }).ok); });
+    press(elevation, 'Escape');
+    assert.deepEqual(elevations(), [0, 3.2, 3.4], 'the previewed elevation is still applied');
+    await waitFor(() => /L1 would pass Mid/.test(document.body.textContent ?? ''), 'Escape reports that L1 could not go back');
+  });
+
   it('explains a refused value next to the field and keeps the model unchanged', async () => {
     const ui = await mount();
     const elevation = field(rows(ui)[0], 'elevation');

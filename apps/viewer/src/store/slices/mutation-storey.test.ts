@@ -306,6 +306,15 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.deepEqual(storeys(), [['L0', 0], ['Mezzanine', 2], ['L1', 3]], 'L1 is back at 3 m; the new storey stays at 2 m');
   });
 
+  it('a buried preview whose restore is refused returns the refusal instead of closing quietly (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Mid', Elevation: 3.2, referenceStoreyId: STOREY } }).ok);
+    const refused = m.revertStoreyPreview(useViewerStore);
+    assert.ok(refused && !refused.ok, 'L1 cannot cross the storey added at 3.2 m');
+    assert.deepEqual(storeys(), [['L0', 0], ['Mid', 3.2], ['L1', 3.4]]);
+  });
+
   it('a preview a script has undone is not reported as kept (#9037 review)', async () => {
     const m = await storey();
     assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);

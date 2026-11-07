@@ -88,9 +88,14 @@ export function keepStoreyPreview(store: TransactionStore): boolean {
   return !!top && state.mutationBatchTags.get(top.id) === batchId;
 }
 
-/** Undo the running preview, if it is still the latest step, and restore the redo history. */
-export function revertStoreyPreview(store: TransactionStore): void {
-  if (!active) return;
+/**
+ * Undo the running preview and restore the redo history. A preview another
+ * write has buried is restored storey by storey instead; if that is refused
+ * (a storey added meanwhile sits in the way), the refusal is returned so
+ * Escape can say the edit is still applied. Null when nothing was refused.
+ */
+export function revertStoreyPreview(store: TransactionStore): StoreyOpOutcome | null {
+  if (!active) return null;
   const { modelId, batchId, redoBefore, inverse } = active;
   active = null;
   const state = store.getState();
@@ -100,9 +105,9 @@ export function revertStoreyPreview(store: TransactionStore): void {
     // would undo that instead. Cancel still means the level goes back: re-level it as it was.
     for (const edit of inverse) {
       const restored = commitStoreyOp(store, modelId, { kind: 'level', edit });
-      if (!restored.ok) console.error(`[storeys] could not take back a buried preview: ${restored.reason}`);
+      if (!restored.ok) return restored;
     }
-    return;
+    return null;
   }
   state.undo(modelId);
   store.setState((s) => {
@@ -111,6 +116,7 @@ export function revertStoreyPreview(store: TransactionStore): void {
     else redoStacks.delete(modelId);
     return { redoStacks };
   });
+  return null;
 }
 
 export function hasStoreyPreview(): boolean {

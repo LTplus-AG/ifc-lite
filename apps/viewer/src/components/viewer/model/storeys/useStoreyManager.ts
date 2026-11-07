@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StoreyLevelEdit, StoreyLevelPlan, StoreySummary } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { toast } from '@/components/ui/toast';
 import { mutationDenial } from '@/store/mutation-permission';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { keepStoreyPreview, previewStoreyLevel, revertStoreyPreview } from '@/lib/storeys/storey-preview';
@@ -131,10 +132,14 @@ export function useStoreyLevelEditing(modelId: string | null) {
 
   const onCancel = useCallback(() => {
     clearTimer();
-    revertStoreyPreview(useViewerStore);
+    const refused = revertStoreyPreview(useViewerStore);
     previewed.current = null;
     setDraft(null);
-  }, []);
+    // A buried preview that cannot be put back stays applied: say so rather than close quietly.
+    if (refused && !refused.ok) {
+      toast.error(refused.refusals[0] ? refusalText(t, refused.refusals[0]) : t('storeyManager.refusal.other', { reason: refused.reason }));
+    }
+  }, [t]);
 
   // Leaving the manager (or the model) never leaves a provisional edit behind.
   useEffect(() => () => { clearTimer(); revertStoreyPreview(useViewerStore); }, [modelId]);

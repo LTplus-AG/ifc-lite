@@ -15,6 +15,7 @@ import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory, summarizeSt
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, type StoreyOp } from '@/store/slices/mutation-storey';
+import { deleteStorey } from '@/lib/storeys/storey-actions';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 
@@ -58,7 +59,12 @@ export function storeyMethods(store: StoreApi): StoreyMethods {
     },
     planStoreyDelete: (ref, mode) => planStoreyDelete(inventory(ref.modelId), ref.expressId, mode),
     deleteStorey(ref, mode, expected) {
-      const { normalized } = commit('deleteStorey', ref.modelId, { kind: 'delete', storeyId: ref.expressId, mode, expected });
+      // The manager's own delete: the session leaves the storey first and Solo isolation moves on.
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.deleteStorey: the adapter requires a writable store');
+      const outcome = deleteStorey({ ...store, setState }, normalized, ref.expressId, mode, expected);
+      if (!outcome.ok) throw new Error(`bim.store.deleteStorey: ${outcome.reason}`);
       return refs(normalized, [ref.expressId]);
     },
   };

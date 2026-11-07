@@ -19,7 +19,7 @@ import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
 import type { EntityRef } from './types.js';
 import type { LevelDisplayMode } from './slices/levelDisplaySlice.js';
-import { effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
+import { effectiveStoreyElevation, effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
 
 type ElevationCarrier = { spatialHierarchy?: { storeyElevations?: Map<number, number> } | null } | null | undefined;
 
@@ -32,10 +32,16 @@ export function pickTopStorey(): EntityRef | null {
   let bestElev = -Infinity;
   const consider = (modelId: string, ds: ElevationCarrier) => {
     const elevs = ds?.spatialHierarchy?.storeyElevations;
-    if (!elevs) return;
+    const store = modelId === 'legacy' ? null : s.models.get(modelId)?.ifcDataStore;
     const view = s.mutationViews.get(modelId);
-    for (const [id, elev] of elevs) {
-      if (view?.isDeleted(id)) continue; // deleted this session (#9013)
+    // Live levels (#9013): parsed ones (IFC4.3 facility parts included) minus
+    // deletions, plus storeys added this session, at their edited elevation.
+    const live = new Map<number, number>();
+    for (const [id, elev] of elevs ?? []) if (!view?.isDeleted(id)) live.set(id, elev);
+    if (store && view) {
+      for (const id of effectiveStoreyIds(store, view)) live.set(id, effectiveStoreyElevation(store, view, id));
+    }
+    for (const [id, elev] of live) {
       if (elev > bestElev) {
         bestElev = elev;
         bestRef = { modelId, expressId: id };

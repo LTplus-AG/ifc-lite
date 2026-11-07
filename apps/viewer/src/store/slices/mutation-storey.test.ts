@@ -23,7 +23,7 @@ import '@/lib/commands/modeling/builtin.js';
 import { commandPointerDown, commandPointerMove, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
 import { requiredModule } from '@/i18n/__tests__/required-module';
-import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { applyLevelDisplayMode, pickTopStorey } from '@/store/levelDisplay';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 /** The new write path, loaded per test so a production revert fails an assertion, not the file load. */
@@ -276,6 +276,20 @@ describe('bim.store storey reads in the viewer (#9037 review)', () => {
     const methods = storeyMethods(useViewerStore);
     assert.ok(methods.listStoreyLevels(MODEL_ID).length >= 2);
     assert.throws(() => methods.listStoreyLevels('missing-model'), /No model loaded/);
+  });
+
+  it('a script deleting the storey being drawn on moves the session off it first', async () => {
+    const { storeyMethods } = await requiredModule(() => import('@/sdk/adapters/store-adapter-storey-impl'), 'the viewer storey adapter exists');
+    useViewerStore.getState().setSessionStorey(UPPER_STOREY);
+    storeyMethods(useViewerStore).deleteStorey({ modelId: MODEL_ID, expressId: UPPER_STOREY }, { kind: 'empty' });
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'the workspace draws on a live storey');
+  });
+
+  it('the Solo fallback ranks live elevations: a storey added above the parsed top is the top', async () => {
+    const m = await storey();
+    const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Roof', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+    assert.ok(outcome.ok && outcome.storeyId !== null);
+    assert.deepEqual(pickTopStorey(), { modelId: MODEL_ID, expressId: outcome.storeyId });
   });
 });
 

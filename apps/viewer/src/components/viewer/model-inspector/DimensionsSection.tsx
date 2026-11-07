@@ -68,7 +68,7 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
           value={authoringDim(defaults, kind, param)}
           onCommit={(metres) => {
             // A typed wall height means that height, as in the Wall tool's own field.
-            if (kind === 'wall' && param === 'Height') typeWallHeight(useViewerStore.getState(), null, metres);
+            if (kind === 'wall' && param === 'Height') typeWallHeight(useViewerStore.getState(), metres);
             else setDims(kind, { [param]: metres });
             return true;
           }}

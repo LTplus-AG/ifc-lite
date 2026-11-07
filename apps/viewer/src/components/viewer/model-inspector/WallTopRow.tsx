@@ -9,7 +9,7 @@
  */
 
 import { useMemo } from 'react';
-import { FIXED_HEIGHT, NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
+import { NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -20,7 +20,8 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorRow } from './InspectorControls';
-import { runInspectorEdit } from './inspector-edits';
+import { runInspectorEdit, setWallDimensions } from './inspector-edits';
+import { fixWallTop } from './wall-top-fix';
 
 function readWallTop(modelId: string, wallId: number): { top: WallTop; target: string | null } {
   const s = useViewerStore.getState();
@@ -33,39 +34,13 @@ function readWallTop(modelId: string, wallId: number): { top: WallTop; target: s
   return { top: 'storeyAbove', target: storey?.Name ?? null };
 }
 
-type Tx = Parameters<Parameters<typeof runInspectorEdit>[1]>[0];
-
-/**
- * Make a wall fixed-height inside an inspector edit, as `clearTopAttachment`
- * does: a wall Revit recorded as attached gets an explicit `Fixed` record
- * (the Revit property is the file's own), any other loses its IfcLite one.
- */
-function fixWallTop(tx: Tx, modelId: string, wallId: number): void {
-  const s = tx.store;
-  const target = modelEditTarget(s, modelId);
-  const attachment = target ? readTopAttachment(readStoreyInventory(target.dataStore, target.view), wallId) : null;
-  if (!attachment) return;
-  if (attachment.source === 'revit') {
-    if (!s.setProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint', FIXED_HEIGHT, PropertyValueType.Label)) {
-      throw new Error(`Couldn't make wall #${wallId} fixed-height`);
-    }
-  } else {
-    s.deleteProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint');
-  }
-}
-
 /**
  * A typed wall height, as the Wall tool's height field: the wall becomes
  * fixed-height in the same Undo step, so re-levelling a storey never
  * replaces the height that was typed.
  */
 export function setWallHeightFixed(modelId: string, wallId: number, height: number): boolean {
-  return runInspectorEdit(modelId, (tx) => {
-    fixWallTop(tx, modelId, wallId);
-    const outcome = commitElementSize(useViewerStore, tx.modelId, wallId, { kind: 'wall', height });
-    if (!outcome.ok) throw new Error(outcome.reason);
-    return outcome.remesh;
-  });
+  return setWallDimensions(modelId, wallId, { height });
 }
 
 /** Attach the wall to the storey above it (reaching it), or make it fixed-height. */

@@ -54,7 +54,7 @@ const FIELDS: readonly CommandField<WallPlaceGesture>[] = [
     read: (_g, ctx) => wallTopOf(ctx).Height,
     write: (g, v, ctx) => {
       if (!(v > 0)) return g;
-      typeWallHeight(ctx.get(), wallTopOf(ctx), v);
+      typeWallHeight(ctx.get(), v);
       return g;
     },
   },

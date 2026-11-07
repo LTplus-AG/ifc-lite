@@ -24,6 +24,7 @@ import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/model
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { commitElementSize } from '@/lib/element-size-commit';
+import { fixWallTop } from './wall-top-fix';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import type { WallSection } from '@/store/slices/mutation-wall-section';
 import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
@@ -101,9 +102,18 @@ export function setElementDimensions(modelId: string, expressId: number, patch: 
   });
 }
 
-/** A wall's thickness and/or height, in metres. */
+/**
+ * A wall's thickness and/or height, in metres. A typed height makes the wall
+ * fixed-height in the same Undo step (#9013): a later storey re-level never
+ * replaces the height that was typed.
+ */
 export function setWallDimensions(modelId: string, expressId: number, section: WallSection): boolean {
-  return setElementDimensions(modelId, expressId, { kind: 'wall', ...section });
+  return runInspectorEdit(modelId, (tx) => {
+    if (section.height !== undefined) fixWallTop(tx, tx.modelId, expressId);
+    const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, { kind: 'wall', ...section });
+    if (!outcome.ok) throw new Error(outcome.reason);
+    return outcome.remesh;
+  });
 }
 
 /**

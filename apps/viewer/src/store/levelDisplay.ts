@@ -33,7 +33,9 @@ export function pickTopStorey(): EntityRef | null {
   const consider = (modelId: string, ds: ElevationCarrier) => {
     const elevs = ds?.spatialHierarchy?.storeyElevations;
     if (!elevs) return;
+    const view = s.mutationViews.get(modelId);
     for (const [id, elev] of elevs) {
+      if (view?.isDeleted(id)) continue; // deleted this session (#9013)
       if (elev > bestElev) {
         bestElev = elev;
         bestRef = { modelId, expressId: id };
@@ -55,10 +57,12 @@ function storeyExists(ref: EntityRef): boolean {
   const s = useViewerStore.getState();
   const ds = (ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore) as ElevationCarrier;
   const elevs = ds?.spatialHierarchy?.storeyElevations;
-  if (elevs?.has(ref.expressId)) return true;
-  // A storey added this session (#9013) is only in the model's edit overlay.
   const store = s.models.get(ref.modelId)?.ifcDataStore;
   const view = s.mutationViews.get(ref.modelId);
+  // A storey deleted this session (#9013) is still in the parsed map.
+  if (view?.isDeleted(ref.expressId)) return false;
+  // Parsed levels include IFC4.3 facility parts; a storey added this session is only in the overlay.
+  if (elevs?.has(ref.expressId)) return true;
   return !!store && !!view && effectiveStoreyIds(store, view).includes(ref.expressId);
 }
 

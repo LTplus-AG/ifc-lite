@@ -23,6 +23,8 @@ import '@/lib/commands/modeling/builtin.js';
 import { commandPointerDown, commandPointerMove, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
 import { requiredModule } from '@/i18n/__tests__/required-module';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 /** The new write path, loaded per test so a production revert fails an assertion, not the file load. */
 const storey = () => requiredModule(async () => ({
@@ -235,6 +237,39 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
   });
 });
 
+describe('isolation and typed wall heights follow storey edits (#9037 review, round 5)', () => {
+  const soloOn = (storeyId: number) => {
+    const st = useViewerStore.getState();
+    return st.levelDisplayMode === 'solo' && st.selectedStoreys.has(toGlobalIdFromModels(st.models, MODEL_ID, storeyId));
+  };
+
+  it('deleting an isolated storey the session does not draw on moves the isolation to the one it does', async () => {
+    const m = await storey();
+    applyLevelDisplayMode('solo', [{ modelId: MODEL_ID, expressId: UPPER_STOREY }]);
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
+    assert.ok(m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'deleteContents' }).ok);
+    assert.equal(soloOn(UPPER_STOREY), false, 'the deleted storey is not isolated');
+    assert.equal(soloOn(STOREY), true);
+    // A deleted storey is never isolated again, though the parsed map still lists it.
+    applyLevelDisplayMode('solo', [{ modelId: MODEL_ID, expressId: UPPER_STOREY }]);
+    assert.equal(soloOn(UPPER_STOREY), false);
+  });
+
+  it('a wall section typed with a height makes an attached wall fixed-height', async () => {
+    await storey();
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 9, 0], End: [4, 9, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
+    const upper = readStoreyInventory(target.dataStore, target.view).storeys.find((x) => x.expressId === UPPER_STOREY)!;
+    target.view.setProperty(wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', upper.GlobalId, PropertyValueType.Label);
+    const { setWallDimensions } = await import('@/components/viewer/model-inspector/inspector-edits');
+    assert.ok(setWallDimensions(MODEL_ID, wall.expressId, { thickness: 0.25 }));
+    assert.ok(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall.expressId), 'a thickness alone keeps the attachment');
+    assert.ok(setWallDimensions(MODEL_ID, wall.expressId, { height: 2.4 }));
+    assert.equal(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall.expressId), null);
+  });
+});
+
 describe('bim.store storey reads in the viewer (#9037 review)', () => {
   it('listStoreyLevels fails for a model with no editable data instead of reporting no storeys', async () => {
     const { storeyMethods } = await requiredModule(() => import('@/sdk/adapters/store-adapter-storey-impl'), 'the viewer storey adapter exists');
@@ -284,6 +319,14 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     const added = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(added.ok);
     assert.equal(attachment(wall)?.targetStoreyId, added.storeyId);
+  });
+
+  it('typing the storey spacing itself still makes the wall fixed at that height', () => {
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    useViewerStore.getState().startCommand('wall.place');
+    writeCommandField(3, 3); // Height: exactly the spacing up to L1
+    assert.equal(useViewerStore.getState().authoringDefaults.wallTop, 'fixed');
+    assert.equal(attachment(draw(0)), null);
   });
 
   it('a height typed on the top storey makes the wall fixed instead of waiting for the storey above', () => {

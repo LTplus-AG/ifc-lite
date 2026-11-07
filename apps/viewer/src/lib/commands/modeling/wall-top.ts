@@ -53,16 +53,13 @@ function storeyGlobalId(s: State, modelId: string, storeyId: number): string | n
 
 /**
  * A height the user typed for the next wall means that height: the wall
- * becomes fixed unless it would already reach exactly that high. On the top
- * storey (`NextStoreyAbove`) there is no height to match, so it is fixed too.
+ * becomes fixed, even when the value matches the storey spacing it would
+ * reach (a field the user did not touch never writes, so this is a typed
+ * value). A later re-level then never resizes it.
  */
-export function typeWallHeight(
-  s: Pick<ViewerState, 'setAuthoringDims' | 'setAuthoringDefaults'>, top: WallTopResolution | null, Height: number,
-): void {
+export function typeWallHeight(s: Pick<ViewerState, 'setAuthoringDims' | 'setAuthoringDefaults'>, Height: number): void {
   s.setAuthoringDims('wall', { Height });
-  if (!top || (top.attachTo !== null && (top.above === null || Math.abs(top.Height - Height) > 1e-9))) {
-    s.setAuthoringDefaults({ wallTop: 'fixed' });
-  }
+  s.setAuthoringDefaults({ wallTop: 'fixed' });
 }
 
 /** Record a placed wall's attachment in the caller's undo batch. Throws when the write is refused. */

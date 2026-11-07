@@ -41,3 +41,17 @@ export function activateStorey(s: ViewerState, modelId: string, storeyId: number
   s.enterModelWorkspace({ modelId, storeyId, command });
   if (isolated) applyLevelDisplayMode('solo', [{ modelId, expressId: storeyId }]);
 }
+
+/**
+ * A deleted storey cannot stay isolated: the isolation moves to the storey the
+ * session draws on, or the model shows every storey again.
+ */
+export function releaseDeletedIsolation(s: ViewerState, modelId: string, storeyId: number): void {
+  if (!isStoreyIsolated(s, modelId, storeyId)) return;
+  const session = s.session;
+  if (session?.modelId === modelId && session.storeyId !== null && session.storeyId !== storeyId) {
+    applyLevelDisplayMode('solo', [{ modelId, expressId: session.storeyId }]);
+  } else {
+    applyLevelDisplayMode('stacked');
+  }
+}

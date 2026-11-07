@@ -6,10 +6,11 @@
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
+import { PaletteLauncherContext } from './command-palette-launcher';
 import { useShallow } from 'zustand/react/shallow';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
 import { useViewerStore } from '@/store';
@@ -80,6 +81,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+  const hostLauncher = useContext(PaletteLauncherContext);
   const [query, setQuery] = useState('');
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const listId = useId();
@@ -220,6 +222,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent overlayClassName="z-(--z-command-palette)" className="z-(--z-command-palette) flex flex-col p-0 gap-0 translate-y-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
           style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onCloseAutoFocus={event => {
+            if (hostLauncher?.current?.isConnected) {
+              event.preventDefault();
+              hostLauncher.current.focus();
+            }
+          }}
           onEscapeKeyDown={event => {
             if (event.isComposing || event.keyCode === 229) event.preventDefault();
           }}>

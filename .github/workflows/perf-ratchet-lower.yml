@@ -58,6 +58,8 @@ jobs:
     name: Measure main and lower ceilings
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    outputs:
+      over_ceiling: ${{ steps.check.outputs.over_ceiling }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -174,7 +176,15 @@ jobs:
             --markdown "$RUNNER_TEMP/perf-ratchet-report.md"
           status=$?
           set -e
-          [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ] && cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ]; then
+            cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+            # The issue names the metrics, so a real overage can't read as a CI fault (#9016).
+            {
+              echo 'over_ceiling<<PERF_RATCHET_EOF'
+              awk -F'|' '/\| FAIL/ { gsub(/^ +| +$/, "", $2); gsub(/^ +| +$/, "", $7); print "- " $2 " is " $7 " over its ceiling" }' "$RUNNER_TEMP/perf-ratchet-report.md"
+              echo 'PERF_RATCHET_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
           exit $status
 
       - name: Lower ceilings that dropped
@@ -289,6 +299,8 @@ jobs:
       workflow_name: Perf ratchet lowering
       jobs: lower
       result: lower=${{ needs.lower.result }}
+      detail: ${{ needs.lower.outputs.over_ceiling }}
     permissions:
+      actions: read
       contents: read
       issues: write

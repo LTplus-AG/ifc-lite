@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { QuantityType } from '@ifc-lite/data';
 import { StepExporter } from '@ifc-lite/export';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -140,6 +141,36 @@ describe('edits and undo', () => {
   it('adds no history of its own: authoring a wall records no quantity mutation', () => {
     wall();
     assert.deepEqual(view().getMutations().filter((m) => m.type.includes('QUANTITY')), []);
+  });
+});
+
+describe('the base the view reads', () => {
+  it('a transaction reads its own edit of a loaded quantity before it commits', async () => {
+    const text = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('q.ifc','2026-11-07T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'P',$,$,$,$,$,$);
+#8=IFCWALL('0OSuGGYUFyIf0LtE29OSuH',$,'W',$,$,$,$,$,$);
+#60=IFCELEMENTQUANTITY('0OSuGGYUFyIf0LtE29OSuV',$,'Qto_WallBaseQuantities',$,$,(#61));
+#61=IFCQUANTITYLENGTH('Length',$,$,5.,$);
+#62=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuW',$,$,$,(#8),#60);
+ENDSEC;
+END-ISO-10303-21;`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer, { disableWorkerScan: true });
+    const loaded = new MutablePropertyView(store.properties ?? null, 'loaded');
+    configureMutationView(loaded, store);
+    const length = (v: MutablePropertyView) => v.getQuantitiesForEntity(8)[0]?.quantities[0]?.value;
+    assert.equal(length(loaded), 5);
+    assert.throws(() => loaded.runAtomic((draft) => {
+      draft.setPositionalAttribute(61, 3, 7);
+      assert.equal(length(draft), 7, 'the draft reads its own edit');
+      throw new Error('discard');
+    }), /discard/);
+    assert.equal(length(loaded), 5, 'and the published view does not');
   });
 });
 

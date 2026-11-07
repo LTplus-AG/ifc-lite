@@ -115,7 +115,7 @@ export function configureMutationView(
 
   if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
     mutationView.setQuantityExtractor((entityId, view, occurrenceId) => {
-      const own = extractQuantitiesOnDemand(dataStore, entityId, mutationView);
+      const own = extractQuantitiesOnDemand(dataStore, entityId, view);
       return own.length > 0 ? own : deriveAuthoredBaseQuantities(dataStore, view, occurrenceId);
     });
   }

@@ -318,6 +318,26 @@ describe('a long press and a mouse or trackpad menu press, in every engine\'s or
     act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
   });
 
+  it('Windows order at a spot long-pressed over a second ago: the expired window does not swallow the press\'s untyped menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await flushPick(); });
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    assert.equal(menus.length, 1, 'the first long press opened its menu');
+    mock.timers.tick(1_500);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+    });
+    await act(async () => { canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2)); await flushPick(); });
+    assert.equal(menus.length, 2, 'BUG: the expired window of the earlier long press swallowed the right press\'s untyped menu');
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 2, 'BUG: the finger held on opened its long-press menu over the mouse\'s');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
   // Guard: fails if a press whose menu already came at the press still mutes the next finger near it.
   it('macOS order: a right press whose menu came at the press leaves a finger landing after it free to long-press', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });

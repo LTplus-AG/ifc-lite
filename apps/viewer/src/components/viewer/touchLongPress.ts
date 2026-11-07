@@ -61,6 +61,7 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   const registration = {
     forget(x: number, y: number) {
       let armed = false;
+      if (menuWindow && Date.now() >= menuWindow.until) menuWindow = null; // an expired window arms nothing
       for (const point of [start, menuWindow]) if (point && near(point, x, y)) point.mouse = armed = true;
       // The press's menu is the one asked for: a hold still pending must not replace it (#9223).
       if (start && !fired && near(start, x, y)) { clearTimer(); muted = true; }

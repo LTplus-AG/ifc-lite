@@ -180,7 +180,8 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(panels.getAttribute('aria-label'), null);
     assert.equal(panels.getAttribute('aria-expanded'), 'false');
     for (const tile of ['Open Hierarchy', 'Open Properties', 'Open the panel list']) {
-      assert.equal(button(container, tile), undefined, `${tile} should no longer float over the model`);
+      // A boolean as `actual`: a failing assert inspects it, and a jsdom node exhausts the heap.
+      assert.equal(button(container, tile) !== undefined, false, `${tile} should no longer float over the model`);
     }
   });
 

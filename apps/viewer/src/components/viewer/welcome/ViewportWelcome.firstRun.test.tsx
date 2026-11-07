@@ -69,7 +69,10 @@ describe('first-run start screen (#8802 R6)', () => {
     const heading = [...screen.querySelectorAll('h3')].find((h) => h.textContent?.trim() === SAMPLES);
     const samples = heading?.closest('section');
     assert.ok(samples, 'the sample list renders');
-    assert.equal(samples.querySelector('a[href="/mcp"]'), null, 'the agent route is not a sample model');
+    // Booleans, never a DOM node, as an assertion's `actual`: a failing assert
+    // inspects it, and inspecting a jsdom node walks the whole window until the
+    // heap runs out (the revert oracle's runner was killed that way).
+    assert.equal(samples.querySelector('a[href="/mcp"]') !== null, false, 'the agent route is not a sample model');
     const agent = screen.querySelector<HTMLAnchorElement>('a[href="/mcp"]');
     assert.equal(agent?.textContent?.trim(), LLM, 'the agent route stays one click away');
   });

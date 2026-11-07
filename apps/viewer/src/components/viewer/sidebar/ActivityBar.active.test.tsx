@@ -77,7 +77,8 @@ describe('activity rail active state (#8802 R1)', () => {
     const lens = document.querySelector<HTMLElement>('[data-panel-id="lens"]');
     assert.ok(lens, 'Lens is listed in More');
     assert.ok(lens.hasAttribute('data-needs-model'), 'and says it needs a model');
-    assert.equal(document.querySelector('[data-panel-id="sources"]'), null, 'a way in is not folded away');
+    // Booleans as `actual`: a failing assert inspects it, and a jsdom node exhausts the heap.
+    assert.equal(document.querySelector('[data-panel-id="sources"]') !== null, false, 'a way in is not folded away');
   });
 
   it('keeps Hierarchy (left slot) and Lists (bottom strip) on a short rail while they are open (#9236)', () => {
@@ -118,6 +119,6 @@ describe('activity rail active state (#8802 R1)', () => {
     loaded();
     const root = render(<ActivityBar />);
     assert.equal(states(root).Lens, 'rest');
-    assert.equal(root.querySelector('[data-rail-overflow]'), null);
+    assert.equal(root.querySelector('[data-rail-overflow]') !== null, false, 'no More with a loaded model and room');
   });
 });

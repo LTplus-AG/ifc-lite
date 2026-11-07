@@ -693,11 +693,11 @@ walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
 Two independent counters share that limit: mapped-level attempts (after depth
 and cycle checks, before resolving the source) and `Items` members. Every
 attempt pays, distinct mapped item or not, because each one expands a shared
-source. A first read of a distinct `Items` list pays only for references to
-items the walk has already reached, including a repeat earlier in the same
-list; its distinct new items are bounded by the file itself and free, so one
-wide list of distinct items is never refused (#9102). A repeated read pays every
-member, including repeated valid DAG nodes and ignored non-reference members.
+source. A first read of a distinct `Items` list pays only for references that
+repeat an earlier one in the same list; its distinct items are bounded by the
+file itself and free, so one wide list of distinct items is never refused
+(#9102). A repeated read pays every member, including repeated valid DAG nodes
+and ignored non-reference members.
 Each charge is admitted before allocating or decoding the list's members.
 Product representations share the counters; each public walk call starts
 fresh. This bounds expansion work, not source parsing or visitor-owned
@@ -789,8 +789,8 @@ members. Every mapped attempt pays, including cache hits and don't-bake skips,
 which avoid child-list charges but still pay their attempt. The four
 source-list boundaries charge a repeated list in full, including ignored
 non-reference members, before decoding it; a controller's first read of a
-distinct list pays only for references to items it has already reached
-(#9102). Existing path/depth checks take precedence.
+distinct list pays only for its repeated references (#9102). Existing
+path/depth checks take precedence.
 
 A typed logical refusal is distinct from resource/cancellation `ProgramStop`.
 Root refusal returns an error. Nested refusal reports once under its parent's

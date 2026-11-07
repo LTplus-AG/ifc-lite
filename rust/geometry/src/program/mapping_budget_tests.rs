@@ -104,9 +104,9 @@ fn issue_9102_all_four_source_boundaries_admit_a_first_list_wider_than_the_defau
     }
 }
 
-/// #9102 review: at every source boundary a first read is free only for items
-/// the controller has not reached. Six references to one face set are one
-/// fresh item and five repeats.
+/// #9102 review: at every source boundary a first read is free only for its
+/// distinct items. Six references to one face set are one item and five
+/// repeats.
 #[test]
 fn issue_9102_every_boundary_charges_repeated_references_in_a_first_read() {
     let source = SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)");

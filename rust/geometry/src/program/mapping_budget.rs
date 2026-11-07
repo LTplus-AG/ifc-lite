@@ -2,7 +2,7 @@
 //! Per-controller logical work, independent of allocation/cancellation policy.
 //! Cache hits and placeholders pay attempts, but skip unmaterialized children.
 //! Every mapped attempt pays: it expands a shared source. A first Items read
-//! pays only for items already reached; a repeated one pays in full (#9102,
+//! pays for its repeated references; a repeated one pays in full (#9102,
 //! `representation::first_seen`).
 use crate::representation::first_seen::FirstSeen;
 use crate::Error;
@@ -54,7 +54,7 @@ pub(crate) struct LogicalBudget {
     maps: u32,
     items: u32,
     seen: Arc<FirstSeen>,
-    pending: FirstSeen,
+    pending: smallvec::SmallVec<[u32; 2]>,
 }
 impl Default for LogicalBudget {
     fn default() -> Self {
@@ -63,7 +63,7 @@ impl Default for LogicalBudget {
             maps: 0,
             items: 0,
             seen: Arc::default(),
-            pending: FirstSeen::default(),
+            pending: smallvec::SmallVec::new(),
         }
     }
 }
@@ -81,7 +81,10 @@ impl LogicalBudget {
     /// is taken after a commit, so `pending` holds at most one step's reads.
     pub(crate) fn commit(&mut self) {
         if !self.pending.is_empty() {
-            Arc::make_mut(&mut self.seen).absorb(std::mem::take(&mut self.pending));
+            let seen = Arc::make_mut(&mut self.seen);
+            for rep in self.pending.drain(..) {
+                seen.insert(rep);
+            }
         }
     }
     /// Enter a mapped item. Every attempt pays, distinct item or not: each one
@@ -90,16 +93,18 @@ impl LogicalBudget {
         Self::debit(&mut self.maps, 1, self.limit)
     }
     /// Materialize representation `rep`'s Items `members`. A repeated list
-    /// pays every member, and a first read every reference this controller
-    /// has already reached, all before anything is resolved (#9102).
+    /// pays every member, and a first read every repeated reference within
+    /// it, all before anything is resolved (#9102).
     pub(crate) fn materialize_items(
         &mut self,
         rep: u32,
         members: &[ifc_lite_core::AttributeValue],
     ) -> std::result::Result<(), LogicalRefusal> {
-        let charge = self.seen.price(Some(&self.pending), rep, members);
+        let charge = self.seen.price(&self.pending, rep, members);
         Self::debit(&mut self.items, charge.cost, self.limit)?;
-        self.pending.admit(charge);
+        if !self.pending.contains(&charge.rep) {
+            self.pending.push(charge.rep);
+        }
         Ok(())
     }
     #[cfg(test)]
@@ -112,6 +117,6 @@ impl LogicalBudget {
     /// Test seam: make the next read of `rep`'s Items a repeat (#9102).
     #[cfg(test)]
     pub(super) fn mark_seen(&mut self, rep: u32) {
-        Arc::make_mut(&mut self.seen).mark_list_read(rep);
+        Arc::make_mut(&mut self.seen).insert(rep);
     }
 }

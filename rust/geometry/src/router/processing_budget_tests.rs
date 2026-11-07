@@ -177,20 +177,19 @@ fn issue_7887_repeated_valid_dag_sources_pay_per_occurrence() {
 
 #[test]
 fn issue_7887_product_allowance_spans_selected_representations() {
-    // `#160` costs four attempts and two members. `#170` lists `#140`, which
-    // `#160` already reached, twice: its first read pays 2 and its repeat 2.
-    // Attempts fit four, but the members spread over both representations
-    // need six.
+    // `#160` costs four attempts and two members. `#170` lists `#140` twice:
+    // its first read pays the repeat (1), its second read both (2). Attempts
+    // fit four, but the members spread over both representations need five.
     let content = mapped_siblings()
         .replace("($,$,(#160))", "($,$,(#160,#170,#170))")
         .replace(
             "ENDSEC;\nEND-ISO",
             "#170=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#140));\nENDSEC;\nEND-ISO",
         );
-    check(&content, 6, &[1.0, 1.0, 2.5, 2.5, 2.5, 2.5, 2.5], None, false);
+    check(&content, 5, &[1.0, 1.0, 2.5, 2.5, 2.5, 2.5, 2.5], None, false);
     check(
         &content,
-        5,
+        4,
         &[1.0, 1.0, 2.5, 2.5, 2.5],
         Some("IfcShapeRepresentation"),
         false,

@@ -76,10 +76,10 @@ pub(super) fn validated_product_shape(
             }
             // Resolve and classify even the Items the meshed selector will skip.
             // This is shallow: no mapping targets or geometry children are read.
-            // A repeated root list pays in full; a first read pays only for
-            // items the product already reached (#9102).
+            // A repeated root list pays in full; a first read pays for its
+            // repeated references (#9102).
             let charge = roots.seen.price(
-                None,
+                &[],
                 rep.id,
                 rep.get(slot::IfcRepresentation::ITEMS.index())
                     .and_then(AttributeValue::as_list)

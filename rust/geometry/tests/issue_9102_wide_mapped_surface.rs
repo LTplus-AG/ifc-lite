@@ -6,8 +6,8 @@
 //! `SurfaceModel` held 65,536+ `IfcShellBasedSurfaceModel` items (89,023 on
 //! the reporting model); WASM 10.4 meshed every one. The representation walk
 //! charged the first read of that wide, acyclic Items list against its fixed
-//! work budget. A first read now pays only for items the walk already
-//! reached; these are all distinct, so the whole product meshes.
+//! work budget. A first read now pays only for references repeated within
+//! it; these are all distinct, so the whole product meshes.
 //!
 //! The fixture is the issue's synthetic reproduction: no project data. Every
 //! item is a distinct surface model over one shared triangular open shell.

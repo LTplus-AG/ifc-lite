@@ -137,9 +137,9 @@ fn issue_9102_first_read_of_a_wide_list_is_free_but_a_repeated_root_list_pays() 
     assert!(work.refusals.is_empty());
 }
 
-/// #9102 review: a first read is free only for items the walk has not
-/// reached. `(#B,#B,#B)` re-meshes one item per few bytes, so each repeat
-/// pays, even in a list read for the first time.
+/// #9102 review: a first read is free only for its distinct items.
+/// `(#B,#B,#B)` re-meshes one item per few bytes, so each repeat pays, even in
+/// a list read for the first time.
 #[test]
 fn issue_9102_a_first_read_pays_for_each_repeated_reference() {
     let model = "#100=IFCREPRESENTATIONMAP($,#200);\

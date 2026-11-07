@@ -262,9 +262,9 @@ impl RepresentationWalk {
     /// values, BEFORE resolve_ref_list allocates or decodes. Repeated DAG
     /// occurrences pay again. This complements the mapped-level meter: N entries
     /// into the same N-leaf source can no longer materialize N² items under an
-    /// N-level allowance. A first read pays only for references the walk has
-    /// already reached, so one wide list of distinct items is never refused,
-    /// while `(#B,#B,…)` still pays per repeat (#9102).
+    /// N-level allowance. A first read pays only for its repeated references,
+    /// so one wide list of distinct items is never refused, while `(#B,#B,…)`
+    /// still pays per repeat (#9102).
     pub(super) fn admit_items(
         &self,
         used: &mut u32,
@@ -273,7 +273,7 @@ impl RepresentationWalk {
         members: &[ifc_lite_core::AttributeValue],
     ) -> Result<(), WalkRefusal> {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
-            let charge = seen.price(None, rep.id, members);
+            let charge = seen.price(&[], rep.id, members);
             if charge.cost > (max_levels - *used) as usize {
                 return Err(WalkRefusal::Budget { max_levels });
             }

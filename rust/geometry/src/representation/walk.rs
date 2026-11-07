@@ -31,7 +31,7 @@ pub enum NestedMaps {
     /// (the mesh walks). `max_levels` independently caps mapped-level attempts
     /// and materialized Items members across one walk. Every mapped attempt
     /// pays, since each expands a shared source. A first read of a distinct
-    /// Items list pays only for items the walk already reached (#9102); every
+    /// Items list pays only for its repeated references (#9102); every
     /// further read pays in full. Exhaustion reports [`WalkRefusal::Budget`]
     /// and stops globally.
     Expand { max_depth: u32, max_levels: u32 },
@@ -145,7 +145,7 @@ struct Run<'a, V> {
     levels: u32,
     /// Items members admitted before allocating/decoding a list, per occurrence.
     items: u32,
-    /// Items this walk has read, which a first read does not charge (#9102).
+    /// Items lists this walk has read: a re-read pays in full (#9102).
     seen: super::first_seen::FirstSeen,
 }
 

@@ -70,6 +70,9 @@ test('Cost and AI Chat palette rows open their panels (#5862)', async () => {
   );
   const input = document.body.querySelector('input') as HTMLInputElement;
   assert.equal(input.value, 'cost', 'the first-load query reaches the real command search (#8947)');
+  await advance(0);
+  assert.equal(input.selectionStart, input.value.length, 'cold-query handoff keeps the insertion caret (#8947)');
+  assert.equal(input.selectionEnd, input.value.length, 'cold-query handoff does not select the buffered query (#8947)');
   const cost = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
     .find((row) => row.getAttribute('aria-label') === 'Cost');
   assert.ok(cost, 'Cost is searchable');

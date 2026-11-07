@@ -235,6 +235,14 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent overlayClassName="z-(--z-command-palette)" className={`${PALETTE_DIALOG_LAYOUT} flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none`}
           style={{ top: PALETTE_DIALOG_TOP, maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onOpenAutoFocus={event => {
+            // #8947: Radix selects all input text by default. A cold-load query
+            // must keep accepting typing instead of replacing the buffered text.
+            event.preventDefault();
+            const input = inputRef.current;
+            input?.focus();
+            input?.setSelectionRange(input.value.length, input.value.length);
+          }}
           onCloseAutoFocus={event => {
             if (hostLauncher?.current?.isConnected) {
               event.preventDefault();

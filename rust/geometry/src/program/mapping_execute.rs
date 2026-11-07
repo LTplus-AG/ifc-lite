@@ -79,10 +79,9 @@ impl MappingControl<'_> {
                 )));
             }
             Action::Enter(item) | Action::EnterStyled(item) => {
-                // A root attempt pays too, including cache hits/placeholders,
-                // once it repeats an entry (#9102). A refused attempt leaves
-                // its action intact until acceptance.
-                if let Err(refusal) = budget.mapped_attempt(item.item().id) {
+                // A root attempt pays too, including cache hits/placeholders.
+                // A refused attempt leaves its action intact until acceptance.
+                if let Err(refusal) = budget.mapped_attempt() {
                     return Ok(MappingValue::Refused {
                         item_id: item.item().id,
                         refusal,
@@ -106,8 +105,8 @@ impl MappingControl<'_> {
             Action::EnterStyled(entering) => {
                 let item = entering.item();
                 // Only root occurrences are independently instanced. Eligibility
-                // reads at most one member without a debit, after a free first
-                // attempt or a paid repeat (#9102).
+                // reads at most one member: Items usage is zero here, and the
+                // attempt above proved limit >= 1, so no second debit is needed.
                 let eligible = self.allow_instancing && self.levels.is_empty();
                 let value = router.admit_styled_occurrence(item, eligible, self.textures, decoder);
                 MappingValue::StyledEntered {

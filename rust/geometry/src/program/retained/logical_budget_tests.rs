@@ -54,7 +54,7 @@ fn repeating(mut program: RetainedProgram<'_>, rep: u32) -> RetainedProgram<'_> 
     let Control::Mapping(control) = &mut geometry(&mut program).control else {
         panic!("mapping program")
     };
-    control.mark_seen(rep, false);
+    control.mark_seen(rep);
     program
 }
 
@@ -172,7 +172,7 @@ fn issue_7781_retained_roots_reuse_exactly_admitted_members_and_preserve_placeme
 #[test]
 fn issue_7781_retained_warm_mapping_pays_items_once_per_attempt() {
     let bytes = mapping_tests::mapped().replace("'SweptSolid',(#13)", "'SweptSolid',(#13,#13)");
-    for limit in [0, 1] {
+    for limit in [1, 2] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
@@ -189,10 +189,10 @@ fn issue_7781_retained_warm_mapping_pays_items_once_per_attempt() {
             .cached(&decoder, &router, 81)
             .unwrap()
             .is_some());
-        // Root, cold occurrence and its source are first reads (#9102); the
-        // warm second occurrence still pays its attempt and its one member.
+        // Both occurrences pay an attempt, cached or not. The root and the
+        // cold source are first reads (#9102); the warm occurrence pays one member.
         let result = program.finish_type_map(60, 1, [1.; 4]);
-        if limit == 0 {
+        if limit == 1 {
             assert!(result.unwrap_err().to_string().contains("work budget"));
         } else {
             let plan = result.unwrap();

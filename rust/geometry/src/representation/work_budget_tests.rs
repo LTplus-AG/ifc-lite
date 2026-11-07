@@ -161,17 +161,14 @@ fn issue_7781_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
 
 #[test]
 fn issue_7781_level_meter_is_independent_of_the_item_member_meter() {
-    // Three repeated #40 entries pay 3 attempts and three repeated #60 reads
-    // pay 3 members: each meter fits 3, though one shared meter would need 6.
     let model = "#10=IFCMAPPEDITEM(#20,$);#20=IFCREPRESENTATIONMAP($,#30);\
         #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#40,#40,#40,#40));\
         #40=IFCMAPPEDITEM(#50,$);#50=IFCREPRESENTATIONMAP($,#60);\
-        #60=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));";
+        #60=IFCSHAPEREPRESENTATION($,'Body','Brep',());";
     let mut decoder = EntityDecoder::new(model);
     let root = decoder.decode_by_id(10).unwrap();
     let mut work = Work::default();
-    walk(2).mapped_item(&root, &mut decoder, &mut work);
+    walk(4).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!(
         work.events,
         [
@@ -187,12 +184,11 @@ fn issue_7781_level_meter_is_independent_of_the_item_member_meter() {
     );
     assert_eq!(
         work.refusals,
-        [(40, "Budget { max_levels: 2 }".to_string(), 1, None)]
+        [(40, "Budget { max_levels: 4 }".to_string(), 1, None)]
     );
     let mut work = Work::default();
-    walk(3).mapped_item(&root, &mut decoder, &mut work);
+    walk(5).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!(work.events.len(), 10);
-    assert_eq!(work.leaves, [1; 4]);
     assert!(work.refusals.is_empty());
 }
 

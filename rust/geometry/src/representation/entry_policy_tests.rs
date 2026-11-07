@@ -143,33 +143,13 @@ fn issue_7781_skip_and_stop_suppress_only_post_entry_items_work() {
             assert_eq!(trace.events, ["enter 10 depth 0", "leave 10"]);
             assert!(trace.refusals.is_empty());
             assert!(d.get_cached(1).is_none());
-            // Level admission still precedes either visitor answer. A first
-            // entry is free (#9102), so the repeated #10 is the one refused,
-            // before the visitor is asked; Stop never reaches it.
-            let wrapper = format!(
-                "{model}#5=IFCREPRESENTATIONMAP($,#6);\
-                #6=IFCSHAPEREPRESENTATION($,'Body','Brep',(#10,#10));"
-            );
-            let mut d = EntityDecoder::new(&wrapper);
-            let map = d.decode_by_id(5).unwrap();
+            // Level admission still precedes either visitor answer.
             let mut denied = Trace {
                 answer: Some(answer),
                 ..Trace::default()
             };
-            walk(0).map(&map, &mut d, &mut denied).unwrap();
-            if answer == Flow::Stop {
-                assert_eq!(denied.events, ["enter 10 depth 0", "leave 10"]);
-                assert!(denied.refusals.is_empty());
-                continue;
-            }
-            assert_eq!(
-                denied.events,
-                [
-                    "enter 10 depth 0",
-                    "leave 10",
-                    "refuse 10 depth 0 shape None"
-                ]
-            );
+            walk(0).mapped_item(&root, &mut d, &mut denied);
+            assert_eq!(denied.events, ["refuse 10 depth 0 shape None"]);
             assert!(matches!(
                 denied.refusals[0].1,
                 WalkRefusal::Budget { max_levels: 0 }
@@ -204,22 +184,25 @@ fn issue_7781_skip_saves_items_allowance_but_stop_ends_siblings() {
 
 #[test]
 fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
-    // The second #20 repeats #30's two members (#9102: the first read is
-    // free) and a one-member allowance refuses it inside the entered scope.
+    // Three attempts (#10 and both #20s) fit. The second #20 repeats #30's
+    // four members (#9102: the first read is free), which a three-member
+    // allowance refuses inside the entered scope, before resolving them.
     let model = "#10=IFCMAPPEDITEM(#11,$);#11=IFCREPRESENTATIONMAP($,#12);\
         #12=IFCSHAPEREPRESENTATION($,'Body','Brep',(#20,#20,#1));\
         #20=IFCMAPPEDITEM(#21,$);#21=IFCREPRESENTATIONMAP($,#30);\
-        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2,#2));\
+        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2,#2,#2,#2));\
         #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));";
     let mut d = EntityDecoder::new(model);
     let root = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
-    walk(1).mapped_item(&root, &mut d, &mut trace);
+    walk(3).mapped_item(&root, &mut d, &mut trace);
     assert_eq!(
         trace.events,
         [
             "enter 10 depth 0",
             "enter 20 depth 1",
+            "item 2 IfcCartesianPoint depth 2",
+            "item 2 IfcCartesianPoint depth 2",
             "item 2 IfcCartesianPoint depth 2",
             "item 2 IfcCartesianPoint depth 2",
             "leave 20",
@@ -232,7 +215,7 @@ fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
     assert_eq!(trace.refusals.len(), 1);
     assert!(matches!(
         trace.refusals[0],
-        (20, WalkRefusal::Budget { max_levels: 1 })
+        (20, WalkRefusal::Budget { max_levels: 3 })
     ));
     // Root list was already fully decoded; #1 is cached but never visited.
     assert!(d.get_cached(1).is_some());

@@ -179,13 +179,11 @@ impl RepresentationWalk {
             return refuse(run, WalkRefusal::Cyclic);
         }
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
-            if !run.seen.first_entry(item.id) {
-                if run.levels >= max_levels {
-                    refuse(run, WalkRefusal::Budget { max_levels });
-                    return Flow::Stop;
-                }
-                run.levels += 1;
+            if run.levels >= max_levels {
+                refuse(run, WalkRefusal::Budget { max_levels });
+                return Flow::Stop;
             }
+            run.levels += 1;
         }
         let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
             Ok(resolved) => resolved,

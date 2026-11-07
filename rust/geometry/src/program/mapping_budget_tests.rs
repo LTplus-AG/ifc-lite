@@ -17,12 +17,12 @@ fn limited(mut program: GeometryProgram<'_>, limit: u32) -> GeometryProgram<'_> 
     program
 }
 
-/// `program` as if this walk had already read `id` (#9102: only repeats pay).
-fn repeating(mut program: GeometryProgram<'_>, id: u32, entry: bool) -> GeometryProgram<'_> {
+/// `program` as if this walk had already read `rep`'s Items (#9102: only repeats pay).
+fn repeating(mut program: GeometryProgram<'_>, rep: u32) -> GeometryProgram<'_> {
     let Control::Mapping(control) = &mut program.control else {
         panic!("mapping fixture")
     };
-    control.mark_seen(id, entry);
+    control.mark_seen(rep);
     program
 }
 
@@ -107,17 +107,19 @@ fn issue_9102_all_four_source_boundaries_admit_a_first_list_wider_than_the_defau
 #[test]
 fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_pay() {
     // #9102: a first read is free at every boundary, ignored members included.
+    // Mapped entries (modes 0 and 1) still pay their one attempt.
     let source = SOURCE.replace("(#4)", "(#4,$,17)");
     for mode in 0..4 {
         let mut router = GeometryRouter::new();
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
-        let (result, _) = run(mode, &source, 0, &router);
+        let (result, _) = run(mode, &source, 1, &router);
         assert_eq!(result.unwrap(), if mode == 3 { 1 } else { 3 }, "boundary {mode}");
     }
     // A repeated read pays every slot, `$` and `17` too. The styled walk never
-    // caches a source, so its second #8 re-reads #5's three members.
-    let source = nested("#8,#8").replace("(#4)", "(#4,$,17)");
-    for (limit, indices, dropped) in [(2, 3, Some(&1)), (3, 6, None)] {
+    // caches a source, so its second #8 re-reads #5's five members. Three
+    // attempts fit both limits; the five repeated members fit only the second.
+    let source = nested("#8,#8").replace("(#4)", "(#4,$,17,$,$)");
+    for (limit, indices, dropped) in [(4, 3, Some(&1)), (5, 6, None)] {
         let router = GeometryRouter::new();
         let mut decoder = EntityDecoder::new(&source);
         let item = decoder.decode_by_id(18).unwrap();
@@ -165,9 +167,9 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
             }
             let mut decoder = EntityDecoder::new(&source);
             let item = decoder.decode_by_id(18).unwrap();
-            // Root, its list and the first #8 with its source are first reads
-            // (#9102). The second #8 pays one attempt (and, styled, one member);
-            // the third pays a second, which a limit of 1 refuses.
+            // Every occurrence pays an attempt, cached or not: the root and
+            // three #8s are four, so a limit of 3 refuses the third #8. The
+            // first source read is free (#9102); the styled repeat pays one.
             let indices = if styled {
                 limited(
                     GeometryProgram::styled_item(
@@ -177,7 +179,7 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
                         None,
                         router.rtc_offset(),
                     ),
-                    1,
+                    3,
                 )
                 .drain_styled(&router, &mut decoder)
                 .unwrap()
@@ -186,7 +188,7 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
                 .map(|part| part.mesh.indices.len())
                 .sum::<usize>()
             } else {
-                limited(GeometryProgram::mapped_item(&item), 1)
+                limited(GeometryProgram::mapped_item(&item), 3)
                     .drain_parts(&router, &mut decoder)
                     .unwrap()
                     .iter()
@@ -227,9 +229,9 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
             .drain_parts(&router, &mut decoder)
             .unwrap();
         let item = decoder.decode_by_id(18).unwrap();
-        // Hits read no Items. The first #8 is free (#9102); the second and
-        // third pay one attempt each, so 1 refuses the third and 2 admits it.
-        let parts = limited(GeometryProgram::mapped_item(&item), 1)
+        // Hits read no Items, and the root's first list read is free (#9102):
+        // only attempts count. Root plus the third cached child is attempt 4.
+        let parts = limited(GeometryProgram::mapped_item(&item), 3)
             .drain_parts(&router, &mut decoder)
             .unwrap();
         assert_eq!(
@@ -240,7 +242,7 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
             router.take_unsupported_items().get("IfcMappedItem"),
             Some(&1)
         );
-        let parts = limited(GeometryProgram::mapped_item(&item), 2)
+        let parts = limited(GeometryProgram::mapped_item(&item), 4)
             .drain_parts(&router, &mut decoder)
             .unwrap();
         assert_eq!(
@@ -251,64 +253,48 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
     }
 }
 
+/// #9102 review: distinct mapped items over ONE shared source are each a full
+/// expansion of it from a small record, so they must not ride the free first
+/// read the wide-list fix gave Items lists. A type map listing N distinct
+/// occurrences of a cached source pays N attempts.
+#[test]
+fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
+    let occurrences: String = (40..46).map(|id| format!("#{id}=IFCMAPPEDITEM(#6,#7);")).collect();
+    let refs = (40..46).map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+    let source = format!(
+        "{SOURCE}{occurrences}#50=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',({refs}));\
+        #51=IFCREPRESENTATIONMAP(#2,#50);"
+    );
+    let textures = FxHashMap::default();
+    for (limit, indices, dropped) in [(5, 15, Some(&1)), (6, 18, None)] {
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+        let mut decoder = EntityDecoder::new(&source);
+        let map = decoder.decode_by_id(51).unwrap();
+        let parts = limited(GeometryProgram::type_map(&map, &textures), limit)
+            .drain_type_parts(&router, &mut decoder)
+            .unwrap();
+        assert_eq!(parts.iter().map(|part| part.0.indices.len()).sum::<usize>(), indices, "limit {limit}");
+        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), dropped, "limit {limit}");
+    }
+}
+
 #[test]
 fn issue_7873_logical_zero_work_is_observable_even_with_warm_cache() {
-    // #9102: zero still admits every first read, warm or cold...
     for mode in 0..4 {
         let mut router = GeometryRouter::new();
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+        // A mapped entry (modes 0 and 1) pays its attempt even on a warm hit,
+        // so zero refuses it. Type maps and shared sources make no attempt,
+        // and their first Items read is the file's own size (#9102).
         run(0, SOURCE, 1, &router).0.unwrap();
-        assert_eq!(
-            run(mode, SOURCE, 0, &router).0.unwrap(),
-            if mode == 3 { 1 } else { 3 }
-        );
+        let result = run(mode, SOURCE, 0, &router).0;
+        if mode < 2 {
+            assert!(result.unwrap_err().to_string().contains("work budget"), "mode {mode}");
+        } else {
+            assert_eq!(result.unwrap(), if mode == 3 { 1 } else { 3 }, "mode {mode}");
+        }
         assert!(router.take_unsupported_items().is_empty());
-    }
-    // ...and refuses a repeat even when the repeat would be a cache hit.
-    let source = nested("#8,#8");
-    for mode in 0..3 {
-        let mut router = GeometryRouter::new();
-        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
-        run(0, SOURCE, 1, &router).0.unwrap();
-        let mut decoder = EntityDecoder::new(&source);
-        let item = decoder.decode_by_id(18).unwrap();
-        let map = decoder.decode_by_id(16).unwrap();
-        let textures = FxHashMap::default();
-        let indices: usize = match mode {
-            0 => limited(GeometryProgram::mapped_item(&item), 0)
-                .drain_parts(&router, &mut decoder)
-                .unwrap()
-                .iter()
-                .map(|mesh| mesh.indices.len())
-                .sum(),
-            1 => limited(
-                GeometryProgram::styled_item(
-                    &item,
-                    crate::SubMeshCollection::new(),
-                    false,
-                    None,
-                    router.rtc_offset(),
-                ),
-                0,
-            )
-            .drain_styled(&router, &mut decoder)
-            .unwrap()
-            .sub_meshes
-            .iter()
-            .map(|part| part.mesh.indices.len())
-            .sum(),
-            _ => limited(GeometryProgram::type_map(&map, &textures), 0)
-                .drain_type_parts(&router, &mut decoder)
-                .unwrap()
-                .iter()
-                .map(|part| part.0.indices.len())
-                .sum(),
-        };
-        assert_eq!(indices, 3, "mode {mode}");
-        assert_eq!(
-            router.take_unsupported_items().get("IfcMappedItem"),
-            Some(&1)
-        );
     }
 }
 
@@ -319,9 +305,7 @@ fn issue_7873_rejected_reply_and_replayed_request_cannot_spend_an_attempt() {
     let router = GeometryRouter::new();
     let foreign = GeometryRouter::new();
     let item = decoder.decode_by_id(18).unwrap();
-    // Every step is a first read (#9102), so zero admits the walk only if
-    // neither the replay nor the rejection turns the root entry into a repeat.
-    let mut program = limited(GeometryProgram::mapped_item(&item), 0);
+    let mut program = limited(GeometryProgram::mapped_item(&item), 2);
     let request = program.request().unwrap().unwrap();
     let reply = program.execute(request, &router, &mut decoder).unwrap();
     assert!(matches!(
@@ -545,7 +529,7 @@ fn issue_7873_refused_template_rolls_back_and_placeholder_skip_avoids_child_char
             // the later Items refusal to exercise rollback, without relying on
             // malformed (#4,$), which now intentionally materializes flat.
             // A first read is free (#9102), so the list is marked as a repeat.
-            repeating(limited(program, 0), 5, false).drain_styled(&router, &mut decoder)
+            repeating(limited(program, 0), 5).drain_styled(&router, &mut decoder)
         };
         let result = if accounted {
             ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()))
@@ -636,6 +620,8 @@ fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_pub
         let mut router = GeometryRouter::new();
         let cache = GeometryRouter::new_mapped_item_cache();
         router.enable_shared_mapped_item_cache(cache.clone());
+        // Root and first #8 are the two attempts a limit of 2 admits; the
+        // second #8 is refused, so only the first child survives.
         let meshes = limited(
             GeometryProgram::styled_item(
                 &item,
@@ -644,7 +630,7 @@ fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_pub
                 None,
                 (0., 0., 0.),
             ),
-            0,
+            2,
         )
         .drain_styled(&router, &mut decoder)
         .unwrap();

@@ -73,10 +73,8 @@ fn issue_9102_armed_wide_first_list_is_admitted_without_early_member_decode() {
 
 #[test]
 fn issue_7873_armed_root_attempt_admits_one_eligibility_decode_but_zero_admits_none() {
-    // #9102: a first entry is free, so zero admits the root and its one
-    // eligibility decode exactly like one does. A repeated entry pays.
     for template in [8, 999] {
-        for (limit, repeat) in [(0, false), (1, false), (0, true)] {
+        for limit in [0, 1] {
             let router = armed(template);
             let mut decoder = EntityDecoder::new(SOURCE);
             let root = decoder.decode_by_id(8).unwrap();
@@ -90,13 +88,10 @@ fn issue_7873_armed_root_attempt_admits_one_eligibility_decode_but_zero_admits_n
                 ),
                 limit,
             );
-            if repeat {
-                program = repeating(program, 8, true);
-            }
             first_step(&mut program, &router, &mut decoder);
-            assert_eq!(decoder.get_cached(4).is_some(), !repeat);
+            assert_eq!(decoder.get_cached(4).is_some(), limit == 1);
             let result = program.drain_styled(&router, &mut decoder);
-            if repeat {
+            if limit == 0 {
                 assert!(result.unwrap_err().to_string().contains("work budget"));
                 assert!(
                     decoder.get_cached(6).is_none(),
@@ -205,21 +200,15 @@ fn issue_7873_armed_nested_map_stays_flat_and_does_not_eligibility_decode_its_ch
     let mut decoder = EntityDecoder::new(&source);
     let root = decoder.decode_by_id(8).unwrap();
     let router = armed(999);
-    // #9102: the nested #18 is a first entry and would be free; mark it a
-    // repeat so the zero allowance refuses it.
-    let mut program = repeating(
-        limited(
-            GeometryProgram::styled_item(
-                &root,
-                crate::SubMeshCollection::new(),
-                true,
-                None,
-                router.rtc_offset(),
-            ),
-            0,
+    let mut program = limited(
+        GeometryProgram::styled_item(
+            &root,
+            crate::SubMeshCollection::new(),
+            true,
+            None,
+            router.rtc_offset(),
         ),
-        18,
-        true,
+        1,
     );
     first_step(&mut program, &router, &mut decoder);
     assert!(
@@ -227,8 +216,9 @@ fn issue_7873_armed_nested_map_stays_flat_and_does_not_eligibility_decode_its_ch
         "one bounded eligibility decode"
     );
     assert!(decoder.get_cached(4).is_none());
-    // The repeated nested mapped attempt is refused before resolving its
-    // source or probing child eligibility.
+    // The root spent the only attempt (its first Items read is free, #9102);
+    // the nested mapped attempt is refused before resolving its source or
+    // probing child eligibility.
     let parts = program.drain_styled(&router, &mut decoder).unwrap();
     assert!(parts.is_empty());
     assert!(decoder.get_cached(26).is_none());

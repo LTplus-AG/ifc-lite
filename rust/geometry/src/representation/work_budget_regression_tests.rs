@@ -96,9 +96,10 @@ fn issue_7873_shared_wide_source_keeps_every_occurrence_when_work_is_admitted() 
 }
 
 /// #9102: the issue's shape in miniature, one mapped item over one wide
-/// surface list. Nothing repeats, so even a zero allowance admits all of it.
+/// surface list. Its single attempt is all it pays: the list's first read is
+/// the file's own size, however wide.
 #[test]
-fn issue_9102_one_wide_mapped_source_is_admitted_under_any_allowance() {
+fn issue_9102_one_wide_mapped_source_pays_only_its_attempt() {
     let leaves = ["#1"; 8].join(",");
     let model = format!(
         "#300=IFCMAPPEDITEM(#400,$);#400=IFCREPRESENTATIONMAP($,#500);\
@@ -107,15 +108,17 @@ fn issue_9102_one_wide_mapped_source_is_admitted_under_any_allowance() {
     );
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(300).unwrap();
-    let mut work = Work::default();
-    RepresentationWalk {
+    let walk = |max_levels| RepresentationWalk {
         select: Select::Any,
-        nested: NestedMaps::Expand {
-            max_depth: 32,
-            max_levels: 0,
-        },
-    }
-    .mapped_item(&root, &mut decoder, &mut work);
+        nested: NestedMaps::Expand { max_depth: 32, max_levels },
+    };
+    let mut work = Work::default();
+    walk(1).mapped_item(&root, &mut decoder, &mut work);
     assert_eq!((work.entered, work.left, work.leaves), (1, 1, 8));
     assert!(work.refusals.is_empty(), "{:?}", work.refusals);
+    // The attempt itself is never free: it expands a shared source.
+    let mut work = Work::default();
+    walk(0).mapped_item(&root, &mut decoder, &mut work);
+    assert_eq!((work.entered, work.leaves), (0, 0));
+    assert_eq!(work.refusals.len(), 1);
 }

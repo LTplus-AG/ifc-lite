@@ -84,7 +84,9 @@ function joinedBuilding(inventory: StoreyInventory, params: AddStoreyParams): { 
   if (!requested) throw new Error(`${OP}: #${params.referenceStoreyId} is not a live IfcBuildingStorey`);
   // The new storey copies the reference's PlacementRelTo, so it must join the
   // reference's building too; a reference outside any building has none to give.
-  if (requested.parentId === null || inventory.reader.entity(requested.parentId)?.type.toUpperCase() !== 'IFCBUILDING') {
+  // Any spatial parent is kept as the file has it: storeys aggregated under a
+  // site or straight under the project exist, and the new one joins them there.
+  if (requested.parentId === null) {
     throw new Error(`${OP}: ${requested.Name} is not aggregated under a building, so a new storey cannot follow it; choose another reference storey`);
   }
   if (params.buildingId !== undefined && params.buildingId !== requested.parentId) {

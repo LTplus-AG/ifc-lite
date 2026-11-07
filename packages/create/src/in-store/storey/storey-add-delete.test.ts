@@ -77,6 +77,12 @@ describe('addStoreyInStore', () => {
     expect(() => api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 5', Elevation: 12, GlobalId: '2Hh6l7AY56SAGC9IQvMEv6' })).not.toThrow();
   });
 
+  it('a reference storey aggregated straight under the project is followed there', async () => {
+    const s = session(await parse(THIRD_PARTY.replace('#50=IFCRELAGGREGATES(\'1Gm7rvwBn0aOhMnZVa$4c4\',$,$,$,#30,', '#50=IFCRELAGGREGATES(\'1Gm7rvwBn0aOhMnZVa$4c4\',$,$,$,#1,')));
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 4', Elevation: 9, referenceStoreyId: 46 });
+    expect(api('readStoreyInventory')(s.store, s.view).storeys.find((x) => x.expressId === added.storeyId)?.parentId).toBe(1);
+  });
+
   it('refuses a reference storey outside any building', async () => {
     const s = session(await parse(THIRD_PARTY.replace('(#40,#42,#46));', '(#40,#42));')));
     const before = s.snapshot();

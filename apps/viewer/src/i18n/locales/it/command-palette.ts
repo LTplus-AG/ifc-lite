@@ -92,4 +92,6 @@ export const commandPaletteIt = {
   'commandPalette.category.preferences': 'Preferenze',
   'commandPalette.category.extensions': 'Estensioni',
   'commandPalette.category.learn': 'Apprendimento',
+  "commandPalette.noResultsHint": "Prova un altro nome o una parola chiave.",
+  "commandPalette.clearSearch": "Cancella ricerca",
 } satisfies Catalogue;

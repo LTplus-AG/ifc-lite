@@ -177,6 +177,33 @@ export function commandPointerMissed(): void {
   if (state.command && state.snap) publish({ snap: null });
 }
 
+/** The gesture hovered at `snap`, when a press there would grab something a drag moves (`pressDrags`); else null. Publishes nothing. */
+function grabbedAt(snap: SnapResult): unknown {
+  const { command, ctx } = state;
+  if (!command?.pressDrags || !ctx) return null;
+  const moved = command.pointerMove(state.gesture, snap, ctx);
+  return command.pressDrags(moved) ? moved : null;
+}
+
+/** A touch press would grab something at `snap` (#9092): the long press waits for no drag there. */
+export function commandPressGrabs(snap: SnapResult): boolean {
+  return grabbedAt(snap) !== null;
+}
+
+/**
+ * A touch press that starts to drag (#9092): pressed where it landed only when
+ * it grabs something there. Otherwise the finger orbits and the gesture is left
+ * as it was, unhovered, so Enter cannot commit what an orbit passed over.
+ */
+export function commandPressDrag(snap: SnapResult): boolean {
+  const { command, ctx } = state;
+  const moved = grabbedAt(snap);
+  if (!command || !ctx || moved === null) return false;
+  publish({ gesture: moved, snap });
+  applyStep(command.pointerDown(moved, snap, ctx));
+  return true;
+}
+
 /** A button release, for a command that follows one (a drag); refreshed like a down. */
 export function commandPointerUp(snap: SnapResult): void {
   const { command, ctx } = state;

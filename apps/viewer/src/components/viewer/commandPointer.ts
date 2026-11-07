@@ -31,6 +31,8 @@ import {
   commandPointerMissed,
   commandPointerMove,
   commandPointerUp,
+  commandPressDrag,
+  commandPressGrabs,
   getCommandRuntime,
   type CommandRuntimeState,
 } from '@/lib/commands/modeling/runtime';
@@ -146,6 +148,24 @@ function resolveCommandSnap(
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
 }
 
+/** A press or a release lands where it is: a preview still queued for this frame is dropped first. */
+function pressSnap(ctx: MouseHandlerContext, runtime: CommandRuntimeState, x: number, y: number, mods: PointerModifiers): SnapResult | null {
+  cancelCommandPointer(ctx);
+  return resolveCommandSnap(ctx, runtime, x, y, mods);
+}
+
+/**
+ * A touch press at the point it landed (#9092): `drag` presses there when the
+ * press grabs something (`commandPressDrag`), else only asks whether it would
+ * (`commandPressGrabs`). True when it grabs.
+ */
+export function routeCommandPressDrag(ctx: MouseHandlerContext, x: number, y: number, mods: PointerModifiers, drag: boolean): boolean {
+  const runtime = getCommandRuntime();
+  if (!runtime.command?.pressDrags || !runtime.ctx) return false;
+  const snap = pressSnap(ctx, runtime, x, y, mods);
+  return snap !== null && (drag ? commandPressDrag : commandPressGrabs)(snap);
+}
+
 /** True when a command is running and took the event. */
 export function routeCommandPointer(
   ctx: MouseHandlerContext,
@@ -158,8 +178,7 @@ export function routeCommandPointer(
   if (!runtime.command || !runtime.ctx) return false;
   rememberCommandPointer((keys) => { routeCommandPointer(ctx, 'move', x, y, keys); }, mods);
   if (kind !== 'move') {
-    cancelCommandPointer(ctx);
-    const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
+    const snap = pressSnap(ctx, runtime, x, y, mods);
     if (snap) (kind === 'up' ? commandPointerUp : (mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
     else commandPointerMissed();
     return true;
@@ -179,20 +198,5 @@ export function routeCommandPointer(
     if (snap) commandPointerMove(snap);
     else commandPointerMissed();
   });
-  return true;
-}
-
-/**
- * A touch tap (#9042): what a click does. A command that follows the press
- * itself (`pointerDownOnPress`, a drag) gets the press and the release in
- * place, as a mouse press and release with no drag between them; any other
- * gets the click's down.
- */
-export function routeCommandTap(ctx: MouseHandlerContext, x: number, y: number): boolean {
-  const runtime = getCommandRuntime();
-  if (!runtime.command || !runtime.ctx) return false;
-  const onPress = runtime.command.pointerDownOnPress?.(runtime.gesture) === true;
-  routeCommandPointer(ctx, 'down', x, y);
-  if (onPress) routeCommandPointer(ctx, 'up', x, y);
   return true;
 }

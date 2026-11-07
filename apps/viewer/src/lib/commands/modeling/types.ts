@@ -167,6 +167,13 @@ export interface ModelingCommand<G = unknown> {
   /** Handle this gesture on the actual press/release instead of a browser click. */
   pointerDownOnPress?(g: G): boolean;
   /**
+   * With `pointerDownOnPress`: a press here, its point hovered, grabs
+   * something a drag moves (a room corner). A touch drag from it is the
+   * command's; from anywhere else a finger orbits and presses nothing (#9092),
+   * since touch has no other one-finger orbit. Absent = a finger always orbits.
+   */
+  pressDrags?(g: G): boolean;
+  /**
    * The button's release, where the pointer source reports one (plan or 3D):
    * e.g. drop a dragged corner. Absent = releases are ignored.
    */

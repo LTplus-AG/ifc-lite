@@ -9,6 +9,7 @@ import { act, useLayoutEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { RefObject } from 'react';
 import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast.js';
 import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
@@ -16,6 +17,7 @@ import { entityRefToString, useViewerStore, type FederatedModel, type ViewerStat
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
 import { sourceOccurrenceKey, type selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines.js';
 import { ZERO_ROTATION } from '@/lib/model-placement/rotation.js';
+import { findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { useCentrelineRendererOverlay } from './useCentrelineRendererOverlay.js';
 
 /*
@@ -64,6 +66,8 @@ let layouts: Array<{ curves: string; line: boolean }>;
 let layoutMark: number;
 /** The first layout pass of the last commit: what the next frame paints and picks. */
 const firstLayout = () => layouts[layoutMark];
+/** What the next frame paints and picks: the first layout pass of the last commit, or what is held when it re-rendered nothing. */
+const nextFrame = () => layouts[layoutMark] ?? { curves: current() ?? '', line: lineDrawn() };
 let builds: number;
 /** A build waits on this gate when one is set. */
 let gate: Promise<void> | null;
@@ -656,17 +660,19 @@ it('a model field that places the curves clears them before paint (#9158)', asyn
   assert.deepEqual(firstLayout(), { curves: '', line: false }, 'an alignment change re-places the source');
 });
 
-it('a change to another model that can re-anchor the federation clears before paint (#9158)', async () => {
-  // The drawn model aligns to the federation anchor, which any loaded model can be.
-  await mountInstalled([1], ONE, federated([1]));
+it('a new anchor candidate, or a pinned anchor, keeps the curves of a model that is not aligned (#9229)', async () => {
+  // `live` was never re-baked into an anchor's frame, so no anchor places its curves.
+  const from = await mountInstalled([1], ONE, federated([1]));
+  const before = builds;
   const models = useViewerStore.getState().models;
   const other = models.get('other')!;
   commit({ models: new Map([...models, ['other', { ...other, spatialReference: {} as FederatedModel['spatialReference'] }]]) });
-  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new anchor candidate can re-place the curves');
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'another model\'s georeference moves no curve of live');
+  commit({ anchorModelIdOverride: 'other' });
+  assert.deepEqual(nextFrame(), { curves: ONE, line: true }, 'nor does pinning it');
   await settle();
-  assert.equal(current(), ONE);
-  commit({ models: new Map([[MODEL, useViewerStore.getState().models.get(MODEL)!]]) });
-  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'removing another model can change the anchor');
+  assert.equal(builds, before);
+  assert.deepEqual(since(from), []);
 });
 
 it('hiding the drawn model mid-rebuild clears before paint and rejects the late result (#9158)', async () => {
@@ -713,4 +719,152 @@ it('with the overlay off, a renderer-id selection resolves nothing for the model
   await settle();
   assert.ok(resolved > 0, 'turning it on resolves the selection');
   assert.equal(current(), `${ONE},${THREE}`);
+});
+
+/*
+ * Only the models the selection reaches place its curves (#9229). An aligned
+ * model's curves map through the reference its meshes were re-baked into,
+ * which pinning another anchor does not move until a re-align.
+ */
+
+const crs: ProjectedCRS = { id: 3, name: 'EPSG:2056', verticalDatum: 'EPSG:5729', mapUnitScale: 1 } as ProjectedCRS;
+
+/** A georeferenced model in EPSG:2056, its project origin at `eastings`. */
+function georeferenced(id: string, idOffset: number, eastings: number, loadedAt: number): FederatedModel {
+  const model = Object.assign(sourceModel(), { id, name: id, idOffset, loadedAt });
+  const conversion: MapConversion = { id: 1, sourceCRS: 2, targetCRS: 3, eastings, northings: 1_200_000,
+    orthogonalHeight: 400, xAxisAbscissa: 1, xAxisOrdinate: 0, factorX: 1, factorY: 1, factorZ: 1 };
+  Object.assign(model.ifcDataStore!, { lengthUnitScale: 1,
+    georeferencing: { hasGeoreference: true, projectedCRS: crs, mapConversion: conversion } });
+  return model;
+}
+
+/**
+ * `anchor` drives the frame, `live` (10 m east of it) was aligned into it on
+ * load, and `third` lies 100 m east; `live:1` is selected. With `recorded`
+ * false, `live` carries no record of the reference it was aligned into.
+ */
+function alignedFederation(recorded = true): Partial<ViewerState> {
+  const anchor = Object.assign(georeferenced('anchor', 3 * OFFSET, 2_600_000, 1), { federationAlignmentStatus: 'anchor' as const });
+  const third = georeferenced('third', 4 * OFFSET, 2_600_100, 3);
+  const live = Object.assign(georeferenced(MODEL, OFFSET, 2_600_010, 2), {
+    federationAlignmentStatus: 'same-crs' as const, preAlignment: { coordinateInfo: geometry().coordinateInfo },
+  }) as FederatedModel;
+  const prior = useViewerStore.getState();
+  useViewerStore.setState({ ...fixtureModels(anchor, third), georefMutations: new Map(), anchorModelIdOverride: null });
+  // What the load recorded: the anchor the federation picked when `live` joined.
+  if (recorded) live.alignmentReference = findReferenceSpatialModel()!.placement;
+  useViewerStore.setState({ models: prior.models });
+  const offsets: Record<string, number> = { [MODEL]: OFFSET, anchor: 3 * OFFSET, third: 4 * OFFSET };
+  return { ...fixtureModels(anchor, live, third), georefMutations: new Map(), anchorModelIdOverride: null,
+    toGlobalId: (modelId, expressId) => offsets[modelId]! + expressId, ...select([1]) };
+}
+
+it('pinning another anchor without a re-align keeps the curves on the meshes, even through a rebuild (#9229)', async () => {
+  mount([1], alignedFederation());
+  await waitFor(() => (current() ?? '') !== '', 'the aligned curves install');
+  const aligned = current();
+  assert.notEqual(aligned, ONE, 'the curves are mapped into the anchor frame, not drawn in their own');
+  const from = held.length;
+  const before = builds;
+  commit({ anchorModelIdOverride: 'third' });
+  assert.deepEqual(nextFrame(), { curves: aligned, line: true }, 'no mesh moved, so neither does a curve');
+  await settle();
+  assert.equal(builds, before, 'nothing rebuilt');
+  assert.deepEqual(since(from), [], 'Live holds');
+  commit(select([1]));
+  await settle();
+  assert.ok(builds > before, 'a re-selection rebuilds');
+  assert.equal(current(), aligned, 'the rebuilt curves still lie where the meshes are, not in the pinned anchor\'s frame');
+  // The re-align re-bakes `live` into `third`'s frame; the curves follow it.
+  const placed = useViewerStore.getState().models.get(MODEL)!;
+  commit({ models: new Map([...useViewerStore.getState().models,
+    [MODEL, { ...placed, alignmentReference: findReferenceSpatialModel()!.placement }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new alignment reference re-places the curves before paint');
+  await settle();
+  assert.ok(current() !== '' && current() !== aligned, 'the curves move into the re-aligned frame');
+});
+
+it('replacing a room model, whose id has colons, under the same id clears its curves before paint (#9229)', async () => {
+  // A collab room registers `room:<roomId>:<slotId>`, so its product keys hold more than one colon.
+  const ROOM = 'room:r1:s1';
+  const room = Object.assign(sourceModel(), { id: ROOM, name: ROOM });
+  await mountInstalled([1], ONE, { ...fixtureModels(room), ...select([1], 1, ROOM) });
+  const placed = useViewerStore.getState().models.get(ROOM)!;
+  commit({ models: new Map([[ROOM, { ...placed, geometryResult: geometry() }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new geometry result re-places the room model\'s curves');
+  await settle();
+  assert.equal(current(), ONE, 'the replaced model\'s curves install');
+});
+
+it('a model aligned with no recorded reference follows the anchor the federation picks, pin included (#9229)', async () => {
+  mount([1], alignedFederation(false));
+  await waitFor(() => (current() ?? '') !== '', 'the aligned curves install');
+  const aligned = current();
+  commit({ anchorModelIdOverride: 'third' });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the pinned anchor re-places these curves before paint');
+  await settle();
+  assert.ok(current() !== '' && current() !== aligned, 'they install in the pinned anchor\'s frame');
+  const moved = current();
+  const models = useViewerStore.getState().models;
+  commit({ models: new Map([...models, ['anchor', { ...models.get('anchor')!, geometryResult: geometry() }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'any model can become the anchor, so any model\'s change clears');
+  await settle();
+  assert.equal(current(), moved);
+});
+
+it('loading, streaming, reordering or removing a model the selection doesn\'t reach keeps the curves (#9229)', async () => {
+  // One model, then two, then three, and back: the drawn `live:1` never moves.
+  const from = await mountInstalled([1], ONE);
+  const before = builds;
+  const third = Object.assign(sourceModel(), { id: 'third', name: 'third', idOffset: 3 * OFFSET });
+  const steps: Array<[string, () => Map<string, FederatedModel>]> = [
+    ['a second model loads', () => new Map([...useViewerStore.getState().models, ['other', otherModel()]])],
+    ['a third model loads', () => new Map([...useViewerStore.getState().models, ['third', third]])],
+    ['the third streams a batch', () => new Map([...useViewerStore.getState().models,
+      ['third', { ...third, geometryResult: geometry(), loadedAt: 9 }]])],
+    ['the models reorder', () => new Map([...useViewerStore.getState().models].reverse())],
+    ['the second is removed', () => new Map([...useViewerStore.getState().models].filter(([id]) => id !== 'other'))],
+    ['the third is removed', () => new Map([...useViewerStore.getState().models].filter(([id]) => id !== 'third'))],
+  ];
+  for (const [label, models] of steps) {
+    commit({ models: models() });
+    assert.deepEqual(firstLayout(), { curves: ONE, line: true }, label);
+  }
+  await settle();
+  assert.equal(useViewerStore.getState().models.size, 1);
+  assert.equal(builds, before, 'nothing rebuilt');
+  assert.deepEqual(since(from), [], 'the renderer was handed no curve set, so Live holds');
+  lineKept();
+});
+
+it('a new legacy geometry result under the same store clears the curves before paint and re-places them (#9229)', async () => {
+  const legacyOne = '1@{"x":1,"y":0,"z":0}';
+  await mountInstalled([1], legacyOne, { models: new Map(), activeModelId: null, ...legacyStore(), ...select([1], 1, 'legacy') });
+  const shifted = geometry();
+  shifted.coordinateInfo = { ...shifted.coordinateInfo, originShift: { x: 5, y: 0, z: 0 } };
+  commit({ geometryResult: shifted });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'curves placed by the old geometry cannot be snapped to');
+  await settle();
+  assert.ok(current() !== '' && current() !== legacyOne, 'the curves install in the new geometry\'s frame');
+  // Alignment can also replace the frame on the kept geometry object.
+  const placed = current();
+  const kept = useViewerStore.getState().geometryResult!;
+  kept.coordinateInfo = { ...kept.coordinateInfo, originShift: zero };
+  commit({ hiddenEntities: new Set(useViewerStore.getState().hiddenEntities) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a frame replaced on the kept geometry clears');
+  await settle();
+  assert.ok(current() !== placed);
+});
+
+it('the overlay resolves a renderer-id selection once per change, not once more for its query (#9229)', async () => {
+  const resolve = useViewerStore.getState().resolveGlobalIdFromModels;
+  let resolved = 0;
+  await mountInstalled([], ONE, { ...federated([], [1]), selectedEntitiesSet: new Set(), selectedEntity: null,
+    selectedEntityIds: new Set([2 * OFFSET + 1]), selectedEntityId: null,
+    resolveGlobalIdFromModels: (globalId: number) => { resolved++; return resolve(globalId); } });
+  resolved = 0;
+  commit(() => useViewerStore.getState().setModelCollapsed('other', true));
+  await settle();
+  assert.equal(resolved, 1, 'one selected id, one resolution');
 });

@@ -30,7 +30,7 @@ pub(crate) const Z: usize = 2;
 /// IfcGrid's `UAxes`, `VAxes`, `WAxes`.
 const GRID_AXIS_SLOTS: [usize; 3] = [7, 8, 9];
 /// The reader's tolerance for a degenerate axis, direction or crossing.
-const EPS: f64 = 1e-9;
+pub(crate) const EPS: f64 = 1e-9;
 
 pub(crate) struct Rec<'a> {
     pub(crate) id: u32,

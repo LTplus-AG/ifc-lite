@@ -23,7 +23,7 @@ export const OBJECT_PLACEMENT = 5;
 /** IfcGrid's `UAxes`, `VAxes`, `WAxes`. */
 const GRID_AXIS_SLOTS = [7, 8, 9];
 /** The reader's tolerance for a degenerate axis, direction or crossing. */
-const EPS = 1e-9;
+export const EPS = 1e-9;
 
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];

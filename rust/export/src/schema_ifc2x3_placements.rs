@@ -35,7 +35,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::schema_ifc2x3_records::{
-    is_dollar, list, num, ref_id, triple, GridFrame, Records, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT, RELATIVE_PLACEMENT, Z,
+    is_dollar, list, num, ref_id, triple, GridFrame, Records, EPS, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT, RELATIVE_PLACEMENT, Z,
 };
 use crate::step_log::format_step_real;
 use crate::step_record_frame::record_frame;
@@ -138,16 +138,18 @@ fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
     if l.len() != 2 || a.len() != 3 {
         return None;
     }
+    // Within the reader's tolerance: a frame composed through a turned grid
+    // leaves residues like 6e-17 where it means zero.
     let at = records.vector(Some(a[0]), "IFCCARTESIANPOINT")?;
-    if at[0] != 0.0 || at[1] != 0.0 {
+    if at[0].abs() > EPS || at[1].abs() > EPS {
         return None;
     }
     let axis = if is_dollar(a[1]) { vec![0.0, 0.0, 1.0] } else { records.vector(Some(a[1]), "IFCDIRECTION")? };
     let reference = if is_dollar(a[2]) { vec![1.0, 0.0] } else { records.vector(Some(a[2]), "IFCDIRECTION")? };
-    if axis.len() != 3 || axis[0] != 0.0 || axis[1] != 0.0 || !(axis[2] > 0.0) {
+    if axis.len() != 3 || !(axis[2] > 0.0) || axis[0].abs() > EPS * axis[2] || axis[1].abs() > EPS * axis[2] {
         return None;
     }
-    if !(reference[0] > 0.0) || reference[1] != 0.0 {
+    if !(reference[0] > 0.0) || reference[1].abs() > EPS * reference[0] {
         return None;
     }
     if !is_dollar(g[1]) && records.get(ref_id(Some(g[1])), Some(INTERSECTION)).is_none() {
@@ -158,7 +160,7 @@ fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
         return None;
     }
     let dz = at.get(Z).copied().unwrap_or(0.0);
-    if dz == 0.0 {
+    if dz.abs() <= EPS {
         return Some(None);
     }
     let offsets = if is_dollar(i[1]) { vec!["0.", "0."] } else { list(Some(i[1]))? };

@@ -230,6 +230,11 @@ export class SubsetParentResidency {
    * whole, restoreParentNow rebuilds it, with no cap on a capture frame.
    * Rebuilding it here would also drop its sub-batches, which the capture
    * would then cut again, and the budget would evict it again afterwards.
+   * Exception: with sun shadows on, the shadow pass casts a fully visible
+   * parent whole and rebuilds it (`batchForWholeDraw`, #9050), which drops
+   * those sub-batches before the colour pass splits it again. That costs the
+   * same re-cut as rebuilding everything here did before #9227; the saving
+   * applies only without shadows.
    * Returns the number of batches rebuilt.
    */
   restoreAll(device: GPUDevice, pipeline: RenderPipeline): number {

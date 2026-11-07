@@ -35,8 +35,12 @@ interface ActivePreview {
   readonly modelId: string;
   readonly batchId: string;
   readonly redoBefore: RedoStack;
-  /** The edit that puts the level back, for a preview another write has buried. */
-  readonly inverse: StoreyLevelEdit | null;
+  /**
+   * What puts the levels back for a preview another write has buried: each
+   * storey the preview moved, at its elevation before. Absolute elevations,
+   * so a storey added or moved meanwhile cannot skew the restore.
+   */
+  readonly inverse: readonly StoreyLevelEdit[];
 }
 
 let active: ActivePreview | null = null;
@@ -63,7 +67,7 @@ export function previewStoreyLevel(store: TransactionStore, modelId: string, edi
     return { plan, applied: false, outcome: null };
   }
   const redoBefore = store.getState().redoStacks.get(modelId);
-  const inverse = inverseOf(store, modelId, edit);
+  const inverse = inverseOf(plan);
   const outcome = commitStoreyOp(store, modelId, { kind: 'level', edit });
   if (outcome.ok && outcome.batchId) active = { modelId, batchId: outcome.batchId, redoBefore, inverse };
   return { plan, applied: outcome.ok, outcome };
@@ -94,9 +98,10 @@ export function revertStoreyPreview(store: TransactionStore): void {
   if (!top || state.mutationBatchTags.get(top.id) !== batchId) {
     // Something else (a script, another tool) was written on top of the preview, so undoing
     // would undo that instead. Cancel still means the level goes back: re-level it as it was.
-    if (!inverse) return;
-    const restored = commitStoreyOp(store, modelId, { kind: 'level', edit: inverse });
-    if (!restored.ok) console.error(`[storeys] could not take back a buried preview: ${restored.reason}`);
+    for (const edit of inverse) {
+      const restored = commitStoreyOp(store, modelId, { kind: 'level', edit });
+      if (!restored.ok) console.error(`[storeys] could not take back a buried preview: ${restored.reason}`);
+    }
     return;
   }
   state.undo(modelId);
@@ -112,15 +117,13 @@ export function hasStoreyPreview(): boolean {
   return active !== null;
 }
 
-/** The edit that restores what `edit` changes, read before it is applied. */
-function inverseOf(store: TransactionStore, modelId: string, edit: StoreyLevelEdit): StoreyLevelEdit | null {
-  const target = modelEditTarget(store.getState(), modelId);
-  if (!target) return null;
-  const { storeys } = readStoreyInventory(target.dataStore, target.view);
-  const index = storeys.findIndex((storey) => storey.expressId === edit.storeyId);
-  if (index < 0) return null;
-  const storey = storeys[index];
-  if (edit.kind === 'elevation') return { kind: 'elevation', storeyId: storey.expressId, Elevation: storey.elevation };
-  const above = storeys[index + 1];
-  return above ? { kind: 'floorHeight', storeyId: storey.expressId, Height: above.elevation - storey.elevation } : null;
+/**
+ * The edits that put back every storey `plan` moves, one elevation each, in
+ * an order that never passes a neighbour: storeys returning down go lowest
+ * first, storeys returning up go highest first.
+ */
+function inverseOf(plan: StoreyLevelPlan): StoreyLevelEdit[] {
+  const down = plan.storeys.filter((move) => move.to > move.from).sort((a, b) => a.to - b.to);
+  const up = plan.storeys.filter((move) => move.to < move.from).sort((a, b) => b.to - a.to);
+  return [...down, ...up].map((move) => ({ kind: 'elevation', storeyId: move.expressId, Elevation: move.from }));
 }

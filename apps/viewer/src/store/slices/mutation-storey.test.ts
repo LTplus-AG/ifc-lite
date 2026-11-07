@@ -296,6 +296,16 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(wall.expressId), false, 'the later write stays');
   });
 
+  it('Escape on a buried floor-to-floor preview restores each storey, even after a storey was added below it (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'floorHeight', storeyId: STOREY, Height: 4 }).applied);
+    // A script adds a storey at 2 m, between L0 and the previewed L1 (now at 4 m).
+    const added = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Mezzanine', Elevation: 2, referenceStoreyId: STOREY } });
+    assert.ok(added.ok);
+    m.revertStoreyPreview(useViewerStore);
+    assert.deepEqual(storeys(), [['L0', 0], ['Mezzanine', 2], ['L1', 3]], 'L1 is back at 3 m; the new storey stays at 2 m');
+  });
+
   it('a preview a script has undone is not reported as kept (#9037 review)', async () => {
     const m = await storey();
     assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 }).applied);

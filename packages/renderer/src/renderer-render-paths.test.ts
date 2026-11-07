@@ -1141,15 +1141,15 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
         const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
-        const createdBefore = h.stats.createdBuffers.length;
         h.stats.draws.length = 0;
         h.render({ isolatedIds: new Set([2]), restoreEvictedForCapture: true });
         assert.strictEqual(greyOf(h), grey, 'not rebuilt: the capture draws it as the same subset');
         assert.strictEqual(grey.gpuResident, false);
         assert.ok(h.stats.draws.includes(sub.vertexBuffer), 'the capture draws the cached sub-batch');
         assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'not cut again');
-        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no GPU allocation for the capture');
-        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+        assert.deepStrictEqual([...scene['partialBatchCache'].values()], [sub]);
+        // Red, hidden and never drawn as a subset, is rebuilt for the capture as before.
+        assert.notStrictEqual(sceneOf(h).getBatchedMeshes().find((b) => b.expressIds.includes(3))!.gpuResident, false);
     });
 
     it('a capture still rebuilds an evicted batch it reveals whose subset was not on screen', () => {

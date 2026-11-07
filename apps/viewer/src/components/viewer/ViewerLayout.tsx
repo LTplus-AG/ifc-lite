@@ -61,7 +61,7 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
-import { activeBottomPanel } from '@/lib/panels/bottom-panels';
+import { dockedBottomPanel as dockedBottomPanelOf } from '@/lib/panels/rendered-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
@@ -162,7 +162,7 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
-  const bottomPanel = activeBottomPanel(useBottomPanelFlags());
+  const bottomFlags = useBottomPanelFlags();
   // The right pane is owned by the sidebar (#1208); here we only need to know which
   // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
@@ -171,7 +171,7 @@ export function ViewerLayout() {
     () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
     [floatingPanels, poppedOutIds],
   );
-  const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
+  const dockedBottomPanel = dockedBottomPanelOf(bottomFlags, (id) => detachedIds.has(id));
 
   // Side-by-side 2D/3D layout preset (#5515): a persisted dock-side choice
   // ("does Drawing go beside the viewport or below it") that only takes
@@ -418,8 +418,9 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
             <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
 
-            {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
-                (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
+                Properties included (#5853, #8802 R6). Hidden in the empty state so the
+                "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
               <MobilePanelLauncher bottomInset={bottomViewportInset} />
             )}

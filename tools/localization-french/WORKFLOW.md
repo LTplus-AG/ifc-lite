@@ -39,7 +39,14 @@ WASM. GPU: Intel Gen-12LP, `isFallbackAdapter: false`, Chrome headless shell
 154.0.8037.92 with explicit Intel Vulkan ICD. This was untimed correctness work,
 not performance evidence.
 
-Reproduce after a current build and the existing admitted preview is ready:
+Historical command below used attempt `final-verified`. For a new run, choose a
+fresh `FRENCH_WORKFLOW_ATTEMPT` name; output goes to `evidence/<attempt>/`.
+An existing attempt is refused to preserve its evidence. Without the variable,
+the harness creates a unique run name. Build through admission first and use
+the GPU helper’s supplied Chrome/CDP configuration; the pinned driver/browser
+paths below describe only that historical machine.
+
+Historical reproduction command:
 
 ```sh
 VK_DRIVER_FILES=/usr/share/vulkan/icd.d/intel_icd.json \

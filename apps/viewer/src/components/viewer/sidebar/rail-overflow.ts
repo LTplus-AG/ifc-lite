@@ -125,17 +125,32 @@ export function foldModelPanels<Id extends string>(
 }
 
 /**
- * The rail as `ActivityBar` lays it out: fold the panels that `waits` into
- * More (`foldModelPanels`; pass `null` to fold none), fit the rest to the
- * height with More's row reserved whenever something waits in it, and list
- * the overflow in rail order so the menu's group headings stay one run each.
+ * The rail as `ActivityBar` lays it out, in one place:
+ *
+ * - **Pins**: `anchors` (the current tour step's anchor first, then the
+ *   right-pane panel) and every panel `isOpen` reports open in any slot: the
+ *   left slot, the right pane's primary and split halves, the bottom strip, a
+ *   floating or popped-out window. An open panel's icon carries its open mark,
+ *   so it is never folded away or pushed into More while there is room for it.
+ *   Pins yield only when even they do not fit beside More, lowest priority
+ *   (last) first, as `fitRail` documents; More then names them open.
+ * - **Fold**: on the empty start screen, `waits` names the panels that need a
+ *   model; unless pinned they wait in More (`foldModelPanels`). `null` folds
+ *   none (a model is loaded).
+ * - **Fit**: the rest is fitted to the height with More's row reserved
+ *   whenever something waits in it, and the overflow is listed in rail order
+ *   so the menu's group headings stay one run each.
  */
 export function layoutRail<Id extends string>(
   entries: readonly RailEntry<Id>[],
   availablePx: number,
-  pinned: readonly (Id | null | undefined)[],
-  waits: ((id: Id) => boolean) | null,
+  { anchors = [], isOpen = () => false, waits = null }: {
+    anchors?: readonly (Id | null | undefined)[];
+    isOpen?: (id: Id) => boolean;
+    waits?: ((id: Id) => boolean) | null;
+  } = {},
 ): RailFit<Id> & { waiting: Id[] } {
+  const pinned = [...new Set([...anchors.filter((id): id is Id => !!id), ...entries.map((e) => e.id).filter(isOpen)])];
   const { rail, waiting } = waits ? foldModelPanels(entries, waits, pinned) : { rail: [...entries], waiting: [] as Id[] };
   const fit = fitRail(rail, availablePx, pinned, { moreRequired: waiting.length > 0 });
   const over = new Set([...fit.overflow, ...waiting]);

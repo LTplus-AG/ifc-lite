@@ -144,14 +144,18 @@ export function ActivityBar() {
     }),
     [visibleIds],
   );
-  // On the empty start screen the rail offers what works without a model;
-  // the model-dependent panels wait in More (`layoutRail`).
+  // Every open panel stays on the rail, read from the same `isOpen` that
+  // draws the icons' open marks; on the empty start screen the panels that
+  // need a model wait in More (`layoutRail`).
   const fit = useMemo(
     () => (customizing
       ? { visible: entries.map((e) => e.id), overflow: [], waiting: [] }
-      : layoutRail(entries, listHeight, [tourRailAnchor, primaryId],
-        viewerEmpty ? (id) => needsModel(id) && panelLocation(id) === 'closed' : null)),
-    [customizing, entries, listHeight, panelLocation, primaryId, tourRailAnchor, viewerEmpty],
+      : layoutRail(entries, listHeight, {
+        anchors: [tourRailAnchor, primaryId],
+        isOpen,
+        waits: viewerEmpty ? needsModel : null,
+      })),
+    [customizing, entries, isOpen, listHeight, primaryId, tourRailAnchor, viewerEmpty],
   );
 
   const onIconClick = (id: WorkspacePanelId) => {

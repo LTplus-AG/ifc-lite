@@ -60,7 +60,8 @@ describe('source model key (#9158)', () => {
           if (typeof field === 'string') reads.add(field);
           return Reflect.get(object, field, receiver);
         } });
-        seed(model);
+        // A second model makes the anchor search compare load order.
+        seed(model, Object.assign(sourceModel('other', 2 * OFFSET), { loadedAt: 2 }));
         const state = useViewerStore.getState();
         selectedSweptDiskProducts(state);
         selectedModelVisibility(state);
@@ -73,7 +74,7 @@ describe('source model key (#9158)', () => {
       'a field the curves read but the key ignores would let its change skip the rebuild');
     for (const field of ['geometryResult', 'preAlignment', 'federationAlignmentStatus', 'ifcDataStore', 'visible',
       'spatialReference', 'loadedAt']) {
-      assert.ok(reads.has(field), `the fixture exercises the path that reads ${field}`);
+      assert.ok(reads.has(field), `the fixture exercises the path that reads ${field}; it read ${[...reads].join(', ')}`);
     }
   });
 

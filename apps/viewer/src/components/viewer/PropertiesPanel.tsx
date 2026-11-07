@@ -1140,12 +1140,12 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50 dark:bg-black">
-        <div className="p-3 border-b-2 border-border bg-white">
+      <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50">
+        <div className="p-3 border-b-2 border-border bg-card">
           <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">{t('properties.panel.title')}</h2>
         </div>
         <EmptyState
-          className="flex-1 bg-white"
+          className="flex-1 bg-card"
           icon={<MousePointer2 className="size-8" />}
           title={t('properties.panel.emptyTitle')}
           description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
@@ -1728,14 +1728,14 @@ function EntityDataSection({
   }
 
   return (
-    <div className="bg-white">
+    <div className="bg-card">
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
           <ModelBadge modelId={model.id} className="gap-2 text-2xs max-w-full" />
         )}
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-emerald-600" />
+          <Layers className="h-4 w-4 text-muted-foreground" />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm truncate text-foreground">
               {entityNode.name || `${displayType} #${entityRef.expressId}`}
@@ -1743,7 +1743,7 @@ function EntityDataSection({
             <p className="text-xs font-mono text-muted-foreground">{displayType}</p>
           </div>
           {elevationInfo !== null && (
-            <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
+            <span className="text-2xs font-mono bg-muted px-1.5 py-0.5 border border-border text-foreground">
               {t('properties.panel.multiEntity.elevationMeters', { sign: elevationInfo >= 0 ? '+' : '', value: elevationInfo.toFixed(2) })}
             </span>
           )}

@@ -192,7 +192,7 @@ describe('advanced Filter tab — clicking a result row', () => {
 
     click(cell(container, 'Wall A'));
 
-    // The dialog overlay is `fixed inset-0 bg-black/80`; leaving it open is
+    // The dialog overlay is `fixed inset-0 bg-scrim/80`; leaving it open is
     // what made #2396 read as "the click does nothing".
     assert.equal(useViewerStore.getState().searchModalOpen, false);
   });

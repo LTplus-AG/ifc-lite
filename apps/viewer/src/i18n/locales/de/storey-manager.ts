@@ -66,6 +66,10 @@ export const storeyManagerDe = {
     "one": "{count} angeschlossene Wand wird verschoben, behält aber ihre Höhe: Sie ist keine einfache Extrusion",
     "other": "{count} angeschlossene Wände werden verschoben, behalten aber ihre Höhe: Sie sind keine einfachen Extrusionen"
   },
+  "storeyManager.notice.wallAttachmentUnresolved": {
+    "one": "{count} Wand behält ihre Höhe: Ihre erfasste Oberkante nennt kein eindeutiges Geschoss",
+    "other": "{count} Wände behalten ihre Höhe: Ihre erfassten Oberkanten nennen kein eindeutiges Geschoss"
+  },
   "storeyManager.notice.stairNotRefit": {
     "one": "{count} Treppe wird verschoben, aber nicht angepasst: Sie ist kein einzelner Treppenlauf",
     "other": "{count} Treppen werden verschoben, aber nicht angepasst: Sie sind keine einzelnen Treppenläufe"

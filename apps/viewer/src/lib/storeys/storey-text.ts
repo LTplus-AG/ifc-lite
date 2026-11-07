@@ -54,6 +54,7 @@ export function noticeText(t: T, notice: StoreyNotice): string {
   const count = notice.elementIds.length;
   if (notice.code === 'wallNotResized') return t('storeyManager.notice.wallNotResized', { count });
   if (notice.code === 'stairNotRefit') return t('storeyManager.notice.stairNotRefit', { count });
+  if (notice.code === 'wallAttachmentUnresolved') return t('storeyManager.notice.wallAttachmentUnresolved', { count });
   return notice.message;
 }
 

@@ -26,6 +26,7 @@ import type { SnapResult } from '@/lib/snap/types';
 import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
+import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { ViewportHud } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
 
@@ -88,6 +89,21 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(added(firstView), 0, 'no storey was written to the model left behind');
     assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
+  });
+
+  it('Add storey above goes above the storey drawn on when the click resolves (#9037 review)', async () => {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    // Clicked on L0; the session moves to L1 before the module load resolves.
+    act(() => { click(add); useViewerStore.getState().setSessionStorey(UPPER_STOREY); });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const created = useViewerStore.getState().session!.storeyId!;
+    assert.ok(created !== STOREY && created !== UPPER_STOREY, 'the new storey is drawn on');
+    const elevations = new Map(modelStoreys(useViewerStore.getState(), MODEL_ID).map((st) => [st.expressId, st.elevation]));
+    assert.ok(elevations.get(created)! > elevations.get(UPPER_STOREY)!, 'it sits above L1, the storey drawn on, not between L0 and L1');
   });
 
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {

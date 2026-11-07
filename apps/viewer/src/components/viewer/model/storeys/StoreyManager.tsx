@@ -48,7 +48,11 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
   const editing = useStoreyLevelEditing(modelId);
   const renaming = useStoreyRename(modelId);
   // `reviewed`: what the open delete panel shows, and all that confirming it may delete.
-  const [deleting, setDeleting] = useState<{ storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null } | null>(null);
+  const [deletingState, setDeleting] = useState<{
+    modelId: string | null; storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null;
+  } | null>(null);
+  // Choices opened for another model's storey (express ids repeat across models) are not this model's.
+  const deleting = deletingState?.modelId === modelId ? deletingState : null;
   const review = (storeyId: number) => (modelId ? reviewStoreyDeletion(useViewerStore.getState(), modelId, storeyId) : null);
   const radios = useRef(new Map<number, HTMLButtonElement>());
   const names = useRef(new Map<number, HTMLInputElement>());
@@ -88,7 +92,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     if (!outcome.ok) {
       const message = outcome.refusals[0] ? refusalText(t, outcome.refusals[0]) : t('storeyManager.refusal.other', { reason: outcome.reason });
       // A refused panel shows the storey as it is now, so a second confirm deletes what it lists.
-      if (deleting?.storeyId === storeyId) setDeleting({ storeyId, error: message, reviewed: review(storeyId) });
+      if (deleting?.storeyId === storeyId) setDeleting({ modelId, storeyId, error: message, reviewed: review(storeyId) });
       else toast.error(message);
       return;
     }
@@ -109,7 +113,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     if (!row) return;
     // An empty storey goes straight away (with Undo); one with elements asks what to do with them.
     if (row.elementCount === 0) remove(storeyId, { kind: 'empty' });
-    else setDeleting({ storeyId, error: null, reviewed: review(storeyId) });
+    else setDeleting({ modelId, storeyId, error: null, reviewed: review(storeyId) });
   };
 
   const selectElements = (ids: readonly number[]) => {

@@ -335,6 +335,25 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     assert.equal(attachment(wall)?.targetStoreyId, added.storeyId);
   });
 
+  it('a wall on an upper storey measures to the next storey from its own floor, not world zero (#9037 review)', async () => {
+    const m = await storey();
+    // L0 at 0 m, L1 at 3 m, L2 at 6 m: a wall on L1 reaches L2, 3 m up.
+    const roof = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L2', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+    assert.ok(roof.ok && roof.storeyId !== null);
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    useViewerStore.getState().setSessionStorey(UPPER_STOREY);
+    const drawn = draw(0);
+    assert.equal(attachment(drawn)?.targetStoreyId, roof.storeyId);
+    assert.equal(Math.round(height(drawn)! * 1000), 3000, 'the Wall tool');
+    assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, drawn)?.start[2], 0, 'endpoints are storey-local');
+    // The inspector's "Storey above" on a fixed wall of L1 computes the same.
+    const fixed = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 6, 0], End: [4, 6, 0], Thickness: 0.2, Height: 2 });
+    assert.ok(!('error' in fixed));
+    const { setWallTop } = await import('@/components/viewer/model-inspector/WallTopRow');
+    assert.ok(setWallTop(MODEL_ID, fixed.expressId, 'storeyAbove'));
+    assert.equal(Math.round(height(fixed.expressId)! * 1000), 3000, 'the inspector');
+  });
+
   it('typing the storey spacing itself still makes the wall fixed at that height', () => {
     useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
     useViewerStore.getState().startCommand('wall.place');

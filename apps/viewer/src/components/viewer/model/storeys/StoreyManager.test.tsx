@@ -23,6 +23,7 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { Toaster } from '@/components/ui/toast';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 let restore: () => void = () => {};
@@ -202,6 +203,31 @@ describe('storey manager (#9013)', () => {
     assert.equal(view.isDeleted(later.expressId), false, 'the later wall stays');
     assert.equal(rows(ui).length, 1, 'the storey stays deleted');
     await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this deletion'), 'the toast says why');
+  });
+
+  it('deletion choices opened in one model are not offered for another model with the same storey ids (#9037 review)', async () => {
+    const wall = useViewerStore.getState().addWall(MODEL_ID, UPPER_STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
+    const first = useViewerStore.getState().models.get(MODEL_ID)!;
+    const firstView = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    const second = { ...first, id: 'structural', name: 'Structural' };
+    const secondView = new MutablePropertyView(second.ifcDataStore!.properties, second.id);
+    act(() => {
+      useViewerStore.setState({
+        models: new Map([[first.id, first], [second.id, second]]),
+        mutationViews: new Map([[first.id, firstView], [second.id, secondView]]),
+      });
+    });
+    const ui = await mount();
+    act(() => click(rows(ui)[0].querySelector<HTMLButtonElement>('button[aria-label^="Delete"]')!));
+    assert.ok(ui.querySelector('[data-storey-delete-panel]'), 'the choices open for L1 of the first model');
+    act(() => {
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
+    });
+    assert.equal(ui.querySelector('[data-storey-delete-panel]'), null, 'the second model\'s L1 was never reviewed');
+    await waitFor(() => rows(ui).length > 0, 'the second model\'s rows load');
+    assert.equal(ui.querySelector('[data-storey-delete-panel]'), null, 'nor once its rows have loaded');
   });
 
   it('asks what to do with the elements of a storey that holds some', async () => {

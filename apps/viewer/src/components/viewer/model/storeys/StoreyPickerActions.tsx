@@ -9,7 +9,7 @@
  */
 
 import { Plus, SlidersHorizontal } from 'lucide-react';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
@@ -18,6 +18,12 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { openStoreyManager } from '@/lib/storeys/storey-manager-open';
 import { HudPopoverClose } from '../../../viewport-ui/hud';
 
+/** The storey a new one goes above: the one drawn on, else the model's top storey. */
+function topReference(s: ViewerState, modelId: string): number | undefined {
+  const storeys = modelStoreys(s, modelId);
+  return (s.session?.modelId === modelId ? s.session.storeyId : null) ?? storeys[storeys.length - 1]?.expressId;
+}
+
 export function StoreyPickerActions() {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
@@ -25,15 +31,18 @@ export function StoreyPickerActions() {
   if (!session) return null;
 
   const addAbove = () => {
+    const { modelId } = session;
     const state = useViewerStore.getState();
-    const storeys = modelStoreys(state, session.modelId);
-    const reference = session.storeyId ?? storeys[storeys.length - 1]?.expressId;
-    if (reference === undefined) { openStoreyManager(state); return; }
+    if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
     void import('@/lib/storeys/storey-actions').then(({ addStoreyNextTo }) => {
-      // The session may have moved while the module loaded: add nothing to a model left behind.
-      if (useViewerStore.getState().session?.modelId !== session.modelId) return;
-      const outcome = addStoreyNextTo(useViewerStore, session.modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
+      // The session may have moved while the module loaded: add above the storey drawn on now,
+      // and nothing at all to a model left behind.
+      const now = useViewerStore.getState();
+      if (now.session?.modelId !== modelId) return;
+      const reference = topReference(now, modelId);
+      if (reference === undefined) return;
+      const outcome = addStoreyNextTo(useViewerStore, modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
       if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
     }, (error: unknown) => {
       toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));

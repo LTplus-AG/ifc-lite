@@ -126,13 +126,24 @@ function toQuantitySet(dataStore: IfcDataStore, scale: number, name: string, row
   return { name, quantities: rows.map(([quantity, type, value]) => ({ name: quantity, type, value: clean(native(type, value)) })) };
 }
 
-/** The boxes of `hostId`'s openings in its frame, in metres; null when one cannot be read. */
+const boxVolume = (box: HostBounds): number => (box.max[0] - box.min[0]) * (box.max[1] - box.min[1]) * (box.max[2] - box.min[2]);
+
+/**
+ * The boxes of `hostId`'s openings in its frame, in metres; null when one cannot
+ * be read, or is turned against the host's axes so its box would overstate it
+ * (its own body fills its placed box only when the two are aligned).
+ */
 function openingBoxes(reading: Reading, hostId: number): HostBounds[] | null {
   const boxes: HostBounds[] = [];
   for (const openingId of reading.openings.get(hostId) ?? []) {
     const extent = placedBodyExtent(reading.dataStore, openingId, reading.view);
-    if (!extent) {
+    const own = extent && localBodyExtent(reading.dataStore, openingId, reading.view);
+    if (!extent || !own) {
       console.warn(`[quantities] opening #${openingId} of #${hostId} is unreadable; its host reports gross quantities only`);
+      return null;
+    }
+    if (Math.abs(boxVolume(extent) - boxVolume(own)) > 1e-6 * Math.max(boxVolume(own), 1e-12)) {
+      console.warn(`[quantities] opening #${openingId} is turned against #${hostId}'s axes; its host reports gross quantities only`);
       return null;
     }
     const metres = (point: readonly number[]) => point.map((value) => value * reading.scale) as [number, number, number];

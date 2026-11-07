@@ -230,6 +230,21 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities')).toEqual({});
   });
 
+  it('an opening turned against its host leaves the net values out rather than overstate them', async () => {
+    const s = await session();
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 }).slabId;
+    const opening = addOpeningToStore(s.editor, resolveHostAnchor(s.store, slab, s.view), { Position: [4, 3], Width: 2, Depth: 2 });
+    expect(values(s.view, slab, 'Qto_SlabBaseQuantities').NetArea).toBe(44);
+    // Turn the opening 45 degrees in plan: its box would grow to 8 m² while it still cuts 4 m².
+    const axes = Number((s.view.getNewEntity(opening.placementId)!.attributes[1] as string).slice(1));
+    const turned = s.editor.addEntity('IfcDirection', [[Math.SQRT1_2, Math.SQRT1_2, 0]]).expressId;
+    s.view.setPositionalAttribute(axes, 2, `#${turned}`);
+    const set = values(s.view, slab, 'Qto_SlabBaseQuantities');
+    expect(set).toMatchObject({ GrossArea: 48, GrossVolume: 12 });
+    expect(set.NetArea).toBeUndefined();
+    expect(set.NetVolume).toBeUndefined();
+  });
+
   it('a blind opening takes only the depth it reaches from a slab\'s net volume', async () => {
     const s = await session();
     const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 }).slabId;

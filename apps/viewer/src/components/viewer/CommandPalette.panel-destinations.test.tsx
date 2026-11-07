@@ -8,7 +8,7 @@ installLayout();
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, advance } from '@/test/render';
+import { cleanup, click, advance, mouseDown } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { setLocale } from '@/i18n';
@@ -42,6 +42,11 @@ function Panels() {
 }
 for (const detached of ['docked', 'folded', 'floating', 'popout'] as const)
   test(`#8947 palette reveals ${detached} Measurements body and repeated invocation keeps it open`, async () => {
+    const start = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+    const end = { x: 3, y: 3, z: -4, screenX: 3, screenY: 3 };
+    // Renderer (3, 3, -4) is IFC (3, 4, 3), as in MeasurementsPanel.test.
+    useViewerStore.setState({ measurements: [{ id: 'endpoint', start, end, distance: Math.hypot(3, 3, 4) }],
+      measureMode: 'drag', activeMeasurement: null, measureReferencePoint: null, unitDisplayOverrides: {} });
     const s = useViewerStore.getState(); s.showWorkspacePanel('measurements');
     if (detached === 'folded') s.setRightPanelCollapsed(true);
     if (detached === 'floating') s.floatPanel('measurements');
@@ -52,8 +57,12 @@ for (const detached of ['docked', 'folded', 'floating', 'popout'] as const)
     for (let n = 0; n < 2; n++) {
       await launchDestination('panel:measurements', 'measurements');
       assert.ok(document.querySelector('[role="tab"]'), 'real measurement tabs visible');
-      const point = [...document.querySelectorAll('[role="tab"]')].find(t => t.textContent?.trim() === 'Point'); assert.ok(point); click(point);
+      const point = [...document.querySelectorAll('[role="tab"]')].find(t => t.textContent?.trim() === 'Point'); assert.ok(point); mouseDown(point);
       assert.equal(document.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim(), 'Point');
+      assert.equal(point.getAttribute('aria-selected'), 'true');
+      const panel = document.querySelector('[role="tabpanel"][data-state="active"]'); assert.ok(panel);
+      assert.equal(panel.getAttribute('aria-labelledby'), point.id);
+      assert.match(panel.textContent ?? '', /X 3\.000\s+Y 4\.000\s+Z 3\.000/);
       assert.equal(useViewerStore.getState().sidebarActivePanel, 'measurements');
       assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
       assert.equal(useViewerStore.getState().floatingPanels.some(p => p.id === 'measurements'), false);

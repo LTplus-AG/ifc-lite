@@ -181,7 +181,8 @@ jobs:
             # The issue names the metrics, so a real overage can't read as a CI fault (#9016).
             {
               echo 'over_ceiling<<PERF_RATCHET_EOF'
-              awk -F'|' '/\| FAIL/ { gsub(/^ +| +$/, "", $2); gsub(/^ +| +$/, "", $7); print "- " $2 " is " $7 " over its ceiling" }' "$RUNNER_TEMP/perf-ratchet-report.md"
+              # Only an "above ceiling" row is an overage; "not measured" or "no committed ceiling" is usually a setup fault.
+              awk -F'|' '/\| FAIL/ { for (i = 2; i <= 8; i++) gsub(/^ +| +$/, "", $i); if ($8 ~ /^FAIL: above/) print "- " $2 " is " $7 " over its ceiling"; else print "- " $2 ": " $8 }' "$RUNNER_TEMP/perf-ratchet-report.md"
               echo 'PERF_RATCHET_EOF'
             } >> "$GITHUB_OUTPUT"
           fi

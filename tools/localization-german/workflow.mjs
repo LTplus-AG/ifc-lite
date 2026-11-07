@@ -25,6 +25,22 @@ const browser = process.env.IFC_GPU_CDP_URL
   : await chromium.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', ...process.env.IFC_GPU_CHROME_ARGS.split(/\s+/)] });
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: 'en-US', acceptDownloads: true });
 const page = await context.newPage();
+// Windows Chrome reached through WSL CDP cannot write a Linux /tmp path.
+// Keep a real browser download, using its GUID file through the WSL share.
+const windowsCdp = Boolean(process.env.IFC_GPU_CDP_URL)
+  && process.platform === 'linux' && /microsoft/i.test(os.release());
+let downloadSession;
+if (windowsCdp) {
+  const targetSession = await context.newCDPSession(page);
+  const { targetInfo } = await targetSession.send('Target.getTargetInfo');
+  await targetSession.detach();
+  downloadSession = await browser.newBrowserCDPSession();
+  await downloadSession.send('Browser.setDownloadBehavior', {
+    behavior: 'allowAndName', browserContextId: targetInfo.browserContextId,
+    downloadPath: execFileSync('wslpath', ['-w', out], {encoding:'utf8'}).trim(), eventsEnabled: true,
+  });
+}
+
 page.setDefaultTimeout(20000);
 const hashes=Object.fromEntries(['apps/viewer/dist/index.html','packages/wasm/pkg/ifc-lite_bg.wasm','apps/viewer/public/samples/building-architecture.ifc','apps/viewer/public/samples/building-architecture.ids'].map(p=>[p,createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
 const report = { mode: process.env.GERMAN_INSPECT === '1' ? 'inspection' : 'acceptance', hashes, at: new Date().toISOString(), host: os.hostname(), source: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), dirty: true, executablePath, gpuArgs: process.env.IFC_GPU_CHROME_ARGS, vulkanDriver: process.env.VK_DRIVER_FILES, checks: [], errors: [], wasm: [] };
@@ -105,10 +121,28 @@ try {
       const summary=await page.locator('[data-tour="ids-summary"]').innerText();
       assert.match(summary,/bestanden/i);
       const downloadPromise=page.waitForEvent('download');
+      let progressListener;
+      const nativeDownload = downloadSession ? new Promise((resolve, reject) => {
+        progressListener = event => {
+          if (event.state === 'completed') resolve(event.guid);
+          if (event.state === 'canceled') reject(new Error('Windows browser canceled IDS download'));
+        };
+        downloadSession.on('Browser.downloadProgress', progressListener);
+      }) : null;
       await page.getByRole('button',{name:'Exportformat wählen',exact:true}).click();
       await page.getByRole('menuitem',{name:/JSON/}).click();
-      const download=await downloadPromise; await download.saveAs(path.join(out,download.suggestedFilename()));
-      const exported=JSON.parse(fs.readFileSync(path.join(out,download.suggestedFilename()),'utf8'));
+      const download=await downloadPromise;
+      const savedPath=path.join(out,path.basename(download.suggestedFilename()));
+      if (nativeDownload) {
+        try {
+          const guid=await Promise.race([nativeDownload, new Promise((_,reject)=>{
+            const timer=setTimeout(()=>reject(new Error('IDS download did not complete in 30 seconds')),30000);
+            timer.unref();
+          })]);
+          fs.renameSync(path.join(out,guid),savedPath);
+        } finally {downloadSession.off('Browser.downloadProgress',progressListener);}
+      } else await download.saveAs(savedPath);
+      const exported=JSON.parse(fs.readFileSync(savedPath,'utf8'));
       assert.equal(exported.source.kind,'ids');
       assert.deepEqual(exported.summary,{totalSpecifications:3,passedSpecifications:1,failedSpecifications:2,totalEntitiesChecked:11,totalEntitiesPassed:8,totalEntitiesFailed:3,overallPassRate:72});
       return {summary,download:download.suggestedFilename(),exportedSummary:exported.summary};

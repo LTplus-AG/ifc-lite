@@ -419,6 +419,34 @@ describe('selecting an entity with a huge piece count (#9192)', () => {
     }
   });
 
+  // #9192 review (behaviour break on a surviving export): `Renderer.addMesh`
+  // authored meshes already stand for an entity's pieces, and the per-piece
+  // path skips pieces they represent. The merge must too, or both draw.
+  it('merges only the pieces no authored mesh already stands for', () => {
+    const authoredMesh = (h: Harness, meshData: MeshData) => {
+      const gpu = upload.uploadIndividualMesh(h.device, meshData, { sharedOrigin: null, quantized: false });
+      h.renderer.addMesh({ expressId: meshData.expressId, modelIndex: meshData.modelIndex, ...gpu, color: meshData.color });
+    };
+    for (const [listed, authored, expectedBuffers] of [[HUGE, HUGE, 0], [HUGE + 99, HUGE, 99 * 3], [1_000, 10, 3]] as const) {
+      const h = makeHarness();
+      const pieces = entity(9, listed);
+      load(h, pieces);
+      for (const meshData of pieces.slice(0, authored)) authoredMesh(h, meshData);
+      h.render({});
+      const cost = frameCost(h, { selectedId: 9 });
+      assert.equal(cost.buffers, expectedBuffers, `${listed} listed, ${authored} authored: copies only the rest`);
+      const drawnOnce = drawnTriangles(cost.highlightDraws, new Map(h.scene.getMeshes().map((mesh) => [mesh.vertexBuffer as unknown as FakeBuffer, mesh.rteOrigin])));
+      assert.deepEqual(drawnOnce.triangles, expectedTriangles(pieces), `${listed} listed, ${authored} authored: every piece highlighted exactly once`);
+      assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'and settles');
+      if (expectedBuffers !== 3) continue;
+      // An authored mesh added later takes its piece out of the merge.
+      authoredMesh(h, pieces[authored]);
+      const after = frameCost(h, { selectedId: 9 });
+      assert.equal(after.buffers, 3, 'the merge rebuilds without the newly authored piece');
+      assert.deepEqual(drawnTriangles(after.highlightDraws, new Map(h.scene.getMeshes().map((mesh) => [mesh.vertexBuffer as unknown as FakeBuffer, mesh.rteOrigin]))).triangles, expectedTriangles(pieces));
+    }
+  });
+
   it('rebuilds once when pieces arrive for the selected entity, never drawing both', () => {
     const h = makeHarness();
     const pieces = entity(9, HUGE);

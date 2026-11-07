@@ -33,6 +33,8 @@ export interface MergedSelectionCoverage {
   pieces: WeakSet<object>;
   /** `Scene.getPickGeometryRevision()` when `pieces` last covered the list; listing a piece bumps it. */
   revision: number;
+  /** The entity's authored (non-hydrated) scene meshes in scope when built: the pieces they stand for are left out. */
+  authored: number;
 }
 
 type HydrationScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision' | 'evictHighlightMeshes'>;
@@ -48,9 +50,48 @@ function mergedMeshesByEntity(scene: HydrationScene): Map<number, Mesh[]> {
   return merged;
 }
 
+/** Scene meshes per `pickPieceKey`; `authoredOnly` leaves out hydrated highlight copies. */
+function scenePieceCounts(scene: HydrationScene, authoredOnly: boolean): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const mesh of scene.getMeshes()) {
+    if (authoredOnly && mesh.hydrated) continue;
+    const key = pickPieceKey(mesh);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Authored (non-hydrated) scene meshes per entity, within `modelIndex` (undefined = every model). */
+function authoredMeshCounts(scene: HydrationScene, modelIndex: number | undefined): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const mesh of scene.getMeshes()) {
+    if (mesh.hydrated || (modelIndex !== undefined && mesh.modelIndex !== modelIndex)) continue;
+    counts.set(mesh.expressId, (counts.get(mesh.expressId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /**
- * Whether `merge` still answers this selection: built for the same item filter
- * and model scope, and no piece listed for the entity since that it lacks. A
+ * The pieces no scene mesh stands for yet: the first N pieces of a (model, id)
+ * are taken by its N existing meshes, the rule per-piece hydration has always
+ * used, so an authored `Renderer.addMesh` copy is never drawn twice.
+ */
+function unrepresentedPieces(pieces: readonly MeshData[], existing: ReadonlyMap<string, number>): MeshData[] {
+  const seen = new Map<string, number>();
+  const missing: MeshData[] = [];
+  for (const piece of pieces) {
+    const key = pickPieceKey(piece);
+    const ordinal = seen.get(key) ?? 0;
+    seen.set(key, ordinal + 1);
+    if (ordinal >= (existing.get(key) ?? 0)) missing.push(piece);
+  }
+  return missing;
+}
+
+/**
+ * Whether `merge` still answers this selection: built for the same item filter,
+ * model scope and authored meshes, and no piece listed for the entity since
+ * that it lacks. A
  * piece only leaving the list (cold eviction) keeps it current, as it would a
  * per-piece copy. A count cannot tell which pieces are listed, so the list is
  * walked by identity, and only after pick geometry changed.
@@ -61,8 +102,9 @@ function coversSelection(
   modelIndex: number | undefined,
   itemId: number | undefined,
   revision: number,
+  authored: number,
 ): boolean {
-  if (merge.itemId !== itemId || merge.modelIndex !== modelIndex) return false;
+  if (merge.itemId !== itemId || merge.modelIndex !== modelIndex || merge.authored !== authored) return false;
   if (merge.revision === revision) return true;
   if (listed?.some((piece) => !merge.pieces.has(piece))) return false;
   merge.revision = revision;
@@ -85,15 +127,19 @@ export function retireStaleSelectionHydration(
 ): void {
   if (selected.size === 0) return;
   const mergedByEntity = mergedMeshesByEntity(scene);
+  const authoredByEntity = authoredMeshCounts(scene, modelIndex);
   const revision = scene.getPickGeometryRevision();
+  let authoredPieceCounts: Map<string, number> | undefined;
   for (const id of selected) {
     const listed = scene.getMeshDataPieceList(id);
     const merged = mergedByEntity.get(id);
     if (!merged && (listed?.length ?? 0) <= MERGE_PIECES_ABOVE) continue;
     const itemId = id === itemFilterExpressId ? itemFilterItemId : undefined;
-    if (merged?.every((mesh) => coversSelection(mesh.mergedSelection!, listed, modelIndex, itemId, revision))) continue;
-    const pieces = scene.getMeshDataPieces(id, modelIndex, itemId)?.length ?? 0;
-    if (merged || pieces > MERGE_PIECES_ABOVE) scene.evictHighlightMeshes(id, true);
+    const authored = authoredByEntity.get(id) ?? 0;
+    if (merged?.every((mesh) => coversSelection(mesh.mergedSelection!, listed, modelIndex, itemId, revision, authored))) continue;
+    const pieces = scene.getMeshDataPieces(id, modelIndex, itemId) ?? [];
+    const missing = authored === 0 ? pieces.length : unrepresentedPieces(pieces, authoredPieceCounts ??= scenePieceCounts(scene, true)).length;
+    if (merged || missing > MERGE_PIECES_ABOVE) scene.evictHighlightMeshes(id, true);
   }
 }
 
@@ -112,11 +158,7 @@ export function hydrateSelectedEntities(
 ): void {
   // Only built with a selection: this avoids iterating 200K+ meshes every frame otherwise.
   if (visibleSelected.size === 0) return;
-  const existingPieceCounts = new Map<string, number>();
-  for (const mesh of scene.getMeshes()) {
-    const key = pickPieceKey(mesh);
-    existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
-  }
+  const existingPieceCounts = scenePieceCounts(scene, false);
   const mergedByEntity = mergedMeshesByEntity(scene);
 
   for (const id of visibleSelected) {
@@ -124,19 +166,14 @@ export function hydrateSelectedEntities(
     const itemId = id === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
     const pieces = scene.getMeshDataPieces(id, modelIndex, itemId);
     if (!pieces || pieces.length === 0) continue;
-    if (pieces.length > MERGE_PIECES_ABOVE) {
+    const missing = unrepresentedPieces(pieces, existingPieceCounts);
+    if (missing.length > MERGE_PIECES_ABOVE) {
       const listed = scene.getMeshDataPieceList(id) ?? pieces;
-      createMerged(pieces, { itemId, modelIndex, pieces: new WeakSet(listed), revision: scene.getPickGeometryRevision() });
+      const authored = authoredMeshCounts(scene, modelIndex).get(id) ?? 0;
+      createMerged(missing, { itemId, modelIndex, pieces: new WeakSet(listed), revision: scene.getPickGeometryRevision(), authored });
       continue;
     }
-    const seenOrdinalsByKey = new Map<string, number>();
-    for (const piece of pieces) {
-      const key = pickPieceKey(piece);
-      const ordinal = seenOrdinalsByKey.get(key) ?? 0;
-      seenOrdinalsByKey.set(key, ordinal + 1);
-      if (ordinal < (existingPieceCounts.get(key) ?? 0)) continue;
-      createPiece(piece);
-    }
+    for (const piece of missing) createPiece(piece);
   }
 }
 

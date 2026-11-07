@@ -270,6 +270,39 @@ describe('isolation and typed wall heights follow storey edits (#9037 review, ro
   });
 });
 
+describe('previews and hierarchy rows follow storey edits (#9037 review, round 11)', () => {
+  it('Escape on a preview another write has buried still puts the level back, and keeps that write', async () => {
+    const m = await storey();
+    const preview = m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.4 });
+    assert.ok(preview.applied);
+    // A script writes on top of the provisional edit.
+    const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 12, 0], End: [4, 12, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
+    m.revertStoreyPreview(useViewerStore);
+    assert.deepEqual(storeys(), [['L0', 0], ['L1', 3]], 'the cancelled elevation is gone');
+    assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(wall.expressId), false, 'the later write stays');
+  });
+
+  it('without a project tree, a unified storey row shows the live name and elevation, and a deleted storey is gone', async () => {
+    const m = await storey();
+    const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Ground' }).ok);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.5 } }).ok);
+    const s = useViewerStore.getState();
+    const base = s.models.get(MODEL_ID)!;
+    const ds = base.ifcDataStore!;
+    const hierarchy = { ...ds.spatialHierarchy! };
+    Object.defineProperty(hierarchy, 'project', { value: undefined });
+    const treeless = { ...base, ifcDataStore: { ...ds, spatialHierarchy: hierarchy } };
+    const peer = { ...treeless, id: 'peer', name: 'Peer' };
+    const view = s.mutationViews.get(MODEL_ID)!;
+    const models = new Map([[MODEL_ID, treeless], ['peer', peer]]) as unknown as Parameters<typeof buildUnifiedStoreys>[0];
+    const rows = buildUnifiedStoreys(models, undefined, undefined, undefined, undefined, (id) => (id === MODEL_ID ? view : null))
+      .flatMap((unified) => unified.storeys.filter((row) => row.modelId === MODEL_ID).map((row) => [row.name, row.elevation]));
+    assert.deepEqual(rows.sort((a, b) => Number(a[1]) - Number(b[1])), [['Ground', 0], ['L1', 3.5]]);
+  });
+});
+
 describe('bim.store storey reads in the viewer (#9037 review)', () => {
   it('listStoreyLevels fails for a model with no editable data instead of reporting no storeys', async () => {
     const { storeyMethods } = await requiredModule(() => import('@/sdk/adapters/store-adapter-storey-impl'), 'the viewer storey adapter exists');

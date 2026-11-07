@@ -85,6 +85,19 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
     assert.equal(s().authoringDefaults.dims.wall.Height, 2.4);
   });
 
+  it('the defaults show the height the Wall tool will place: the spacing to the storey above (#9037 review)', async () => {
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 4 } }).ok);
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    act(() => s().setAuthoringDims('wall', { Height: 3 }));
+    assert.equal(input(ui, 'Height in metres').value, '4.00', 'not the stored 3.00 default');
+    act(() => s().setAuthoringDefaults({ wallTop: 'fixed' }));
+    assert.equal(input(ui, 'Height in metres').value, '3.00', 'a fixed wall uses the stored height');
+  });
+
   it('a selection still shows while such a tool runs', () => {
     const ui = render(<ModelInspectorPanel />);
     act(() => s().startCommand('grid.place'));

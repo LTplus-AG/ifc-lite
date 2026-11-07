@@ -5,6 +5,7 @@
 import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
 import { effectiveSpatialProject, effectiveStoreyRows } from './effectiveStoreyNodes.js';
+import { effectiveStoreyElevation } from '@ifc-lite/create';
 export { buildGroupTree, resolveMemberGeometry, type ResolvedMemberGeometry } from './groupTreeBuilder.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
 // from here; the tables themselves live in ./groupEntityTypes.ts.
@@ -161,8 +162,12 @@ export function buildUnifiedStoreys(
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
 
     for (const [storeyId, elements, live] of effectiveStoreyRows(hierarchy, project, spatialNodes)) {
-      const elevation = live?.elevation ?? storeyElevations.get(storeyId) ?? 0;
-      const name = live?.name || dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
+      // Without a project tree there is no live node: read this session's edits (#9013) directly.
+      if (!live && view?.isDeleted(storeyId)) continue;
+      const elevation = live?.elevation
+        ?? (view && !project ? effectiveStoreyElevation(dataStore, view, storeyId) : storeyElevations.get(storeyId)) ?? 0;
+      const fallbackName = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
+      const name = live?.name || (view && !project ? effectiveTreeEntityName(dataStore, view, storeyId, fallbackName) : fallbackName);
       const key = elevationKey(elevation);
       const storeyNode = spatialNodes.get(storeyId);
       const directElements = storeyNode

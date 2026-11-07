@@ -117,9 +117,13 @@ test.describe('#8946 unloaded palette UX', () => {
         await testInfo.attach('browse.png', { body: await page.screenshot(), contentType: 'image/png' });
 
         await search.fill('annot');
-        await expect(options).toHaveCount(2);
+        // #8947 adds the canonical class-visibility flow, whose real controls
+        // include annotations. Keep exact membership and direct-label ordering:
+        // unrelated fuzzy matches must still never join these three results.
+        await expect(options).toHaveCount(3);
         await expect(options.nth(0)).toHaveAttribute('aria-label', 'Annotate');
         await expect(options.nth(1)).toHaveAttribute('aria-label', 'Annotations');
+        await expect(options.nth(2)).toHaveAttribute('data-command-id', 'elements:class-filter');
         await expectSearchTop(search, initial!.y);
         await search.fill('secton');
         await expect(options.first()).toContainText('Section');

@@ -266,3 +266,41 @@ The active root protocol writes its known `.palette-access-validation` log files
 The runner records that exact finite output set separately from dirty source;
 unrelated untracked or modified source still refuses execution. These logs are
 not interpreted as a pass merely because their filenames exist.
+
+
+Linux acceptance profile qualification (2026-11-06): the first two Pop context
+runs used a default Intel gen-12lp adapter and each failed the same two loaded
+light scenes with the actual “No compatible GPU adapter found” UI (10/12 captures,
+not accepted). The standard host helper probe selected NVIDIA lovelace and passed.
+Restricting Vulkan to the NVIDIA ICD instead selected SwiftShader and was rejected.
+No machine configuration was changed; that diagnostic environment was child-only.
+
+The runner now adds `--use-webgpu-power-preference=default-high-performance` to
+its own Linux browser. Chromium's [adapter-selection implementation](https://chromium.googlesource.com/chromium/src/+/6dbbfbd67b8751e0162cc2a5dad1122222866e99/gpu/command_buffer/service/webgpu_decoder_impl.cc)
+uses this default only when a request has no explicit power preference. This
+matches the helper's discrete-GPU qualification without rewriting application
+`navigator.gpu` methods. Six fresh contexts / twelve default adapter requests all
+reported NVIDIA lovelace, fallback=false, with green pixel readback. That is
+transport qualification only: rerun all requested application cases and captures.
+The emitted manifest records the flag and independently verifies the actual GPU.
+It does not certify the earlier default-Intel configuration.
+
+### Pop visible-canvas qualification
+
+The owned Linux browser merges `VulkanFromANGLE` into inherited enabled features.
+This makes browser compositing reuse ANGLE's Vulkan instance/device (upstream
+[Skia explanation](https://skia.googlesource.com/skia/+/c0d972768df98c6a207d128afe469fd9c24000ed)).
+Our measured hybrid-host failure matched the OpaqueFD allocation mismatch
+[reported upstream](https://github.com/gpuweb/gpuweb/issues/5022#issuecomment-2662870672).
+A fixed paired probe reproduced it on a visible 832×791 canvas while offscreen
+readback passed; adding `--enable-gpu` alone did not fix it. Adding only
+`VulkanFromANGLE` gave 30 correct visible-canvas frames and no validation/loss.
+Six shared-browser and three fresh-browser real IFC loads then kept the NVIDIA
+adapter and resident GPU geometry without GPU errors. Other console warnings
+remain in the evidence; this is not a claim of zero console messages.
+
+The runner now requires actual visible-canvas readback before starting cases;
+an offscreen pixel probe missed this failure. Physical-adapter checks remain.
+The PC helper-managed browser is unchanged. This is setup qualification only;
+all 22 cases, three capture matrices, source identity and zero skips still gate
+acceptance. See [evidence/pop-gpu-setup-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/pop-gpu-setup-qualification.json).

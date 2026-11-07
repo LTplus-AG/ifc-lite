@@ -213,7 +213,7 @@ for (const context of contexts) {
       }
       const chooser = await chooserPromise;
       expect(chooser.isMultiple()).toBe(true);
-      await expect(chooser.element()).toHaveAttribute('accept', /ifc/i);
+      expect(await chooser.element().getAttribute('accept')).toMatch(/ifc/i);
       await chooser.setFiles([]); // Cancel; never substitute a fake file or load result.
       await expect(palette(page)).toBeHidden();
     }
@@ -222,6 +222,9 @@ for (const context of contexts) {
 
 test('loaded unselected → selected → hidden wall reaches renderer; author/class hosts and measurement tabs (#8947)', async ({ page }, info) => {
   await start(page, true);
+  const launcher = page.getByRole('button', { name: /Commands…/ }).first();
+  await launcher.focus();
+  await expect(launcher).toBeFocused();
   const { row } = await find(page, 'vis:hide', 'hide');
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('Select elements');
@@ -231,13 +234,22 @@ test('loaded unselected → selected → hidden wall reaches renderer; author/cl
     __ifc_lite_scene_owner__: (id: number) => SceneOwnerSnapshot;
   }).__ifc_lite_scene_owner__(id), id);
   expect(!!owner.flat?.length || owner.instance, 'selected wall has real resident geometry').toBe(true);
+  // #8947: first opening must survive the palette's delayed close autofocus.
+  await run(page, 'elements:entity-actions', 'Copy GlobalId');
+  const entityMenu = page.getByRole('menu').filter({ has: page.locator('[data-command-id="context:copy-global-id"]') });
+  await expect(entityMenu).toBeVisible();
+  await expect.poll(() => entityMenu.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await info.attach('selected-entity-actions.png', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.press('Escape');
+  await expect(entityMenu).toBeHidden();
+  await expect(launcher).toBeFocused();
   await run(page, 'vis:hide', 'hide');
   await expect.poll(async () => (await debug(page)).visibility.hiddenIds.includes(id)).toBe(true);
   expect(await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().hiddenEntities.has(id), id)).toBe(true);
   await info.attach('hidden-real-wall.png', { body: await page.screenshot(), contentType: 'image/png' });
   await run(page, 'author:bulk-properties', 'bulk properties');
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Target source', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Target source', exact: true })).toBeVisible();
   await info.attach('author-bulk-host.png', { body: await page.screenshot(), contentType: 'image/png' });
   await page.keyboard.press('Escape');
   await run(page, 'elements:class-filter', 'class visibility');
@@ -270,7 +282,12 @@ test('new blank creates parsed IFC, real Model workspace and wall tool; existing
     return s.models.size === 1 && model?.loadState === 'complete' &&
       !!model.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.length && s.session?.activeCommandId === 'wall.place';
   }), { timeout: 180_000 }).toBe(true);
-  await expect(page.locator('[data-rail-tool="wall.place"]')).toHaveAttribute('aria-pressed', 'true');
+  // The real rail groups creation tools when its measured height is limited.
+  // Require the active wall's actual input flow, independent of rail layout.
+  await expect(page.getByRole('navigation', { name: 'Model tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Thickness', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Height', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Leave the command', exact: true })).toBeVisible();
   const { row } = await find(page, 'file:new-blank', 'New blank model');
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('empty session');
@@ -300,7 +317,7 @@ test('edge and corner presets move actual renderer and repeat deterministically 
 
 test('live read-only role and retired model invalidate author context while palette stays open (#8947)', async ({ page }) => {
   await start(page, true, contexts[1]);
-  const { row } = await find(page, 'author:bulk-properties', 'bulk properties');
+  const { row, search } = await find(page, 'author:bulk-properties', 'bulk properties');
   await expect(row).not.toHaveAttribute('aria-disabled', 'true');
   // Context setup changes real role data only; canCollabEdit and all handlers remain production code.
   await page.evaluate(() => (globalThis.__ifc_lite_viewer_store__ as {
@@ -308,7 +325,8 @@ test('live read-only role and retired model invalidate author context while pale
   }).setState({ collabRole: 'viewer' }));
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText('Requires editor access');
-  await row.click(); await expect(palette(page)).toBeVisible();
+  await expect(row).toHaveAttribute('aria-selected', 'true');
+  await search.press('Enter'); await expect(palette(page)).toBeVisible();
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toHaveCount(0);
   await page.evaluate(() => (globalThis.__ifc_lite_viewer_store__ as {
     getState(): ViewerState; setState(state: Partial<ViewerState>): void;
@@ -321,6 +339,8 @@ test('live read-only role and retired model invalidate author context while pale
   });
   await expect(row).toHaveAttribute('aria-disabled', 'true');
   await expect(row).toContainText(/Load a model/);
-  await row.click(); await expect(palette(page)).toBeVisible();
+  // aria-disabled is intentionally discoverable/clickable for its explanation.
+  // Send the real pointer click without Playwright waiting for it to become enabled.
+  await row.click({ force: true }); await expect(palette(page)).toBeVisible();
   await expect(page.getByRole('dialog', { name: /Bulk Property Editor/i })).toHaveCount(0);
 });

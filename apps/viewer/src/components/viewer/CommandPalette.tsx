@@ -223,7 +223,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     };
     // The destination takes focus only after Radix releases its closing scope.
     // A frame callback alone does not order its delayed close-focus timer.
-    closeFocusAction.current = cmd.id === 'search:inline' ? activate : null;
+    closeFocusAction.current = cmd.id === 'search:inline' || cmd.id === 'elements:entity-actions' ? activate : null;
     onOpenChange(false);
     if (closeFocusAction.current) return;
     // File picker activation stays in the trusted event stack.

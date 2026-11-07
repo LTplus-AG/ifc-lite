@@ -31,7 +31,8 @@ async function search(page: Page, query: string) {
 }
 async function openDestination(page: Page, id: string, query: string) {
   await search(page, query);
-  const destination = palette(page).locator(`[data-command-id="${id}"]`);
+  const attribute = id.startsWith('ext-widget:') ? 'data-runtime-command-id' : 'data-command-id';
+  const destination = palette(page).locator(`[${attribute}="${id}"]`);
   await expect(destination).toBeVisible();
   await expect(destination).not.toHaveAttribute('aria-disabled', 'true');
   await destination.click();
@@ -44,7 +45,7 @@ async function hidden(page: Page, id: number) {
 }
 async function refused(page: Page, id: number) {
   await search(page, OWNER);
-  await expect(palette(page).locator(`[data-command-id="${DESTINATION}"]`)).toHaveCount(0);
+  await expect(palette(page).locator(`[data-runtime-command-id="${DESTINATION}"]`)).toHaveCount(0);
   await expect(palette(page).getByRole('option')).toHaveCount(0);
   await palette(page).getByRole('combobox').press('Enter');
   await expect(widget(page)).toHaveCount(0);
@@ -105,7 +106,7 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     const chooserPromise = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     const chooser = await chooserPromise;
-    await expect(chooser.element()).toHaveAttribute('accept', '.iflx');
+    expect(await chooser.element().getAttribute('accept')).toBe('.iflx');
     await chooser.setFiles(packed.upload);
     const consent = page.getByRole('dialog', { name: `Install ${OWNER} v1.0.0?`, exact: true });
     await expect(consent).toBeVisible();
@@ -125,20 +126,22 @@ test('installed extension dock runs QuickJS on real IFC; UI disable and uninstal
     await expect(widget(page)).toContainText('Installed QuickJS visibility witness');
     // Canonical scene setup only. The extension alone changes the wall's hide state.
     // Isolate and frame its real geometry so unchanged draw submission cannot pass.
-    await page.evaluate(id => {
-      const state = globalThis.__ifc_lite_viewer_store__.getState();
-      state.isolateEntities([id]);
-      if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
-      if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
-      state.cameraCallbacks.frameSelection(0);
-    }, id);
-    const exerciseVisibility = async (name: string) => visibilityOutputWitness(page, info, name, async () => {
-      await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
-      await expect.poll(() => hidden(page, id)).toBe(true);
-    }, async () => {
-      await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
-      await expect.poll(() => hidden(page, id)).toBe(false);
-    });
+    const exerciseVisibility = async (name: string) => {
+      await page.evaluate(id => {
+        const state = globalThis.__ifc_lite_viewer_store__.getState();
+        state.isolateEntities([id]);
+        if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
+        if (!state.cameraCallbacks.frameSelection) throw new Error('Real frame-selection controller is missing');
+        return state.cameraCallbacks.frameSelection(0);
+      }, id);
+      await visibilityOutputWitness(page, info, name, async () => {
+        await widget(page).getByRole('button', { name: 'Hide selected IFC elements', exact: true }).click();
+        await expect.poll(() => hidden(page, id)).toBe(true);
+      }, async () => {
+        await widget(page).getByRole('button', { name: 'Show selected IFC elements', exact: true }).click();
+        await expect.poll(() => hidden(page, id)).toBe(false);
+      });
+    };
     await exerciseVisibility('initial-activation');
     await page.keyboard.press('Escape');
     await expect(widget(page)).toBeHidden();

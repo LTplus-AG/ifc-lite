@@ -161,7 +161,11 @@ export function rankCommand(cmd: Command, query: string, displayLabel?: string, 
   const label = Math.max(score(query, cmd.label), score(query, displayLabel ?? ''));
   const keywords = score(query, cmd.keywords);
   const category = Math.max(score(query, cmd.category), score(query, displayCategory ?? ''));
-  return Math.max(label, keywords >= 400 ? 300 : keywords, category >= 400 ? 200 : category);
+  // A typo in the visible name must beat the same typo in hidden metadata
+  // ("secton" → Section, ahead of Down's "section" keyword, #8947).
+  return Math.max(label >= 400 ? label : label > 0 ? 100 + label : 0,
+    keywords >= 400 ? 300 : keywords > 0 ? 50 + keywords : 0,
+    category >= 400 ? 200 : category);
 }
 
 /** Equal matches use most-recent usage, then the original registry order. */

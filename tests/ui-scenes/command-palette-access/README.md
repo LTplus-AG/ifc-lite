@@ -103,14 +103,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/4ea4d381b0f544f526977bfd147780909f81a5d2/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -551,3 +551,148 @@ existing 8 GiB Node profile, appends that heap option without discarding inherit
 options, and serializes Turbo while retaining the entire plain `pnpm typecheck`
 command and tail. YAML/bash parsing pass; the corrected workflow still needs its
 own CI execution. This does not supersede Pop's separate successful typecheck.
+
+
+R2 focused source285 outcome is now final: **377 tests, 369 passed, 8 failed,
+0 skipped**. The full four shards did not start. The help failures are confirmed
+missing Vite build constants; What's New also falsely passed on recovery-boundary
+text. Repairs seed/restore real metadata and require actual About/version/link,
+release highlight and shortcut-key content. Dock focus and entity-menu assertions
+now await the bounded real deferred lifecycle and use boolean DOM identities, so
+failure formatting cannot walk a cyclic React/DOM graph. Bulk edit still requires
+one parsed model-B target and its real Stage=6 mutation while A remains untouched.
+The catalogue census explicitly accounts for new metadata/context-only keys; file
+metadata is checked as visible content. Generic zone authoring and selected-entity
+volume inspection now assert their distinct canonical destinations. These repairs
+have only cheap source checks so far; runtime/typecheck must run on the new head.
+
+### Reporting profile qualification and first NVIDIA sequence
+
+The original `be8e5c02` reporting workflow run `42165928276`, job
+`127722278792`, passed the complete root typecheck (134 tasks; 4,543 test files
+in 70 packages), 11 mounted public UI tests, and 10 restore-receipt race tests,
+with zero failures or skips in those two suites. Its actual capacity was
+16,759,308,288 bytes, available memory 15,358,435,328 bytes, effective V8 heap
+8,240 MiB, and Turbo concurrency 1. Compact evidence:
+`palette-be8-mounted-qualification-fd0b1714.json` in the coordinator scratch.
+This qualifies the reporting workflow memory repair, not the missing main-only
+full CI graph or palette access acceptance. Skipped review jobs are not passes.
+
+The first NVIDIA sequence against production build `285414189e` and harness
+`e59ec98acb` established a physical NVIDIA/lovelace adapter and green GPU
+readback. It then exposed invalid locator-only assertions on file-chooser
+ElementHandles, plus a later loaded-page adapter failure. The chooser checks
+now read the actual chooser input attribute and assert the same file type;
+activation, chooser events, and real install flow remain required. The original
+run is preserved. A passing initial adapter probe does not prove all subsequent
+viewer contexts work. R2 remains unaccepted.
+
+### Runtime repair diagnosis, 6 November
+
+The original NVIDIA sequence finished **8 passed / 14 failed / 0 skipped**.
+Matrix, context, and flow capture phases did not run after the failed E2E gate.
+The owned Chrome profile was removed and no cleanup error was recorded. Eleven
+failures were identified as test-contract defects: three chooser assertions,
+one bulk-editor role, one disabled-row actionability wait, and six exact-result counts that predated the new real
+class-visibility destination. The revised `annot` oracle still requires exact
+membership and ordering: Annotate, Annotations, then `elements:class-filter`;
+it does not permit unrelated fuzzy matches. The refusal test now verifies native Enter on the selected blocked row and a
+real forced pointer click after model retirement, instead of waiting for an
+intentionally unavailable row to become enabled. The remaining three failures
+need GPU/context diagnosis. No visual acceptance follows from this run.
+
+On source `e59ec98acb`, the actual two-second CPU diagnostic of the verified
+camera/help test child identified the recurring `camera-animation.ts` →
+`requestAnimationFrame` completion waiter. The availability test owned a Camera
+without a viewport update loop and never retired its active tween. Test cleanup
+now calls the real Camera reset on every owned camera, then drains deferred
+callbacks. This disposes a specific owner; it does not globally cancel timers
+or force successful process exit. The original child was terminated after
+532 seconds (declared test timeout: 120 seconds), freeing its 1,201,684,480-byte
+RSS and allowing the unchanged root runner to continue. The original run stays
+failed; natural completion must be proven on the corrected source. Compact
+evidence: `palette-camera-e59-cpu-diagnostic-fd0b1714.json` and
+`palette-camera-e59-timeout-fd0b1714.json` in coordinator scratch.
+
+Fresh Astra review also established that Construction stage preset switches
+to Selection. The removed-model query regression now asserts empty-selection
+refusal, explicitly chooses Query through the real source control, then keeps
+its one-target integer mutation and old-model nonmutation oracles. Dock repair
+now commits the subscribed registry refresh inside React act before activating
+the new launcher. All these corrections await runtime qualification.
+
+### Targeted four-file follow-up
+
+Original source `887393cf67`, Pop request
+`auto-602a33e6e08c4d359e73eb8dc065ae20`, job
+`bdbdb570-facd-4ee8-9865-fa473063631e`: **31 tests, 29 passed, 2 failed,
+0 skipped**. The camera file completed naturally and the real removed-model
+Query mutation passed. The remaining dock assertion selected the Toaster's
+empty alert region; it now scopes the validation error to the contributed
+dialog. The entity diagnostic recorded `open(130) → closed` with the palette
+closed, command recorded, and target still valid. The entity menu now uses
+the existing close-focus handoff, like inline search, so palette restoration
+cannot dismiss the new nonmodal menu. The real-browser loaded scenario now
+opens that menu, checks focus and its Copy GlobalId child, then closes it and
+checks focus return before proceeding with Hide and the other destinations.
+
+The GPU trace audit also found external-Instance device loss preceding provider
+failures inside cases whose assertion defects masked the GPU problem. Three
+cases failed directly on adapter availability, but initial adapter success or
+a passing unrelated assertion does not establish continued renderer health.
+The controlled shared/fresh-browser diagnostic is being run with pinned Node
+24 after its original SSH Node 18 attempt failed before launching a browser.
+No production navigator.gpu replacement or software adapter is permitted.
+
+### Final focus review and GPU controls
+
+Fresh Astra review of `257f6871..ef550cc2` found no production correctness
+defect, but the browser focus-return oracle lacked its launcher precondition.
+The loaded scenario now explicitly focuses Commands before shortcut opening
+and retains the final focus assertion. Discovery passes; execution remains
+pending. The running full root validation is pinned to production source
+`ef550cc2`; this later correction changes only test setup and a test comment.
+
+The completed Chrome 156 diagnostic refuted fresh-browser isolation as a fix:
+all three fresh browsers reported external-Instance device loss after loading
+the real model. Removing persistent-context/CDP attachment did not solve it:
+all three fresh direct-transport browsers also reported device loss. The
+unchanged build was `285414189e`, with index hash
+`81f0e39da6b427ed0b6760d583f274d920e8ecc311b3f87800a417cb05d4ba50`.
+These are diagnostic results, not final-source acceptance. An installed Chrome
+154 comparison preserves the model, build, flags and direct transport to test
+the version hypothesis. No assertion or GPU requirement has been relaxed.
+
+The failed e59 job's compact evidence was published and verified. Its storage
+closure remains deferred because the safety scan cannot read same-user
+`/proc/3354649/cwd`; no guard was bypassed and no foreign process was stopped.
+Access R2 remains UNACCEPTED.
+
+### First qualified-canvas candidate run
+
+Build `ce39ed9a` (tree `a18c06f7`, index SHA256
+`684354c046e4690b48fd6f7d6f509101d1cfcfdb81182ef5867dcb6046938655`)
+ran all 22 browser cases: **14 passed, 8 failed, 0 skipped**. Capture phases
+remained unrun after the required browser gate failed. The original run is
+retained at coordinator evidence `palette-access-ce39-all-fd0b1714`.
+
+Six failures exposed one search regression: a fuzzy keyword match on Down (Z)
+ranked ahead of the visible Section label for `secton`. Fuzzy visible labels now
+rank ahead of fuzzy metadata, while every direct-match tier keeps its priority.
+English and localized invariants preserve the less-preferred alias as a result.
+The existing six browser assertions remain unchanged.
+
+The installed dock was visibly present, but its oracle queried the static
+`data-command-id` instead of its owner-qualified `data-runtime-command-id`.
+Both activation and retired-owner checks now use the actual runtime identity.
+The blank-model scenario reached the real wall HUD; its measured compact rail
+grouped the individual tool button. The oracle now requires actual Thickness,
+Height and Leave-command controls alongside the existing parsed-IFC/workspace/
+active-command checks. The capture uses the same concrete UI contract. These
+repairs require a fresh run; no failure has been reclassified as a pass.
+
+### R2 exact-build GPU continuation: f8ca13e
+
+Root typecheck, build and nine search tests passed on `f8ca13ee1d12f886a0c0179a877fe4470fba7f26` (tree `df0a27616861c418affe0cea3fe8f5c561de3a9f`), original Pop job `a3bf84d3-8b1e-4a10-adc4-84cb45442cd0`. The actual physical-GPU browser suite passed 21/22, with zero skips. All six typo/search viewport cases and the blank-model journey now pass. No matrix/contexts/flows capture phase ran because the extension witness failed.
+
+The extension installed and reached its real widget, but its independent model-absent calibration restored the whole model before measuring extension Hide/Show. That restoration changed the camera; the fixed-matrix assertion correctly rejected the comparison. The revised test measures the independent absent reference last, preserves the identical camera/raster assertions, completes restoration in cleanup, and reframes before each initial/re-enabled activation. This changes test sequencing only. Corrected execution, complete source coverage, fresh Opus R2 judgment and production readiness remain pending.

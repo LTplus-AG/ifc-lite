@@ -10,7 +10,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { CommandPalette } from '@/components/viewer/CommandPalette';
 import { type as typeInto } from '@/test/render';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
-import { cleanup, render, click, activate, press } from '@/test/render';
+import { cleanup, render, click, activate, press, advance, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { Toaster } from '@/components/ui/toast';
@@ -29,6 +29,7 @@ beforeEach(() => { setLocale('en'); useViewerStore.setState({ ...fixtureModels()
 afterEach(async () => {
   for (const dismiss of document.querySelectorAll('[data-toast-seq] button')) click(dismiss);
   cleanup();
+  await advance(0); // Drain Radix close-autofocus timers before restoring shared state.
   for (const host of hosts.splice(0)) await host.dispose();
   setLocale(originalLocale); useViewerStore.setState(original);
 });
@@ -74,9 +75,11 @@ test('#8947 actual widgets in all dock slots open by keyboard, execute owner arg
     activate(button('Execute widget')); await settle();
     assert.equal(host.executions.at(-1), 'beta');
     assert.deepEqual(host.commandArgs.at(-1), { groupBy: 'storey', limit: 3 });
-    press(document.activeElement ?? document.body, 'Escape'); await settle();
-    assert.equal(document.querySelector('[role="dialog"]'), null);
-    assert.equal(document.activeElement, launcher);
+    press(document.activeElement ?? document.body, 'Escape');
+    await waitFor(() => !document.querySelector('[role="dialog"]') && document.activeElement === launcher,
+      'Escape closes the contributed tool and restores its original launcher');
+    // Preserve identity without serializing a cyclic DOM graph on failure.
+    assert.ok(document.activeElement === launcher, 'focus returns to the original dock launcher');
     activate(launcher); await settle();
     click(button('Close')); await settle();
   }
@@ -115,8 +118,11 @@ test('#8947 invalid widget has visible error, and closing/reopening after repair
   }
   render(<Switch />);
   click(button('alpha · dock.left')); await settle();
-  assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /Widget/);
-  click(button('Close')); await settle(); add(host, 'alpha');
+  await waitFor(() => /Widget/.test(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? ''),
+    'invalid widget finishes loading and displays its real validation error');
+  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? '', /Widget/);
+  click(button('Close')); await settle();
+  act(() => add(host, 'alpha')); await settle();
   click(button('alpha · dock.left')); await settle();
   assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Body alpha/);
   act(() => changeHost?.()); await settle();
@@ -141,7 +147,7 @@ test('#8947 palette Enter opens the real contributed widget after its own popup 
     press(document.querySelector('[role="combobox"]')!, 'Enter');
     act(() => { for (const frame of frames.splice(0)) frame(0); });
     await settle();
-    assert.equal(document.querySelector('[role="combobox"]'), null);
+    assert.equal(Boolean(document.querySelector('[role="combobox"]')), false);
     assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Body alpha/);
     activate(button('Execute widget')); await settle();
     assert.deepEqual(host.commandArgs, [{ groupBy: 'storey', limit: 3 }]);

@@ -14,7 +14,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { activate, advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
+import { activate, advance, cleanup, click, press, render, type as typeInto, waitFor } from '@/test/render';
 import { posthog } from '@/lib/analytics';
 import { CommandPalette } from './CommandPalette';
 import { PersistentToolHosts, usePersistentToolHosts } from './PersistentToolHosts';
@@ -229,8 +229,23 @@ test('persistent bulk editor reconciles a removed model before querying and appl
   assert.ok([...document.querySelectorAll('[role="combobox"]')].some(p => p.textContent === 'b'));
   click(button('Construction stage preset')); await advance(0);
   const value = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(value); typeInto(value, '6');
-  const apply = [...document.querySelectorAll('button')].find(p => p.textContent?.includes('Apply to')); assert.ok(apply && !apply.disabled);
-  click(apply); await advance(100);
+  // The stage preset intentionally switches to Selection. With nothing selected
+  // it must refuse; use the real source control to resume this Query scenario.
+  const applyButton = () => [...document.querySelectorAll('button')].find(p => p.textContent?.includes('Apply to'));
+  const source = document.querySelector<HTMLElement>('[role="combobox"][aria-label="Target source"]');
+  assert.ok(source); assert.equal(source.textContent, 'Selection');
+  assert.equal(applyButton()?.disabled, true);
+  activate(source); await advance(0);
+  const query = [...document.querySelectorAll('[role="option"]')].find(p => p.textContent === 'Query');
+  assert.ok(query); click(query); await advance(0);
+  assert.equal(source.textContent, 'Query');
+  // Reopening first reconciles selectedModelId, then resolves B's query and clears computing.
+  await waitFor(() => applyButton()?.disabled === false, 'B query resolves and enables Apply');
+  const apply = applyButton(); assert.ok(apply && !apply.disabled);
+  assert.match(apply.textContent ?? '', /Apply to 1 entit/);
+  click(apply);
+  await waitFor(() => useViewerStore.getState().getMutationView('b')?.getPropertyValue(1, 'CESIUM', 'Stage') === 6,
+    'real bulk edit writes Stage 6 to parsed model B');
   assert.equal(useViewerStore.getState().getMutationView('b')?.getPropertyValue(1, 'CESIUM', 'Stage'), 6);
   assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, 'CESIUM', 'Stage'), null);
 });

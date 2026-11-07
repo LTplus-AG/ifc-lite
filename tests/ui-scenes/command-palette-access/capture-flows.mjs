@@ -83,7 +83,10 @@ flow('flow-blank-wall', 'New blank → parsed IFC and active wall tool', null, d
     return s.models.size === 1 && s.session?.activeCommandId === 'wall.place' &&
       [...s.models.values()].some(m => m.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.length);
   }), { timeout: 180_000 }).toBeTruthy();
-  await expect(page.locator('[data-rail-tool="wall.place"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('navigation', { name: 'Model tools', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Thickness', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Height', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Leave the command', exact: true })).toBeVisible();
   return { destination: 'Model / wall.place' };
 });
 flow('flow-camera-corner', 'Keyboard → actual camera corner before common re-home', fixture, desktop, async page => {

@@ -79,7 +79,7 @@ export class SubsetParentResidency {
     if (host.gpuBudgetBytes === null) return;
     host.lastDrawnFrame.setSubset(batch.id, host.residencyFrame, onScreen);
     if (batch.gpuResident === false) this.parents.add(batch);
-    if (!onScreen || slot === undefined) return;
+    if (!onScreen || slot === undefined || host.geometryReleased || host.ephemeralStreamingMode) return; // swept with the budget pass
     // Every batch, not only evicted ones: the budget may evict it after this
     // frame, and the next frame may already need these slots as stand-ins.
     let entry = this.slots.get(batch.id);

@@ -23,12 +23,17 @@ export type RightPanel =
   | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'cost' | 'extensions' | 'layers'
   | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements' | 'changes' | 'model' | 'changeSets' | 'semantic' | 'review' | 'assistant' | 'idsStudio' | 'influx';
 
+import type { SurfaceCommandContext } from './surface-command-types';
+
 export interface CommandPaletteBuildParams {
+  surfaceContext?: Omit<SurfaceCommandContext, 'surface'>;
   execute: (code: string) => void;
   recentFiles: RecentFileEntry[];
   cachedNames: React.MutableRefObject<Set<string>>;
   extensionCommands: SlotContribution<CommandContribution>[];
   extensionHost: ExtensionHostService | null;
+  /** Refuse deferred actions after provider replacement. */
+  extensionHostIsCurrent?: () => boolean;
   canEditInSession: boolean;
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;

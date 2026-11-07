@@ -288,32 +288,22 @@ describe('command palette exports (#5601)', () => {
     );
   });
 
-  it('says so instead of doing nothing when a CSV export has no source bytes', async () => {
-    // A store with no source bytes (e.g. server-backed) passes the registry's
-    // `dataStore` gate, but the CSV handler has nothing to serialize.
-    useViewerStore.setState({
-      ifcDataStore: { source: { byteLength: 0 } } as unknown as IfcDataStore,
-    });
-    const infos: string[] = [];
-    const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });
-    try {
-      renderPalette();
-      await runRow(/^Export CSV: Entities/, () => infos.length > 0);
-    } finally {
-      spy.mock.restore();
-    }
-    assert.deepEqual(infos, [resolveEnglish('commandPalette.export.unavailable')]);
+  it('describes a CSV source prerequisite without activating the runner (#8947)', () => {
+    useViewerStore.setState({ ifcDataStore: { source: { byteLength: 0 } } as unknown as IfcDataStore });
+    renderPalette();
+    const row = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+      .find(option => option.dataset.commandId === 'export:csv-entities');
+    assert.ok(row);
+    assert.equal(row.getAttribute('aria-disabled'), 'true');
+    assert.match(row.textContent ?? '', /Load a model with IFC data first/);
   });
 
-  it('says so instead of doing nothing when there is nothing to export', async () => {
-    const infos: string[] = [];
-    const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });
-    try {
-      renderPalette();
-      await runRow(/^Export JSON/, () => infos.length > 0);
-    } finally {
-      spy.mock.restore();
-    }
-    assert.deepEqual(infos, [resolveEnglish('commandPalette.export.unavailable')]);
+  it('describes the missing data store on JSON exports (#8947)', () => {
+    renderPalette();
+    const row = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+      .find(option => option.dataset.commandId === 'export:json');
+    assert.ok(row);
+    assert.equal(row.getAttribute('aria-disabled'), 'true');
+    assert.match(row.textContent ?? '', /Load a model with IFC data first/);
   });
 });

@@ -47,7 +47,7 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
-import { CommandPalette } from './CommandPalette';
+import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #8090 disposable live witness. Build examples/headless-workflows first.
- * Run via ~/build-workers/ifc-fleet; owns only its named Docker container,
+ * Owns only its named Docker container,
  * loopback HTTPS test gateway and temporary certificate directory.
  * No user credentials, persistent database volume or insecure TLS override.
  */

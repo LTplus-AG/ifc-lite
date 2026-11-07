@@ -35,7 +35,7 @@ The real WebGPU viewer has exercised the initially untextured IFCOpenShell wall
 and public Convento model through preview, Apply, Undo/Redo, normal IFCZIP
 export/reopen and selection. Convento model-wide application covers 20 owners and
 115 geometry parts; a second federated model retains its original geometry and
-appearance. See the [recorded preview](evidence/appearance/convento-entire-model-planar-preview.png).
+appearance. See the [recorded preview](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/appearance/convento-entire-model-planar-preview.png).
 
 Mounted tests cover cancellation during debounce/worker work, stale revisions,
 source ownership failures, duplicate uploads, draft restoration and toolbar entry
@@ -47,12 +47,12 @@ edits invalidate cached scopes even without a viewer revision increment. Tests
 cover retyping, stale catalog responses and cancellation without allocator or
 history changes.
 
-The [trusted-input acceptance](evidence/appearance/apply-responsiveness/README.md)
+The [trusted-input acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/appearance/apply-responsiveness/README.md)
 completes #4336: cooperative preparation lets input and Discard run during Apply,
 with unchanged geometry/history behavior. The final synchronous transaction fence
 still pauses rendering; this is not a claim of uninterrupted frame delivery.
 
-[Fresh-room and IFCX acceptance](evidence/ifcx-texture-roundtrip/README.md)
+[Fresh-room and IFCX acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/ifcx-texture-roundtrip/README.md)
 completes #4325. The authored Convento model survives normal Share, fresh join,
 fresh rejoin, room export, ordinary IFCX import and viewport picking with matched
 owner/triangle/UV/image associations. Room transport preserves decoded image

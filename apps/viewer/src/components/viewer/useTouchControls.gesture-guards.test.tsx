@@ -340,6 +340,26 @@ describe('a long press and a mouse or trackpad menu press, in every engine\'s or
     });
   }
 
+  for (const [x, where] of [[210, 'next to the finger'], [400, 'far from it']] as const) {
+    it(`a finger held past its menu window, a trackpad right-click ${where}, then the lift: the touch's lift menu opens no third menu`, async () => {
+      mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+      const { canvas, menus } = rig('select', 42);
+      act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+      await act(async () => { mock.timers.tick(500); await flushPick(); });
+      assert.equal(menus.length, 1, 'the long press opened its menu');
+      await act(async () => { mock.timers.tick(1_100); await flushPick(); });
+      await trackpadRightClick(canvas, x, 300);
+      assert.equal(menus.length, 2, 'the trackpad right-click opened its menu');
+      await act(async () => { mock.timers.tick(100); await flushPick(); });
+      act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+      await act(async () => {
+        assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG: the held finger\'s lift menu was shown after a right press dropped its window');
+        await flushPick();
+      });
+      assert.equal(menus.length, 2, `BUG: the held finger's lift menu opened a third viewer menu (${menus.length} menus)`);
+    });
+  }
+
   // Guard: fails if a press whose menu already came at the press still mutes the next finger near it.
   it('macOS order: a right press whose menu came at the press leaves a finger landing after it free to long-press', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
@@ -395,6 +415,36 @@ describe('a long press and a mouse or trackpad menu press, in every engine\'s or
     assert.equal(selectionCount(), 0, 'BUG: the Pencil\'s compatibility click 8 px from its lift selected');
     await act(async () => { canvas.dispatchEvent(click(212, 300, null)); await settle(); });
     assert.equal(selectionCount(), 1, 'an untyped click past the slop of the lift is not the Pencil\'s (control)');
+  });
+});
+
+describe('a finger muted by a trackpad right-click in a tool that places on a tap (#9223, #9092)', () => {
+  const HIT = { intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: -1 }, expressId: 7, meshIndex: 0, triangleIndex: 0 } };
+  const annotateRig = () => rig('annotate', 42, { renderer: { raycastScene: () => HIT } });
+  const draft = () => useViewerStore.getState().draft;
+  afterEach(() => { useViewerStore.getState().cancelDraft(); });
+
+  async function mutedHold(canvas: HTMLCanvasElement, ms: number) {
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[300, 200]])));
+    await trackpadRightClick(canvas, 310, 200);
+    await act(async () => { mock.timers.tick(ms); await flushPick(); });
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); await flushPick(); });
+  }
+
+  it('Annotate: a finger held 600 ms after a trackpad right-click muted it drops no pin at the lift', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas, menus } = annotateRig();
+    await mutedHold(canvas, 600);
+    assert.equal(menus.length, 1, 'the trackpad right-click opened its menu');
+    assert.equal(draft(), null, 'BUG: the muted hold dropped a pin under the finger while the trackpad\'s menu was open');
+  });
+
+  // Guard: a muted finger lifted before the long-press threshold is still a tap, as without the press.
+  it('Annotate: a muted quick tap still drops its pin', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas } = annotateRig();
+    await mutedHold(canvas, 200);
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 }, 'a muted quick tap dropped no pin');
   });
 });
 

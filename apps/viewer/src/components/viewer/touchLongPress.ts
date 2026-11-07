@@ -43,6 +43,7 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   let fired = false;
   /** A mouse or trackpad menu press near the finger stopped its hold: the menu is the press's (#9223). */
   let muted = false;
+  let startedAt = 0;
   let menuWindow: (MenuPoint & { until: number }) | null = null;
   /** A menu press that came before any long press near it, waiting for its menu or a finger. */
   let pressBefore: { x: number; y: number; time: number } | null = null;
@@ -60,7 +61,6 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   };
   const registration = {
     forget(x: number, y: number) {
-      if (menuWindow && Date.now() >= menuWindow.until) menuWindow = null; // an expired window arms nothing
       for (const point of [start, menuWindow]) if (point && near(point, x, y)) point.mouse = true;
       // The press's menu is the one asked for: a hold still pending must not replace it (#9223).
       if (start && !fired && near(start, x, y)) { clearTimer(); muted = true; }
@@ -75,6 +75,7 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       cancel();
       fired = false;
       start = { id: touch.identifier, x: touch.clientX, y: touch.clientY, mouse: false };
+      startedAt = Date.now();
       // A finger landing next to a menu press whose menu has not come yet: that menu is the press's (#9223).
       if (pressBefore && Date.now() - pressBefore.time <= MENU_MS && near(start, pressBefore.x, pressBefore.y)) {
         pressBefore = null;
@@ -99,7 +100,8 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       return true;
     },
     end() {
-      const held = fired;
+      // A muted finger held past the long-press threshold is still a hold: no tool places on its lift (#9223)
+      const held = fired || (muted && start !== null && Date.now() - startedAt >= HOLD_MS);
       // Windows sends a held touch's own menu at the lift, however long the hold, and whether or
       // not a mouse press muted it (#9223): its window runs from the lift.
       if (fired && menuWindow) menuWindow.until = Date.now() + MENU_MS;

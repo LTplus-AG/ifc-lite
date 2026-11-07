@@ -15,12 +15,10 @@ export interface SelectedSourceProducts {
 
 const MAX_SELECTED_PRODUCTS = 256;
 
-/** Shared model-aware selection and visibility policy for authored source queries. */
-export function selectedSourceProducts(
-  state: ViewerState, label: string, resolve: (globalId: number) => EntityRef,
-  priorityRef: EntityRef | null = null,
-): SelectedSourceProducts {
-  const diagnostics: string[] = [];
+/** Every product the selection names, before the visibility and cap policy; a resolve failure goes to `diagnostics`. */
+export function selectedSourceRefs(
+  state: ViewerState, resolve: (globalId: number) => EntityRef, diagnostics: string[] = [],
+): Map<string, EntityRef> {
   const refs = new Map<string, EntityRef>();
   // Model-aware selection is authoritative when its basket is populated.
   // removeEntityFromSelection can retain an older renderer selectedEntityId.
@@ -57,6 +55,16 @@ export function selectedSourceProducts(
     const ref = stringToEntityRef(key);
     if (ref.expressId > 0) refs.set(entityRefToString(ref), ref);
   }
+  return refs;
+}
+
+/** Shared model-aware selection and visibility policy for authored source queries. */
+export function selectedSourceProducts(
+  state: ViewerState, label: string, resolve: (globalId: number) => EntityRef,
+  priorityRef: EntityRef | null = null,
+): SelectedSourceProducts {
+  const diagnostics: string[] = [];
+  const refs = selectedSourceRefs(state, resolve, diagnostics);
   const priorityKey = priorityRef ? entityRefToString(priorityRef) : null;
   const ordered = new Map<string, EntityRef>();
   if (priorityKey) {

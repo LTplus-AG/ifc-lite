@@ -42,7 +42,7 @@ export function useCentrelineRendererOverlay(
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
   // Not the `models` Map: a collapsed or renamed row, or an unrelated model toggled, moves no curve (#9158).
-  const { frame: modelFrame, shown: modelsShown } = useSourceModelKeys();
+  const { frame: modelFrame, shown: modelsShown } = useSourceModelKeys(enabled);
   // In a federation `ifcDataStore` only mirrors the active model; it is the curves' source only without one.
   const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
   const placement = useViewerStore((state) => state.modelPlacement);

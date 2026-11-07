@@ -45,8 +45,9 @@ export function selectedSweptDiskProducts(state: ViewerState) {
  * their identity while nothing they read changes: `frame` places the curves,
  * `shown` is the visibility of the models the selection reaches. A collapsed
  * or renamed model row, or an unrelated model toggled, changes neither (#9158).
+ * `shown` resolves the selection, so it is empty while the caller is off.
  */
-export function useSourceModelKeys(): { frame: readonly unknown[]; shown: readonly unknown[] } {
+export function useSourceModelKeys(enabled: boolean): { frame: readonly unknown[]; shown: readonly unknown[] } {
   const frame = useViewerStore(useShallow((state) => sourceModelFrame(state.models)));
   const models = useViewerStore((state) => state.models);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
@@ -54,8 +55,8 @@ export function useSourceModelKeys(): { frame: readonly unknown[]; shown: readon
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
   const primaryRef = useViewerStore((state) => state.selectedEntity);
   const stable = useShallow((key: unknown[]) => key);
-  const shown = stable(useMemo(() => selectedModelVisibility(useViewerStore.getState()),
-    [models, selectedIds, primaryId, selectedRefs, primaryRef]));
+  const shown = stable(useMemo(() => (enabled ? selectedModelVisibility(useViewerStore.getState()) : []),
+    [enabled, models, selectedIds, primaryId, selectedRefs, primaryRef]));
   return { frame, shown };
 }
 
@@ -64,7 +65,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   const models = useViewerStore((state) => state.models);
   // In a federation `ifcDataStore` only mirrors the active model; the query reads it only without one.
   const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
-  const { frame, shown } = useSourceModelKeys();
+  const { frame, shown } = useSourceModelKeys(enabled);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);

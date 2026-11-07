@@ -698,3 +698,19 @@ it('a product selected through the renderer ids alone keeps its model\'s visibil
   commit(() => useViewerStore.getState().setModelVisibility('other', false));
   assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the resolved product\'s model is hidden');
 });
+
+it('with the overlay off, a renderer-id selection resolves nothing for the model keys (#9158)', async () => {
+  const resolve = useViewerStore.getState().resolveGlobalIdFromModels;
+  let resolved = 0;
+  mount([], { ...federated([], [1]), centrelineOverlayEnabled: false, selectedEntitiesSet: new Set(),
+    selectedEntity: null, selectedEntityIds: new Set([2 * OFFSET + 1]), selectedEntityId: null,
+    resolveGlobalIdFromModels: (globalId: number) => { resolved++; return resolve(globalId); } });
+  commit({ selectedEntityIds: new Set([2 * OFFSET + 1, 2 * OFFSET + 3]) });
+  await settle();
+  assert.equal(resolved, 0, 'a select-all costs nothing while the overlay is off');
+  assert.equal(builds, 0);
+  commit({ centrelineOverlayEnabled: true });
+  await settle();
+  assert.ok(resolved > 0, 'turning it on resolves the selection');
+  assert.equal(current(), `${ONE},${THREE}`);
+});

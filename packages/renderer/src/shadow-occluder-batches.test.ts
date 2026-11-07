@@ -12,7 +12,7 @@ function batch(id: number, expressIds: number[], gpuResident?: boolean): Batched
   return { id, colorKey: `c${id}`, expressIds, color: [0.5, 0.5, 0.5, 1], gpuResident } as unknown as BatchedMesh;
 }
 
-function fakeScene(batches: BatchedMesh[], subsetIndexCount: number, rebuildsNow = false) {
+function fakeScene(batches: BatchedMesh[], subsetIndexCount: number, rebuildsNow = false, standIns = new Map<number, BatchedMesh[]>()) {
   const recorded: number[] = [];          // own GPU buffers drawn
   const subsetRecorded: number[] = [];    // drawn only as a subset of its pieces
   const requested: number[] = [];         // own GPU buffers wanted back
@@ -26,6 +26,7 @@ function fakeScene(batches: BatchedMesh[], subsetIndexCount: number, rebuildsNow
     requestBatchPieces: (b) => { piecesRequested.push(b.id); },
     restoreSubsetParentNow: (b) => (rebuildsNow ? batch(b.id + 100, b.expressIds) : null),
     getOrCreatePartialBatch: () => (subsetIndexCount > 0 ? ({ id: 999, indexCount: subsetIndexCount } as unknown as BatchedMesh) : undefined),
+    subsetStandIns: (b) => standIns.get(b.id) ?? [],
   };
   return { scene, recorded, subsetRecorded, requested, piecesRequested, offScreen };
 }
@@ -79,6 +80,21 @@ describe('shadow occluder residency (#9034, #9050)', () => {
       assert.deepEqual(requested, [], 'nothing left for the queue');
     });
   }
+
+  for (const filtered of [true, false]) {
+    it(`${filtered ? 'filtered' : 'unfiltered'}: an evicted parent past the rebuild cap casts from its stand-ins (#9227)`, () => {
+      const subs = [batch(51, [1]), batch(52, [2])];
+      const { scene, requested } = fakeScene([batch(1, [1, 2], false)], 3, false, new Map([[1, subs]]));
+      const out = shadowOccluderBatches(scene, filtered ? { hiddenIds: new Set([7]) } : {}, DEVICE, filtered, PIPELINE, 0);
+      assert.deepEqual(out.map((b) => b.id), [51, 52], 'the stand-ins the colour pass draws cast, not the evicted shell');
+      assert.deepEqual(requested, [1], 'the parent still waits for its rebuild');
+    });
+  }
+
+  it('an evicted parent with no stand-ins still yields only its shell, which casts nothing', () => {
+    const { scene } = fakeScene([batch(1, [1, 2], false)], 3, false);
+    assert.deepEqual(shadowOccluderBatches(scene, {}, DEVICE, false, PIPELINE, 0).map((b) => b.id), [1]);
+  });
 
   it('without a pipeline an evicted whole batch is only queued', () => {
     const { scene, recorded, requested } = fakeScene([batch(1, [1, 2], false)], 3, true);

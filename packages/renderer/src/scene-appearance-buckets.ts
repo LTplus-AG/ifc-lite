@@ -19,8 +19,6 @@ export interface AppearanceBucketAccess {
   create(parts: MeshData[], key: string): BatchedMesh;
   release(batch: BatchedMesh): void;
   changed(key: string): void;
-  /** Rebuild a warm bucket the residency budget evicted from its CPU pieces. */
-  restore(bucket: AppearanceBucket): void;
   refresh(): void;
 }
 export interface FlatAppearanceResource {
@@ -65,9 +63,10 @@ export class AppearanceBuckets {
     parts.forEach((part, index) => {
       const bucket = this.access.reverse().get(part);
       if (bucket) {
-        // An on-screen batch drawn only as sub-batches (hide, isolate, X-Ray) may have lost its own buffers (#9050, #9136).
-        if (bucket.batchedMesh?.gpuResident === false && bucket.meshData.length > 0) this.access.restore(bucket);
-        if (!bucket.batchedMesh || bucket.batchedMesh.gpuResident === false)
+        // The owned and rest batches are built from the CPU pieces, so a warm
+        // batch the budget evicted needs no rebuild of its own buffers first,
+        // which would only be freed again below (#9050, #9136, #9227).
+        if (!bucket.batchedMesh || (bucket.batchedMesh.gpuResident === false && bucket.meshData.length === 0))
           throw new Error('Appearance requires resident finalized geometry');
         const indices = grouped.get(bucket) ?? [];
         indices.push(index);

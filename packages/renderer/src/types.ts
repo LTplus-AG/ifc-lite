@@ -69,6 +69,8 @@ export interface Mesh {
    *  report the representation item it hit. See {@link PickResult.geometryItemId}
    *  for when it is absent. */
   geometryItemId?: number;
+  /** A highlight merging many pieces (#9192), and what it covers. */
+  mergedSelection?: import('./selection-hydration.js').MergedSelectionCoverage;
 }
 
 /**

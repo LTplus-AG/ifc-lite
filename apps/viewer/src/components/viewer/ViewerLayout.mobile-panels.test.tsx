@@ -6,8 +6,9 @@
  * #5853: every panel the rail offers is reachable on a phone.
  *
  * Mobile has no rail, and it offered only two floating buttons, Hierarchy and
- * Properties. The Panels button now opens a sheet listing the rail's panels;
- * a tap opens that panel where the mobile sheet shows it.
+ * Properties. One Panels button now opens a sheet listing the rail's panels,
+ * those two included (#8802 R6); a tap opens that panel where the mobile sheet
+ * shows it.
  *
  * Renders the real `ViewerLayout` at phone width with a model loaded. The
  * expected list is derived here from the store and the registry, the same
@@ -60,7 +61,7 @@ function button(container: HTMLElement, name: string): HTMLButtonElement | undef
 }
 
 function openList(container: HTMLElement): void {
-  const launcher = button(container, 'Open the panel list');
+  const launcher = button(container, 'Panels');
   assert.ok(launcher, 'mobile has no way to reach the other panels');
   click(launcher);
 }
@@ -93,7 +94,7 @@ describe('mobile Panels sheet (#5853)', () => {
     // This assertion must run before loading the new launcher: when production
     // is reverted, the mounted viewer should fail for the missing entry point.
     const viewer = renderViewerLayout();
-    assert.ok(button(viewer, 'Open the panel list'), 'mobile has no panel-list entry point');
+    assert.ok(button(viewer, 'Panels'), 'mobile has no panel-list entry point');
     cleanup();
     const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
     // Mount the real launcher without heavyweight panel bodies: a few panels
@@ -152,7 +153,7 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
   });
 
-  it('the direct Properties button clears a dismissed bottom panel before reopening the sheet', () => {
+  it('Properties from the list clears a dismissed bottom panel before reopening the sheet', () => {
     const container = renderViewerLayout();
     openList(container);
     click(listItem(container, 'lists')!);
@@ -163,11 +164,25 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(useViewerStore.getState().rightPanelCollapsed, true);
     assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists', 'backdrop leaves the bottom flag set');
 
-    click(button(container, 'Open Properties')!);
+    openList(container);
+    click(listItem(container, 'properties')!);
     const s = useViewerStore.getState();
     assert.equal(s.rightPanelCollapsed, false);
     assert.equal(s.sidebarActivePanel, 'properties');
     assert.equal(activeBottomPanel(s), null, 'the stale Lists flag would hide Properties');
+  });
+
+  it('one labelled Panels button replaces the three floating tiles (#8802 R6)', () => {
+    const container = renderViewerLayout();
+    const panels = button(container, 'Panels');
+    assert.ok(panels);
+    // Named by what it shows, so the spoken name contains the visible one (WCAG 2.5.3).
+    assert.equal(panels.getAttribute('aria-label'), null);
+    assert.equal(panels.getAttribute('aria-expanded'), 'false');
+    for (const tile of ['Open Hierarchy', 'Open Properties', 'Open the panel list']) {
+      // A boolean as `actual`: a failing assert inspects it, and a jsdom node exhausts the heap.
+      assert.equal(button(container, tile) !== undefined, false, `${tile} should no longer float over the model`);
+    }
   });
 
   it('a tap on Hierarchy opens the left sheet', () => {

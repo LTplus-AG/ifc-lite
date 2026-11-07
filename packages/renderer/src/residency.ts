@@ -180,18 +180,19 @@ export interface WholeSplitResidency {
 
 /**
  * Request a fully visible batch as sub-batches when one uniform can't draw it
- * (X-Ray alpha #4129, mixed promotion #677). Returns true when the caller must
- * not draw it whole. Run this BEFORE `batchForWholeDraw` (#9136): the
+ * (X-Ray alpha #4129, mixed promotion #677). Returns `'whole'` when the caller
+ * draws it whole, `'split'` when its sub-batches were requested, and
+ * `'pieces'` when it waits for its CPU pieces to come back from disk, so it is
+ * missing this frame (#9227). Run this BEFORE `batchForWholeDraw` (#9136): the
  * sub-batches never read the parent's own GPU buffers, so it takes the partial
  * path's residency handling, as hide and isolate do (#9050). An evicted parent
  * is not rebuilt, and a cold one gets only its pieces back. Splitting after the
  * whole-draw step would rebuild the parent each frame after the budget evicts it.
  */
-export function pushWholeSplit(requests: PartialBatchRequests, scene: WholeSplitResidency, batch: BatchedMesh, isTransparent: boolean): boolean {
+export function pushWholeSplit(requests: PartialBatchRequests, scene: WholeSplitResidency, batch: BatchedMesh, isTransparent: boolean): 'whole' | 'split' | 'pieces' {
   if (requests.pushWholeSplit(batch, isTransparent)) {
-    if (batch.gpuResident === false) scene.requestBatchPieces(batch);
-    return true;
+    return batch.gpuResident === false && scene.requestBatchPieces(batch) ? 'pieces' : 'split';
   }
   // A cold batch can't be partitioned until its pieces are back: fetch only them, then split.
-  return batch.gpuResident === false && requests.wantsWholeSplit(batch, isTransparent) && scene.requestBatchPieces(batch);
+  return batch.gpuResident === false && requests.wantsWholeSplit(batch, isTransparent) && scene.requestBatchPieces(batch) ? 'pieces' : 'whole';
 }

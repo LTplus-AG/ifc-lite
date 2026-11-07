@@ -1,0 +1,1318 @@
+{
+ "final-light": {
+  "steps": {
+   "1.walls": {
+    "walls": [
+     {
+      "start": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "end": [
+       3.872,
+       -3.502,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       3.872,
+       -3.502,
+       0
+      ],
+      "end": [
+       3.872,
+       0.498,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       3.872,
+       0.498,
+       0
+      ],
+      "end": [
+       -2.128,
+       0.498,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       -2.128,
+       0.498,
+       0
+      ],
+      "end": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "height": 3
+     }
+    ]
+   },
+   "1.hosted": {
+    "door": 203,
+    "window": 236,
+    "slab": 251
+   },
+   "2.level2": {
+    "level2": 256,
+    "walls": [
+     {
+      "start": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "end": [
+       2.872,
+       -3.502,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       2.872,
+       -3.502,
+       0
+      ],
+      "end": [
+       2.872,
+       -0.502,
+       0
+      ],
+      "height": 3
+     }
+    ]
+   },
+   "3.rows": {
+    "rows0": [
+     {
+      "id": 256,
+      "active": true,
+      "name": "Level 2",
+      "elevation": "+3.00",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": false,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.00"
+     }
+    ]
+   },
+   "3.stair": {
+    "stairParts": [
+     368,
+     369
+    ],
+    "flightMesh": [
+     [
+      -1.528,
+      0,
+      0.402,
+      3.072,
+      3,
+      1.402
+     ]
+    ]
+   },
+   "3.fixed": {
+    "fixedWall": 390,
+    "wall": {
+     "start": [
+      -1.128,
+      -2.502,
+      0
+     ],
+     "end": [
+      -1.128,
+      -1.302,
+      0
+     ],
+     "height": 3
+    }
+   },
+   "4.preview": {
+    "impact": "Moves 1 storey \u00b7 moves 2 elements \u00b7 resizes 4 walls \u00b7 refits 1 stair",
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.50",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.50"
+     }
+    ]
+   },
+   "4.applied": {
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.50",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.50"
+     }
+    ],
+    "l1Walls": [
+     3.5,
+     3.5,
+     3.5,
+     3.5
+    ],
+    "fixed": 3,
+    "l2Walls": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      0
+     ]
+    ],
+    "stairMesh": [
+     [
+      null,
+      null
+     ],
+     [
+      [
+       -1.528,
+       0,
+       0.402,
+       3.072,
+       3,
+       1.402
+      ],
+      [
+       -1.528,
+       0,
+       0.402,
+       3.884,
+       3.5,
+       1.402
+      ]
+     ]
+    ],
+    "door": [
+     [
+      -0.818,
+      0,
+      3.477,
+      0.082,
+      2.1,
+      3.527
+     ],
+     [
+      -0.818,
+      0,
+      3.477,
+      0.082,
+      2.1,
+      3.527
+     ]
+    ],
+    "window": [
+     [
+      1.149,
+      0.9,
+      3.477,
+      2.349,
+      2.4,
+      3.527
+     ],
+     [
+      1.149,
+      0.9,
+      3.477,
+      2.349,
+      2.4,
+      3.527
+     ]
+    ],
+    "l2WallMeshes": [
+     [
+      [
+       -2.128,
+       3,
+       3.402,
+       2.972,
+       6,
+       3.602
+      ],
+      [
+       -2.128,
+       3.5,
+       3.402,
+       2.972,
+       6.5,
+       3.602
+      ]
+     ],
+     [
+      [
+       2.772,
+       3,
+       0.502,
+       2.972,
+       6,
+       3.402
+      ],
+      [
+       2.772,
+       3.5,
+       0.502,
+       2.972,
+       6.5,
+       3.402
+      ]
+     ]
+    ],
+    "undoStepsAdded": 70,
+    "previewEqualsApplied": true
+   },
+   "5.elevation": {
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.80",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.80"
+     }
+    ],
+    "l2WallMeshes": [
+     [
+      [
+       -2.128,
+       3.5,
+       3.402,
+       2.972,
+       6.5,
+       3.602
+      ],
+      [
+       -2.128,
+       3.8,
+       3.402,
+       2.972,
+       6.8,
+       3.602
+      ]
+     ],
+     [
+      [
+       2.772,
+       3.5,
+       0.502,
+       2.972,
+       6.5,
+       3.402
+      ],
+      [
+       2.772,
+       3.8,
+       0.502,
+       2.972,
+       6.8,
+       3.402
+      ]
+     ]
+    ],
+    "l1Attached": [
+     3.8,
+     3.8,
+     3.8,
+     3.8
+    ],
+    "fixed": 3,
+    "slab": [
+     [
+      -2.128,
+      0,
+      -0.498,
+      3.872,
+      0.3,
+      3.502
+     ],
+     [
+      -2.128,
+      0,
+      -0.498,
+      3.872,
+      0.3,
+      3.502
+     ]
+    ],
+    "stairMesh": [
+     null,
+     [
+      -1.528,
+      0,
+      0.402,
+      4.425,
+      3.8,
+      1.402
+     ]
+    ]
+   },
+   "6.refused": {
+    "alert": "Not applied: The stair #368 from Level 1 to Level 2 would have to climb 0.20 m: no flight fits; move or delete the stair first",
+    "unchanged": true
+   },
+   "7.undoRedo": {
+    "undoTrail": [
+     {
+      "undo": 377,
+      "matches": 7
+     },
+     {
+      "undo": 307,
+      "matches": 6
+     },
+     {
+      "undo": 306,
+      "matches": 5
+     },
+     {
+      "undo": 246,
+      "matches": 4
+     },
+     {
+      "undo": 211,
+      "matches": -1
+     },
+     {
+      "undo": 209,
+      "matches": 2
+     },
+     {
+      "undo": 200,
+      "matches": 2
+     },
+     {
+      "undo": 199,
+      "matches": -1
+     },
+     {
+      "undo": 166,
+      "matches": -1
+     },
+     {
+      "undo": 133,
+      "matches": 1
+     },
+     {
+      "undo": 72,
+      "matches": -1
+     },
+     {
+      "undo": 37,
+      "matches": -1
+     },
+     {
+      "undo": 2,
+      "matches": -1
+     },
+     {
+      "undo": 0,
+      "matches": 0
+     }
+    ],
+    "redoTrail": [
+     {
+      "undo": 2,
+      "matches": -1
+     },
+     {
+      "undo": 37,
+      "matches": -1
+     },
+     {
+      "undo": 72,
+      "matches": -1
+     },
+     {
+      "undo": 133,
+      "matches": 1
+     },
+     {
+      "undo": 166,
+      "matches": -1
+     },
+     {
+      "undo": 199,
+      "matches": -1
+     },
+     {
+      "undo": 200,
+      "matches": 2
+     },
+     {
+      "undo": 209,
+      "matches": 2
+     },
+     {
+      "undo": 211,
+      "matches": -1
+     },
+     {
+      "undo": 246,
+      "matches": 4
+     },
+     {
+      "undo": 306,
+      "matches": 5
+     },
+     {
+      "undo": 307,
+      "matches": 6
+     },
+     {
+      "undo": 377,
+      "matches": 7
+     },
+     {
+      "undo": 451,
+      "matches": 8
+     }
+    ],
+    "blankEmpty": true,
+    "redoneEqualsS8": true
+   },
+   "8.reload.IFC4": {
+    "file": "walkthrough-IFC4.ifc",
+    "compared": 13,
+    "mismatched": [],
+    "mismatchCount": 0
+   },
+   "8.reload.IFC4X3": {
+    "file": "walkthrough-IFC4X3.ifc",
+    "compared": 13,
+    "mismatched": [],
+    "mismatchCount": 0
+   },
+   "errors": {
+    "pageErrors": [
+     "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "toolPaths": {
+     "door.place": "startCommand",
+     "window.place": "startCommand",
+     "slab.place": "startCommand",
+     "wall.place": "startCommand",
+     "stair.place": "startCommand"
+    }
+   }
+  },
+  "ifcopenshell": [
+   {
+    "schema": "IFC4",
+    "errors": 0,
+    "storeys": [
+     {
+      "id": 26,
+      "GlobalId": "2bzaD6kQX5Tf9TxLn6MkSK",
+      "Name": "Level 1",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     },
+     {
+      "id": 256,
+      "GlobalId": "0zD$B0VxT44uC7n3ObK8uL",
+      "Name": "Level 2",
+      "Elevation": 3.8,
+      "placementZ": 3.8,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     }
+    ]
+   },
+   {
+    "schema": "IFC4X3",
+    "errors": 0,
+    "storeys": [
+     {
+      "id": 26,
+      "GlobalId": "2bzaD6kQX5Tf9TxLn6MkSK",
+      "Name": "Level 1",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     },
+     {
+      "id": 256,
+      "GlobalId": "0zD$B0VxT44uC7n3ObK8uL",
+      "Name": "Level 2",
+      "Elevation": 3.8,
+      "placementZ": 3.8,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "final-dark": {
+  "steps": {
+   "1.walls": {
+    "walls": [
+     {
+      "start": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "end": [
+       3.872,
+       -3.502,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       3.872,
+       -3.502,
+       0
+      ],
+      "end": [
+       3.872,
+       0.498,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       3.872,
+       0.498,
+       0
+      ],
+      "end": [
+       -2.128,
+       0.498,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       -2.128,
+       0.498,
+       0
+      ],
+      "end": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "height": 3
+     }
+    ]
+   },
+   "1.hosted": {
+    "door": 203,
+    "window": 236,
+    "slab": 251
+   },
+   "2.level2": {
+    "level2": 256,
+    "walls": [
+     {
+      "start": [
+       -2.128,
+       -3.502,
+       0
+      ],
+      "end": [
+       2.872,
+       -3.502,
+       0
+      ],
+      "height": 3
+     },
+     {
+      "start": [
+       2.872,
+       -3.502,
+       0
+      ],
+      "end": [
+       2.872,
+       -0.502,
+       0
+      ],
+      "height": 3
+     }
+    ]
+   },
+   "3.rows": {
+    "rows0": [
+     {
+      "id": 256,
+      "active": true,
+      "name": "Level 2",
+      "elevation": "+3.00",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": false,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.00"
+     }
+    ]
+   },
+   "3.stair": {
+    "stairParts": [
+     368,
+     369
+    ],
+    "flightMesh": [
+     [
+      -1.528,
+      0,
+      0.402,
+      3.072,
+      3,
+      1.402
+     ]
+    ]
+   },
+   "3.fixed": {
+    "fixedWall": 390,
+    "wall": {
+     "start": [
+      -1.128,
+      -2.502,
+      0
+     ],
+     "end": [
+      -1.128,
+      -1.302,
+      0
+     ],
+     "height": 3
+    }
+   },
+   "4.preview": {
+    "impact": "Moves 1 storey \u00b7 moves 2 elements \u00b7 resizes 4 walls \u00b7 refits 1 stair",
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.50",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.50"
+     }
+    ]
+   },
+   "4.applied": {
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.50",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.50"
+     }
+    ],
+    "l1Walls": [
+     3.5,
+     3.5,
+     3.5,
+     3.5
+    ],
+    "fixed": 3,
+    "l2Walls": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      0
+     ]
+    ],
+    "stairMesh": [
+     [
+      null,
+      null
+     ],
+     [
+      [
+       -1.528,
+       0,
+       0.402,
+       3.072,
+       3,
+       1.402
+      ],
+      [
+       -1.528,
+       0,
+       0.402,
+       3.884,
+       3.5,
+       1.402
+      ]
+     ]
+    ],
+    "door": [
+     [
+      -0.818,
+      0,
+      3.477,
+      0.082,
+      2.1,
+      3.527
+     ],
+     [
+      -0.818,
+      0,
+      3.477,
+      0.082,
+      2.1,
+      3.527
+     ]
+    ],
+    "window": [
+     [
+      1.149,
+      0.9,
+      3.477,
+      2.349,
+      2.4,
+      3.527
+     ],
+     [
+      1.149,
+      0.9,
+      3.477,
+      2.349,
+      2.4,
+      3.527
+     ]
+    ],
+    "l2WallMeshes": [
+     [
+      [
+       -2.128,
+       3,
+       3.402,
+       2.972,
+       6,
+       3.602
+      ],
+      [
+       -2.128,
+       3.5,
+       3.402,
+       2.972,
+       6.5,
+       3.602
+      ]
+     ],
+     [
+      [
+       2.772,
+       3,
+       0.502,
+       2.972,
+       6,
+       3.402
+      ],
+      [
+       2.772,
+       3.5,
+       0.502,
+       2.972,
+       6.5,
+       3.402
+      ]
+     ]
+    ],
+    "undoStepsAdded": 70,
+    "previewEqualsApplied": true
+   },
+   "5.elevation": {
+    "rows": [
+     {
+      "id": 256,
+      "active": false,
+      "name": "Level 2",
+      "elevation": "+3.80",
+      "height": null
+     },
+     {
+      "id": 26,
+      "active": true,
+      "name": "Level 1",
+      "elevation": "\u00b10.00",
+      "height": "3.80"
+     }
+    ],
+    "l2WallMeshes": [
+     [
+      [
+       -2.128,
+       3.5,
+       3.402,
+       2.972,
+       6.5,
+       3.602
+      ],
+      [
+       -2.128,
+       3.8,
+       3.402,
+       2.972,
+       6.8,
+       3.602
+      ]
+     ],
+     [
+      [
+       2.772,
+       3.5,
+       0.502,
+       2.972,
+       6.5,
+       3.402
+      ],
+      [
+       2.772,
+       3.8,
+       0.502,
+       2.972,
+       6.8,
+       3.402
+      ]
+     ]
+    ],
+    "l1Attached": [
+     3.8,
+     3.8,
+     3.8,
+     3.8
+    ],
+    "fixed": 3,
+    "slab": [
+     [
+      -2.128,
+      0,
+      -0.498,
+      3.872,
+      0.3,
+      3.502
+     ],
+     [
+      -2.128,
+      0,
+      -0.498,
+      3.872,
+      0.3,
+      3.502
+     ]
+    ],
+    "stairMesh": [
+     null,
+     [
+      -1.528,
+      0,
+      0.402,
+      4.425,
+      3.8,
+      1.402
+     ]
+    ]
+   },
+   "6.refused": {
+    "alert": "Not applied: The stair #368 from Level 1 to Level 2 would have to climb 0.20 m: no flight fits; move or delete the stair first",
+    "unchanged": true
+   },
+   "7.undoRedo": {
+    "undoTrail": [
+     {
+      "undo": 377,
+      "matches": 7
+     },
+     {
+      "undo": 307,
+      "matches": 6
+     },
+     {
+      "undo": 306,
+      "matches": 5
+     },
+     {
+      "undo": 246,
+      "matches": 4
+     },
+     {
+      "undo": 211,
+      "matches": -1
+     },
+     {
+      "undo": 209,
+      "matches": 2
+     },
+     {
+      "undo": 200,
+      "matches": 2
+     },
+     {
+      "undo": 199,
+      "matches": -1
+     },
+     {
+      "undo": 166,
+      "matches": -1
+     },
+     {
+      "undo": 133,
+      "matches": 1
+     },
+     {
+      "undo": 72,
+      "matches": -1
+     },
+     {
+      "undo": 37,
+      "matches": -1
+     },
+     {
+      "undo": 2,
+      "matches": -1
+     },
+     {
+      "undo": 0,
+      "matches": 0
+     }
+    ],
+    "redoTrail": [
+     {
+      "undo": 2,
+      "matches": -1
+     },
+     {
+      "undo": 37,
+      "matches": -1
+     },
+     {
+      "undo": 72,
+      "matches": -1
+     },
+     {
+      "undo": 133,
+      "matches": 1
+     },
+     {
+      "undo": 166,
+      "matches": -1
+     },
+     {
+      "undo": 199,
+      "matches": -1
+     },
+     {
+      "undo": 200,
+      "matches": 2
+     },
+     {
+      "undo": 209,
+      "matches": 2
+     },
+     {
+      "undo": 211,
+      "matches": -1
+     },
+     {
+      "undo": 246,
+      "matches": 4
+     },
+     {
+      "undo": 306,
+      "matches": 5
+     },
+     {
+      "undo": 307,
+      "matches": 6
+     },
+     {
+      "undo": 377,
+      "matches": 7
+     },
+     {
+      "undo": 451,
+      "matches": 8
+     }
+    ],
+    "blankEmpty": true,
+    "redoneEqualsS8": true
+   },
+   "8.reload.IFC4": {
+    "file": "walkthrough-IFC4.ifc",
+    "compared": 13,
+    "mismatched": [],
+    "mismatchCount": 0
+   },
+   "8.reload.IFC4X3": {
+    "file": "walkthrough-IFC4X3.ifc",
+    "compared": 13,
+    "mismatched": [],
+    "mismatchCount": 0
+   },
+   "errors": {
+    "pageErrors": [
+     "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "toolPaths": {
+     "door.place": "startCommand",
+     "window.place": "startCommand",
+     "slab.place": "startCommand",
+     "wall.place": "startCommand",
+     "stair.place": "startCommand"
+    }
+   }
+  },
+  "ifcopenshell": [
+   {
+    "schema": "IFC4",
+    "errors": 0,
+    "storeys": [
+     {
+      "id": 26,
+      "GlobalId": "3MUyZeCCj1x85gZyQqtwy0",
+      "Name": "Level 1",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     },
+     {
+      "id": 256,
+      "GlobalId": "2I599MN8LC6A965VdSRBGW",
+      "Name": "Level 2",
+      "Elevation": 3.8,
+      "placementZ": 3.8,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     }
+    ]
+   },
+   {
+    "schema": "IFC4X3",
+    "errors": 0,
+    "storeys": [
+     {
+      "id": 26,
+      "GlobalId": "3MUyZeCCj1x85gZyQqtwy0",
+      "Name": "Level 1",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     },
+     {
+      "id": 256,
+      "GlobalId": "2I599MN8LC6A965VdSRBGW",
+      "Name": "Level 2",
+      "Elevation": 3.8,
+      "placementZ": 3.8,
+      "aggregatedBy": [
+       "IfcBuilding:Building"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "fzk": {
+  "steps": {
+   "10.rows": {
+    "rows": [
+     {
+      "id": 35065,
+      "active": false,
+      "name": "Dachgeschoss",
+      "elevation": "+2.70",
+      "height": null
+     },
+     {
+      "id": 479,
+      "active": true,
+      "name": "Erdgeschoss",
+      "elevation": "\u00b10.00",
+      "height": "2.70"
+     }
+    ]
+   },
+   "10.preview": {
+    "impact": "Shifts every storey above Erdgeschoss by the same amountMoves 1 storey \u00b7 moves 59 elements1 stair moves but is not refit: it is not a single stepped flightSelect themShown in 3D and the plan before it is applied\u00b7Enter applies \u00b7 Esc cancels"
+   },
+   "10.applied": {
+    "rows": [
+     {
+      "id": 35065,
+      "active": false,
+      "name": "Dachgeschoss",
+      "elevation": "+3.00",
+      "height": null
+     },
+     {
+      "id": 479,
+      "active": true,
+      "name": "Erdgeschoss",
+      "elevation": "\u00b10.00",
+      "height": "3.00"
+     }
+    ],
+    "movedUp030": 60,
+    "unchanged": 59,
+    "other": [],
+    "undoAdded": 4
+   },
+   "10.undoRedo": {
+    "undoRestoresOriginal": true,
+    "redoRestoresEdit": true
+   },
+   "10.reload.IFC4": {
+    "file": "walkthrough-IFC4.ifc",
+    "compared": 119,
+    "mismatchCount": 0,
+    "mismatched": []
+   },
+   "10.reload.IFC4X3": {
+    "file": "walkthrough-IFC4X3.ifc",
+    "compared": 119,
+    "mismatchCount": 0,
+    "mismatched": []
+   },
+   "errors": {
+    "pageErrors": [
+     "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+   }
+  },
+  "ifcopenshell": [
+   {
+    "schema": "IFC4",
+    "errors": 5,
+    "storeys": [
+     {
+      "id": 479,
+      "GlobalId": "2eyxpyOx95m90jmsXLOuR0",
+      "Name": "Erdgeschoss",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:FZK-Haus"
+      ]
+     },
+     {
+      "id": 35065,
+      "GlobalId": "273g3wqLzDtfYIl7qqkgcO",
+      "Name": "Dachgeschoss",
+      "Elevation": 3.0,
+      "placementZ": 3.0,
+      "aggregatedBy": [
+       "IfcBuilding:FZK-Haus"
+      ]
+     }
+    ]
+   },
+   {
+    "schema": "IFC4X3",
+    "errors": 125,
+    "storeys": [
+     {
+      "id": 479,
+      "GlobalId": "2eyxpyOx95m90jmsXLOuR0",
+      "Name": "Erdgeschoss",
+      "Elevation": 0,
+      "placementZ": 0.0,
+      "aggregatedBy": [
+       "IfcBuilding:FZK-Haus"
+      ]
+     },
+     {
+      "id": 35065,
+      "GlobalId": "273g3wqLzDtfYIl7qqkgcO",
+      "Name": "Dachgeschoss",
+      "Elevation": 3.0,
+      "placementZ": 3.0,
+      "aggregatedBy": [
+       "IfcBuilding:FZK-Haus"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "fzk-unedited-ifc4x3-baseline": {
+  "errors": 125
+ },
+ "fzk-original-ifc4": {
+  "errors": 5
+ }
+}

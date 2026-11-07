@@ -280,7 +280,7 @@ export class Renderer {
     private postPasses: PostPassChain | null = null;
     /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
     private readonly hoverMeshes = new HoverMeshCache();
-    private warnedMergedUpload = false;
+    private readonly warnedHighlightUploads = new Set<string>();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
     private maxPixelRatio = MAX_DRAWING_BUFFER_PIXEL_RATIO;
@@ -1411,15 +1411,18 @@ export class Renderer {
 
     /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */
     private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): void {
-        const outcome = runGuardedGpuUpload(
-            () => this.isDeviceLost(),
-            () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)),
-            (error) => this.reportUploadLoss(error),
-        );
-        if (!outcome.ok && outcome.reason === 'error' && !this.warnedMergedUpload) {
-            this.warnedMergedUpload = true;
-            console.warn('[Renderer] merged selection highlight upload failed; the entity stays selected without a highlight:', outcome.error);
+        this.guardedHighlightUpload('merged selection highlight', () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)));
+    }
+
+    /** A highlight upload that fails leaves nothing behind and is retried next frame; it warns once per kind (#9192). */
+    private guardedHighlightUpload<T>(kind: string, run: () => T): T | undefined {
+        const outcome = runGuardedGpuUpload(() => this.isDeviceLost(), run, (error) => this.reportUploadLoss(error));
+        if (outcome.ok) return outcome.value;
+        if (outcome.reason === 'error' && !this.warnedHighlightUploads.has(kind)) {
+            this.warnedHighlightUploads.add(kind);
+            console.warn(`[Renderer] ${kind} upload failed; it is skipped and retried on a later frame:`, outcome.error);
         }
+        return undefined;
     }
 
     /**
@@ -3011,7 +3014,7 @@ export class Renderer {
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
-                ? this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))
+                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,

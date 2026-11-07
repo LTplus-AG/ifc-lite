@@ -129,13 +129,21 @@ function uploadGeometry(
     size: interleaved.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(vertexBuffer, 0, interleaved);
-
-  const indexBuffer = device.createBuffer({
-    size: indices.byteLength,
-    usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-  });
-  device.queue.writeBuffer(indexBuffer, 0, indices);
+  // Nothing allocated here outlives a throw: a caller freeing only what this
+  // returned would otherwise leak the vertex buffer of the mesh that failed.
+  let indexBuffer: GPUBuffer | undefined;
+  try {
+    device.queue.writeBuffer(vertexBuffer, 0, interleaved);
+    indexBuffer = device.createBuffer({
+      size: indices.byteLength,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(indexBuffer, 0, indices);
+  } catch (error) {
+    vertexBuffer.destroy();
+    indexBuffer?.destroy();
+    throw error;
+  }
 
   const transform = MathUtils.identity();
   transform.m[12] = origin[0];

@@ -1171,8 +1171,8 @@ export class Scene {
     }
   }
 
-  /** How many pieces are listed under `expressId`, across models, without touching them. */
-  getMeshDataPieceListLength(expressId: number): number { return this.meshDataMap.get(expressId)?.length ?? 0; }
+  /** The pieces listed under `expressId`, across models, as stored (not split or copied). */
+  getMeshDataPieceList(expressId: number): readonly MeshData[] | undefined { return this.meshDataMap.get(expressId); }
 
   /** #4382: `itemId`, when given, narrows the returned pieces to those whose
    *  `geometryItemId` matches (undefined never matches, so no silent fallback). */

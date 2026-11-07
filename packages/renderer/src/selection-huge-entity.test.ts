@@ -15,6 +15,7 @@ import { MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
 import * as upload from './individual-mesh-upload.js';
 import type { IndividualMeshFrame, MergedMeshGpu } from './individual-mesh-upload.js';
 import { planPickMeshHydration } from './pick-mesh-budget.js';
+import { HoverMeshCache } from './hover-mesh-cache.js';
 
 /**
  * #9192 part B: one entity holding tens of thousands of pieces (a mapped
@@ -388,6 +389,36 @@ describe('selecting an entity with a huge piece count (#9192)', () => {
     assert.deepEqual(all.drawn().triangles, expectedTriangles([...model0, ...model1]));
   });
 
+  // #9192 review (merged distinct entries): the scope-change sync keeps a
+  // model-0 merge when the selection widens to every model, and a merge must
+  // record which models it covers or it passes for model 1's highlight too.
+  it('rebuilds for every model when a selection scoped to one model widens to all of them', () => {
+    const h = makeHarness();
+    const model0 = entity(9, HUGE, () => ({ modelIndex: 0 }));
+    const model1 = entity(9, HUGE, (i) => ({ modelIndex: 1, positions: new Float32Array([i * 2, 5, 0, i * 2 + 1, 5, 0, i * 2, 6, 0]) }));
+    load(h, [...model0, ...model1]);
+
+    const scoped = frameCost(h, { selectedId: 9, selectedModelIndex: 0 });
+    assert.deepEqual(scoped.drawn().triangles, expectedTriangles(model0));
+    const widened = frameCost(h, { selectedId: 9 });
+    assert.deepEqual(widened.drawn().triangles, expectedTriangles([...model0, ...model1]), 'both models highlighted, each once');
+    assert.deepEqual(h.scene.getMeshes().filter((mesh) => mesh.hydrated).map((mesh) => mesh.modelIndex).sort(), [0, 1]);
+
+    const narrowed = frameCost(h, { selectedId: 9, selectedModelIndex: 1 });
+    assert.deepEqual(narrowed.drawn().triangles, expectedTriangles(model1), 'and back to one model, without the other');
+    assert.equal(frameCost(h, { selectedId: 9, selectedModelIndex: 1 }).buffers, 0, 'and is current again');
+  });
+
+  it('a single model highlights exactly once across the same scope changes', () => {
+    const h = makeHarness();
+    const pieces = entity(9, HUGE, () => ({ modelIndex: 0 }));
+    load(h, pieces);
+    for (const selectedModelIndex of [0, undefined, 0]) {
+      assert.deepEqual(frameCost(h, { selectedId: 9, selectedModelIndex }).drawn().triangles, expectedTriangles(pieces), `scope ${selectedModelIndex}`);
+      assert.equal(frameCost(h, { selectedId: 9, selectedModelIndex }).buffers, 0, `scope ${selectedModelIndex}: settled`);
+    }
+  });
+
   it('rebuilds once when pieces arrive for the selected entity, never drawing both', () => {
     const h = makeHarness();
     const pieces = entity(9, HUGE);
@@ -403,18 +434,67 @@ describe('selecting an entity with a huge piece count (#9192)', () => {
     assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'and is current again');
   });
 
-  it('keeps the merge while a cold-evicted bucket has shrunk the piece list, and when it comes back', () => {
+  it('keeps the merge while a cold-evicted bucket has shrunk the piece list, and rebuilds once when it comes back', () => {
     const h = makeHarness();
     const pieces = entity(9, HUGE + 10);
     load(h, pieces);
     const merged = frameCost(h, { selectedId: 9 });
 
+    // What Scene's cold eviction does to the entity's list: remove the objects.
     const list = h.scene['meshDataMap'].get(9)!;
     const evicted = list.splice(0, 20);
     assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'an evicted piece stays in the highlight, as a per-piece copy would');
-    list.push(...evicted);
-    assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'a restored piece was already drawn');
     assert.ok(merged.created.every((buffer) => buffer.destroyed === 0));
+
+    // A cold restore decodes NEW MeshData objects and lists them via addMeshData.
+    for (const piece of evicted) h.scene.addMeshData({ ...piece });
+    const restored = frameCost(h, { selectedId: 9 });
+    assert.ok(merged.created.every((buffer) => buffer.destroyed === 1), 'the old merge is freed, not drawn beside the new one');
+    assert.equal(restored.buffers, 3);
+    assert.deepEqual(restored.drawn().triangles, expectedTriangles(pieces));
+    assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'and is current again');
+  });
+
+  // #9192 review (absence reads as success): a shrunk list that then grows by
+  // fewer pieces than it lost has a SMALLER length than the merge recorded, so a
+  // length comparison called a merge missing the new piece current.
+  it('rebuilds when a piece arrives after eviction shrank the list, whatever the length comes to', () => {
+    for (const [evict, arrive] of [[20, 1], [3, 3]]) {
+      const h = makeHarness();
+      const pieces = entity(9, HUGE + 20);
+      load(h, pieces);
+      const merged = frameCost(h, { selectedId: 9 });
+
+      const list = h.scene['meshDataMap'].get(9)!;
+      list.splice(0, evict);
+      assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'eviction alone keeps the merge');
+
+      const late = entity(9, arrive, (i) => ({ positions: new Float32Array([i, 9, 0, i + 1, 9, 0, i, 10, 0]) }));
+      h.scene.appendToBatches(late, h.device, h.renderer['pipeline'] as never, false);
+      const grown = frameCost(h, { selectedId: 9 });
+      assert.ok(merged.created.every((buffer) => buffer.destroyed === 1), `evict ${evict}, add ${arrive}: the merge missing the new piece is retired`);
+      assert.deepEqual(grown.drawn().triangles, expectedTriangles([...pieces.slice(evict), ...late]), `evict ${evict}, add ${arrive}: the new piece is highlighted`);
+      assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'and is current again');
+    }
+  });
+
+  it('re-checks a merge\'s pieces only after pick geometry changed, never on a settled frame', () => {
+    const h = makeHarness();
+    load(h, [...entity(9, HUGE), ...entity(2, 3)]);
+    h.render({ selectedId: 9 });
+    const coverage = h.scene.getMeshes().find((mesh) => mesh.mergedSelection)?.mergedSelection;
+    assert.ok(coverage, 'the selection merged');
+    let lookups = 0;
+    const has = coverage.pieces.has.bind(coverage.pieces);
+    coverage.pieces.has = (piece: object) => { lookups++; return has(piece); };
+    for (let i = 0; i < 3; i++) h.render({ selectedId: 9 });
+    assert.equal(lookups, 0, 'a settled selection does not walk its pieces');
+
+    h.scene.appendToBatches(entity(3, 1), h.device, h.renderer['pipeline'] as never, false);
+    assert.equal(frameCost(h, { selectedId: 9 }).buffers, 0, 'another entity\'s piece leaves the merge current');
+    assert.equal(lookups, HUGE, 'checked once, by identity');
+    h.render({ selectedId: 9 });
+    assert.equal(lookups, HUGE, 'and not again');
   });
 
   it('rebuilds from moved geometry after an edit, and frees the merge on removal', () => {
@@ -484,6 +564,56 @@ describe('hovering an entity with a huge piece count (#9192)', () => {
 
     h.render({});
     assert.ok(geometry(small).every((buffer) => buffer.destroyed === 1));
+  });
+
+  // #9192 review (absence reads as success): a failed upload stored the hover
+  // key before throwing, so the same hover kept returning nothing after
+  // allocation had recovered. The failing frame must still render.
+  it('retries a failed hover upload instead of caching the failure, at any piece count', () => {
+    for (const [id, expectedBuffers] of [[9, 2], [2, 6]] as const) {
+      const warn = mock.method(console, 'warn', () => undefined);
+      try {
+        const h = makeHarness();
+        load(h, [...entity(9, HUGE), ...entity(2, 3)]);
+        h.stats.failGeometryBuffers = true;
+        const before = h.stats.buffers.length;
+        assert.equal(h.renderer.renderWithResult({ visualEnhancement: { enabled: false }, hoverOutline: { id } }), true, `entity ${id}: the failing frame still renders`);
+        assert.equal(h.renderer.renderWithResult({ visualEnhancement: { enabled: false }, hoverOutline: { id } }), true);
+        assert.equal(h.stats.buffers.slice(before).filter((buffer) => (buffer.usage & VERTEX_OR_INDEX) !== 0).length, 0);
+
+        h.stats.failGeometryBuffers = false;
+        assert.equal(frameCost(h, { hoverOutline: { id } }).geometryBuffers, expectedBuffers, `entity ${id}: uploads once allocation recovers`);
+        assert.equal(frameCost(h, { hoverOutline: { id } }).geometryBuffers, 0, `entity ${id}: then cached`);
+      } finally {
+        warn.mock.restore();
+      }
+    }
+  });
+
+  it('frees the pieces a failed hover upload had already created', () => {
+    for (const source of [entity(2, 3), entity(9, HUGE, (i) => ({ color: i % 2 ? RED : GREY }))]) {
+      const created: FakeBuffer[] = [];
+      let failAt = 3;
+      const device = {
+        limits: { maxBufferSize: 1 << 28 },
+        createBuffer(desc: { size: number; usage: number }) {
+          if (created.length >= failAt) throw new RangeError('Array buffer allocation failed');
+          const buffer: FakeBuffer = { size: desc.size, usage: desc.usage, destroyed: 0, bytes: null, destroy() { this.destroyed++; }, getMappedRange: () => new ArrayBuffer(0), unmap() { /* no-op */ }, mapAsync: () => Promise.resolve() };
+          created.push(buffer);
+          return buffer;
+        },
+        queue: { writeBuffer() { /* no-op */ } },
+      } as unknown as GPUDevice;
+      const cache = new HoverMeshCache();
+      const frame = () => ({ sharedOrigin: null, quantized: false });
+      assert.throws(() => cache.resolve(device, source[0].expressId, undefined, () => source, frame), RangeError);
+      assert.equal(created.length, 3);
+      assert.deepEqual(created.map((buffer) => buffer.destroyed), [1, 1, 1], `${source.length} pieces: nothing created before the throw survives it`);
+
+      failAt = Infinity;
+      assert.ok(cache.resolve(device, source[0].expressId, undefined, () => source, frame).length > 0, 'the same hover retries');
+      cache.release();
+    }
   });
 
   it('reuses the selection\'s merged mesh when the hovered entity is selected', () => {
@@ -579,11 +709,19 @@ describe('uploadMergedMeshes (#9192)', () => {
     assert.equal(created.length, 0);
   });
 
-  it('frees what it created when a later allocation throws', () => {
-    const { device, created } = uploadDevice(1 << 28, 3);
+  // #9192 review (partial-state clear): at failAtBuffer=3 the second group's
+  // vertex buffer exists when its index buffer throws, and it was not freed.
+  it('frees every buffer it created, wherever an allocation throws', () => {
     const pieces = entity(9, 2, (i) => ({ color: i ? RED : GREY }));
-    assert.throws(() => uploadMergedMeshes(device, pieces, () => NO_FRAME), RangeError);
-    assert.equal(created.length, 3);
-    assert.deepEqual(created.slice(0, 2).map((buffer) => buffer.destroyed), [1, 1]);
+    for (let failAt = 0; failAt < 4; failAt++) {
+      const { device, created } = uploadDevice(1 << 28, failAt);
+      assert.throws(() => uploadMergedMeshes(device, pieces, () => NO_FRAME), RangeError);
+      assert.equal(created.length, failAt);
+      assert.deepEqual(created.map((buffer) => buffer.destroyed), created.map(() => 1), `failing at buffer ${failAt}`);
+    }
+    // The single-piece upload shares the vertex-then-index allocation.
+    const { device, created } = uploadDevice(1 << 28, 1);
+    assert.throws(() => upload.uploadIndividualMesh(device, pieces[0], NO_FRAME), RangeError);
+    assert.deepEqual(created.map((buffer) => buffer.destroyed), [1], 'a piece\'s vertex buffer is freed when its index buffer throws');
   });
 });

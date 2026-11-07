@@ -29,7 +29,8 @@ export class HoverMeshCache {
 
   /**
    * The GPU pieces for `(modelIndex, id)`: cached while the key is unchanged,
-   * otherwise `pieces()` is re-read and uploaded.
+   * otherwise `pieces()` is re-read and uploaded. Throws when an upload fails,
+   * having freed what it created and cached nothing.
    */
   resolve(
     device: GPUDevice,
@@ -41,11 +42,13 @@ export class HoverMeshCache {
     const key = `${modelIndex ?? 'any'}:${id}`;
     if (key === this.key) return this.pieces;
     this.release();
-    this.key = key;
     const source = pieces() ?? [];
     this.pieces = source.length > MERGE_PIECES_ABOVE
       ? uploadMergedMeshes(device, source, frameOf)
-      : source.map((meshData) => uploadIndividualMesh(device, meshData, frameOf(meshData)));
+      : uploadEach(device, source, frameOf);
+    // Only a finished upload is cached: a throw above leaves no key, so the next
+    // frame retries instead of reading an empty result as this hover's pieces.
+    this.key = key;
     return this.pieces;
   }
 
@@ -58,4 +61,19 @@ export class HoverMeshCache {
     this.pieces = [];
     this.key = null;
   }
+}
+
+/** One upload per piece, freeing the earlier pieces if a later one throws. */
+function uploadEach(device: GPUDevice, source: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame): IndividualMeshGpu[] {
+  const uploaded: IndividualMeshGpu[] = [];
+  try {
+    for (const meshData of source) uploaded.push(uploadIndividualMesh(device, meshData, frameOf(meshData)));
+  } catch (error) {
+    for (const piece of uploaded) {
+      piece.vertexBuffer.destroy();
+      piece.indexBuffer.destroy();
+    }
+    throw error;
+  }
+  return uploaded;
 }

@@ -794,6 +794,8 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 
 `copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
+A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement`) binds to the grid crossing it lands on, within a millimetre, among the crossings of the grids on its storey or its spatial ancestors. It gets a new `IfcGridPlacement` in the model's schema, with a local placement under it holding its height, heading and any offset. Landing on no crossing, it comes free as a plain storey-placed element. `CopyProductResult.boundToGrid` and `cameFree` list which is which, including a part on the grid in its own right. A part placed under a copied placement follows that copy and isn't listed. The viewer tells the person how many came free.
+
 ## Key Types
 
 | Type | Description |

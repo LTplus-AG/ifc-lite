@@ -13,9 +13,12 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { addColumnOnGridToStore, addGridToStore, addHostedWindowToStore, rectangularGridAxes, resolveHostAnchor, resolveSpatialAnchor } from '@ifc-lite/create';
+import { addColumnOnGridToStore, addGridToStore, addHostedWindowToStore, createCopyContext, productStoreyOrigin, rectangularGridAxes, resolveHostAnchor, resolveSpatialAnchor } from '@ifc-lite/create';
+import { toast } from '@/components/ui/toast';
+import { resolve as translate } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { cleanup, press, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -329,23 +332,6 @@ describe('copy and paste (#6232 C3)', () => {
     return column;
   }
 
-  it('array and Ctrl+C on a column placed on a grid crossing say why, naming the grid and no internal id (#9026 item 8)', () => {
-    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
-    const anchor = resolveSpatialAnchor(target.dataStore, STOREY, target.editor.getMutationView());
-    const grid = addGridToStore(target.editor, anchor, rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4] }));
-    const { columnId } = addColumnOnGridToStore(target.editor, target.dataStore, anchor, { Position: [6, 4, 0], Width: 0.4, Depth: 0.4, Height: 3 }, {
-      GridId: grid.gridId, IntersectingAxes: [grid.uAxisIds[1], grid.vAxisIds[1]],
-    });
-    select(columnId);
-    useViewerStore.getState().startCommand('element.array');
-    const g = getCommandRuntime().gesture as ArrayGesture;
-    assert.match(g.refusal ?? '', /grid intersection/);
-    assert.doesNotMatch(g.refusal ?? '', /#\d/);
-    assert.equal(g.ids.length, 0);
-    ctrl('c');
-    assert.equal(readCopyClipboard(), null, 'Ctrl+C refuses it too');
-  });
-
   it('hovering the array preview over an element whose placement is not tied to its storey shows a refusal, not a ghost or an exception', () => {
     select(detachedColumn());
     useViewerStore.getState().startCommand('element.array');
@@ -380,5 +366,138 @@ describe('copy and paste (#6232 C3)', () => {
     assert.deepEqual(now.command!.ghost!(now.gesture, now.ctx!), []);
     click(5, 5);
     assert.equal(columns().length, 1);
+  });
+});
+
+describe('copies of a column on a grid crossing (#9199, #9026 item 8)', () => {
+  const realInfo = toast.info;
+  let notes: string[] = [];
+  beforeEach(() => { notes = []; (toast as { info: (m: string) => void }).info = (m) => notes.push(m); });
+  afterEach(() => { Object.assign(toast, { info: realInfo }); });
+
+  function gridColumn(): { columnId: number; grid: ReturnType<typeof addGridToStore> } {
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const anchor = resolveSpatialAnchor(target.dataStore, STOREY, target.editor.getMutationView());
+    const grid = addGridToStore(target.editor, anchor, rectangularGridAxes({ UOffsets: [0, 6, 12], VOffsets: [0, 4] }));
+    const { columnId } = addColumnOnGridToStore(target.editor, target.dataStore, anchor, { Position: [0, 0, 0], Width: 0.4, Depth: 0.4, Height: 3 }, {
+      GridId: grid.gridId, IntersectingAxes: [grid.uAxisIds[0], grid.vAxisIds[0]],
+    });
+    return { columnId, grid };
+  }
+  const gridPlacements = () => live('IFCGRIDPLACEMENT').length;
+  const typeSpacing = (spacing: number) => act(() => { updateCommandGesture((g) => ({ ...(g as ArrayGesture), count: 3, distance: spacing })); });
+
+  it('an array at the bay spacing stays on the grid, with no note, and one undo takes it all back', () => {
+    const { columnId } = gridColumn();
+    select(columnId);
+    useViewerStore.getState().startCommand('element.array');
+    assert.equal((getCommandRuntime().gesture as ArrayGesture).refusal, null);
+    const depth = undoDepth();
+    const placements = gridPlacements();
+    const columnsBefore = live('IFCCOLUMN').length;
+    typeSpacing(6);
+    click(0, 0);
+    click(6, 0);
+
+    assert.equal(live('IFCCOLUMN').length, columnsBefore + 2);
+    assert.equal(gridPlacements(), placements + 2, 'each copy has its own IfcGridPlacement');
+    assert.deepEqual(notes, [], 'nothing came free, so nothing is said');
+
+    act(() => { useViewerStore.getState().undo(MODEL_ID); });
+    assert.equal(live('IFCCOLUMN').length, columnsBefore, 'one undo takes every copy back');
+    assert.equal(gridPlacements(), placements, 'and their grid placements with them');
+    assert.equal(undoDepth(), depth);
+    act(() => { useViewerStore.getState().redo(MODEL_ID); });
+    assert.equal(live('IFCCOLUMN').length, columnsBefore + 2, 'and one redo brings them back');
+    assert.equal(gridPlacements(), placements + 2);
+  });
+
+  it('off the bay spacing the copies come free, and the note says how many, once', () => {
+    const { columnId } = gridColumn();
+    select(columnId);
+    useViewerStore.getState().startCommand('element.array');
+    const placements = gridPlacements();
+    const depth = undoDepth();
+    typeSpacing(5);
+    click(0, 0);
+    click(5, 0);
+
+    assert.equal(gridPlacements(), placements, 'no copy is on the grid');
+    assert.deepEqual(notes, [translate('copyArray.cameFree', { count: 2, countDisplay: '2' })]);
+    assert.match(notes[0], /2 copies/);
+    assert.doesNotMatch(notes[0], /#\d/);
+    // A free copy is an ordinary column again: it has a storey position Move can edit, as its source does not.
+    const state = useViewerStore.getState();
+    assert.equal(state.readEntityPosition(MODEL_ID, columnId), null);
+    const copies = live('IFCCOLUMN').filter((e) => e.expressId !== columnId);
+    assert.deepEqual(copies.map((e) => state.readEntityPosition(MODEL_ID, e.expressId)!.map(round)).sort((a, b) => a[0] - b[0]), [[5, 0, 0], [10, 0, 0]]);
+    act(() => { useViewerStore.getState().undo(MODEL_ID); });
+    assert.equal(undoDepth(), depth, 'one undo takes the whole array back');
+  });
+
+  it('paste binds on a crossing and frees elsewhere: Ctrl+C, then a click on each', () => {
+    const { columnId } = gridColumn();
+    select(columnId);
+    ctrl('c');
+    assert.deepEqual([...readCopyClipboard()!.base], [0, 0, 0], 'the paste grips the crossing');
+    const placements = gridPlacements();
+
+    ctrl('v');
+    click(12, 4);
+    assert.equal(gridPlacements(), placements + 1);
+    assert.deepEqual(notes, []);
+
+    ctrl('v');
+    click(11, 4);
+    assert.equal(gridPlacements(), placements + 1);
+    assert.deepEqual(notes, [translate('copyArray.cameFree', { count: 1, countDisplay: '1' })]);
+  });
+
+  it('Duplicate frees a copy off the crossing, on the one copy path, and is one undo step', () => {
+    const { columnId } = gridColumn();
+    const depth = undoDepth();
+    const placements = gridPlacements();
+    const before = live('IFCCOLUMN').length;
+    const copy = useViewerStore.getState().duplicateEntity(MODEL_ID, columnId);
+    assert.ok('expressId' in copy);
+    assert.equal(live('IFCCOLUMN').length, before + 1);
+    assert.equal(gridPlacements(), placements);
+    assert.equal(notes.length, 1);
+    act(() => { useViewerStore.getState().undo(MODEL_ID); });
+    assert.equal(live('IFCCOLUMN').length, before);
+    assert.equal(undoDepth(), depth);
+  });
+
+  it('the array preview sits where each copy lands, the bound one and the free one', () => {
+    const { columnId } = gridColumn();
+    const s = useViewerStore.getState();
+    const plane = buildStoreyWorkplane(s, MODEL_ID, STOREY, 0);
+    assert.ok(isWorkplane(plane));
+    const corner = plane.localToRender([0, 0, 0]);
+    const mesh = {
+      expressId: toGlobalIdFromModels(s.models, MODEL_ID, columnId), origin: corner as [number, number, number],
+      positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0, 0, 0]), color: [1, 1, 1, 1] as [number, number, number, number],
+    };
+    act(() => useViewerStore.setState({ geometryResult: { ...s.geometryResult!, meshes: [mesh] }, models: new Map([[MODEL_ID, { ...s.models.get(MODEL_ID)!, geometryResult: { ...s.geometryResult!, meshes: [mesh] } }]]) }));
+    select(columnId);
+    useViewerStore.getState().startCommand('element.array');
+    // The first copy lands between the crossings, the second on one.
+    typeSpacing(3);
+    click(0, 0);
+    act(() => { commandPointerMove(at(3, 0)); });
+    const runtime = getCommandRuntime();
+    const ghosts = runtime.command!.ghost!(runtime.gesture, runtime.ctx!);
+    const shown = ghosts.map((ghost) => [0, 1, 2].map((k) => +(ghost.origin![k] + ghost.positions[k]).toFixed(4)));
+    click(3, 0);
+
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const ctx = createCopyContext(target.dataStore, target.editor);
+    const landed = useViewerStore.getState().selectedEntityIds;
+    const origins = [...landed].map((id) => productStoreyOrigin(ctx, resolveEntityRef(id).expressId)!.origin);
+    assert.deepEqual(
+      origins.map((origin) => plane.localToRender(origin).map((v) => +v.toFixed(4))).sort((a, b) => a[0] - b[0] || a[2] - b[2]),
+      shown.sort((a, b) => a[0] - b[0] || a[2] - b[2]),
+    );
+    assert.deepEqual(notes, [translate('copyArray.cameFree', { count: 1, countDisplay: '1' })], 'one of the two came free');
   });
 });

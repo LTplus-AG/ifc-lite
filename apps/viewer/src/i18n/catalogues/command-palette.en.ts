@@ -71,6 +71,7 @@ export const commandPaletteEn = {
   'commandPalette.tool.annotate.label': 'Annotate',
   'commandPalette.tool.wall.label': 'Draw walls',
   'commandPalette.tool.slab.label': 'Draw slabs',
+  'commandPalette.tool.roof.label': 'Draw roofs',
   'commandPalette.tool.column.label': 'Place columns',
   'commandPalette.tool.beam.label': 'Draw beams',
   'commandPalette.tool.editMode.label': 'Toggle Edit Mode',

@@ -20,14 +20,15 @@ import type { StateCreator, StoreApi } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
 import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
-import { getModelingCommand, resolveWorkplane } from '@/lib/commands/modeling/registry';
+import { getModelingCommand, resolveRoofHeight, resolveWorkplane } from '@/lib/commands/modeling/registry';
 import {
   beginCommandRuntime,
   endCommandRuntime,
   getCommandRuntime,
+  rebindCommandContext,
   type CommandPhase,
 } from '@/lib/commands/modeling/runtime';
-import type { CommandId, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
+import type { CommandContext, CommandId, ModelingCommand, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
 import {
   loadModelLayout, persistModelLayout, restoreSidebar, showModelInspector,
   type ModelLayout, type ModelLayoutPick, type SidebarRestore,
@@ -41,6 +42,8 @@ export interface AuthoringSession {
   readonly storeyId: number | null;
   /** Null while the model has no storey to draw on. */
   readonly workplane: WorkplaneSpec | null;
+  /** The Roof tool raised the plane by itself, so the plane comes back down when the roof drawing ends (#9202). */
+  readonly planeRaisedForRoof: boolean;
   readonly activeCommandId: CommandId | null;
   readonly phase: CommandPhase;
   readonly snap: { readonly profile: SnapProfileId };
@@ -77,15 +80,54 @@ function patchSession(set: Set, patch: Partial<AuthoringSession>): void {
   set((s) => (s.session ? { session: { ...s.session, ...patch } } : {}));
 }
 
-function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): void {
-  const command = getModelingCommand(id);
-  const session = get().session;
-  if (!command || !session) return;
-  patchSession(set, { activeCommandId: id, phase: 'idle' });
+/** What `command` runs against, on the session's plane as it is now. */
+function commandContext(get: Get, session: AuthoringSession, command: ModelingCommand): CommandContext {
   const built = session.workplane ? resolveWorkplane(get(), session.modelId, session.workplane) : null;
   if (built && 'refused' in built) console.warn(`[modeling] No workplane: ${built.refused}`);
   const ctx = { get, modelId: session.modelId, storeyId: session.storeyId, workplane: built && !('refused' in built) ? built : null };
   if (command.workplane) ctx.workplane = command.workplane(ctx);
+  return ctx;
+}
+
+/** Move the session's plane; a running command keeps its gesture and draws on the new plane from here on. */
+function moveWorkplane(set: Set, get: Get, patch: Pick<AuthoringSession, 'workplane' | 'planeRaisedForRoof'>): void {
+  patchSession(set, patch);
+  const session = get().session;
+  const { command } = getCommandRuntime();
+  if (session && command) rebindCommandContext(commandContext(get, session, command));
+}
+
+const drawingRoof = (s: ViewerState): boolean =>
+  s.session?.activeCommandId === 'slab.place' && s.authoringDefaults.slabClass === 'roof';
+
+/**
+ * A roof is drawn at the top of the walls (#9202): starting one raises a plane
+ * still at the floor there, and ending it lowers that plane again, so the next
+ * wall does not silently start at the eaves. A height the user set is theirs,
+ * in both directions.
+ */
+function settleRoofPlane(set: Set, get: Get): void {
+  const s = get();
+  const { session } = s;
+  if (session?.workplane?.kind !== 'storey' || session.storeyId === null) return;
+  const { workplane } = session;
+  if (drawingRoof(s)) {
+    if (workplane.offset !== 0) return;
+    const offset = resolveRoofHeight(s, session.modelId, session.storeyId);
+    if (offset > 0) moveWorkplane(set, get, { workplane: { ...workplane, offset }, planeRaisedForRoof: true });
+  } else if (session.planeRaisedForRoof) {
+    moveWorkplane(set, get, { workplane: { ...workplane, offset: 0 }, planeRaisedForRoof: false });
+  }
+}
+
+function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): void {
+  const command = getModelingCommand(id);
+  if (!command || !get().session) return;
+  // Patched first: a plane the Roof tool raises or lowers moves on this very write.
+  patchSession(set, { activeCommandId: id, phase: 'idle' });
+  const session = get().session;
+  if (!session) return;
+  const ctx = commandContext(get, session, command);
   beginCommandRuntime(
     command,
     ctx,
@@ -100,6 +142,7 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
 /** Keep the runtime in step with the tool and the session, whoever changed them. */
 function syncRuntime(api: StoreApi<ViewerState>): void {
   api.subscribe((s, prev) => {
+    if (drawingRoof(s) !== drawingRoof(prev)) settleRoofPlane(api.setState, api.getState);
     // The workspace closed, however (Leave, its model removed, a file swap):
     // the sidebar gets its panel back, and edit mode goes with it, so the two
     // never disagree.
@@ -152,6 +195,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
           modelId,
           storeyId,
           workplane: storeyId === null ? null : { kind: 'storey', storeyId, offset: 0 },
+          planeRaisedForRoof: false,
           activeCommandId: null,
           phase: 'idle',
           snap: { profile: 'modeling' },
@@ -171,12 +215,13 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     },
 
     setSessionStorey: (storeyId) => {
-      patchSession(set, { storeyId, workplane: { kind: 'storey', storeyId, offset: 0 } });
+      patchSession(set, { storeyId, workplane: { kind: 'storey', storeyId, offset: 0 }, planeRaisedForRoof: false });
+      settleRoofPlane(set, get);
       const active = get().session?.activeCommandId;
       if (active) launch(set, get, api, active);
     },
 
-    setWorkplane: (workplane) => patchSession(set, { workplane }),
+    setWorkplane: (workplane) => moveWorkplane(set, get, { workplane, planeRaisedForRoof: false }),
 
     startCommand: (id) => {
       if (!getModelingCommand(id)) {

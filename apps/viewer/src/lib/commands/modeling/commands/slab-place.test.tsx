@@ -29,6 +29,7 @@ import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
 import { applyMaterialLayers, setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
 import { authoredElementMeshPayload } from '@/store/slices/authoredFallbackMesh';
+import { planeZ } from './placement-shared.js';
 import { SLAB_PLACE } from './slab-place.js';
 import type { SlabPlaceGesture } from './slab-place-geometry.js';
 
@@ -358,7 +359,9 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
       for (let i = 0; i < ghost.positions.length; i += 3) zs.push(plane.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[2]);
       assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [0, thickness]);
       click(2, 2);
-      assert.deepEqual(bodyOf(drawn()), { bottom: 0, top: thickness });
+      // The plane itself rises for a roof (#9202); the body starts on it either way.
+      const lift = planeZ(ctx().workplane);
+      assert.deepEqual(bodyOf(drawn()), { bottom: lift, top: round(lift + thickness) });
     });
   }
 

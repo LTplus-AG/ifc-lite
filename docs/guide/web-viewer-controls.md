@@ -27,6 +27,13 @@ Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,
 middle, and right-button navigation keep the controls above.
 
+**Roof** on the Model rail (Shift + Y) draws a roof at the top of the storey's
+walls: the plane rises there while the tool runs, the roof sits on it, and the
+plane comes back down when the tool ends. The **Plane** chip on the 3D view and
+in the plan header shows how far above the storey floor new elements land, and
+sets it for any drawing tool: type a height, or pick Floor or Top of walls. A
+height you set stays until you change it or move to another storey.
+
 While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.

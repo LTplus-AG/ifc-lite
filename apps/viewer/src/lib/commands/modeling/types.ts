@@ -131,6 +131,8 @@ export interface ModelingCommand<G = unknown> {
   readonly id: CommandId;
   readonly labelKey: TranslationKey;
   readonly hud: {
+    /** What the bar calls the command when that depends on the session; `labelKey` otherwise. */
+    title?: (s: ViewerState) => TranslationKey | undefined;
     Bar?: ComponentType<CommandHudProps<G>>;
     Scene?: ComponentType<CommandHudProps<G>>;
     /** Drawn inside the plan's SVG, above the footprint of the `ghost` meshes the plan draws for every command. */

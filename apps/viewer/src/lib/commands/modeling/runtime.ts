@@ -119,9 +119,19 @@ export function beginCommandRuntime(
     nextField: () => requestFieldEdit('next'),
     typeValue: (draft) => requestFieldEdit(state.activeField ?? 0, draft),
     toggleSnap: () => { store?.getState().toggleSnap(); return true; },
-    runKey: (run) => applyStep(run(state.gesture, ctx)),
+    runKey: (run) => applyStep(run(state.gesture, state.ctx ?? ctx)),
   });
   publish({ ...IDLE, command, ctx, gesture: command.init(ctx) });
+}
+
+/**
+ * The running command's workplane moved up or down: same gesture, new context.
+ * The gesture is plan coordinates on the same storey, so it stays good; a new
+ * context object is what wakes the ghost and drops a pointer frame still queued
+ * against the old plane.
+ */
+export function rebindCommandContext(ctx: CommandContext): void {
+  if (state.command) publish({ ctx });
 }
 
 /** Drop the active command's gesture and key bindings. Never calls `onExit`. */

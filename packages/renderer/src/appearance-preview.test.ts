@@ -436,6 +436,23 @@ describe('flat batch appearance ownership (#4243)', () => {
     api.cancel(token);
     assert.deepEqual(ids(scene), [7, 8, 9]);
   });
+  it('captures an evicted warm batch from its pieces, without first rebuilding its own buffers (#9227)', () => {
+    const { scene, parts, api } = setup();
+    const [batch] = scene.getBatchedMeshes();
+    scene.setGpuResidencyBudget(1);
+    for (let i = 0; i < 40; i++) { scene.beginResidencyFrame(); scene.recordBatchSubsetDrawn(batch); scene.enforceGpuBudget(); }
+    assert.equal(batch.gpuResident, false);
+    const residency = scene['subsetResidency'];
+    const rebuild = residency.rebuildEvicted.bind(residency);
+    let rebuilds = 0;
+    residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+    const token = api.begin({ expressId: 7, modelIndex: 0 });
+    api.update(token, [{ ...parts[0], texture: mesh(0, new Uint8Array(4)).texture, uvs: new Float32Array(6) }]);
+    assert.equal(rebuilds, 0, 'the old batch is freed at once: nothing reads its buffers');
+    assert.deepEqual(ids(scene), [8, 9]);
+    api.cancel(token);
+    assert.deepEqual(ids(scene), [7, 8, 9]);
+  });
   it('isolates owners sharing a batch; cancel order and undo retain every draw/pick identity', () => {
     const { scene, state, parts, api } = setup();
     assert.equal(scene.getBatchedMeshes().length, 1);

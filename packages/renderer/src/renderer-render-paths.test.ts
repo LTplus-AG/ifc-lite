@@ -1133,23 +1133,78 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         assert.deepStrictEqual([...sub.expressIds], [2]);
     });
 
-    it('a capture restores the parent, then live isolate frees its buffers again without leaking the capture slot', () => {
+    it('a capture under the same isolate leaves the parent evicted and draws the same sub-batch (#9227)', () => {
         const h = makeHarness();
         const { grey } = seedBatches(h);
         const scene = sceneOf(h);
         scene.setGpuResidencyBudget(1);
         for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(grey.gpuResident, false);
-        const oldSlot = subBatchKeys(h)[0];
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        const createdBefore = h.stats.createdBuffers.length;
+        h.stats.draws.length = 0;
         h.render({ isolatedIds: new Set([2]), restoreEvictedForCapture: true });
-        const rebuilt = greyOf(h);
-        assert.notStrictEqual(rebuilt, grey);
-        assert.notStrictEqual(rebuilt.gpuResident, false);
-        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the replaced shell\'s sub-batch slot is released');
-        assert.strictEqual(scene['partialBatchCache'].size, 1, 'one live sub-batch, cut for the rebuilt parent');
-        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
-        assert.strictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt: the capture draws it as the same subset');
+        assert.strictEqual(grey.gpuResident, false);
+        assert.ok(h.stats.draws.includes(sub.vertexBuffer), 'the capture draws the cached sub-batch');
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'not cut again');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no GPU allocation for the capture');
         assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+    });
+
+    it('a capture still rebuilds an evicted batch it reveals whose subset was not on screen', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.stats.draws.length = 0;
+        h.render({ restoreEvictedForCapture: true });
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.ok(h.stats.draws.includes(greyOf(h).vertexBuffer), 'complete in the capture frame');
+    });
+
+    it('a capture that shows a subset parent whole rebuilds it past the per-frame cap', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene['subsetResidency'].rebuildBudgetMs = 0;
+        h.stats.draws.length = 0;
+        h.render({ restoreEvictedForCapture: true });
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'a capture must be complete: no cap');
+        assert.ok(h.stats.draws.includes(greyOf(h).vertexBuffer));
+    });
+
+    it('a cold parent waiting for its pieces under isolate counts as not resident (#9227)', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(h.renderer.getFrameStats()?.batchesNotResident, 1, 'its subset is missing this frame');
+    });
+
+    it('show-all after isolate past the per-frame cap: the isolated subset stands in until the queue rebuilds the parent (#9227)', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        scene['subsetResidency'].rebuildBudgetMs = 0;
+        h.stats.draws.length = 0;
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt past the cap');
+        assert.ok(h.stats.draws.includes(sub.vertexBuffer), 'the element on screen stays on screen');
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0);
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed with the replaced shell');
+        assert.strictEqual(scene['partialBatchCache'].size, 0);
     });
 
     it('a full draw and a subset draw of the same parent in one frame keep its own buffers resident, in either order', () => {
@@ -1634,6 +1689,107 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             assert.strictEqual(greyOf(h), grey);
             assert.strictEqual(rebuilds.n, 0);
             assert.strictEqual(scene['partialBatchCache'].size, 2, 'the colour pass still splits it');
+        });
+
+        describe('follow-ups (#9227)', () => {
+            /** The pipeline the colour pass bound for each draw of `vertexBuffer`. */
+            const pipelinesOf = (h: Harness, vertexBuffer: GPUBuffer): unknown[] => {
+                let bound: unknown = null;
+                let draw = 0;
+                const out: unknown[] = [];
+                for (const c of h.stats.commands) {
+                    if (c.op === 'setPipeline') bound = c.pipeline;
+                    if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer) out.push(bound);
+                }
+                return out;
+            };
+            const evictedUnderXRay = (h: Harness, options: RenderOptions = XRAY) => {
+                const { grey } = seedBatches(h);
+                sceneOf(h).setGpuResidencyBudget(1);
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render(options);
+                assert.strictEqual(grey.gpuResident, false);
+                const subs = subBatchesOf(h, grey);
+                assert.strictEqual(subs.length, 2);
+                return { grey, subs };
+            };
+
+            it('X-Ray cleared past the rebuild cap: the alpha sub-batches stand in, opaque, until the queue rebuilds the parent', () => {
+                const h = makeHarness();
+                const { grey, subs } = evictedUnderXRay(h);
+                const scene = sceneOf(h);
+                scene['subsetResidency'].rebuildBudgetMs = 0;
+                for (let frame = 0; frame < 3; frame++) {
+                    h.stats.draws.length = 0;
+                    h.stats.commands.length = 0;
+                    h.render({});
+                    assert.strictEqual(greyOf(h), grey, `frame ${frame}: not rebuilt past the cap`);
+                    for (const sub of subs) {
+                        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, `frame ${frame}: kept`);
+                        assert.deepStrictEqual(pipelinesOf(h, sub.vertexBuffer), [OPAQUE_PIPELINE], `frame ${frame}: drawn once, at the native alpha`);
+                    }
+                }
+                assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'the rebuild is queued');
+                scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+                const rebuilt = greyOf(h);
+                assert.notStrictEqual(rebuilt, grey);
+                for (const sub of subs) assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed with the replaced shell');
+                h.stats.draws.length = 0;
+                h.render({});
+                assert.ok(h.stats.draws.includes(rebuilt.vertexBuffer));
+                assert.strictEqual(scene['partialBatchCache'].size, 0);
+            });
+
+            it('X-Ray cleared while hide stays on, past the cap: the alpha slot sweep keeps the stand-ins', () => {
+                const h = makeHarness();
+                const hideRed = { hiddenIds: new Set([3]) };
+                const { grey, subs } = evictedUnderXRay(h, { ...XRAY, ...hideRed });
+                sceneOf(h)['subsetResidency'].rebuildBudgetMs = 0;
+                h.stats.draws.length = 0;
+                h.render(hideRed);
+                assert.strictEqual(greyOf(h), grey);
+                for (const sub of subs) {
+                    assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0);
+                    assert.ok(h.stats.draws.includes(sub.vertexBuffer), 'each alpha group stands in');
+                }
+            });
+
+            it('stand-ins of a parent that then leaves the view are freed after the eviction age', () => {
+                const h = makeHarness();
+                const { subs } = evictedUnderXRay(h);
+                const scene = sceneOf(h);
+                scene['subsetResidency'].rebuildBudgetMs = 0;
+                h.render({});
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+                for (const sub of subs) assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+                assert.strictEqual(scene['partialBatchCache'].size, 0);
+                assert.strictEqual(scene['subsetResidency'].parents.size, 0);
+            });
+
+            it('a capture under the same X-Ray neither rebuilds the parent nor cuts its alpha sub-batches again', () => {
+                const h = makeHarness();
+                const { grey, subs } = evictedUnderXRay(h);
+                const scene = sceneOf(h);
+                const rebuilds = countRebuilds(scene, 1);
+                const createdBefore = h.stats.createdBuffers.length;
+                h.stats.draws.length = 0;
+                h.render({ ...XRAY, restoreEvictedForCapture: true });
+                assert.strictEqual(rebuilds.n, 0, 'the capture draws the split from the warm pieces');
+                assert.strictEqual(greyOf(h), grey);
+                assert.deepStrictEqual(subBatchesOf(h, grey), subs, 'the same sub-batches');
+                for (const sub of subs) assert.ok(h.stats.draws.includes(sub.vertexBuffer));
+                assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no GPU allocation for the capture');
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render(XRAY);
+                assert.strictEqual(rebuilds.n, 0, 'nothing for the budget to evict again');
+            });
+
+            it('a cold parent waiting for its pieces under X-Ray counts as not resident', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                coldGrey(h);
+                h.render({ ...XRAY, hiddenIds: new Set([3]) });
+                assert.ok(sceneOf(h)['subsetResidency'].warmOnly.has(greyOf(h).colorKey), 'waiting for its pieces');
+                assert.strictEqual(h.renderer.getFrameStats()?.batchesNotResident, 1, 'missing this frame');
+            });
         });
 
         describe('a transparent batch with mixed promotion that cannot be partitioned draws whole (#9220)', () => {

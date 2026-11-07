@@ -212,7 +212,7 @@ export class Scene {
         buckets: this.buckets, reverse: () => this.meshDataBucket,
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
         release: batch => { this.dropPartialCacheForBatch(batch); this.lastDrawnFrame.delete(batch.id); destroyGpuResources(batch); },
-        changed: key => this.markBucketDirty(key), restore: bucket => { if (bucket.batchedMesh) this.subsetResidency.rebuildEvicted(bucket, bucket.batchedMesh, device, pipeline); },
+        changed: key => this.markBucketDirty(key),
         refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); this.pickGeometryRevision++; },
       },
       adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
@@ -497,7 +497,9 @@ export class Scene {
   }
 
   /** A pass drew this batch only as a partial sub-batch: its pieces stay warm, its own buffers may go (#9034, #9050). */
-  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen = true): void { this.subsetResidency.recordSubsetDrawn(batch, onScreen); }
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen = true, slot?: string): void { this.subsetResidency.recordSubsetDrawn(batch, onScreen, slot); }
+  /** Last frame's sub-batches of an evicted parent the rebuild cap left for the queue, drawn in its place (#9227). */
+  subsetStandIns(batch: BatchedMesh): BatchedMesh[] { return this.subsetResidency.standIns(batch); }
 
   /**
    * The draw loop wants an evicted batch back on the GPU. Queues its bucket
@@ -777,25 +779,9 @@ export class Scene {
     this.coldRestoresInFlight.set(key, promise);
   }
 
-  /**
-   * Synchronously rebuild EVERY evicted bucket batch (no time budget) —
-   * for one-shot capture renders (IDS/clash/BCF snapshots) whose isolation
-   * options may reveal batches that aged out under the budget. The live
-   * view never needs this: visible batches are never evicted. The budget
-   * pass re-evicts unused batches after the usual idle age.
-   * Returns the number of batches restored.
-   */
-  restoreAllEvicted(device: GPUDevice, pipeline: RenderPipeline): number {
-    if (this.geometryReleased || this.ephemeralStreamingMode) return 0;
-    let restored = 0;
-    for (const bucket of this.buckets.values()) {
-      const old = bucket.batchedMesh;
-      if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
-      this.subsetResidency.rebuildEvicted(bucket, old, device, pipeline);
-      restored++;
-    }
-    return restored;
-  }
+  /** Synchronously rebuild the evicted bucket batches a one-shot capture render
+   *  (IDS/clash/BCF snapshot) may reveal; see SubsetParentResidency.restoreAll. */
+  restoreAllEvicted(device: GPUDevice, pipeline: RenderPipeline): number { return this.subsetResidency.restoreAll(device, pipeline); }
 
   /**
    * Evict least-recently-drawn bucket batches until the resident set fits
@@ -877,16 +863,16 @@ export class Scene {
 
   /** Destroy + drop EVERY cached partial sub-batch — called on the transition
    *  back to "no filtering, no X-Ray" so their VRAM is not pinned until the
-   *  next model reload. See `partial-batch-cache.ts`. */
-  dropAllPartialCaches(): void {
-    dropAllPartialCachesIn(this.partialCaches);
+   *  next model reload, keeping evicted parents' stand-ins when asked (#9227). */
+  dropAllPartialCaches(keepStandIns = false): void {
+    dropAllPartialCachesIn(this.partialCaches, keepStandIns ? this.subsetResidency.standInCandidates() : undefined);
   }
 
   /** Free the X-Ray alpha-split slots this frame did not request, so an X-Ray
    *  edit that un-splits a batch cannot pin its clones for the session (#4129
    *  review). See `partial-batch-cache.ts` for why the sweep is scoped. */
   retireUnusedAlphaSlots(inUse: ReadonlySet<string>): void {
-    retireUnusedAlphaSlotsIn(this.partialCaches, inUse);
+    retireUnusedAlphaSlotsIn(this.partialCaches, this.subsetResidency.withStandIns(inUse));
   }
 
   /** Free the hydrated (pick / selection-highlight) individual meshes that are

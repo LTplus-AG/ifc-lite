@@ -102,8 +102,9 @@ test('a type choice does not follow a reconnect to another server (#8656 review)
   const other = await connectPeer(t, { topicTypes: SERVER_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'] });
   await waitFor(() => other.state.projectListReads > 0 && findPicker() === null, 'the other server listed, the old check cleared');
   assert.equal(button(/^Publish 2 topics$/).disabled, true, 'the old readiness condition precedes the response');
-  click(button(/^Publish 2 topics$/));
   releaseProjects();
+  await waitFor(() => !button(/^Publish 2 topics$/).disabled, 'the new connection is ready to publish');
+  click(button(/^Publish 2 topics$/));
   await waitFor(() => findPicker() !== null, 'the picker is shown again for the new server');
   assert.equal(other.state.receivedWrites, 0, 'nothing published under a choice made for another server');
   assert.equal(findPicker()!.value, 'Model Issue', 'the closest type is preselected afresh');

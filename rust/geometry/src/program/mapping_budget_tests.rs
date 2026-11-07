@@ -104,6 +104,27 @@ fn issue_9102_all_four_source_boundaries_admit_a_first_list_wider_than_the_defau
     }
 }
 
+/// #9102 review: at every source boundary a first read is free only for items
+/// the controller has not reached. Six references to one face set are one
+/// fresh item and five repeats.
+#[test]
+fn issue_9102_every_boundary_charges_repeated_references_in_a_first_read() {
+    let source = SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)");
+    for mode in 0..4 {
+        for (limit, admitted) in [(4, false), (5, true)] {
+            let mut router = GeometryRouter::new();
+            router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+            let (result, decoder) = run(mode, &source, limit, &router);
+            if admitted {
+                assert_eq!(result.unwrap(), if mode == 3 { 1 } else { 18 }, "boundary {mode}");
+            } else {
+                assert!(result.unwrap_err().to_string().contains("work budget"), "boundary {mode}");
+                assert!(decoder.get_cached(4).is_none(), "refused before resolving, boundary {mode}");
+            }
+        }
+    }
+}
+
 #[test]
 fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_pay() {
     // #9102: a first read is free at every boundary, ignored members included.
@@ -116,10 +137,11 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
         assert_eq!(result.unwrap(), if mode == 3 { 1 } else { 3 }, "boundary {mode}");
     }
     // A repeated read pays every slot, `$` and `17` too. The styled walk never
-    // caches a source, so its second #8 re-reads #5's five members. Three
-    // attempts fit both limits; the five repeated members fit only the second.
+    // caches a source, so its second #8 re-reads #5's five members; the root
+    // list's repeated #8 pays one more. Three attempts fit both limits; the
+    // six members fit only the second.
     let source = nested("#8,#8").replace("(#4)", "(#4,$,17,$,$)");
-    for (limit, indices, dropped) in [(4, 3, Some(&1)), (5, 6, None)] {
+    for (limit, indices, dropped) in [(5, 3, Some(&1)), (6, 6, None)] {
         let router = GeometryRouter::new();
         let mut decoder = EntityDecoder::new(&source);
         let item = decoder.decode_by_id(18).unwrap();

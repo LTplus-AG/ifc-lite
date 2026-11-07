@@ -32,16 +32,23 @@ impl WalkVisitor for Work {
 
 /// O(width) input with width occurrences of one width-leaf source. The same
 /// mapped-item id on sibling paths is deliberate: each is a real occurrence.
+/// The leaves are the distinct points #1..=width.
 fn wide_source(width: usize) -> String {
     let occurrences = vec!["#300"; width].join(",");
-    let leaves = vec!["#1"; width].join(",");
+    let (leaves, points) = distinct_leaves(width);
     format!(
         "#100=IFCREPRESENTATIONMAP($,#200);\
         #200=IFCSHAPEREPRESENTATION($,'Body','Brep',({occurrences}));\
         #300=IFCMAPPEDITEM(#400,$);#400=IFCREPRESENTATIONMAP($,#500);\
-        #500=IFCSHAPEREPRESENTATION($,'Body','Brep',({leaves}));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));"
+        #500=IFCSHAPEREPRESENTATION($,'Body','Brep',({leaves}));{points}"
     )
+}
+
+/// `width` distinct point references and their records.
+fn distinct_leaves(width: usize) -> (String, String) {
+    let refs = (1..=width).map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+    let records = (1..=width).map(|id| format!("#{id}=IFCCARTESIANPOINT(({id}.,0.,0.));")).collect();
+    (refs, records)
 }
 
 #[test]
@@ -60,9 +67,9 @@ fn issue_7873_shared_wide_source_is_admitted_before_materialization_and_reports_
     }
     .map(&root, &mut decoder, &mut work)
     .unwrap();
-    // The first occurrence reads A's list for free (#9102). The second repeats
-    // it, and the allowance is one member short: refused before resolving, and
-    // the walk stops there.
+    // The root list's seven repeated #300s fill the allowance. The first
+    // occurrence reaches A's distinct leaves for free (#9102); the second
+    // repeats them and is refused before resolving, and the walk stops there.
     assert_eq!((work.entered, work.left, work.leaves), (2, 2, width));
     assert_eq!(work.refusals.len(), 1, "bound AND report are required");
     assert!(
@@ -100,11 +107,10 @@ fn issue_7873_shared_wide_source_keeps_every_occurrence_when_work_is_admitted() 
 /// the file's own size, however wide.
 #[test]
 fn issue_9102_one_wide_mapped_source_pays_only_its_attempt() {
-    let leaves = ["#1"; 8].join(",");
+    let (leaves, points) = distinct_leaves(8);
     let model = format!(
         "#300=IFCMAPPEDITEM(#400,$);#400=IFCREPRESENTATIONMAP($,#500);\
-        #500=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',({leaves}));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));"
+        #500=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',({leaves}));{points}"
     );
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(300).unwrap();

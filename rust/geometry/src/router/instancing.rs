@@ -199,7 +199,7 @@ impl GeometryRouter {
         let Some(items_attr) = mapped_repr.get(3) else {
             return Ok(Vec::new());
         };
-        budget.materialize_items(mapped_repr.id, items_attr.as_list().map_or(0, |items| items.len()))?;
+        budget.materialize_items(mapped_repr.id, items_attr.as_list().unwrap_or(&[]))?;
         // Historical shared-source content failures walk nothing; logical
         // refusal above must never enter this empty-content fallback.
         Ok(decoder.resolve_ref_list(items_attr).unwrap_or_default())

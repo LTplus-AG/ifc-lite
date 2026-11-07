@@ -76,20 +76,23 @@ pub(super) fn validated_product_shape(
             }
             // Resolve and classify even the Items the meshed selector will skip.
             // This is shallow: no mapping targets or geometry children are read.
-            // Only a repeated root list pays; a first read is the file's (#9102).
-            let count = rep
-                .get(slot::IfcRepresentation::ITEMS.index())
-                .and_then(AttributeValue::as_list)
-                .map_or(0, |items| items.len());
-            if !roots.seen.first_list(rep.id) {
-                if count > (allowance - roots.items) as usize {
-                    return Err(StructureError::Budget {
-                        entity: rep.id,
-                        allowance,
-                    });
-                }
-                roots.items += count as u32;
+            // A repeated root list pays in full; a first read pays only for
+            // items the product already reached (#9102).
+            let charge = roots.seen.price(
+                None,
+                rep.id,
+                rep.get(slot::IfcRepresentation::ITEMS.index())
+                    .and_then(AttributeValue::as_list)
+                    .unwrap_or(&[]),
+            );
+            if charge.cost > (allowance - roots.items) as usize {
+                return Err(StructureError::Budget {
+                    entity: rep.id,
+                    allowance,
+                });
             }
+            roots.items += charge.cost as u32;
+            roots.seen.admit(charge);
             let members = reference_members(rep, slot::IfcRepresentation::ITEMS.index(), "Items")?;
             roots
                 .representations

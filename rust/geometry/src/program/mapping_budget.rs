@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Per-controller logical work, independent of allocation/cancellation policy.
 //! Cache hits and placeholders pay attempts, but skip unmaterialized children.
-//! Every mapped attempt pays: it expands a shared source. Only repeated Items
-//! lists pay; a first read is bounded by the file (#9102, `representation::first_seen`).
+//! Every mapped attempt pays: it expands a shared source. A first Items read
+//! pays only for items already reached; a repeated one pays in full (#9102,
+//! `representation::first_seen`).
 use crate::representation::first_seen::FirstSeen;
 use crate::Error;
 use std::sync::Arc;
@@ -42,8 +43,8 @@ impl From<LogicalRefusal> for SourceFailure {
 }
 
 /// The counters travel by value through speculative replies, and so do the
-/// first list reads (#9102): an execution records them in `pending`, and only
-/// the accepted reply's budget folds them into `seen`, at the next [`commit`].
+/// list reads (#9102): an execution records them in `pending`, and only the
+/// accepted reply's budget folds them into `seen`, at the next [`commit`].
 /// A discarded reply therefore never turns a later first read into a repeat.
 ///
 /// [`commit`]: LogicalBudget::commit
@@ -53,7 +54,7 @@ pub(crate) struct LogicalBudget {
     maps: u32,
     items: u32,
     seen: Arc<FirstSeen>,
-    pending: smallvec::SmallVec<[u32; 2]>,
+    pending: FirstSeen,
 }
 impl Default for LogicalBudget {
     fn default() -> Self {
@@ -62,7 +63,7 @@ impl Default for LogicalBudget {
             maps: 0,
             items: 0,
             seen: Arc::default(),
-            pending: smallvec::SmallVec::new(),
+            pending: FirstSeen::default(),
         }
     }
 }
@@ -76,21 +77,11 @@ impl LogicalBudget {
         *used = next;
         Ok(())
     }
-    fn first_list(&mut self, rep: u32) -> bool {
-        if self.seen.contains(rep) || self.pending.contains(&rep) {
-            return false;
-        }
-        self.pending.push(rep);
-        true
-    }
-    /// Fold this (accepted) budget's first reads into `seen`. Every speculative
-    /// copy is taken after a commit, so `pending` stays a few lists long.
+    /// Fold this (accepted) budget's reads into `seen`. Every speculative copy
+    /// is taken after a commit, so `pending` holds at most one step's reads.
     pub(crate) fn commit(&mut self) {
         if !self.pending.is_empty() {
-            let seen = Arc::make_mut(&mut self.seen);
-            for rep in self.pending.drain(..) {
-                seen.first_list(rep);
-            }
+            Arc::make_mut(&mut self.seen).absorb(std::mem::take(&mut self.pending));
         }
     }
     /// Enter a mapped item. Every attempt pays, distinct item or not: each one
@@ -98,17 +89,18 @@ impl LogicalBudget {
     pub(super) fn mapped_attempt(&mut self) -> std::result::Result<(), LogicalRefusal> {
         Self::debit(&mut self.maps, 1, self.limit)
     }
-    /// Materialize the `count` Items of representation `rep`: a repeated list
-    /// pays every member before anything is resolved.
+    /// Materialize representation `rep`'s Items `members`. A repeated list
+    /// pays every member, and a first read every reference this controller
+    /// has already reached, all before anything is resolved (#9102).
     pub(crate) fn materialize_items(
         &mut self,
         rep: u32,
-        count: usize,
+        members: &[ifc_lite_core::AttributeValue],
     ) -> std::result::Result<(), LogicalRefusal> {
-        if self.first_list(rep) {
-            return Ok(());
-        }
-        Self::debit(&mut self.items, count, self.limit)
+        let charge = self.seen.price(Some(&self.pending), rep, members);
+        Self::debit(&mut self.items, charge.cost, self.limit)?;
+        self.pending.admit(charge);
+        Ok(())
     }
     #[cfg(test)]
     pub(super) fn with_limit(limit: u32) -> Self {
@@ -120,6 +112,6 @@ impl LogicalBudget {
     /// Test seam: make the next read of `rep`'s Items a repeat (#9102).
     #[cfg(test)]
     pub(super) fn mark_seen(&mut self, rep: u32) {
-        Arc::make_mut(&mut self.seen).first_list(rep);
+        Arc::make_mut(&mut self.seen).mark_list_read(rep);
     }
 }

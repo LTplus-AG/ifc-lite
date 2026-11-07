@@ -60,10 +60,10 @@ fn repeating(mut program: RetainedProgram<'_>, rep: u32) -> RetainedProgram<'_> 
 
 #[test]
 fn issue_7781_retained_product_admission_precedes_member_decode_and_dangling_reference() {
-    // #9102: the root is listed twice. Its first read is free; the repeat pays
-    // both members, which a one-member allowance refuses for the product.
+    // #9102: the root is listed twice. Its first read of two distinct items
+    // is free; the repeat pays both, which a one-member allowance refuses.
     let bytes = SOURCE
-        .replace("'SweptSolid',(#13)", "'SweptSolid',(#13,#13)")
+        .replace("'SweptSolid',(#13)", "'SweptSolid',(#13,#23)")
         .replace("($,$,(#12))", "($,$,(#12,#12))");
     for (limit, refused) in [(1, true), (2, false)] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
@@ -97,13 +97,14 @@ fn issue_7781_retained_product_admission_precedes_member_decode_and_dangling_ref
 
 #[test]
 fn issue_7781_retained_skipped_representations_pay_before_strict_validation() {
-    // #9102: the unselected Axis list is read twice. Even skipped, its repeat
-    // pays both members before strict validation, which one cannot cover.
+    // #9102: the unselected Axis list is read twice. Even skipped, its first
+    // read pays its repeated #23 and the repeat pays both members, all before
+    // strict validation: three members, which two cannot cover.
     let bytes = SOURCE.replace("($,$,(#12))", "($,$,(#12,#22,#22))").replace(
         "#22=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#23))",
         "#22=IFCSHAPEREPRESENTATION(#2,'Axis','Curve3D',(#23,#23))",
     );
-    for (limit, refused) in [(1, true), (2, false)] {
+    for (limit, refused) in [(2, true), (3, false)] {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);

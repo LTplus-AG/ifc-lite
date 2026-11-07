@@ -184,14 +184,17 @@ fn issue_7781_skip_saves_items_allowance_but_stop_ends_siblings() {
 
 #[test]
 fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
-    // Three attempts (#10 and both #20s) fit. The second #20 repeats #30's
-    // four members (#9102: the first read is free), which a three-member
+    // Three attempts (#10 and both #20s) fit. #12 repeats #20 once (one
+    // member). The first #30 read reaches four distinct points for free
+    // (#9102); the second #20 repeats all four, which a three-member
     // allowance refuses inside the entered scope, before resolving them.
     let model = "#10=IFCMAPPEDITEM(#11,$);#11=IFCREPRESENTATIONMAP($,#12);\
         #12=IFCSHAPEREPRESENTATION($,'Body','Brep',(#20,#20,#1));\
         #20=IFCMAPPEDITEM(#21,$);#21=IFCREPRESENTATIONMAP($,#30);\
-        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2,#2,#2,#2));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));";
+        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2,#3,#4,#5));\
+        #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));\
+        #3=IFCCARTESIANPOINT((2.,0.,0.));#4=IFCCARTESIANPOINT((3.,0.,0.));\
+        #5=IFCCARTESIANPOINT((4.,0.,0.));";
     let mut d = EntityDecoder::new(model);
     let root = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
@@ -202,9 +205,9 @@ fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
             "enter 10 depth 0",
             "enter 20 depth 1",
             "item 2 IfcCartesianPoint depth 2",
-            "item 2 IfcCartesianPoint depth 2",
-            "item 2 IfcCartesianPoint depth 2",
-            "item 2 IfcCartesianPoint depth 2",
+            "item 3 IfcCartesianPoint depth 2",
+            "item 4 IfcCartesianPoint depth 2",
+            "item 5 IfcCartesianPoint depth 2",
             "leave 20",
             "enter 20 depth 1",
             "refuse 20 depth 1 shape None",

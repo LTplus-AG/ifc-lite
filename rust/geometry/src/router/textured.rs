@@ -124,7 +124,7 @@ impl GeometryRouter {
         let items_attr = mapped_rep
             .get(slot::IfcRepresentation::ITEMS.index())
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-        budget.materialize_items(mapped_rep.id, items_attr.as_list().map_or(0, |items| items.len()))?;
+        budget.materialize_items(mapped_rep.id, items_attr.as_list().unwrap_or(&[]))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((mapped_rep, items))
     }

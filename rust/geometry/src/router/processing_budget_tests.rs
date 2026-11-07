@@ -11,7 +11,8 @@ use crate::profile_extractor::extract_profiles_with_budget;
 use crate::profile_walk_model as model;
 
 /// #9102: `#2000` holds `#3000` twice. Every entry pays an attempt; the
-/// second `#3000` also re-reads its one member (a first read is free).
+/// repeated `#3000` reference pays a member, and so does the second read of
+/// `#3000`'s source (a first read of distinct items is free).
 fn mapped_siblings() -> String {
     model::wall("#160", &format!(
         "{}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#1000,#2000));\n{}{}{}",
@@ -148,13 +149,14 @@ fn issue_7887_logical_product_budget_keeps_shallow_sibling_at_threshold() {
 #[test]
 fn issue_7887_root_items_cannot_bypass_the_product_allowance() {
     check(&model::chain(1), 1, &[1.0], None, false);
-    // A first root read is the file's (#9102); the repeated `#160` pays 3.
+    // The first root read pays only its repeated `#240` (#9102); the repeated
+    // `#160` pays all 3.
     let content = model::wall(
         "#160,#160",
         "#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#240,#240));",
     );
-    check(&content, 3, &[1.0, 1.0, 1.0, 1.0, 2.5, 2.5], None, false);
-    check(&content, 2, &[1.0, 1.0, 2.5], Some("IfcShapeRepresentation"), false);
+    check(&content, 4, &[1.0, 1.0, 1.0, 1.0, 2.5, 2.5], None, false);
+    check(&content, 3, &[1.0, 1.0, 2.5], Some("IfcShapeRepresentation"), false);
 }
 
 #[test]
@@ -175,20 +177,21 @@ fn issue_7887_repeated_valid_dag_sources_pay_per_occurrence() {
 
 #[test]
 fn issue_7887_product_allowance_spans_selected_representations() {
-    // `#160` costs four attempts and one re-read member; the repeated `#170`
-    // re-reads four more. Attempts fit four, but the members spread over both
-    // representations need five.
+    // `#160` costs four attempts and two members. `#170` lists `#140`, which
+    // `#160` already reached, twice: its first read pays 2 and its repeat 2.
+    // Attempts fit four, but the members spread over both representations
+    // need six.
     let content = mapped_siblings()
         .replace("($,$,(#160))", "($,$,(#160,#170,#170))")
         .replace(
             "ENDSEC;\nEND-ISO",
-            "#170=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#140,#140,#140));\nENDSEC;\nEND-ISO",
+            "#170=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#140));\nENDSEC;\nEND-ISO",
         );
-    check(&content, 5, &[1.0, 1.0, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5], None, false);
+    check(&content, 6, &[1.0, 1.0, 2.5, 2.5, 2.5, 2.5, 2.5], None, false);
     check(
         &content,
-        4,
-        &[1.0, 1.0, 2.5, 2.5, 2.5, 2.5, 2.5],
+        5,
+        &[1.0, 1.0, 2.5, 2.5, 2.5],
         Some("IfcShapeRepresentation"),
         false,
     );

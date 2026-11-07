@@ -257,4 +257,5 @@ export const propertiesFr = {
   "properties.locationMap.toggleStyle": "Changer de style",
   "properties.locationMap.projectionUnresolved": "Impossible de résoudre la projection — code EPSG peut-être non pris en charge",
   "properties.locationMap.elevationMeters": "{value} m",
+  "properties.modelMetadata.fileSizeAsLoaded": "Taille du fichier (au chargement)",
 } satisfies Catalogue;

@@ -1735,7 +1735,7 @@ export class Renderer {
         const xrayActive = (options.transparencyOverrides?.size ?? 0) > 0 || options.ghostExceptIds != null;
         const hasPartialSources = hasVisibilityFiltering || xrayActive;
         if (this._lastHadPartialSources && !hasPartialSources) {
-            this.scene.dropAllPartialCaches();
+            this.scene.dropAllPartialCaches(true); // keeps evicted parents' last subsets: they may stand in (#9227)
         }
         this._lastHadPartialSources = hasPartialSources;
 
@@ -2401,9 +2401,8 @@ export class Renderer {
                             // A COLD parent has no CPU meshData, so the sub-batch above comes back
                             // empty: restore its pieces (only them, the subset never reads the parent's
                             // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
-                            if (batch.gpuResident === false) {
-                                this.scene.requestBatchPieces(batch);
-                            }
+                            // Missing this frame, so it counts as not resident (#9227).
+                            if (batch.gpuResident === false && this.scene.requestBatchPieces(batch)) frameBatchesNotResident++;
                             continue; // Don't add batch to render list
                         }
                     }
@@ -2412,19 +2411,20 @@ export class Renderer {
                     // promoted/remaining for a transparent batch with mixed overrides
                     // (#677). Decided before the residency step, since the subsets never
                     // read the parent's own GPU buffers (#9136).
-                    if (pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent)) continue;
+                    const split = pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent);
+                    if (split !== 'whole') { if (split === 'pieces') frameBatchesNotResident++; continue; }
 
                     // Drawn from its OWN GPU buffers. An evicted batch (residency budget,
-                    // #1682 phase 3a) is skipped for a frame while its rebuild is queued.
+                    // #1682 phase 3a) is skipped for a frame while its rebuild is queued;
+                    // an evicted parent past the rebuild cap draws last frame's subsets (#9227).
                     const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
-                    if (!whole) { frameBatchesNotResident++; continue; }
-                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
-
-                    if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
-                        transparentBatches.push(batch);
-                    } else {
-                        opaqueBatches.push(batch);
+                    if (!whole) {
+                        frameBatchesNotResident++;
+                        for (const sub of this.scene.subsetStandIns(batch)) (shouldRouteBatchTransparent(alphaForBatch(sub, sub.color[3]), sub.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(sub);
+                        continue;
                     }
+                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
+                    (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(batch);
                 }
 
                 // Retire the alpha-split slots this frame's classification did NOT
@@ -2718,7 +2718,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
+                            this.scene.recordBatchSubsetDrawn(sourceBatch, true, sourceBatchKey); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a

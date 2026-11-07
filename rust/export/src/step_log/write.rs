@@ -249,6 +249,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let source_header = crate::source_header::parse_source_header(content);
     let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target);
     crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)?;
+    // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
+    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
@@ -290,7 +292,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 &owned
             }
         };
-        written += usize::from(write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
+        written += usize::from(write_line(&mut body, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
     // Every appended record goes out through the same `write_line` as a
     // source one, in the TypeScript exporter's order: generated sets, the
@@ -305,8 +307,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         .chain(&pass.georef_lines)
         .chain(&pass.created_lines);
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
-        written += usize::from(write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
+        written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
+    written = written.checked_add_signed(body.finish()?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

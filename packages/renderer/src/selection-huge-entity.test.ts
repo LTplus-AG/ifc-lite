@@ -10,7 +10,10 @@ import type { Scene } from './scene.js';
 import type { RenderOptions } from './types.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
-import { MERGE_PIECES_ABOVE, uploadIndividualMesh, uploadMergedMeshes, type IndividualMeshFrame } from './individual-mesh-upload.js';
+// A namespace import, so the file still loads with the production change reverted
+// and every test below fails on an assertion instead of on a missing export.
+import * as upload from './individual-mesh-upload.js';
+import type { IndividualMeshFrame, MergedMeshGpu } from './individual-mesh-upload.js';
 import { planPickMeshHydration } from './pick-mesh-budget.js';
 
 /**
@@ -172,7 +175,16 @@ function load(h: ReturnType<typeof makeHarness>, meshes: MeshData[]): void {
 const VERTEX_OR_INDEX = 48;
 
 const RED: [number, number, number, number] = [0.8, 0.1, 0.1, 1];
+/** The 500-piece pick budget: at most this many pieces keep one copy each. */
+const MERGE_PIECES_ABOVE = 500;
 const HUGE = MERGE_PIECES_ABOVE + 1;
+
+/** The merged uploader, asserted present rather than imported by name. */
+function uploadMergedMeshes(device: GPUDevice, pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame): MergedMeshGpu[] {
+  const fn = (upload as Record<string, unknown>).uploadMergedMeshes;
+  assert.equal(typeof fn, 'function', 'individual-mesh-upload exports uploadMergedMeshes');
+  return (fn as typeof uploadMergedMeshes)(device, pieces, frameOf);
+}
 
 type Harness = ReturnType<typeof makeHarness>;
 
@@ -518,7 +530,7 @@ describe('uploadMergedMeshes (#9192)', () => {
       assert.equal(rest.length, 0);
       assert.equal(merged.pieces, 5);
 
-      const each = pieces.map((p) => uploadIndividualMesh(device, p, frame));
+      const each = pieces.map((p) => upload.uploadIndividualMesh(device, p, frame));
       const concatenated = new Uint8Array(each.reduce((sum, mesh) => sum + vertexBytes(mesh).length, 0));
       let at = 0;
       for (const mesh of each) { concatenated.set(vertexBytes(mesh), at); at += vertexBytes(mesh).length; }
@@ -554,6 +566,10 @@ describe('uploadMergedMeshes (#9192)', () => {
     assert.ok(merged.every((mesh) => mesh.vertexBuffer.size <= triangleBytes * 4));
     const drawn = drawnTriangles(merged as never, new Map());
     assert.deepEqual(drawn.triangles, expectedTriangles(pieces));
+  });
+
+  it('merges past the same 500-piece budget picks use', () => {
+    assert.equal((upload as Record<string, unknown>).MERGE_PIECES_ABOVE, MERGE_PIECES_ABOVE);
   });
 
   it('skips empty pieces rather than allocating for them', () => {

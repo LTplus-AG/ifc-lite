@@ -136,11 +136,18 @@ function cached<T>(
   now: number,
   build: () => Promise<T>,
 ): Promise<T> {
-  const entry = cache.get(key);
-  if (entry && now - entry.builtAt < BROWSE_TTL_MS) return entry.value;
+  const existing = cache.get(key);
+  if (existing && now - existing.builtAt < BROWSE_TTL_MS) return existing.value;
   const value = build();
-  cache.set(key, { value, builtAt: now });
-  value.catch(() => cache.delete(key));
+  const entry: CacheEntry<T> = { value, builtAt: now };
+  cache.set(key, entry);
+  value.catch(() => {
+    // Only this build's own entry, and only if nothing has replaced it: a
+    // build that outlives the TTL can have a second one already running
+    // under the same key by the time this rejects, and deleting
+    // unconditionally would evict THAT one instead (review on #8647).
+    if (cache.get(key) === entry) cache.delete(key);
+  });
   return value;
 }
 
@@ -158,7 +165,7 @@ export async function getPinnedModels(
   now: number = Date.now(),
 ): Promise<readonly DaluxFile[]> {
   void signal;
-  return cached(pinnedCache, `${client.baseUrl}|${projectId}|${versionSetId}`, now, () =>
+  return cached(pinnedCache, `${client.baseUrl}|${client.cacheIdentity}|${projectId}|${versionSetId}`, now, () =>
     fetchPinnedModels(client, projectId, versionSetId),
   );
 }

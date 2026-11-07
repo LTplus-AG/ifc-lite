@@ -46,6 +46,17 @@ const MAX_VERSION_SETS = 250;
 /** How long a built index is reused before the sweep runs again. */
 const COMMIT_INDEX_TTL_MS = 5 * 60_000;
 
+/**
+ * How long a `partial` index (one or more sets' files could not be listed,
+ * see {@link DaluxCommitIndex.partial}) is reused before retrying. Much
+ * shorter than {@link COMMIT_INDEX_TTL_MS}: the failure that produced it was
+ * most likely transient (a single set 404ing, a flaky request), and a
+ * partial result is exactly the case where the full TTL is wrong to apply —
+ * reusing it for five minutes would mean a model whose only history is in
+ * the set that failed looks like it has no history for that long.
+ */
+const PARTIAL_COMMIT_INDEX_TTL_MS = 30_000;
+
 export interface DaluxModelCommit {
   readonly revisionId: string;
   /** The pinned row, as the version set reported it. */
@@ -74,6 +85,17 @@ export interface DaluxCommitIndex {
   readonly versionSetCount: number;
   /** `true` when {@link MAX_VERSION_SETS} cut the sweep short. */
   readonly truncated: boolean;
+  /**
+   * `true` when at least one version set's files could not be listed and was
+   * skipped (review on #8647). Independent of `truncated`: a sweep can be
+   * complete over fewer sets than exist (`truncated`) while also missing
+   * sets it did attempt but failed to read (`partial`), and the two must not
+   * be conflated — a caller deciding whether to trust "this model has no
+   * history" needs to know the sweep that produced that answer was
+   * incomplete, which `truncated` alone does not say when every set fit
+   * under {@link MAX_VERSION_SETS}.
+   */
+  readonly partial: boolean;
 }
 
 /**
@@ -84,7 +106,7 @@ export interface DaluxCommitIndex {
  *  1. `File.version` — "for files in file areas of type shared or published,
  *     the version corresponds to the revision number" (Dalux's own schema).
  *     A real revision number is the only signal that is unambiguous by
- *     construction, so it wins whenever BOTH sides have one.
+ *     construction.
  *  2. `lastModified` / `uploaded`. Good when the version-set file rows carry
  *     the pinned revision's own timestamps; useless if Dalux ever answers
  *     with the file's current metadata instead, which is why it is not the
@@ -92,10 +114,23 @@ export interface DaluxCommitIndex {
  *  3. Sweep position, later-is-newer. A guess about an undocumented list
  *     order, and deliberately last: it only decides a pair that the two real
  *     signals could not separate.
+ *
+ * `trustRevisionNumber` decides whether signal 1 applies, and is computed
+ * ONCE for the whole array of one model's commits, not per pair compared
+ * (review on #8647). A per-pair "use the number when both sides have one"
+ * rule is not a total order: with A (rev 2, 3 Jan), B (no number, 2 Jan), C
+ * (rev 3, 1 Jan), that rule gives C > A (by number), A > B (by date, no
+ * number on B), and B > C (by date, no number on B) — a cycle, so
+ * `Array.prototype.sort`'s result depends on input order and on which pairs
+ * it happens to compare. Trusting the number only when EVERY commit of this
+ * model has one keeps the comparator a fixed function of each commit alone,
+ * which is what a total order requires; falling back to date for the whole
+ * array otherwise is the same "most trustworthy signal that's actually
+ * available" idea, just decided before sorting starts instead of mid-sort.
  */
-function newestFirst(a: DaluxModelCommit, b: DaluxModelCommit): number {
-  if (a.revisionNumber !== undefined && b.revisionNumber !== undefined && a.revisionNumber !== b.revisionNumber) {
-    return b.revisionNumber - a.revisionNumber;
+function newestFirst(a: DaluxModelCommit, b: DaluxModelCommit, trustRevisionNumber: boolean): number {
+  if (trustRevisionNumber && a.revisionNumber !== b.revisionNumber) {
+    return b.revisionNumber! - a.revisionNumber!;
   }
   const aTime = Date.parse(commitTimestamp(a.file) ?? '');
   const bTime = Date.parse(commitTimestamp(b.file) ?? '');
@@ -121,9 +156,6 @@ function revisionNumberOf(file: DaluxFile): number | undefined {
 
 interface Accumulator {
   readonly fileId: string;
-  fileName: string;
-  fileAreaId: string;
-  folderId?: string;
   /** Keyed by revision id. */
   readonly byRevision: Map<string, {
     file: DaluxFile;
@@ -140,14 +172,12 @@ interface Accumulator {
  * deleted between the listing and the file fetch) or whose listing breaks
  * must not discard the history of every other set. The bad one is warned
  * about and skipped, exactly as `watchRevisions` already treats a bad file
- * area.
+ * area — and marks the index `partial` (review on #8647), because unlike
+ * `truncated` (a known, bounded cut) this is a set the sweep meant to read
+ * and could not.
  */
-async function buildCommitIndex(
-  client: BrowserDaluxApiClient,
-  projectId: string,
-  signal?: AbortSignal,
-): Promise<DaluxCommitIndex> {
-  const setRows = await fetchAllPages(client, `/2.1/projects/${enc(projectId)}/version_sets`, {}, signal);
+async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string): Promise<DaluxCommitIndex> {
+  const setRows = await fetchAllPages(client, `/2.1/projects/${enc(projectId)}/version_sets`, {});
   const sets: DaluxVersionSet[] = [];
   for (const row of setRows) {
     try {
@@ -161,9 +191,9 @@ async function buildCommitIndex(
   const truncated = sets.length > MAX_VERSION_SETS;
   const swept = truncated ? sets.slice(0, MAX_VERSION_SETS) : sets;
   const accumulators = new Map<string, Accumulator>();
+  let partial = false;
 
   for (let sweepIndex = 0; sweepIndex < swept.length; sweepIndex++) {
-    if (signal?.aborted) break;
     const versionSet = swept[sweepIndex];
     let rows: readonly DaluxFile[];
     try {
@@ -175,8 +205,8 @@ async function buildCommitIndex(
       // otherwise fetch every set's rows twice.
       rows = await getPinnedModels(client, projectId, versionSet.versionSetId);
     } catch (error) {
-      if (signal?.aborted) break;
-      client.debug('skipping a version set whose files could not be listed', {
+      partial = true;
+      client.warn('skipping a version set whose files could not be listed', {
         versionSetId: versionSet.versionSetId,
         error: String(error),
       });
@@ -191,13 +221,11 @@ async function buildCommitIndex(
 
       let accumulator = accumulators.get(file.fileId);
       if (!accumulator) {
-        accumulator = {
-          fileId: file.fileId,
-          fileName: file.fileName,
-          fileAreaId: file.fileAreaId,
-          ...(nonEmptyString(file.folderId) !== undefined ? { folderId: file.folderId } : {}),
-          byRevision: new Map(),
-        };
+        // `fileName`/`fileAreaId`/`folderId` are not carried here: the model
+        // history below always reads them off the NEWEST commit instead, so
+        // a copy on the accumulator would be written once and never read
+        // (review on #8647).
+        accumulator = { fileId: file.fileId, byRevision: new Map() };
         accumulators.set(file.fileId, accumulator);
       }
 
@@ -218,15 +246,22 @@ async function buildCommitIndex(
 
   const models = new Map<string, DaluxModelHistory>();
   for (const accumulator of accumulators.values()) {
-    const commits: DaluxModelCommit[] = [...accumulator.byRevision].map(([revisionId, entry]) => ({
-      revisionId,
-      file: entry.file,
-      fileAreaId: entry.fileAreaId,
-      versionSets: entry.versionSets,
-      sweepIndex: entry.sweepIndex,
-      ...(revisionNumberOf(entry.file) !== undefined ? { revisionNumber: revisionNumberOf(entry.file)! } : {}),
-    }));
-    commits.sort(newestFirst);
+    const commits: DaluxModelCommit[] = [...accumulator.byRevision].map(([revisionId, entry]) => {
+      const revisionNumber = revisionNumberOf(entry.file);
+      return {
+        revisionId,
+        file: entry.file,
+        fileAreaId: entry.fileAreaId,
+        versionSets: entry.versionSets,
+        sweepIndex: entry.sweepIndex,
+        ...(revisionNumber !== undefined ? { revisionNumber } : {}),
+      };
+    });
+    // Whether every commit of THIS model carries a revision number, decided
+    // once for the whole array rather than per pair compared — see
+    // `newestFirst`'s doc for why a per-pair decision is not a total order.
+    const trustRevisionNumber = commits.every((commit) => commit.revisionNumber !== undefined);
+    commits.sort((a, b) => newestFirst(a, b, trustRevisionNumber));
     // The NEWEST row wins for the model's display name and location: a file
     // renamed or moved between version sets should read as where it is now,
     // not where it started.
@@ -243,7 +278,7 @@ async function buildCommitIndex(
   if (truncated) {
     client.debug('version-set sweep truncated', { swept: swept.length, total: sets.length });
   }
-  return { models, versionSetCount: swept.length, truncated };
+  return { models, versionSetCount: swept.length, truncated, partial };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,12 +288,15 @@ async function buildCommitIndex(
 interface CacheEntry {
   readonly index: Promise<DaluxCommitIndex>;
   readonly builtAt: number;
+  /** Mutated in place once `index` resolves, to {@link PARTIAL_COMMIT_INDEX_TTL_MS}
+   * if the result came back `partial` (review on #8647). */
+  ttl: number;
 }
 
 const cache = new Map<string, CacheEntry>();
 
 function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
-  return `${client.baseUrl}|${projectId}`;
+  return `${client.baseUrl}|${client.cacheIdentity}|${projectId}`;
 }
 
 /**
@@ -295,14 +333,26 @@ export async function getCommitIndex(
 ): Promise<DaluxCommitIndex> {
   const key = cacheKey(client, projectId);
   const cached = cache.get(key);
-  if (cached && now - cached.builtAt < COMMIT_INDEX_TTL_MS) return cached.index;
+  if (cached && now - cached.builtAt < cached.ttl) return cached.index;
 
   // NOT given the caller's `signal`: the result is shared, so one caller
   // aborting (a panel unmounting) must not cancel the sweep every other
   // caller is awaiting. The sweep is bounded by `MAX_VERSION_SETS` instead.
   void signal;
   const index = buildCommitIndex(client, projectId);
-  cache.set(key, { index, builtAt: now });
-  index.catch(() => cache.delete(key));
+  const entry: CacheEntry = { index, builtAt: now, ttl: COMMIT_INDEX_TTL_MS };
+  cache.set(key, entry);
+  index.then(
+    (result) => {
+      if (result.partial) entry.ttl = PARTIAL_COMMIT_INDEX_TTL_MS;
+    },
+    () => {
+      // Only this build's own entry, and only if nothing has replaced it: a
+      // build that outlives the TTL can have a second one already running
+      // under the same key by the time this rejects, and deleting
+      // unconditionally would evict THAT one instead (review on #8647).
+      if (cache.get(key) === entry) cache.delete(key);
+    },
+  );
   return index;
 }

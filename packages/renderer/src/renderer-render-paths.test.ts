@@ -1741,8 +1741,10 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
                 const sun = { sunShadows: { enabled: true } } as const;
                 for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
                 assert.strictEqual(grey.gpuResident, false, 'the isolate subset casts, so the parent evicts');
-                const subs = subBatchesOf(h, grey);
-                assert.ok(subs.length > 0, 'the isolate subset is cached');
+                const slot = scene['partialBatchCacheKeys'].get(`${grey.colorKey}:${grey.id}`);
+                const isolateSubset = slot === undefined ? undefined : scene['partialBatchCache'].get(slot) as BatchedMesh | undefined;
+                assert.ok(isolateSubset, 'the isolate subset is cached');
+                const subs = [isolateSubset];
                 scene['subsetResidency'].rebuildBudgetMs = 0;
                 h.stats.draws.length = 0; h.stats.commands.length = 0;
                 h.render({ ...sun });

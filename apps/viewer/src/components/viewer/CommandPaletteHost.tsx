@@ -16,12 +16,14 @@ type CommandPaletteHostProps = ComponentProps<typeof import('./CommandPalette')[
 export function CommandPaletteHost(props: CommandPaletteHostProps) {
   const { t } = useTranslation();
   const [opened, setOpened] = useState(false);
+  const [pendingQuery, setPendingQuery] = useState('');
   const launcher = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (props.open) launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, [props.open]);
   useEffect(() => {
     if (props.open) setOpened(true);
+    else setPendingQuery('');
   }, [props.open]);
 
   // Start loading on the first open, then retain the export dialog's owner
@@ -34,9 +36,14 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
       <PaletteLoadDialog {...props}>{fallback}</PaletteLoadDialog>
     )}>
       <Suspense fallback={<PaletteLoadDialog {...props}>
+        <input type="search" aria-label={t('commandPalette.searchAriaLabel')}
+          placeholder={t('commandPalette.searchPlaceholder')} value={pendingQuery}
+          onChange={event => setPendingQuery(event.currentTarget.value)}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          autoComplete="off" spellCheck={false} />
         <output className="text-sm text-muted-foreground">{t('shellChrome.statusBar.loadingFallback')}</output>
       </PaletteLoadDialog>}>
-        <CommandPalette {...props} />
+        <CommandPalette {...props} initialQuery={pendingQuery} />
       </Suspense>
     </ChunkErrorBoundary>
     </PaletteLauncherContext.Provider>

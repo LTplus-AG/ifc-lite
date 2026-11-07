@@ -18,16 +18,18 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
-import { beginMeasurePress, notePenTouches, routeMeasureTap, viewportHandlerContext } from './touchRouting.js';
+import { beginMeasurePress, canvasTouches, notePenTouches, routeMeasureTap, viewportHandlerContext } from './touchRouting.js';
 import { routeToolTap } from './toolTap.js';
 import { applyDragNavigation, dragNavigationFor, type DragNavigation } from './dragNavigation.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress } from './touchLongPress.js';
+import { withinTapSlop } from './tapSlop.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
 
 export interface TouchState {
+  /** The fingers on the canvas (`canvasTouches`), not every finger on the screen (#9122). */
   touches: Touch[];
   lastDistance: number;
   lastCenter: { x: number; y: number };
@@ -99,7 +101,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     let pivotGesture = 0;
     let drag: DragNavigation = 'orbit'; // a one-finger drag's move, set as a gesture's first finger lands (#9042)
     let disposed = false;
-    const longPress = createTouchLongPress((x, y) => {
+    const longPress = createTouchLongPress(canvas, (x, y) => {
       void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
         .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
     });
@@ -148,7 +150,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       useViewerStore.getState().setPointerInput('touch'); // the Measure hint follows the last input (#8879)
       e.preventDefault();
       if (touchState.touches.length === 0) drag = dragNavigationFor(activeToolRef.current); // kept until all lift
-      touchState.touches = Array.from(e.touches);
+      touchState.touches = canvasTouches(canvas, e);
 
       // Track multi-touch to prevent false tap-select after pinch/zoom
       if (touchState.touches.length > 1) {
@@ -193,7 +195,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault();
-      touchState.touches = Array.from(e.touches);
+      touchState.touches = canvasTouches(canvas, e);
 
       if (touchState.touches.length === 1) {
         if (longPress.move(touchState.touches[0])) return;
@@ -201,9 +203,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const dy = touchState.touches[0].clientY - touchState.lastCenter.y;
 
         // Mark as moved if significant movement (prevents tap-select during drag)
-        const totalDx = touchState.touches[0].clientX - touchState.tapStartPos.x;
-        const totalDy = touchState.touches[0].clientY - touchState.tapStartPos.y;
-        if (Math.abs(totalDx) > 10 || Math.abs(totalDy) > 10) {
+        if (!withinTapSlop(touchState.touches[0].clientX, touchState.touches[0].clientY, touchState.tapStartPos)) {
           touchState.didMove = true;
         }
         // A possible tap leaves the camera alone (past the long-press radius, within this per-axis slop):
@@ -276,7 +276,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       notePenTouches(canvas, e); e.preventDefault();
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
-      touchState.touches = Array.from(e.touches);
+      touchState.touches = canvasTouches(canvas, e);
       const wasLongPress = touchState.touches.length === 0 ? longPress.end() : false;
 
       // Multi-touch → single-touch transition: re-anchor everything to the

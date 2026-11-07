@@ -43,7 +43,7 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
-import { displayedTranslation } from '@/lib/model-placement/state';
+import { resolveGlbSourceBytes } from './glb-export-source';
 import { exportableModels } from '@/lib/export/capture-export';
 import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
@@ -185,32 +185,15 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       // Include this model's GPU-instanced occurrences, which are absent from its flat mesh list.
       const federatedModel = models.get(selectedModelId);
       const idOffset = federatedModel?.idOffset ?? 0;
-      const sourceFile = federatedModel?.sourceFile;
 
-      // Prefer the FROM-BYTES exporter when it can express this export exactly:
-      // it re-meshes at full fidelity in Rust with rep-identity instancing
-      // (50-85% smaller on repetitive models) and bounded memory on large
-      // inputs. Requirements: rendering colours (shading substitution only
-      // exists on the viewer's MeshData), a plain .ifc source handle (cache
-      // restores have none; .ifcx/.ifczip go through different parsers), and
-      // the primary id space (idOffset 0) so node-extras expressIds stay
-      // consistent with the from-meshes output. Everything else keeps the
-      // from-meshes assembler over the meshes the viewer already holds.
-      // Re-meshing uses full fidelity; merged layers and manual workspace
-      // placement require the current meshes to preserve their content/frame.
-      // A retained-kernel model never re-meshes its file (the exact engine's geometry is not the one on screen): it
-      // takes the held meshes.
-      const canUseSource =
-        !federatedModel?.retainedGeometry &&
-        !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
-        colorSource === 'rendering' && !mergeLayers && idOffset === 0 && !!sourceFile &&
-        /\.ifc$/i.test(sourceFile.name);
-
-      fromSourceBytes = canUseSource;
+      // Re-mesh the model's STEP bytes when that can express this export exactly,
+      // else assemble from the meshes the viewer already holds.
+      const readSourceBytes = resolveGlbSourceBytes(useViewerStore.getState(), selectedModelId, { colorSource, mergeLayers });
+      fromSourceBytes = readSourceBytes !== null;
 
       let glb: Uint8Array;
-      if (canUseSource) {
-        const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+      if (readSourceBytes) {
+        const bytes = await readSourceBytes();
         // `null`/`undefined` (no filter) must stay distinct from an empty-but-active
         // filter all the way to the wasm boundary — collapsing them here silently
         // exported the whole model when isolation matched nothing (#4328 follow-up).

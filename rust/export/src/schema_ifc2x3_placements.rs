@@ -19,6 +19,9 @@
 //! - A placement shared by several products gives each product after the
 //!   first its own copy.
 //!
+//! New records take the ids after the highest one and are written after the
+//! last record, in id order, the order a re-read file is written back in.
+//!
 //! A local placement that places nothing and only parents another one is a
 //! source file's shape, under a grid or not; ifc-lite never writes it, and this
 //! pass leaves it as it was. Under a grid placement it is still folded or freed
@@ -225,7 +228,8 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     let records = Records::scan(body);
     let Users { children, products, others, crossings } = users(&records);
     let mut rewrites: HashMap<u32, String> = HashMap::new();
-    let mut inserts: HashMap<u32, Vec<String>> = HashMap::new();
+    // New records, in id order: written after the last record, where a re-read writes them back.
+    let mut added: Vec<String> = Vec::new();
     let mut drops: HashSet<u32> = HashSet::new();
     let mut next = records.max_id + 1;
     // A grid placement not written, and the intersections only it named.
@@ -260,7 +264,7 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
                     rewrites.insert(at, format!("#{at}={INTERSECTION}({attrs});"));
                 }
                 Some(attrs) => {
-                    inserts.entry(kids[0]).or_default().push(format!("#{next}={INTERSECTION}({attrs});"));
+                    added.push(format!("#{next}={INTERSECTION}({attrs});"));
                     location = format!("#{next}");
                     next += 1;
                 }
@@ -282,7 +286,7 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
                 for (j, id) in ids.iter().enumerate() {
                     line = line.replace(&format!("#{{{j}}}"), &format!("#{id}"));
                 }
-                inserts.entry(*kid).or_default().push(format!("#{}={line}", ids[k]));
+                added.push(format!("#{}={line}", ids[k]));
             }
             rewrites.insert(*kid, format!("#{kid}={LOCAL}({rel_to},#{});", ids[ids.len() - 1]));
         }
@@ -305,7 +309,7 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
             let Some(frame) = record_frame(text) else { continue };
             let Some(mut parts) = slots_of(&text[frame.head.open + 1..frame.close]) else { continue };
             let copy = format!("#{next}");
-            inserts.entry(*product).or_default().push(format!("{copy}={ty}({slots});"));
+            added.push(format!("{copy}={ty}({slots});"));
             next += 1;
             parts[OBJECT_PLACEMENT] = &copy;
             rewrites.insert(
@@ -318,7 +322,7 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     if rewrites.is_empty() && drops.is_empty() {
         return None;
     }
-    let mut out = String::with_capacity(body.len() + 256 * (inserts.len() + 1));
+    let mut out = String::with_capacity(body.len() + 256 * (added.len() + 1));
     let mut cursor = 0;
     for rec in records.list.iter().flatten() {
         out.push_str(&body[cursor..rec.start]);
@@ -328,15 +332,21 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
             cursor += usize::from(body[cursor..].starts_with('\n'));
             continue;
         }
-        for line in inserts.get(&rec.id).into_iter().flatten() {
-            out.push_str(line);
-            out.push('\n');
-        }
         out.push_str(rewrites.get(&rec.id).map_or(rec.text, String::as_str));
     }
-    out.push_str(&body[cursor..]);
-    let added = inserts.values().map(Vec::len).sum();
-    Some(Placed { body: out, added, removed: drops.len() })
+    // After the last record and its separator.
+    let tail = &body[cursor..];
+    let at = usize::from(tail.starts_with('\n'));
+    out.push_str(&tail[..at]);
+    if !added.is_empty() && !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    for line in &added {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&tail[at..]);
+    Some(Placed { body: out, added: added.len(), removed: drops.len() })
 }
 
 /// The DATA section of an IFC2X3 output, held until its last record so

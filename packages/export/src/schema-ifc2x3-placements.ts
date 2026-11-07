@@ -27,6 +27,9 @@
  *   - A placement shared by several products gives each product after the
  *     first its own copy.
  *
+ * New records take the ids after the highest one and are written after the
+ * last record, in id order, the order a re-read file is written back in.
+ *
  * A local placement that places nothing and only parents another one is a
  * source file's shape, under a grid or not; ifc-lite never writes it, and this
  * pass leaves it as it was. Under a grid placement it is still folded or freed
@@ -119,10 +122,10 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
   const records = new Records(lines);
   const { children, products, others, crossings } = users(records);
   const rewrites = new Map<number, string>();
-  const inserts = new Map<number, string[]>();
+  /** New records, in id order: written after the last record, where a re-read writes them back. */
+  const added: string[] = [];
   const drops = new Set<number>();
   let next = records.maxId + 1;
-  const insert = (before: number, line: string) => append(inserts, before, line);
   /** A grid placement not written, and the intersections only it named. */
   const drop = (id: number, g: readonly string[]) => {
     drops.add(id);
@@ -147,7 +150,7 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
       let location = g[0].trim();
       if (lifts.intersection && crossings.get(at) === 1) rewrites.set(at, `#${at}=${INTERSECTION}(${lifts.intersection});`);
       else if (lifts.intersection) {
-        insert(kids[0], `#${next}=${INTERSECTION}(${lifts.intersection});`);
+        added.push(`#${next}=${INTERSECTION}(${lifts.intersection});`);
         location = `#${next++}`;
       }
       rewrites.set(kids[0], `#${kids[0]}=${GRID_PLACEMENT}(${location},${g[1].trim()});`);
@@ -160,7 +163,7 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
     const relTo = records.gridPlacementOf(refId(g[0]));
     freed.forEach((written, i) => {
       const ids = written!.map(() => next++);
-      written!.forEach((line, k) => insert(kids[i], `#${ids[k]}=${line.replace(/#\{(\d)\}/g, (_, j: string) => `#${ids[Number(j)]}`)}`));
+      written!.forEach((line, k) => added.push(`#${ids[k]}=${line.replace(/#\{(\d)\}/g, (_, j: string) => `#${ids[Number(j)]}`)}`));
       rewrites.set(kids[i], `#${kids[i]}=${LOCAL}(${relTo},#${ids[ids.length - 1]});`);
     });
     drop(rec.id, g);
@@ -176,7 +179,7 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
       const productFrame = readStepSlots(records.get(product)!.text);
       if (!productFrame) continue;
       const copy = next++;
-      insert(product, `#${copy}=${frame.type}(${frame.slots.join(',')});`);
+      added.push(`#${copy}=${frame.type}(${frame.slots.join(',')});`);
       const slots = [...productFrame.slots];
       slots[OBJECT_PLACEMENT] = `#${copy}`;
       rewrites.set(product, `${productFrame.prefix}${slots.join(',')}${productFrame.suffix}`);
@@ -188,9 +191,9 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
   lines.forEach((line, i) => {
     const rec = records.list[i];
     if (rec && drops.has(rec.id)) return;
-    if (rec) out.push(...(inserts.get(rec.id) ?? []));
     out.push(rec ? rewrites.get(rec.id) ?? line : line);
   });
+  out.push(...added);
   return out;
 }
 

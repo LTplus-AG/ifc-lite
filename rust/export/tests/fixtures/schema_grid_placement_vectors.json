@@ -298,11 +298,11 @@
         "#42=IFCDIRECTION((0.,0.,1.));",
         "#43=IFCDIRECTION((1.,0.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,#42,#43);",
-        "#52=IFCVIRTUALGRIDINTERSECTION((#7,#6),(4.,5.,1.5));",
         "#45=IFCGRIDPLACEMENT(#52,$);",
         "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);",
         "#46=IFCGRIDPLACEMENT(#30,$);",
-        "#51=IFCCOLUMN('2$abcdefghijklmnopqrst6',$,'D',$,$,#46,$,$);"
+        "#51=IFCCOLUMN('2$abcdefghijklmnopqrst6',$,'D',$,$,#46,$,$);",
+        "#52=IFCVIRTUALGRIDINTERSECTION((#7,#6),(4.,5.,1.5));"
       ]
     },
     {
@@ -346,10 +346,10 @@
         "#42=IFCDIRECTION((0.,0.,1.));",
         "#43=IFCDIRECTION((0.,1.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,#42,#43);",
-        "#51=IFCCARTESIANPOINT((-4.,5.,1.5));",
-        "#52=IFCAXIS2PLACEMENT3D(#51,#42,#43);",
         "#45=IFCLOCALPLACEMENT(#10,#52);",
-        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);"
+        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);",
+        "#51=IFCCARTESIANPOINT((-4.,5.,1.5));",
+        "#52=IFCAXIS2PLACEMENT3D(#51,#42,#43);"
       ]
     },
     {
@@ -393,10 +393,10 @@
         "#42=IFCDIRECTION((0.,0.,1.));",
         "#43=IFCDIRECTION((1.,0.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,#42,#43);",
-        "#51=IFCCARTESIANPOINT((-3.75,5.,0.));",
-        "#52=IFCAXIS2PLACEMENT3D(#51,#42,#43);",
         "#45=IFCLOCALPLACEMENT(#10,#52);",
-        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);"
+        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);",
+        "#51=IFCCARTESIANPOINT((-3.75,5.,0.));",
+        "#52=IFCAXIS2PLACEMENT3D(#51,#42,#43);"
       ]
     },
     {
@@ -437,11 +437,11 @@
         "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#7),(#6),$);",
         "#41=IFCCARTESIANPOINT((1.,0.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,$,$);",
+        "#45=IFCLOCALPLACEMENT(#10,#53);",
+        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);",
         "#51=IFCCARTESIANPOINT((-3.2928932188134525,5.707106781186548,0.));",
         "#52=IFCDIRECTION((0.7071067811865475,0.7071067811865475,0.));",
-        "#53=IFCAXIS2PLACEMENT3D(#51,$,#52);",
-        "#45=IFCLOCALPLACEMENT(#10,#53);",
-        "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);"
+        "#53=IFCAXIS2PLACEMENT3D(#51,$,#52);"
       ]
     },
     {
@@ -487,14 +487,14 @@
         "#42=IFCDIRECTION((0.,0.,1.));",
         "#43=IFCDIRECTION((1.,0.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,#42,#43);",
-        "#52=IFCCARTESIANPOINT((-4.,5.,1.5));",
-        "#53=IFCAXIS2PLACEMENT3D(#52,#42,#43);",
         "#45=IFCLOCALPLACEMENT(#10,#53);",
         "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);",
-        "#54=IFCCARTESIANPOINT((-4.,5.,1.5));",
-        "#55=IFCAXIS2PLACEMENT3D(#54,#42,#43);",
         "#46=IFCLOCALPLACEMENT(#10,#55);",
-        "#51=IFCCOLUMN('2$abcdefghijklmnopqrst6',$,'D',$,$,#46,$,$);"
+        "#51=IFCCOLUMN('2$abcdefghijklmnopqrst6',$,'D',$,$,#46,$,$);",
+        "#52=IFCCARTESIANPOINT((-4.,5.,1.5));",
+        "#53=IFCAXIS2PLACEMENT3D(#52,#42,#43);",
+        "#54=IFCCARTESIANPOINT((-4.,5.,1.5));",
+        "#55=IFCAXIS2PLACEMENT3D(#54,#42,#43);"
       ]
     },
     {
@@ -642,8 +642,8 @@
         "#9=IFCAXIS2PLACEMENT3D(#8,$,$);",
         "#10=IFCLOCALPLACEMENT($,#9);",
         "#60=IFCSITE('2$abcdefghijklmnopqrst7',$,'Site',$,$,#10,$,$,.ELEMENT.,$,$,$,$,$);",
-        "#62=IFCLOCALPLACEMENT($,#9);",
-        "#61=IFCBUILDING('2$abcdefghijklmnopqrst8',$,'Building',$,$,#62,$,$,.ELEMENT.,$,$,$);"
+        "#61=IFCBUILDING('2$abcdefghijklmnopqrst8',$,'Building',$,$,#62,$,$,.ELEMENT.,$,$,$);",
+        "#62=IFCLOCALPLACEMENT($,#9);"
       ]
     },
     {
@@ -695,15 +695,15 @@
         "#42=IFCDIRECTION((0.,0.,1.));",
         "#43=IFCDIRECTION((1.,0.,0.));",
         "#44=IFCAXIS2PLACEMENT3D(#41,#42,#43);",
-        "#53=IFCVIRTUALGRIDINTERSECTION((#17,#6),(4.,5.,1.5));",
         "#45=IFCGRIDPLACEMENT(#53,$);",
         "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',#3,'C',$,$,#45,$,$);",
-        "#54=IFCCARTESIANPOINT((-4.,5.,1.5));",
-        "#55=IFCAXIS2PLACEMENT3D(#54,#42,#51);",
         "#48=IFCLOCALPLACEMENT(#10,#55);",
         "#49=IFCAXIS2PLACEMENT3D(#41,#42,#51);",
         "#51=IFCDIRECTION((0.,1.,0.));",
-        "#52=IFCCOLUMN('2$abcdefghijklmnopqrst6',#3,'D',$,$,#48,$,$);"
+        "#52=IFCCOLUMN('2$abcdefghijklmnopqrst6',#3,'D',$,$,#48,$,$);",
+        "#53=IFCVIRTUALGRIDINTERSECTION((#17,#6),(4.,5.,1.5));",
+        "#54=IFCCARTESIANPOINT((-4.,5.,1.5));",
+        "#55=IFCAXIS2PLACEMENT3D(#54,#42,#51);"
       ]
     },
     {

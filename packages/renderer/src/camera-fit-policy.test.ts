@@ -312,7 +312,10 @@ describe('pickFitPolicy', () => {
       for (const b of [house, bounds(0, 0, 0, 10, 10, 10), bounds(0, 0, 0, 50, 100, 30), bounds(0, 0, 0, 50, 5, 50)]) {
         const legacy = pickFitPolicy(b, { fovY: FOV_45 });
         for (const viewAspect of [16 / 10, 930 / 890, 1]) {
-          assert.deepStrictEqual(pickFitPolicy(b, { fovY: FOV_45, aspect: viewAspect }), legacy, `aspect ${viewAspect}`);
+          // The pose; `orthoSize` is the orthographic fit, which needs the aspect by definition.
+          const fit = pickFitPolicy(b, { fovY: FOV_45, aspect: viewAspect });
+          const pose = { kind: fit.kind, aspect: fit.aspect, target: fit.target, position: fit.position, up: fit.up, distance: fit.distance };
+          assert.deepStrictEqual(pose, legacy, `aspect ${viewAspect}`);
         }
       }
     });

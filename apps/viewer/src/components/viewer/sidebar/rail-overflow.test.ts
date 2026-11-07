@@ -138,11 +138,10 @@ describe('empty start screen rail (#8802 R6)', () => {
   // The second review case (#9236): open panels outside the right pane (the
   // left slot, the bottom strip) were not pinned, so a short rail could push
   // an open icon into More. Here 'e' and 'f' are open, late in rail order.
-  it('keeps every open panel on a short rail, wherever it is open', () => {
-    const open = (id: string) => id === 'e' || id === 'f';
+  it('keeps every drawn panel on a short rail, wherever it is drawn', () => {
     const short = RAIL_PADDING_PX + 4 * RAIL_ITEM_PX + RAIL_DIVIDER_PX;
-    const laid = layoutRail(entries, short, { isOpen: open, waits });
-    assert.ok(laid.visible.includes('e') && laid.visible.includes('f'), `open panels on the rail, got ${laid.visible}`);
+    const laid = layoutRail(entries, short, { rendered: new Set(['e', 'f']), waits });
+    assert.ok(laid.visible.includes('e') && laid.visible.includes('f'), `drawn panels on the rail, got ${laid.visible}`);
     assert.ok(laid.overflow.length > 0, 'More still holds the rest');
     assert.ok(railHeight(entries.filter((e) => laid.visible.includes(e.id))) + RAIL_ITEM_PX <= short, 'and still fits beside More');
     // Open beats waiting: 'e' needs a model but is open, so it is not folded.
@@ -150,7 +149,15 @@ describe('empty start screen rail (#8802 R6)', () => {
   });
 
   it('pins the tour anchor ahead of open panels', () => {
-    const laid = layoutRail(entries, RAIL_PADDING_PX + 2 * RAIL_ITEM_PX, { anchors: ['d'], isOpen: (id) => id === 'f' });
+    const laid = layoutRail(entries, RAIL_PADDING_PX + 2 * RAIL_ITEM_PX, { anchors: ['d'], rendered: new Set(['f']) });
     assert.deepEqual(laid.visible, ['d'], 'only one icon fits beside More: the anchor keeps it');
+  });
+
+  // Review (#9236, second pass): panels only nominally open (left active in a
+  // collapsed sidebar) are not drawn, so they are not pinned, and on a short
+  // rail they no longer push usable icons into More.
+  it('does not pin a panel that is not drawn, so it cannot crowd a usable one off a short rail', () => {
+    const laid = layoutRail(entries, RAIL_PADDING_PX + 3 * RAIL_ITEM_PX, { rendered: new Set() });
+    assert.deepEqual(laid.visible, ['a', 'b'], 'the first icons in rail order, nothing displaced by an invisible pin');
   });
 });

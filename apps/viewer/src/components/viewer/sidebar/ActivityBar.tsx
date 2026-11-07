@@ -45,6 +45,7 @@ import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, panelGroupDefinition, panelModelGateMode, type WorkspacePanelId } from '@/lib/panels/registry';
 import { useRailPanelIds } from '@/hooks/useRailPanelIds';
+import { useRenderedPanelIds } from '@/hooks/useRenderedPanelIds';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { isViewerEmpty } from '@/lib/tours/demo-kit';
 import { useTourStore } from '@/lib/tours/tour-store';
@@ -144,18 +145,19 @@ export function ActivityBar() {
     }),
     [visibleIds],
   );
-  // Every open panel stays on the rail, read from the same `isOpen` that
-  // draws the icons' open marks; on the empty start screen the panels that
-  // need a model wait in More (`layoutRail`).
+  // Every panel drawn on screen stays on the rail (`useRenderedPanelIds`, the
+  // rule the dock, pane and strip draw by); on the empty start screen the
+  // panels that need a model wait in More (`layoutRail`).
+  const rendered = useRenderedPanelIds();
   const fit = useMemo(
     () => (customizing
       ? { visible: entries.map((e) => e.id), overflow: [], waiting: [] }
       : layoutRail(entries, listHeight, {
-        anchors: [tourRailAnchor, primaryId],
-        isOpen,
+        anchors: [tourRailAnchor, primaryId && rendered.has(primaryId) ? primaryId : null],
+        rendered,
         waits: viewerEmpty ? needsModel : null,
       })),
-    [customizing, entries, isOpen, listHeight, primaryId, tourRailAnchor, viewerEmpty],
+    [customizing, entries, listHeight, primaryId, rendered, tourRailAnchor, viewerEmpty],
   );
 
   const onIconClick = (id: WorkspacePanelId) => {

@@ -115,6 +115,29 @@ describe('activity rail active state (#8802 R1)', () => {
     }
   });
 
+  it('lets panels left in a collapsed sidebar wait in More once the last model goes (#9236 review)', () => {
+    // Lens active with Charts in the split, then the sidebar is collapsed and
+    // the last model removed. SidebarDock draws neither, so neither is pinned.
+    useViewerStore.setState({
+      models: new Map(), ifcDataStore: null, loading: false, sidebarHiddenIds: [],
+      sidebarMode: 'collapsed', sidebarActivePanel: 'lens', sidebarSecondaryPanel: 'charts',
+      startFoldLifted: { left: true, right: true },
+    });
+    const root = render(<ActivityBar />);
+    const s = states(root);
+    assert.equal(s.Lens, undefined, 'Lens is not drawn, so it waits in More');
+    const more = root.querySelector<HTMLButtonElement>('[data-rail-overflow]');
+    assert.ok(more);
+    act(() => {
+      more.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    act(() => { more.click(); });
+    for (const id of ['lens', 'charts']) {
+      const row = document.querySelector<HTMLElement>(`[data-panel-id="${id}"]`);
+      assert.equal(row !== null && row.hasAttribute('data-needs-model'), true, `${id} waits in More, marked as needing a model`);
+    }
+  });
+
   it('keeps the whole rail once a model is loaded', () => {
     loaded();
     const root = render(<ActivityBar />);

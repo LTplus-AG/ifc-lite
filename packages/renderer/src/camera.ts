@@ -323,7 +323,16 @@ export class Camera {
     this.state.camera.position = { ...policy.position };
     this.state.camera.target = { ...policy.target };
     this.state.camera.up = { ...policy.up };
+    // Orthographic scale is the half-height, not the distance (#8802 R6).
+    const orthoSize = this.fitOrthoSize(policy);
+    if (orthoSize !== undefined) this.state.orthoSize = orthoSize;
     this.updateMatrices();
+  }
+
+  /** The policy's orthographic half-height, in orthographic mode and when usable; else undefined. */
+  private fitOrthoSize(policy: FitPolicy): number | undefined {
+    if (this.state.projectionMode !== 'orthographic' || policy.orthoSize === undefined) return undefined;
+    return usableOrthoSize(policy.orthoSize) ?? undefined;
   }
 
   /**
@@ -336,6 +345,7 @@ export class Camera {
       { ...policy.target },
       { ...policy.up },
       duration,
+      this.fitOrthoSize(policy),
     );
   }
 

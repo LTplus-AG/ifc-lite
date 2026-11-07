@@ -128,12 +128,15 @@ export function foldModelPanels<Id extends string>(
  * The rail as `ActivityBar` lays it out, in one place:
  *
  * - **Pins**: `anchors` (the current tour step's anchor first, then the
- *   right-pane panel) and every panel `isOpen` reports open in any slot: the
- *   left slot, the right pane's primary and split halves, the bottom strip, a
- *   floating or popped-out window. An open panel's icon carries its open mark,
- *   so it is never folded away or pushed into More while there is room for it.
- *   Pins yield only when even they do not fit beside More, lowest priority
- *   (last) first, as `fitRail` documents; More then names them open.
+ *   right-pane panel) and every panel in `rendered`: the panels actually
+ *   DRAWN, in the left slot, the right pane's primary and split halves, the
+ *   bottom strip, a floating or popped-out window (`renderedPanelIds`, the
+ *   rule `SidebarDock`, `SidebarPanelHost` and `ViewerLayout` draw by). A
+ *   drawn panel's icon is never folded away or pushed into More while there
+ *   is room for it. A panel that is only nominally open (left active in a
+ *   collapsed sidebar) is not pinned: it would hide usable icons behind an
+ *   invisible one. Pins yield only when even they do not fit beside More,
+ *   lowest priority (last) first, as `fitRail` documents.
  * - **Fold**: on the empty start screen, `waits` names the panels that need a
  *   model; unless pinned they wait in More (`foldModelPanels`). `null` folds
  *   none (a model is loaded).
@@ -144,13 +147,13 @@ export function foldModelPanels<Id extends string>(
 export function layoutRail<Id extends string>(
   entries: readonly RailEntry<Id>[],
   availablePx: number,
-  { anchors = [], isOpen = () => false, waits = null }: {
+  { anchors = [], rendered = new Set<Id>(), waits = null }: {
     anchors?: readonly (Id | null | undefined)[];
-    isOpen?: (id: Id) => boolean;
+    rendered?: ReadonlySet<Id>;
     waits?: ((id: Id) => boolean) | null;
   } = {},
 ): RailFit<Id> & { waiting: Id[] } {
-  const pinned = [...new Set([...anchors.filter((id): id is Id => !!id), ...entries.map((e) => e.id).filter(isOpen)])];
+  const pinned = [...new Set([...anchors.filter((id): id is Id => !!id), ...entries.map((e) => e.id).filter((id) => rendered.has(id))])];
   const { rail, waiting } = waits ? foldModelPanels(entries, waits, pinned) : { rail: [...entries], waiting: [] as Id[] };
   const fit = fitRail(rail, availablePx, pinned, { moreRequired: waiting.length > 0 });
   const over = new Set([...fit.overflow, ...waiting]);

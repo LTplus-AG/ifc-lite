@@ -12,6 +12,7 @@ import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
 import { PaletteLauncherContext } from './command-palette-launcher';
+import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
 import { useShallow } from 'zustand/react/shallow';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
 import { useMountedFileHost, getMountedFileHost } from './toolbar/mounted-file-host';
@@ -121,9 +122,9 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     }
   }, [open]);
 
-  // Keep inspected prerequisites current without subscribing to unrelated viewport state.
-  const prerequisites = useViewerStore(useShallow(palettePrerequisites));
-  const collabRole = prerequisites.role;
+  // Retain export ownership while closed without following invisible command prerequisites.
+  const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
+  const collabRole = prerequisites?.role ?? null;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   // Cesium only has something to show once a model carries georeferencing.
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
@@ -132,7 +133,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
       openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
@@ -149,7 +150,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──
@@ -236,8 +237,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent overlayClassName="z-(--z-command-palette)" className="z-(--z-command-palette) flex flex-col p-0 gap-0 translate-y-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
-          style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+        <DialogContent overlayClassName="z-(--z-command-palette)" className={`${PALETTE_DIALOG_LAYOUT} flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none`}
+          style={{ top: PALETTE_DIALOG_TOP, maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
           onOpenAutoFocus={event => {
             event.preventDefault();
             paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);

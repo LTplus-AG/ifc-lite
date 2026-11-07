@@ -9,6 +9,7 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import { act, useState, type Dispatch, type SetStateAction } from 'react';
 import { Puzzle } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { toast } from '@/components/ui/toast';
 import type { CommandContribution, ExporterContribution, RuntimeRunResult, SlotContribution } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
@@ -174,6 +175,63 @@ for (const transition of ['removed', 'replaced'] as const) {
     assert.deepEqual(current.commands, [`${owner}:${command.payload.id}`]);
     assert.equal(executions.length, 1);
     assert.deepEqual(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'), [row(command.payload.title).dataset.runtimeCommandId]);
+  });
+}
+
+// The early palette bridge awaits the real dispatcher before handing off to the host.
+// These regressions exercise retirement during that await (review4500142199).
+for (const transition of ['removed', 'replaced', 'contribution-removed'] as const) {
+  test(`#8947 ${transition} during dispatcher activation refuses the stale host handoff`, async () => {
+    const oldHost = host();
+    oldHost.slotRegistry.register(owner, [command]);
+    oldHost.dispatcher.register(owner, [`onCommand:${command.payload.id}`]);
+    const replacement = transition === 'replaced' ? host() : null;
+    replacement?.slotRegistry.register(owner, [command]);
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    let activating = false;
+    const unsubscribe = oldHost.dispatcher.onActivate(async () => {
+      activating = true;
+      await pending;
+    });
+    const notices: string[] = [];
+    mock.method(toast, 'info', (message: string) => { notices.push(message); });
+    const surface = mount(oldHost);
+    search(command.payload.title);
+    holdFrames();
+    try {
+      click(row(command.payload.title));
+      await flushFrames();
+      await waitFor(() => activating, 'real dispatcher is waiting for activation', 2_000);
+      assert.deepEqual(oldHost.commands, [], 'host execution has not begun');
+      assert.equal(executions.length, 1, 'accepted click retains the established usage contract');
+      const recentAtAcceptance = localStorage.getItem(RECENT_KEY);
+      assert.ok(recentAtAcceptance);
+      if (transition === 'contribution-removed') {
+        act(() => oldHost.slotRegistry.unregister(owner));
+      } else surface.replace(replacement);
+      await act(async () => release());
+      await waitFor(() => notices.length === 1, 'retirement is reported after activation settles', 2_000);
+      assert.ok(notices[0].length > 0, 'refusal is visible, not a silent no-op');
+      assert.deepEqual(oldHost.commands, [], 'retired provider or contribution never runs');
+      assert.deepEqual(replacement?.commands ?? [], [], 'replacement cannot inherit the stale click');
+      assert.equal(executions.length, 1, 'retirement creates no second usage event');
+      assert.equal(localStorage.getItem(RECENT_KEY), recentAtAcceptance);
+
+      // A fresh current contribution still executes after the refused handoff.
+      const current = replacement ?? oldHost;
+      act(() => current.slotRegistry.register(owner, [command]));
+      surface.replace(current);
+      click(row(command.payload.title));
+      await flushFrames();
+      await waitFor(() => current.commands.length === 1, 'fresh current provider executes', 2_000);
+      assert.deepEqual(current.commands, [`${owner}:${command.payload.id}`]);
+      assert.equal(executions.length, 2);
+    } finally {
+      release();
+      unsubscribe();
+      await act(async () => { await pending; });
+    }
   });
 }
 

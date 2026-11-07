@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Every object placement of an IFC2X3 file places exactly one product (#9209).
+ * The grid and shared placements of an IFC2X3 output each place exactly one
+ * product (#9209).
  *
  * IFC2X3 declares `IfcObjectPlacement.PlacesObject` as `SET [1:1]`; IFC4
  * relaxed it to `SET [0:?]`, and the models this package writes use that:
@@ -25,6 +26,11 @@
  *     intersection does not read (curved axes, say) is left as it was.
  *   - A placement shared by several products gives each product after the
  *     first its own copy.
+ *
+ * A local placement that places nothing and only parents another one is a
+ * source file's shape, under a grid or not; ifc-lite never writes it, and this
+ * pass leaves it as it was. Under a grid placement it is still folded or freed
+ * as above, which writes one placement that places nothing instead of two.
  *
  * Positions follow the geometry reader (`rust/geometry/src/placement/grid.rs`):
  * the intersection of the two axes' chords, each shifted along its left

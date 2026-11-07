@@ -410,6 +410,31 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     assert.equal(x.preAlignment, undefined, 'the whole snapshot must be cleared');
   });
 
+  it('records the reference each re-baked model was aligned into, and clears it on the anchor (#9229)', async () => {
+    // The selected centreline maps through this record, so pinning another
+    // anchor without a re-align leaves it on the meshes.
+    const { models, x, a } = federation();
+    const toX = await realign(models, 'X');
+    assert.equal(a.federationAlignmentStatus, 'same-crs', 'fixture: A is re-baked into X');
+    assert.deepEqual(a.alignmentReference, toX.anchorGeoref, 'A records the georef it was actually aligned to');
+    assert.notEqual(a.alignmentReference?.coordinateInfo, x.geometryResult!.coordinateInfo,
+      'a copy: an in-place edit of the anchor\'s frame cannot rewrite the record');
+    assert.equal(x.alignmentReference, undefined);
+    const toA = await realign(models, 'A');
+    assert.deepEqual(x.alignmentReference, toA.anchorGeoref, 'X records A once re-baked into it');
+    const recorded = x.alignmentReference;
+    assert.equal(a.alignmentReference, undefined, 'the restored anchor is in its own frame again');
+    // A pass back to X that is superseded once it has restored X as the anchor.
+    const anchor = models.get('X')!;
+    let live = true;
+    const patch = applyPatch(models);
+    const stale = await realignFederationModels<TestModel>({ models: Array.from(models.entries()), anchorModelId: 'X',
+      anchorModel: anchor, anchorGeoref: resolveGeoref('X', anchor), resolveGeoref,
+      updateModel: (modelId, fields) => { patch(modelId, fields); live = false; }, isCurrent: () => live });
+    assert.equal(stale.stale, true);
+    assert.equal(x.alignmentReference, recorded, 'the rollback restores the record with the mesh');
+  });
+
   it('places a model the same way no matter which anchor came before', async () => {
     // Switching TO an anchor must give what loading with that anchor from the
     // start would: the frame X lands in is A's OWN frame, not whatever frame A

@@ -12,6 +12,7 @@ import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { selectedCentrelineWorldLines, sourceOccurrenceKey } from '@/lib/analytic/selected-centreline-lines';
 import { selectedCentrelineSnapCurves } from '@/lib/analytic/selected-centreline-snaps';
 import { setSourceSegmentScreenProbe } from '@/lib/viewport-debug-hooks';
+import { sourceModelFrame } from '@/lib/analytic/source-model-key';
 import { selectedSweptDiskProducts, useSelectedSweptDisks, useSourceModelKeys } from './useSelectedSweptDisks';
 
 /**
@@ -32,7 +33,17 @@ function queriedProducts(): Set<string> {
   return new Set([...grouped].flatMap(([modelId, ids]) => ids.map((expressId) => entityRefToString({ modelId, expressId }))));
 }
 
-const sameValues = (a: readonly unknown[], b: readonly unknown[]) => a.every((value, index) => Object.is(value, b[index]));
+const sameValues = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length
+  && a.every((value, index) => Object.is(value, b[index]));
+
+/**
+ * What places the drawn curves: the frame of the models their products are
+ * in. A selection that reaches another model adds that model to the query's
+ * key, but cannot move a curve already drawn (#9086, #9229). The model ids
+ * come from the drawn records, never parsed back out of a product key: a
+ * room model's id has colons of its own (`room:<roomId>:<slotId>`).
+ */
+const drawnFrame = (models: readonly string[]): unknown[] => sourceModelFrame(useViewerStore.getState(), models);
 
 /** Keep the optional selected-source overlay in its own renderer channel. */
 export function useCentrelineRendererOverlay(
@@ -42,9 +53,9 @@ export function useCentrelineRendererOverlay(
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
   // Not the `models` Map: a collapsed or renamed row, or an unrelated model toggled, moves no curve (#9158).
-  const { frame: modelFrame, shown: modelsShown } = useSourceModelKeys(enabled);
-  // In a federation `ifcDataStore` only mirrors the active model; it is the curves' source only without one.
-  const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
+  // The frame also holds the legacy single-file store and geometry when no model is loaded (#9229).
+  const modelKeys = useSourceModelKeys(enabled);
+  const { frame: modelFrame, shown: modelsShown } = modelKeys;
   const placement = useViewerStore((state) => state.modelPlacement);
   const georefMutations = useViewerStore((state) => state.georefMutations);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
@@ -56,16 +67,22 @@ export function useCentrelineRendererOverlay(
   const classFilter = useViewerStore((state) => state.classFilter);
   const lensHidden = useViewerStore((state) => state.lensHiddenIds);
   const highlightedSegment = useViewerStore((state) => state.selectedDirectrixSegment);
-  const selected = useSelectedSweptDisks(enabled);
+  const selected = useSelectedSweptDisks(enabled, modelKeys);
   const { t } = useTranslation();
   const lastNotice = useRef<string | null>(null);
   const sourceEpoch = useRef(0);
   /** The products the drawn centreline shows; empty when none is drawn. */
   const drawnProducts = useRef<ReadonlySet<string>>(new Set());
+  /** The models of the drawn products, sorted; empty when none is drawn. */
+  const drawnModels = useRef<readonly string[]>([]);
   /** The inputs that place the curves, as the last layout pass saw them (#9086). */
   const lastFrame = useRef<readonly unknown[] | null>(null);
+  /** `drawnFrame` of the drawn products when they installed, or as the last layout pass kept them. */
+  const placedFrame = useRef<readonly unknown[] | null>(null);
   const clearLine = (renderer: Renderer | null | undefined) => {
     drawnProducts.current = new Set();
+    drawnModels.current = [];
+    placedFrame.current = null;
     renderer?.setLineOverlay('centreline', null);
   };
   const installCurves = (renderer: Renderer | null | undefined, curves: readonly SourceSnapCurve[]) => {
@@ -84,8 +101,7 @@ export function useCentrelineRendererOverlay(
   useLayoutEffect(() => {
     sourceEpoch.current++;
     setSourceSegmentScreenProbe(null);
-    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, modelFrame, legacyStore, placement,
-      georefMutations, highlightedSegment];
+    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, placement, georefMutations, highlightedSegment];
     const last = lastFrame.current;
     const sameFrame = last !== null && sameValues(last, frame);
     lastFrame.current = frame;
@@ -99,11 +115,12 @@ export function useCentrelineRendererOverlay(
     // The line is one buffer for every product it draws, and the curves are
     // those of drawn products only: both stay, or both go.
     const drawn = drawnProducts.current;
-    const products = sameFrame && drawn.size > 0 ? queriedProducts() : null;
+    const placed = placedFrame.current !== null && sameValues(drawnFrame(drawnModels.current), placedFrame.current);
+    const products = sameFrame && placed && drawn.size > 0 ? queriedProducts() : null;
     if (products && [...drawn].every((product) => products.has(product))) return;
     clearLine(rendererRef.current);
     installCurves(rendererRef.current, []);
-  }, [enabled, isInitialized, recoveryEpoch, rendererRef, modelFrame, modelsShown, legacyStore, placement, georefMutations,
+  }, [enabled, isInitialized, recoveryEpoch, rendererRef, modelFrame, modelsShown, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
     highlightedSegment]);
 
@@ -156,8 +173,11 @@ export function useCentrelineRendererOverlay(
           return true;
         });
         if (!uploaded) { clear(); return; }
-        drawnProducts.current = new Set(selected.items.filter(({ ref, occurrences }) => occurrences.some((_, index) =>
-          renderedOccurrences.has(sourceOccurrenceKey(ref.modelId, ref.expressId, index)))).map(({ ref }) => entityRefToString(ref)));
+        const drawnRefs = selected.items.filter(({ ref, occurrences }) => occurrences.some((_, index) =>
+          renderedOccurrences.has(sourceOccurrenceKey(ref.modelId, ref.expressId, index)))).map(({ ref }) => ref);
+        drawnProducts.current = new Set(drawnRefs.map(entityRefToString));
+        drawnModels.current = [...new Set(drawnRefs.map(({ modelId }) => modelId))].sort();
+        placedFrame.current = drawnFrame(drawnModels.current);
         const products = queriedProducts();
         installCurves(renderer, curves.filter(({ identity }) => products.has(entityRefToString(identity))));
         setSourceSegmentScreenProbe((modelId, expressId, segmentIndex, t) => {

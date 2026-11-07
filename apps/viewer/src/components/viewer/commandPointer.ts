@@ -163,7 +163,7 @@ export function routeCommandPointer(
   }
   latest.set(ctx, { x, y, mods, runtime });
   const { shiftKey } = mods;
-  rememberCommandPointer((altKey) => { routeCommandPointer(ctx, 'move', x, y, { shiftKey, altKey }); });
+  rememberCommandPointer((altKey) => { routeCommandPointer(ctx, 'move', x, y, { shiftKey, altKey }); }, mods.altKey);
   if (ctx.measureRaycastPendingRef.current) return true;
   ctx.measureRaycastPendingRef.current = true;
   ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {

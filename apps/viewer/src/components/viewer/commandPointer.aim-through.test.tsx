@@ -24,6 +24,8 @@ import { pointerAim } from '@/lib/commands/modeling/snap-solve';
 import { resolve as translate } from '@/i18n/registry';
 import { routeCommandPointer } from './commandPointer.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { createPlanCutSource } from './plan/plan-cut-source';
+import { routePlanPointer } from './plan/PlanPointer';
 import { useAimKey } from './tools/command/useAimKey.js';
 
 const PICKS_AN_ELEMENT = ['door.place', 'window.place', 'opening.place', 'hosted.slide', 'element.align', 'element.split', 'element.trimExtend'];
@@ -180,6 +182,33 @@ describe('the Alt key while a command runs (#9201)', () => {
     assert.equal(fire('keyup', 'Alt').defaultPrevented, true);
     assert.equal(fire('keydown', 'AltGraph').defaultPrevented, false);
     assert.equal(fire('keydown', 'Shift').defaultPrevented, false);
+  });
+
+  it('turning snapping off with the pointer still moves the point at once', async () => {
+    render(<Key />);
+    const ctx = pointer();
+    routeCommandPointer(ctx, 'move', 300, -300, { shiftKey: false, altKey: false });
+    await nextFrame();
+    assert.equal(landed().winner, 'face');
+    (ctx.snapEnabledRef as { current: boolean }).current = false;
+    useViewerStore.setState({ snapEnabled: false });
+    await nextFrame();
+    assert.deepEqual(landed(), { local: [3, 3], winner: 'workplane' });
+  });
+
+  it('in the plan, a replay reads the snap toggle as it is now, not as it was at the last move', () => {
+    render(<Key />);
+    // A plan-cut corner at (2, 2), 10 px/m: snapping on takes it.
+    const cut = createPlanCutSource(() => ({ segments: [[[2, 2], [6, 2]]], midpoints: true }));
+    const input = { local: [2.3, 2.2] as const, metresPerPixel: 0.1, mods: { shiftKey: false, altKey: false }, snapping: true, planSources: [cut] };
+    routePlanPointer('move', input);
+    assert.equal(landed().winner, 'endpoint');
+    useViewerStore.setState({ snapEnabled: false });
+    assert.deepEqual(landed(), { local: [2.3, 2.2], winner: 'workplane' });
+    // Alt down and up with the pointer still: snapping stays off.
+    fire('keydown', 'Alt');
+    fire('keyup', 'Alt');
+    assert.deepEqual(landed(), { local: [2.3, 2.2], winner: 'workplane' });
   });
 
   it('after the pointer has left, Alt moves nothing', async () => {

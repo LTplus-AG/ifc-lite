@@ -4,13 +4,14 @@
 
 import { useEffect } from 'react';
 import { replayCommandPointer } from '@/lib/commands/modeling/pointer-replay';
+import { useViewerStore } from '@/store';
 
 /**
  * While a command runs, Alt belongs to it (#9201). Alt alone would otherwise
  * move focus to the browser's menu on release on Windows and Linux, and the
  * next key (Escape, a typed length) would go there. A press or release re-reads
  * the still pointer, and losing the window lets go, since Alt+Tab never sends
- * the release here. Only Alt itself: AltGr is `AltGraph`, and Alt chords are
+ * the release here. Turning snapping on or off (S) re-reads it too. Only Alt itself: AltGr is `AltGraph`, and Alt chords are
  * separate key events.
  */
 export function useAimKey(active: boolean): void {
@@ -22,6 +23,7 @@ export function useAimKey(active: boolean): void {
       if (!event.repeat) replayCommandPointer(event.type === 'keydown');
     };
     const onBlur = () => replayCommandPointer(false);
+    const unsubscribe = useViewerStore.subscribe((s, prev) => { if (s.snapEnabled !== prev.snapEnabled) replayCommandPointer(); });
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('keyup', onKey, true);
     window.addEventListener('blur', onBlur);
@@ -29,6 +31,7 @@ export function useAimKey(active: boolean): void {
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('keyup', onKey, true);
       window.removeEventListener('blur', onBlur);
+      unsubscribe();
     };
   }, [active]);
 }

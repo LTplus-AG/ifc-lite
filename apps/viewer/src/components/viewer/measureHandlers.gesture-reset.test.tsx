@@ -1052,6 +1052,71 @@ describe('a Snap toggle re-picks the live preview under the new setting at the c
     assert.equal(s().edgeLockState.edge === null, true, 'a Snap toggle brought the edge lock back');
   });
 
+  for (const mode of ['point', 'drag'] as const) {
+    it(`${mode === 'point' ? 'Point mode' : 'Distance'}: a drawing-buffer pixel-ratio swap since the move still re-picks`, async () => {
+      act(() => s().setMeasureMode(mode));
+      const { canvas, ctx } = mount(boundPass);
+      if (mode === 'drag') click(canvas, 200, 300);
+      fire(canvas, 'pointermove', 400, 250);
+      flushFrames();
+      Object.assign(canvas, { width: 1600, height: 1200 }); // the HiDPI buffer back after a zoom's low-ratio frames
+      act(() => syncMeasureScreenCoords(ctx));
+      await pressKey('s');
+      const end = mode === 'point' ? s().measurePointLive : s().activeMeasurement?.current;
+      assert.equal(xy(end), '4,0.5', 'BUG: a pixel-ratio swap alone cancelled the re-pick');
+    });
+  }
+
+  it('Distance: a canvas reshaped since the move (a new aspect) still skips the re-pick', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    Object.assign(canvas, { width: 800, height: 300 }); // a panel opened: another view under the cursor
+    act(() => syncMeasureScreenCoords(ctx));
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked after the canvas changed shape');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after the canvas changed shape');
+  });
+
+  it('Point mode: a left-button orbit press nudged within the click slop keeps the cursor', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    fire(canvas, 'pointerdown', 400, 250); // Point mode's left press orbits once past the slop
+    fire(canvas, 'pointermove', 402, 251);
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'an orbit press nudged within the slop forgot the cursor');
+    fire(canvas, 'pointerup', 402, 251);
+  });
+
+  it('the Shift and blur listeners are removed with the mouse controls', () => {
+    const added: Array<[string, unknown]> = [];
+    const removed: Array<[string, unknown]> = [];
+    const add = window.addEventListener, remove = window.removeEventListener;
+    const watched = new Set(['keydown', 'keyup', 'blur']);
+    window.addEventListener = ((type: string, fn: EventListenerOrEventListenerObject, o?: AddEventListenerOptions | boolean) => {
+      if (watched.has(type)) added.push([type, fn]);
+      add.call(window, type, fn, o);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((type: string, fn: EventListenerOrEventListenerObject, o?: EventListenerOptions | boolean) => {
+      if (watched.has(type)) removed.push([type, fn]);
+      remove.call(window, type, fn, o);
+    }) as typeof window.removeEventListener;
+    try {
+      mount();
+      assert.equal(added.length > 0, true, 'setup: no window key or blur listener was added');
+      cleanupMouseControls();
+    } finally {
+      window.addEventListener = add;
+      window.removeEventListener = remove;
+    }
+    const left = added.filter(([type, fn]) => !removed.some(([t, f]) => t === type && f === fn)).map(([type]) => type);
+    assert.deepEqual(left, [], 'window listeners outlived the mouse controls');
+  });
+
   it('Distance: a camera move then a plain move in one frame still re-picks (#9052)', async () => {
     const { canvas, camera } = mount();
     click(canvas, 200, 300);

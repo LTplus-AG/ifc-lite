@@ -177,8 +177,12 @@ export function reprojectMeasurementsForCamera(
   const last = lastStateRef.current;
   const current = measureCameraState(camera, canvas, refs);
   if (sameMeasureCameraState(last, current)) return;
-  lastStateRef.current = current;
+  const viewMoved = !sameMeasureCameraPose(last, current);
+  // A drawing-buffer swap alone moves nothing under the cursor: the state keeps its identity, so the
+  // Measure cursor noted under it still holds for a Snap re-pick (#9022)
+  if (last && !viewMoved) Object.assign(last, { canvasWidth: current.canvasWidth, canvasHeight: current.canvasHeight });
+  else lastStateRef.current = current;
   // CSS-space coords so the measure line/labels track the geometry under the
   // cursor (raw coords are drawing-buffer device px, not CSS px — #1107, #5383).
-  update((worldPos) => projectToCssScreen(camera, canvas, worldPos), !sameMeasureCameraPose(last, current));
+  update((worldPos) => projectToCssScreen(camera, canvas, worldPos), viewMoved);
 }

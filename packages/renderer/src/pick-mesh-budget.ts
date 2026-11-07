@@ -17,7 +17,7 @@ import { isEntityVisible } from './entity-visibility.js';
  * buffer per piece, which is too slow at 60K+ elements, so a pick that would
  * create more takes the CPU raycast (no GPU buffers) instead.
  */
-const MAX_PICK_MESH_CREATION = 500;
+export const MAX_PICK_MESH_CREATION = 500;
 
 type PickMeshScene = Pick<Scene, 'getMeshes' | 'visibleMeshDataEntitiesExceed' | 'getAllMeshDataExpressIds' | 'getMeshDataPieces'>;
 
@@ -41,6 +41,11 @@ export function pickPieceKey(piece: { expressId: number; modelIndex?: number }):
  */
 export function planPickMeshHydration(scene: PickMeshScene, options?: PickOptions): PickMeshPlan {
   const existing = scene.getMeshes();
+  // A merged highlight (#9192) has no per-piece identity, so a GPU pick drawing
+  // it could not report the item it hit. The CPU raycast reads the pieces.
+  if (existing.some((mesh) => mesh.mergedSelection && isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds))) {
+    return { overBudget: true, visibleExpressIds: [], existingPieceCounts: new Map() };
+  }
   // Over-budget verdict from a count alone, before building the id set and
   // walking it, which costs O(entities) allocations, piece lookups and
   // colour-merged extractions: the hover pre-highlight (#5390) picks up to 20x

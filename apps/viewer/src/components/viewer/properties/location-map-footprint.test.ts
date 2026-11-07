@@ -11,6 +11,7 @@
  * the second pass rather than the first.
  */
 
+import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Feature } from 'geojson';
@@ -46,6 +47,13 @@ function fakeMap() {
       layers.set(layer.id, layer);
     },
     getLayer(id: string) { return layers.get(id); },
+    setPaintProperty(id: string, name: string, value: unknown) {
+      const layer = layers.get(id) as { paint: Record<string, unknown> } | undefined;
+      if (!layer) throw new Error(`layer ${id} does not exist`);
+      layer.paint[name] = value;
+    },
+    container: null as HTMLElement | null,
+    getContainer() { return map.container ?? undefined; },
     removeLayer(id: string) { layers.delete(id); },
     removeSource(id: string) {
       // MapLibre refuses to drop a source that layers still reference. Without
@@ -114,6 +122,25 @@ describe('location-map footprint', () => {
     const m = fakeMap();
 
     assert.doesNotThrow(() => removeFootprintFromMap(asMap(m)));
+  });
+
+  // #8802 R5 review: light <-> colorful keeps the basemap, so no style reload
+  // re-adds the layers; a later update must repaint them in the new ink.
+  it('repaints both layers in the container ink when that ink changes without a style reload', () => {
+    const m = fakeMap();
+    const container = document.body.appendChild(document.createElement('div'));
+    m.container = container;
+    container.style.color = 'rgb(0, 0, 0)';
+    addFootprintToMap(asMap(m), RING);
+    const paint = (id: string) => (m.layers.get(id) as { paint: Record<string, unknown> }).paint;
+    assert.equal(paint(FOOTPRINT_FILL_LAYER)['fill-color'], 'rgb(0, 0, 0)');
+
+    container.style.color = 'rgb(26, 27, 46)';
+    addFootprintToMap(asMap(m), RING);
+
+    assert.equal(paint(FOOTPRINT_FILL_LAYER)['fill-color'], 'rgb(26, 27, 46)', 'fill follows the new ink');
+    assert.equal(paint(FOOTPRINT_OUTLINE_LAYER)['line-color'], 'rgb(26, 27, 46)', 'outline follows the new ink');
+    container.remove();
   });
 
   it('draws the ring it was given', () => {

@@ -18,6 +18,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import type { LayerStackEntry } from '@/store/slices/layerStackSlice';
 import { pathTail } from '@/lib/layers/stack';
 import { Ghost } from 'lucide-react';
+import { ACTIVE_BORDERED_STATE_CLASS } from '@/components/ui/active-state';
 
 type ChangeKind = 'added' | 'deleted' | 'modified';
 
@@ -29,19 +30,19 @@ interface DiffRow {
 
 const KIND_META: Record<ChangeKind, { dot: string; countKey: TranslationKey; chip: string }> = {
   added: {
-    dot: 'bg-emerald-500',
+    dot: 'bg-ok-solid',
     countKey: 'layersPanel.diffView.countAdded',
-    chip: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+    chip: 'border-ok-border bg-ok-surface text-ok',
   },
   modified: {
-    dot: 'bg-amber-500',
+    dot: 'bg-warn-solid',
     countKey: 'layersPanel.diffView.countModified',
-    chip: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300',
+    chip: 'border-warn-border bg-warn-surface text-warn',
   },
   deleted: {
-    dot: 'bg-red-500',
+    dot: 'bg-danger-solid',
     countKey: 'layersPanel.diffView.countDeleted',
-    chip: 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300',
+    chip: 'border-danger-border bg-danger-surface text-danger',
   },
 };
 
@@ -142,7 +143,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
           aria-pressed={ghosting}
           className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-2xs font-medium leading-none transition-colors ${
             ghosting
-              ? 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300'
+              ? ACTIVE_BORDERED_STATE_CLASS
               : 'border-border text-muted-foreground hover:bg-muted/60'
           }`}
         >

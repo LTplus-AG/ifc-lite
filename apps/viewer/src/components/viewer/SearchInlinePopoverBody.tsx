@@ -27,7 +27,7 @@ export function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps)
   const { t } = useTranslation();
   return (
     <div
-      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-2xs text-muted-foreground shadow-sm z-40"
+      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-border bg-popover px-3 py-1.5 text-2xs text-muted-foreground shadow-sm z-40"
       role="status"
       aria-live="polite"
     >

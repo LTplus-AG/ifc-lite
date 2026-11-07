@@ -118,7 +118,14 @@ test('the Panels sheet opens every available registry panel on a phone (#5865)',
   expect(available).toContain('pointclouds'); // #5873: the empty panel is reachable before a scan loads.
   expect([...available].sort()).toEqual(registered.map(({ id }) => id).sort());
 
-  const launcher = page.getByRole('button', { name: 'Open the panel list' });
+  const launcher = page.getByRole('button', { name: 'Panels', exact: true });
+  // One labelled phone target in the bottom half, off the model, not three
+  // tiles over its top-left quarter (#8802 R6).
+  const launcherBox = await launcher.boundingBox();
+  expect(launcherBox, 'the Panels button is laid out').not.toBeNull();
+  expect(launcherBox!.height).toBeGreaterThanOrEqual(44);
+  expect(launcherBox!.y).toBeGreaterThan(844 / 2);
+  await expect(page.getByRole('button', { name: 'Open Hierarchy', exact: true })).toHaveCount(0);
   for (const [index, id] of available.entries()) {
     await expect(launcher).toBeVisible();
     await launcher.click();

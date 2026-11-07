@@ -101,6 +101,21 @@ export function readOwnPlacement(read: LiveRead, placementId: number): OwnPlacem
 }
 
 /**
+ * One IfcLocalPlacement as a hop up a chain: its frame in its parent's, and the
+ * parent. Null when it does not read; a tilted frame cannot be a rigid turn about
+ * the vertical, so it refuses.
+ */
+export function localPlacementHop(read: LiveRead, id: number): { frame: RigidFrame; parentId: number | null } | null {
+  const own = readOwnPlacement(read, id);
+  if (!own) return null;
+  const basis = axis3d({ entity: read }, read(id)?.attributes[1]);
+  if (!basis) return null;
+  if (Math.abs(basis.z[0]) > 1e-9 || Math.abs(basis.z[1]) > 1e-9 || basis.z[2] < 1 - 1e-9)
+    throw new Error('Copy parent placement must be upright in its storey frame');
+  return { frame: { origin: basis.o, c: basis.x[0], s: basis.x[1] }, parentId: own.parentId };
+}
+
+/**
  * The frame of `placementId` in `ancestorId`'s frame: every placement from it
  * up to (not including) the ancestor, composed. `placementId === ancestorId`
  * is the identity. Null when the chain does not reach the ancestor (or loops).
@@ -112,15 +127,10 @@ export function frameInAncestor(read: LiveRead, placementId: number | null, ance
   while (id !== null && id !== ancestorId) {
     if (visited.has(id)) return null;
     visited.add(id);
-    const own = readOwnPlacement(read, id);
-    if (!own) return null;
-    const placement = read(id);
-    const basis = axis3d({ entity: read }, placement?.attributes[1]);
-    if (!basis) return null;
-    if (Math.abs(basis.z[0]) > 1e-9 || Math.abs(basis.z[1]) > 1e-9 || basis.z[2] < 1 - 1e-9)
-      throw new Error('Copy parent placement must be upright in its storey frame');
-    frame = composeRigid({ origin: basis.o, c: basis.x[0], s: basis.x[1] }, frame);
-    id = own.parentId;
+    const hop = localPlacementHop(read, id);
+    if (!hop) return null;
+    frame = composeRigid(hop.frame, frame);
+    id = hop.parentId;
   }
   return id === ancestorId ? frame : null;
 }

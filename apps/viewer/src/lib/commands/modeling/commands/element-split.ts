@@ -169,6 +169,7 @@ export const ELEMENT_SPLIT: ModelingCommand<SplitGesture> = {
   hud: { Scene: SplitScene, hint: (g) => g.refusal ?? (g.target ? 'splitTool.hint' : 'modelingCommand.split.noTarget') },
   snap: 'modeling',
   init,
+  aimsAtElement: () => true,
   pointerMove,
   pointerDown(g) {
     if (!g.target) return g;

@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
 import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { selectedModelIds, selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -38,10 +40,46 @@ export function selectedSweptDiskProducts(state: ViewerState) {
   return selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
 }
 
-/** One selection query shared by drawing and the later source-geometry inspector. */
-export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
+export interface SourceModelKeys {
+  frame: readonly unknown[];
+  shown: readonly unknown[];
+}
+
+/**
+ * The model inputs of the query and the curves it feeds, as keys that keep
+ * their identity while nothing they read changes: `frame` places the curves,
+ * `shown` is the visibility of the models the selection reaches. A collapsed
+ * or renamed model row, or an unrelated model toggled, changes neither
+ * (#9158); nor does loading, removing or reordering a model the selection
+ * doesn't reach (#9229). Both resolve the selection, so they are empty while
+ * the caller is off.
+ */
+export function useSourceModelKeys(enabled: boolean): SourceModelKeys {
   const models = useViewerStore((state) => state.models);
-  const legacyStore = useViewerStore((state) => state.ifcDataStore);
+  const selectedIds = useViewerStore((state) => state.selectedEntityIds);
+  const primaryId = useViewerStore((state) => state.selectedEntityId);
+  const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
+  const primaryRef = useViewerStore((state) => state.selectedEntity);
+  const stableHolders = useShallow((ids: readonly string[]) => ids);
+  const stableShown = useShallow((key: readonly unknown[]) => key);
+  const holders = stableHolders(useMemo(() => (enabled ? selectedModelIds(useViewerStore.getState()) : []),
+    [enabled, models, selectedIds, primaryId, selectedRefs, primaryRef]));
+  const frame = useViewerStore(useShallow((state) => sourceModelFrame(state, holders)));
+  const shown = stableShown(useMemo(() => selectedModelVisibility(useViewerStore.getState(), holders), [holders, models]));
+  return { frame, shown };
+}
+
+/**
+ * One selection query shared by drawing and the later source-geometry
+ * inspector. A caller that already holds the model keys passes them, so the
+ * selection is resolved once per change, not twice (#9229).
+ */
+export function useSelectedSweptDisks(enabled: boolean, modelKeys?: SourceModelKeys): SelectedSweptDisksState {
+  const models = useViewerStore((state) => state.models);
+  // In a federation `ifcDataStore` only mirrors the active model; the query reads it only without one.
+  const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
+  const ownKeys = useSourceModelKeys(enabled && !modelKeys);
+  const { frame, shown } = modelKeys ?? ownKeys;
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
@@ -88,7 +126,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     }
     setResult({ items: [], loading: true, error: null, current });
     void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
-      const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
+      const model = state.models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
       if (!model) return [];
       const products = await selectedSweptDiskCache.get(model, ids);
@@ -103,7 +141,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       if (active) setResult({ items: [], loading: false, error: String(error), current });
     });
     return () => { active = false; };
-  }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
+  }, [enabled, frame, shown, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
     hidden, isolated, classFilter, lensHidden]);
 
   return result;

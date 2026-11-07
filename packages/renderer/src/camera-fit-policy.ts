@@ -26,6 +26,8 @@
  */
 
 import type { Vec3 } from './raycaster.js';
+import { orthoHalfHeightFor } from './camera-fit-geometry.js';
+import { viewBasis } from './math.js';
 
 /** Aspect ratio above which a model is treated as linear infrastructure. */
 const LINEAR_ASPECT_THRESHOLD = 50;
@@ -58,6 +60,21 @@ const TARGET_FEATURE_PIXELS = 16;
 /** Tilt-down angle when looking along the longest axis, in radians. */
 const LINEAR_TILT_RADIANS = (20 * Math.PI) / 180;
 
+/**
+ * The compact pose's offset from the target, per unit of `distance`: above
+ * and to the front-right of the model (Y-up). Not unit length; the legacy
+ * pose has always been `center + distance * this`.
+ */
+const COMPACT_DIRECTION: Vec3 = { x: 0.6, y: 0.5, z: 0.6 };
+
+/**
+ * Margin the compact pose keeps where the fit is computed from the viewport's
+ * shape: across a portrait frame in perspective, and on both axes in
+ * orthographic (`compactOrthoSize`). The box spans 1 / 1.15 of the binding
+ * dimension, framed whole with a small border instead of cropped.
+ */
+const COMPACT_HORIZONTAL_MARGIN = 1.15;
+
 /** Smallest viewport dimension to assume when no explicit value is given. */
 const DEFAULT_VIEWPORT_SHORT_PX = 640;
 
@@ -81,6 +98,14 @@ export interface FitPolicy {
   up: Vec3;
   /** Distance from position to target. Convenience copy for callers. */
   distance: number;
+  /**
+   * Orthographic half-height that frames the box from this pose: both axes,
+   * with the same margin the portrait perspective fit keeps. Distance sets no
+   * scale in orthographic projection, so without this an orthographic fit
+   * kept whatever zoom it had. Set on the compact pose when the viewport's
+   * aspect is known; the caller applies it only in orthographic mode.
+   */
+  orthoSize?: number;
 }
 
 export interface PickFitPolicyOptions {
@@ -88,6 +113,12 @@ export interface PickFitPolicyOptions {
   fovY: number;
   /** Shortest viewport dimension in pixels (height for landscape). */
   viewportShortPx?: number;
+  /**
+   * Viewport width / height. When given, the compact pose also keeps the
+   * box inside the horizontal field, which is the narrower one on a portrait
+   * viewport (a phone). Omitted, the compact pose is the legacy one exactly.
+   */
+  aspect?: number;
   /**
    * Override the linear-detection threshold. Production should leave this
    * at the default; exposed for tests that pin the threshold behaviour.
@@ -135,20 +166,27 @@ export function pickFitPolicy(
   // inside the bbox" linear pose, which renders it end-on and invisible
   // (issue #1350).
   if (aspect <= threshold || longest < minLongest) {
-    // Compact: reproduce the legacy SE isometric pose 1:1 so building
-    // models frame exactly as before.
-    const distance = longest * 2.0;
+    // Compact: the legacy SE isometric pose, so building models frame as
+    // before. Its `longest * 2` standoff is sized against the vertical field
+    // and ignores the viewport's shape. On a portrait viewport the horizontal
+    // field is the narrower one and that cropped the model at the sides, so
+    // there it is pushed further out until the box also fits across. A
+    // landscape or square viewport keeps the legacy pose exactly.
+    const distance = Math.max(longest * 2.0, horizontalFitDistance(bounds, center, options));
+    const position = {
+      x: center.x + distance * COMPACT_DIRECTION.x,
+      y: center.y + distance * COMPACT_DIRECTION.y,
+      z: center.z + distance * COMPACT_DIRECTION.z,
+    };
+    const up = { x: 0, y: 1, z: 0 };
     return {
       kind: 'compact',
       aspect,
       target: center,
-      position: {
-        x: center.x + distance * 0.6,
-        y: center.y + distance * 0.5,
-        z: center.z + distance * 0.6,
-      },
-      up: { x: 0, y: 1, z: 0 },
+      position,
+      up,
       distance,
+      ...compactOrthoSize(bounds, position, center, up, options.aspect),
     };
   }
 
@@ -219,6 +257,59 @@ export function pickFitPolicy(
     up,
     distance,
   };
+}
+
+/**
+ * Smallest compact-pose `distance` (the multiplier on `COMPACT_DIRECTION`)
+ * at which every corner of the box lies inside the horizontal half-field with
+ * `COMPACT_HORIZONTAL_MARGIN` to spare, or 0 when no usable portrait aspect
+ * (`0 < aspect < 1`) was given.
+ *
+ * The same closed form as `marginDistanceFor` in `camera-framing.ts`, on the
+ * horizontal axis only: a corner at sideways offset `h` and depth `depth`
+ * (along the view) projects inside when `margin * |h| <= tanH * (standoff +
+ * depth)`. Each constraint only relaxes as the standoff grows, so the largest
+ * of the eight satisfies all of them.
+ */
+function horizontalFitDistance(bounds: Bounds3, center: Vec3, options: PickFitPolicyOptions): number {
+  const viewAspect = options.aspect;
+  // Only a portrait viewport, where the horizontal field is the narrower one.
+  if (viewAspect === undefined || !Number.isFinite(viewAspect) || viewAspect <= 0 || viewAspect >= 1) return 0;
+  const tanH = Math.tan(options.fovY / 2) * viewAspect;
+  if (!Number.isFinite(tanH) || tanH <= 0) return 0;
+
+  const length = Math.hypot(COMPACT_DIRECTION.x, COMPACT_DIRECTION.y, COMPACT_DIRECTION.z);
+  // Unit view axes: forward looks from the camera at the target; right is
+  // forward x worldUp, which stays horizontal for this pose.
+  const forward = { x: -COMPACT_DIRECTION.x / length, y: -COMPACT_DIRECTION.y / length, z: -COMPACT_DIRECTION.z / length };
+  const rightLength = Math.hypot(forward.z, forward.x);
+  const right = { x: -forward.z / rightLength, y: 0, z: forward.x / rightLength };
+
+  let standoff = 0;
+  for (const x of [bounds.min.x, bounds.max.x]) {
+    for (const y of [bounds.min.y, bounds.max.y]) {
+      for (const z of [bounds.min.z, bounds.max.z]) {
+        const c = { x: x - center.x, y: y - center.y, z: z - center.z };
+        const depth = c.x * forward.x + c.y * forward.y + c.z * forward.z;
+        const h = Math.abs(c.x * right.x + c.z * right.z);
+        standoff = Math.max(standoff, (COMPACT_HORIZONTAL_MARGIN * h) / tanH - depth);
+      }
+    }
+  }
+  return standoff / length;
+}
+
+/**
+ * `{ orthoSize }` for the compact pose: the half-height at which every corner
+ * of the box fits both the height and the width (`orthoHalfHeightFor`), times
+ * `COMPACT_HORIZONTAL_MARGIN`, the same slack the portrait perspective fit
+ * keeps. Empty without a usable aspect, so a caller that never said what
+ * shape the viewport is keeps its orthographic zoom, as before.
+ */
+function compactOrthoSize(bounds: Bounds3, position: Vec3, target: Vec3, up: Vec3, viewAspect: number | undefined): { orthoSize?: number } {
+  if (viewAspect === undefined || !Number.isFinite(viewAspect) || viewAspect <= 0) return {};
+  const half = orthoHalfHeightFor(bounds, viewBasis(position, target, up), viewAspect);
+  return Number.isFinite(half) ? { orthoSize: Math.max(0.01, half) * COMPACT_HORIZONTAL_MARGIN } : {};
 }
 
 function pickLongestUnitAxis(sx: number, sy: number, sz: number): Vec3 {

@@ -1979,7 +1979,7 @@ export class Scene {
         const color = chunk[0].color;
         const fragment = this.createBatchedMesh(
           chunk, color, device, pipeline, undefined, undefined,
-          this.buckets.get(key)?.frameOrigin,
+          this.buckets.get(key)?.frameOrigin, key,
         );
         this.batchedMeshes.push(fragment);
         this.streamingFragments.push(fragment); this.pickGeometryRevision++;
@@ -2480,16 +2480,16 @@ export class Scene {
   }
 
   /**
-   * Create a new batched mesh from mesh data array.
-   * @param bucketKey - Optional unique key for this batch. When omitted the
-   *   base color key is used (fine for overlay / partial batches that don't
-   *   participate in the main buckets map).
+   * Upload `meshes` as one GPU batch. `bucketKey` marks it as that bucket's live batch.
+   * Without it the batch is derived, and its `colorKey` is `ownerKey` (the bucket a
+   * streaming fragment's pieces live in, with model/cell/id-page/`#N`) or else the bare
+   * colour key (overlay / partial batches).
    * @param quantization - 'auto' for bucket batches; derived batches pass `inheritedQuantization(source)` (#4832).
    */
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
-    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number],
+    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number], ownerKey?: string,
   ): BatchedMesh {
     // Keep main's model-local frame and translation registration while staging
     // every GPU allocation before publishing Scene state.
@@ -2505,7 +2505,7 @@ export class Scene {
     const result = createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
-      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color, meshes[0]?.material),
+      id: this.nextBatchId, colorKey: bucketKey ?? ownerKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
       onMerged: this.snapshots.mergedSink(bucketKey, this.nextBatchId),
@@ -2675,7 +2675,7 @@ export class Scene {
     // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
     // Matching the base key (suffix "#N" stripped) pulled sibling overflow
     // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
-    // Only a batch with no bucket (a streaming fragment) uses the base key.
+    // A streaming fragment carries its owning bucket's key too (`ownerKey`).
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const visibleMeshData: MeshData[] = [];

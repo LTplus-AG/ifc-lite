@@ -12,7 +12,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import type { LandXmlTinDocument } from './landXmlSemantics';
 import { reframeLandXmlGeometry } from './landXmlLoad';
-import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
+import { alignGeometryToReference, alignmentReferenceRecord, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
 import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming';
@@ -23,6 +23,8 @@ export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
   ifcSharedVerticalDatumAssumed?: IfcVerticalAssumptionApplied;
   federationAlignmentStatus: FederatedModel['federationAlignmentStatus'];
+  /** The anchor placement the geometry was re-baked into; see `FederatedModel.alignmentReference`. */
+  alignmentReference?: ModelSpatialPlacement;
   /** LandXML only, and only when non-empty: the assumptions the placement actually rests on. */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
 }
@@ -30,6 +32,14 @@ export interface FederatedSpatialFinalizeResult {
 /** The model-record patch for the assumptions a placement used; empty when none were needed. */
 function appliedPatch(applied: readonly LandXmlGeorefAssumption[] | undefined): Pick<FederatedSpatialFinalizeResult, 'landXmlAssumptionsApplied'> {
   return applied && applied.length > 0 ? { landXmlAssumptionsApplied: applied } : {};
+}
+
+/** The reference a `same-crs` or `reprojected` alignment re-baked the geometry into (#9229). */
+function alignmentReferencePatch(
+  status: FederatedModel['federationAlignmentStatus'], reference: ModelSpatialPlacement | null,
+): Pick<FederatedSpatialFinalizeResult, 'alignmentReference'> {
+  return reference && (status === 'same-crs' || status === 'reprojected')
+    ? { alignmentReference: alignmentReferenceRecord(reference) } : {};
 }
 
 /** Keep the index-aligned restore baseline in lock-step with reframe clipping. */
@@ -150,9 +160,11 @@ export async function finalizeFederatedSpatialPlacement(options: {
         unknownVerticalPolicy(options.landXmlAssumptions),
       );
     }
+    const status = options.federatedLandXmlStreamingPlan.federationAlignmentStatus;
     return {
       preAlignment: options.federatedLandXmlStreamingPlan.preAlignment,
-      federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
+      federationAlignmentStatus: status,
+      ...alignmentReferencePatch(status, reference),
       ...appliedPatch(applied),
     };
   }
@@ -223,5 +235,6 @@ export async function finalizeFederatedSpatialPlacement(options: {
   const ifcSharedVerticalDatumAssumed = parsed && reference && !options.landXmlDocument
     ? ifcSharedVerticalDatumApplied(parsed.spatialReference, reference.spatialReference, federationAlignmentStatus, assumeIfcSharedVertical)
     : undefined;
-  return { preAlignment, federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...appliedPatch(applied) };
+  return { preAlignment, federationAlignmentStatus, ifcSharedVerticalDatumAssumed,
+    ...alignmentReferencePatch(federationAlignmentStatus, reference), ...appliedPatch(applied) };
 }

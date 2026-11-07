@@ -18,12 +18,26 @@ export function sourceOccurrenceKey(modelId: string, expressId: number, occurren
   return `${modelId}\u0000${expressId}\u0000${occurrenceIndex}`;
 }
 
-/** Source-frame point mapping follows the same alignment chosen for the mesh. */
+/**
+ * True when the model's curves map through the anchor the federation would
+ * pick now, so every model that can be picked and the pinned anchor place
+ * them: an aligned model with no record of the reference it was aligned into.
+ */
+export function readsLiveAnchor(model: Pick<FederatedModel, 'federationAlignmentStatus' | 'alignmentReference'>): boolean {
+  const status = model.federationAlignmentStatus;
+  return (status === 'same-crs' || status === 'reprojected') && !model.alignmentReference;
+}
+
+/**
+ * Source-frame point mapping follows the same alignment chosen for the mesh:
+ * the reference the mesh was re-baked into, which pinning another anchor does
+ * not change until a re-align re-bakes it (#9229).
+ */
 export async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
   const status = model.federationAlignmentStatus;
   if (status !== 'same-crs' && status !== 'reprojected') return undefined;
   const sourceInfo = model.preAlignment?.coordinateInfo;
-  const anchor = findReferenceSpatialModel();
+  const anchor = model.alignmentReference ? { placement: model.alignmentReference } : findReferenceSpatialModel();
   if (!sourceInfo || !anchor || !model.ifcDataStore) {
     throw new Error(`model ${model.id} has no source or reference frame for ${status} alignment`);
   }

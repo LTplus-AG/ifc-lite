@@ -97,13 +97,13 @@ export function LensRuleEditor({
           value={rule.name}
           onChange={(event) => onChange({ name: event.target.value })}
           aria-label={t('lensPanel.ruleEditor.nameAriaLabel')}
-          className="flex-1 min-w-0 text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm"
+          className="flex-1 min-w-0 text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 rounded-sm"
         />
         <select
           value={rule.action}
           onChange={(event) => onChange({ action: event.target.value as LensRule['action'] })}
           aria-label={t('lensPanel.ruleEditor.actionAriaLabel')}
-          className="text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm"
+          className="text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 rounded-sm"
         >
           <option value="colorize">{t('lensPanel.action.colorize')}</option>
           <option value="transparent">{t('lensPanel.action.transparent')}</option>

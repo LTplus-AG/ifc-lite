@@ -22,10 +22,11 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { approveReview, loadGraphReview, rejectReview, useFlowReview, viewerSourceDigest, type ReviewProblem } from '@/lib/flow/review-session';
 import { FlowValuePreview } from './FlowValuePreview';
+import { FLOW_BUTTON, FLOW_PRIMARY_BUTTON } from './flow-button';
 
 registerEnglish(flowReviewEn);
 
-const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
+const button = FLOW_BUTTON;
 
 const STATE_KEY: Record<FlowCheckpoint['state'], TranslationKey> = {
   prepared: 'flowReview.state.prepared', reviewed: 'flowReview.state.reviewed', applying: 'flowReview.state.applying',
@@ -104,7 +105,7 @@ export function FlowReviewCheckpoint({ doc, onResume }: {
       {problem && <p role="alert" className="mt-1 text-danger">{problemText(t, problem)}</p>}
       {(shown?.state === 'prepared' || shown?.state === 'reviewed') && (
         <div className="mt-2 flex gap-2">
-          <button type="button" className={`${button} border-[#7aa2f7] text-[#7aa2f7]`} disabled={busy || running} onClick={() => void approve()}>
+          <button type="button" className={FLOW_PRIMARY_BUTTON} disabled={busy || running} onClick={() => void approve()}>
             {t(shown.state === 'prepared' ? 'flowReview.approve' : 'flowReview.resume')}
           </button>
           {shown.state === 'prepared' && <button type="button" className={button} disabled={busy || running} onClick={() => void rejectReview()}>{t('flowReview.reject')}</button>}

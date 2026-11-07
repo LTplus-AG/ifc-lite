@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/renderer/src/gaussian/gaussian-pass-recorder.ts",
-  "mutation": "tests/evidence/gaussian-8564-review-partial-order/behaviour.oracle.patch",
-  "test": "packages/renderer/src/renderer-render-paths.test.ts",
-  "why": "#8564 review F2: reverse applying moves transparent partial batches after selection hydration, as at 372b9ec, in IFC-only frames too; the render-path order witness must fail."
-}

@@ -31,6 +31,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
+import { stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
@@ -524,11 +525,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         });
         setExportProgress(null);
 
-        const suffix = visibleOnly ? '_visible' : '_export';
         const artifact = await packagePortableIfcAsync(selectedModelId, result.content, result.resources);
-        downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, suffix), artifact.mime);
+        downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, visibleOnly ? '_visible' : '_export'), artifact.mime);
 
-        const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
+        const stepMsg = stepExportSummary({ entityCount: result.stats.entityCount, pendingChanges: modifiedCount, applyMutations, visibleOnly });
         exportedFormat = artifact.ext;
         toast.success(stepMsg);
         return { success: true, message: stepMsg };

@@ -10,7 +10,6 @@
 //! (27/70, 13/70)) extruded 2 m, so a wrong frame moves the centroid even
 //! though |det| = 1 keeps the volume. Expected centroids are hand-derived from
 //! IfcBaseAxis in the fixture header; IfcOpenShell builds the same #100 frame
-//! (`tests/evidence/m10/schema.json` -> `omittedAxis2`).
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingResult};
 

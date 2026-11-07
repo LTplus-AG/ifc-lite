@@ -532,7 +532,7 @@ export class MergedExporter {
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
-      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema);
+      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema); styleFlatten?.retainGrids(written);
       for (const [expressId, entityRef] of completeIndex) {
         if (!written(expressId)) continue;
         const line = this.renderEntity(
@@ -675,7 +675,7 @@ export class MergedExporter {
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
-      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema);
+      const styleFlatten = StyleFlatten.fromStore(model.dataStore, sourceSchema, schema); styleFlatten?.retainGrids(written);
 
       let entityCount = 0;
       for (const [expressId, entityRef] of completeIndex) {

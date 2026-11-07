@@ -449,9 +449,6 @@ With a point cloud loaded, the **Scan** tab of the drawing inspector overlays th
 | Zoom changes but the PDF scale does not | Canvas zoom is a viewing control. Choose the PDF scale, or change the active sheet scale. |
 | Raster reference is missing after importing registration JSON | Relink the exact original raster. Registration JSON contains placement and digests, not image bytes. |
 
-For source provenance, inspected downloads and the limits of the browser tests,
-see the [section validation evidence](../architecture/evidence/section-6614-6615/README.md).
-
 ### Annotation Tools
 
 | Tool | Description | Shortcuts |

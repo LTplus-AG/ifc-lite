@@ -231,6 +231,7 @@ export const propertiesEn = {
   'properties.modelMetadata.sourceModel': 'Source Model',
   'properties.modelMetadata.fileInformationHeading': 'File Information',
   'properties.modelMetadata.fileSize': 'File Size',
+  'properties.modelMetadata.fileSizeAsLoaded': 'File Size (as loaded)',
   'properties.modelMetadata.loadedAt': 'Loaded At',
   'properties.modelMetadata.parseTime': 'Parse Time',
   'properties.modelMetadata.parseTimeValue': '{ms} ms',

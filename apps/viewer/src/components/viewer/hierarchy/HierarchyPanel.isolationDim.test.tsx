@@ -19,11 +19,12 @@ import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { cleanup, render } from '@/test/render.js';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureModel, fixtureModels, fixtureDataStore } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
 import { HierarchyPanel } from '../HierarchyPanel.js';
-import { hierarchyNodeAppearance } from './nodeVisibility.js';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance } from './nodeVisibility.js';
+import { buildTreeData } from './treeDataBuilder.js';
 import type { TreeNode } from './types.js';
 
 afterEach(() => {
@@ -33,8 +34,8 @@ afterEach(() => {
 
 /** Project(1)/Site(2)/Building(3) with Storey 1 (4) holding wall 7 and
  *  Room (6), which holds desk 9, and Storey 2 (5) holding wall 8. */
-function twoStoreyHierarchy() {
-  const room = { expressId: 6, type: IfcTypeEnum.IfcSpace, name: 'Room', children: [], elements: [9] };
+function twoStoreyHierarchy(roomType: IfcTypeEnum = IfcTypeEnum.IfcSpace) {
+  const room = { expressId: 6, type: roomType, name: 'Room', children: [], elements: [9] };
   const lower = { expressId: 4, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 1', children: [room], elements: [7] };
   const upper = { expressId: 5, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 2', children: [], elements: [8] };
   const building = { expressId: 3, type: IfcTypeEnum.IfcBuilding, name: 'Building', children: [lower, upper], elements: [] };
@@ -161,5 +162,34 @@ describe('hierarchyNodeAppearance isolation dim', () => {
     assert.equal(resolved, 3);
     assert.equal(dim(storey, [1], new Set([1]), subtree), false);
     assert.equal(resolved, 3, 'an isolated direct member settles it without the subtree');
+  });
+});
+
+// #8802: a room row must include parts of its contained assemblies. IfcSpace
+// and IfcSpatialZone rows share their member lookup, so both need the subtree.
+describe('room row isolation subtree (#8802)', () => {
+  for (const [rowType, ifcType] of [['IfcSpace', IfcTypeEnum.IfcSpace], ['IfcSpatialZone', IfcTypeEnum.IfcSpatialZone]] as const) it(`keeps the ${rowType} row normal when only an aggregated child is isolated`, () => {
+    const store = fixtureDataStore([
+      { expressId: 6, type: rowType, name: 'Room' },
+      { expressId: 9, type: 'IfcElementAssembly', name: 'Desk assembly' },
+      { expressId: 10, type: 'IfcFurniture', name: 'Desk part' },
+    ], { aggregates: { 9: [10] } });
+    store.spatialHierarchy = twoStoreyHierarchy(ifcType);
+    const models = new Map();
+    const nodes = buildTreeData(models, store,
+      new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4']), false, []);
+    const room = nodes.find(node => node.type === rowType);
+    assert.ok(room, 'use the actual spatial tree row');
+    const resolve = createSpatialSubtreeResolver(models, store);
+    let calls = 0;
+    const subtree = (node: TreeNode) => { calls++; return resolve(node); };
+    const appearance = (isolated: number[]) =>
+      hierarchyNodeAppearance(room, [6, 9], new Set(), new Set(isolated), subtree);
+    assert.equal(appearance([9]).outsideIsolation, false);
+    assert.equal(calls, 0, 'direct membership avoids traversal');
+    assert.equal(appearance([10]).outsideIsolation, false, 'isolated aggregated part keeps Room normal');
+    assert.equal(appearance([8]).outsideIsolation, true, 'unrelated isolation dims Room');
+    assert.ok(resolve(room).includes(10));
+    assert.strictEqual(resolve(room), resolve(room), 'subtree is cached per row');
   });
 });

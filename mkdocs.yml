@@ -11,17 +11,12 @@ validation:
   nav:
     omitted_files: warn
 
-# architecture/evidence/** are the supporting artifacts (fixtures, screenshots,
-# method notes) behind the design docs above them, not pages in their own right.
-# They are absent from `nav` but reached from their parent design doc.
-#
 # Declaring them here keeps `omitted_files: warn` meaningful for everything else.
 not_in_nav: |
   # Release-owner review inputs and draft opt-in deployment; not general installation guidance.
   architecture/retained-licensing.md
   guide/retained-release.md
   guide/retained-installation.md
-  architecture/evidence/**
 
 theme:
   name: material

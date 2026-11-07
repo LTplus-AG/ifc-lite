@@ -9,8 +9,8 @@ export function collectPageErrors(page, report) {
 export function createWorkflowVerdict(locale) {
   const expectedChecks = Object.freeze([
     'render-device-health', 'hierarchy-properties', 'measurement', 'section',
-    'ids-findings-export', 'narrow-layout', 'locale-url', 'locale-persistence',
-    'locale-english-url', `locale-${locale}-CH-negotiation`,
+    'ids-findings-export', 'narrow-layout', 'locale-settings', 'locale-persistence',
+    'locale-english-settings', `locale-${locale}-CH-negotiation`,
   ]);
   function workflowFailed(report) {
     if (report.mode !== 'acceptance' || report.diagnostic || report.fatal

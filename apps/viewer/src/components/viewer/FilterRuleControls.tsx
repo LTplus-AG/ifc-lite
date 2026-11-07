@@ -37,7 +37,7 @@ export function CombinatorToggle({
   const { t } = useTranslation();
   return (
     <div
-      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950"
+      className="inline-flex rounded border border-border bg-white p-0.5 text-2xs"
       title={t('filterRuleControls.combinatorTitle')}
     >
       {(['AND', 'OR'] as const).map((c) => (

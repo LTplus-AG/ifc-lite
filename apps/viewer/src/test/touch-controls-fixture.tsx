@@ -48,6 +48,8 @@ export function mountViewportControls(tool: string, pickedId: number | null = nu
     pick: async () => pickedId === null ? null : { expressId: pickedId },
     pickRect: async () => [],
     raycastScene: () => null,
+    getPickClipRevision: () => 0, // the measure pass a rubber-band move runs (#9052)
+    getPickGeometryRevision: () => 0,
     raycastSceneMagnetic: (x: number) => ({
       intersection: { point: { x: x / 100, y: 0, z: 0 } },
       snapTarget: null,
@@ -114,8 +116,8 @@ export function mountViewportControls(tool: string, pickedId: number | null = nu
   return { canvas, camera, menus, activeToolRef, selectionCount: () => selections };
 }
 
-export function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0): PointerEvent {
-  const e = new PointerEvent(type, { button: 0, buttons, pointerId: 1, bubbles: true, cancelable: true });
+export function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0, button = 0): PointerEvent {
+  const e = new PointerEvent(type, { button, buttons, pointerId: 1, bubbles: true, cancelable: true });
   Object.defineProperties(e, {
     clientX: { value: x, configurable: true },
     clientY: { value: y, configurable: true },
@@ -159,10 +161,10 @@ export const click = (x: number, y: number, pointerType: string | null = 'pen') 
 };
 
 /** iOS order: pointerdown, touchstart, pointermove, touchmove ... pointerup, touchend, then a possible click. */
-export async function pencilTap(canvas: HTMLCanvasElement, x: number, y: number, touchType: 'stylus' | undefined = 'stylus') {
+export async function pencilTap(canvas: HTMLCanvasElement, x: number, y: number, touchType: 'stylus' | null = 'stylus') {
   await act(async () => {
     canvas.dispatchEvent(pointer('pointerdown', 'pen', x, y));
-    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], touchType));
+    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], touchType ?? undefined));
     await settle();
     canvas.dispatchEvent(pointer('pointerup', 'pen', x, y));
     canvas.dispatchEvent(touchEvent('touchend', canvas, []));
@@ -172,15 +174,15 @@ export async function pencilTap(canvas: HTMLCanvasElement, x: number, y: number,
 }
 
 /** A 100 px drag right from (400, 300), in five 20 px steps. */
-export function pencilDrag(canvas: HTMLCanvasElement, touchFirst = false, touchType: 'stylus' | undefined = 'stylus') {
+export function pencilDrag(canvas: HTMLCanvasElement, touchFirst = false, touchType: 'stylus' | null = 'stylus') {
   act(() => {
-    const down = [pointer('pointerdown', 'pen', 400, 300), touchEvent('touchstart', canvas, [[400, 300]], touchType)];
+    const down = [pointer('pointerdown', 'pen', 400, 300), touchEvent('touchstart', canvas, [[400, 300]], touchType ?? undefined)];
     for (const e of touchFirst ? down.reverse() : down) canvas.dispatchEvent(e);
   });
   act(() => {
     for (let i = 1; i <= 5; i++) {
       canvas.dispatchEvent(pointer('pointermove', 'pen', 400 + 20 * i, 300, 1));
-      canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]], touchType));
+      canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]], touchType ?? undefined));
     }
     canvas.dispatchEvent(pointer('pointerup', 'pen', 500, 300));
     canvas.dispatchEvent(touchEvent('touchend', canvas, []));

@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { useViewerStore, type EntityRef } from '@/store';
+import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
@@ -22,9 +22,21 @@ export interface SelectedSweptDisksState {
   items: SelectedSweptDisk[];
   loading: boolean;
   error: string | null;
+  /**
+   * False once a newer query (selection, visibility, highlight or models)
+   * has superseded the one this state answers; absent on the idle state.
+   */
+  current?: () => boolean;
 }
 
 const EMPTY: SelectedSweptDisksState = { items: [], loading: false, error: null };
+
+/** The products whose swept disks the centreline query loads: selection, visibility and the cap, highlighted product first. */
+export function selectedSweptDiskProducts(state: ViewerState) {
+  const highlighted = state.selectedDirectrixSegment;
+  const priority = highlighted ? { modelId: highlighted.modelId, expressId: highlighted.expressId } : null;
+  return selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+}
 
 /** One selection query shared by drawing and the later source-geometry inspector. */
 export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
@@ -63,19 +75,18 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   useEffect(() => {
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
+    const current = () => active;
     const state = useViewerStore.getState();
-    const priority = highlightedSegment
-      ? { modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId } : null;
-    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
     const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
     ] }));
     if (grouped.size === 0) {
-      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null });
+      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null, current });
       return () => { active = false; };
     }
-    setResult({ items: [], loading: true, error: null });
+    setResult({ items: [], loading: true, error: null, current });
     void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
       const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
@@ -87,9 +98,9 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       });
     }).then(({ items, errors }) => {
       if (active) setResult({ items: [...items, ...createdInOverlay], loading: false,
-        error: [...diagnostics, ...errors].join('; ') || null });
+        error: [...diagnostics, ...errors].join('; ') || null, current });
     }).catch((error: unknown) => {
-      if (active) setResult({ items: [], loading: false, error: String(error) });
+      if (active) setResult({ items: [], loading: false, error: String(error), current });
     });
     return () => { active = false; };
   }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,

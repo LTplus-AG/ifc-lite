@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { fitRail, foldModelPanels, railHeight, RAIL_DIVIDER_PX, RAIL_ITEM_PX, RAIL_PADDING_PX, type RailEntry } from './rail-overflow.js';
+import { fitRail, foldModelPanels, layoutRail, railHeight, RAIL_DIVIDER_PX, RAIL_ITEM_PX, RAIL_PADDING_PX, type RailEntry } from './rail-overflow.js';
 
 const entries: RailEntry<string>[] = [
   { id: 'a', group: 'one' }, { id: 'b', group: 'one' }, { id: 'c', group: 'one' },
@@ -97,5 +97,41 @@ describe('empty start screen rail (#8802 R6)', () => {
     const { rail, waiting } = foldModelPanels(entries, waits, ['d', null, undefined]);
     assert.deepEqual(rail.map((e) => e.id), ['a', 'c', 'd', 'f']);
     assert.deepEqual(waiting, ['b', 'e']);
+  });
+
+  // The review's case (#9236): a height that fits the folded rail exactly, so
+  // it fits WITHOUT More, but not with More's row too. More must still end
+  // inside the rail, or the waiting panels sit past its clipped bottom edge.
+  it('reserves More\'s row when the folded rail alone would just fit', () => {
+    const rail = entries.filter((e) => !waits(e.id));
+    const exact = railHeight(rail);
+    const laid = layoutRail(entries, exact, [], waits);
+    assert.ok(laid.overflow.length > 0, 'More is shown: panels wait in it');
+    const shown = entries.filter((e) => laid.visible.includes(e.id));
+    assert.ok(railHeight(shown) + RAIL_ITEM_PX <= exact,
+      `icons ${railHeight(shown)}px + More ${RAIL_ITEM_PX}px must fit the ${exact}px rail`);
+    // Nothing is lost: what left the rail is in More, in rail order.
+    assert.deepEqual([...laid.visible, ...laid.overflow].sort(), entries.map((e) => e.id).sort());
+    assert.deepEqual(laid.overflow, entries.map((e) => e.id).filter((id) => laid.overflow.includes(id)));
+    assert.deepEqual(laid.waiting, ['b', 'd', 'e']);
+  });
+
+  it('keeps every folded-rail icon once the rail has room for More as well', () => {
+    const rail = entries.filter((e) => !waits(e.id));
+    const laid = layoutRail(entries, railHeight(rail) + RAIL_ITEM_PX, [], waits);
+    assert.deepEqual(laid.visible, ['a', 'c', 'f']);
+    assert.deepEqual(laid.overflow, ['b', 'd', 'e']);
+  });
+
+  it('fitRail reserves the row only when told More is required', () => {
+    const exact = railHeight(entries);
+    assert.deepEqual(fitRail(entries, exact).overflow, [], 'unchanged without moreRequired');
+    const fit = fitRail(entries, exact, [], { moreRequired: true });
+    assert.ok(fit.overflow.length > 0);
+    assert.ok(railHeight(entries.filter((e) => fit.visible.includes(e.id))) + RAIL_ITEM_PX <= exact);
+  });
+
+  it('folds nothing when no panel waits (a loaded model)', () => {
+    assert.deepEqual(layoutRail(entries, 0, [], null), { visible: entries.map((e) => e.id), overflow: [], waiting: [] });
   });
 });

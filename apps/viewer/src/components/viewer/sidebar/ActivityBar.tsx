@@ -51,7 +51,7 @@ import { useTourStore } from '@/lib/tours/tour-store';
 import { getTour } from '@/lib/tours/registry';
 import { ActivityBarItem } from './ActivityBarItem';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
-import { fitRail, foldModelPanels } from './rail-overflow';
+import { layoutRail } from './rail-overflow';
 import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
 const CustomizeSidebar = lazy(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
 
@@ -145,20 +145,14 @@ export function ActivityBar() {
     [visibleIds],
   );
   // On the empty start screen the rail offers what works without a model;
-  // the model-dependent panels wait in More (`foldModelPanels`).
-  const folded = useMemo(
-    () => (customizing || !viewerEmpty
-      ? { rail: entries, waiting: [] }
-      : foldModelPanels(entries, (id) => needsModel(id) && panelLocation(id) === 'closed', [tourRailAnchor, primaryId])),
-    [customizing, viewerEmpty, entries, panelLocation, tourRailAnchor, primaryId],
+  // the model-dependent panels wait in More (`layoutRail`).
+  const fit = useMemo(
+    () => (customizing
+      ? { visible: entries.map((e) => e.id), overflow: [], waiting: [] }
+      : layoutRail(entries, listHeight, [tourRailAnchor, primaryId],
+        viewerEmpty ? (id) => needsModel(id) && panelLocation(id) === 'closed' : null)),
+    [customizing, entries, listHeight, panelLocation, primaryId, tourRailAnchor, viewerEmpty],
   );
-  const fit = useMemo(() => {
-    if (customizing) return { visible: entries.map((e) => e.id), overflow: [] };
-    const railFit = fitRail(folded.rail, listHeight, [tourRailAnchor, primaryId]);
-    // Rail order, so the menu's group headings stay one run per group.
-    const over = new Set([...railFit.overflow, ...folded.waiting]);
-    return { visible: railFit.visible, overflow: entries.map((e) => e.id).filter((id) => over.has(id)) };
-  }, [customizing, entries, folded, listHeight, primaryId, tourRailAnchor]);
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;
@@ -248,7 +242,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} waiting={folded.waiting} />
+          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} waiting={fit.waiting} />
         )}
       </div>
 

@@ -23,6 +23,7 @@ import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import { DEFAULT_WELD } from '@/lib/rooms/room-layout';
 import { initRoomEdit, type RoomEditTool, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 import { HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented, HudToggle } from '../../../viewport-ui/hud';
+import { useReturnFocusAfterKeyboard } from '../../../viewport-ui/hud/returnFocusAfterKeyboard';
 import { BarAction, runRoomAction, setRoomGesture } from './RoomBarActions';
 
 const TOOL_KEYS: Record<RoomEditTool, TranslationKey> = {
@@ -67,6 +68,7 @@ export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceG
   // What is being typed: "0" and "0." are not welds yet, so the field keeps the text until blur / Enter.
   const [draft, setDraft] = useState<string | null>(null);
   const setWeld = (value: number | null) => setRoomGesture(ctx, (g) => ({ ...g, weld: value, hover: null, edit: initRoomEdit(g.edit.tool) }));
+  const focusReturn = useReturnFocusAfterKeyboard(); // a mouse close must leave Enter to the command (#9233)
   return (
     <HudPopover>
       <HudPopoverTrigger asChild>
@@ -80,7 +82,7 @@ export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceG
           <ChevronDown aria-hidden className="h-3 w-3" />
         </button>
       </HudPopoverTrigger>
-      <HudPopoverContent align="end" className="flex w-64 flex-col gap-1.5">
+      <HudPopoverContent align="end" className="flex w-64 flex-col gap-1.5" {...focusReturn}>
         <BarAction onClick={() => { void runRoomAction('footprint'); }} title={t('roomLayout.footprint.title')} icon={<SquareDashed aria-hidden className="h-3.5 w-3.5" />}>
           {t('roomLayout.footprint.label')}
         </BarAction>

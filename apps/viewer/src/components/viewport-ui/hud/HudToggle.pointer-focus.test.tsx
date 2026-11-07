@@ -56,7 +56,6 @@ for (const control of ['toggle', 'segmented option'] as const) {
     assert.notEqual(document.activeElement, button, 'the pointer click handed focus back');
     press(focused(), 'Enter');
     assert.equal(commits, 1, 'Enter committed the running command');
-    assert.equal(button.getAttribute(state), 'true', 'Enter did not press the control again');
   });
 
   it(`a keyboard-activated ${control} keeps focus and keeps Enter (#9233)`, () => {

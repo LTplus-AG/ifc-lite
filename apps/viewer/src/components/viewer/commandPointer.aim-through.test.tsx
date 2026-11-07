@@ -251,6 +251,16 @@ describe('the Alt key while a command runs (#9201)', () => {
     assert.equal(getCommandRuntime().snap, null);
   });
 
+  it('a click whose ray misses clears the mark too, even before the queued move ran', async () => {
+    routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: true });
+    await nextFrame();
+    assert.equal(landed().winner, 'workplane');
+    const sky = pointer(SLAB_TOP, true, true);
+    routeCommandPointer(sky, 'move', 300, -200, { shiftKey: false, altKey: true });
+    click(sky, 300, -200, true);
+    assert.equal(getCommandRuntime().snap, null);
+  });
+
   it('after the pointer has left, Alt moves nothing', async () => {
     render(<Key />);
     routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: false });

@@ -161,6 +161,7 @@ export function routeCommandPointer(
     cancelCommandPointer(ctx);
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
     if (snap) (kind === 'up' ? commandPointerUp : (mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
+    else commandPointerMissed();
     return true;
   }
   latest.set(ctx, { x, y, mods, runtime });

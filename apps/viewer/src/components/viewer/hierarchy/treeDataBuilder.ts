@@ -4,7 +4,7 @@
 
 import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
-import { effectiveSpatialProject, effectiveStoreyRows } from './effectiveStoreyNodes.js';
+import { addedStoreyRows, effectiveSpatialProject, effectiveStoreyRows } from './effectiveStoreyNodes.js';
 import { effectiveStoreyElevation } from '@ifc-lite/create';
 export { buildGroupTree, resolveMemberGeometry, type ResolvedMemberGeometry } from './groupTreeBuilder.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
@@ -161,7 +161,11 @@ export function buildUnifiedStoreys(
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
 
-    for (const [storeyId, elements, live] of effectiveStoreyRows(hierarchy, project, spatialNodes)) {
+    const storeyRows = [
+      ...effectiveStoreyRows(hierarchy, project, spatialNodes),
+      ...(project ? [] : addedStoreyRows(dataStore, view, hierarchy)),
+    ];
+    for (const [storeyId, elements, live] of storeyRows) {
       // Without a project tree there is no live node: read this session's edits (#9013) directly.
       if (!live && view?.isDeleted(storeyId)) continue;
       const elevation = live?.elevation

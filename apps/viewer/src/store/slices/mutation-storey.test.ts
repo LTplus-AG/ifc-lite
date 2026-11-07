@@ -315,6 +315,31 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
   });
 });
 
+describe('a storey added to a source without a project tree (#9037 review, round 13)', () => {
+  // A storey something is drawn on is registered in the parsed `byStorey` map
+  // (`registerAuthoredElement`); an empty new storey is only in the overlay.
+  it('gets its own unified hierarchy row while it is still empty', async () => {
+    const m = await storey();
+    const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');
+    const added = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Roof', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+    assert.ok(added.ok && added.storeyId !== null);
+    const s = useViewerStore.getState();
+    const base = s.models.get(MODEL_ID)!;
+    const ds = base.ifcDataStore!;
+    const hierarchy = { ...ds.spatialHierarchy! };
+    Object.defineProperty(hierarchy, 'project', { value: undefined });
+    const treeless = { ...base, ifcDataStore: { ...ds, spatialHierarchy: hierarchy } };
+    const view = s.mutationViews.get(MODEL_ID)!;
+    const models = new Map([[MODEL_ID, treeless], ['peer', { ...treeless, id: 'peer', name: 'Peer' }]]) as unknown as Parameters<typeof buildUnifiedStoreys>[0];
+    const row = buildUnifiedStoreys(models, undefined, undefined, undefined, undefined, (id) => (id === MODEL_ID ? view : null))
+      .flatMap((unified) => unified.storeys).find((r) => r.modelId === MODEL_ID && r.storeyId === added.storeyId);
+    assert.ok(row, 'the new storey is listed');
+    assert.equal(row.name, 'Roof');
+    assert.equal(row.elevation, 6);
+    assert.deepEqual(row.elements, []);
+  });
+});
+
 describe('bim.store storey reads in the viewer (#9037 review)', () => {
   it('listStoreyLevels fails for a model with no editable data instead of reporting no storeys', async () => {
     const { storeyMethods } = await requiredModule(() => import('@/sdk/adapters/store-adapter-storey-impl'), 'the viewer storey adapter exists');

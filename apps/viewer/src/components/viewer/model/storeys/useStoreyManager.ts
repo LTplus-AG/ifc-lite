@@ -37,26 +37,28 @@ export type RowsState =
   | { readonly status: 'error'; readonly reason: string };
 
 const PREVIEW_DELAY_MS = 250;
+const LOADING: RowsState = { status: 'loading' };
 
 /** The live storey rows of a model, highest first; read off the main thread's critical path. */
 export function useStoreyRows(modelId: string | null): RowsState {
   const models = useViewerStore((s) => s.models);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const [state, setState] = useState<RowsState>({ status: 'loading' });
+  const [state, setState] = useState<{ readonly modelId: string | null; readonly rows: RowsState }>({ modelId: null, rows: { status: 'loading' } });
   useEffect(() => {
     if (!modelId) return undefined;
     // Defer the read one task so a large model paints its loading state first.
     const timer = setTimeout(() => {
       try {
-        setState({ status: 'ready', rows: storeyRows(useViewerStore.getState(), modelId) });
+        setState({ modelId, rows: { status: 'ready', rows: storeyRows(useViewerStore.getState(), modelId) } });
       } catch (error) {
         console.error('[storeys] could not read the storeys', error);
-        setState({ status: 'error', reason: error instanceof Error ? error.message : String(error) });
+        setState({ modelId, rows: { status: 'error', reason: error instanceof Error ? error.message : String(error) } });
       }
     }, 0);
     return () => clearTimeout(timer);
   }, [modelId, models, mutationVersion]);
-  return state;
+  // Another model's rows are never shown (or acted on) for this one: until its own read lands, it is loading.
+  return state.modelId === modelId ? state.rows : LOADING;
 }
 
 function levelEdit(storeyId: number, field: LevelField, metres: number): StoreyLevelEdit {

@@ -115,3 +115,19 @@ function treeIds(root: SpatialNode | undefined): Set<number> {
   }
   return ids;
 }
+
+/**
+ * Storeys added this session to a source with no project tree (#9013): the
+ * parsed `byStorey` rows cannot list them, so they come from the overlay,
+ * with their live direct containment.
+ */
+export function addedStoreyRows(
+  store: IfcDataStore, view: MutablePropertyView | null | undefined, hierarchy: SpatialHierarchy,
+): Array<[number, readonly number[], undefined]> {
+  if (!view || !view.getNewEntities().some((entity) => entity.type.toUpperCase() === 'IFCBUILDINGSTOREY')) return [];
+  const inventory = readStoreyInventory(store, view);
+  return inventory.storeys
+    .filter((storey) => !hierarchy.byStorey.has(storey.expressId))
+    .map((storey) => [storey.expressId, [...new Set((inventory.outgoing.get(storey.expressId) ?? [])
+      .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children))], undefined]);
+}

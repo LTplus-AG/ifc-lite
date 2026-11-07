@@ -11,7 +11,12 @@
  * - every change of the typed value first reverts the previous preview, then
  *   plans against the unchanged model and applies the new value;
  * - Enter keeps the last preview: it already is the one undo step;
- * - Escape reverts it, and the redo history is put back as it was.
+ * - Escape reverts it, and the redo history is put back as it was. When
+ *   another write (a script, another tool) has landed on top of the preview,
+ *   undoing it would undo that write too, so Escape instead applies the edit
+ *   that puts the level back, as one more undo step. The history then shows
+ *   what happened: the re-level, the other write, and the cancel.
+ *   Undoing that cancel brings the re-level back, as undoing any step does.
  *
  * In a shared room the provisional edits would reach the other participants,
  * so there the preview stops at the plan (impact summary only) and the edit

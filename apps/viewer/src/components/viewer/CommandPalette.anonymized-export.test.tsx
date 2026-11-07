@@ -20,7 +20,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import { resolveEnglish } from '@/i18n/registry';
 import { EVENT_OPEN_COMMAND_PALETTE, emitOpenCommandPalette } from '@/lib/tours/events';
-import { advance, cleanup, click, render, type as typeInto, waitFor } from '@/test/render.js';
+import { advance, cleanup, click, render, type as typeInto, waitFor, press } from '@/test/render.js';
 import { CommandPaletteHost } from './CommandPaletteHost.js';
 
 function PaletteLauncher() {
@@ -58,6 +58,7 @@ describe('CommandPalette — export:anonymized', () => {
     assert.ok(launcher);
     assert.equal(launcher.getAttribute('aria-expanded'), 'false');
     assert.equal(document.body.querySelector('[role="combobox"]'), null);
+    launcher.focus();
     click(launcher);
     await waitFor(() => document.body.querySelector('[role="combobox"]') !== null,
       'the lazy palette must open from its launcher');
@@ -68,7 +69,15 @@ describe('CommandPalette — export:anonymized', () => {
     const input = document.body.querySelector<HTMLInputElement>('[role="combobox"]');
     assert.ok(input, 'no search input');
     assert.equal(launcher.getAttribute('aria-expanded'), 'true');
-    typeInto(input, 'Export anonymized');
+    press(input, 'Escape');
+    await waitFor(() => document.activeElement === launcher,
+      'first-load handoff must restore the original launcher, not the removed loading button');
+    click(launcher);
+    await waitFor(() => document.body.querySelector('[role="combobox"]') !== null,
+      'the retained palette must reopen');
+    const reopened = document.body.querySelector<HTMLInputElement>('[role="combobox"]');
+    assert.ok(reopened);
+    typeInto(reopened, 'Export anonymized');
 
     const option = [...document.body.querySelectorAll('[role="option"]')].find(
       (el) => /^Export anonymized subset/i.test(el.textContent ?? ''),

@@ -516,7 +516,7 @@ export class Scene {
   }
 
   /** A partial sub-batch wants an evicted batch's CPU pieces, not its GPU buffers (#9050). */
-  requestBatchPieces(batch: BatchedMesh): void { this.subsetResidency.requestPieces(batch); }
+  requestBatchPieces(batch: BatchedMesh): boolean { return this.subsetResidency.requestPieces(batch); }
 
   hasResidencyRestoreWork(): boolean {
     return this.residencyRestoreQueue.size > 0;

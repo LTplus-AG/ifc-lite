@@ -29,9 +29,13 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
-import { measureSnapOff } from './measureSnapOff.js';
-import { noteMeasureCursor } from './measureCursor.js';
+import { measureSnapToggle } from './measureSnapToggle.js';
+import { noteMeasureCursor, noteMeasureShift } from './measureCursor.js';
+import { pressPastClickSlop } from './pointerGesture.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
+import { forgetTouchSelection } from './referenceSelection.js';
+import { forgetTouchLongPress } from './touchLongPress.js';
+import { TAP_CLICK_MS, withinTapSlop } from './tapSlop.js';
 
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
 export { beginMeasurePress } from './distanceClick.js';
@@ -45,22 +49,28 @@ interface PenGate {
   owned: Set<number>;
   /** The touches down, as of their touchstart: a pen pointerdown after one of them is the touch side's. */
   touches: Touch[];
-  /** Where and when the last touch-owned pen press lifted, to drop its compatibility click. */
+  /**
+   * Where and when the last touch-owned pen press lifted, to drop its
+   * compatibility click, dblclick or contextmenu. A mouse or trackpad
+   * pointerdown at the lift point clears it (#9043): a genuine click starts with one, a Pencil's
+   * compatibility events never do, and a dblclick has no pointerType to tell.
+   * A pen pointerdown does not: the earlier tap's click may still be on its way.
+   */
   lift: { time: number; x: number; y: number } | null;
 }
 
 const penGates = new WeakMap<HTMLCanvasElement, PenGate>();
 /** A touch this close (CSS px) to a held pen pointerdown is the same press. */
 const PEN_TOUCH_SLOP = 8;
-/** The same window and slop `isTouchSelectionClick` uses for a tap's compatibility click. */
-const PEN_CLICK_MS = 700, PEN_CLICK_SLOP = 5;
+/** The window and slop of a tap's compatibility click (#9091). */
+const atLift = (e: MouseEvent, lift: { x: number; y: number }) => withinTapSlop(e.clientX, e.clientY, lift);
 
 export interface MousePointerRoute {
   down: (e: PointerEvent) => void;
   move: (e: PointerEvent) => void;
   up: (e: PointerEvent) => void;
   cancel: (e: PointerEvent) => void;
-  /** Wrap another mouse-side handler (context menu, click): a held pen press runs first, a touch-owned pen's click is dropped. */
+  /** Wrap another mouse-side handler (context menu, click): a held pen press runs first, a touch-owned pen's compatibility click is dropped. */
   after: <E extends MouseEvent>(handler: (e: E) => unknown) => (e: E) => void;
   dispose: () => void;
 }
@@ -96,19 +106,31 @@ export function routeMousePointers(
       if (e.pointerType === 'touch') return;
       noteMouseSideInput(e.pointerType);
       runHeld();
-      if (e.pointerType !== 'pen') { void handlers.down(e); return; }
+      if (e.pointerType !== 'pen') {
+        // a mouse or trackpad press at the lift point: the click there is its own, not a lifted Pencil's (#9043)
+        if (gate.lift && atLift(e, gate.lift)) gate.lift = null;
+        const rect = canvas.getBoundingClientRect();
+        forgetTouchSelection(canvas, e.clientX - rect.left, e.clientY - rect.top); // nor a tap's, in Select
+        forgetTouchLongPress(canvas, e); // nor its context menu a long press's (#9087)
+        void handlers.down(e);
+        return;
+      }
       e.preventDefault(); // handleMouseDown's own call would come too late to stop compatibility mouse events
       gate.owned.delete(e.pointerId); // a new press: an earlier one's pointerup may have been stopped before reaching us
       if (gate.touches.some((t) => samePress(t, e))) gate.owned.add(e.pointerId);
       else gate.held = { e, timer: setTimeout(runHeld, 0) };
     },
     move: (e) => {
-      // A Measure preview follows only the moves its own handlers note again (#8992)
-      const measure = measureContexts.get(canvas)?.ctx;
-      if (measure) noteMeasureCursor(measure, null);
       // A Pencil hovering with nothing down, after a press whose pointerup never reached us
       if (e.pointerType === 'pen' && e.buttons === 0 && gate.touches.length === 0) gate.owned.delete(e.pointerId);
       if (e.pointerType !== 'touch') noteMouseSideInput(e.pointerType);
+      if (!touchOwned(e)) runHeld(); // a held pen press begins before its first move is judged
+      // A Measure preview follows only the moves its own handlers note again (#8992). A navigation press
+      // within its click slop has not panned or orbited (#9022); a fly look that turned the view is
+      // caught by the re-pick's view check
+      const measure = measureContexts.get(canvas)?.ctx;
+      const press = measure?.mouseState;
+      if (measure && !(press?.isDragging && !pressPastClickSlop(press, e))) noteMeasureCursor(measure, null);
       pass(handlers.move)(e);
     },
     up: (e) => {
@@ -131,8 +153,7 @@ export function routeMousePointers(
     after: (handler) => (e) => {
       const pointerType = (e as MouseEvent & { pointerType?: string }).pointerType;
       const lift = gate.lift;
-      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= PEN_CLICK_MS
-        && Math.abs(e.clientX - lift.x) <= PEN_CLICK_SLOP && Math.abs(e.clientY - lift.y) <= PEN_CLICK_SLOP) {
+      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= TAP_CLICK_MS && atLift(e, lift)) {
         if (e.type === 'contextmenu') e.preventDefault(); // as handleContextMenu would have
         return;
       }
@@ -166,7 +187,7 @@ export function notePenTouches(canvas: HTMLCanvasElement, e: TouchEvent): void {
   const gate = penGates.get(canvas);
   if (!gate) return;
   // Kept as of each touch's touchstart: an earlier touch keeps its entry, a new one is added
-  const down = Array.from(e.touches ?? []);
+  const down = canvasTouches(canvas, e);
   gate.touches = down.map((t) => gate.touches.find((k) => k.identifier === t.identifier) ?? t);
   const held = gate.held;
   if (e.type !== 'touchstart' || !held) return;
@@ -174,6 +195,16 @@ export function notePenTouches(canvas: HTMLCanvasElement, e: TouchEvent): void {
   clearTimeout(held.timer);
   gate.held = null;
   gate.owned.add(held.e.pointerId);
+}
+
+/**
+ * The touches on `canvas`. A touch event lists every finger on the screen, so
+ * a thumb resting on a side panel or the toolbar would keep a canvas gesture
+ * multi-touch and its drag type stuck until it lifts (#9122). A finger that
+ * began on the canvas stays its own when it slides off.
+ */
+export function canvasTouches(canvas: HTMLCanvasElement, e: TouchEvent): Touch[] {
+  return Array.from(e.touches ?? []).filter((t) => t.target === canvas);
 }
 
 /**
@@ -192,18 +223,30 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * unmount. While registered, every Measure gesture reset (the store's
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
  * reposition) reaches the context's press state and queued frame (#8786),
- * and turning Snap off drops the queued frame and re-picks the live preview
- * unsnapped (#8881, #8992).
+ * a Snap toggle drops the queued frame and re-picks the live preview under
+ * the new setting (#8881, #8992, #9022), and Shift is noted for that re-pick.
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
   measureContexts.delete(canvas);
   if (!ctx) return;
-  const stop = useViewerStore.subscribe((state, prev) => {
+  const unsubscribe = useViewerStore.subscribe((state, prev) => {
     if (state.measureGestureEpoch !== prev.measureGestureEpoch) resetMeasurePress(ctx);
     // A command's preview frame is its own
-    else if (prev.snapEnabled && !state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapOff(ctx);
+    else if (prev.snapEnabled !== state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapToggle(ctx, state.snapEnabled);
   });
+  // The event's modifier state, so releasing one Shift key with the other held keeps the axis
+  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.shiftKey); };
+  const onBlur = () => noteMeasureShift(ctx, false); // a release while the window is away sends no keyup
+  window.addEventListener('keydown', onShift);
+  window.addEventListener('keyup', onShift);
+  window.addEventListener('blur', onBlur);
+  const stop = () => {
+    unsubscribe();
+    window.removeEventListener('keydown', onShift);
+    window.removeEventListener('keyup', onShift);
+    window.removeEventListener('blur', onBlur);
+  };
   measureContexts.set(canvas, { ctx, stop });
 }
 

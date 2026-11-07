@@ -25,7 +25,7 @@ export function HierarchyRowActions({ name, actions, open, onOpenChange, onActio
   const label = (action: HierarchyRowAction) => t(`hierarchy.node.action.${action}`);
 
   return (
-    <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center bg-white/95 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto dark:bg-zinc-950/95 [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto">
+    <div className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center bg-card/95 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto">
       {actions.map((action) => {
         const Icon = ICONS[action];
         return (

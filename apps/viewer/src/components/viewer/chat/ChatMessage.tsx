@@ -77,7 +77,7 @@ export const ChatMessageComponent = memo(function ChatMessageComponent({
       {/* Avatar */}
       <div className={cn(
         'shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5',
-        isUser ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-500',
+        isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
       )}>
         {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
       </div>
@@ -142,7 +142,7 @@ export const ChatMessageComponent = memo(function ChatMessageComponent({
 
         {/* Streaming cursor */}
         {isStreaming && (
-          <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+          <span className="inline-block w-1.5 h-4 bg-foreground animate-pulse ml-0.5 align-text-bottom rounded-sm" />
         )}
       </div>
     </div>

@@ -185,7 +185,7 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
         {isComputed && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs text-teal-500">*</span>
+              <span className="text-xs text-muted-foreground">*</span>
             </TooltipTrigger>
             <TooltipContent>{t('properties.georef.computedTooltip')}</TooltipContent>
           </Tooltip>
@@ -208,7 +208,7 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
                     aria-label={label}
                     value={editValue}
                     onChange={e => { setEditValue(e.target.value); }}
-                    className="flex-1 text-xs font-mono px-1.5 py-1 border border-teal-400 dark:border-teal-600 bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400"
+                    className="flex-1 text-xs font-mono px-1.5 py-1 border border-input bg-card text-foreground outline-none focus:ring-1 focus:ring-ring"
                   >
                     <option value="">{t('properties.georef.selectPlaceholder')}</option>
                     {hint.suggestions?.map(s => <option key={s} value={s}>{s}</option>)}
@@ -222,7 +222,7 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={hint.placeholderKey ? t(hint.placeholderKey) : undefined}
-                    className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                    className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-input bg-card text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
                   />
                 )}
                 <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-ok hover:bg-ok-surface shrink-0">
@@ -239,7 +239,7 @@ export function GeorefRow({ label, value, defaultValue, suffix, isComputed, isNu
                     <button
                       key={s}
                       onClick={() => selectSuggestion(s)}
-                      className="text-xs font-mono px-1.5 py-0.5 border border-border text-muted-foreground hover:border-teal-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+                      className="text-xs font-mono px-1.5 py-0.5 border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                     >
                       {s}
                     </button>
@@ -338,7 +338,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
       <span className="text-xs text-muted-foreground pt-0.5 flex items-start gap-0.5 min-w-[110px] flex-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-xs text-teal-500">*</span>
+            <span className="text-xs text-muted-foreground">*</span>
           </TooltipTrigger>
           <TooltipContent>{editable ? t('properties.georef.angleEditTooltip') : t('properties.georef.computedTooltip')}</TooltipContent>
         </Tooltip>
@@ -356,7 +356,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="0.0"
-                className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-input bg-card text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
               />
               <span className="text-xs text-muted-foreground">{t('properties.georef.degUnit')}</span>
               <IconButton label={t('properties.georef.saveField', { field: label })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-ok hover:bg-ok-surface shrink-0">

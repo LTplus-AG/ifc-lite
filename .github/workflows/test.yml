@@ -517,6 +517,7 @@ jobs:
               - 'tests/fixtures/appearance/**'
               - 'tests/fixtures/frame-ratchet-6975/**'
               - 'tests/fixtures/ids/**'
+              - 'tests/fixtures/renderer-density-6881/**'
               # The UI overhaul's scene/council tooling (#8802) is walked by the
               # same conservative gate inputs as every other tests/ subtree.
               - 'tests/ui-scenes/**'
@@ -701,7 +702,10 @@ jobs:
           echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
           exit 1
 
-      # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
+      # The cached tree also contains tracked fixture metadata. Bind all three
+      # tracked files into the key so restore cannot overwrite the checked-out
+      # README and make the production-revert oracle refuse a dirty tree.
+      # Cache the fetched fixture tree keyed on the metadata hashes. ~994 MiB.
       # Cache hit = no network. Cache miss (manifest changed) = one cold pull
       # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
       - name: Cache test fixtures
@@ -712,7 +716,7 @@ jobs:
           # Namespace cache key separately from `release.yml` (`release-fixtures-…`).
           # Phase A hardening — keeps the privileged release runner from ever
           # reading a cache writeable by a fork-triggered job.
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
 
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
@@ -1043,6 +1047,10 @@ jobs:
           # runner's SwiftShader device, and a skip never counts as observation.
           E2E_GPU_STRICT: '0'
         run: |
+          # The fixture cache holds all of tests/models and is keyed on manifest.json
+          # alone, so it can restore an older copy of a tracked file there. The oracle
+          # needs a clean tree, so put tracked files back to this commit's versions.
+          git restore -- tests/models
           oracle_args=(--base origin/main --ci --json)
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"
@@ -1277,7 +1285,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
@@ -1366,7 +1374,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
@@ -1891,7 +1899,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
@@ -2130,7 +2138,7 @@ jobs:
         id: fixtures-cache
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
@@ -2276,7 +2284,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         # The fixtures script is pure Node (no npm deps) so we skip the
@@ -2593,7 +2601,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         # The fixtures script is pure Node (no npm deps) so we skip the
@@ -2782,7 +2790,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs
@@ -2907,7 +2915,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs

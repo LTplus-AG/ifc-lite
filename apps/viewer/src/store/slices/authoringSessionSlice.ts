@@ -19,8 +19,7 @@
 import type { StateCreator, StoreApi } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
-import { fromGlobalIdFromModels } from '../globalId.js';
-import { selectEffectiveStoreyId } from '@/lib/commands/modeling/effective-storeys';
+import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
 import { getModelingCommand, resolveWorkplane } from '@/lib/commands/modeling/registry';
 import {
   beginCommandRuntime,
@@ -73,27 +72,6 @@ export interface AuthoringSessionSlice {
 
 type Set = StoreApi<ViewerState>['setState'];
 type Get = () => ViewerState;
-
-function resolveModelId(s: ViewerState, preferred: string | undefined): string | null {
-  const candidates = [preferred, s.activeModelId ?? undefined, s.models.keys().next().value];
-  return candidates.find((id): id is string => id !== undefined && s.models.get(id)?.ifcDataStore != null) ?? null;
-}
-
-function selectedRef(s: ViewerState): { modelId: string; expressId: number } | null {
-  // The store's own resolver first (it knows overlay-allocated ids), then the
-  // offset ranges — `resolveEntityRef`'s order, without importing the store.
-  if (s.selectedEntityId === null) return null;
-  return s.resolveGlobalIdFromModels(s.selectedEntityId) ?? fromGlobalIdFromModels(s.models, s.selectedEntityId) ?? null;
-}
-
-/** The storey the selection sits on (or is), in `modelId`. */
-function selectionStorey(s: ViewerState, modelId: string): number | null {
-  const ref = selectedRef(s);
-  const hierarchy = s.models.get(modelId)?.ifcDataStore?.spatialHierarchy;
-  if (!ref || ref.modelId !== modelId || !hierarchy) return null;
-  if (hierarchy.storeyElevations.has(ref.expressId)) return ref.expressId;
-  return hierarchy.elementToStorey.get(ref.expressId) ?? null;
-}
 
 function patchSession(set: Set, patch: Partial<AuthoringSession>): void {
   set((s) => (s.session ? { session: { ...s.session, ...patch } } : {}));
@@ -162,12 +140,9 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
         if (opts.command) get().startCommand(opts.command);
         return true;
       }
-      const modelId = resolveModelId(s, opts.modelId ?? selectedRef(s)?.modelId);
-      const store = modelId ? s.models.get(modelId)?.ifcDataStore : null;
-      if (!modelId || !store) return false;
-      // Storey: explicit → the selection's → the first.
-      const preferred = opts.storeyId ?? selectionStorey(s, modelId) ?? null;
-      const storeyId = selectEffectiveStoreyId(store, s.mutationViews.get(modelId), preferred);
+      const target = modelWorkspaceTarget(s, opts);
+      if (!target) return false;
+      const { modelId, storeyId } = target;
       // Re-entering on another model keeps the panel the FIRST entry took over.
       const sidebarRestore = s.session ? s.session.sidebarRestore : showModelInspector(s);
       set({

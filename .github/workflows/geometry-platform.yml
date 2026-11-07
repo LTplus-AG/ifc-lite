@@ -684,5 +684,6 @@ jobs:
       jobs: native-adapter, native-corpus-result
       result: native-adapter=${{ needs.native-adapter.result }}, native-corpus=${{ needs.native-corpus-result.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

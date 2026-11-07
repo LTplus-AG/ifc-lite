@@ -203,8 +203,8 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       : record.kind === 'pipe-structure' ? record.structure.properties
         : record.kind === 'pipe-feature' ? record.feature.properties
           : record.kind === 'pipe-network' ? record.network.properties : record.collection.properties;
-    return <div className="h-full overflow-auto border-l-2 border-border bg-white dark:bg-black" data-landxml-source-inspector>
-      <div className="space-y-2 border-b-2 border-border bg-muted p-4 dark:bg-black">
+    return <div className="h-full overflow-auto border-l-2 border-border bg-card" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-border bg-muted p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
         <h3 className="truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
         <p className="break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>
@@ -226,7 +226,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       (_, index) => semanticNavigationAt(record, firstItem + index),
     );
     const rows = semanticDetailRows(record);
-    return <div className="h-full overflow-auto border-l-2 border-border bg-white p-4 text-xs dark:bg-black" data-landxml-source-inspector>
+    return <div className="h-full overflow-auto border-l-2 border-border bg-card p-4 text-xs" data-landxml-source-inspector>
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
       <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
       <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>
@@ -278,8 +278,8 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   const properties = surfacePropertyRows(terrain ? record.surface.properties : planProperties(record));
   const definitionProperties = surfacePropertyRows(terrain ? record.surface.definitionProperties : {});
   return (
-    <div className="h-full overflow-auto border-l-2 border-border bg-white dark:bg-black" data-landxml-source-inspector>
-      <div className="space-y-2 border-b-2 border-border bg-muted p-4 dark:bg-black">
+    <div className="h-full overflow-auto border-l-2 border-border bg-card" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-border bg-muted p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlSource.heading')}</p>
         <h3 className="truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
         <p className="break-all font-mono text-xs text-muted-foreground">{recordPath(record)}</p>

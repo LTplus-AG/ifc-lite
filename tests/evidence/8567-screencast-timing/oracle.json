@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "examples/gaussian-splat-spike/screencast-timing.mjs",
-  "mutation": "tests/evidence/8567-screencast-timing/behaviour.oracle.patch",
-  "test": "examples/gaussian-splat-spike/test/screencast-timing.test.mjs",
-  "why": "#8567: Resampling every screencast frame to a fixed 1/30 s would hide capture stalls and rewrite the recorded timeline; the captured-interval assertion must fail while imports stay valid."
-}

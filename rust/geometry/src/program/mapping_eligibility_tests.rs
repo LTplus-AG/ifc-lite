@@ -23,7 +23,10 @@ fn first_step(
 }
 
 #[test]
-fn issue_7873_armed_default_cap_refuses_before_invalid_first_or_ignored_slot_member_decode() {
+fn issue_9102_armed_wide_first_list_is_admitted_without_early_member_decode() {
+    // Before #9102 the default cap refused this list outright. A first read is
+    // now the file's: it materializes flat (ignored slots forbid placeholders),
+    // and eligibility still never decodes a member early.
     let cap = crate::representation::MAX_WALK_LEVELS;
     for first in ["#90,#4", "#999999,#4", "#4"] {
         let items = format!("{first},{}", vec!["$"; cap as usize].join(","));
@@ -51,25 +54,18 @@ fn issue_7873_armed_default_cap_refuses_before_invalid_first_or_ignored_slot_mem
                 0,
                 "invalid first member was not probed"
             );
-            let error = program.drain_styled(&router, &mut decoder).unwrap_err();
-            assert!(error.to_string().contains("work budget"), "{error}");
-            assert!(decoder.get_cached(4).is_none());
-            assert_eq!(decoder.refused_records(), 0);
-            // A claimed/cached-source retry still cannot perform a skipped scan.
-            let error = GeometryProgram::styled_item(
-                &root,
-                crate::SubMeshCollection::new(),
-                true,
-                None,
-                router.rtc_offset(),
-            )
-            .drain_styled(&router, &mut decoder)
-            .unwrap_err();
-            assert!(error.to_string().contains("work budget"));
-            assert!(decoder.get_cached(4).is_none());
-            assert_eq!(decoder.refused_records(), 0);
+            match program.drain_styled(&router, &mut decoder) {
+                Ok(parts) => {
+                    assert_eq!(first, "#4", "a malformed member must fail");
+                    assert_eq!(parts.len(), 1);
+                    assert_eq!(parts.sub_meshes[0].mesh.indices.len(), 3);
+                }
+                Err(error) => {
+                    assert_ne!(first, "#4");
+                    assert!(!error.to_string().contains("work budget"), "{error}");
+                }
+            }
             assert_eq!(router.mapped_shared_unique_count(), 0);
-            assert!(router.take_unsupported_items().is_empty());
             assert_eq!(router.unsupported_scope_depth(), 0);
         }
     }
@@ -220,8 +216,9 @@ fn issue_7873_armed_nested_map_stays_flat_and_does_not_eligibility_decode_its_ch
         "one bounded eligibility decode"
     );
     assert!(decoder.get_cached(4).is_none());
-    // Root Items spends the only member slot; the nested mapped attempt is
-    // refused before resolving its source or probing child eligibility.
+    // The root spent the only attempt (its first Items read is free, #9102);
+    // the nested mapped attempt is refused before resolving its source or
+    // probing child eligibility.
     let parts = program.drain_styled(&router, &mut decoder).unwrap();
     assert!(parts.is_empty());
     assert!(decoder.get_cached(26).is_none());

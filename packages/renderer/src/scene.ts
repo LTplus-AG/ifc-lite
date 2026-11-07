@@ -213,7 +213,7 @@ export class Scene {
         buckets: this.buckets, reverse: () => this.meshDataBucket,
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
         release: batch => { this.dropPartialCacheForBatch(batch); this.lastDrawnFrame.delete(batch.id); destroyGpuResources(batch); },
-        changed: key => this.markBucketDirty(key),
+        changed: key => this.markBucketDirty(key), restore: bucket => { if (bucket.batchedMesh) this.subsetResidency.rebuildEvicted(bucket, bucket.batchedMesh, device, pipeline); },
         refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); this.pickGeometryRevision++; },
       },
       adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
@@ -518,7 +518,7 @@ export class Scene {
   }
 
   /** A partial sub-batch wants an evicted batch's CPU pieces, not its GPU buffers (#9050). */
-  requestBatchPieces(batch: BatchedMesh): void { this.subsetResidency.requestPieces(batch); }
+  requestBatchPieces(batch: BatchedMesh): boolean { return this.subsetResidency.requestPieces(batch); }
 
   hasResidencyRestoreWork(): boolean {
     return this.residencyRestoreQueue.size > 0;
@@ -1315,14 +1315,16 @@ export class Scene {
 
   /** Rebuild pending buckets after streaming or a geometry mutation. */
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
-    if (this.pendingBatchKeys.size === 0) return;
-    rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
+    if (this.pendingBatchKeys.size > 0) this.rebuildAndPublishBatches(device, pipeline);
+  }
+
+  /** Rebuild what is pending (possibly nothing), then publish every bucket's batch (#9154). */
+  private rebuildAndPublishBatches(device: GPUDevice, pipeline: RenderPipeline): void {
+    rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets, // clears pendingKeys
       create: (meshes, color, target, renderPipeline, key) => this.createBatchedMesh(meshes, color, target, renderPipeline, key),
       dropPartial: batch => this.dropPartialCacheForBatch(batch),
     }, device, pipeline);
-
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
-    this.pendingBatchKeys.clear();
     forgetEmptyModelFrames(this.buckets, this.sharedFrameOrigins);
   }
 
@@ -2040,10 +2042,8 @@ export class Scene {
     try {
       this.streamingFragments = [];
       regroup = this.regroupStreamed();
-      // Build into a fresh array; rebuildPendingBatches republishes every
-      // bucket's batch, untouched ones included.
       this.batchedMeshes = []; this.pickGeometryRevision++; // meshes past the fragment budget become pickable here
-      this.rebuildPendingBatches(device, pipeline);
+      this.rebuildAndPublishBatches(device, pipeline); // publishes untouched batches too, even with no key pending (#9154)
       rebuilt = true;
     } finally {
       if (!rebuilt) {
@@ -2062,7 +2062,7 @@ export class Scene {
 
     // NOW free the fragments and the dissolved buckets' batches (the
     // replacements are live). Batches of rebuilt surviving buckets were
-    // already retired by rebuildPendingBatches.
+    // already retired by rebuildAndPublishBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
     this.fragmentPieces.retainOnly(this.streamingFragments);
@@ -2671,19 +2671,16 @@ export class Scene {
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const own = this.fragmentPieces.forSlot(sourceBatchKey, colorKey);
-    const visibleMeshData: MeshData[] = [];
+    // A colour-merged piece is listed under every id it holds: collect it once (#9220).
+    const pieces = new Set<MeshData>();
     for (const expressId of visibleIds) {
       for (const piece of this.meshDataMap.get(expressId) ?? []) {
-        if (own) own.collect(piece, visibleMeshData);
-        else if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) {
-          visibleMeshData.push(piece);
-        }
+        if (own) own.collect(piece, pieces);
+        else if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) pieces.add(piece);
       }
     }
-
-    if (visibleMeshData.length === 0) {
-      return undefined;
-    }
+    if (pieces.size === 0) return undefined;
+    const visibleMeshData = [...pieces];
 
     // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
     // decision (#4832): the overlay built from the same source must match its depth.

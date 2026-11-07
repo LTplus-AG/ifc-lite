@@ -19,6 +19,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { FilterRule } from '@ifc-lite/rules';
 import type { FilterGroup } from '@ifc-lite/rules';
 import type { RuleBlock } from '@ifc-lite/rules';
@@ -60,26 +61,26 @@ export function RuleBlockEditor({ block, onChange, allowedKinds, models, schemaV
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
-          <button
+        <div className="inline-flex rounded border border-border bg-card p-0.5">
+          <Button
             type="button"
+            variant="toggle"
+            size="segment"
+            aria-pressed={mode === 'chips'}
             onClick={() => onChange({ ...block, authoredAs: 'chips' })}
-            className={`rounded px-2 py-0.5 font-medium transition-colors ${
-              mode === 'chips' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
           >
             {t('validationEditor.ruleBlockEditor.chipsMode')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="toggle"
+            size="segment"
+            aria-pressed={mode === 'selector'}
             disabled={exactClassForced}
             onClick={() => !exactClassForced && onChange({ ...block, authoredAs: 'selector' })}
-            className={`rounded px-2 py-0.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              mode === 'selector' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
           >
             {t('validationEditor.ruleBlockEditor.selectorMode')}
-          </button>
+          </Button>
         </div>
         {exactClassForced && (
           <span className="inline-flex items-center gap-1 text-2xs text-warn">

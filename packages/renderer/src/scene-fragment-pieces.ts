@@ -49,10 +49,10 @@ export class FragmentPieces {
     }
   }
 
-  /** Append this fragment's pieces of the registered mesh `mesh` to `into`. */
-  collect(mesh: MeshData, into: MeshData[]): void {
+  /** Add this fragment's pieces of the registered mesh `mesh` to `into`. */
+  collect(mesh: MeshData, into: Set<MeshData>): void {
     if (this.whole.has(mesh)) {
-      into.push(mesh);
+      into.add(mesh);
       return;
     }
     for (const piece of this.split.get(mesh) ?? []) {
@@ -60,7 +60,7 @@ export class FragmentPieces {
       piece.origin = mesh.origin;
       piece.localToWorld = mesh.localToWorld;
       piece.geometryAabb = mesh.geometryAabb;
-      into.push(piece);
+      into.add(piece);
     }
   }
 }

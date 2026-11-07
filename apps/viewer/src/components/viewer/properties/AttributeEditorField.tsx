@@ -114,7 +114,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             onChange={(e) => { setValue(e.target.value); setError(null); }}
             onKeyDown={handleKeyDown}
             onBlur={save}
-            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-muted border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-danger-border"
+            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-card border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-danger-border"
           />
           <IconButton
             label={t('properties.panel.saveAttributeLabel', { attrName })}

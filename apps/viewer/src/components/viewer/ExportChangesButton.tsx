@@ -375,14 +375,14 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
             {isExporting ? (
               <Spinner size="md" className="mr-2" />
             ) : exportStatus === 'success' ? (
-              <Check className="h-4 w-4 mr-2 text-green-500" />
+              <Check className="h-4 w-4 mr-2 text-ok" />
             ) : exportStatus === 'error' ? (
-              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+              <AlertCircle className="h-4 w-4 mr-2 text-danger" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
             {t('exportChangesButton.buttonLabel')}
-            <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
+            <Badge className="ml-2 text-xs bg-warn-solid text-solid-foreground border-transparent hover:bg-warn-solid">
               {totalCount}
             </Badge>
           </Button>

@@ -64,5 +64,6 @@ jobs:
       result: ${{ needs.subject.result }} output=${{ needs.subject.outputs.evidence }} deadline=${{ needs.subject.outputs.deadline }}
       dry_run: true
     permissions:
+      actions: read
       contents: read
       issues: write

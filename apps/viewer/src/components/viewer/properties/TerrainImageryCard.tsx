@@ -20,7 +20,7 @@ import { coveredFraction } from '@/lib/terrain-imagery/drape-state';
 import type { TileSourceSpec } from '@/lib/terrain-imagery/tile-source';
 import { terrainCrsOf } from '@/hooks/ingest/terrainImageryPlan';
 
-const FIELD ='w-full rounded border border-border bg-white dark:bg-muted px-2 py-1 text-xs font-mono';
+const FIELD ='w-full rounded border border-border bg-card px-2 py-1 text-xs font-mono';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

@@ -68,12 +68,12 @@ export function LocationMapSearchBar({
                 onChange={e => onQueryChange(e.target.value)}
                 aria-label={placeholder}
                 placeholder={placeholder}
-                className="w-full text-2xs px-2 py-1 border border-border bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
+                className="w-full text-2xs px-2 py-1 border border-input bg-card text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
               />
               {loading && (
-                <Spinner size="xs" className="absolute right-2 top-1/2 -translate-y-1/2 text-teal-500" />
+                <Spinner size="xs" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               )}
             </div>
           </PopoverAnchor>
@@ -97,16 +97,16 @@ export function LocationMapSearchBar({
                 if (target instanceof Node && anchorRef.current?.contains(target)) e.preventDefault();
               }}
               style={{ width: 'var(--radix-popper-anchor-width)' }}
-              className="max-h-[160px] overflow-y-auto bg-white dark:bg-muted border border-border p-0 shadow-lg"
+              className="max-h-[160px] overflow-y-auto bg-popover border border-border p-0 shadow-lg"
             >
               {results.map((r, i) => (
                 <button
                   key={i}
                   onClick={() => onSelect(r)}
-                  className="w-full text-left px-2 py-1.5 text-2xs text-muted-foreground hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-border last:border-0 transition-colors"
+                  className="w-full text-left px-2 py-1.5 text-2xs text-muted-foreground hover:bg-accent border-b border-border last:border-0 transition-colors"
                 >
                   <div className="flex items-start gap-1.5">
-                    <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
+                    <MapPin className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
                     <span className="line-clamp-2">{r.display_name}</span>
                   </div>
                 </button>

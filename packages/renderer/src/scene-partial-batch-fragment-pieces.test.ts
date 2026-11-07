@@ -61,10 +61,10 @@ function stream(scene: Scene, meshes: MeshData[]): void {
 /**
  * Indices one frame draws: a batch whose ids are all visible is drawn whole,
  * a partly visible one through the partial batches the render loop requests
- * (real slot keys, including the transparent promotion split).
+ * (real slot keys and partition gate).
  */
 function drawnIndices(scene: Scene, visible: ReadonlySet<number>, overrides: RGBAOverrideMap | null = null): number {
-  const requests = new PartialBatchRequests(overrides, new XRayAlpha({}, new Set()), () => false);
+  const requests = new PartialBatchRequests(overrides, new XRayAlpha({}, new Set()), (batch) => scene.canPartitionBatch(batch));
   let drawn = 0;
   for (const batch of scene.getBatchedMeshes()) {
     const ids = new Set(batch.expressIds.filter((id) => visible.has(id)));
@@ -164,7 +164,7 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
     stream(scene, meshes.slice(2));
     assertSpread(scene, T);
     assertDrawnOnce(scene, meshes, { 'isolate T': [T], 'hide U': [T, V, W], 'hide U and V': [T, W] });
-    // A lens colour on W splits the second fragment's subset into `:promoted` / `:remaining` slots.
+    // A lens colour on W: a fragment cannot be partitioned, so its subset stays one slot (#9220).
     const lens: RGBAOverrideMap = new Map([[W, [1, 0, 0, 1]]]);
     assertDrawnOnce(scene, meshes, { 'hide U and V, W promoted': [T, W] }, lens);
   });

@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { ArrowUp, ArrowDown, ChevronDown, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -207,18 +208,18 @@ function cleanCardinality(
 function SeverityToggle({ value, onChange }: { value: 'error' | 'warning'; onChange: (v: 'error' | 'warning') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['error', 'warning'] as const).map((s) => (
-        <button
+        <Button
           key={s}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === s}
           onClick={() => onChange(s)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.severity.${s}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );

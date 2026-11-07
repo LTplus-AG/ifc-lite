@@ -6,6 +6,7 @@ import { useViewerStore } from '@/store';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { pickLandXmlOverlayLine } from './landXmlOverlayPick.js';
 import { captureViewportPick, invalidateViewportPick } from './viewportPickOwnership.js';
+import { TAP_CLICK_MS, withinTapSlop } from './tapSlop.js';
 
 const touchClicks = new WeakMap<HTMLCanvasElement, { time: number; x: number; y: number }>();
 export function invalidateSelectionPick(canvas: HTMLCanvasElement): void {
@@ -14,13 +15,24 @@ export function invalidateSelectionPick(canvas: HTMLCanvasElement): void {
 export function markTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
   touchClicks.set(canvas, { time: Date.now(), x, y });
 }
-/** Touchend owns a tap. Ignore its compatibility click rather than selecting twice. */
+/**
+ * A mouse or trackpad press at a tap's point: the click after it is the
+ * press's own, not the tap's compatibility click (#9043).
+ */
+export function forgetTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
+  const touch = touchClicks.get(canvas);
+  if (touch && withinTapSlop(x, y, touch)) touchClicks.delete(canvas);
+}
+/**
+ * Touchend owns a tap. Ignore its compatibility click rather than selecting
+ * twice: it lands where the finger lifted, within the tap slop of the press (#9091).
+ */
 export function isTouchSelectionClick(canvas: HTMLCanvasElement, event: MouseEvent, x: number, y: number): boolean {
   const pointer = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };
   if (pointer.pointerType === 'touch' || pointer.sourceCapabilities?.firesTouchEvents) return true;
   if (pointer.pointerType === 'mouse' || pointer.pointerType === 'pen') return false;
   const touch = touchClicks.get(canvas);
-  if (!touch || Date.now() - touch.time > 700 || Math.abs(touch.x - x) > 5 || Math.abs(touch.y - y) > 5) return false;
+  if (!touch || Date.now() - touch.time > TAP_CLICK_MS || !withinTapSlop(x, y, touch)) return false;
   touchClicks.delete(canvas);
   return pointer.sourceCapabilities?.firesTouchEvents !== false;
 }

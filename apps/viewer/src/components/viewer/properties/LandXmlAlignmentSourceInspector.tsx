@@ -116,8 +116,8 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
     && (value.staEnd === null || internalStation <= value.staEnd));
   const eventPage = superelevationEventPage(applicableSuperelevations, superelevationPage * PAGE_SIZE);
   const eventPages = Math.max(1, Math.ceil(eventPage.total / PAGE_SIZE));
-  return <div className="h-full overflow-auto border-l-2 border-border bg-white dark:bg-black" data-landxml-source-inspector>
-    <div className="space-y-2 border-b-2 border-border bg-muted p-4 dark:bg-black">
+  return <div className="h-full overflow-auto border-l-2 border-border bg-card" data-landxml-source-inspector>
+    <div className="space-y-2 border-b-2 border-border bg-muted p-4">
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t('properties.landXmlAlignment.heading')}</p>
       <h3 className="truncate text-sm font-bold uppercase tracking-tight text-foreground">{recordName(record, t)}</h3>
       <p className="break-all font-mono text-xs text-muted-foreground">{alignment.sourceId}</p>

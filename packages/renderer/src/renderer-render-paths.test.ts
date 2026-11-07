@@ -1713,6 +1713,69 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
                 return { grey, subs };
             };
 
+            it('#9227: a natively transparent parent stands in through the transparent pipeline after un-X-Ray', () => {
+                const h = makeHarness();
+                const scene = sceneOf(h);
+                scene.appendToBatches([triangle(4, TRANSPARENT), triangle(5, TRANSPARENT)], device(h), pipeline(h), false);
+                const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+                glass.bounds = undefined;
+                scene.setGpuResidencyBudget(1);
+                const X = { transparencyOverrides: new Map([[4, 0.18]]) };
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render(X);
+                assert.strictEqual(glass.gpuResident, false);
+                const subs = subBatchesOf(h, glass);
+                assert.strictEqual(subs.length, 2);
+                scene['subsetResidency'].rebuildBudgetMs = 0;
+                h.stats.draws.length = 0; h.stats.commands.length = 0;
+                h.render({});
+                for (const sub of subs) assert.deepStrictEqual(pipelinesOf(h, sub.vertexBuffer), [TRANSPARENT_PIPELINE]);
+            });
+            it('#9227: a stand-in frame keeps the parent eligible for the next frame\'s capped rebuild; no double draw', () => {
+                const h = makeHarness();
+                const { grey, subs } = evictedUnderXRay(h);
+                const scene = sceneOf(h);
+                scene['subsetResidency'].rebuildBudgetMs = 0;
+                h.render({});
+                scene['subsetResidency'].rebuildBudgetMs = 32;
+                h.stats.draws.length = 0;
+                h.render({});
+                const rebuilt = greyOf(h);
+                assert.notStrictEqual(rebuilt, grey, 'rebuilt in-frame, not via the queue');
+                assert.ok(h.stats.draws.includes(rebuilt.vertexBuffer));
+                for (const sub of subs) {
+                    assert.ok(!h.stats.draws.includes(sub.vertexBuffer), 'stand-in not drawn beside the rebuild');
+                    assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+                }
+            });
+            it('#9227: show-all frees a RESIDENT parent\'s sub-batches at once under a budget', () => {
+                const h = makeHarness();
+                const { grey } = seedBatches(h);
+                const scene = sceneOf(h);
+                scene.setGpuResidencyBudget(1);
+                h.render({});
+                h.render({ isolatedIds: new Set([2]) });
+                assert.notStrictEqual(grey.gpuResident, false, 'still resident: drawn whole a frame ago');
+                assert.strictEqual(scene['partialBatchCache'].size, 1);
+                h.render({});
+                assert.strictEqual(scene['partialBatchCache'].size, 0);
+            });
+            it('#9227: hiding the stand-in element while still evicted draws the new subset, not the stand-in', () => {
+                const h = makeHarness();
+                const { grey } = seedBatches(h);
+                const scene = sceneOf(h);
+                scene.setGpuResidencyBudget(1);
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+                assert.strictEqual(grey.gpuResident, false);
+                const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+                scene['subsetResidency'].rebuildBudgetMs = 0;
+                h.render({});
+                h.stats.draws.length = 0;
+                h.render({ hiddenIds: new Set([2]) });
+                assert.ok(!h.stats.draws.includes(sub.vertexBuffer));
+                assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+                const now = [...scene['partialBatchCache'].values()] as BatchedMesh[];
+                assert.deepStrictEqual(now.map((b) => [...b.expressIds]), [[1]]);
+            });
             it('X-Ray cleared past the rebuild cap: the alpha sub-batches stand in, opaque, until the queue rebuilds the parent', () => {
                 const h = makeHarness();
                 const { grey, subs } = evictedUnderXRay(h);

@@ -13,10 +13,10 @@ const result = (patch: Partial<SnapResult>): SnapResult => ({ local: [5, 0], win
 const won = (kind: SnapKind): SnapResult => result({ winner: { kind, local: [5, 0], source: 'inference' } });
 
 describe('glyphFor (#6232 WP3)', () => {
-  it('gives every snap kind its glyph, and a bare workplane hit none', () => {
+  it('gives every snap kind its glyph, a point aimed through to the workplane included (#9201)', () => {
     const kinds: SnapKind[] = ['endpoint', 'vertex', 'midpoint', 'intersection', 'perpendicular', 'extension', 'parallel', 'edge', 'face', 'grid', 'workplane'];
     assert.deepEqual(kinds.map((k) => glyphFor(won(k))), [
-      'endpoint', 'endpoint', 'midpoint', 'intersection', 'perpendicular', 'extension', 'parallel', 'edge', 'center', 'grid', null,
+      'endpoint', 'endpoint', 'midpoint', 'intersection', 'perpendicular', 'extension', 'parallel', 'edge', 'center', 'grid', 'workplane',
     ]);
     assert.equal(glyphFor(result({})), null);
     assert.equal(glyphFor(null), null);

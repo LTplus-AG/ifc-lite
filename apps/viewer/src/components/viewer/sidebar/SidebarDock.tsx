@@ -22,6 +22,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
+import { sidebarPaneDrawn } from '@/lib/panels/rendered-panels';
 import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
 
 const ACTIVITY_BAR_PX = 48; // w-12
@@ -99,7 +100,7 @@ export function SidebarDock() {
 
   return (
     <div ref={rootRef} className="flex h-full shrink-0">
-      {mode === 'expanded' && !foldedForStart && (
+      {sidebarPaneDrawn(mode, foldedForStart) && (
         <>
           {/* Resize handle */}
           <div

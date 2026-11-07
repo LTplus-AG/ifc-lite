@@ -10,7 +10,7 @@ import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
 import { loadSelectedSourceGroups, selectedSourceProducts, withoutMeasuredOverlayItems } from '@/lib/analytic/selected-source-products';
-import { selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
+import { selectedModelIds, selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -40,32 +40,46 @@ export function selectedSweptDiskProducts(state: ViewerState) {
   return selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
 }
 
+export interface SourceModelKeys {
+  frame: readonly unknown[];
+  shown: readonly unknown[];
+}
+
 /**
  * The model inputs of the query and the curves it feeds, as keys that keep
  * their identity while nothing they read changes: `frame` places the curves,
  * `shown` is the visibility of the models the selection reaches. A collapsed
- * or renamed model row, or an unrelated model toggled, changes neither (#9158).
- * `shown` resolves the selection, so it is empty while the caller is off.
+ * or renamed model row, or an unrelated model toggled, changes neither
+ * (#9158); nor does loading, removing or reordering a model the selection
+ * doesn't reach (#9229). Both resolve the selection, so they are empty while
+ * the caller is off.
  */
-export function useSourceModelKeys(enabled: boolean): { frame: readonly unknown[]; shown: readonly unknown[] } {
-  const frame = useViewerStore(useShallow((state) => sourceModelFrame(state.models)));
+export function useSourceModelKeys(enabled: boolean): SourceModelKeys {
   const models = useViewerStore((state) => state.models);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
   const primaryRef = useViewerStore((state) => state.selectedEntity);
-  const stable = useShallow((key: unknown[]) => key);
-  const shown = stable(useMemo(() => (enabled ? selectedModelVisibility(useViewerStore.getState()) : []),
+  const stableHolders = useShallow((ids: readonly string[]) => ids);
+  const stableShown = useShallow((key: readonly unknown[]) => key);
+  const holders = stableHolders(useMemo(() => (enabled ? selectedModelIds(useViewerStore.getState()) : []),
     [enabled, models, selectedIds, primaryId, selectedRefs, primaryRef]));
+  const frame = useViewerStore(useShallow((state) => sourceModelFrame(state, holders)));
+  const shown = stableShown(useMemo(() => selectedModelVisibility(useViewerStore.getState(), holders), [holders, models]));
   return { frame, shown };
 }
 
-/** One selection query shared by drawing and the later source-geometry inspector. */
-export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
+/**
+ * One selection query shared by drawing and the later source-geometry
+ * inspector. A caller that already holds the model keys passes them, so the
+ * selection is resolved once per change, not twice (#9229).
+ */
+export function useSelectedSweptDisks(enabled: boolean, modelKeys?: SourceModelKeys): SelectedSweptDisksState {
   const models = useViewerStore((state) => state.models);
   // In a federation `ifcDataStore` only mirrors the active model; the query reads it only without one.
   const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
-  const { frame, shown } = useSourceModelKeys(enabled);
+  const ownKeys = useSourceModelKeys(enabled && !modelKeys);
+  const { frame, shown } = modelKeys ?? ownKeys;
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);

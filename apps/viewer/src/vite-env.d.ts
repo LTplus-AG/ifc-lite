@@ -6,6 +6,9 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /** Local OCI registry demo, using the development server's same-origin proxy. */
+  readonly VITE_REGISTRY_ENABLED?: string;
+  readonly VITE_REGISTRY_ADDRESS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Gaussian capture admission (#8568): unset = committed default, 'disabled' = kill switch, 'internal-unqualified' = presenter build. */

@@ -89,7 +89,7 @@ export function SearchableSelect({
           type="button"
           className={cn(
             'w-full flex items-center justify-between gap-1 text-left',
-            'text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 text-foreground rounded-sm',
+            'text-xs px-1.5 py-1 bg-card border border-zinc-300 dark:border-zinc-600 text-foreground rounded-sm',
             !value && 'text-muted-foreground',
             className,
           )}
@@ -125,14 +125,14 @@ export function SearchableSelect({
             maxHeight: `min(${SEARCHABLE_SELECT_POPUP_MAX_HEIGHT}px, var(--radix-popper-available-height))`,
           }}
           // `popover-surface` is load-bearing, not cosmetic (#1924 / #1972):
-          // `.colorful .bg-white` is overridden to `var(--cf-glass)` at 48%
-          // alpha with `!important`, so in that theme the `bg-white` below is
-          // exactly what makes the popup see-through. The `.colorful
+          // `.colorful .bg-white` / `.bg-card` are overridden to `var(--cf-glass)`
+          // at 48% alpha with `!important`, so a panel surface class here would
+          // make the popup see-through in that theme. The `.colorful
           // .popover-surface` rule (declared after it in `index.css`) reclaims
           // an opaque background and disables the `backdrop-filter` that would
           // otherwise create a stacking context and invert paint order.
           // Removing this class silently reopens #1924.
-          className="popover-surface z-[120] p-0 bg-white border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
+          className="popover-surface z-[120] p-0 bg-popover border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
         >
           {options.length > 8 && (
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border">

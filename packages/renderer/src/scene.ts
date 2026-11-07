@@ -1313,14 +1313,16 @@ export class Scene {
 
   /** Rebuild pending buckets after streaming or a geometry mutation. */
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
-    if (this.pendingBatchKeys.size === 0) return;
-    rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
+    if (this.pendingBatchKeys.size > 0) this.rebuildAndPublishBatches(device, pipeline);
+  }
+
+  /** Rebuild what is pending (possibly nothing), then publish every bucket's batch (#9154). */
+  private rebuildAndPublishBatches(device: GPUDevice, pipeline: RenderPipeline): void {
+    rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets, // clears pendingKeys
       create: (meshes, color, target, renderPipeline, key) => this.createBatchedMesh(meshes, color, target, renderPipeline, key),
       dropPartial: batch => this.dropPartialCacheForBatch(batch),
     }, device, pipeline);
-
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
-    this.pendingBatchKeys.clear();
     forgetEmptyModelFrames(this.buckets, this.sharedFrameOrigins);
   }
 
@@ -2050,10 +2052,8 @@ export class Scene {
     try {
       this.streamingFragments = [];
       regroup = this.regroupStreamed();
-      // Build into a fresh array; rebuildPendingBatches republishes every
-      // bucket's batch, untouched ones included.
       this.batchedMeshes = []; this.pickGeometryRevision++; // meshes past the fragment budget become pickable here
-      this.rebuildPendingBatches(device, pipeline);
+      this.rebuildAndPublishBatches(device, pipeline); // publishes untouched batches too, even with no key pending (#9154)
       rebuilt = true;
     } finally {
       if (!rebuilt) {
@@ -2072,7 +2072,7 @@ export class Scene {
 
     // NOW free the fragments and the dissolved buckets' batches (the
     // replacements are live). Batches of rebuilt surviving buckets were
-    // already retired by rebuildPendingBatches.
+    // already retired by rebuildAndPublishBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
     // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).

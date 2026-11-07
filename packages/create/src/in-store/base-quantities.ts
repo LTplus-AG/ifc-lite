@@ -198,7 +198,10 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   // The footprint is storey-local with the placement origin added; an opening's box is in the host's frame.
   const local = chain.footprint.map(([x, y]) => [x - chain.placementOrigin[0], y - chain.placementOrigin[1]] as [number, number]);
   const boxes = openingBoxes(reading, id);
-  const netArea = boxes && Math.max(0, area - boxes.reduce((sum, box) => sum + clippedPolygonArea(local, box), 0));
+  const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
+  const readable = boxes !== null && (boxes.length === 0 || body !== null);
+  const cuts = readable ? boxes.map((box) => ({ area: clippedPolygonArea(local, box), depth: body ? axisOverlap(box, body, 2) : 0 })) : [];
+  const netArea = readable ? Math.max(0, area - cuts.reduce((sum, cut) => sum + cut.area, 0)) : null;
   if (isRoof) {
     const rows: Row[] = [['GrossArea', QuantityType.Area, area], ['ProjectedArea', QuantityType.Area, area]];
     if (netArea !== null) rows.push(['NetArea', QuantityType.Area, netArea]);
@@ -216,7 +219,11 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
     ['GrossArea', QuantityType.Area, area],
     ['GrossVolume', QuantityType.Volume, area * chain.thickness],
   );
-  if (netArea !== null) rows.push(['NetArea', QuantityType.Area, netArea], ['NetVolume', QuantityType.Volume, netArea * chain.thickness]);
+  // A recess lowers the net area by its plan and the net volume only by the depth it reaches into the body.
+  if (netArea !== null) {
+    const removed = cuts.reduce((sum, cut) => sum + cut.area * cut.depth, 0);
+    rows.push(['NetArea', QuantityType.Area, netArea], ['NetVolume', QuantityType.Volume, Math.max(0, area * chain.thickness - removed)]);
+  }
   return toQuantitySet(dataStore, scale, 'Qto_SlabBaseQuantities', rows);
 }
 

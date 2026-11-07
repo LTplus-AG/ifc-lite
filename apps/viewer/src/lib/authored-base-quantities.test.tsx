@@ -94,6 +94,15 @@ describe('the Quantities tab on an authored element', () => {
     assert.doesNotMatch(panel.textContent ?? '', /created in the overlay/);
   });
 
+  it('a named but empty set does not clear the warning', async () => {
+    const id = made(s().addMember(MODEL_ID, STOREY, { Start: [0, 3, 0], End: [0, 3, 3], Width: 0.1, Height: 0.1 }));
+    act(() => { s().createQuantitySet(MODEL_ID, id, 'Qto_MemberBaseQuantities', []); });
+    select(id);
+    const panel = render(<SourceQuantityInspection />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.match(panel.textContent ?? '', /created in the overlay/);
+  });
+
   it('the Measure Quantities tab reads the same numbers', async () => {
     select(wall());
     const panel = render(<MeasureQuantities />);

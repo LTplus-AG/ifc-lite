@@ -183,6 +183,15 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(sideArea(mm.store)).toBeCloseTo(1.5e-5, 12);
   });
 
+  it('a blind opening takes only the depth it reaches from a slab\'s net volume', async () => {
+    const s = await session();
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 }).slabId;
+    const opening = addOpeningToStore(s.editor, resolveHostAnchor(s.store, slab, s.view), { Position: [4, 3], Width: 2, Depth: 1 });
+    // The builder cuts from 50 mm below the body; a 0.15 m depth stops 0.1 m into it.
+    s.view.setPositionalAttribute(opening.solidId, 3, 0.15);
+    expect(values(s.view, slab, 'Qto_SlabBaseQuantities')).toMatchObject({ GrossVolume: 12, NetArea: 46, NetVolume: 11.8 });
+  });
+
   it('reads both pieces of a split, for each way of splitting', async () => {
     const s = await session();
     const wall = splitElementInStore(s.store, s.editor, wallAt(s).wallId, { kind: 'wall', distance: 2 });

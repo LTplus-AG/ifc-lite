@@ -128,7 +128,8 @@ export function withoutMeasuredOverlayItems<T extends { ref: EntityRef }, R exte
     const view = state.mutationViews.get(normalizeMutationModelId(state, ref.modelId));
     if (!view?.getNewEntity(ref.expressId)) return true;
     try {
-      return view.getQuantitiesForEntity(ref.expressId).length === 0;
+      // A named set with nothing in it measures nothing.
+      return !view.getQuantitiesForEntity(ref.expressId).some((set) => set.quantities.length > 0);
     } catch (error) {
       // An unreadable base must not take the panel down; the line still says what is missing.
       console.warn(`[quantities] ${entityRefToString(ref)} could not be read for its source inspection`, error);

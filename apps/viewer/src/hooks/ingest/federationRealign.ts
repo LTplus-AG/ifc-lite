@@ -59,6 +59,7 @@ export interface RealignableModel {
   geometryResult?: AlignableGeometry | null;
   preAlignment?: PreAlignmentSnapshot;
   federationAlignmentStatus?: FederatedModel['federationAlignmentStatus'];
+  alignmentReference?: FederatedModel['alignmentReference'];
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
   landXmlAssumptionsApplied?: FederatedModel['landXmlAssumptionsApplied'];
@@ -224,6 +225,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     geometry: model.geometryResult ? capturePreAlignment(model.geometryResult) : undefined,
     preAlignment: model.preAlignment,
     federationAlignmentStatus: model.federationAlignmentStatus,
+    alignmentReference: model.alignmentReference,
     ifcSharedVerticalDatumAssumed: model.ifcSharedVerticalDatumAssumed,
   }]));
   const landXmlUpdates: LandXmlRenderedLineUpdate[][] = [];
@@ -248,6 +250,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       updateModel(modelId, {
         preAlignment: saved.preAlignment,
         federationAlignmentStatus: saved.federationAlignmentStatus,
+        alignmentReference: saved.alignmentReference,
         ifcSharedVerticalDatumAssumed: saved.ifcSharedVerticalDatumAssumed,
       });
     }
@@ -284,6 +287,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     if (!commit(anchorModelId, {
       preAlignment: undefined,
       federationAlignmentStatus: 'anchor',
+      alignmentReference: undefined,
       ifcSharedVerticalDatumAssumed: undefined,
     })) return stale();
     if (anchorModel.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(anchorModel.landXmlDocument));
@@ -307,7 +311,9 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       // with no geometry cannot be aligned against anything, and a stale
       // `same-crs` here reads in the models panel and the basepoint overlay as
       // "aligned to the current anchor" — a claim nothing in this pass made.
-        if (!commit(modelId, { federationAlignmentStatus: 'none', ifcSharedVerticalDatumAssumed: undefined })) return stale();
+        if (!commit(modelId, {
+          federationAlignmentStatus: 'none', alignmentReference: undefined, ifcSharedVerticalDatumAssumed: undefined,
+        })) return stale();
         counts.skipped += 1;
         continue;
       }
@@ -328,6 +334,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         if (!commit(modelId, {
           preAlignment: snapshot,
           federationAlignmentStatus: 'none',
+          alignmentReference: undefined,
           ifcSharedVerticalDatumAssumed: undefined,
         })) return stale();
       // Skipped by the ALIGNMENT, but the restore above still moved it out of
@@ -352,6 +359,8 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       if (!commit(modelId, {
         preAlignment: snapshot,
         federationAlignmentStatus: status,
+        // What the selected centreline maps into until the next re-align (#9229).
+        alignmentReference: status === 'same-crs' || status === 'reprojected' ? anchorGeoref : undefined,
         ifcSharedVerticalDatumAssumed: ifcSharedVerticalDatumApplied(georef.spatialReference, anchorGeoref.spatialReference, status, assumeIfc),
       })) return stale();
       if (restoredFromSnapshot || status === 'same-crs' || status === 'reprojected') {

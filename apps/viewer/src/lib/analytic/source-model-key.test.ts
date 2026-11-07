@@ -9,7 +9,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel, type ViewerState } from '@/store/index.js';
 import { modelFieldPatch } from '@/store/slices/modelSlice.visibility.js';
 import { selectedSweptDiskProducts, type SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks.js';
-import { selectedCentrelineWorldLines } from './selected-centreline-lines.js';
+import * as centrelineLines from './selected-centreline-lines.js';
 import { selectedCentrelineSnapCurves } from './selected-centreline-snaps.js';
 import { SOURCE_MODEL_FIELDS, selectedModelVisibility, sourceModelFrame } from './source-model-key.js';
 
@@ -52,55 +52,65 @@ function seed(...models: FederatedModel[]): void {
 
 describe('source model key (#9158)', () => {
   it('lists every model field the query, the centreline, its snap curves and the anchor read', async () => {
-    const reads = new Set<string>();
+    const reads = new Map<string, Set<string>>();
     const all = new Set<string>();
     const recorded = (model: FederatedModel) => new Proxy(model, { get(object, field, receiver) {
-      if (typeof field === 'string') reads.add(field);
+      if (typeof field === 'string') reads.get(object.id)?.add(field);
       return Reflect.get(object, field, receiver);
     } });
+    const reference = { spatialReference: { horizontal: {}, vertical: {} }, coordinateInfo: coordinateInfo() };
     for (const status of [undefined, 'same-crs', 'reprojected'] as const) {
-      for (const spatialReference of [undefined, { horizontal: {}, vertical: {} }]) {
-        const live = Object.assign(sourceModel('live', OFFSET), { federationAlignmentStatus: status, spatialReference });
-        // The other model, loaded later, is the anchor candidate the search compares by load order.
-        const other = Object.assign(sourceModel('other', 2 * OFFSET), { loadedAt: 2, spatialReference });
-        seed(recorded(live as FederatedModel), recorded(other as FederatedModel));
-        reads.clear();
-        const state = useViewerStore.getState();
-        selectedSweptDiskProducts(state);
-        selectedModelVisibility(state);
-        await selectedCentrelineWorldLines([item('live')], state);
-        await selectedCentrelineSnapCurves([item('live')], state, null, undefined, () => undefined);
-        assert.ok(reads.size > 0, 'the paths read the recorded models');
-        for (const field of reads) all.add(field);
+      for (const alignmentReference of [undefined, reference]) {
+        for (const spatialReference of [undefined, { horizontal: {}, vertical: {} }]) {
+          const live = Object.assign(sourceModel('live', OFFSET),
+            { federationAlignmentStatus: status, spatialReference, alignmentReference }) as FederatedModel;
+          // The other model, loaded later, is the anchor candidate the search compares by load order.
+          const other = Object.assign(sourceModel('other', 2 * OFFSET), { loadedAt: 2, spatialReference });
+          seed(recorded(live), recorded(other as FederatedModel));
+          reads.set('live', new Set()).set('other', new Set());
+          const state = useViewerStore.getState();
+          selectedSweptDiskProducts(state);
+          selectedModelVisibility(state);
+          await centrelineLines.selectedCentrelineWorldLines([item('live')], state);
+          await selectedCentrelineSnapCurves([item('live')], state, null, undefined, () => undefined);
+          assert.ok(reads.get('live')!.size > 0, 'the paths read the recorded models');
+          // The frame keys only the selection's models unless one maps through the anchor picked now (#9229).
+          assert.equal(typeof centrelineLines.readsLiveAnchor, 'function', 'the lines module says which models read the live anchor');
+          if (!centrelineLines.readsLiveAnchor(live)) {
+            assert.deepEqual([...reads.get('other')!], [], `${status} ${alignmentReference ? 'recorded' : 'unrecorded'}: a model the selection doesn't reach is never read`);
+          }
+          for (const fields of reads.values()) for (const field of fields) all.add(field);
+        }
       }
     }
     const listed = new Set<string>([...SOURCE_MODEL_FIELDS, 'visible']);
     assert.deepEqual([...all].filter((field) => !listed.has(field)), [],
       'a field the curves read but the key ignores would let its change skip the rebuild');
-    for (const field of ['geometryResult', 'preAlignment', 'federationAlignmentStatus', 'ifcDataStore', 'visible',
-      'spatialReference', 'loadedAt']) {
+    for (const field of ['geometryResult', 'preAlignment', 'federationAlignmentStatus', 'alignmentReference', 'ifcDataStore',
+      'visible', 'spatialReference', 'loadedAt']) {
       assert.ok(all.has(field), `the fixture exercises the path that reads ${field}; it read ${[...all].join(', ')}`);
     }
   });
 
   it('keeps its key across a model row\'s UI fields and changes it for each listed field', () => {
     const models = fixtureModels(sourceModel('live', OFFSET)).models;
-    const key = sourceModelFrame(models);
+    const frame = (next: ViewerState['models']) => sourceModelFrame({ ...useViewerStore.getState(), models: next }, ['live']);
+    const key = frame(models);
     for (const fields of [{ name: 'renamed' }, { collapsed: true }, { visible: false }]) {
       const next = modelFieldPatch({ models } as ViewerState, 'live', fields).models!;
       assert.notEqual(next, models, 'the store hands over a new Map');
-      assert.ok(shallow(sourceModelFrame(next), key), `${Object.keys(fields)[0]} leaves the frame`);
+      assert.ok(shallow(frame(next), key), `${Object.keys(fields)[0]} leaves the frame`);
     }
     for (const field of SOURCE_MODEL_FIELDS) {
       const model = models.get('live')!;
       const next = new Map([['live', { ...model, [field]: field === 'id' ? 'moved' : {} } as FederatedModel]]);
-      assert.ok(!shallow(sourceModelFrame(next), key), `${field} changes the frame`);
+      assert.ok(!shallow(frame(next), key), `${field} changes the frame`);
     }
     // Alignment and placement replace these on the kept objects.
     const kept = models.get('live')!;
     let last = key;
     const replaced = (label: string) => {
-      const next = sourceModelFrame(new Map(models));
+      const next = frame(new Map(models));
       assert.ok(!shallow(next, last), label);
       last = next;
     };
@@ -110,7 +120,7 @@ describe('source model key (#9158)', () => {
     replaced('a source frame replaced on the kept pre-alignment snapshot');
     Object.assign(kept.ifcDataStore!, { source: { byteLength: 2 } });
     replaced('a source replaced on the kept data store');
-    assert.ok(!shallow(sourceModelFrame(new Map()), key), 'an unloaded model');
+    assert.ok(!shallow(frame(new Map([['other', sourceModel('other', 2 * OFFSET)]])), key), 'an unloaded model');
   });
 
   it('reads the visibility of the models the selection reaches only', () => {

@@ -18,6 +18,8 @@ import { siConverterFor, densitySiConverterFor, quantitySetsFor } from './quanti
 export function useSelectionQuantitySummary() {
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntitiesSet = useViewerStore((s) => s.selectedEntitiesSet);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models, ifcDataStore, geometryResult, activeModelId } = useIfc();
 
   /** The selection, as model-aware refs. Multi-selection first, primary as fallback. */
@@ -165,7 +167,7 @@ export function useSelectionQuantitySummary() {
       }
 
       const picked = pickElementQuantities(
-        quantitySetsFor(store, ref.expressId, typeCache),
+        quantitySetsFor(store, ref.expressId, typeCache, mutationViews.get(ref.modelId === 'legacy' ? '__legacy__' : ref.modelId)),
         siConverterFor(units),
       );
       perElement.push(picked);
@@ -253,7 +255,7 @@ export function useSelectionQuantitySummary() {
       withoutStore,
       rescaled,
     };
-  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId]);
+  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId, mutationViews, mutationVersion]);
 
   return { summary, refs, models, activeModelId };
 }

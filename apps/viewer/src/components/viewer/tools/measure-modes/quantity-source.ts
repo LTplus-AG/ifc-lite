@@ -5,6 +5,8 @@
 // Native quantity source/unit adapters extracted without changing the engine (#7184).
 import { extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveQuantitySets } from '../../properties/effectiveSets';
 import { QUANTITY_TYPE_UNIT } from '@/lib/units/display';
 import { resolveFromUnit, convertValue } from '@/lib/units/convert';
 
@@ -65,6 +67,7 @@ export function quantitySetsFor(
   store: IfcDataStore,
   expressId: number,
   typeCache: Map<number, ReturnType<typeof extractQuantitiesOnDemand>>,
+  view?: MutablePropertyView | null,
 ): ReturnType<typeof extractQuantitiesOnDemand> {
   const typeQsets = () => {
     if (!store.relationships) return [];
@@ -81,7 +84,9 @@ export function quantitySetsFor(
     return cached;
   };
 
-  const own = extractQuantitiesOnDemand(store, expressId);
+  // Through the view, like the Properties panel: the two panels answer with this
+  // session's edits and an authored element's derived sets, not the bytes alone.
+  const own = effectiveQuantitySets(view, expressId, (baseId) => extractQuantitiesOnDemand(store, baseId));
   return own.some((qset) => qset.quantities.length > 0) ? own : typeQsets();
 }
 

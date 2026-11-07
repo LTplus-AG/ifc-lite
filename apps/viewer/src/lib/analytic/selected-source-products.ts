@@ -117,6 +117,28 @@ export function selectedSourceProducts(
   return { grouped, overlayRefs, diagnostics, priorityMissing: priorityKey !== null && !refs.has(priorityKey) };
 }
 
+/**
+ * Drop the overlay products with quantities of their own (derived base
+ * quantities, a room's) from a source inspection's result: nothing is missing
+ * for them. Kept apart from the inspection's effect, which reruns on selection,
+ * so a set gained or lost by an edit updates the line without a reload.
+ */
+export function withoutMeasuredOverlayItems<T extends { ref: EntityRef }, R extends { items: T[] }>(state: ViewerState, result: R): R {
+  const items = result.items.filter(({ ref }) => {
+    const view = state.mutationViews.get(normalizeMutationModelId(state, ref.modelId));
+    if (!view?.getNewEntity(ref.expressId)) return true;
+    try {
+      // A named set with nothing in it measures nothing.
+      return !view.getQuantitiesForEntity(ref.expressId).some((set) => set.quantities.length > 0);
+    } catch (error) {
+      // An unreadable base must not take the panel down; the line still says what is missing.
+      console.warn(`[quantities] ${entityRefToString(ref)} could not be read for its source inspection`, error);
+      return true;
+    }
+  });
+  return items.length === result.items.length ? result : { ...result, items };
+}
+
 /** One broken source must not suppress valid records from another model. */
 export async function loadSelectedSourceGroups<T>(
   groups: ReadonlyMap<string, readonly number[]>,

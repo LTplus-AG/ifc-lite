@@ -8,7 +8,7 @@ export const manualValidationDe = {
   'manualValidation.entry.title': 'Manuelle Validierung',
   'manualValidation.entry.description': 'Arbeiten Sie eine Checkliste per Sichtprüfung ab und erfassen Sie für jede Prüfung Bestanden, Nicht bestanden oder Warnung mit einem Kommentar.',
   'manualValidation.entry.new': 'Neue Checkliste',
-  'manualValidation.entry.open': '.checklist.json öffnen',
+  'manualValidation.entry.open': 'Checkliste öffnen',
   'manualValidation.entry.recent': 'Zuletzt verwendete Checklisten',
   'manualValidation.library.select': 'Checkliste auswählen',
   'manualValidation.library.none': 'Keine Checkliste ausgewählt',

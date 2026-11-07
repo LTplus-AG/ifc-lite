@@ -11,7 +11,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { activate, advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
+import { activate, advance, cleanup, click, press, render, waitFor, type as typeInto } from '@/test/render';
 import { posthog } from '@/lib/analytics';
 import { CommandPalette } from './CommandPalette';
 import { PersistentToolHosts, usePersistentToolHosts } from './PersistentToolHosts';
@@ -62,7 +62,15 @@ function Harness({ hosts = true }: { hosts?: boolean }) {
   </>;
   return hosts ? <PersistentToolHosts>{body}</PersistentToolHosts> : body;
 }
-async function launch(id: string) { click(option(id)); await advance(50); }
+async function waitForAuthor(id: string) {
+  if (id === 'author:bulk-properties') {
+    await waitFor(() => !!document.querySelector('button[aria-label="Target source"]'), 'bulk editor Target source');
+    await waitFor(() => [...document.querySelectorAll('button')].some(b => b.textContent?.trim() === 'Construction stage preset'), 'bulk editor Construction stage preset');
+  } else if (id === 'author:import-data') {
+    await waitFor(() => !!document.querySelector('input[type="file"]'), 'data connector file input');
+  }
+}
+async function launch(id: string) { click(option(id)); await advance(50); await waitForAuthor(id); }
 function closeDialog() {
   const close = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(b => b.textContent?.trim() === 'Close');
   if (close) click(close); else press(document.querySelector('[role="dialog"]')!, 'Escape');
@@ -85,7 +93,7 @@ test('bulk draft survives cancel, ribbon unmount and palette reopen (#8947)', as
   // Open through the actual ribbon, then remove that entire tab while its host stays alive.
   press(document.querySelector('[role="combobox"]')!, 'Escape'); await advance(0);
   click(button('Ribbon'));
-  click(document.querySelector('[data-command-id="author:bulk-properties"]')!); await advance(0);
+  click(document.querySelector('[data-command-id="author:bulk-properties"]')!); await waitForAuthor('author:bulk-properties');
   click(button('Construction stage preset')); await advance(0);
   const input = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(input);
   typeInto(input, '7');

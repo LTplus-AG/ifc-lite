@@ -18,6 +18,7 @@ import { cancelQueuedHover } from './measurePointMode.js';
 import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { noteMeasureCursor } from './measureCursor.js';
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 
 /** Presses that set a distance start, so their release can tell a first click from a second (#8771). */
 const startingPresses = new WeakSet<MouseState>();
@@ -134,7 +135,8 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
   const afterFinish = finishingPresses.has(mouseState);
   startingPresses.delete(mouseState);
   forgetDistancePress(mouseState);
-  if (ctx.activeMeasurementRef.current) return true;
+  // A start pending, or a pick through a capture's frame (#9137): the release decides.
+  if (ctx.activeMeasurementRef.current || refuseCaptureHeldPick(ctx.renderer)) return true;
 
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
@@ -172,7 +174,8 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
     ? { edge: null, meshExpressId: null, lockStrength: 0 }
     : currentLock;
 
-  const result = renderer.raycastSceneMagnetic(mx, my, {
+  // Not through a capture's frame (#9137): a start pending stays pending for the next click.
+  const result = refuseCaptureHeldPick(renderer) ? null : renderer.raycastSceneMagnetic(mx, my, {
     edge: finalLock.edge,
     meshExpressId: finalLock.meshExpressId,
     lockStrength: finalLock.lockStrength,
@@ -184,7 +187,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
 
   // The final position, snapped and (with Shift) on the axis
   let end: MeasurePoint | null = null;
-  if (result.intersection || result.snapTarget) {
+  if (result && (result.intersection || result.snapTarget)) {
     const snapPoint = result.snapTarget || result.intersection;
     let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
 

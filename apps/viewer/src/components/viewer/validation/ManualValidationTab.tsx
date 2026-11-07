@@ -86,7 +86,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
           type="button"
           size="sm"
           variant="toggle"
-          className="h-7 shrink-0 gap-1 text-xs"
+          className="h-7 shrink-0 gap-1 border border-input text-xs"
           aria-pressed={editing}
           onClick={() => setEditing(!editing)}
         >

@@ -302,7 +302,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             )}
             <div className="flex flex-col gap-2">
               <Label>{t('shareDialog.anyoneCanLabel')}</Label>
-              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('shareDialog.accessLevelAriaLabel')}>
+              <div className="grid grid-cols-3 gap-0.5 rounded-md border p-0.5" role="radiogroup" aria-label={t('shareDialog.accessLevelAriaLabel')}>
                 {ROLE_OPTIONS.map((opt) => (
                   <Button
                     key={opt.role}

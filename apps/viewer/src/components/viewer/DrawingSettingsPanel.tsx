@@ -147,7 +147,7 @@ export function DrawingSettingsPanel() {
           size="sm"
           aria-pressed={overridesEnabled}
           onClick={toggleOverridesEnabled}
-          className="h-7 text-xs"
+          className="h-7 border border-input text-xs"
         >
           {t(overridesEnabled ? 'drawingUnderlay.settings.overridesEnabled' : 'drawingUnderlay.settings.overridesDisabled')}
         </Button>

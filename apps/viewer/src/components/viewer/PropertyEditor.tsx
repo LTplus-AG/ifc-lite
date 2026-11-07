@@ -235,7 +235,7 @@ export function PropertyEditor({
       </div>
 
       {/* Type selector - always visible */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5 self-start rounded-md border p-0.5">
         {INLINE_VALUE_TYPES.map(({ type, labelKey }) => (
           <Button
             key={type}

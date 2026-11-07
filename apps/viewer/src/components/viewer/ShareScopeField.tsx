@@ -72,7 +72,7 @@ export function ShareScopeField({
       {showScope && (
         <>
           <Label>{t('shareScopeField.shareLabel')}</Label>
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('shareScopeField.scopeAriaLabel')}>
+          <div className="grid grid-cols-2 gap-0.5 rounded-md border p-0.5" role="radiogroup" aria-label={t('shareScopeField.scopeAriaLabel')}>
             <Button
               type="button"
               role="radio"

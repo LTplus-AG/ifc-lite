@@ -144,7 +144,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
                 <span className="text-2xs text-muted-foreground">
                   {t('scanToBim.fit', { rms: formatLocaleNumber(locale, p.fit.rmsMetres * 1000, { maximumFractionDigits: 1 }), points: formatLocaleNumber(locale, p.fit.inlierPoints) })}
                 </span>
-                <div className="flex gap-1">
+                <div className="flex gap-0.5 rounded-md border p-0.5">
                   <Button
                     size="sm" variant="toggle" aria-pressed={decision === 'accepted'}
                     aria-label={t('scanToBim.acceptOne', { id: p.id })}

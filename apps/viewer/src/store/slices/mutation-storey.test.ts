@@ -361,6 +361,15 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.equal(rows.filter((r) => r.storeyId === added.storeyId).length, 1, 'once');
   });
 
+  it('level display reads an edited elevation live, and an untouched one from the parse', async () => {
+    const m = await storey();
+    const { effectiveLevelElevations } = await import('@/lib/effective-level-elevations');
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.5 } }).ok);
+    const s = useViewerStore.getState();
+    const live = effectiveLevelElevations(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID)!, [STOREY, UPPER_STOREY]);
+    assert.deepEqual([...live], [[STOREY, 0], [UPPER_STOREY, 3.5]]);
+  });
+
   it('without a project tree, a unified storey row shows the live name and elevation, and a deleted storey is gone', async () => {
     const m = await storey();
     const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');

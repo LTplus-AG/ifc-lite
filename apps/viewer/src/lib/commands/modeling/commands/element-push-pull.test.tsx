@@ -108,7 +108,7 @@ describe('element.pushPull writes what the inspector writes (#6232 C4)', () => {
     });
   }
 
-  it('a wall pulled to a new height is fixed at it: a later storey re-level keeps it (#9037 review)', () => {
+  it('a wall pulled to a new height is fixed at it: a later storey re-level keeps it (#9037 review)', async () => {
     const wall = created(s().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 }));
     const target = modelEditTarget(s(), MODEL_ID)!;
     const upper = readStoreyInventory(target.dataStore, target.view).storeys.find((x) => x.expressId === UPPER_STOREY)!;
@@ -119,6 +119,10 @@ describe('element.pushPull writes what the inspector writes (#6232 C4)', () => {
     assert.equal(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall), null, 'no longer attached');
     assert.equal(new Set(undoStack().slice(before).map((m) => s().mutationBatchTags.get(m.id))).size, 1, 'one undo step');
     assert.equal(height(wall), 2.4);
+    // A later floor-to-floor re-level leaves the pushed height alone.
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } }).ok);
+    assert.equal(height(wall), 2.4, 'still the pushed height after the re-level');
   });
 
   it('a size the wall\'s openings cannot follow is refused, writing nothing', () => {

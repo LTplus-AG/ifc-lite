@@ -382,7 +382,7 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
               <Download className="h-4 w-4 mr-2" />
             )}
             {t('exportChangesButton.buttonLabel')}
-            <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
+            <Badge className="ml-2 text-xs bg-warn-solid text-solid-foreground border-transparent hover:bg-warn-solid">
               {totalCount}
             </Badge>
           </Button>

@@ -12,7 +12,7 @@ import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { selectedCentrelineWorldLines, sourceOccurrenceKey } from '@/lib/analytic/selected-centreline-lines';
 import { selectedCentrelineSnapCurves } from '@/lib/analytic/selected-centreline-snaps';
 import { setSourceSegmentScreenProbe } from '@/lib/viewport-debug-hooks';
-import { selectedSweptDiskProducts, useSelectedSweptDisks } from './useSelectedSweptDisks';
+import { selectedSweptDiskProducts, useSelectedSweptDisks, useSourceModelKeys } from './useSelectedSweptDisks';
 
 /**
  * The selection order moves the primary product first, so the same curves can
@@ -41,7 +41,8 @@ export function useCentrelineRendererOverlay(
   lineBuilder: typeof selectedCentrelineWorldLines = selectedCentrelineWorldLines,
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
-  const models = useViewerStore((state) => state.models);
+  // Not the `models` Map: a collapsed or renamed row, or an unrelated model toggled, moves no curve (#9158).
+  const { frame: modelFrame, shown: modelsShown } = useSourceModelKeys(enabled);
   // In a federation `ifcDataStore` only mirrors the active model; it is the curves' source only without one.
   const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
   const placement = useViewerStore((state) => state.modelPlacement);
@@ -78,11 +79,12 @@ export function useCentrelineRendererOverlay(
   // unchanged set never empties between frames and a resting Measure Point
   // reading stays Live (#9086). Dropping any drawn product clears both
   // before paint (#5778), as does anything that can move or re-evaluate the
-  // source.
+  // source. A model's visibility is a visibility change: hiding the model of a
+  // drawn product drops it from the query.
   useLayoutEffect(() => {
     sourceEpoch.current++;
     setSourceSegmentScreenProbe(null);
-    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, models, legacyStore, placement,
+    const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, modelFrame, legacyStore, placement,
       georefMutations, highlightedSegment];
     const last = lastFrame.current;
     const sameFrame = last !== null && sameValues(last, frame);
@@ -101,7 +103,7 @@ export function useCentrelineRendererOverlay(
     if (products && [...drawn].every((product) => products.has(product))) return;
     clearLine(rendererRef.current);
     installCurves(rendererRef.current, []);
-  }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, legacyStore, placement, georefMutations,
+  }, [enabled, isInitialized, recoveryEpoch, rendererRef, modelFrame, modelsShown, legacyStore, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
     highlightedSegment]);
 
@@ -180,5 +182,5 @@ export function useCentrelineRendererOverlay(
       setSourceSegmentScreenProbe(null);
     };
   }, [enabled, selected, highlightedSegment, isInitialized, recoveryEpoch,
-    rendererRef, models, placement, georefMutations, t, lineBuilder]);
+    rendererRef, modelFrame, placement, georefMutations, t, lineBuilder]);
 }

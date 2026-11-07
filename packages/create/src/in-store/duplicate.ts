@@ -89,6 +89,13 @@ export interface SourceAttributes {
   placementExpressId: number;
   /** Express id of the IfcLocalPlacement that the source's placement is chained to (parent). May be null when the source sits at the spatial root. */
   parentPlacementId: number | null;
+  /**
+   * The source's ObjectPlacement is an IfcGridPlacement (#9199), so it has no
+   * local point, parent or axes to read here: `sourceLocation` and the
+   * references are placeholders. `duplicateInStore` refuses such a source until
+   * the caller has placed it and cleared this.
+   */
+  onGridPlacement?: boolean;
   /** The 3-component cartesian point referenced by the source's IfcAxis2Placement3D (Location, attribute index 0). */
   sourceLocation: Vec3;
   /** Express id of the source's Representation (positional index 6 on IfcProduct). May be null. */
@@ -162,6 +169,9 @@ export function duplicateInStore(
   source: SourceAttributes,
   options: DuplicateInStoreOptions = {},
 ): DuplicateBuildResult {
+  if (source.onGridPlacement) {
+    throw new Error('duplicateInStore: the source sits straight on an IfcGridPlacement; place the duplicate (as the copy path does) before writing it');
+  }
   if (source.attributes.length < 7) {
     throw new Error(
       `duplicateInStore: source has ${source.attributes.length} attributes, need ≥7 for an IfcProduct`,

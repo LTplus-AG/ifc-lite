@@ -113,7 +113,7 @@ export function CostPanel({ onClose }: CostPanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
-        <Coins className="h-4 w-4 text-amber-600" />
+        <Coins className="h-4 w-4 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium">{t('costPanel.title')}</span>
         <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={handleExport}
           disabled={!entries.some((entry) => (entry.graph?.CostItems.length ?? 0) > 0)}>

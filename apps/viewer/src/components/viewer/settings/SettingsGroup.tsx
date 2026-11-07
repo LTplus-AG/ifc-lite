@@ -6,6 +6,7 @@
  *  row in it. Shared so every section reads the same. */
 
 import type { ReactNode } from 'react';
+import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 
 export function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -60,7 +61,7 @@ export function SettingsChoice<T extends string>({ id, label, value, options, on
         <label
           key={option.value}
           className={`cursor-pointer rounded px-2.5 py-1 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
-            value === option.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            value === option.value ? ACTIVE_STATE_CLASS : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <input

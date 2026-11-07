@@ -28,7 +28,7 @@
 
 import type { BatchedMesh } from './types.js';
 import { splitVisibleIdsByPromotion, OPAQUE_ALPHA_CUTOFF, type RGBAOverrideMap } from './overlay-routing.js';
-import { alphaSlotSuffix, type XRayAlpha } from './xray-alpha.js';
+import { alphaSlotSuffix, type AlphaGroup, type XRayAlpha } from './xray-alpha.js';
 
 /** One sub-batch the frame wants drawn: a subset of `colorKey`'s batch. */
 export interface PartialBatchRequest {
@@ -123,10 +123,7 @@ export class PartialBatchRequests {
    *          behaviour: a fade that is too wide, never missing geometry.
    */
   pushAlphaSplit(batch: BatchedMesh, ids: Set<number> | null): boolean {
-    if (!this.xray.active) return false;
-    const groups = ids
-      ? this.xray.groupsForIds(ids, batch.color[3])
-      : this.xray.groupsForBatch(batch, batch.color[3]);
+    const groups = this.alphaGroups(batch, ids);
     if (groups == null || !this.canPartition(batch)) return false;
     // Groups arrive in a stable order, so a group keeps the same slot across
     // frames while its content is unchanged.
@@ -135,5 +132,39 @@ export class PartialBatchRequests {
       this.pushVisible(batch, g.ids, g.alpha < OPAQUE_ALPHA_CUTOFF, alphaSlotSuffix(i));
     }
     return true;
+  }
+
+  /**
+   * Request a FULLY visible batch as sub-batches when one uniform cannot draw
+   * it: one per X-Ray alpha (#4129), or `:promoted` and `:remaining` for a
+   * transparent batch with mixed override membership (#677).
+   *
+   * @returns `false` when the batch draws whole from its own buffers.
+   */
+  pushWholeSplit(batch: BatchedMesh, isTransparent: boolean): boolean {
+    if (this.pushAlphaSplit(batch, null)) return true;
+    if (!this.splitsByPromotion(batch, isTransparent)) return false;
+    this.pushVisible(batch, new Set(batch.expressIds), true);
+    return true;
+  }
+
+  /**
+   * Whether the X-Ray state or the overrides alone want this fully visible
+   * batch split, whether or not its pieces can be partitioned right now. A
+   * cold batch cannot be until its pieces are back from disk (#9136).
+   */
+  wantsWholeSplit(batch: BatchedMesh, isTransparent: boolean): boolean {
+    return this.alphaGroups(batch, null) != null || this.splitsByPromotion(batch, isTransparent);
+  }
+
+  private alphaGroups(batch: BatchedMesh, ids: Set<number> | null): AlphaGroup[] | null {
+    if (!this.xray.active) return null;
+    return ids ? this.xray.groupsForIds(ids, batch.color[3]) : this.xray.groupsForBatch(batch, batch.color[3]);
+  }
+
+  private splitsByPromotion(batch: BatchedMesh, isTransparent: boolean): boolean {
+    if (!isTransparent) return false;
+    const split = splitVisibleIdsByPromotion(batch.expressIds, this.colorOverrides);
+    return split != null && split.remaining.size > 0;
   }
 }

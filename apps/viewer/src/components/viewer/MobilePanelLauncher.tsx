@@ -73,7 +73,7 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
             type="button"
             tabIndex={-1}
             aria-label={t('shellChrome.layout.closePanelListAriaLabel')}
-            className="absolute inset-0 bg-black/40 z-30 animate-in fade-in duration-200"
+            className="absolute inset-0 bg-scrim/40 z-30 animate-in fade-in duration-200"
             onClick={() => setListOpen(false)}
           />
           <MobileBottomSheet title={t('shellChrome.layout.panelsLabel')} bottomInset={bottomInset} onClose={() => setListOpen(false)}>

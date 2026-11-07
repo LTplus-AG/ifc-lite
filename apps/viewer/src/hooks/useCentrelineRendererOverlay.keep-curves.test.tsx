@@ -12,7 +12,7 @@ import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
 import { toast } from '@/components/ui/toast.js';
 import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
-import { entityRefToString, useViewerStore, type ViewerState } from '@/store/index.js';
+import { entityRefToString, useViewerStore, type FederatedModel, type ViewerState } from '@/store/index.js';
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
 import { sourceOccurrenceKey, type selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines.js';
 import { ZERO_ROTATION } from '@/lib/model-placement/rotation.js';
@@ -113,9 +113,9 @@ function select(ids: readonly number[], primary = ids[ids.length - 1], modelId =
  * continuation, so no swept-disk load or line build can finish before the
  * next assertion. (An async act would drain the whole rebuild first.)
  */
-function commit(patch: Partial<ViewerState>): void {
+function commit(change: Partial<ViewerState> | (() => void)): void {
   layoutMark = layouts.length;
-  act(() => { flushSync(() => useViewerStore.setState(patch)); });
+  act(() => { flushSync(() => (typeof change === 'function' ? change() : useViewerStore.setState(change))); });
 }
 
 /** Lets every pending build and selection load settle. */
@@ -135,6 +135,24 @@ function sourceModel() {
   Object.assign(model.ifcDataStore!, { source: { byteLength: 1 } });
   model.geometryResult = geometry();
   return model;
+}
+
+/** A second federated model, `other`, whose express ids are the same as `live`'s. */
+function otherModel() {
+  const model = sourceModel();
+  return Object.assign(model, { id: 'other', name: 'other', idOffset: 2 * OFFSET });
+}
+
+/** `live` and `other` loaded together; `ids` select products of `live`, `otherIds` of `other`. */
+function federated(ids: readonly number[], otherIds: readonly number[] = []): Partial<ViewerState> {
+  const refs = [...ids.map((expressId) => ({ modelId: MODEL, expressId })),
+    ...otherIds.map((expressId) => ({ modelId: 'other', expressId }))];
+  const global = (modelId: string, expressId: number) => (modelId === MODEL ? OFFSET : 2 * OFFSET) + expressId;
+  const primary = refs[refs.length - 1] ?? null;
+  return { ...fixtureModels(sourceModel(), otherModel()), toGlobalId: global,
+    selectedEntitiesSet: new Set(refs.map(entityRefToString)), selectedEntity: primary,
+    selectedEntityIds: new Set(refs.map(({ modelId, expressId }) => global(modelId, expressId))),
+    selectedEntityId: primary ? global(primary.modelId, primary.expressId) : null };
 }
 
 /** A single-file legacy store: no federated models, products keyed `legacy:<expressId>`. */
@@ -537,4 +555,162 @@ it('unmounting the overlay clears its curves', async () => {
   cleanup();
   assert.equal(current(), '');
   assert.equal(lineDrawn(), false);
+});
+
+/*
+ * A new `models` Map is not by itself a change to the curves (#9158): only the
+ * model fields that place or source them, and the visibility of a model the
+ * selection reaches, are.
+ */
+
+it('collapsing or renaming the drawn model keeps the curves and does not rebuild (#9158)', async () => {
+  const from = await mountInstalled([1], ONE);
+  const before = builds;
+  assert.equal(useViewerStore.getState().activeModelId, MODEL, 'the drawn model is the active one');
+  commit(() => useViewerStore.getState().setModelCollapsed(MODEL, true));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'a collapsed row moves no curve');
+  commit(() => useViewerStore.getState().setModelName(MODEL, 'renamed'));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'a renamed model moves no curve');
+  commit(() => useViewerStore.getState().setModelCollapsed(MODEL, false));
+  await settle();
+  assert.equal(useViewerStore.getState().models.get(MODEL)?.name, 'renamed', 'the store applied the rename');
+  assert.equal(builds, before, 'nothing rebuilt');
+  assert.deepEqual(since(from), [], 'the renderer was handed no curve set, so Live holds');
+  lineKept();
+});
+
+it('toggling an unrelated model with the same express ids keeps the curves and does not rebuild (#9158)', async () => {
+  const from = await mountInstalled([1], ONE, federated([1]));
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'other:1 is not the drawn live:1');
+  commit(() => useViewerStore.getState().setModelVisibility('other', true));
+  commit(() => useViewerStore.getState().setModelCollapsed('other', true));
+  await settle();
+  assert.equal(builds, before, 'nothing rebuilt');
+  assert.deepEqual(since(from), []);
+  lineKept();
+});
+
+it('hiding the drawn product\'s model clears before paint, not a same-id model; showing it reinstalls (#9158)', async () => {
+  await mountInstalled([], ONE, federated([], [1]));
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'live:1 is not the drawn other:1');
+  await settle();
+  assert.equal(builds, before, 'live holds no selected product');
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a product of a hidden model cannot be snapped to');
+  await settle();
+  assert.equal(current(), '');
+  assert.equal(lineDrawn(), false);
+  commit(() => useViewerStore.getState().setModelVisibility('other', true));
+  await settle();
+  assert.equal(current(), ONE, 'the shown model\'s product is snappable again');
+  assert.ok(lineDrawn());
+});
+
+it('hiding the model of a selected non-swept product rebuilds but keeps the curves (#9158)', async () => {
+  const from = await mountInstalled([1], ONE, federated([1], [2]));
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true });
+  await settle();
+  commit(() => useViewerStore.getState().setModelVisibility('other', true));
+  await settle();
+  assert.deepEqual(sinceSome(from), since(from).map(() => ONE), 'every frame reads the same curve set');
+  lineKept();
+});
+
+it('showing the hidden model of a selected swept product adds its curves (#9158)', async () => {
+  await mountInstalled([1], ONE, { ...federated([1], [3]),
+    ...fixtureModels(sourceModel(), Object.assign(otherModel(), { visible: false })) });
+  commit(() => useViewerStore.getState().setModelVisibility('other', true));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'the drawn product stays until both install');
+  await settle();
+  assert.equal(current(), `${ONE},${THREE}`, 'other:3 is snappable once its model shows');
+});
+
+it('removing the drawn model clears before paint (#9158)', async () => {
+  await mountInstalled([1], ONE, federated([1]));
+  const models = useViewerStore.getState().models;
+  commit({ models: new Map([['other', models.get('other')!]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a removed model cannot be snapped to');
+  await settle();
+  assert.equal(current(), '');
+});
+
+it('a model field that places the curves clears them before paint (#9158)', async () => {
+  await mountInstalled([1], ONE);
+  const model = useViewerStore.getState().models.get(MODEL)!;
+  commit({ models: new Map([[MODEL, { ...model, geometryResult: geometry() }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new geometry result re-places the source');
+  await settle();
+  assert.equal(current(), ONE);
+  // Alignment replaces the frame on the kept geometry object.
+  const kept = useViewerStore.getState().models.get(MODEL)!;
+  kept.geometryResult!.coordinateInfo = { ...kept.geometryResult!.coordinateInfo };
+  commit({ models: new Map([[MODEL, kept]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new coordinate frame re-places the source');
+  await settle();
+  commit({ models: new Map([[MODEL, { ...useViewerStore.getState().models.get(MODEL)!, federationAlignmentStatus: 'anchor' }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'an alignment change re-places the source');
+});
+
+it('a change to another model that can re-anchor the federation clears before paint (#9158)', async () => {
+  // The drawn model aligns to the federation anchor, which any loaded model can be.
+  await mountInstalled([1], ONE, federated([1]));
+  const models = useViewerStore.getState().models;
+  const other = models.get('other')!;
+  commit({ models: new Map([...models, ['other', { ...other, spatialReference: {} as FederatedModel['spatialReference'] }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new anchor candidate can re-place the curves');
+  await settle();
+  assert.equal(current(), ONE);
+  commit({ models: new Map([[MODEL, useViewerStore.getState().models.get(MODEL)!]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'removing another model can change the anchor');
+});
+
+it('hiding the drawn model mid-rebuild clears before paint and rejects the late result (#9158)', async () => {
+  await mountInstalled([1], ONE, federated([1], [2]));
+  let release: () => void = () => undefined;
+  gate = new Promise((resolve) => { release = resolve; });
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  await waitFor(() => builds > before, 'the rebuild for the hidden non-swept product is pending');
+  assert.equal(current(), ONE);
+  commit(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a product of a hidden model cannot be snapped to');
+  gate = null;
+  release();
+  await settle();
+  assert.equal(current(), '', 'the pending build never installs the hidden product');
+  assert.equal(lineDrawn(), false);
+});
+
+it('a product selected through the renderer ids alone keeps its model\'s visibility in the key (#9158)', async () => {
+  // An empty basket: the query resolves the renderer's global ids to `other:1`.
+  await mountInstalled([], ONE, { ...federated([], [1]), selectedEntitiesSet: new Set(), selectedEntity: null,
+    selectedEntityIds: new Set([2 * OFFSET + 1]), selectedEntityId: null });
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+  assert.deepEqual(firstLayout(), { curves: ONE, line: true }, 'live holds no selected product');
+  await settle();
+  assert.equal(builds, before);
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'the resolved product\'s model is hidden');
+});
+
+it('with the overlay off, a renderer-id selection resolves nothing for the model keys (#9158)', async () => {
+  const resolve = useViewerStore.getState().resolveGlobalIdFromModels;
+  let resolved = 0;
+  mount([], { ...federated([], [1]), centrelineOverlayEnabled: false, selectedEntitiesSet: new Set(),
+    selectedEntity: null, selectedEntityIds: new Set([2 * OFFSET + 1]), selectedEntityId: null,
+    resolveGlobalIdFromModels: (globalId: number) => { resolved++; return resolve(globalId); } });
+  commit({ selectedEntityIds: new Set([2 * OFFSET + 1, 2 * OFFSET + 3]) });
+  await settle();
+  assert.equal(resolved, 0, 'a select-all costs nothing while the overlay is off');
+  assert.equal(builds, 0);
+  commit({ centrelineOverlayEnabled: true });
+  await settle();
+  assert.ok(resolved > 0, 'turning it on resolves the selection');
+  assert.equal(current(), `${ONE},${THREE}`);
 });

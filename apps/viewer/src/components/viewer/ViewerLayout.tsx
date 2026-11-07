@@ -47,7 +47,7 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
-import { CommandPalette } from './CommandPalette';
+import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
@@ -396,7 +396,7 @@ export function ViewerLayout() {
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
               <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
-                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
+                className="absolute inset-0 z-30 border-0 bg-scrim/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);

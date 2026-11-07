@@ -36,7 +36,7 @@ import {
 import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
-import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
+import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker, mapMarkerColor } from './location-map-lifecycle';
 import { LocationMapSearchBar } from './location-map-search';
 import { LocationMapLinks } from './location-map-links';
 import { useViewerStore } from '@/store';
@@ -286,7 +286,7 @@ export function LocationMap({
       pickedMarkerRef.current.setLngLat([pos.lon, pos.lat]);
     } else {
       const el = document.createElement('div');
-      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#7c3aed" stroke="white" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="${mapMarkerColor('--color-active')}" stroke="white" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
       el.style.cursor = 'grab';
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([pos.lon, pos.lat])

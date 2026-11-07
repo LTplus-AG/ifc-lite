@@ -15,6 +15,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -393,7 +394,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="relative flex items-center gap-1 text-xs text-primary hover:underline transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <button className={`relative ml-auto flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS} after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}>
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.epsgButton')}
             </button>
@@ -469,7 +470,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="flex items-center gap-1 text-xs text-primary hover:underline transition-colors shrink-0">
+            <button className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}>
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.addCrs')}
             </button>
@@ -554,7 +555,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
           <button
             onClick={initializeMapConversionDefaults}
-            className="flex items-center gap-1 text-xs text-primary hover:underline transition-colors shrink-0"
+            className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}
           >
             <MapPin className="h-2.5 w-2.5" />
             {t('properties.georef.addCoordinates')}

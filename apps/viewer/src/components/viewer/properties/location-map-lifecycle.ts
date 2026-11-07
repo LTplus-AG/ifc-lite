@@ -14,6 +14,9 @@
  */
 
 // See `loadMaplibre` below for why the worker URL is threaded in by hand.
+import { mapMarkerColor } from './location-map-colors';
+
+export { mapMarkerColor };
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 // Lazy-load maplibre-gl to avoid bloating the initial bundle
@@ -114,6 +117,6 @@ export function updateOriginMarker(
     return null;
   }
   if (marker) return marker.setLngLat([position.lon, position.lat]);
-  return new library.Marker({ color: '#14b8a6' })
+  return new library.Marker({ color: mapMarkerColor('--color-foreground') })
     .setLngLat([position.lon, position.lat]).addTo(map);
 }

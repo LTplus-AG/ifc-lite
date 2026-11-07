@@ -136,7 +136,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
                   <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: swatch(p.ifcClass) }} />
                   <span className="font-medium">{p.ifcClass}</span>
                   <span className="text-muted-foreground">{p.id}</span>
-                  {live.has(p.id) && <span className="rounded bg-ok-solid px-1 text-2xs text-solid-foreground">{t('scanToBim.createdBadge')}</span>}
+                  {live.has(p.id) && <span data-scan-created="" className="rounded bg-ok-solid px-1 text-2xs text-solid-foreground">{t('scanToBim.createdBadge')}</span>}
                   <span className="ml-auto tabular-nums">{t('scanToBim.confidence', { value: percent(p.confidence) })}</span>
                 </div>
                 <span className="text-2xs text-muted-foreground">{size(p)}</span>

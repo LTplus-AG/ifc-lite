@@ -14,6 +14,7 @@
 import type { Feature } from 'geojson';
 // Type-only: erased at compile time, so this module never pulls maplibre in.
 import type { AddLayerObject, SourceSpecification } from 'maplibre-gl';
+import { mapMarkerColor } from './location-map-colors';
 
 /** The MapLibre surface these two need. Structural, so a test can stand in. */
 export interface FootprintMap {
@@ -56,7 +57,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'fill',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'fill-color': '#14b8a6',
+      'fill-color': mapMarkerColor('--color-foreground'),
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.15, 18, 0.25],
     },
   });
@@ -66,7 +67,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'line',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'line-color': '#0d9488',
+      'line-color': mapMarkerColor('--color-foreground'),
       'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 2.5],
       'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7, 18, 1],
     },

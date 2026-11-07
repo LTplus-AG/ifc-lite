@@ -311,6 +311,17 @@ END-ISO`);
   });
 });
 
+describe('a dangling axis direction makes a placement unreadable (#9013 review)', () => {
+  it('a re-level of a storey whose Axis does not resolve is refused, not copied forward', async () => {
+    // Without the beam that hangs from Level 2 for Level 3, nothing else would read the broken frame.
+    const text = THIRD_PARTY.replace('#45=IFCAXIS2PLACEMENT3D(#43,$,$);', '#45=IFCAXIS2PLACEMENT3D(#43,#999,$);')
+      .replace(/#8[0-3]=[^\n]*\n/g, '').replace(/#91=[^\n]*\n/, '');
+    const s = session(await parse(text));
+    const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });
+    expect(p.refusals.map((r) => r.code)).toContain('unreadablePlacement');
+  });
+});
+
 describe('adding next to an unreadable placement is refused (#9013 review)', () => {
   it('does not fall back to a default placement', async () => {
     const s = session(await parse(THIRD_PARTY.replace('#47=IFCLOCALPLACEMENT(#31,#49);', '#47=IFCLOCALPLACEMENT(#31,$);')));

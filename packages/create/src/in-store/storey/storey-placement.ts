@@ -26,6 +26,13 @@ export interface PlacementLeaf {
   readonly refDirection: unknown;
 }
 
+/** `$`, or a reference to a live IfcDirection: anything else leaves the frame unreadable. */
+function readableDirection(reader: GeometryEntityReader, value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  const id = refId(value);
+  return id !== null && reader.entity(id)?.type.toUpperCase() === 'IFCDIRECTION';
+}
+
 /** An IfcLocalPlacement whose RelativePlacement is a readable IfcAxis2Placement3D, or null. */
 export function readPlacementLeaf(reader: GeometryEntityReader, placementId: number): PlacementLeaf | null {
   const placement = reader.entity(placementId);
@@ -39,6 +46,8 @@ export function readPlacementLeaf(reader: GeometryEntityReader, placementId: num
   if (axis?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT3D') return null;
   const location = pointOf(reader, axis.attributes[0]);
   if (!location) return null;
+  // A write copies Axis and RefDirection; a dangling one would be carried into the moved placement.
+  if (!readableDirection(reader, axis.attributes[1]) || !readableDirection(reader, axis.attributes[2])) return null;
   return { placementId, parentId, axisPlacementId, location, axis: axis.attributes[1] ?? null, refDirection: axis.attributes[2] ?? null };
 }
 

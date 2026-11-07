@@ -1032,7 +1032,7 @@ Select 1–200 distinct roots; the complete dependency closure is bounded to 5,0
 
 `@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). `bim.store` runs the same functions. Lengths are metres, in the frame the parsed spatial hierarchy reports storey elevations in, and are written in the file's own length unit. Storeys are a per-building sequence: neighbours, floor-to-floor shifts, elevation clashes and suggested names are taken within the storey's own building. A storey that no building aggregates has no neighbours; its elevation can be edited, but a floor-to-floor edit is refused.
 
-- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. It joins the building of `referenceStoreyId` when given; otherwise the one building the storeys share, or `buildingId`, which a model with several buildings requires. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. It is refused when the name is empty, the elevation is already taken, the `GlobalId` is already carried by a live entity, or `buildingId` disagrees with `referenceStoreyId`'s building. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
+- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. It joins the spatial element that aggregates `referenceStoreyId` (usually the building; a file that aggregates its storeys under the site or the project keeps that). Without a reference, it joins the one spatial element the storeys share, or `buildingId`, which a model with several buildings requires. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. It is refused when the name is empty, the elevation is already taken, the `GlobalId` is already carried by a live entity, or `buildingId` disagrees with `referenceStoreyId`'s building. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
 - `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically. With `expected`, the reviewed plan, it refuses (code `stale`) a model that changed since: a point moved, an axis turned, a product attached or a storey re-levelled. The plan's `fingerprint` hashes the moved storeys and every written placement chain. Edits:
   - `{ kind: 'elevation', storeyId, Elevation }` moves one storey.
   - `{ kind: 'floorHeight', storeyId, Height }` shifts every storey above by the same delta.
@@ -1061,15 +1061,17 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
 import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
 
+// Two writes, two Undo steps: the storey is added even if the raise is then refused,
+// so the caller reports the refusal (and can undo the add) rather than retrying the add.
 function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId: number) {
   const view = editor.getMutationView();
   const { storeyId } = recordCompoundMutation(view, (draft) =>
     addStoreyInStore(dataStore, new StoreEditor(dataStore, draft), { Name: 'Level 2', Elevation: 3 }));
   const edit = { kind: 'floorHeight', storeyId: groundId, Height: 3.5 } as const;
   const plan = planStoreyLevelEdit(readStoreyInventory(dataStore, view), edit);
-  if (plan.refusals.length) throw new Error(plan.refusals[0].message);
+  if (plan.refusals.length) return { storeyId, raised: false, refusals: plan.refusals };
   recordCompoundMutation(view, (draft) => applyStoreyLevelEdit(dataStore, new StoreEditor(dataStore, draft), edit, plan));
-  return storeyId;
+  return { storeyId, raised: true, refusals: [] };
 }
 ```
 

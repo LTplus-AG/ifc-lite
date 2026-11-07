@@ -4,6 +4,7 @@
 
 import { readWithProgress, type DownloadOptions, type PluginContext } from '@ifc-lite/plugin-api';
 import { canonicalFieldNodeUrl } from './node-url.js';
+import { fnv1a } from './mapping.js';
 
 export interface DaluxCredentials {
   readonly baseUrl: string;
@@ -89,6 +90,19 @@ export class BrowserDaluxApiClient {
   }
 
   /**
+   * Opaque component for a cache key, distinguishing requests made under a
+   * different node or API key even though {@link baseUrl} alone cannot:
+   * `node` is sent as a query parameter rather than baked into `baseUrl`
+   * (see {@link DaluxCredentials.node}), so switching node or rotating the
+   * key within a cache's TTL would otherwise return the previous key's data.
+   * The key itself is hashed rather than embedded, so a credential never
+   * sits in a `Map` key that outlives the request that created it.
+   */
+  get cacheIdentity(): string {
+    return `${this.credentials.node ?? ''}:${fnv1a(this.credentials.apiKey)}`;
+  }
+
+  /**
    * Add the caller's node selector, but ONLY to URLs that go through our relay.
    *
    * Dalux also hands back opaque links (a file's `downloadLink`, `nextPage`
@@ -120,6 +134,12 @@ export class BrowserDaluxApiClient {
 
   debug(message: string, details?: Record<string, unknown>): void {
     this.ctx.log.debug(`Dalux ${message}`, details ?? {});
+  }
+
+  /** For a skip that costs the caller real data (review on #8647) — as
+   * opposed to {@link debug}, for one that doesn't. */
+  warn(message: string, details?: Record<string, unknown>): void {
+    this.ctx.log.warn(`Dalux ${message}`, details ?? {});
   }
 
   async get(

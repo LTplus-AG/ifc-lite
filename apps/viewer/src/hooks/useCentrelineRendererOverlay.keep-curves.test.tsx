@@ -144,17 +144,25 @@ function legacyStore(): Partial<ViewerState> {
   return { ifcDataStore, geometryResult: geometry() } as Partial<ViewerState>;
 }
 
+/** The overlay's renderer ref; the Viewport nulls or replaces it around a re-initialisation. */
+let rendererRef: RefObject<Renderer | null>;
+
+/** A renderer that records the curve sets and line calls it receives into the given lists. */
+function fakeRenderer(curveSets: string[], lines: boolean[]): Renderer {
+  return {
+    setLineOverlay: (_channel: string, value: unknown) => {
+      if (fail.upload && value !== null) throw new Error('device lost');
+      lines.push(value !== null);
+    },
+    setSourceSnapCurves: (curves: readonly SourceSnapCurve[]) => { curveSets.push(curveKey(curves)); },
+  } as unknown as Renderer;
+}
+
 function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
   useViewerStore.setState({ ...fixtureModels(sourceModel()), centrelineOverlayEnabled: true, ...select(ids),
     toGlobalId: (_modelId, expressId) => OFFSET + expressId, ...patch });
-  const renderer = {
-    setLineOverlay: (_channel: string, value: unknown) => {
-      if (fail.upload && value !== null) throw new Error('device lost');
-      lineCalls.push(value !== null);
-    },
-    setSourceSnapCurves: (curves: readonly SourceSnapCurve[]) => { held.push(curveKey(curves)); },
-  } as unknown as Renderer;
-  const ref: RefObject<Renderer | null> = { current: renderer };
+  rendererRef = { current: fakeRenderer(held, lineCalls) };
+  const ref = rendererRef;
   const Overlay = () => {
     const [epoch, setEpoch] = useState(0);
     const [initialized, setInitialized] = useState(true);
@@ -506,13 +514,22 @@ it('isolating or lens-hiding away the selected product clears its curves before 
 
 it('leaving initialisation clears the line and curves on the renderer that drew them, then a re-init reinstalls them', async () => {
   await mountInstalled([1], ONE);
-  layoutMark = layouts.length;
+  const from = held.length;
+  // The Viewport nulls the ref and destroys the renderer before it reports the
+  // renderer uninitialised; the clear must still reach the renderer that drew.
+  const nextCurves: string[] = [];
+  const nextLines: boolean[] = [];
+  act(() => { flushSync(() => { rendererRef.current = null; initialize(false); }); });
+  assert.deepEqual(since(from), [''], 'the renderer that drew the curves no longer holds them');
+  assert.ok(lineCalls.slice(lineMark).includes(false), 'nor their line');
   act(() => { flushSync(() => initialize(false)); });
-  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a renderer leaving initialisation keeps nothing stale');
+  assert.deepEqual(since(from), [''], 'staying uninitialised calls into no renderer');
+  rendererRef.current = fakeRenderer(nextCurves, nextLines);
   await act(async () => { initialize(true); await Promise.resolve(); });
   await settle();
-  assert.equal(current(), ONE);
-  assert.ok(lineDrawn());
+  assert.equal(nextCurves[nextCurves.length - 1], ONE, 'the new renderer snaps to the selection');
+  assert.equal(nextLines[nextLines.length - 1], true, 'and draws it');
+  assert.deepEqual(since(from), [''], 'the old renderer receives nothing more');
 });
 
 it('unmounting the overlay clears its curves', async () => {

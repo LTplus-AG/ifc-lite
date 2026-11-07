@@ -405,6 +405,12 @@ describe('the export carries what the view shows', () => {
     const ids = [a, b].map((id) => s.view.getQuantitiesForEntity(id)[0].globalId);
     expect(new Set(ids).size).toBe(2);
     for (const id of ids) expect(first).toContain(`IFCELEMENTQUANTITY('${id}'`);
+    // A copy of an authored wall names its set from its own GlobalId, and keeps it too.
+    s.view.setEntityAlias(b, a);
+    const copied = s.view.getQuantitiesForEntity(b)[0].globalId;
+    expect(copied).toBe(ids[1]);
+    expect(body(exportText(s))).toBe(body(exportText(s)));
+    expect(exportText(s)).toContain(`IFCELEMENTQUANTITY('${copied}'`);
   });
 
   it('writes the edited shape, not the shape it was authored with', async () => {

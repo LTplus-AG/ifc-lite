@@ -13,12 +13,13 @@ const DERIVED_SET_REL_NAMESPACE = '0f7c6a1e-3b9d-4c55-9a8e-2d1b7e6f4a30';
  * The GlobalIds to write for a set an unaliased overlay-created element derives:
  * the set's own name-based id, and one derived from it for the relationship, so
  * exporting the same model twice writes the same file. Null for every other set,
- * which keeps a fresh id: a loaded element's sets, a copy's (it would repeat its
- * source's id) and a set a person created.
+ * which keeps a fresh id: a loaded element's sets, a copy of one (it would repeat
+ * its source's id) and a set a person created.
  */
 export function derivedSetGlobalIds(view: MutablePropertyView | null, entityId: number, set: QuantitySet): { set: string; rel: string } | null {
   if (!view || !set.globalId || !isValidIfcGuid(set.globalId)) return null;
-  if (!view.getNewEntity(entityId) || view.resolveBaseEntityId(entityId) !== entityId) return null;
+  // A copy of an authored element derives its own set, named from its own GlobalId; a copy of a loaded one does not.
+  if (!view.getNewEntity(entityId) || !view.getNewEntity(view.resolveBaseEntityId(entityId))) return null;
   return { set: set.globalId, rel: uuidToIfcGuid(uuidV5(DERIVED_SET_REL_NAMESPACE, set.globalId)) };
 }
 

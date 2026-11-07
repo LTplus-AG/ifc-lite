@@ -152,7 +152,7 @@ export const extensionsPanelsDe = {
   "extensionsPanels.privacyPanel.extractFromChat": "Aus Chat extrahieren",
   "extensionsPanels.privacyPanel.storeHeading": "Was wir lokal speichern",
   "extensionsPanels.privacyPanel.storeBody1": "ifc-lite führt ein inhaltsfreies Protokoll Ihrer übergeordneten Aktionen (Modellladen, Linsenanwendung, Exporte). Daraus ermitteln wir wiederkehrende Muster und schlagen Ein-Klick-Werkzeuge vor. Modellinhalte, Chatinhalte, Dateinamen und API-Schlüssel werden nie protokolliert.",
-  "extensionsPanels.privacyPanel.storeBody2": "Vorschläge, Prüfprotokoll, Prompt-Ergänzung und Profilbibliothek werden in der IndexedDB Ihres Browsers gespeichert — nichts davon verlässt das Gerät, außer wenn Sie es ausdrücklich exportieren.",
+  "extensionsPanels.privacyPanel.storeBody2": "Vorschläge, Prüfprotokoll, Prompt-Ergänzung und Profilbibliothek werden in der IndexedDB Ihres Browsers gespeichert. Das Aktionsprotokoll bleibt lokal, sofern Sie es nicht exportieren. Die Prompt-Ergänzung wird mit KI-Chat-Anfragen gesendet.",
   "extensionsPanels.privacyPanel.actionLogHeading": "Aktionsprotokoll",
   "extensionsPanels.privacyPanel.actionLogStats": "{events} Ereignisse · {kib} KiB",
   "extensionsPanels.privacyPanel.exportJsonButton": "JSON exportieren",

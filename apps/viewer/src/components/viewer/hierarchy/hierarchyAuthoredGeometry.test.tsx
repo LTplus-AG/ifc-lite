@@ -31,7 +31,7 @@ import { createHierarchyModelsSelector } from './hierarchy-models-selector';
 import { buildGeometricIdSet } from './hierarchyGeometry';
 import { useHierarchyTree } from './useHierarchyTree';
 import { buildTreeData } from './treeDataBuilder';
-import { createStoreySubtreeResolver } from './nodeVisibility';
+import { createSpatialSubtreeResolver } from './nodeVisibility';
 import type { TreeNode } from './types';
 
 const INITIAL_HIERARCHY_MODE = useViewerStore.getState().hierarchyMode;
@@ -192,7 +192,7 @@ describe('hierarchy rows of elements authored with geometry (#9026)', () => {
     view.createEntity('IfcRelAggregates', ['0kTvXnbbzCWw8lcMd1dR4p', null, null, null, `#${wall.expressId}`, [`#${part}`]]);
     const storey = spatialTree(liveModels()).find((node) => node.type === 'IfcBuildingStorey');
     assert.ok(storey);
-    const subtree = new Set(createStoreySubtreeResolver(liveModels(), null, overlay)(storey));
+    const subtree = new Set(createSpatialSubtreeResolver(liveModels(), null, overlay)(storey));
     for (const id of [...partIds, part]) assert.ok(subtree.has(globalOf(id)), `part #${id}`);
   });
 

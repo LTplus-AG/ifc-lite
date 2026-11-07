@@ -95,6 +95,16 @@ describe('wall attachments are followed exactly as recorded (#9036 review)', () 
     return { s, level1, wall };
   }
 
+  it('a wall attached to a deleted storey is reported when its own storey moves, even with nothing above', async () => {
+    const { s, level1, wall } = await oneWall();
+    const level2 = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 }).storeyId;
+    const guid = api('readStoreyInventory')(s.store, s.view).storeys.find((x) => x.expressId === level2)!.GlobalId;
+    api('writeTopAttachment')(s.view, wall, guid);
+    api('applyStoreyDelete')(s.store, s.editor, level2, { kind: 'empty' });
+    const plan = api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), { kind: 'elevation', storeyId: level1, Elevation: 0.5 });
+    expect(plan.notices.map((n) => [n.code, n.elementIds])).toEqual([['wallAttachmentUnresolved', [wall]]]);
+  });
+
   it('a wall bound to a new storey keeps its quantities true', async () => {
     const { s, wall } = await oneWall();
     s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);

@@ -110,7 +110,9 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
         const attachment = readTopAttachment(inventory, id);
         if (!attachment) {
           // A record naming no single storey is reported, not guessed at.
-          const problem = spacingAboveChanges(storeyId) ? topAttachmentProblem(inventory, id) : null;
+          // Reported whenever the edit touches the wall: its storey moves, or the spacing above it changes.
+          const touched = Math.abs(delta(storeyId)) > 1e-9 || spacingAboveChanges(storeyId);
+          const problem = touched ? topAttachmentProblem(inventory, id) : null;
           if (problem) unresolved.push({ id, problem });
           continue;
         }

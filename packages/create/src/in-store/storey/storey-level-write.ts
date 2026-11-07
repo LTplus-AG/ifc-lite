@@ -58,8 +58,8 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
  * value keeps the unit it was written in. A wall without the set gets none.
  * A view with no quantity base of its own reads the source quantities here,
  * so a set that exists only in the file is kept true too. Without a gross
- * value, the wall's own `geometry` (metres, read before the resize) gives
- * the gross prism, else the set's Length, Height and Width.
+ * value, the set's Length, Height and Width give the gross prism, else the
+ * wall's own `geometry` (metres, read before the resize).
  */
 export function scaleWallQuantities(
   store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number, geometry?: WallGeometry,
@@ -90,12 +90,12 @@ export function scaleWallQuantities(
   };
   // Without the gross value, the set's own Length × Height (× Width) is the gross prism it stands for.
   const length = si(value('Length')), width = si(value('Width')), h = si(height);
-  const grossFromSet = geometry ? {
-    GrossSideArea: geometry.length * geometry.height,
-    GrossVolume: geometry.length * geometry.thickness * geometry.height,
-  } : {
-    GrossSideArea: length !== undefined && h !== undefined ? length * h : undefined,
-    GrossVolume: length !== undefined && width !== undefined && h !== undefined ? length * width * h : undefined,
+  // The set's own dimensions first (they are what its other values were measured with), then the wall's geometry.
+  const grossFromSet = {
+    GrossSideArea: length !== undefined && h !== undefined ? length * h
+      : geometry ? geometry.length * geometry.height : undefined,
+    GrossVolume: length !== undefined && width !== undefined && h !== undefined ? length * width * h
+      : geometry ? geometry.length * geometry.thickness * geometry.height : undefined,
   };
   for (const [gross, net] of [['GrossSideArea', 'NetSideArea'], ['GrossVolume', 'NetVolume']] as const) {
     const g = value(gross), n = value(net);

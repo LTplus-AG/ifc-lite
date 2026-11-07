@@ -12,7 +12,8 @@
  *   - an axis is an `edge` target carrying an `axis` guide (a click lands on
  *     the line; typed locks slide along it), so it ranks with other edges;
  *   - a crossing of two axes of different families is a `gridIntersection`,
- *     which ranks with intersections and midpoints and shows the grid glyph.
+ *     which ranks with intersections and midpoints, wins outright while the
+ *     pointer is on it (`aimedOr`), and shows the grid glyph.
  *
  * Targets are read lazily on the first collect after the version (the store's
  * `mutationVersion`) or the storey changes, never per move. A grid is a few

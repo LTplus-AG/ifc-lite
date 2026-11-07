@@ -139,6 +139,23 @@ fn incircle_matches_geometry_predicates_bit_for_bit_issue_9016() {
         check(&mut paths, on(0.3), on(2.1), on(4.0), on(rng.unit() * 6.0));
     }
 
+    // Near-cocircular around the origin, `d` off the circle by r * 10^-k. The
+    // coordinates straddle zero, so the differences are inexact, and for k in
+    // 13..20 stage B's estimate lands near its own error bound. This is the
+    // band that pins `ICC_ERRBOUND_B`: halve it and hundreds of these return
+    // stage B's estimate where the crate refines in stage C (checked by
+    // mutation against the revert oracle).
+    for k in 12..20 {
+        for _ in 0..1_000 {
+            let (cx, cy, r) = (rng.unit() * 0.3, rng.unit() * 0.3, 0.5 + 0.5 * rng.unit().abs());
+            let on = |angle: f64| [cx + r * angle.cos(), cy + r * angle.sin()];
+            let d = on(rng.unit() * 6.0);
+            let off = r * 10f64.powi(-k);
+            let d = [d[0] + rng.unit() * off, d[1] + rng.unit() * off];
+            check(&mut paths, on(0.3), on(2.1), on(4.0), d);
+        }
+    }
+
     // Near-cocircular: one ulp off a lattice circle, and huge/tiny magnitudes.
     for &scale in &[1e-300, 1e-12, 1.0, 1e12, 1e150] {
         for i in 0..ring.len() {

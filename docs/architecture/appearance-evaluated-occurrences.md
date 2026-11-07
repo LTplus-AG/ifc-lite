@@ -197,4 +197,4 @@ the product; a portable
 IFCZIP export carries the image; reopening the export tessellates the product
 into its two face sets under one selectable product. Real-browser and
 independent-reader evidence, including a masked opening-bearing slab, is in
-[`evidence/evaluated-occurrences/face-mask-ui/`](evidence/evaluated-occurrences/face-mask-ui/README.md).
+[`evidence/evaluated-occurrences/face-mask-ui/`](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-occurrences/face-mask-ui/README.md).

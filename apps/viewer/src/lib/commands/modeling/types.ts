@@ -135,6 +135,8 @@ export interface ModelingCommand<G = unknown> {
     Scene?: ComponentType<CommandHudProps<G>>;
     /** Drawn inside the plan's SVG, above the footprint of the `ghost` meshes the plan draws for every command. */
     Plan?: ComponentType<CommandPlanProps<G>>;
+    /** `Plan` draws the whole preview, so no footprint goes under it: a footprint wraps a mesh in its hull, which would fill a ghost of separate parts. */
+    planReplacesFootprint?: boolean;
     hint?: (g: G) => TranslationKey;
   };
   readonly fields?: readonly CommandField<G>[];
@@ -148,6 +150,12 @@ export interface ModelingCommand<G = unknown> {
   pickExclusions?(g: G): readonly { modelId: string; expressId: number }[];
   /** What the snap solver constrains against: the anchor, the chain so far, typed locks. */
   snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
+  /**
+   * This gesture points at a region of the workplane, not a position on it, so
+   * the pointer stays on the plane, unsnapped: nothing in front of the plane
+   * and no target nearby moves it, and a click reads what the hover read.
+   */
+  aimsAtRegion?(g: G): boolean;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /** Handle this gesture on the actual press/release instead of a browser click. */

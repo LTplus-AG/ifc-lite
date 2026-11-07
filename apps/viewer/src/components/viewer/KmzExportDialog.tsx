@@ -274,7 +274,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
                 : t('geometryExport.kmz.placementAbsoluteHint')}
             </p>
             {altitudeMode === 'clampToGround' && suggestTrueElevation && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
+              <p className="text-xs text-warn">
                 {t('geometryExport.kmz.suggestTrueElevationHint')}
               </p>
             )}

@@ -51,7 +51,7 @@ async function fixture() {
   const canvas = globalThis.OffscreenCanvas;
   Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, writable: true, value: class { getContext() { return { drawImage() {}, getImageData() { return { data: new Uint8ClampedArray([255,255,255,255]) }; } }; } } });
   const session = await prepareScanSession('source', 0, 'target', new AbortController().signal);
-  const recorded = JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { request: ScanRegistrationRequest; report: ScanRegistrationReport } };
+  const recorded = JSON.parse(readFileSync(new URL('../../../../../../tests/fixtures/appearance/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { request: ScanRegistrationRequest; report: ScanRegistrationReport } };
   const result = { ...recorded.result, request: { ...recorded.result.request, sourceFrame: session.sourceFrame, targetFrame: session.targetFrame } };
   setGlobalRendererRef({ current: { hasActiveClipping: () => false } as Renderer });
   return { session, result, assetId: asset.id, restoreCanvas: () => Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, writable: true, value: canvas }) };

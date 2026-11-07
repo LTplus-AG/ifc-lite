@@ -23,7 +23,7 @@ import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
@@ -141,8 +141,10 @@ export function StatusBar() {
     let total = 0;
     for (const { modelId, store, meshedIds, geometryReady } of countedModels) {
       const physicalIds = physicalIdsByModel.get(modelId) ?? new Set<number>();
+      const view = models.size > 0 ? mutationViews.get(modelId) ?? null
+        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
       total += countShapedObjects(physicalIds, {
-        relationships: store.relationships as AggregationRelationships | undefined,
+        relationships: ownedAggregationRelationships(store, view),
         meshedIds,
         geometryReady,
       });
@@ -209,7 +211,7 @@ export function StatusBar() {
       let hasShape = predicates.get(modelId);
       if (!hasShape) {
         hasShape = createShapePredicate({
-          relationships: owner.store.relationships as AggregationRelationships | undefined,
+          relationships: ownedAggregationRelationships(owner.store, view),
           meshedIds: owner.meshedIds,
           geometryReady: owner.geometryReady,
         });

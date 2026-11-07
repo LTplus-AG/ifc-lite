@@ -16,7 +16,6 @@ on:
       - 'tests/e2e/reporter-6729.browser.ts'
       - 'tests/e2e/reporter-6729.config.ts'
       - 'tests/e2e/reporter-6729.e2e.spec.ts'
-      - 'tests/evidence/reporter-6729/README.md'
 
 permissions:
   contents: read
@@ -101,6 +100,7 @@ jobs:
                   '../../tests/e2e/reporter-6729.browser.ts',
                   '../../apps/viewer/src/vite-env.d.ts',
                   '../../apps/viewer/src/webhid-types.d.ts',
+                  '../../apps/viewer/src/wkt-parser.d.ts',
               ],
               'include': [], 'exclude': [],
           }

@@ -9306,6 +9306,7 @@
     "unsafeNamePatternReason: function"
   ],
   "@ifc-lite/renderer": [
+    "ADAPTER_REQUEST_TIMEOUT_MS: const",
     "AdapterInfoSnapshot: interface",
     "AppearanceChange: interface",
     "AppearanceOwner: interface",
@@ -9515,6 +9516,7 @@
     "positionedGaussianChunks: function",
     "projectedAabbRadiusPx: function",
     "quantizeInterleaved: function",
+    "requestAdapterWithTimeout: function",
     "resolveContributionThresholdPx: function",
     "resolveEnvironment: function",
     "sameCompanionParts: function",

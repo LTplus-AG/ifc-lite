@@ -41,7 +41,7 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
   const target = useInspectorTarget();
-  const { mode, selection, defaultsKind } = target;
+  const { mode, selection, defaultsKind, kindlessCommand } = target;
 
   const title = mode === 'selection' && selection
     ? selection.storeyName
@@ -49,7 +49,9 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
       : t('modelInspector.header.selection', { ifcClass: selection.ifcClass, id: selection.expressId })
     : mode === 'defaults' && defaultsKind
       ? t('modelInspector.header.defaults', { kind: t(KIND_LABEL[defaultsKind]) })
-      : t('modelInspector.panel.title');
+      : kindlessCommand
+        ? t(kindlessCommand)
+        : t('modelInspector.panel.title');
 
   return (
     <div data-model-inspector data-inspector-mode={mode ?? undefined} className="flex h-full min-h-0 flex-col" aria-label={t('modelInspector.panel.title')}>
@@ -74,6 +76,8 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
                 {t('modelInspector.empty.enter')}
               </Button>
             </>
+          ) : kindlessCommand ? (
+            <p data-model-inspector-command className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.command')}</p>
           ) : (
             <p data-model-inspector-idle className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.idle')}</p>
           )}

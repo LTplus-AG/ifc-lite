@@ -16,7 +16,7 @@
 //     --arm branch:/abs/checkout:/abs/engine [--arm base:/abs/checkout:/abs/engine] \
 //     --fixture /abs/model.ifc [--fixture ...] [--gpu swiftshader|hardware] [--headed]
 //
-// Report-only. A run is labelled exclusive only under an `ifc-fleet --kind benchmark` job
+// Report-only. A run is labelled exclusive only under an exclusive benchmark job
 // (IFC_WORKER_KIND) or with --exclusive-receipt ID; every other number says non-exclusive.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';

@@ -139,9 +139,7 @@ jobs:
           test_step_outcome: ${{ steps.mounted_ui_tests.outcome }}
       - name: Isolate stale public receipt behavior with the original implementation
         run: |
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
-            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json --only apps/viewer/src/components/error-report/PublicModelReceipt.tsx --mutation tests/evidence/model-reports-7495/public-receipt-race.oracle.patch --test apps/viewer/src/components/error-report/PublicModelReceipt.race.test.tsx
-          elif git diff --name-only --diff-filter=M origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
+          if git diff --name-only --diff-filter=M origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
             node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json --only apps/viewer/src/components/error-report/PublicModelReceipt.tsx --test apps/viewer/src/components/error-report/PublicModelReceipt.race.test.tsx --test apps/viewer/src/components/error-report/PublicModelReceipt.concurrent.test.tsx
           else
             echo 'Public receipt is on main: ordinary whole-change inversion resumes; historical receipt inverse not applied.'

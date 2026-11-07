@@ -60,7 +60,7 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="inline-flex self-start rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+      <div className="inline-flex self-start rounded border border-border bg-white p-0.5 text-2xs">
         {KINDS.map((k) => (
           <button
             key={k}
@@ -247,7 +247,7 @@ function AggregateFields({
 function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; onChange: (v: 'perModel' | 'federation') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
       {(['federation', 'perModel'] as const).map((s) => (
         <button
           key={s}
@@ -267,7 +267,7 @@ function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; on
 function ValueTypeToggle({ value, onChange }: { value: 'number' | 'date'; onChange: (v: 'number' | 'date') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
       {(['number', 'date'] as const).map((v) => (
         <button
           key={v}

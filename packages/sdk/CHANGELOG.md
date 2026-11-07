@@ -1,5 +1,17 @@
 # @ifc-lite/sdk
 
+## 9.7.0
+
+### Minor Changes
+
+- [#9035](https://github.com/LTplus-AG/ifc-lite/pull/9035) [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c) Thanks [@louistrue](https://github.com/louistrue)! - Storey authoring in a loaded model ([#9013](https://github.com/LTplus-AG/ifc-lite/issues/9013)). `@ifc-lite/create` can now add, rename, re-level (by elevation or floor-to-floor height) and delete `IfcBuildingStorey` in a parsed model, with geometry following the storey. Contents move through real placement writes. Contents placed outside the storey's placement chain get their own lift, and other storeys' products are held in place. Every invalid outcome is refused before anything is written, including a duplicate `GlobalId` (relationships included) and a reviewed plan the model has moved on from (`editStorey` / `deleteStorey` take it as `expected`; refused with code `stale`). A storey beyond the 50,000-product planning limit is refused with code `tooLarge`, and deleted products no longer count as a storey's contents. `bim.store` exposes the same operations (`listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete`, `deleteStorey`). `@ifc-lite/export` exports `effectiveReferencers`, the live reverse-reference lookup `editOwnershipRefusal` already used; it now also rescans edited deferred property atoms.
+
+### Patch Changes
+
+- Updated dependencies [[`b792acf`](https://github.com/LTplus-AG/ifc-lite/commit/b792acf540770dad934bc7c96a205428d959f445), [`dfe517f`](https://github.com/LTplus-AG/ifc-lite/commit/dfe517f05880005f4865f784c5b9b38feebf0705), [`fc03027`](https://github.com/LTplus-AG/ifc-lite/commit/fc0302759de14482ad4cfa1a4c6d68666d296b49), [`6b14db9`](https://github.com/LTplus-AG/ifc-lite/commit/6b14db99d3404cc12088f629bda6c4e6e1b5df6a), [`a5504d1`](https://github.com/LTplus-AG/ifc-lite/commit/a5504d1647ae1799b302a2555e7051cb988689ea), [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c), [`94b6c80`](https://github.com/LTplus-AG/ifc-lite/commit/94b6c808d4e623af8ff1c16451f65d1ff0f0108b)]:
+  - @ifc-lite/create@5.2.0
+  - @ifc-lite/export@4.14.0
+
 ## 9.6.1
 
 ### Patch Changes

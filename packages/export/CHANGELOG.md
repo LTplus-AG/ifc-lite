@@ -1,5 +1,18 @@
 # @ifc-lite/export
 
+## 4.14.0
+
+### Minor Changes
+
+- [#9035](https://github.com/LTplus-AG/ifc-lite/pull/9035) [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c) Thanks [@louistrue](https://github.com/louistrue)! - Storey authoring in a loaded model ([#9013](https://github.com/LTplus-AG/ifc-lite/issues/9013)). `@ifc-lite/create` can now add, rename, re-level (by elevation or floor-to-floor height) and delete `IfcBuildingStorey` in a parsed model, with geometry following the storey. Contents move through real placement writes. Contents placed outside the storey's placement chain get their own lift, and other storeys' products are held in place. Every invalid outcome is refused before anything is written, including a duplicate `GlobalId` (relationships included) and a reviewed plan the model has moved on from (`editStorey` / `deleteStorey` take it as `expected`; refused with code `stale`). A storey beyond the 50,000-product planning limit is refused with code `tooLarge`, and deleted products no longer count as a storey's contents. `bim.store` exposes the same operations (`listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete`, `deleteStorey`). `@ifc-lite/export` exports `effectiveReferencers`, the live reverse-reference lookup `editOwnershipRefusal` already used; it now also rescans edited deferred property atoms.
+
+### Patch Changes
+
+- [#9132](https://github.com/LTplus-AG/ifc-lite/pull/9132) [`fc03027`](https://github.com/LTplus-AG/ifc-lite/commit/fc0302759de14482ad4cfa1a4c6d68666d296b49) Thanks [@louistrue](https://github.com/louistrue)! - Exporting across IFC4X3 now writes `IfcGridPlacement` in the target schema's layout. An IFC2X3 or IFC4 model exported as IFC4X3 kept the two-attribute list, so grid-placed elements failed `ifcopenshell.validate` and had their location in the wrong slot. The upgrade names the owning grid's placement as `PlacementRelTo`, so elements stay where they are, and a downgrade drops it.
+- Updated dependencies [[`aca42e7`](https://github.com/LTplus-AG/ifc-lite/commit/aca42e7780691e2b6325e77ada6736233a739b1e), [`0d85a69`](https://github.com/LTplus-AG/ifc-lite/commit/0d85a693a5245da8f05a7e257fa44de94158f2c5), [`019d9b2`](https://github.com/LTplus-AG/ifc-lite/commit/019d9b2e398d0172c44f07a391918ae26708b1cf)]:
+  - @ifc-lite/geometry@8.2.0
+  - @ifc-lite/ifcx@4.6.1
+
 ## 4.13.3
 
 ### Patch Changes

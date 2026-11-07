@@ -300,7 +300,7 @@ export function SearchModalFilter() {
       enterVimCycle(`filter: ${filterRuleCount} rule${filterRuleCount === 1 ? '' : 's'}`, cycleResults, cycleIndex);
     }
     // Close the modal so the framing is actually visible. The dialog overlay
-    // is `fixed inset-0 bg-black/80` (ui/dialog.tsx:23), so without this the
+    // is `fixed inset-0 bg-scrim/80` (ui/dialog.tsx), so without this the
     // camera does fly to the element behind a full-screen scrim and the click
     // reads as doing nothing. The Search tab (SearchModal.text.tsx) and the
     // inline bar (SearchInline.tsx) both already close on commit; this is
@@ -461,7 +461,7 @@ export function SearchModalFilter() {
       window.setTimeout(() => cameraCallbacks.frameEntities?.(isolationIds), 50);
     }
     // Close the modal so the framing is actually visible — same reasoning
-    // as handleRowClick above (dialog overlay is `fixed inset-0 bg-black/80`,
+    // as handleRowClick above (dialog overlay is `fixed inset-0 bg-scrim/80`,
     // ui/dialog.tsx:23; PR #2396 is the regression this guards against).
     setSearchModalOpen(false);
   }, [

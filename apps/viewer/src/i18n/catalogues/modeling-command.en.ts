@@ -11,6 +11,10 @@ import type { TranslationValue } from '../types';
  */
 export const modelingCommandEn = {
   'modelingCommand.closeAria': 'Leave the command',
+  'modelingCommand.aim.tag': 'On workplane',
+  'modelingCommand.aim.holdAlt': 'Hold {key} to ignore snaps and surfaces: the point lands on the workplane',
+  'modelingCommand.aim.altHeld': '{key} held: the point lands on the workplane, ignoring snaps and surfaces in front',
+  'modelingCommand.aim.snapOff': 'Snapping is off: the point lands on the workplane, ignoring surfaces in front',
   'modelingCommand.unit.m': 'm',
   'modelingCommand.unit.deg': '°',
   'modelingCommand.unit.count': '',

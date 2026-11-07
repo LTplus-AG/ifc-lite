@@ -24,6 +24,8 @@ import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { syncMeasureScreenCoords } from './measureHandlers.js';
+import type { Renderer } from '@ifc-lite/renderer';
+import { captureViewportFrame, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 
 const s = () => useViewerStore.getState();
 const initial = useViewerStore.getState();
@@ -1251,5 +1253,268 @@ describe('the Snap-on re-pick with the refs a render behind, as Viewport has the
     act(() => syncMeasureScreenCoords(ctx));
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '4,0', 'the next frame moved the re-picked end');
+  });
+});
+
+describe('Shift pressed or released at rest re-picks the Distance rubber band (#9161)', () => {
+  const xy = (p: { x: number; y: number } | null | undefined) => (p ? `${p.x},${p.y}` : 'none');
+  const axis = () => s().measurementConstraintEdge?.activeAxis ?? 'none';
+  const shift = (type: 'keydown' | 'keyup', held: boolean) =>
+    act(() => { window.dispatchEvent(new KeyboardEvent(type, { key: 'Shift', shiftKey: held })); });
+
+  /** Snap off, so the free end (2.5,2) and the Shift axis end (2,2, on world Y) differ. */
+  function freeEnd(canvas: HTMLCanvasElement, held = false): void {
+    act(() => { snapOn.current = false; });
+    click(canvas, 200, 300); // the start, world 2,0
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: held });
+    flushFrames();
+  }
+
+  it('Shift pressed: the end moves onto the axis and highlights it, as a Shift move there would', () => {
+    const { canvas } = mount();
+    freeEnd(canvas);
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'setup: the end follows the cursor freely');
+    shift('keydown', true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'BUG: the end stayed off the axis a Shift click lands on');
+    assert.equal(axis(), 'axis2', 'BUG: the axis the end follows is not highlighted');
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'a Shift move at the same spot disagrees with the re-pick');
+  });
+
+  it('Shift released: the end leaves the axis and the highlight goes, as a plain move there would', () => {
+    const { canvas } = mount();
+    freeEnd(canvas, true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'setup: the end follows the Shift axis');
+    assert.equal(axis(), 'axis2', 'setup: the axis is highlighted');
+    shift('keyup', false);
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'BUG: the end stayed on the axis after Shift was released');
+    assert.equal(axis(), 'none', 'BUG: the axis stayed highlighted after Shift was released');
+  });
+
+  it('with Snap on, Shift pressed and released at rest highlights the axis and clears it', () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100);
+    flushFrames();
+    assert.equal(axis(), 'none', 'setup: no axis is highlighted');
+    shift('keydown', true);
+    assert.equal(axis(), 'axis1', 'BUG: Shift pressed at rest did not highlight the axis the snapped end follows');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,0', 'the snapped end left the axis it lies on');
+    shift('keyup', false);
+    assert.equal(axis(), 'none', 'BUG: Shift released at rest left the axis highlighted');
+  });
+
+  it('a blur with Shift held releases the axis too', () => {
+    const { canvas } = mount();
+    freeEnd(canvas, true);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'a blur left the end on the axis');
+    assert.equal(axis(), 'none', 'a blur left the axis highlighted');
+  });
+
+  it('a held Shift key repeating its keydown picks once', () => {
+    const { canvas } = mount();
+    freeEnd(canvas);
+    locksSeen.length = 0;
+    shift('keydown', true);
+    shift('keydown', true);
+    shift('keydown', true);
+    assert.equal(locksSeen.length, 1, 'a repeated keydown re-picked again');
+  });
+
+  it('a rubber-band frame queued with the old Shift state does not land afterwards', () => {
+    const { canvas } = mount();
+    freeEnd(canvas);
+    fire(canvas, 'pointermove', 250, 100); // queues a frame without Shift
+    assert.equal(frames.size, 1, 'setup: a rubber-band frame is queued');
+    shift('keydown', true);
+    assert.equal(frames.size, 0, 'the queued frame was kept');
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'the queued frame moved the end back off the axis');
+  });
+
+  it('a frame queued before a view change Shift cannot re-pick under stays queued, as a move\'s frame', () => {
+    const { canvas, camera } = mount();
+    freeEnd(canvas);
+    fire(canvas, 'pointermove', 250, 100); // queues a frame
+    camera.setPosition(2, 1.6, 10);
+    shift('keydown', true);
+    assert.equal(frames.size, 1, 'Shift dropped the frame with no re-pick to replace it');
+  });
+
+  it('with the lock ref a render behind Snap off, the Shift re-pick slides along no old edge', () => {
+    const edgeLockStateRef = { current: s().edgeLockState };
+    const snapEnabledRef = { current: s().snapEnabled };
+    const render = () => { act(() => { snapEnabledRef.current = s().snapEnabled; edgeLockStateRef.current = s().edgeLockState; }); };
+    const { canvas } = mount({ snapEnabledRef, edgeLockStateRef });
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    render();
+    assert.equal(edgeLockStateRef.current.edge !== null, true, 'setup: the rubber band locked the edge');
+    act(() => s().toggleSnap()); // Snap off clears the lock in the store; the refs still hold it
+    locksSeen.length = 0;
+    shift('keyup', false);
+    assert.equal(locksSeen.length, 1, 'setup: Shift released re-picked');
+    assert.equal(locksSeen[0] === null, true, 'BUG: the Shift re-pick slid along the lock Snap off had dropped');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'the end did not leave the axis');
+  });
+
+  it('the view moved and no frame ran since: Shift does not re-pick under the new view', () => {
+    const { canvas, camera } = mount();
+    freeEnd(canvas);
+    camera.setPosition(2, 1.6, 10);
+    locksSeen.length = 0;
+    shift('keydown', true);
+    assert.equal(locksSeen.length, 0, 'Shift picked at the old pixel under a moved view');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'Shift moved the end under a moved view');
+  });
+
+  it('a navigation drag past the click slop forgot the cursor: Shift picks nothing', () => {
+    const { canvas, camera } = mount();
+    freeEnd(canvas);
+    Object.assign(camera, { pan: () => {} });
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 250, 100)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 270, 100)); });
+    locksSeen.length = 0;
+    shift('keydown', true);
+    assert.equal(locksSeen.length, 0, 'Shift re-picked after a pan');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 270, 100)); });
+  });
+
+  it('another tool owning the frame ref: Shift leaves its queued frame alone and picks nothing', () => {
+    const toolRef = { current: 'measure' as string };
+    const { canvas, ctx } = mount({ activeToolRef: toolRef as UseMouseControlsParams['activeToolRef'] });
+    freeEnd(canvas);
+    toolRef.current = 'command'; // the ref alone, so the cursor record outlives the switch
+    let commandFrameRan = false;
+    ctx.measureRaycastPendingRef.current = true;
+    ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => { commandFrameRan = true; });
+    locksSeen.length = 0;
+    shift('keydown', true);
+    assert.equal(locksSeen.length, 0, 'Shift re-picked the rubber band in another tool');
+    flushFrames();
+    assert.equal(commandFrameRan, true, "Shift dropped the other tool's queued frame");
+  });
+
+  it('a capture holding the frame: Shift does not pick through its camera and clip', async () => {
+    const { canvas, ctx } = mount();
+    freeEnd(canvas);
+    const renderer = Object.assign(ctx.renderer, { renderWithResult: () => true, getGPUDevice: () => null }) as unknown as Renderer;
+    const unregister = registerViewportCapture(renderer, canvas, () => ({}));
+    try {
+      void captureViewportFrame(renderer, { read: () => 'pixels' });
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      assert.equal(viewportCaptureOwnsFrame(renderer), true, 'setup: the capture holds the frame');
+      locksSeen.length = 0;
+      shift('keydown', true);
+      assert.equal(locksSeen.length, 0, "BUG: the Shift re-pick read the capture's camera and clip");
+      assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'Shift moved the end during the capture');
+    } finally { unregister(); }
+  });
+
+  it('a capture holding the frame: a Snap toggle does not re-pick the Distance end through its camera', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    const renderer = Object.assign(ctx.renderer, { renderWithResult: () => true, getGPUDevice: () => null }) as unknown as Renderer;
+    const unregister = registerViewportCapture(renderer, canvas, () => ({}));
+    try {
+      void captureViewportFrame(renderer, { read: () => 'pixels' });
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      assert.equal(viewportCaptureOwnsFrame(renderer), true, 'setup: the capture holds the frame');
+      locksSeen.length = 0;
+      await pressKey('s');
+      assert.equal(locksSeen.length, 0, "the Snap toggle re-picked through the capture's camera and clip");
+      assert.equal(xy(s().activeMeasurement?.current), '4,0', 'the Snap toggle moved the end during the capture');
+    } finally { unregister(); }
+  });
+
+  it('a drag-to-measure press held: Shift at rest moves the end onto the axis, and the Shift release finishes there', () => {
+    const { canvas } = mount();
+    act(() => { snapOn.current = false; });
+    fire(canvas, 'pointerdown', 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { buttons: 1 });
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'setup: the drag draws the end freely');
+    shift('keydown', true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'Shift during a held press left the end off the axis');
+    fire(canvas, 'pointerup', 250, 100, { shiftKey: true });
+    const last = s().measurements[s().measurements.length - 1];
+    assert.equal(xy(last?.end), '2,2', 'the Shift release finished away from the preview');
+  });
+
+  it('a navigation press within its click slop keeps the cursor: Shift still re-picks', () => {
+    const { canvas } = mount();
+    freeEnd(canvas);
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 250, 100)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 251, 101)); }); // under the 3 px slop: no pan
+    shift('keydown', true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'a nudge under the click slop stopped the Shift re-pick');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 251, 101)); });
+  });
+
+  it('with no start pending, Shift picks nothing and starts nothing', () => {
+    const { canvas } = mount();
+    fire(canvas, 'pointermove', 250, 100);
+    flushFrames();
+    locksSeen.length = 0;
+    shift('keydown', true);
+    assert.equal(locksSeen.length, 0, 'Shift picked with no distance started');
+    assert.equal(s().activeMeasurement === null, true, 'Shift started a distance');
+  });
+
+  it('Point mode: Shift picks nothing (its pick ignores Shift)', () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount();
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    // Point never sets one; seeded so the Shift change reaches the mode check
+    act(() => s().setMeasurementConstraintEdge({
+      axes: { axis1: { x: 1, y: 0, z: 0 }, axis2: { x: 0, y: 1, z: 0 }, axis3: { x: 0, y: 0, z: 1 } },
+      colors: { axis1: '#f00', axis2: '#0f0', axis3: '#00f' }, activeAxis: null,
+    }));
+    locksSeen.length = 0;
+    shift('keydown', true);
+    shift('keyup', false);
+    assert.equal(locksSeen.length, 0, 'Shift re-picked in Point mode');
+  });
+
+  it('after Shift at rest, a Snap toggle still re-picks on the axis, and the next frame keeps the end', async () => {
+    const { canvas, ctx } = mount();
+    freeEnd(canvas);
+    shift('keydown', true);
+    act(() => syncMeasureScreenCoords(ctx)); // the next frame's measure pass
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'the next frame moved the end Shift re-picked');
+    await pressKey('s');
+    assert.equal(s().snapEnabled, true, 'setup: S turned Snap on');
+    assert.equal(axis(), 'axis1', 'the Snap toggle after Shift at rest left the axis');
+  });
+
+  it('with the Snap ref a render behind a toggle, Shift picks under the setting the store holds', () => {
+    const snapEnabledRef = { current: s().snapEnabled };
+    const { canvas } = mount({ snapEnabledRef });
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100);
+    flushFrames();
+    act(() => s().toggleSnap()); // Snap off; the ref still says on
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'setup: Snap off re-picked the end unsnapped');
+    shift('keydown', true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'BUG: the Shift re-pick snapped through the not-yet-rendered Snap ref');
+  });
+
+  it('a Shift click at rest finishes where the preview showed', () => {
+    const { canvas } = mount();
+    freeEnd(canvas);
+    shift('keydown', true);
+    const preview = xy(s().activeMeasurement?.current);
+    fire(canvas, 'pointerdown', 250, 100, { shiftKey: true });
+    fire(canvas, 'pointerup', 250, 100, { shiftKey: true });
+    fire(canvas, 'click', 250, 100, { shiftKey: true });
+    const last = s().measurements[s().measurements.length - 1];
+    assert.equal(xy(last?.end), preview, 'the Shift click finished away from the preview');
   });
 });

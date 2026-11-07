@@ -83,16 +83,18 @@ function activateBottomPanel(panel: BottomPanelId) {
 // ── Component ──────────────────────────────────────────────────────────
 
 interface CommandPaletteProps {
+  /** Text entered in the first-load dialog before this chunk became ready. */
+  initialQuery?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   surfaceContext?: Omit<SurfaceCommandContext, 'surface'>;
 }
 
-export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuery = '' }: CommandPaletteProps) {
   const hostLauncher = useContext(PaletteLauncherContext);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const listId = useId();
   const [recentIds, setRecentIds] = useState<string[]>([]);
@@ -119,11 +121,11 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
       setRecentIds(getRecentIds());
       setRecentFiles(getRecentFiles());
       void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
-      setQuery('');
+      setQuery(initialQuery);
       setSelectedOptionId(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [open]);
+  }, [open, initialQuery]);
 
   // Retain export ownership while closed without following invisible command prerequisites.
   const copyClipboard = useSyncExternalStore(subscribeCopyClipboard, readCopyClipboard, readCopyClipboard);

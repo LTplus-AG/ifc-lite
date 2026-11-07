@@ -31,12 +31,19 @@ export interface IconButtonProps extends Omit<ButtonProps, 'aria-label' | 'title
   /** Visible tooltip content when it should say more than `label` (a shortcut, a state). */
   tooltip?: React.ReactNode;
   tooltipSide?: 'top' | 'right' | 'bottom' | 'left';
+  /**
+   * Called on Escape while the tooltip is open, before it closes. The open
+   * tooltip takes Esc (Radix prevents its default, so the keyboard
+   * dispatcher skips it); a button that wants one Esc to also run its key
+   * command passes that here. Unset, the first Esc only closes the tooltip.
+   */
+  onTooltipEscapeKeyDown?: (event: KeyboardEvent) => void;
   /** The icon. */
   children: React.ReactNode;
 }
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ label, tooltip, tooltipSide, variant = 'ghost', size = 'icon', type = 'button', children, ...props }, ref) => {
+  ({ label, tooltip, tooltipSide, onTooltipEscapeKeyDown, variant = 'ghost', size = 'icon', type = 'button', children, ...props }, ref) => {
     const hasProvider = useHasTooltipProvider();
     const descriptionId = React.useId();
     // Text the tooltip adds beyond the name (a state, a consequence) would
@@ -60,7 +67,7 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
             {description && <span id={descriptionId} hidden>{description}</span>}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side={tooltipSide}>{tooltip || label}</TooltipContent>
+        <TooltipContent side={tooltipSide} onEscapeKeyDown={onTooltipEscapeKeyDown}>{tooltip || label}</TooltipContent>
       </Tooltip>
     );
     return hasProvider ? button : <TooltipProvider>{button}</TooltipProvider>;

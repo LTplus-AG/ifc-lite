@@ -92,7 +92,7 @@ impl<'a> MappingControl<'a> {
     ) -> MappingValue {
         let Some(state) = &self.retained else {
             return MappingValue::Entered {
-                budget: *budget,
+                budget: budget.clone(),
                 item_id: item.id,
                 value: Err(crate::Error::geometry("missing retained selection")),
             };
@@ -120,20 +120,20 @@ impl<'a> MappingControl<'a> {
                 source.solid_id.is_none() || cached.is_none())
         });
         match admitted {
-            Err(error) => super::execute::source_reply(Err(error), item.id, *budget, |value| MappingValue::Entered {
-                budget: *budget,
+            Err(error) => super::execute::source_reply(Err(error), item.id, budget.clone(), |value, budget| MappingValue::Entered {
+                budget,
                 item_id: item.id, value,
             }),
             Ok((source, Some(values), _)) => MappingValue::RetainedCached(Place {
                 parts: Placing::Retained(Box::new((values, selection, binding))),
                 item_id: item.id, source_id: source.source_id, transform: source.transform, truncated: false,
-            }, *budget),
+            }, budget.clone()),
             Ok((source, None, items)) => {
                 if let Some(state) = &mut self.retained {
                     state.pending_binding = binding;
                 }
                 MappingValue::Entered {
-                    budget: *budget,
+                    budget: budget.clone(),
                     item_id: item.id,
                     value: Ok((source.source_id, MappedOccurrence::Source {
                         representation: source.representation,

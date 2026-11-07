@@ -172,7 +172,7 @@ export function RawStepRow({
               if (next?.dataset.rawStepAction) return;
               saveEdit();
             }}
-            className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-white border outline-none focus:ring-1 ${
+            className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-card border outline-none focus:ring-1 ${
               error
                 ? 'border-danger-border focus:ring-red-400'
                 : 'border-overlay-accent/40 focus:ring-overlay-accent'

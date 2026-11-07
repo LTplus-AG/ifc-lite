@@ -274,8 +274,7 @@ export function BCFTopicDetail({
                       {/* Action bar - always visible */}
                       <div className="flex items-center justify-between px-2 py-1.5 bg-muted/30">
                         <Button
-                          variant={isSelected ? 'default' : 'ghost'}
-                          size="sm"
+                          variant="toggle" aria-pressed={isSelected} size="sm"
                           className="h-7 text-xs gap-1"
                           onClick={() => setSelectedViewpointGuid(isSelected ? null : vp.guid)}
                         >

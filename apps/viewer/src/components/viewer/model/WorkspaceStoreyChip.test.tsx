@@ -91,6 +91,23 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
   });
 
+  it('Add storey above from a session that has ended does nothing, even after re-entering the same model (#9037 review)', async () => {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    const before = modelStoreys(useViewerStore.getState(), MODEL_ID).length;
+    act(() => {
+      click(add);
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY });
+    });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID).length, before, 'the abandoned click added nothing');
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'and the new session stays where it opened');
+  });
+
   it('Add storey above goes above the storey drawn on when the click resolves (#9037 review)', async () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
     openList();

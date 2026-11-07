@@ -15,7 +15,8 @@
  *   another write (a script, another tool) has landed on top of the preview,
  *   undoing it would undo that write too, so Escape instead applies the edit
  *   that puts the level back, as one more undo step. The history then shows
- *   what happened: the re-level, the other write, and the cancel.
+ *   what happened: the re-level, the other write, and the cancel (one step,
+ *   however many storeys it puts back).
  *   Undoing that cancel brings the re-level back, as undoing any step does.
  *
  * In a shared room the provisional edits would reach the other participants,
@@ -107,21 +108,33 @@ export function revertStoreyPreview(store: TransactionStore): StoreyOpOutcome | 
     // All or nothing: if one storey cannot go back, the ones already restored are undone
     // again (each is the newest step), so the preview is left whole rather than half-cancelled.
     const redoBeforeRestore = state.redoStacks.get(modelId);
-    let restoredSteps = 0;
+    const restoredBatches: string[] = [];
     for (const edit of inverse) {
       const restored = commitStoreyOp(store, modelId, { kind: 'level', edit });
       if (!restored.ok) {
-        for (; restoredSteps > 0; restoredSteps--) store.getState().undo(modelId);
+        for (let i = restoredBatches.length; i > 0; i--) store.getState().undo(modelId);
         setRedo(store, modelId, redoBeforeRestore);
         return restored;
       }
-      restoredSteps++;
+      if (restored.batchId) restoredBatches.push(restored.batchId);
     }
+    joinBatches(store, modelId, restoredBatches);
     return null;
   }
   state.undo(modelId);
   setRedo(store, modelId, redoBefore);
   return null;
+}
+
+/** One cancel is one Undo step: the restores' records join the first restore's batch. */
+function joinBatches(store: TransactionStore, modelId: string, batches: readonly string[]): void {
+  if (batches.length < 2) return;
+  const state = store.getState();
+  const joined = new Set(batches);
+  const ids = (state.undoStacks.get(modelId) ?? [])
+    .filter((record) => joined.has(state.mutationBatchTags.get(record.id) ?? ''))
+    .map((record) => record.id);
+  state.tagMutationBatch(ids, batches[0]);
 }
 
 function setRedo(store: TransactionStore, modelId: string, stack: RedoStack): void {

@@ -355,6 +355,18 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.deepEqual(storeys(), [['L0', 0], ['Mid', 3.2], ['L1', 3.4]], 'no second provisional edit on top');
   });
 
+  it('a buried multi-storey cancel is one Undo step (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L2', Elevation: 6, referenceStoreyId: UPPER_STOREY } }).ok);
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'floorHeight', storeyId: STOREY, Height: 4 }).applied);
+    const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 11, 0], End: [4, 11, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
+    assert.equal(m.revertStoreyPreview(useViewerStore), null);
+    assert.deepEqual(storeys(), [['L0', 0], ['L1', 3], ['L2', 6]], 'cancelled');
+    act(() => { useViewerStore.getState().undo(MODEL_ID); });
+    assert.deepEqual(storeys(), [['L0', 0], ['L1', 4], ['L2', 7]], 'one Undo takes the whole cancel back, not part of it');
+  });
+
   it('a buried multi-storey restore is all or nothing: a refusal partway leaves the preview whole (#9037 review)', async () => {
     const m = await storey();
     assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L2', Elevation: 6, referenceStoreyId: UPPER_STOREY } }).ok);

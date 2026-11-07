@@ -31,15 +31,16 @@ export function StoreyPickerActions() {
   if (!session) return null;
 
   const addAbove = () => {
-    const { modelId } = session;
+    const { modelId, entry } = session;
     const state = useViewerStore.getState();
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
     void import('@/lib/storeys/storey-actions').then(({ addStoreyNextTo }) => {
       // The session may have moved while the module loaded: add above the storey drawn on now,
-      // and nothing at all to a model left behind.
+      // and nothing at all once the session that was clicked in has ended, even if a new
+      // one has since opened on the same model.
       const now = useViewerStore.getState();
-      if (now.session?.modelId !== modelId) return;
+      if (now.session?.entry !== entry || now.session.modelId !== modelId) return;
       const reference = topReference(now, modelId);
       if (reference === undefined) return;
       const outcome = addStoreyNextTo(useViewerStore, modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));

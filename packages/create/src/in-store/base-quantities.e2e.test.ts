@@ -204,6 +204,32 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(sideArea(mm.store)).toBeCloseTo(1.5e-5, 12);
   });
 
+  it('a slab turned in plan keeps its quantities and clips its opening in its own axes', async () => {
+    const s = await session();
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [2, 3, 0], Width: 8, Depth: 6, Thickness: 0.25 });
+    // Turn the slab's placement a quarter turn: its X now runs along the storey's Y.
+    const placement = s.view.getNewEntity(slab.placementId)!.attributes[1] as string;
+    const axes = s.view.getNewEntity(Number(placement.slice(1)))!;
+    const turned = s.editor.addEntity('IfcDirection', [[0, 1, 0]]).expressId;
+    const up = s.editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+    s.view.setPositionalAttribute(Number(placement.slice(1)), 1, `#${up}`);
+    s.view.setPositionalAttribute(Number(placement.slice(1)), 2, `#${turned}`);
+    expect(axes.type.toUpperCase()).toBe('IFCAXIS2PLACEMENT3D');
+    // 2 x 1 inside, then 2 x 2 hanging half off the slab's own +X/+Y corner.
+    addOpeningToStore(s.editor, resolveHostAnchor(s.store, slab.slabId, s.view), { Position: [4, 3], Width: 2, Depth: 1 });
+    addOpeningToStore(s.editor, resolveHostAnchor(s.store, slab.slabId, s.view), { Position: [8, 6], Width: 2, Depth: 2 });
+    expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities')).toMatchObject({ GrossArea: 48, NetArea: 45, NetVolume: 11.25 });
+  });
+
+  it('a tilted slab reads none rather than a plan area it does not have', async () => {
+    const s = await session();
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 });
+    const placement = Number((s.view.getNewEntity(slab.placementId)!.attributes[1] as string).slice(1));
+    const tilted = s.editor.addEntity('IfcDirection', [[0, 0.6, 0.8]]).expressId;
+    s.view.setPositionalAttribute(placement, 1, `#${tilted}`);
+    expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities')).toEqual({});
+  });
+
   it('a blind opening takes only the depth it reaches from a slab\'s net volume', async () => {
     const s = await session();
     const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 }).slabId;

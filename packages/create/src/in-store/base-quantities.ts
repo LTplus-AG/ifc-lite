@@ -32,10 +32,11 @@ import {
   polygonPerimeter,
   sectionMeasures,
 } from './base-quantities-measure.js';
-import { asExpressIdRef, readAttributes } from './edit/placement-core.js';
+import { asExpressIdRef, readAttributes, resolvePlacementChain } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { resolveLinearElementChain } from './edit/linear-element-edit.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
+import { slabExtrusionFrame } from './edit/slab-edit-frame.js';
 import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
 import { wallBodyOutline } from './wall-join.js';
 import { readWallJoinTarget } from './wall-join-read.js';
@@ -195,7 +196,8 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   const { dataStore, view, editor, scale } = reading;
   const chain = resolveSlabEditChain(dataStore, view, editor, id, scale);
   // A tilted extrusion has no plan area to report as its own; the builders never write one.
-  if (!chain || chain.baseElevation === null) return null;
+  // A slab turned in plan is still upright, and its outline and openings share its own axes.
+  if (!chain || (chain.baseElevation === null && !uprightAfterTurn(reading, id, chain.extrudedSolidId))) return null;
   const area = polygonArea(chain.footprint);
   // The footprint is storey-local with the placement origin added; an opening's box is in the host's frame.
   const local = chain.footprint.map(([x, y]) => [x - chain.placementOrigin[0], y - chain.placementOrigin[1]] as [number, number]);
@@ -229,6 +231,16 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
     rows.push(['NetArea', QuantityType.Area, netArea], ['NetVolume', QuantityType.Volume, Math.max(0, area * chain.thickness - removed)]);
   }
   return toQuantitySet(dataStore, scale, 'Qto_SlabBaseQuantities', rows);
+}
+
+/** Whether a slab the plan readers refuse for its turn about the vertical is otherwise upright. */
+function uprightAfterTurn(reading: Reading, id: number, solidId: number): boolean {
+  const { dataStore, view, editor } = reading;
+  const placement = resolvePlacementChain(dataStore, view, editor, id);
+  const solid = readAttributes(dataStore, view, editor, solidId);
+  const depth = solid?.[3];
+  return !!placement && !!solid && typeof depth === 'number'
+    && slabExtrusionFrame(dataStore, view, editor, placement.axisPlacementId, solid, depth, true) !== null;
 }
 
 function linearSet(reading: Reading, id: number, type: string): QuantitySet | null {

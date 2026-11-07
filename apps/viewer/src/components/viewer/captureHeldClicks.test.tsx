@@ -32,7 +32,7 @@ afterEach(() => {
   useViewerStore.setState(initialState, true);
 });
 
-/** The mounted canvas and a renderer a capture draws for, counting every pick it is asked for. */
+/** The mounted canvas and a renderer a capture draws for, counting the picks a click or tap places or selects through. */
 function rig(tool: string, pickedId: number | null = null) {
   useViewerStore.setState({
     activeTool: tool, activeMeasurement: null, measurements: [], activePolyline: null,
@@ -47,7 +47,8 @@ function rig(tool: string, pickedId: number | null = null) {
       renderWithResult: () => true,
       getGPUDevice: () => null,
       pick: counted(async () => pickedId === null ? null : { expressId: pickedId }),
-      raycastScene: counted(() => ({ intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: 1 }, expressId: 7 } })),
+      // Not counted: a press's orbit pivot reads it too, and places nothing. A face-pick is asserted on its cut.
+      raycastScene: () => ({ intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: 1 }, expressId: 7 } }),
       raycastSceneMagnetic: counted((x: number) => ({
         intersection: { point: { x: x / 100, y: 0, z: 0 } }, snapTarget: null,
         edgeLock: { shouldRelease: false, shouldLock: false, edge: null },

@@ -23,7 +23,8 @@
  *   - Otherwise each local child is written as a plain `IfcLocalPlacement` in
  *     the owning grid's frame, at the position the grid placement resolves
  *     to, and the grid placement is not written. A grid placement whose
- *     intersection does not read (curved axes, say) is left as it was.
+ *     intersection does not read (curved axes, say), or one over an axis
+ *     that bends, where readers may disagree on the point, is left as it was.
  *   - A placement shared by several products gives each product after the
  *     first its own copy.
  *
@@ -196,7 +197,7 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
     if (rec && drops.has(rec.id)) return;
     out.push(rec ? rewrites.get(rec.id) ?? line : line);
   });
-  out.push(...added);
+  for (const line of added) out.push(line); // not spread: there can be more than a call takes
   return out;
 }
 

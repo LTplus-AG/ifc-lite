@@ -81,4 +81,13 @@ describe('IFC2X3 placement pass id space (#9209)', () => {
     const room = lines.map((line) => line.replaceAll('42949672', '1'));
     expect(placeEachObjectOnce(room)).toHaveLength(4);
   });
+
+  it('writes more new records than one call takes', () => {
+    const walls = 200_000;
+    const lines = ['#1=IFCLOCALPLACEMENT($,$);'];
+    for (let i = 0; i < walls; i++) lines.push(`#${i + 2}=IFCWALL('w${i}',$,$,$,$,#1,$,$);`);
+    const placed = placeEachObjectOnce(lines)!;
+    expect(placed).toHaveLength(1 + walls + (walls - 1));
+    expect(placed[placed.length - 1]).toBe(`#${walls + walls}=IFCLOCALPLACEMENT($,$);`);
+  });
 });

@@ -95,11 +95,14 @@ export class Records {
     return numbers(this.slots(this.get(refId(token), type))?.[0], 2, 3);
   }
 
-  /** An axis's chord, with its sense, as origin and direction; null when it does not read. */
-  private axisLine(id: number): { o: Vec2; d: Vec2 } | null {
+  /**
+   * An axis's chord, with its sense, as origin and direction; null when it
+   * does not read, or when `straight` and the polyline bends.
+   */
+  private axisLine(id: number, straight: boolean): { o: Vec2; d: Vec2 } | null {
     const axis = this.slots(this.get(id, 'IFCGRIDAXIS'));
     const points = list(this.slots(this.get(refId(axis?.[1]), 'IFCPOLYLINE'))?.[0]);
-    if (!axis || !points || points.length < 2) return null;
+    if (!axis || !points || points.length < 2 || (straight && points.length !== 2)) return null;
     const a = this.vector(points[0], 'IFCCARTESIANPOINT');
     const b = this.vector(points[points.length - 1], 'IFCCARTESIANPOINT');
     if (!a || !b) return null;
@@ -109,14 +112,18 @@ export class Records {
     return { o: [a[0], a[1]], d };
   }
 
-  /** An intersection's point in its grid's frame; null when it does not read. */
-  crossing(id: number | null): Vec3 | null {
+  /**
+   * An intersection's point in its grid's frame, as the geometry reader takes
+   * it (each axis by its chord); null when it does not read. With `straight`,
+   * also null when an axis bends, where another reader may follow the bend.
+   */
+  crossing(id: number | null, straight = false): Vec3 | null {
     const s = this.slots(this.get(id, INTERSECTION));
     const axes = list(s?.[0])?.map(refId);
     if (!s || !axes || axes.length !== 2 || axes.includes(null)) return null;
     const offsets = s[1]?.trim() === '$' ? [0, 0] : numbers(s[1], 2, 3);
-    const a = this.axisLine(axes[0]!);
-    const b = this.axisLine(axes[1]!);
+    const a = this.axisLine(axes[0]!, straight);
+    const b = this.axisLine(axes[1]!, straight);
     if (!offsets || !a || !b) return null;
     const shifted = ({ o, d }: { o: Vec2; d: Vec2 }, by: number): Vec2 => {
       const len = Math.sqrt(d[0] * d[0] + d[1] * d[1]);
@@ -130,12 +137,15 @@ export class Records {
     return [pa[0] + t * a.d[0], pa[1] + t * a.d[1], offsets[2] ?? 0];
   }
 
-  /** Where a grid placement (IFC2X3 layout) sits in its grid's frame. */
+  /**
+   * Where a grid placement (IFC2X3 layout) sits in its grid's frame, to write
+   * as a plain position: null over a bent axis, which is left as it was.
+   */
   gridFrame(g: readonly string[]): GridFrame | null {
-    const at = this.crossing(refId(g[0]));
+    const at = this.crossing(refId(g[0]), true);
     if (!at) return null;
     if (g[1].trim() === '$') return { at, turn: null };
-    const toward = this.crossing(refId(g[1]));
+    const toward = this.crossing(refId(g[1]), true);
     const ratios = toward ? null : this.vector(g[1], 'IFCDIRECTION');
     const v = toward ? [toward[0] - at[0], toward[1] - at[1]] : ratios;
     if (!v) return null;

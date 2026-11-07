@@ -15,7 +15,8 @@
 //! - Otherwise each local child is written as a plain `IfcLocalPlacement` in
 //!   the owning grid's frame, at the position the grid placement resolves to,
 //!   and the grid placement is not written. One whose intersection does not
-//!   read is left as it was.
+//!   read, or one over an axis that bends, where readers may disagree on the
+//!   point, is left as it was.
 //! - A placement shared by several products gives each product after the
 //!   first its own copy.
 //!

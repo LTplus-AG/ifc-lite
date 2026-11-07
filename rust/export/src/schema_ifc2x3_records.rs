@@ -142,12 +142,13 @@ impl<'a> Records<'a> {
         numbers(slots.first().copied(), 2, 3)
     }
 
-    /// An axis's chord, with its sense, as origin and direction.
-    fn axis_line(&self, id: u32) -> Option<([f64; 2], [f64; 2])> {
+    /// An axis's chord, with its sense, as origin and direction; `None` when
+    /// `straight` and the polyline bends.
+    fn axis_line(&self, id: u32, straight: bool) -> Option<([f64; 2], [f64; 2])> {
         let axis = Self::slots(self.get(Some(id), Some("IFCGRIDAXIS")))?;
         let curve = Self::slots(self.get(ref_id(axis.get(1).copied()), Some("IFCPOLYLINE")))?;
         let points = list(curve.first().copied())?;
-        if points.len() < 2 {
+        if points.len() < 2 || (straight && points.len() != 2) {
             return None;
         }
         let a = self.vector(points.first().copied(), "IFCCARTESIANPOINT")?;
@@ -162,8 +163,15 @@ impl<'a> Records<'a> {
         Some(([a[0], a[1]], d))
     }
 
-    /// An intersection's point in its grid's frame.
+    /// An intersection's point in its grid's frame, as the geometry reader
+    /// takes it (each axis by its chord).
     pub(crate) fn crossing(&self, id: Option<u32>) -> Option<[f64; 3]> {
+        self.crossing_on(id, false)
+    }
+
+    /// [`Self::crossing`], and with `straight` also `None` when an axis bends,
+    /// where another reader may follow the bend.
+    fn crossing_on(&self, id: Option<u32>, straight: bool) -> Option<[f64; 3]> {
         let s = Self::slots(self.get(id, Some(INTERSECTION)))?;
         let axes: Vec<Option<u32>> = list(s.first().copied())?.into_iter().map(|m| ref_id(Some(m))).collect();
         if axes.len() != 2 || axes.contains(&None) {
@@ -173,8 +181,8 @@ impl<'a> Records<'a> {
             Some(o) if is_dollar(o) => vec![0.0, 0.0],
             o => numbers(o.copied(), 2, 3)?,
         };
-        let (ao, ad) = self.axis_line(axes[0]?)?;
-        let (bo, bd) = self.axis_line(axes[1]?)?;
+        let (ao, ad) = self.axis_line(axes[0]?, straight)?;
+        let (bo, bd) = self.axis_line(axes[1]?, straight)?;
         let shifted = |o: [f64; 2], d: [f64; 2], by: f64| {
             let len = (d[0] * d[0] + d[1] * d[1]).sqrt();
             [o[0] + (-d[1] / len) * by, o[1] + (d[0] / len) * by]
@@ -189,13 +197,14 @@ impl<'a> Records<'a> {
         Some([pa[0] + t * ad[0], pa[1] + t * ad[1], offsets.get(2).copied().unwrap_or(0.0)])
     }
 
-    /// Where a grid placement (IFC2X3 layout) sits in its grid's frame.
+    /// Where a grid placement (IFC2X3 layout) sits in its grid's frame, to
+    /// write as a plain position: `None` over a bent axis, left as it was.
     pub(crate) fn grid_frame(&self, g: &[&str]) -> Option<GridFrame> {
-        let at = self.crossing(ref_id(Some(g[0])))?;
+        let at = self.crossing_on(ref_id(Some(g[0])), true)?;
         if is_dollar(g[1]) {
             return Some(GridFrame { at, turn: None });
         }
-        let v = match self.crossing(ref_id(Some(g[1]))) {
+        let v = match self.crossing_on(ref_id(Some(g[1])), true) {
             Some(toward) => vec![toward[0] - at[0], toward[1] - at[1]],
             None => self.vector(Some(g[1]), "IFCDIRECTION")?,
         };

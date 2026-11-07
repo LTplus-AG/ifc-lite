@@ -157,9 +157,10 @@ export function pickFitPolicy(
   if (aspect <= threshold || longest < minLongest) {
     // Compact: the legacy SE isometric pose, so building models frame as
     // before. Its `longest * 2` standoff is sized against the vertical field
-    // and ignores the viewport's shape; on a portrait viewport the horizontal
-    // field is the narrower one, so it is only ever pushed further out, until
-    // the box also fits across (a landscape viewport never binds it).
+    // and ignores the viewport's shape. On a portrait viewport the horizontal
+    // field is the narrower one and that cropped the model at the sides, so
+    // there it is pushed further out until the box also fits across. A
+    // landscape or square viewport keeps the legacy pose exactly.
     const distance = Math.max(longest * 2.0, horizontalFitDistance(bounds, center, options));
     return {
       kind: 'compact',
@@ -247,7 +248,8 @@ export function pickFitPolicy(
 /**
  * Smallest compact-pose `distance` (the multiplier on `COMPACT_DIRECTION`)
  * at which every corner of the box lies inside the horizontal half-field with
- * `COMPACT_HORIZONTAL_MARGIN` to spare, or 0 when no usable aspect was given.
+ * `COMPACT_HORIZONTAL_MARGIN` to spare, or 0 when no usable portrait aspect
+ * (`0 < aspect < 1`) was given.
  *
  * The same closed form as `marginDistanceFor` in `camera-framing.ts`, on the
  * horizontal axis only: a corner at sideways offset `h` and depth `depth`
@@ -257,7 +259,8 @@ export function pickFitPolicy(
  */
 function horizontalFitDistance(bounds: Bounds3, center: Vec3, options: PickFitPolicyOptions): number {
   const viewAspect = options.aspect;
-  if (viewAspect === undefined || !Number.isFinite(viewAspect) || viewAspect <= 0) return 0;
+  // Only a portrait viewport, where the horizontal field is the narrower one.
+  if (viewAspect === undefined || !Number.isFinite(viewAspect) || viewAspect <= 0 || viewAspect >= 1) return 0;
   const tanH = Math.tan(options.fovY / 2) * viewAspect;
   if (!Number.isFinite(tanH) || tanH <= 0) return 0;
 

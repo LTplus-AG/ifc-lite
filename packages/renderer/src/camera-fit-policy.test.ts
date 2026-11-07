@@ -308,10 +308,12 @@ describe('pickFitPolicy', () => {
       assertCloseTo((policy.position.y - policy.target.y) / policy.distance, 0.5, 9);
     });
 
-    it('leaves the pose of a landscape viewport exactly as before', () => {
-      for (const b of [house, bounds(0, 0, 0, 10, 10, 10), bounds(0, 0, 0, 50, 100, 30)]) {
+    it('leaves the pose of a landscape or square viewport exactly as before', () => {
+      for (const b of [house, bounds(0, 0, 0, 10, 10, 10), bounds(0, 0, 0, 50, 100, 30), bounds(0, 0, 0, 50, 5, 50)]) {
         const legacy = pickFitPolicy(b, { fovY: FOV_45 });
-        assert.deepStrictEqual(pickFitPolicy(b, { fovY: FOV_45, aspect: 16 / 10 }), legacy);
+        for (const viewAspect of [16 / 10, 930 / 890, 1]) {
+          assert.deepStrictEqual(pickFitPolicy(b, { fovY: FOV_45, aspect: viewAspect }), legacy, `aspect ${viewAspect}`);
+        }
       }
     });
 

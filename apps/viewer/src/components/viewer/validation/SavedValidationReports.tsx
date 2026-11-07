@@ -12,6 +12,7 @@ import { DisclosureSummary, DISCLOSURE_GROUP } from '@/components/ui/disclosure'
 import { ContentStorageNotice } from '../ContentStorageNotice';
 import { IdsReportPreview } from '../document/IdsReportPreview';
 import { ManualReportPreview } from '../document/ManualReportPreview';
+import { DOCUMENT_PREVIEW_PAPER_CLASS } from '../document/preview-theme';
 import { reportScopeText } from '@/lib/document/report-provenance';
 import { useSavedValidationFocus } from '@/lib/panels/evidence-focus';
 import { SavedValidationElements } from './SavedValidationElements';
@@ -74,7 +75,7 @@ export function SavedValidationReports() {
             </>}
             <p className="text-muted-foreground">{t('validationPanel.history.frozen')}</p>
             {reportScopeText(report.snapshot) && <p>{t('validationPanel.history.models', { models: reportScopeText(report.snapshot) })}</p>}
-            <div className="rounded bg-white p-2 text-neutral-900">
+            <div className={`rounded p-2 ${DOCUMENT_PREVIEW_PAPER_CLASS}`}>
               {report.snapshot.kind === 'manual-report' ? <ManualReportPreview block={report.snapshot} /> : <IdsReportPreview block={report.snapshot} />}
             </div>
             {report.snapshot.kind === 'ids-report' && <SavedValidationElements snapshot={report.snapshot} rowId={focus?.rowId ?? null} request={focus} />}

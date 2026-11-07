@@ -19,7 +19,7 @@ export function StatusIcon({ status, showLabel = false }: { status: 'pass' | 'fa
   const icons = {
     pass: <CheckCircle className="h-4 w-4 text-ok" aria-hidden="true" />,
     fail: <XCircle className="h-4 w-4 text-danger" aria-hidden="true" />,
-    not_applicable: <AlertCircle className="h-4 w-4 text-yellow-500" aria-hidden="true" />,
+    not_applicable: <AlertCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />,
   };
 
   return (
@@ -32,7 +32,7 @@ export function StatusIcon({ status, showLabel = false }: { status: 'pass' | 'fa
 
 export function PassRateBar({ passRate }: { passRate: number }) {
   const { locale } = useTranslation();
-  const color = { good: 'bg-green-500', warn: 'bg-yellow-500', bad: 'bg-red-500' }[passRateBand(passRate)];
+  const color = { good: 'bg-ok-solid', warn: 'bg-warn-solid', bad: 'bg-danger-solid' }[passRateBand(passRate)];
 
   return (
     <div className="flex items-center gap-2">

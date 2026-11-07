@@ -107,18 +107,18 @@ export function ActivityBarItem({
           <Icon className="h-4 w-4" />
           {!customizing && badge !== undefined && badge > 0 && (
             <span
-              className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-2xs font-medium text-white ring-1 ring-background"
+              className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-warn-solid px-1 text-2xs font-medium text-solid-foreground ring-1 ring-background"
               aria-hidden
             >
               {badge > 99 ? '99+' : badge}
             </span>
           )}
-          {/* Detached indicator dot: floating (primary) vs popped out (emerald). */}
+          {/* Detached indicator dot: floating (primary) vs popped out (neutral ink). */}
           {!customizing && open && location !== 'docked' && (
             <span
               className={cn(
                 'absolute right-0 top-0 h-1.5 w-1.5 rounded-full ring-1 ring-background',
-                location === 'popped' ? 'bg-emerald-500' : 'bg-primary',
+                location === 'popped' ? 'bg-muted-foreground' : 'bg-primary',
               )}
               aria-hidden
             />

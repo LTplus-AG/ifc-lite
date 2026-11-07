@@ -174,7 +174,7 @@ function BetweenChipRow({
     onChange({ ...chip, max });
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-white px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-card px-2 py-1.5">
       <span className="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
         {t('validationEditor.betweenChip.label')}
       </span>

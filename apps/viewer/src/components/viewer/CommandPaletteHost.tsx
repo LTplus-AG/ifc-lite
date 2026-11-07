@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useTranslation } from '@/i18n';
 import { PaletteLauncherContext } from './command-palette-launcher';
+import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
 
 const CommandPalette = lazy(() => import('./CommandPalette').then(module => ({ default: module.CommandPalette })));
 
@@ -45,12 +46,18 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
 /** Loading and failure remain cancellable without unmounting the loaded export owner. */
 function PaletteLoadDialog({ open, onOpenChange, children }: CommandPaletteHostProps & { children: ReactNode }) {
   const { t } = useTranslation();
+  const launcher = useContext(PaletteLauncherContext);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent overlayClassName="z-(--z-command-palette)"
-        className="z-(--z-command-palette) translate-y-0 w-[calc(100%_-_2rem)] max-w-lg rounded-lg"
-        style={{ top: 'min(12dvh, 96px)' }} aria-describedby={undefined}
-        onCloseAutoFocus={event => { if (open) event.preventDefault(); }}
+        className={PALETTE_DIALOG_LAYOUT}
+        style={{ top: PALETTE_DIALOG_TOP }} aria-describedby={undefined}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          // While open, the loaded palette owns the next focus scope. A true
+          // dismissal has no Radix trigger: restore the captured launcher.
+          if (!open && launcher?.current?.isConnected) launcher.current.focus();
+        }}
         onEscapeKeyDown={event => {
           if (event.isComposing || event.keyCode === 229) event.preventDefault();
           event.stopPropagation();

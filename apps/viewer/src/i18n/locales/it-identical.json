@@ -1588,7 +1588,7 @@
     "reason": "viewportLighting.container.emptyState.scene.metres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
   },
   "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
-    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+",
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
     "reason": "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers: Browser product names and minimum version numbers identify supported products; no descriptive English text."
   },
   "viewportLighting.overlays.mobileNav.homeTooltip": {

@@ -70,13 +70,16 @@ function reachesPage(canvas: HTMLCanvasElement, event: MouseEvent): boolean {
   return reached;
 }
 
+/** Microtasks only: the menu's one pick resolves in them, and a `setTimeout` would hang under mock timers. */
+const flushPick = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
 /** A trackpad right-click: the browser's contextmenu has no pointerType (Safari, iPadOS). */
 async function trackpadRightClick(canvas: HTMLCanvasElement, x: number, y: number) {
   await act(async () => {
     canvas.dispatchEvent(pointer('pointerdown', 'mouse', x, y, 2, 2));
     canvas.dispatchEvent(mouseEvent('contextmenu', x, y, 2));
     canvas.dispatchEvent(pointer('pointerup', 'mouse', x, y, 0, 2));
-    await settle();
+    await flushPick();
   });
 }
 

@@ -1635,6 +1635,80 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             assert.strictEqual(rebuilds.n, 0);
             assert.strictEqual(scene['partialBatchCache'].size, 2, 'the colour pass still splits it');
         });
+
+        describe('a transparent batch with mixed promotion that cannot be partitioned draws whole (#9220)', () => {
+            /** The pipeline of every colour-pass draw from `vertexBuffer`, in order. */
+            const pipelinesDrawing = (h: Harness, vertexBuffer: GPUBuffer): unknown[] => {
+                const out: unknown[] = [];
+                let pipeline: unknown = null;
+                let draw = 0;
+                for (const c of h.stats.commands) {
+                    if (c.op === 'setPipeline') pipeline = c.pipeline;
+                    if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer) out.push(pipeline);
+                }
+                return out;
+            };
+            /** Draws of `batch` itself plus every sub-batch cut from it. */
+            const drawsOfGeometry = (h: Harness, batch: BatchedMesh): number =>
+                [batch, ...subBatchesOf(h, batch)].reduce((n, b) => n + pipelinesDrawing(h, b.vertexBuffer).length, 0);
+            const clearFrame = (h: Harness) => { h.stats.draws.length = 0; h.stats.commands.length = 0; };
+            /** Glass whose ONE piece holds entities {4, 5}, tagged per vertex; {4} carries a promoting override. */
+            const seedMergedGlass = (h: Harness, extra: MeshData[] = []): BatchedMesh => {
+                const scene = sceneOf(h);
+                const merged = { ...triangle(4, TRANSPARENT), entityIds: new Uint32Array([4, 5, 5]) } as MeshData;
+                scene.appendToBatches([merged, ...extra], device(h), pipeline(h), false);
+                const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+                glass.bounds = undefined;
+                assert.strictEqual(scene.canPartitionBatch(glass), false, 'setup: a colour-merged piece');
+                scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+                return glass;
+            };
+
+            it('under geometryReleased, a transparent batch with one promoted member still draws, whole', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                const glass = seedGlass(h);
+                scene.releaseGeometryData();
+                assert.strictEqual(scene.isGeometryDataReleased(), true, 'setup: released');
+                clearFrame(h);
+                h.render({});
+                assert.deepStrictEqual(pipelinesDrawing(h, glass.vertexBuffer), [TRANSPARENT_PIPELINE], 'drawn once, whole, at its native routing');
+                assert.strictEqual(scene['partialBatchCache'].size, 0, 'no sub-batch asked for: there is no CPU geometry to cut one from');
+            });
+
+            it('a colour-merged piece in a fully visible batch is drawn exactly once, and the batch keeps its own buffers', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const scene = sceneOf(h);
+                const glass = seedMergedGlass(h);
+                scene.setGpuResidencyBudget(1);
+                const rebuilds = countRebuilds(scene, 4);
+                for (let i = 0; i < IDLE_FRAMES; i++) frame(h, {});
+                clearFrame(h);
+                h.render({});
+                assert.strictEqual(drawsOfGeometry(h, glass), 1, 'one draw of the merged geometry');
+                assert.deepStrictEqual(pipelinesDrawing(h, glass.vertexBuffer), [TRANSPARENT_PIPELINE]);
+                assert.strictEqual(scene['partialBatchCache'].size, 0);
+                assert.notStrictEqual(glass.gpuResident, false, 'the whole draw reads its own buffers, so they stay');
+                assert.strictEqual(rebuilds.n, 0, 'no evict/rebuild cycle');
+            });
+
+            it('under hide, a colour-merged piece in the visible subset is drawn exactly once', () => {
+                const h = makeHarness();
+                seedBatches(h);
+                const glass = seedMergedGlass(h, [triangle(6, TRANSPARENT)]);
+                clearFrame(h);
+                h.render({ hiddenIds: new Set([6]) });
+                const subs = subBatchesOf(h, glass);
+                assert.strictEqual(subs.length, 0, 'no :promoted / :remaining slots');
+                const slot = sceneOf(h)['partialBatchCacheKeys'].get(`${glass.colorKey}:${glass.id}`);
+                assert.ok(slot !== undefined, 'one sub-batch for the visible subset');
+                const sub = sceneOf(h)['partialBatchCache'].get(slot) as BatchedMesh;
+                assert.deepStrictEqual(pipelinesDrawing(h, sub.vertexBuffer), [TRANSPARENT_PIPELINE], 'the merged piece is drawn once');
+                assert.strictEqual(sceneOf(h)['partialBatchCache'].size, 1);
+            });
+        });
     });
 });
 

@@ -1044,6 +1044,10 @@ jobs:
           # runner's SwiftShader device, and a skip never counts as observation.
           E2E_GPU_STRICT: '0'
         run: |
+          # The fixture cache holds all of tests/models and is keyed on manifest.json
+          # alone, so it can restore an older copy of a tracked file there. The oracle
+          # needs a clean tree, so put tracked files back to this commit's versions.
+          git restore -- tests/models
           oracle_args=(--base origin/main --ci --json)
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

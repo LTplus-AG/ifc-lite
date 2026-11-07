@@ -95,6 +95,8 @@ function capturing(t: TestContext) {
     replaceSession: () => { unregister(); unregister = registerViewportCapture(renderer, ui.canvas, () => ({})); },
     renderRequests: () => renderRequests,
     move: (x: number) => act(() => { ui.canvas.dispatchEvent(mousePointer('pointermove', 0, x, 40, { buttons: 0 })); }),
+    /** Switch tools without a gesture reset, as a frame queued before the switch sees it. */
+    setTool: (tool: string) => act(() => { ui.params.activeToolRef.current = tool; useViewerStore.setState({ activeTool: tool }); }),
     leave: () => act(() => { ui.canvas.dispatchEvent(new MouseEvent('mouseleave')); }),
     runFrames: () => act(() => {
       for (const [id, cb] of [...frames]) if (frames.delete(id)) cb(0);
@@ -216,6 +218,7 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
       h.tick(100);
       await h.present(shot);
     }
+    assert.deepEqual(live(), [3, 4, -5], 'the export ended Live: hovers held back while a capture owned the frame were counted');
     h.liveFrame();
     h.tick(100); h.runFrames();
     assert.deepEqual(live(), [7, 1, -2], 'the resting cursor was never read after back-to-back captures');
@@ -289,5 +292,58 @@ describe('Point mode hover and a viewport capture (#9031)', () => {
     h.tick(500); h.runFrames();
     assert.equal(h.picks(), picks, 'a held-back Point hover picked in Polyline mode');
     assert.equal(live(), null);
+  });
+
+  /** A capture done, and a hover at x=70 held back twice since it released the frame. */
+  async function heldBackTwice(t: TestContext) {
+    const h = capturing(t);
+    h.move(30); h.runFrames();
+    h.liveFrame();
+    h.tick(100);
+    const { shot } = await h.capture();
+    await h.present(shot);
+    h.move(70); h.runFrames(); h.tick(100); h.runFrames();
+    return h;
+  }
+
+  /** Hover held back repeatedly while the pickers mirror the capture: the render requests it makes. */
+  function requestsWhileHeldBack(h: ReturnType<typeof capturing>): number {
+    const requests = h.renderRequests();
+    const picks = h.picks();
+    h.move(70); h.runFrames();
+    for (let i = 0; i < 6; i++) { h.tick(100); h.runFrames(); }
+    assert.equal(h.picks(), picks, 'fixture: the hover must stay held back');
+    return h.renderRequests() - requests;
+  }
+
+  it('leaving the canvas while held back starts the count again, with no pick in between (#9153)', async (t) => {
+    const h = await heldBackTwice(t);
+    h.leave();
+    h.tick(100);
+    assert.equal(requestsWhileHeldBack(h), 3, 'held-back hovers from before the cursor left still counted');
+  });
+
+  it('a hover frame that lands after the tool changed starts the count again (#9153)', async (t) => {
+    const h = await heldBackTwice(t);
+    h.setTool('select'); // no gesture reset: the trailing pick still fires, outside Point mode
+    h.tick(100); h.runFrames();
+    h.setTool('measure');
+    h.tick(100);
+    assert.equal(requestsWhileHeldBack(h), 3, 'held-back hovers from before the tool switch still counted');
+  });
+
+  it('a pick that runs starts the count again, so the next capture keeps Live (#9153)', async (t) => {
+    const h = await heldBackTwice(t);
+    h.tick(100); h.runFrames(); // held back a third time
+    assert.deepEqual(live(), [3, 4, -5], 'fixture: three held-back hovers must keep Live');
+    h.liveFrame();
+    h.tick(100); h.runFrames(); // the held-back pick runs
+    h.liveFrame();
+    assert.deepEqual(live(), [7, 1, -2], 'fixture: the held-back pick must read the resting cursor');
+    h.tick(100);
+    const { shot } = await h.capture();
+    await h.present(shot);
+    h.move(30); h.runFrames(); // held back once
+    assert.deepEqual(live(), [7, 1, -2], 'hovers held back before the pick counted against this capture and ended Live');
   });
 });

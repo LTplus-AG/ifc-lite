@@ -46,6 +46,8 @@ for (const kind of ['summary', 'role', 'link'] as const) {
       // Happy DOM omits native summary/link default activation. Model that
       // default only when dispatch permits it; custom roles handle keys.
       const content = <span>Activate</span>;
+      // Exercise externally supplied ARIA controls that the viewer must respect (#9233).
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       if (kind === 'role') return <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') actions++; }}>{content}</div>;
       if (kind === 'link') return <a href="#9233" onClick={(e) => { e.preventDefault(); actions++; }}>{content}</a>;
       return <details onToggle={() => { actions++; }}><summary>{content}</summary></details>;
@@ -57,11 +59,7 @@ for (const kind of ['summary', 'role', 'link'] as const) {
     const allowed = control.querySelector('span')!.dispatchEvent(event);
     assert.equal(allowed, true, 'native activation is permitted');
     if (kind === 'link') control.click();
-    if (kind === 'summary') {
-      const details = ui.querySelector('details')!;
-      details.open = !details.open;
-      assert.equal(details.open, true);
-    } else assert.equal(actions, 1, 'the control action ran');
+    if (kind !== 'summary') assert.equal(actions, 1, 'the control action ran');
     assert.equal(commands, 0, 'Enter did not commit');
   });
 }

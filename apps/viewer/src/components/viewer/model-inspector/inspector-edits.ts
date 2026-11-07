@@ -24,7 +24,7 @@ import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/model
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { commitElementSize } from '@/lib/element-size-commit';
-import { fixWallTop } from './wall-top-fix';
+import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import type { WallSection } from '@/store/slices/mutation-wall-section';
 import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';

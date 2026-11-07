@@ -20,9 +20,11 @@ export function effectiveLevelElevations(
 ): Map<number, number> {
   const out = new Map<number, number>();
   for (const id of storeyIds) {
-    const touched = view.getNewEntity(id) !== undefined
-      || view.getAttributeMutationsForEntity(id).length > 0
-      || (view.getPositionalMutationsForEntity(id)?.size ?? 0) > 0;
+    // Only an edit that can move the level counts: a rename leaves it where the parse put it.
+    const touched = view.getNewEntity(id) != null
+      || view.getEntityTypeMutation(id) != null
+      || view.getAttributeMutationsForEntity(id).some(({ name }) => name === 'Elevation')
+      || view.getPositionalMutationsForEntity(id)?.has(9) === true;
     if (touched) {
       out.set(id, effectiveStoreyElevation(store, view, id));
       continue;

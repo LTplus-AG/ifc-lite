@@ -19,7 +19,10 @@ import type { Mutation } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, press, render } from '@/test/render.js';
-import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
+import { PropertyValueType } from '@ifc-lite/data';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { PushPullHandles } from '@/components/viewer/tools/command/PushPullHandles';
 import { setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
 import { PUSH_PULL_COMMAND_ID } from '@/lib/push-pull/push-pull-drag';
@@ -104,6 +107,19 @@ describe('element.pushPull writes what the inspector writes (#6232 C4)', () => {
       assert.deepEqual(typedEffects, pulledEffects, 'typing the dimension writes the same records');
     });
   }
+
+  it('a wall pulled to a new height is fixed at it: a later storey re-level keeps it (#9037 review)', () => {
+    const wall = created(s().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 }));
+    const target = modelEditTarget(s(), MODEL_ID)!;
+    const upper = readStoreyInventory(target.dataStore, target.view).storeys.find((x) => x.expressId === UPPER_STOREY)!;
+    target.view.setProperty(wall, 'IfcLite_StoreyAttachment', 'TopConstraint', upper.GlobalId, PropertyValueType.Label);
+    const before = undoStack().length;
+    const outcome = pull(wall, 'wall.top', 2.4);
+    assert.ok(outcome.ok, outcome.ok ? '' : outcome.reason);
+    assert.equal(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall), null, 'no longer attached');
+    assert.equal(new Set(undoStack().slice(before).map((m) => s().mutationBatchTags.get(m.id))).size, 1, 'one undo step');
+    assert.equal(height(wall), 2.4);
+  });
 
   it('a size the wall\'s openings cannot follow is refused, writing nothing', () => {
     const wall = created(s().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [6, 0, 0], Thickness: 0.2, Height: 3 }));

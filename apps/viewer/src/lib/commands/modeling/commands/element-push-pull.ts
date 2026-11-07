@@ -22,6 +22,7 @@
  * cannot follow (a wall lowered below a door) is refused with the reason.
  */
 
+import { fixWallTop } from '../wall-top-fix.js';
 import { PushPullBar } from '@/components/viewer/tools/command/PushPullBar';
 import { PushPullScene } from '@/components/viewer/tools/command/PushPullHandles';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
@@ -79,7 +80,10 @@ export const ELEMENT_PUSH_PULL: ModelingCommand<PushPullGesture> = {
     const size = sizeOf(g);
     if (!g.target || !face || size === null) throw new Error('No face to push or pull');
     const { modelId, expressId } = g.target;
-    const outcome = commitElementSize(useViewerStore, modelId, expressId, face.patch(size));
+    const patch = face.patch(size);
+    // A wall pushed to a new height is fixed at it, as a typed height is (#9013).
+    if (patch.kind === 'wall' && patch.height !== undefined) fixWallTop(tx, modelId, expressId);
+    const outcome = commitElementSize(useViewerStore, modelId, expressId, patch);
     if (!outcome.ok) throw new Error(outcome.reason);
     return { modelId, created: [], deleted: [], remesh: outcome.remesh, select: [expressId] };
   },

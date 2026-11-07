@@ -21,7 +21,7 @@ import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorRow } from './InspectorControls';
 import { runInspectorEdit, setWallDimensions } from './inspector-edits';
-import { fixWallTop } from './wall-top-fix';
+import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 
 function readWallTop(modelId: string, wallId: number): { top: WallTop; target: string | null } {
   const s = useViewerStore.getState();

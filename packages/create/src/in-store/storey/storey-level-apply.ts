@@ -56,7 +56,8 @@ export function applyStoreyLevelEdit(
   store: IfcDataStore, editor: StoreEditor, edit: StoreyLevelEdit, expected?: StoreyLevelPlan,
 ): StoreyLevelResult {
   return editor.runAtomic((draft) => {
-    const plan = planStoreyLevelEdit(readStoreyInventory(store, draft.getMutationView()), edit, { dryRun: false });
+    // A reviewed plan came from a dry run (late refusals included); re-plan the same way so the two compare.
+    const plan = planStoreyLevelEdit(readStoreyInventory(store, draft.getMutationView()), edit, { dryRun: expected !== undefined });
     // A reviewed plan is answered first: what changed since the review is the news, not what the change now blocks.
     if (expected && storeyLevelPlanSignature(plan) !== storeyLevelPlanSignature(expected)) {
       throw new StoreyEditRefusedError([{ code: 'stale', message: 'The storey edit was planned against a model that has changed since; review it again' }]);

@@ -393,5 +393,10 @@ describe('invalid outcomes are refused with a specific message and nothing writt
     const p = api('planStoreyLevelEdit')(api('readStoreyInventory')(h.store, h.view), { kind: 'elevation', storeyId: h.level2, Elevation: 1.8 });
     expect(p.refusals.map((r) => r.code)).toEqual(['dependent']);
     expect(p.refusals[0].message).toMatch(/reaches above the new top of the wall/);
+    // Applying that reviewed plan answers with the same refusal, not as a stale plan.
+    let refusal: unknown = null;
+    try { api('applyStoreyLevelEdit')(h.store, h.editor, { kind: 'elevation', storeyId: h.level2, Elevation: 1.8 }, p); } catch (error) { refusal = error; }
+    expect(refusal).toBeInstanceOf(api('StoreyEditRefusedError'));
+    expect((refusal as InstanceType<typeof create.StoreyEditRefusedError>).refusals.map((r) => r.code)).toEqual(['dependent']);
   });
 });

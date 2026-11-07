@@ -44,6 +44,8 @@ export interface AuthoringSession {
   readonly workplane: WorkplaneSpec | null;
   /** The Roof tool raised the plane by itself, so the plane comes back down when the roof drawing ends (#9202). */
   readonly planeRaisedForRoof: boolean;
+  /** The user chose this height (Floor included when typed as 0), so the Roof tool leaves it where it is. */
+  readonly planeHeightPinned: boolean;
   readonly activeCommandId: CommandId | null;
   readonly phase: CommandPhase;
   readonly snap: { readonly profile: SnapProfileId };
@@ -67,7 +69,11 @@ export interface AuthoringSessionSlice {
   enterModelWorkspace: (opts?: EnterModelWorkspaceOptions) => boolean;
   exitModelWorkspace: () => void;
   setSessionStorey: (storeyId: number) => void;
-  setWorkplane: (spec: WorkplaneSpec) => void;
+  /**
+   * Move the session plane. A height set this way is the user's (`pinned`, the
+   * default); `pinned: false` hands it back, so the Roof tool may raise it again.
+   */
+  setWorkplane: (spec: WorkplaneSpec, options?: { pinned?: boolean }) => void;
   /** Start a modeling command, entering the Model workspace first if needed. */
   startCommand: (id: CommandId) => void;
   endCommand: (reason: EndCommandReason) => void;
@@ -90,7 +96,7 @@ function commandContext(get: Get, session: AuthoringSession, command: ModelingCo
 }
 
 /** Move the session's plane; a running command keeps its gesture and draws on the new plane from here on. */
-function moveWorkplane(set: Set, get: Get, patch: Pick<AuthoringSession, 'workplane' | 'planeRaisedForRoof'>): void {
+function moveWorkplane(set: Set, get: Get, patch: Pick<AuthoringSession, 'workplane' | 'planeRaisedForRoof'> & Partial<Pick<AuthoringSession, 'planeHeightPinned'>>): void {
   patchSession(set, patch);
   const session = get().session;
   const { command } = getCommandRuntime();
@@ -102,9 +108,9 @@ const drawingRoof = (s: ViewerState): boolean =>
 
 /**
  * A roof is drawn at the top of the walls (#9202): starting one raises a plane
- * still at the floor there, and ending it lowers that plane again, so the next
- * wall does not silently start at the eaves. A height the user set is theirs,
- * in both directions.
+ * the user has not pinned, and ending it lowers that plane again, so the next
+ * wall does not silently start at the eaves. A height the user set (even 0) is
+ * theirs, in both directions.
  */
 function settleRoofPlane(set: Set, get: Get): void {
   const s = get();
@@ -112,7 +118,7 @@ function settleRoofPlane(set: Set, get: Get): void {
   if (session?.workplane?.kind !== 'storey' || session.storeyId === null) return;
   const { workplane } = session;
   if (drawingRoof(s)) {
-    if (workplane.offset !== 0) return;
+    if (session.planeHeightPinned) return;
     const offset = resolveRoofHeight(s, session.modelId, session.storeyId);
     if (offset > 0) moveWorkplane(set, get, { workplane: { ...workplane, offset }, planeRaisedForRoof: true });
   } else if (session.planeRaisedForRoof) {
@@ -196,6 +202,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
           storeyId,
           workplane: storeyId === null ? null : { kind: 'storey', storeyId, offset: 0 },
           planeRaisedForRoof: false,
+          planeHeightPinned: false,
           activeCommandId: null,
           phase: 'idle',
           snap: { profile: 'modeling' },
@@ -215,13 +222,13 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     },
 
     setSessionStorey: (storeyId) => {
-      patchSession(set, { storeyId, workplane: { kind: 'storey', storeyId, offset: 0 }, planeRaisedForRoof: false });
+      patchSession(set, { storeyId, workplane: { kind: 'storey', storeyId, offset: 0 }, planeRaisedForRoof: false, planeHeightPinned: false });
       settleRoofPlane(set, get);
       const active = get().session?.activeCommandId;
       if (active) launch(set, get, api, active);
     },
 
-    setWorkplane: (workplane) => moveWorkplane(set, get, { workplane, planeRaisedForRoof: false }),
+    setWorkplane: (workplane, options = {}) => moveWorkplane(set, get, { workplane, planeRaisedForRoof: false, planeHeightPinned: options.pinned ?? true }),
 
     startCommand: (id) => {
       if (!getModelingCommand(id)) {

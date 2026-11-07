@@ -202,12 +202,24 @@ describe('the Roof tool draws at the top of the walls (#9202)', () => {
     press(document.body, 'Escape');
     assert.equal(offset(), 5, 'nor lowered when the tool ends');
 
-    setHeight(0);
+    act(() => { state().setWorkplane({ kind: 'storey', storeyId: STOREY, offset: 0 }, { pinned: false }); });
     act(() => { launchSlabTool('roof'); });
     assert.equal(round(offset()!), 3);
     setHeight(4);
     press(document.body, 'Escape');
     assert.equal(offset(), 4, 'a height typed during the roof is the user\'s');
+  });
+
+  // Review of #9214: 0 chosen on purpose is a height too.
+  it('a height typed as 0 is pinned, and Floor hands it back', () => {
+    wall(3);
+    setHeight(0);
+    act(() => { launchSlabTool('roof'); });
+    assert.equal(offset(), 0, 'a typed 0 is the user\'s');
+    press(document.body, 'Escape');
+    act(() => { state().setWorkplane({ kind: 'storey', storeyId: STOREY, offset: 0 }, { pinned: false }); });
+    act(() => { launchSlabTool('roof'); });
+    assert.equal(round(offset()!), 3, 'after Floor the Roof tool raises it again');
   });
 
   it('a storey change while drawing a roof raises to the new storey\'s walls', () => {

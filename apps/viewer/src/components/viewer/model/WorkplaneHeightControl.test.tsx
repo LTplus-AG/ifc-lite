@@ -81,6 +81,7 @@ describe('the height control (#9202)', () => {
     assert.ok(Math.abs(offset()! - 3.2) < 1e-9);
     click(picker()!.querySelector('[data-workplane-height-preset="floor"]') as HTMLButtonElement);
     assert.equal(offset(), 0);
+    assert.equal(state().session?.planeHeightPinned, false, 'Floor hands the height back to the Roof tool');
   });
 
   it('a typed height reaches the running command', () => {

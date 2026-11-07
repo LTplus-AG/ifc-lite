@@ -1635,6 +1635,14 @@ jobs:
           # policy to the box tolerance. Prism threshold witnesses must fail.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/c2-5-finish/behaviour.oracle.patch | grep -Fxq 'tests/evidence/c2-5-finish/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/c2-5-finish/behaviour.oracle.patch)
+          # #8647: every production file of the Dalux version-set sweep is new
+          # (`commit-index.ts`, `version-set-browse.ts`, `version-sets.ts`), so
+          # a whole-change revert deletes the module `commit-index.test.ts`
+          # imports and the oracle reports REVERT-BROKE-BUILD. Keep every
+          # module and export; lose only the `partial` flag the sweep reports
+          # on a failed per-set fetch. The partial-sweep witness must fail.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/dalux-version-sets-8647/behaviour.oracle.patch | grep -Fxq 'tests/evidence/dalux-version-sets-8647/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/dalux-version-sets-8647/behaviour.oracle.patch)
           fi
           # #7955 slices register independently; discovery must fail before mapfile.
           node scripts/revert-oracle-discover.mjs --base origin/main --output "$RUNNER_TEMP/oracle-args"

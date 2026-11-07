@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/face_set_zero_rows.rs",
-  "mutation": "tests/evidence/face-set-unset-open-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/face_set_oracle_7955.rs",
-  "why": "Without ruling 12 an unset set with proven-open rows keeps the closed-solid checks, so its witness fails."
-}

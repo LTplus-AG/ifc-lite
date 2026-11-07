@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/renderer/src/gaussian/gaussian-attributes.ts",
-  "mutation": "tests/evidence/gaussian-8564-normalization/behaviour.oracle.patch",
-  "test": "packages/renderer/src/gaussian-attributes.test.ts",
-  "why": "#8564: Reverse applying loses PLY channel-major to upstream basis-major SH conversion; directional coefficient invariants must fail while imports remain valid."
-}

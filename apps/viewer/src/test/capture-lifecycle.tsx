@@ -40,7 +40,7 @@ interface CaptureLifecycle {
 }
 
 /** Actual loop, renderer viewport/camera, BCF and screenshot paths; GPU/PNG boundaries only are controlled. */
-export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
+export async function captureLifecycle(dpr: number, overrides: Partial<UseAnimationLoopParams> = {}): Promise<CaptureLifecycle> {
   const savedRaf = globalThis.requestAnimationFrame;
   const savedCancel = globalThis.cancelAnimationFrame;
   const savedDateNow = Date.now;
@@ -111,6 +111,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
     coordinateInfoRef: ref(undefined), isInteractingRef: ref(false), lastCameraStateRef: ref(null),
     updateCameraRotationRealtime: () => {}, calculateScale: () => {},
     updateMeasurementScreenCoords: () => {}, hasPendingMeasurements: () => false,
+    ...overrides,
   };
   let bcf: ReturnType<typeof useBCF> | undefined;
   function Probe() {

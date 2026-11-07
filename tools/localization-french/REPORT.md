@@ -1,12 +1,14 @@
 > Historical checkpoint evidence. See RELEASE.md for integration scope and pending gates.
 
+Current Settings-based acceptance is pending after the rebase. Historical measurements and browser runs below retain their original source identities and do not establish current-head acceptance.
+
 # French locale status
 
 French ships through the existing lazy locale discovery with 158 bounded feature
 modules, covering all 10,607 English keys including lazy features. Object audit:
 zero missing/unknown keys, zero catalogue problems, 536 value-pinned identical
 exceptions. No English-copy fallback is claimed as completion. The largest
-feature module has 392 lines. Use `?lang=fr`; fr-CH negotiation, persistence and
+feature module has 392 lines. Use Settings → General → Language → Français; fr-CH negotiation, persistence and
 HTML language use the existing activation path. No new UI/framework.
 
 ## Meaning and maintenance

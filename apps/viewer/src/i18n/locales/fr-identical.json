@@ -163,10 +163,6 @@
     "value": "Type",
     "reason": "French uses the same spelling « Type » for this contextual label; reviewed against its feature meaning."
   },
-  "bcf.panel.formatBcfzip": {
-    "value": "BCF",
-    "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
-  },
   "bcf.serverConnect.serverUrlPlaceholder": {
     "value": "https://example.com/bcf",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."

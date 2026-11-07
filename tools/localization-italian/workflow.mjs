@@ -11,8 +11,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { collectPageErrors, workflowFailed } from './workflow-verdict.mjs';
 const root = process.cwd();
-const out = path.join(root, 'tools/localization-italian/evidence');
-fs.mkdirSync(out, { recursive: true });
+const attempt = process.env.ITALIAN_WORKFLOW_ATTEMPT ?? `run-${Date.now()}-${process.pid}`;
+assert.match(attempt, /^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'Use a single attempt directory name');
+const out = path.join(root, 'tools/localization-italian/evidence', attempt);
+fs.mkdirSync(path.dirname(out), { recursive: true });
+// Preserve prior reports: an existing attempt must never be overwritten.
+fs.mkdirSync(out);
 const dependency = fs.readdirSync('node_modules/.pnpm').find(n => /^playwright@/.test(n));
 const { chromium } = await import(pathToFileURL(path.resolve('node_modules/.pnpm', dependency, 'node_modules/playwright/index.mjs')));
 assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use ifc-gpu-check; do not bypass GPU admission');
@@ -189,18 +193,33 @@ try {
           const context=canvas.getContext('2d');
           context.drawImage(bitmap,0,0);
           const {data}=context.getImageData(0,0,bitmap.width,bitmap.height);
-          let painted=0;
-          for(let y=Math.floor(bitmap.height*0.4);y<bitmap.height*0.7;y++) {
-            for(let x=Math.floor(bitmap.width*0.2);x<bitmap.width*0.8;x++) {
-              const offset=(y*bitmap.width+x)*4;
-              const [r,g,b]=data.subarray(offset,offset+3);
-              if ((b>r+35 && b>g+10) || (r>g+25 && g>b+20)) painted++;
+          const scan=pixels=>{
+            let painted=0,sampled=0,edges=0;
+            for(let y=Math.floor(bitmap.height*0.4);y<bitmap.height*0.7;y++) {
+              for(let x=Math.floor(bitmap.width*0.2);x<bitmap.width*0.8;x++) {
+                const offset=(y*bitmap.width+x)*4;
+                const [r,g,b]=pixels.subarray(offset,offset+3);
+                sampled++;
+                if ((b>r+35 && b>g+10) || (r>g+25 && g>b+20)) painted++;
+                const next=offset+4;
+                if (Math.abs(r-pixels[next])+Math.abs(g-pixels[next+1])+Math.abs(b-pixels[next+2])>60) edges++;
+              }
             }
+            return {painted,sampled,edges};
+          };
+          const visible=({painted,sampled,edges})=>painted>200 && painted<sampled*0.6 && edges>100;
+          const negativeControls=[];
+          for(const rgb of [[100,150,200],[229,230,232]]) {
+            const flat=new Uint8ClampedArray(data.length);
+            for(let i=0;i<flat.length;i+=4) {flat.set(rgb,i);flat[i+3]=255;}
+            negativeControls.push(visible(scan(flat)));
           }
-          return painted;
+          const actual=scan(data);
+          return {...actual,visible:visible(actual),negativeControls};
         } finally {bitmap.close();}
       },canvasPng.toString('base64'));
-      assert.ok(modelPixels>200,'the real house must paint blue wall or orange roof pixels after narrow resize');
+      assert.deepEqual(modelPixels.negativeControls,[false,false],'flat sky-blue and blank-grey canvases must fail');
+      assert.ok(modelPixels.visible,'the narrow house needs bounded model-colour coverage and spatial edges, not a flat background');
       await save('narrow-model');
       // The observed phone UI replaces the ribbon with a compact toolbar (#8892).
       await page.getByRole('button', {name:'Home', exact:true}).waitFor({state:'visible'});

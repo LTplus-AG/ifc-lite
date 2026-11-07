@@ -61,3 +61,15 @@ it('invalidates an in-flight run when cancel() is called with nothing queued aft
   await running;
   assert.equal(currentAtPublish, false);
 });
+
+it('is busy from the request until the cut has finished (#9026 item 19)', async () => {
+  const queue = createDrawingRequestQueue();
+  assert.equal(queue.busy(), false);
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const running = queue.request(async () => { await blocked; });
+  assert.equal(queue.busy(), true);
+  release();
+  await running;
+  assert.equal(queue.busy(), false);
+});

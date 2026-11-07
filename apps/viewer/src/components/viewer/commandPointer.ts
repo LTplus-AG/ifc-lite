@@ -9,7 +9,8 @@
  *
  * Resolution, on the session workplane:
  *   1. the cursor: the geometry under it (mapped onto the plane), else the
- *      cursor ray ∩ the plane;
+ *      cursor ray ∩ the plane; a gesture that aims at a region of the plane
+ *      (`aimsAtRegion`) always takes the ray ∩ the plane, and does not snap;
  *   2. the shared solver (`snap-solve.ts`, also the plan's): the command's anchor, chain and typed
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
  *      snapping is on — the WP3 sources: the mesh source over the renderer's
@@ -114,15 +115,17 @@ function resolveCommandSnap(
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
-  const snapping = ctx.snapEnabledRef.current && !mods.altKey;
+  const region = command.aimsAtRegion?.(runtime.gesture) === true;
+  const snapping = ctx.snapEnabledRef.current && !mods.altKey && !region;
   const pick = snapping ? magneticPick(ctx, command, x, y) : null;
   if (!snapping) ctx.setSnapTarget(null);
-  const hit = pick ? pick.intersection : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
+  const onlyPlane = region || plane.spec.kind === 'section';
+  const hit = pick ? pick.intersection : onlyPlane ? null : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
   const toLocal = (p: { x: number; y: number; z: number }) => {
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = plane.spec.kind === 'section' ? onPlane(ctx, plane, x, y) : hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
+  const cursor = onlyPlane || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);

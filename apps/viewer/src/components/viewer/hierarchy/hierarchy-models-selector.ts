@@ -96,6 +96,12 @@ export function createHierarchyModelsSelector(): (state: { models: Models; geome
       output = models;
       outputAt = now;
       frames = new Map([...models].map(([id, model]) => [id, model.geometryResult?.coordinateInfo]));
+      // Scan what this output meshes NOW. `appendGeometryBatchPatch` pushes onto
+      // the meshes array this result shares with the next one, so a first scan
+      // at comparison time already sees the new element and calls the two equal:
+      // the element stays out of the tree's mesh set, filed under "Other", until
+      // the next change (#9026). A streaming model is never compared by id.
+      for (const model of models.values()) if (!isModelStreaming(model)) meshedIds(model.geometryResult);
     }
     return output!;
   };

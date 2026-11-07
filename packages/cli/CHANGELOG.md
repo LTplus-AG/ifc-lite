@@ -1,5 +1,28 @@
 # @ifc-lite/cli
 
+## 0.46.0
+
+### Minor Changes
+
+- [#9027](https://github.com/LTplus-AG/ifc-lite/pull/9027) [`0d85a69`](https://github.com/LTplus-AG/ifc-lite/commit/0d85a693a5245da8f05a7e257fa44de94158f2c5) Thanks [@louistrue](https://github.com/louistrue)! - GLB export can name element nodes by `GlobalId` ([#9011](https://github.com/LTplus-AG/ifc-lite/issues/9011)). With the new opt-in option, each IFC element becomes one node directly under the scene, named by its `GlobalId`, with that element's mesh parts as its children. A window's frame and glass, or a layered wall, are then one named node instead of several unrelated siblings, so tools that identify objects by node name (as IfcConvert's `--use-element-guids` output allows) can map a picked or loaded object back to its element. Each element node carries a copy of the scene root's translation and site rotation, so every part lands exactly where it does without the option, and geometry, accessors, materials and the binary chunk are unchanged. An element without a usable `GlobalId` keeps its own node, unnamed.
+  
+  The option is off by default, and output without it is unchanged. Turn it on with `ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb`, the new trailing `nameByGlobalId` parameter of `GeometryProcessor.exportGlb`, the new wasm method `exportGlbNamedByGlobalId` (same parameters as `exportGlb`, whose signature is unchanged), or `GltfOptions::with_name_by_global_id(true)` in Rust. It applies to the in-memory GLB, the bounded large-model GLB and the multi-buffer `.gltf` alike.
+  
+  The glTF guide's metadata example no longer shows a node `name`: before this option, exported nodes never carried one.
+
+### Patch Changes
+
+- [#8912](https://github.com/LTplus-AG/ifc-lite/pull/8912) [`eb08c09`](https://github.com/LTplus-AG/ifc-lite/commit/eb08c09ac7aeabaa06a09c916c957f979a57cecf) Thanks [@louistrue](https://github.com/louistrue)! - Avoid the Node 24 V8 WASM code-reclamation crash during retained exports by disabling code GC in the short-lived export process. Contain retained OBJ export crashes in a child process and publish staged output only after successful termination. Report process failures with their signal or exit code while preserving existing destination files.
+- Updated dependencies [[`aca42e7`](https://github.com/LTplus-AG/ifc-lite/commit/aca42e7780691e2b6325e77ada6736233a739b1e), [`b792acf`](https://github.com/LTplus-AG/ifc-lite/commit/b792acf540770dad934bc7c96a205428d959f445), [`0d85a69`](https://github.com/LTplus-AG/ifc-lite/commit/0d85a693a5245da8f05a7e257fa44de94158f2c5), [`dfe517f`](https://github.com/LTplus-AG/ifc-lite/commit/dfe517f05880005f4865f784c5b9b38feebf0705), [`fc03027`](https://github.com/LTplus-AG/ifc-lite/commit/fc0302759de14482ad4cfa1a4c6d68666d296b49), [`6b14db9`](https://github.com/LTplus-AG/ifc-lite/commit/6b14db99d3404cc12088f629bda6c4e6e1b5df6a), [`a5504d1`](https://github.com/LTplus-AG/ifc-lite/commit/a5504d1647ae1799b302a2555e7051cb988689ea), [`019d9b2`](https://github.com/LTplus-AG/ifc-lite/commit/019d9b2e398d0172c44f07a391918ae26708b1cf), [`99e0b87`](https://github.com/LTplus-AG/ifc-lite/commit/99e0b874ac286aa0c9b4f9a27aa2adea32e6465c), [`94b6c80`](https://github.com/LTplus-AG/ifc-lite/commit/94b6c808d4e623af8ff1c16451f65d1ff0f0108b)]:
+  - @ifc-lite/cache@3.7.5
+  - @ifc-lite/geometry@8.2.0
+  - @ifc-lite/create@5.2.0
+  - @ifc-lite/wasm@12.3.0
+  - @ifc-lite/export@4.14.0
+  - @ifc-lite/sdk@9.7.0
+  - @ifc-lite/diff@0.13.2
+  - @ifc-lite/ifcx@4.6.1
+
 ## 0.45.1
 
 ### Patch Changes

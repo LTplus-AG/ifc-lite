@@ -1,5 +1,19 @@
 # @ifc-lite/pointcloud
 
+## 0.15.0
+
+### Minor Changes
+
+- [#8809](https://github.com/LTplus-AG/ifc-lite/pull/8809) [`e4c95a6`](https://github.com/LTplus-AG/ifc-lite/commit/e4c95a6ccde8eaa013810c46bfa6dcc2ddbc4186) Thanks [@louistrue](https://github.com/louistrue)! - Large PLY point clouds are read twice instead of three times: once to scan bounds, once to decode. When `streamPointCloud` downsamples or picks a local origin it now calls a source's new optional `reopen()`, which keeps the first bounds scan. Worker sources without `reopen()` of their own are rebuilt inside the worker as before.
+  
+  Cancelling a point-cloud load while the source is still opening now stops the work promptly. Previously the cancel waited for the full bounds scan of a multi-GB PLY to finish.
+
+- [#8915](https://github.com/LTplus-AG/ifc-lite/pull/8915) [`0f57524`](https://github.com/LTplus-AG/ifc-lite/commit/0f57524cfe347d29d68f53df7fc97f0b1f80d61a) Thanks [@louistrue](https://github.com/louistrue)! - Add bounded CPU Gaussian placement export batches and PCD header inspection for positioned downloads. Preserve unsigned-byte point classifications when reading binary and ASCII PLY files, including streaming and variable-length rows. Keep unsupported classification declarations ignored for compatibility with existing files.
+  
+  Treat malformed optional ASCII byte classifications as unclassified so geometry remains loadable.
+
+- [#8782](https://github.com/LTplus-AG/ifc-lite/pull/8782) [`cc5dcbd`](https://github.com/LTplus-AG/ifc-lite/commit/cc5dcbd4ee6cf35d624b0247edbb89ef35381c6e) Thanks [@louistrue](https://github.com/louistrue)! - Load E57, PLY and LAS point clouds larger than 4 GB. `streamPointCloud` now applies its 4 GB default `maxFileSize` only to formats whose source reads the whole file (PCD, PTS, XYZ, LAZ); E57, PLY and LAS stream from bounded windows and have no default ceiling. LAS strided reads are now capped at 16 MiB per read, so LAS peak memory no longer grows with file size. An explicit `maxFileSize` still applies to every format ([#8773](https://github.com/LTplus-AG/ifc-lite/issues/8773)).
+
 ## 0.14.0
 
 ### Minor Changes

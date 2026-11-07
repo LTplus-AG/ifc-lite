@@ -17,14 +17,17 @@ relationship count. A per-scan schema snapshot cuts the registry cost per record
 the reads. The parsed graph already records which relationship names which element (with
 repeats as shadowed ids), so the read now walks effective rows from the index only and
 decodes a relationship only when an edit touched it, the parser recorded no edge for it, or
-it names the element or type being read. Answers were compared against base by digest,
+it names the element or type being read. A definition relationship whose graph count can
+exceed what a read counts (it names a non-definition, or a definition an edit removed) enters
+the reference budget at that upper bound and is decoded only if the bound would cross it.
+Answers were compared against base by digest,
 under edits, on five large fixtures. That included raised-limit copies of the two models
 whose row count passes `MAX_RELATIONSHIPS`, and a probe quantity on every type so each digest
 compares the assigned type.
 
 Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
 did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
-edit revision. The limit itself still applies and still refuses those models; it bounded
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
 work the read no longer does, so raising it is a behaviour change, not a perf lever.
 
 ## Opt-in gross host geometry (#8875)

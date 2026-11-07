@@ -88,6 +88,19 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
     const typeId = current.relationships.typesOf(entityId)[0];
     if (typeId === undefined) return available(null);
     if (current.quantities.has(typeId)) return current.quantities.get(typeId)!;
+    // A type's answer, refusal included, holds for the revision: the next element of that type reads nothing.
+    let result: CurrentTypeQuantityResult;
+    try {
+        result = readTypeQuantities(store, typeId, view, current);
+    } catch (error) {
+        if (!(error instanceof CurrentQuantityRefusal)) throw error;
+        result = unavailable(error.message);
+    }
+    current.quantities.set(typeId, result);
+    return result;
+}
+
+function readTypeQuantities(store: IfcDataStore, typeId: number, view: MetadataReadView, current: CurrentInventory): CurrentTypeQuantityResult {
     const type = effectiveMetadataRecord(store, typeId, view);
     if (!type || !getInheritanceChain(type.type).includes('IfcTypeObject')) return unavailable('Native assigned type is unavailable or unsupported');
     const extractor = new EntityExtractor(store.source);
@@ -224,6 +237,5 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         quantities.splice(0, quantities.length, ...ordered, ...updated.filter(set => !set.globalId || !existingGuids.has(set.globalId)));
     }
     const result = available(quantities.length ? { typeName: typeof type.attributes[2] === 'string' ? type.attributes[2] : type.type, typeId, quantities } : null);
-    current.quantities.set(typeId, result);
     return result;
 }

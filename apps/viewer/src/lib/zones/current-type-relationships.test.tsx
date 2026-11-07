@@ -229,6 +229,57 @@ test('#9192 the reference budget counts only what a read of each relationship co
   assert.deepEqual(read(psets, retyped), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'], 'and with 200 of them retyped away');
 });
 
+test('#9192 a refusal holds for the edit revision, like an answer', async () => {
+  // #70 names #14 next to an unreadable value; type #46's only quantity has no value.
+  const store = await parse([...BASE, typing(70, "(#14,'x')", '#20'), wall(15), wall(16),
+    `#46=IFCWALLTYPE('${gid(46)}',$,'Bad',$,$,(#45),$,$,$,.STANDARD.);`,
+    `#45=IFCELEMENTQUANTITY('${gid(45)}',$,'Qto_Bad',$,$,(#47));`, "#47=IFCQUANTITYLENGTH('L',$,$,$,$);",
+    typing(48, '(#15,#16)', '#46')]);
+  const view = new MutablePropertyView(null, 'm');
+  // Every record read goes through the view's deletion check first, so it counts read attempts.
+  const attempts = new Map<number, number>();
+  const isDeleted = view.isDeleted.bind(view);
+  view.isDeleted = id => { attempts.set(id, (attempts.get(id) ?? 0) + 1); return isDeleted(id); };
+  const seen = (id: number) => attempts.get(id) ?? 0;
+
+  assert.equal(describe(store, 14, view), 'refused');
+  const relationship = seen(70);
+  assert.ok(relationship > 0, 'the first selection reads #70');
+  assert.equal(describe(store, 14, view), 'refused');
+  assert.equal(seen(70), relationship, 'selecting #14 again reads #70 no more');
+
+  assert.equal(describe(store, 15, view), 'refused');
+  const quantity = seen(47);
+  assert.ok(quantity > 0, 'the first element of the type reads its quantity');
+  assert.equal(describe(store, 16, view), 'refused');
+  assert.equal(seen(47), quantity, 'the next element of the same type reads it no more');
+
+  view.setPositionalAttribute(48, 4, ['#15', '#16']);
+  assert.equal(describe(store, 16, view), 'refused');
+  assert.ok(seen(47) > quantity, 'a new revision reads again');
+});
+
+test('#9192 a definition relationship the graph over-counts is read only when it decides the budget', async () => {
+  const objects = Array.from({ length: 600 }, (_, i) => 3000 + i);
+  const named = Array.from({ length: 600 }, (_, i) => 5000 + i);
+  const relationship = `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
+  const readsOf90 = (store: IfcDataStore, view: MutablePropertyView) => {
+    let reads = 0;
+    const counted: IfcDataStore = { ...store, getEntity: id => { if (id === 90) reads++; return store.getEntity(id); } };
+    return { answer: describe(counted, 10, view), reads };
+  };
+
+  // 360,000 references written, none a definition: the bound crosses the budget, so #90 is read, and holds nothing.
+  const walls = await parse([...BASE, ...objects.map(wall), ...named.map(wall), relationship]);
+  assert.deepEqual(readsOf90(walls, new MutablePropertyView(null, 'm')), { answer: 'A: Qto_Own,Qto_Related', reads: 1 });
+
+  // 60 objects x 600 is 36,000 references, inside the budget whatever they are: #90 names neither #10 nor
+  // type #20, so selecting #10 does not read it.
+  const small = `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.slice(0, 60).map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
+  const fits = await parse([...BASE, ...objects.map(wall), ...named.map(wall), small]);
+  assert.deepEqual(readsOf90(fits, new MutablePropertyView(null, 'm')), { answer: 'A: Qto_Own,Qto_Related', reads: 0 });
+});
+
 test('#9192 a read of the store emitted before the definition edges exist still finds them', async () => {
   let early: IfcDataStore | undefined;
   const store = await new IfcParser().parseColumnar(bytesOf(BASE), { disableWorkerScan: true, onSpatialReady: value => { early = value; } });

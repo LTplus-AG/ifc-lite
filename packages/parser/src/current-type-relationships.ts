@@ -11,11 +11,14 @@
  * selection of a large model. So a relationship is read in only two cases:
  *
  *   - the graph cannot vouch for it: an edit touched it, the session created
- *     it, the parser recorded no edge for it (a record the byte reader could
- *     not use, or a store whose graph is not complete yet), or it names a
- *     definition that is not one, or no longer is, after an edit. These are read once
+ *     it, or the parser recorded no edge for it (a record the byte reader could
+ *     not use, or a store whose graph is not complete yet). These are read once
  *     per revision, so they keep refusing for the whole model as they always did;
  *   - a lookup needs it: it names the element or type being asked about.
+ *
+ * One more case is read only when it decides the answer: a definition relationship whose graph
+ * count can exceed what a read counts (it names a non-definition, or a definition an edit removed)
+ * is read when that upper bound would cross the reference budget, so the budget stays exact.
  *
  * A source-free store has nothing to read and no relationship the graph can
  * vouch for, so every row there resolves from the view.
@@ -151,8 +154,9 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
     const facts = store.source?.length && graph ? readGraphFacts(store, graph.forward) : undefined;
     const counts = facts?.counts;
     const retypes = view.getTypeMutations?.();
-    // A definition deleted or retyped by an edit drops out of the sets naming it, so those are read.
-    // A view that cannot list its deletions gets every definition relationship read.
+    // A definition deleted or retyped by an edit drops out of the sets naming it, so the graph
+    // over-counts those relationships. So it does for one naming a non-definition, and for every
+    // definition relationship of a view that cannot list its deletions.
     const tombstones = view.getTombstones?.();
     const redefined = new Set<number>();
     if (facts) {
@@ -162,7 +166,26 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
             }
         }
     }
+    // One read per relationship, refusal included, so an element-by-element walk stays linear
+    // in a relationship naming many of them and a refused one is not read again this revision.
+    const reads = new Map<number, RelationRead | CurrentQuantityRefusal>();
+    const readOnce = (id: number): RelationRead => {
+        let value = reads.get(id);
+        if (value === undefined && !reads.has(id)) {
+            try { value = readRelation(store, id, view); } catch (error) {
+                if (!(error instanceof CurrentQuantityRefusal)) throw error;
+                value = error;
+            }
+            reads.set(id, value);
+        }
+        if (value instanceof CurrentQuantityRefusal) throw value;
+        return value ?? null;
+    };
     const vouched = new Map<number, number>();
+    // Over-counted rows enter the budget at their graph count, an upper bound of what a read
+    // counts, and are read only when that bound would cross the budget.
+    const uncertain: Array<{ id: number; bound: number }> = [];
+    let uncertainBound = 0;
     const editedTypes = new Map<number, Contribution[]>();
     const editedSets = new Map<number, Contribution[]>();
     let relationshipCount = 0;
@@ -172,12 +195,16 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
         if (relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal('Native type relationship inventory exceeds the read limit');
         const touched = row.overlayCreated || retypes?.has(row.expressId)
             || view.getPositionalMutationsForEntity(row.expressId) !== null
-            || view.getAttributeMutationsForEntity(row.expressId).length > 0
-            || (row.type === 'IFCRELDEFINESBYPROPERTIES' && (!tombstones || facts?.unverified.has(row.expressId) || redefined.has(row.expressId)));
+            || view.getAttributeMutationsForEntity(row.expressId).length > 0;
         const edges = touched ? undefined : counts?.get(row.expressId);
         if (edges !== undefined) {
             vouched.set(row.expressId, order);
-            referenceCount += edges;
+            if (row.type === 'IFCRELDEFINESBYPROPERTIES' && (!tombstones || facts?.unverified.has(row.expressId) || redefined.has(row.expressId))) {
+                uncertain.push({ id: row.expressId, bound: edges });
+                uncertainBound += edges;
+            } else {
+                referenceCount += edges;
+            }
         } else {
             const relation = readRelation(store, row.expressId, view);
             if (!relation) continue;
@@ -190,18 +217,15 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
                 else map.set(member, [{ order, targets: relation.targets }]);
             }
         }
+        while (referenceCount + uncertainBound > MAX_RELATION_REFERENCES && uncertain.length > 0) {
+            const next = uncertain.shift()!;
+            uncertainBound -= next.bound;
+            const relation = readOnce(next.id);
+            if (relation) referenceCount += relation.members.length * relation.targets.length;
+        }
         if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
     }
 
-    // One read per relationship, so an element-by-element walk stays linear in a
-    // relationship naming many of them.
-    const reads = new Map<number, RelationRead>();
-    const readOnce = (id: number): RelationRead => {
-        if (reads.has(id)) return reads.get(id)!;
-        const value = readRelation(store, id, view);
-        reads.set(id, value);
-        return value;
-    };
     const lookup = (edited: Map<number, Contribution[]>, type: RelationshipType) => {
         const memo = new Map<number, readonly number[]>();
         return (id: number): readonly number[] => {

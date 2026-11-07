@@ -156,7 +156,8 @@ function planStairRefit(
 ): StairRefit | 'unreadable' | null {
   const storey = inventory.storeys.find((candidate) => candidate.expressId === storeyId)!;
   const dims = readStairDimensions(inventory.store, stairId, inventory.view);
-  const base = heightAboveStorey(inventory, stairId, storeyId);
+  // The flight carries the steps and may sit above its stair's placement: measure from it.
+  const base = heightAboveStorey(inventory, dims ? dims.flightId : stairId, storeyId);
   const rise = dims ? dims.NumberOfRisers * dims.RiserHeight : genericRise(inventory, stairId);
   if (rise === null || base === null) {
     // The file records no rise (a spiral or freeform stair whose body is the

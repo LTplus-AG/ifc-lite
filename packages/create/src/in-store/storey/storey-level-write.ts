@@ -64,9 +64,17 @@ export function scaleWallQuantities(view: MutablePropertyView, wallId: number, k
   };
   const height = value('Height');
   if (height) set('Height', height.value * k);
+  // Without the gross value, the set's own Length × Height (× Width) is the gross prism it stands for.
+  const length = value('Length')?.value, width = value('Width')?.value, h = height?.value;
+  const grossFromSet = {
+    GrossSideArea: length !== undefined && h !== undefined ? length * h : undefined,
+    GrossVolume: length !== undefined && width !== undefined && h !== undefined ? length * width * h : undefined,
+  };
   for (const [gross, net] of [['GrossSideArea', 'NetSideArea'], ['GrossVolume', 'NetVolume']] as const) {
     const g = value(gross), n = value(net);
     if (g) set(gross, g.value * k);
-    if (n) set(net, g ? n.value + g.value * (k - 1) : n.value * k);
+    // Openings are the same before and after, so the net value changes by exactly the gross change.
+    const before = g?.value ?? grossFromSet[gross];
+    if (n) set(net, before !== undefined ? n.value + before * (k - 1) : n.value * k);
   }
 }

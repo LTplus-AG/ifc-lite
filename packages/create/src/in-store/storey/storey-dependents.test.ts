@@ -22,6 +22,9 @@ import { readWallMetres } from '../wall-size-edit.js';
 import { resolveSpatialAnchor } from '../resolve-anchor.js';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from '../__test__/stair-mesh.oracle.js';
 import { parse, session, type Session } from '../__test__/storey-fixtures.oracle.js';
+import { readPlacementLeaf, writeShiftedPlacement } from './storey-placement.js';
+import { AnchorEntityReader } from '../resolve-anchor.js';
+import { refId } from '../host-geometry-frame.js';
 
 /** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
 function api<K extends keyof typeof create>(name: K): (typeof create)[K] {
@@ -118,6 +121,47 @@ describe('wall attachments are followed exactly as recorded (#9036 review)', () 
     const plan = api('planStoreyLevelEdit')(inventory, { kind: 'floorHeight', storeyId: level1, Height: 3.5 });
     expect(plan.walls).toEqual([]);
     expect(plan.notices.map((n) => [n.code, n.elementIds])).toEqual([['wallAttachmentUnresolved', [wall]]]);
+  });
+});
+
+describe('quantities and stairs as the file records them (#9036 review)', () => {
+  async function blank() {
+    const creator = new IfcCreator({ Name: 'Blank' });
+    creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
+    const s = session(await parse(creator.toIfc().content));
+    const level1 = api('readStoreyInventory')(s.store, s.view).storeys[0].expressId;
+    const anchor = (draft: StoreEditor) => resolveSpatialAnchor(s.store, level1, draft.getMutationView());
+    return { s, level1, anchor };
+  }
+
+  it('a net side area without a gross one changes by the gross change the set implies', async () => {
+    const { s, level1, anchor } = await blank();
+    const wall = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    // A 4 m x 3 m wall with a 2 m2 opening, recorded without its gross area.
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Length', 4, QuantityType.Length);
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+    s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetSideArea', 10, QuantityType.Area);
+    api('writeTopAttachment')(s.view, wall, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    api('applyStoreyLevelEdit')(s.store, s.editor, { kind: 'floorHeight', storeyId: level1, Height: 4 });
+    const qto = s.view.getQuantitiesForEntity(wall).find((set) => set.name === 'Qto_WallBaseQuantities')!;
+    expect(qto.quantities.find((q) => q.name === 'NetSideArea')?.value).toBeCloseTo(14, 9);
+  });
+
+  it('a flight that sits above its stair\'s placement lands, and refits, at its own top', async () => {
+    const { s, level1, anchor } = await blank();
+    const built = s.editor.runAtomic((draft) => addStairToStore(draft, anchor(draft), {
+      Position: [2, 1, 0], NumberOfRisers: 15, RiserHeight: 0.2, TreadLength: 0.27, Width: 1,
+    }));
+    // Raise the flight 0.2 m inside its stair: its top is now at 3.2 m.
+    const reader = new AnchorEntityReader(s.store, s.view);
+    const flightPlacement = refId(reader.entity(built.flightId)?.attributes[5])!;
+    writeShiftedPlacement(s.editor, readPlacementLeaf(reader, flightPlacement)!, [0, 0, 0.2]);
+    const level2 = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 }).storeyId;
+    const plan = api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), { kind: 'floorHeight', storeyId: level1, Height: 3.5 });
+    expect(plan.stairs.map((stair) => [stair.stairId, stair.landingStoreyId])).toEqual([[built.stairId, level2]]);
+    // From 3.0 m to 3.3 m of rise: the flight still lands exactly on Level 2.
+    expect(plan.stairs[0].to.NumberOfRisers * plan.stairs[0].to.RiserHeight).toBeCloseTo(3.3, 9);
   });
 });
 

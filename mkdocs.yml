@@ -11,17 +11,12 @@ validation:
   nav:
     omitted_files: warn
 
-# The retained evidence tree is leaving the repo (#9054); never publish what is left.
-exclude_docs: |
-  architecture/evidence/**
-
 # Declaring them here keeps `omitted_files: warn` meaningful for everything else.
 not_in_nav: |
   # Release-owner review inputs and draft opt-in deployment; not general installation guidance.
   architecture/retained-licensing.md
   guide/retained-release.md
   guide/retained-installation.md
-  architecture/evidence/**
 
 theme:
   name: material

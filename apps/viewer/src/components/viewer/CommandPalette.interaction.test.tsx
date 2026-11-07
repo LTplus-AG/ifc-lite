@@ -4,15 +4,19 @@
 
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
-import { afterEach, beforeEach, test } from 'node:test';
+import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
-import { setLocale } from '@/i18n';
+import { getLocale, setLocale } from '@/i18n';
+import { createLocaleActivator } from '@/i18n/locale-activation';
+import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
-import { cleanup, click, press, render, type as typeInto } from '@/test/render.js';
+import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render.js';
 import { CommandPalette } from './CommandPalette.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { SURFACE_COMMANDS } from './surface-commands.js';
 import { RECENT_KEY } from './commandPaletteSearch.js';
 
 const originalState = useViewerStore.getState();
@@ -23,6 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  mock.restoreAll();
   localStorage.clear();
   useViewerStore.setState(originalState);
 });
@@ -170,4 +175,131 @@ test('Escape cancels IME composition without dismissing the palette (#8946)', ()
   assert.equal(closes, 0);
   press(input, 'Escape');
   assert.equal(closes, 1);
+});
+
+
+test('unloaded and property-only selection remain discoverable but cannot hide (#8947)', async () => {
+  let closes = 0;
+  const input = mount(() => { closes++; });
+  typeInto(input, 'Hide Selection');
+  const hide = () => rows().find(row => row.dataset.commandId === 'vis:hide')!;
+  assert.equal(hide().getAttribute('aria-disabled'), 'true');
+  assert.match(hide().textContent ?? '', /Load a model first/);
+  assert.ok(document.getElementById(hide().getAttribute('aria-describedby')!));
+  click(hide());
+  press(input, 'Enter');
+  assert.equal(closes, 0);
+  assert.equal(localStorage.getItem(RECENT_KEY), null);
+  act(() => useViewerStore.setState({
+    ...fixtureModels(fixtureModel('m')),
+    selectedEntity: { modelId: 'm', expressId: 262 },
+    selectedEntityId: null, selectedEntityIds: new Set(),
+  }));
+  assert.equal(hide().getAttribute('aria-disabled'), 'true', 'property ref is not renderer selection');
+  assert.match(hide().textContent ?? '', /Select elements in the viewer first/);
+  act(() => useViewerStore.setState({ selectedEntityId: 262 }));
+  assert.equal(hide().getAttribute('aria-disabled'), null, 'scalar renderer selection is sufficient');
+  click(hide());
+  await advance(30);
+  assert.equal(useViewerStore.getState().hiddenEntities.has(262), true, 'canonical Hide consumes scalar selection');
+});
+
+test('role-blocked rows update live without losing the inspected row (#8947)', () => {
+  useViewerStore.setState({ collabRole: 'viewer', ...fixtureModels(fixtureModel('m')) });
+  let closes = 0;
+  const input = mount(() => { closes++; });
+  typeInto(input, 'Toggle Edit Mode');
+  const edit = rows().find(row => row.dataset.commandId === 'tool:edit-mode')!;
+  hover(edit);
+  const selected = active(input).id;
+  assert.equal(edit.getAttribute('aria-disabled'), 'true');
+  assert.match(edit.textContent ?? '', /Requires editor access/);
+  click(edit);
+  press(input, 'Enter');
+  assert.equal(closes, 0);
+  assert.equal(localStorage.getItem(RECENT_KEY), null);
+  act(() => useViewerStore.setState({ collabRole: 'editor' }));
+  assert.equal(active(input).id, selected);
+  assert.equal(active(input).getAttribute('aria-disabled'), null);
+  act(() => useViewerStore.setState({ collabRole: 'commenter' }));
+  assert.equal(active(input).getAttribute('aria-disabled'), 'true');
+});
+
+test('deferred camera activation rechecks unload and records no refused usage (#8947)', () => {
+  const executions: string[] = [];
+  mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') executions.push(event); });
+  let calls = 0;
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('m')),
+    cameraCallbacks: {} });
+  const input = mount();
+  typeInto(input, 'Home');
+  const home = rows().find(row => row.dataset.commandId === 'view:home')!;
+  hover(home);
+  assert.equal(home.getAttribute('aria-disabled'), 'true');
+  assert.match(home.textContent ?? '', /Wait for the viewer camera/);
+  act(() => useViewerStore.setState({ cameraCallbacks: { home: () => { calls++; } } }));
+  assert.equal(home.getAttribute('aria-disabled'), null);
+  const originalFrame = globalThis.requestAnimationFrame;
+  const frames: FrameRequestCallback[] = [];
+  globalThis.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+  try {
+    press(input, 'Enter');
+    act(() => useViewerStore.setState({ models: new Map(), geometryResult: null, ifcDataStore: null }));
+    act(() => { for (const frame of frames) frame(0); });
+    assert.equal(calls, 0);
+    assert.deepEqual(executions, []);
+    assert.equal(localStorage.getItem(RECENT_KEY), null);
+  } finally {
+    globalThis.requestAnimationFrame = originalFrame;
+  }
+});
+
+test('palette static registry is projected once and toggles expose live state (#8947)', () => {
+  mount();
+  const ids = rows().map(row => row.dataset.commandId).filter(Boolean);
+  for (const definition of SURFACE_COMMANDS) {
+    const declared = definition.surfaces.some(surface => surface === 'palette');
+    if (!declared || definition.id === 'panel:collab') continue;
+    assert.equal(ids.filter(id => id === definition.id).length, 1, definition.id);
+  }
+  const tips = () => rows().find(row => row.dataset.commandId === 'pref:tooltips')!;
+  act(() => useViewerStore.setState({ hoverTooltipsEnabled: true }));
+  assert.match(tips().textContent ?? '', /On/);
+  act(() => useViewerStore.setState({ hoverTooltipsEnabled: false }));
+  assert.match(tips().textContent ?? '', /Off/);
+});
+
+test('Russian prerequisite reasons remain visible on unavailable registered rows (#8947)', async () => {
+  // Match startup: setLocale alone deliberately falls back when no catalogue is registered.
+  const locale = createLocaleActivator({ ru: () => import('@/i18n/locales/ru').then(module => module.default) });
+  await locale.activate(['ru']);
+  assert.equal(getLocale(), 'ru');
+  const input = mount();
+  typeInto(input, 'Hide Selection');
+  const hide = rows().find(row => row.dataset.commandId === 'vis:hide')!;
+  assert.equal(hide.getAttribute('aria-disabled'), 'true');
+  assert.match(hide.textContent ?? '', /Сначала загрузите модель/);
+});
+
+
+test('modeling prerequisite is inspected without entering an invalid workspace (#8947)', () => {
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('m')), session: null, workspaceMode: 'view' });
+  let closes = 0;
+  const input = mount(() => { closes++; });
+  typeInto(input, 'Draw walls');
+  const wall = rows().find(row => row.dataset.commandId === 'tool:wall')!;
+  assert.equal(wall.getAttribute('aria-disabled'), 'true');
+  assert.match(wall.textContent ?? '', /Choose a valid modeling workplane/);
+  click(wall);
+  assert.equal(closes, 0);
+  assert.equal(useViewerStore.getState().workspaceMode, 'view');
+});
+
+test('export prerequisite refusal leaves usage untouched (#8947)', () => {
+  const input = mount();
+  typeInto(input, 'Export JSON');
+  const json = rows().find(row => row.dataset.commandId === 'export:json')!;
+  assert.equal(json.getAttribute('aria-disabled'), 'true');
+  click(json);
+  assert.equal(localStorage.getItem(RECENT_KEY), null);
 });

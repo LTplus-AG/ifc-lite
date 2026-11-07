@@ -127,6 +127,10 @@ export interface SnapProfile {
   angleStepDeg?: number;
   /** A held winner survives until it is this many pixels beyond the radius or beaten by this margin. */
   hysteresisPx?: number;
+  /** Kinds that win over any tier while the pointer is within `aimedPx` of one (see `aimedOr`). */
+  aimedKinds?: readonly SnapKind[];
+  /** Absent or 0: only a pointer exactly on the target counts. */
+  aimedPx?: number;
 }
 
 export interface SnapResult {

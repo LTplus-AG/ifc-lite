@@ -113,7 +113,7 @@ export function mountViewportControls(tool: string, pickedId: number | null = nu
     return null;
   }
   render(<Probe />);
-  return { canvas, camera, menus, activeToolRef, selectionCount: () => selections };
+  return { canvas, camera, renderer, menus, activeToolRef, selectionCount: () => selections };
 }
 
 export function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0, button = 0): PointerEvent {

@@ -3,7 +3,8 @@
 use super::{
     clipping::{clipped_area, convex_planes},
     prism::{self, Basis},
-    quantities,
+    quantities, section_net,
+    sections::ExtrudedHost,
 };
 use ifc_lite_processing::AnalyticQuantitySources;
 
@@ -31,15 +32,40 @@ pub fn expected(
     if !host_volume.is_finite() || !cutter_volume.is_finite() {
         return None;
     }
+    // Parallel prisms integrate exactly; any other extrusion cutters go through section_net.
+    let (result_volume, cut_arcs) = match prism_result_volume(sources, host, cutters) {
+        Some(volume) => (Some(volume), false),
+        None => section_result_volume(sources, host, cutters).map_or((None, false), |(v, arcs)| (Some(v), arcs)),
+    };
     Some(OpeningExpectation {
         nominal_host_volume: host_volume,
         volume_bounds: [(host_volume - cutter_volume).max(0.), host_volume],
-        result_volume: prism_result_volume(sources, host, cutters),
-        curved: host_bbox.is_none(),
+        result_volume,
+        curved: host_bbox.is_none() || cut_arcs,
         host_bbox,
     })
 }
-fn nominal(sources: &AnalyticQuantitySources, id: u32) -> Option<(f64, Option<[f64; 6]>)> {
+/// Each unmodified host extrusion minus every cutter, and whether a cutter's arc was polygonised.
+fn section_result_volume(sources: &AnalyticQuantitySources, host: u32, cutters: &[u32]) -> Option<(f64, bool)> {
+    let definitions = &sources.extrusion_definitions;
+    let mut cuts = Vec::new();
+    let mut arcs = false;
+    for id in cutters {
+        for instance in definitions.instances.get(id)? {
+            if instance.source_modified { return None; }
+            let (pieces, curved) = section_net::extrusion_cutters(&ExtrudedHost::from_sources(sources, instance)?)?;
+            cuts.push(pieces);
+            arcs |= curved;
+        }
+    }
+    let mut volume = 0.;
+    for instance in definitions.instances.get(&host)? {
+        if instance.source_modified { return None; }
+        volume += section_net::net_volume(&ExtrudedHost::from_sources(sources, instance)?, &[], &cuts)?;
+    }
+    Some((volume, arcs))
+}
+pub(super) fn nominal(sources: &AnalyticQuantitySources, id: u32) -> Option<(f64, Option<[f64; 6]>)> {
     let parts = sources.extrusion_definitions.instances.get(&id)?.len();
     if parts == 0 {
         return None;
@@ -71,6 +97,10 @@ pub fn prism_result_volume(
             cuts.push((p, planes));
         }
     }
+    cut_prisms_volume(hosts, cuts)
+}
+
+pub(super) fn cut_prisms_volume(hosts: Vec<prism::Prism>, cuts: Vec<(prism::Prism, Vec<super::clipping::HalfPlane>)>) -> Option<f64> {
     let mut result = 0.;
     let mut work = 10_000_000usize;
     for host in hosts {

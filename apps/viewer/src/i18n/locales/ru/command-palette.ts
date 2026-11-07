@@ -5,6 +5,21 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
+  'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
+  'commandPalette.availability.editor': 'Требуется роль редактора',
+  'commandPalette.availability.feature': 'Недоступно в этой конфигурации',
+  'commandPalette.availability.selection': 'Сначала выберите элементы в окне просмотра',
+  'commandPalette.availability.entity': 'Сначала выберите объект IFC',
+  'commandPalette.availability.ifc': 'Сначала загрузите модель с данными IFC',
+  'commandPalette.availability.model': 'Сначала загрузите модель',
+  'commandPalette.availability.camera': 'Дождитесь готовности камеры',
+  'commandPalette.availability.workplane': 'Сначала выберите рабочую плоскость',
+  'commandPalette.availability.schedule': 'Сначала создайте или импортируйте расписание',
+  'commandPalette.availability.host': 'Сначала откройте инструменты просмотра',
+  'commandPalette.availability.loading': 'Дождитесь завершения загрузки модели',
+  'commandPalette.state.on': 'Включено',
+  'commandPalette.state.off': 'Выключено',
+
   "commandPalette.file.open.label": "Открыть файл",
   "commandPalette.file.saveFederationSetup.label": "Сохранить настройки федерации",
   "commandPalette.file.openFederationSetup.label": "Открыть настройки федерации",
@@ -78,6 +93,8 @@ export const commandPaletteRu = {
   "commandPalette.searchPlaceholder": "Что вам нужно?",
   "commandPalette.escKey": "Esc",
   "commandPalette.noResults": "Нет результатов",
+  'commandPalette.noResultsHint': 'Попробуйте другое название или ключевое слово.',
+  'commandPalette.clearSearch': 'Очистить поиск',
   "commandPalette.footer.navigate": "перемещаться",
   "commandPalette.footer.run": "запустить",
   "commandPalette.footer.close": "закрыть",

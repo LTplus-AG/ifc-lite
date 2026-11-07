@@ -44,6 +44,40 @@ fn read_fixture() -> String {
 }
 
 #[test]
+fn c4_6b_flagged_named_classes_do_not_change_discovery() {
+    let mut content = LEGACY_JOB_FIXTURE.to_owned();
+    let end = content.rfind("ENDSEC;").expect("DATA terminator");
+    content.insert_str(end, "#31=IFCSTYLEDITEM($,(#4),$);\n");
+    let bytes = content.as_bytes();
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
+    let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
+    let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
+    let disabled = rustc_hash::FxHashSet::default();
+    let plain = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
+    let flagged: Vec<u8> = classes.iter().map(|&class| {
+        if class & ifc_lite_processing::PREPASS_CLASS_CODE_MASK != 0 {
+            class | ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB
+                | ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE
+        } else {
+            class
+        }
+    }).collect();
+    let marked = discover_from_columns(bytes, &ids, &starts, &lengths, &flagged, &disabled);
+    assert!(!plain.buffered_jobs.is_empty());
+    assert_eq!(marked.buffered_jobs, plain.buffered_jobs);
+    assert_eq!(marked.total_jobs, plain.total_jobs);
+    assert_eq!(marked.project_id, plain.project_id);
+    assert_eq!(marked.site_position, plain.site_position);
+    assert_eq!(format!("{:?}", marked.prepass_spans), format!("{:?}", plain.prepass_spans));
+    assert_eq!(marked.mapped_item_spans, plain.mapped_item_spans);
+    assert_eq!(marked.type_candidate_spans, plain.type_candidate_spans);
+    assert_eq!(marked.has_layer_set, plain.has_layer_set);
+}
+
+#[test]
 fn sharded_column_discovery_schedules_storey_geometry_job() {
     let mut content = read_fixture();
     // #1910 review follow-up: the fixture only ever proved a storey
@@ -71,8 +105,10 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
 
     // Stage 1: shard-scan + classify, exactly as `scan_entity_index_shard`
     // does before handing the columns to the host.
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
 
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
@@ -143,8 +179,9 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
 #[test]
 fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
     // Every record start shifted past the end of the buffer.
@@ -186,8 +223,9 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
 #[test]
 fn a_short_column_ends_the_walk_instead_of_panicking() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();
-    let (records, classes, _) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
     let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
@@ -270,8 +308,10 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
         ifc_lite_core::IfcType::IfcDoorStyle
     );
 
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
@@ -318,8 +358,10 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
         ifc_lite_core::IfcType::IfcBeamStandardCase
     );
 
-    let (records, classes, handoff) =
-        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let records = scan.records;
+    let classes = scan.classes.expect("classified scan");
+    let handoff = scan.handoff;
     assert!(handoff.is_none(), "single shard must cover the whole fixture");
     let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
     let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
@@ -387,4 +429,139 @@ fn keyword_at_skips_trivia_between_the_equals_and_the_keyword() {
     ] {
         assert_eq!(keyword_at(record, 0, record.len()), keyword, "{}", String::from_utf8_lossy(record));
     }
+}
+
+/// #7782 C4-6b: file order, duplicate ids, first site/project, and span order
+/// are observable even though the entity index later sorts and deduplicates.
+#[test]
+fn c4_6b_shared_discovery_preserves_browser_order() {
+    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+    let bytes = b"DATA;\n#90=IFCPROJECT($);\n#70=IFCSITE($);\n#50=IFCWINDOW($);\n#40=IFCWALL($);\n#30=IFCSTYLEDITEM($,(),$);\n#20=IFCSTYLEDITEM($,(),$);\n#10=IFCPROJECT($);\n#5=IFCSITE($);\n#40=IFCSPACE($);\nENDSEC;";
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let ids: Vec<_> = scan.records.iter().map(|r| r.0).collect();
+    let starts: Vec<_> = scan.records.iter().map(|r| r.1 as u32).collect();
+    let lengths: Vec<_> = scan.records.iter().map(|r| (r.2 - r.1) as u32).collect();
+    let disabled = Default::default();
+    let columns = discover_from_columns(bytes, &ids, &starts, &lengths, &scan.classes.unwrap(), &disabled);
+    let mut shared = ifc_lite_processing::discovery::Discovery::default();
+    let mut serial = ColumnsDiscovery::default();
+    let mut scanner = EntityScanner::new(bytes);
+    while let Some((id, kw, start, end)) = scanner.next_entity() {
+        serial.observe(&mut shared, bytes, id, kw, start, end, &disabled);
+    }
+    assert_eq!(serial.buffered_jobs, columns.buffered_jobs);
+    assert_eq!(
+        serial.buffered_jobs.iter().map(|j| j.0).collect::<Vec<_>>(),
+        [70, 50, 40, 5, 40]
+    );
+    assert_eq!(serial.project_id, Some(90));
+    assert_eq!(columns.project_id, serial.project_id);
+    assert_eq!(columns.site_position, serial.site_position);
+    assert_eq!(serial.site_position.unwrap().0, 70);
+    assert_eq!(columns.prepass_spans.styled_items, shared.prepass_spans.styled_items);
+    assert_eq!(
+        columns
+            .prepass_spans
+            .styled_items
+            .iter()
+            .map(|s| s.0)
+            .collect::<Vec<_>>(),
+        [30, 20]
+    );
+    let mut decoder = EntityDecoder::with_index(bytes, build_entity_index(bytes));
+    let once = crate::api::styling::combined_pre_pass(bytes, &mut decoder);
+    assert_eq!(once.project_id, serial.project_id);
+    assert_eq!(once.site_position, serial.site_position);
+    // The one-shot wire is historically partitioned. Removing the distinction
+    // without retaining this order changes scheduling even if meshes agree.
+    let jobs: Vec<_> = once.simple_jobs.iter().chain(&once.complex_jobs).map(|j| j.0).collect();
+    let mut expected = serial.buffered_jobs.clone();
+    expected.sort_by_key(|j| !ifc_lite_core::is_simple_geometry_type(j.3.as_str()));
+    assert_eq!(jobs, expected.iter().map(|j| j.0).collect::<Vec<_>>());
+}
+
+/// #7782: disabled rows do not advance the early-meta trigger; the first site
+/// remains the rotation source even when disabled. Project can occur at EOF.
+#[test]
+fn c4_6b_early_meta_precedes_late_project_after_fifty_accepted_jobs() {
+    let mut source = String::from("DATA;\n#900=IFCSITE($);\n");
+    for id in 1..=51 {
+        source.push_str(&format!("#{id}=IFCWALL($);\n#{}=IFCSPACE($);\n", id + 100));
+    }
+    source.push_str("#901=IFCPROJECT($);\nENDSEC;");
+    let bytes = source.as_bytes();
+    let disabled = ["IFCSITE".to_owned(), "IFCSPACE".to_owned()].into_iter().collect();
+    let mut shared = ifc_lite_processing::discovery::Discovery::default();
+    let mut d = ColumnsDiscovery::default();
+    let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
+    let mut events = Vec::new();
+    let mut emitted = false;
+    while let Some((id, kw, start, end)) = scanner.next_entity() {
+        d.observe(&mut shared, bytes, id, kw, start, end, &disabled);
+        if let Some(boundary) = d.early_meta_end(emitted) {
+            assert_eq!(id, 50);
+            assert_eq!(boundary, end);
+            assert_eq!(d.project_id, None);
+            events.push("meta");
+            emitted = true;
+        }
+    }
+    assert_eq!(d.total_jobs, 51);
+    assert_eq!(d.site_position.unwrap().0, 900);
+    assert_eq!(d.project_id, Some(901));
+    assert_eq!(events, ["meta"]);
+    assert_eq!(d.early_meta_end(true), None);
+}
+
+/// #7782/#4614: malformed columns still reach the decoder's refusal boundary,
+/// including type candidates when the keyword is readable but the end is not.
+#[test]
+fn c4_6b_overlong_type_span_keeps_its_candidate() {
+    let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let &(id, start, _) = scan.records.iter().find(|r| r.0 == 20).unwrap();
+    let end = bytes.len() + 1;
+    let d = discover_from_columns(
+        bytes,
+        &[id],
+        &[start as u32],
+        &[(end - start) as u32],
+        &[ifc_lite_processing::PREPASS_CLASS_FLAG_TYPE_CANDIDATE],
+        &Default::default(),
+    );
+    assert_eq!(
+        d.type_candidate_spans,
+        [(id, start, end, ifc_lite_core::IfcType::IfcDoorStyle)]
+    );
+}
+
+/// #7782 C4-6b review P1: class-byte scheduling must preserve malformed
+/// in-bounds spans so the batch decoder can refuse every submitted job.
+#[test]
+fn c4_6b_malformed_in_bounds_columns_reach_decoder_refusal() {
+    use ifc_lite_processing::{PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_SITE};
+    let bytes = b"DATA;     #8=(IFCA() IFCB()); ENDSEC;";
+    let d = discover_from_columns(
+        bytes, &[7, 8, 9], &[10, 10, 10], &[0, 17, 0],
+        &[PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_SITE],
+        &Default::default(),
+    );
+    let mut decoder = ifc_lite_core::EntityDecoder::new(bytes);
+    let refused = d.buffered_jobs.iter().filter(|(id, start, end, _)| {
+        decoder.decode_and_cache(*id, *start, *end).is_err()
+    }).count();
+    assert_eq!(refused, 3, "all malformed jobs must reach the real batch decoder");
+    assert_eq!(d.total_jobs, 3);
+    assert_eq!(d.site_position, Some((9, 10, 10)));
+    assert_eq!(d.buffered_jobs[0].3, ifc_lite_core::ifc_type_from_keyword(""));
+}
+
+/// #7782: a readable keyword cannot override the authoritative named class.
+#[test]
+fn c4_6b_column_class_wins_over_mismatched_keyword() {
+    let bytes = b"#7=IFCWALL($);";
+    let d = discover_from_columns(bytes, &[7], &[0], &[bytes.len() as u32],
+        &[ifc_lite_processing::PREPASS_CLASS_SITE], &Default::default());
+    assert_eq!(d.site_position, Some((7, 0, bytes.len())));
+    assert_eq!(d.buffered_jobs, [(7, 0, bytes.len(), ifc_lite_core::IfcType::IfcSite)]);
 }

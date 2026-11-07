@@ -199,13 +199,11 @@ async fn a_cached_flat_response_does_not_satisfy_the_optimized_route() {
         &hash,
         OpeningFilterMode::Default,
         TessellationQuality::default(),
-        ParquetLayout::Flat,
-    );
+        ParquetLayout::Flat, false);
     let flat_metadata_key = parquet_metadata_cache_key(
         &hash,
         OpeningFilterMode::Default,
-        TessellationQuality::default(),
-    );
+        TessellationQuality::default(), false);
     for (key, value) in [
         (flat_key, b"FLAT-GEOMETRY".as_slice()),
         (flat_metadata_key, b"{}".as_slice()),

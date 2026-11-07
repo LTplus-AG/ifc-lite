@@ -1,0 +1,27 @@
+# ifc-lite OBJ export
+# units: metres (renderer Y-up frame, origin-folded world coords)
+# kernel: retained
+# retained shape-only: presentation obligations unmet: IfcAppearance, MaterialLayers, PersistentFaces
+# PresentationObligationsUnmet
+o IfcBuildingElementProxy_27
+g IfcBuildingElementProxy_27
+v 4.000000 2.000000 3.000000
+v 7.120000 0.400000 3.840000
+v 6.400000 2.000000 4.800000
+v 4.720000 0.400000 2.040000
+v 7.600000 1.000000 3.200000
+v 6.880000 2.600000 4.160000
+v 5.200000 1.000000 1.400000
+v 4.480000 2.600000 2.360000
+f 1 2 3
+f 2 1 4
+f 3 5 6
+f 5 3 2
+f 7 6 5
+f 6 7 8
+f 4 5 2
+f 5 4 7
+f 8 4 1
+f 4 8 7
+f 8 3 6
+f 3 8 1

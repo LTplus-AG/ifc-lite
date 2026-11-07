@@ -94,6 +94,9 @@ export async function stageRetainedBrowserAssets({ build, sdk, out, repoRoot = R
     throw new Error('Generated adapter is not a wasm version-1 binary');
   }
   for (const name of LICENSES) add(name, await regular(join(sdk, name)), `pinned-sdk/${name}`);
+  add('IFC_LITE_LICENSE.txt', await regular(join(repoRoot, 'LICENSE')), 'LICENSE');
+  add('IFC_LITE_THIRD_PARTY_NOTICES.txt', await regular(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt')),
+    'licenses/retained/THIRD_PARTY_NOTICES.txt');
   const manifest = {
     format: 'ifclite-retained-browser-assets-v1',
     purpose: 'explicit-packaging-only', qualified: false,

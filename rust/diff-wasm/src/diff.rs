@@ -4,7 +4,7 @@
 //! Retained fingerprint models: buffers cross once, comparisons pass options.
 //! JS retains adapter references and restores them from returned row indices.
 use ifc_lite_diff::{columns::{decode_columns, FingerprintColumns},
-    engine::diff_models, model::EntityFingerprint,
+    engine::diff_models_for_transport, model::EntityFingerprint,
     transport_options::options_from_document, transport_result::result_to_document};
 use wasm_bindgen::prelude::*;
 
@@ -26,7 +26,38 @@ impl DiffModel {
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|error| JsValue::from_str(&error))?;
         let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
-        Ok(Self { entities, non_ascii_classes })
+        Ok(Self::owned(entities, non_ascii_classes))
+    }
+
+    /// Explicit internal batch; no retained input or implicit cache.
+    #[wasm_bindgen(js_name = buildFingerprintBatch)]
+    pub fn build_fingerprint_batch(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+        crate::diff_fingerprint_binary::build(bytes)
+    }
+
+    /// Private facade constructor: one UTF-16 dictionary buffer, no per-string host reads.
+    #[wasm_bindgen(js_name = fromPacked)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_packed(strings: &[u8], fields: Vec<u32>, flags: Vec<u8>, boxes: Vec<f64>,
+        volumes: Vec<f64>, component_offsets: Vec<u32>, component_pairs: Vec<u32>) -> Result<DiffModel, JsValue> {
+        let strings = crate::diff_binary::decode_strings(strings).map_err(|e| JsValue::from_str(&e))?;
+        let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
+            volumes, component_offsets, component_pairs }).map_err(|e| JsValue::from_str(&e))?;
+        let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
+        Ok(Self::owned(entities, non_ascii_classes))
+    }
+
+    /// One result buffer preserves absent fields and every UTF-16 code unit.
+    #[wasm_bindgen(js_name = comparePacked)]
+    pub fn compare_packed(&self, head: &DiffModel, options: JsValue) -> Result<Vec<u8>, JsValue> {
+        let value = crate::diff_transport::document(options)?;
+        let options = options_from_document(&value);
+        let mappings = crate::diff_class_normalization::mappings(
+            &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
+        let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
+            diff_models_for_transport(&self.entities, &head.entities, &options)
+        });
+        Ok(crate::diff_binary::encode_result(&result))
     }
 
     /// Compare this base model with a head model, returning row-index records.
@@ -37,7 +68,7 @@ impl DiffModel {
         let mappings = crate::diff_class_normalization::mappings(
             &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
         let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
-            diff_models(&self.entities, &head.entities, &options)
+            diff_models_for_transport(&self.entities, &head.entities, &options)
         });
         // Restore the core context before any host result conversion can run.
         crate::diff_transport::host_value(&result_to_document(&result))
@@ -45,4 +76,23 @@ impl DiffModel {
 
     #[wasm_bindgen(getter, js_name = entityCount)]
     pub fn entity_count(&self) -> usize { self.entities.len() }
+}
+
+impl DiffModel {
+    fn owned(entities: Vec<EntityFingerprint<usize>>, non_ascii_classes: Vec<ifc_lite_diff::JsString>) -> Self {
+        #[cfg(feature = "decode-leak-test")]
+        LIVE_MODELS.with(|count| count.set(count.get() + 1));
+        Self { entities, non_ascii_classes }
+    }
+}
+
+#[cfg(feature = "decode-leak-test")]
+thread_local! { static LIVE_MODELS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+
+#[cfg(feature = "decode-leak-test")]
+pub(crate) fn live_count() -> u32 { LIVE_MODELS.with(std::cell::Cell::get) }
+
+#[cfg(feature = "decode-leak-test")]
+impl Drop for DiffModel {
+    fn drop(&mut self) { LIVE_MODELS.with(|count| count.set(count.get() - 1)); }
 }

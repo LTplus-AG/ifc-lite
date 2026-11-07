@@ -1,0 +1,327 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { useEffect, useState, type MutableRefObject } from 'react';
+import { totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
+import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, NormalizedGaussianAttributes, Renderer } from '@ifc-lite/renderer';
+import { useViewerStore, type FederatedModel } from '@/store';
+import { toast } from '@/components/ui/toast';
+import { appliedGaussianUpAxis, gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
+import { prepareGaussianCapture } from './gaussianIngest.js';
+import { decodeGaussianInWorker } from './gaussianWorker.js';
+import type { CaptureUpAxis } from './pointCloudFrame.js';
+import { getGlobalRenderer } from '../useBCF.js';
+
+/** `splats` issued `handle`; every call on the handle goes to that adapter alone. */
+interface OwnedAsset { handle: GaussianSplatHandle; splats: GaussianSplatApi; attributes?: NormalizedGaussianAttributes; visible?: boolean; placedOffset: { x: number; y: number; z: number } }
+
+interface AdapterFrame { offset: { x: number; y: number; z: number }; update?: Promise<boolean>; pending: Map<GaussianSplatHandle, { x: number; y: number; z: number }> }
+
+interface Registry {
+  frames?: WeakMap<GaussianSplatApi, AdapterFrame>;
+  /** modelId -> the exact renderer-issued handle its model was published with. */
+  owned: Map<string, OwnedAsset>;
+  /** Models whose handle was issued by a renderer that has since been replaced. */
+  replaced: Set<string>;
+  subscribed: boolean;
+}
+
+/**
+ * One registry per page, kept on `globalThis` like the viewer store, so a
+ * re-evaluated module (HMR) or a remounted viewport reuses it and never
+ * installs a second store subscription.
+ */
+const host = globalThis as { __ifc_lite_gaussian_assets__?: Registry };
+const registry: Registry = host.__ifc_lite_gaussian_assets__ ??= { owned: new Map(), replaced: new Set(), subscribed: false };
+
+/**
+ * Publication hands a capture to its model; from then on the store alone
+ * decides its lifetime (#8565). Every models change reconciles synchronously,
+ * so removal, replacement, a primary reload and clear free the renderer asset
+ * in the same tick, and model visibility/isolate mirror onto it.
+ */
+export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle, splats: GaussianSplatApi, attributes?: NormalizedGaussianAttributes): void {
+  const frames = registry.frames ??= new WeakMap();
+  if (![...registry.owned.values()].some(asset => asset.splats === splats
+    && ['resident', 'pending'].includes(splats.getState(asset.handle).state)) && !frames.has(splats)) frames.set(splats, {
+    offset: useViewerStore.getState().models.get(modelId)?.gaussianSplat?.frameOffset ?? { x: 0, y: 0, z: 0 }, pending: new Map(),
+  });
+  const frame = frames.get(splats)!;
+  const placedOffset = frame.pending.get(handle) ?? useViewerStore.getState().models.get(modelId)?.gaussianSplat?.frameOffset ?? frame.offset;
+  frame.pending.delete(handle);
+  registry.owned.set(modelId, { handle, splats, attributes, placedOffset });
+  registry.replaced.delete(modelId);
+  if (!registry.subscribed) {
+    registry.subscribed = true;
+    useViewerStore.subscribe((state, previous) => {
+      if (state.models !== previous.models || state.geometryResult !== previous.geometryResult) reconcileGaussianAssets(state.models);
+    });
+  }
+  reconcileGaussianAssets(useViewerStore.getState().models);
+}
+
+export function reconcileGaussianAssets(models: ReadonlyMap<string, FederatedModel>): void {
+  for (const modelId of registry.replaced) if (!models.has(modelId)) registry.replaced.delete(modelId);
+  for (const [modelId, asset] of registry.owned) {
+    const model = models.get(modelId);
+    if (model?.gaussianSplat?.handle !== asset.handle) {
+      registry.owned.delete(modelId);
+      asset.splats.remove(asset.handle); // its own adapter: a no-op false once that renderer is gone
+      continue;
+    }
+    if (asset.visible !== model.visible) {
+      asset.visible = model.visible;
+      asset.splats.setVisible(asset.handle, model.visible);
+    }
+    // One seam for load publication, RTC convergence, setup restore and removal.
+    // Read the live frame inside the serialized update, never the upload snapshot.
+    void reframeGaussianCapture(modelId).catch(error => {
+      console.warn('[ifc-lite] Capture render-frame update failed:', error);
+    });
+  }
+}
+
+/**
+ * A viewport's renderer became ready. Assets issued by any other renderer
+ * (replaced or destroyed; it released its own allocations) can never be drawn
+ * here, and their handles are never passed to this one: forget them, mark
+ * their models for an explicit reload, and say so.
+ */
+export function rebindGaussianAssets(splats: GaussianSplatApi): void {
+  const orphaned: string[] = [];
+  for (const [modelId, asset] of registry.owned) {
+    if (asset.splats === splats) continue;
+    registry.owned.delete(modelId);
+    registry.replaced.add(modelId);
+    orphaned.push(useViewerStore.getState().models.get(modelId)?.name ?? modelId);
+  }
+  if (orphaned.length) toast.error(`The viewer renderer restarted. Reload from the model list: ${orphaned.join(', ')}.`);
+}
+
+/** Mounted with the viewport: a ready renderer adopts no handle another renderer issued. */
+export function useGaussianRendererBinding(rendererRef: MutableRefObject<Renderer | null>, initialized: boolean): void {
+  useEffect(() => {
+    if (initialized && rendererRef.current) rebindGaussianAssets(rendererRef.current.gaussianSplats);
+  }, [initialized, rendererRef]);
+}
+
+/** Renderer state for a published capture. A failed handle is terminal: its rows are released. */
+export type GaussianCaptureState =
+  | { state: 'resident' | 'pending' }
+  | { state: 'failed'; reason: string }
+  | { state: 'invalid'; reason?: 'renderer-replaced' };
+
+/** Never resident on a renderer that did not issue the handle. */
+/** The model's asset only while it belongs to the current renderer and still carries the model's handle. */
+function currentAsset(model: FederatedModel) {
+  const asset = registry.owned.get(model.id);
+  const current = getGlobalRenderer()?.gaussianSplats;
+  if (registry.replaced.has(model.id) || (asset && current && asset.splats !== current)) return 'renderer-replaced' as const;
+  return asset && asset.handle === model.gaussianSplat?.handle ? asset : null;
+}
+
+export function gaussianModelState(model: FederatedModel): GaussianCaptureState {
+  const asset = currentAsset(model);
+  if (asset === 'renderer-replaced') return { state: 'invalid', reason: 'renderer-replaced' };
+  if (!asset) return { state: 'invalid' };
+  return asset.splats.getState(asset.handle);
+}
+
+/** A failed, replaced or vanished capture comes back only through a reload from its source. */
+export function gaussianNeedsReload(state: GaussianCaptureState): boolean {
+  return state.state === 'failed' || state.state === 'invalid';
+}
+
+/** Re-read while mounted: loss, recovery and renderer replacement change state without a store update. */
+export function useGaussianCaptureState(model: FederatedModel): GaussianCaptureState {
+  const [state, setState] = useState(() => gaussianModelState(model));
+  useEffect(() => {
+    const read = () => setState((previous) => {
+      const next = gaussianModelState(model);
+      const reason = (s: GaussianCaptureState) => ('reason' in s ? s.reason : undefined);
+      return previous.state === next.state && reason(previous) === reason(next) ? previous : next;
+    });
+    read();
+    const timer = setInterval(read, 500);
+    return () => clearInterval(timer);
+  }, [model]);
+  return state;
+}
+
+/** Centre bounds of one capture, in the camera-fit frame. Framing only. */
+export function gaussianModelBounds(model: FederatedModel): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+  const asset = currentAsset(model);
+  if (!asset || asset === 'renderer-replaced') return null; // never ask a replaced renderer's adapter
+  return gaussianFitBox(asset.splats.getBounds(asset.handle));
+}
+
+/** The renderer's centre bounds as the viewer's camera-fit box. */
+export function gaussianFitBox(bounds: GaussianSplatBounds | null) {
+  if (!bounds) return null;
+  const [x0, y0, z0] = bounds.min, [x1, y1, z1] = bounds.max;
+  return { min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } };
+}
+
+/** Axis edits and federation changes share the same unbaked placement path. */
+export function setGaussianCaptureUpAxis(modelId: string, upAxis: CaptureUpAxis): Promise<boolean> {
+  return reframeGaussianCapture(modelId, upAxis);
+}
+
+/** Upload and renderer frame edits share one adapter queue. The frame is read
+ * only after older edits settle, then held through the renderer add. */
+export async function uploadInGaussianFrame<T extends { record: { handle: GaussianSplatHandle; frameOffset?: { x: number; y: number; z: number } } } | null>(
+  splats: GaussianSplatApi, add: (frame: RenderFrameInfo | null) => Promise<T>,
+): Promise<T> {
+  const frames = registry.frames ??= new WeakMap();
+  let adapter = frames.get(splats);
+  if (!adapter) {
+    const state = useViewerStore.getState();
+    adapter = { offset: totalYupOffset(sharedRenderFrame(state.models.values(), state.geometryResult)), pending: new Map() };
+    frames.set(splats, adapter);
+  }
+  const current = adapter;
+  const update = (current.update ?? Promise.resolve(true)).catch(() => false).then(async () => {
+    const state = useViewerStore.getState();
+    const frame = sharedRenderFrame(state.models.values(), state.geometryResult);
+    if (![...registry.owned.values()].some(asset => asset.splats === splats) && current.pending.size === 0) {
+      // A cleared scene has no rows to translate. Its next upload establishes
+      // the adapter frame afresh, even when this adapter object is reused.
+      current.offset = totalYupOffset(frame);
+    }
+    // Every packed row on an adapter is uploaded against that adapter's
+    // current frame. A store frame change arriving before publication cannot
+    // mix old and new placements inside one shared anchor.
+    const result = await add({ originShift: current.offset });
+    if (result) current.pending.set(result.record.handle, result.record.frameOffset ?? { x: 0, y: 0, z: 0 });
+    return result;
+  });
+  const tail = update.then(() => true, () => false);
+  current.update = tail;
+  try { return await update; }
+  finally { if (current.update === tail) current.update = undefined; }
+}
+
+export function forgetPendingGaussianAsset(splats: GaussianSplatApi, handle: GaussianSplatHandle): void {
+  registry.frames?.get(splats)?.pending.delete(handle);
+}
+
+/** #8858: the last removal is compacted before the next add, so the empty
+ * adapter establishes a fresh anchor for the rotated survey coordinates. */
+async function reanchorGaussianCapture(
+  modelId: string, asset: OwnedAsset, current: FederatedModel,
+  capture: NonNullable<FederatedModel['gaussianSplat']>,
+  placement: readonly number[], oldPlacement: readonly number[],
+  offset: { x: number; y: number; z: number },
+): Promise<GaussianSplatHandle | null> {
+  let attributes = asset.attributes;
+  if (!attributes) {
+    // Assets published before a hot reload may lack the retained reference.
+    // Use the same worker decode and normalisation as the canonical loader.
+    if (!current.sourceFile) return null;
+    attributes = prepareGaussianCapture(await decodeGaussianInWorker(current.sourceFile, new AbortController().signal)).attributes;
+  }
+  const retained = attributes;
+  const splats = asset.splats;
+  if (!splats.remove(asset.handle)) return null;
+  const add = (matrix: readonly number[]) => splats.add({
+    attributes: retained, placement: { matrix: gaussianUploadPlacement(matrix, capture.decodeOrigin) },
+    modelIndex: asset.handle.modelIndex, visible: current.visible,
+  }, { qualification: 'internal-unqualified' });
+  try {
+    const handle = await add(placement);
+    const latest = useViewerStore.getState().models.get(modelId);
+    if (latest?.gaussianSplat !== capture || registry.owned.get(modelId) !== asset) {
+      splats.remove(handle);
+      return null;
+    }
+    asset.handle = handle;
+    asset.attributes = attributes;
+    asset.placedOffset = offset;
+    return handle;
+  } catch (error) {
+    try {
+      const handle = await add(oldPlacement);
+      const latest = useViewerStore.getState().models.get(modelId);
+      if (latest?.gaussianSplat === capture && registry.owned.get(modelId) === asset) {
+        asset.handle = handle;
+        asset.attributes = attributes;
+        asset.placedOffset = offset;
+        useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, handle } });
+      } else splats.remove(handle);
+    } catch (rollbackError) {
+      // The old handle has gone; the existing invalid state exposes Reload capture.
+      if (registry.owned.get(modelId) === asset) registry.owned.delete(modelId);
+      console.error('[Gaussian] capture axis rollback failed:', rollbackError);
+    }
+    throw error;
+  }
+}
+
+/** Serialize edits per owning adapter so a slower old frame cannot win a race.
+ * Pending device recovery uses the adapter's normal placement contract; missing
+ * or replaced handles refuse and are restored only through the existing reload.
+ */
+export function reframeGaussianCapture(modelId: string, upAxis?: CaptureUpAxis): Promise<boolean> {
+  const model = useViewerStore.getState().models.get(modelId);
+  if (!model) return Promise.resolve(false);
+  const asset = currentAsset(model);
+  if (!asset || asset === 'renderer-replaced') return Promise.resolve(false);
+  const frames = registry.frames ??= new WeakMap();
+  if (!frames.has(asset.splats)) frames.set(asset.splats, { offset: model.gaussianSplat?.frameOffset ?? { x: 0, y: 0, z: 0 }, pending: new Map() });
+  const adapter = frames.get(asset.splats)!;
+  const update = (adapter.update ?? Promise.resolve(true)).catch(() => false).then(async () => {
+    const state = useViewerStore.getState();
+    const current = state.models.get(modelId);
+    const capture = current?.gaussianSplat;
+    if (!current || !capture || currentAsset(current) !== asset) return false;
+    const frame = sharedRenderFrame(state.models.values(), state.geometryResult);
+    const offset = totalYupOffset(frame);
+    const delta: [number, number, number] = [adapter.offset.x - offset.x, adapter.offset.y - offset.y, adapter.offset.z - offset.z];
+    if (delta.some(value => value !== 0)) {
+      if (!await asset.splats.translateFrame(delta)) return false;
+      adapter.offset = offset;
+      for (const owned of registry.owned.values()) if (owned.splats === asset.splats) {
+        owned.placedOffset = { x: owned.placedOffset.x - delta[0], y: owned.placedOffset.y - delta[1], z: owned.placedOffset.z - delta[2] };
+      }
+      for (const [handle, placed] of adapter.pending) adapter.pending.set(handle,
+        { x: placed.x - delta[0], y: placed.y - delta[1], z: placed.z - delta[2] });
+    }
+    const sourcePlacement = capture.sourcePlacement ?? (capture.placementOrigin === 'explicit' ? capture.placement : undefined);
+    const appliedAxis = appliedGaussianUpAxis(capture.placementOrigin === 'explicit' ? sourcePlacement : undefined, upAxis ?? capture.upAxis);
+    const framed = gaussianCaptureFrame(sourcePlacement, appliedAxis, frame);
+    if (capture.upAxis === framed.upAxis && asset.placedOffset.x === offset.x
+      && asset.placedOffset.y === offset.y && asset.placedOffset.z === offset.z) {
+      if (capture.frameOffset?.x !== offset.x || capture.frameOffset?.y !== offset.y || capture.frameOffset?.z !== offset.z
+        || capture.placement.some((value, index) => value !== framed.placement[index])) {
+        const latest = useViewerStore.getState().models.get(modelId);
+        if (latest?.gaussianSplat !== capture || currentAsset(latest) !== asset) return false;
+        useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
+      }
+      return true;
+    }
+    try {
+      if (!await asset.splats.setPlacement(capture.handle, { matrix: gaussianUploadPlacement(framed.placement, capture.decodeOrigin) })) return false;
+    } catch (error) {
+      if (upAxis === undefined || !(error instanceof Error) || error.name !== 'GaussianSplatError'
+        || !('code' in error) || error.code !== 'anchor-extent') throw error;
+      const oldPlacement = gaussianCaptureFrame(sourcePlacement, capture.upAxis, frame).placement;
+      const handle = await reanchorGaussianCapture(modelId, asset, current, capture, framed.placement, oldPlacement, offset);
+      if (!handle) return false;
+      const latest = useViewerStore.getState().models.get(modelId);
+      if (latest?.gaussianSplat !== capture || registry.owned.get(modelId) !== asset) return false;
+      useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed, handle } });
+      return true;
+    }
+    const latest = useViewerStore.getState().models.get(modelId);
+    if (latest?.gaussianSplat !== capture || currentAsset(latest) !== asset) return false;
+    asset.placedOffset = offset;
+    useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, ...framed } });
+    return true;
+  });
+  adapter.update = update;
+  const settled = () => { if (adapter.update === update) adapter.update = undefined; };
+  void update.then(settled, settled);
+  return update;
+}

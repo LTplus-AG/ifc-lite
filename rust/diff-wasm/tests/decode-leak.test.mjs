@@ -349,3 +349,77 @@ for (const seam of retainedCallbackSeams) {
     await checkRetainedCallbacks(wasm, seam, detail => context.diagnostic(JSON.stringify(detail)));
   });
 }
+
+// #8042 A1: exercise the PUBLIC owners using the feature binary with the
+// production glue. Counters distinguish actual Rust model release from JS
+// object collection; disposed handles remain strongly reachable throughout.
+test('public handles release resident models on dispose and Symbol.dispose, including failed compares (#8042)', async () => {
+  const api = await import('../../../packages/diff/dist/index.js');
+  const production = await import('../../../packages/wasm/pkg-diff/ifc-lite-diff.js');
+  const bytes = readFileSync(new URL('ifc-lite-diff_bg.wasm', bundle));
+  api.initDiffSync({ module: bytes });
+  const exports = production.initSync({ module: bytes });
+  assert.equal(typeof exports.diffTestModelLiveCount, 'function');
+  const live = () => exports.diffTestModelLiveCount();
+  const externrefs = () => exports.diffTestExternrefLiveCount();
+  const rows = [{ key: 'wall', ifcType: 'IfcWall', dataHash: 'd', geometryHash: 'p:0', ref: { callback() {} } }];
+  const exercise = () => {
+    const left = api.prepareDiffModel(rows), right = api.prepareDiffModel(rows);
+    assert.equal(live(), 2);
+    try {
+      for (const stripPlacementGeometry of [false, true]) {
+        const result = left.compare(right, { stripPlacementGeometry });
+        assert.equal(result.counts.unchanged, 1);
+        assert.equal(result.entries[0].base.ref, rows[0].ref);
+      }
+      const sentinel = new Error('option getter failed');
+      assert.throws(() => left.compare(right, { get scope() { throw sentinel; } }), error => error === sentinel);
+      assert.equal(live(), 2, 'failed comparison does not consume its models');
+    } finally { left.dispose(); right[Symbol.dispose](); }
+    left[Symbol.dispose](); right.dispose();
+    assert.equal(live(), 0, 'both native owners were freed exactly once');
+    assert.throws(() => left.compare(right), /disposed/);
+    assert.throws(() => right.compare(left), /disposed/);
+    return [left, right];
+  };
+  for (let i = 0; i < 4; i++) exercise();
+  const baseline = externrefs();
+  const disposed = [];
+  for (let i = 0; i < 128; i++) {
+    disposed.push(...exercise());
+    assert.equal(externrefs(), baseline, 'prepare/compare/reject/dispose releases every externref');
+  }
+  assert.equal(disposed.length, 256, 'disposed handles stay reachable during the invariant');
+});
+
+// #8266: retain the disposed handles themselves so a stale lazy view cannot
+// be hidden by collection of the whole owner. No result or source row survives.
+test('disposed public handles release their cached stripped rows and opaque refs (#8266)', async () => {
+  const { setImmediate: turn } = await import('node:timers/promises');
+  const api = await import('../../../packages/diff/dist/index.js');
+  api.initDiffSync({ module: readFileSync(new URL('ifc-lite-diff_bg.wasm', bundle)) });
+  assert.equal(typeof globalThis.gc, 'function', 'run the leak suite with --expose-gc');
+  function prepare() {
+    const ref = { opaque: Symbol('owned ref') };
+    const rows = [{ key: 'site', ifcType: 'IfcSite', dataHash: 'd', geometryHash: 'p:0', ref }];
+    const left = api.prepareDiffModel(rows), right = api.prepareDiffModel(rows);
+    const result = left.compare(right, { stripPlacementGeometry: true });
+    assert.equal(result.entries[0].base.geometryHash, undefined);
+    assert.equal(result.entries[0].base.ref, ref);
+    return { left, right, ref: new WeakRef(ref), view: new WeakRef(result.entries[0].base) };
+  }
+  const owned = prepare();
+  const collect = async () => { await turn(); globalThis.gc(); await turn(); };
+  try {
+    await collect();
+    assert.ok(owned.ref.deref(), 'opaque ref survives while owned');
+    assert.ok(owned.view.deref(), 'lazy view survives while owned');
+  } finally { owned.left.dispose(); owned.right[Symbol.dispose](); }
+  for (let attempt = 0; attempt < 64; attempt++) {
+    await collect();
+    if (owned.ref.deref() === undefined && owned.view.deref() === undefined) break;
+  }
+  assert.equal(owned.ref.deref(), undefined, 'disposed handles release the opaque ref');
+  assert.equal(owned.view.deref(), undefined, 'disposed handles release the lazy stripped view');
+  assert.throws(() => owned.left.compare(owned.right), /disposed/);
+});

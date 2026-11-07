@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryDiagnostics, SkippedHungElements, StallPhase, StallPhaseHandle, TessellationQuality } from '@ifc-lite/geometry';
+import { resolve } from '@/i18n/registry';
 
 /**
  * Read the phase a #4902 `stallPhaseHandle` reports, if any. Extracted as its
@@ -149,6 +150,21 @@ export function reportSkippedHungElements(
     `"${fileName}" loaded without ${count} element${count === 1 ? '' : 's'} whose geometry could not be computed ` +
       `(${skipped.byType.map((t) => t.ifcType).join(', ')}).`,
   );
+}
+
+/**
+ * Tell the user that some type geometry is missing because the type records
+ * that carry it could not be decoded (F2, #8341). `count` comes from the
+ * geometry stream's `complete` event; an absent (unknown) or zero count says
+ * nothing. Only type-library geometry is affected, so the message says no more.
+ */
+export function reportOmittedTypeRecords(
+  fileName: string,
+  count: number | undefined,
+  notify: (message: string) => void,
+): void {
+  if (count === undefined || count <= 0) return;
+  notify(resolve('loadReportPanel.omittedTypeRecords', { name: fileName, count }));
 }
 
 /**

@@ -10,6 +10,19 @@ use std::sync::Arc;
 use ifc_lite_core::{DecodedEntity, IfcType};
 use ifc_lite_processing::data_model::render::flat::render_attributes;
 
+/// #7782: EntityRows follow native type-map discovery for a bare reference,
+/// while a typed wrapper is not a RepresentationMaps reference.
+#[test]
+fn c4_7a_bare_type_map_exports_one_orphan_row_and_refuses_wrapper() {
+    let source = include_str!("../../processing/tests/fixtures/c4_bare_type_map_7782.ifc");
+    let rows = build_export_model(source.as_bytes()).entities;
+    assert_eq!(rows.iter().filter(|row| row.express_id == 43 && row.has_geometry).count(), 1);
+
+    let wrapped = source.replace("#44,$,$,.NOTDEFINED.", "IFCREPRESENTATIONMAP(#44),$,$,.NOTDEFINED.");
+    let wrapped_rows = build_export_model(wrapped.as_bytes()).entities;
+    assert!(!wrapped_rows.iter().any(|row| row.express_id == 43));
+}
+
 /// #4203: bounded exporter strata are geometry-bearing product aliases, but
 /// retain their exact owned keyword instead of being remapped to an EXPRESS
 /// neighbour. The ordinary vendor-unknown direction must remain closed.

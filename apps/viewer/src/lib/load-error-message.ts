@@ -13,6 +13,8 @@
  * diff that changes matching semantics is worth being able to read on its own.
  */
 
+import { resolve as translate } from '../i18n/registry.js';
+
 import {
   classifyLoadError,
   messageOf,
@@ -57,6 +59,14 @@ export function formatLoadError(err: unknown, fileName?: string, context?: unkno
         `Processing ${subject} stalled and was stopped. ` +
         `The model may be too large or complex for this device. ` +
         `Try closing other tabs, or load fewer/smaller models at once.`
+      );
+    case 'invalid_input':
+      return translate('viewportLighting.container.loadErrorCard.invalidInput');
+    case 'invalid_archive':
+      return (
+        `Couldn't open ${subject} as an .ifcZIP archive. ` +
+        `It must contain exactly one .ifc/.ifcxml model within the extraction size limit. ` +
+        `Extract and open a single model directly, or export a smaller model and create a new archive.`
       );
     case 'file_unreadable':
       return (

@@ -10,22 +10,34 @@ The geometry pipeline transforms IFC shape representations into GPU-ready triang
 (#1080 → #1088 → #1084 → shared prepass), per-element mesh production and
 prepass resolution exist exactly once, in `ifc-lite-processing`:
 
-- **`processing::element::produce_element_meshes`** — THE per-element decision
-  tree (type-product geometry #957, submesh-aware void cuts, per-item #858
-  palette splits, single-mesh fallback chain). Run by the native rayon loop
-  (server/CLI) and by the browser's `processGeometryBatch` per job. The only
-  sanctioned behavioural fork is `TypeGeometryMode` (an export suppresses
-  instanced type geometry; the viewer emits it tagged for its Model/Types
-  switch).
-- **`processing::prepass`** — the shared post-scan resolver (styled-item
-  precedence, IfcIndexedColourMap #663/#858, the #407 material chain, voids
-  with #845 aggregate propagation) plus `resolve_unit_scales` (length AND
-  plane-angle, resolved once with a documented fallback ladder for
-  late-in-file `IFCPROJECT`) and the flat wire codecs for the JS boundary.
-  The scan loops stay per-orchestration (native scan with properties/quick
-  metadata; browser `buildPrePassOnce`/`buildPrePassStreaming` with
-  incremental job emission), but they only span-stash — all semantics resolve
-  in the shared module.
+- **`processing::element::produce_element_meshes_owned`** in
+  `rust/processing/src/element/owned_session.rs` owns the element transaction.
+  Native jobs and browser batches share `execution::build_router`, `decode_job`,
+  `job_type` and `RouterDrain` (`rust/processing/src/execution.rs`). One owned
+  transaction serves two schedulers: native per-job decode/model-wide templates
+  and browser warm decode/batch-local templates.
+- **`processing::discovery::Discovery`**, `scan::ScanClass` and
+  `core::is_geometry_job` share native and browser serial/once discovery.
+  Streaming class columns retain the accepted `gpu_meshes/prepass_discovery.rs`
+  adapter and incremental scheduler. `discovery::TypeGeometryPlan` shares
+  type-map decisions; native `SuppressInstanced` and browser `EmitTagged` are
+  explicit policies, not identical configured outputs.
+- **`processing::prepass`** resolves collected spans into styles, materials,
+  voids, aggregate propagation and unit scales. Native D66 layer slicing is
+  default-off (`ProcessingRequest::layer_slicing`); the browser keeps its
+  merge-layers toggle. Scheduler caches, frame selection and output encoding
+  remain caller-owned.
+
+The native `process(content, request, sink)` entry sequences private phases:
+`scan` discovers jobs and plans mapped sources; `resolve` installs the index,
+resolves prepass data and filters, then publishes the bootstrap and frame;
+`pass` resolves job metadata and meshes chunks; `finalize` collates diagnostics,
+instances and result metadata. The bodies live under `processing/src/processor/`.
+Native metadata identity runs in parallel and appearance resolution runs serially;
+wasm32 uses those same identity and appearance bodies serially. The pass checks
+cancellation before each chunk, emits its batches, retains meshes if requested,
+and then replays deferred styles. Each job borrows a `PassContext`, with a fresh
+`GeometryRouter::from_config` and the existing shared caches and model snapshot.
 
 The native scanner uses `ifc_lite_core::geometry_flags_by_name` to obtain
 `(has_geometry, representationless_spatial)` with one lookup of the existing
@@ -33,8 +45,8 @@ immutable schema table. These are the same predicates exposed separately by
 `has_geometry_by_name` and `is_representationless_spatial_container_by_name`;
 the second still requires the instance's `Representation` to be present.
 
-Geometry/styling fixes belong in those two modules; re-inlining logic in
-`processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
+Geometry/styling fixes belong in these shared homes; re-inlining logic in
+`processor/` or browser batch adapters re-creates the historic both-sides drift
 (#858, #913, #957, #961 each had to be fixed twice before the unification).
 
 The per-representation processing below is shared by construction:
@@ -347,7 +359,41 @@ flowchart TB
 
 ### Void Cutting
 
-Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and `produce_element_meshes` cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+Opening voids (`IfcRelVoidsElement`, with aggregate propagation from the
+prepass) are cut by the owned opening program. `program::openings` classifies
+an element's openings ONCE into a `VoidContext` (raw and merged `CutterKind`s,
+plus parametric and 2D capture where they reconcile), and every frame part of
+the host is cut against it by `Execution::apply_void_context`
+(`rust/geometry/src/router/voids/`). That is not one exact path: it is an
+ordered chain of statically dispatched stages, and the first that accepts a
+host decides its geometry.
+
+| Stage | Steps, in order | Where |
+|---|---|---|
+| A, whole host | ParamRect (analytic box-minus-boxes in the host's placement frame), Bool2d (2D profile subtract and re-extrude, staged on a provisional child execution), Prism (analytic stepped-prism subtract). First acceptance wins; a residual it leaves is cut by recursion on its result. | `strategy::HOST_STAGES` |
+| Origin/frame | World host bounds captured for diagnostics; host and cutters moved into one origin-0 frame. | `apply_void_context` |
+| B, frame-local | WallLocalFrame (plan-rotated walls cut in their own frame, one retry on plane-snapped operands when the cut comes back open; a rejected retry restores the first run's diagnostics), facet weld, RectFast (axis-aligned box host, all-rectangular openings). | `Execution::cut_in_frame` |
+| C, exact tail | Dense-host subdivision, cutter preparation (rectangles synthesised as box meshes, malformed cutters left to the recut), coaxial union of overlapping coaxial clusters, disjoint batch cut at each group's first member, sequential exact subtract per opening, and the #635 AABB box cut when the kernel fails on an opening that reaches the host. | `strategy::exact::ExactTail` |
+| D, post passes | Kernel-failure drain, sliver refinement, malformed recut, flap clip to the pre-cut AABB, stray-shard sweep (only when a pass changed the host), cut-effect record. | `post::finish` |
+
+The #635 fallback is a real, deliberate approximation: it removes the opening's
+AABB from a host whose exact cut failed, and its result has an open rim. It is
+suppressed when the opening's extended box engulfs the host after an unchanged
+cut, and when the host already carries the void; it never runs on an opening the
+kernel found disjoint (#5362). Kernel failures are recorded per host as
+structured `BoolFailure` records and drained once per frame-local pass.
+
+An opening whose solid engulfs the host empties it. That ends the per-opening
+loop: no later opening is cut. The stage D post passes still run on the empty
+host (the shard sweep returns at once on it) and record the cut effect with
+zero triangles after.
+The consumed record is written in ONE place (#8125): when the cut of a host
+that had triangles comes back empty, `program::openings::execute` marks it
+consumed, so the element keeps the empty result instead of re-rendering the
+host uncut. No stage records it itself.
+
+The order of the table is frozen; see
+[mesh-determinism.md](mesh-determinism.md#frozen-void-cut-order).
 
 ## Mesh Hygiene
 
@@ -499,8 +545,47 @@ Tessellation detail is controlled by a single `TessellationQuality` enum (`rust/
 
 ## Mapped Representations
 
-IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
-per-instance placement transform). For the primary model the engine collates
+IFC reuses geometry via `IfcMappedItem`: `MappingSource` references an
+`IfcRepresentationMap`, and `MappingTarget` composes with its `MappingOrigin`.
+The structural home is `rust/geometry/src/representation/`: `product_shape`
+reads a `ProductShape`, `Select::Meshed` selects what renders, and the
+decoder-only `RepresentationWalk` visits items in list order with an explicit
+DFS stack. Mapped paths use cycle checks, `MAX_MAPPED_ITEM_DEPTH`, and separate
+work allowances for mapped attempts and `Items` members. `MappedLevel` returns
+transforms in file units; the router scales their translations to metres.
+
+Before rendering, `representation/product_budget.rs` admits roots across the
+selected product representations without consulting mesh caches. Repeated
+mapped occurrences pay again. On budget exhaustion it retains completed roots
+and withholds the current root and all later roots. The profile extractor uses
+the same admission for drawings. The private `structural.rs` helpers serve
+shallow routing identity, RTC item-id sampling and Reference-only opening
+checks; `unwrap.rs` owns the policy-specific first-item/boolean probe chains.
+
+Rendering remains in the controllers under `rust/geometry/src/program/`:
+
+- `ProductControl` consumes admitted roots, merges frame parts or collects
+  styled sub-meshes, and applies product placement.
+- `ItemControl` selects a processor through the router's `ProcessorRegistry`,
+  drives owned construction or extension callbacks, and publishes reports.
+  `CacheControl` wraps it with item-cache admission and publication.
+- `MappingControl` owns the active source stack. Its `Sink` variants are
+  `Occurrence` (cached source then placement), `Shared` (shared source and an
+  instance placeholder), `Styled` (per-item sub-meshes), and `TypeMap` (type
+  representation parts followed by `MappingOrigin`). Merged/type source items
+  use `ItemControl`; styled plain items use `CacheControl`.
+
+The frame boundary is explicit. `router/processing.rs::finish_item_mesh`
+validates indices, scales positions and publishes object-frame bounds for
+rebased items. Direct items retain `rtc_applied`. Before a mapped-source mesh
+is merged or transformed, `MappingControl` calls `keep_rebase_in_origin`
+(`router/mapped_item.rs`): it clears that flag and adds the model RTC offset to
+the mesh's f64 origin. This preserves precision through mapping and lets final
+placement subtract RTC once; `M(p - rtc)` is not `M(p) - rtc` under rotation.
+Raw product items instead choose an element-frame offset through the inverse
+placement linear transform. See [Coordinate Handling](coordinate-handling.md#geometryrouter).
+
+For the primary model the engine collates
 congruent occurrences into **GPU instances**: the wasm
 `processGeometryBatchInstanced` entry point (backed by
 `rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
@@ -658,3 +743,11 @@ build-time or runtime.
 
 - [Rendering Pipeline](rendering-pipeline.md) - WebGPU rendering
 - [API Reference](../api/rust.md) - Geometry API
+
+The default browser batch exports adapt their positional arguments to internal
+`BatchWire` and borrowed/held `BatchSource` values. Preparation captures one owned
+production context; the serial element loop uses the shared execution decode/type
+boundary and canonical owned producer. Recovery completes batch-local occurrences
+before the flat/IFNS output adapters encode them. Held bytes stay owned through
+encoding. Native jobs use the same router builder and diagnostic drain with
+per-job policy; their persistent worker caches remain in the native scheduler.

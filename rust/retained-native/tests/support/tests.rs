@@ -35,14 +35,9 @@ fn common_retained_actual_construction_resumes_and_publishes_shape_only() {
     let Some(outcomes) = native(BOX) else { return };
     let product = shape(&outcomes, 27);
     assert_eq!(product.parts.len(), 1);
-    use ifc_lite_geometry::program::transactions::Requirement;
     assert_eq!(
         product.obligations.0,
-        vec![
-            Requirement::MaterialLayers,
-            Requirement::IfcAppearance,
-            Requirement::PersistentFaces,
-        ]
+        vec![]
     );
     let part = &product.parts[0];
     let mut metrics = Metrics::default();

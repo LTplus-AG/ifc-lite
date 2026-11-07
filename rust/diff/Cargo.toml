@@ -8,6 +8,8 @@ repository.workspace = true
 description = "Store-agnostic entity diff engine for IFC models: canonical fingerprints, content matching and lineage"
 keywords = ["ifc", "bim", "diff", "versioning", "aec"]
 categories = ["algorithms", "data-structures"]
+# Workspace-internal: consumed only by rust/diff-wasm, not in scripts/lib/crates-io.mjs CRATES.
+publish = false
 readme = "../../README.md"
 
 [dependencies]

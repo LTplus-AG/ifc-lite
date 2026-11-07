@@ -8,6 +8,8 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
     // input handles/matrices. Callers cannot rebind a numerical result.
     pub(super) definition: LogicalRetainedDefinition,
     pub(super) empty: bool,
+    /// The opening element an M3 cut subtracted; persistent faces key its reveals `via` it.
+    pub(super) opening: Option<u32>,
     pub(super) _permit: Reservation,
     pub(super) _buffers: Reservation,
     // Runtime lineage retains authored requests. Keep their charges alive even
@@ -16,6 +18,55 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
     pub(super) _inputs: [Option<Arc<Self>>; 2],
 }
 impl<R: NumericalReceipt> RuntimeRealization<R> {
+    /// Follow only the host spine. A clipped opening/cutter does not qualify
+    /// its host, and an unknown Union/Intersection does not qualify its branches.
+    /// An M4 LayerRegion intersection preserves only its left host's lineage.
+    pub(super) fn halfspace_clipped(&self) -> bool {
+        use super::runtime::ReceiptEvidence;
+        use ifc_lite_geometry::{BoolOp, document::PrismRole};
+        let mut current = self;
+        // Real runtime lineage is capped at 128 operations on both targets.
+        for _ in 0..=128 {
+            match current.kind.evidence() {
+                ReceiptEvidence::Boolean { operation: BoolOp::Difference, .. } => {
+                    if let Some(right) = current._inputs[1].as_deref() {
+                        if let ReceiptEvidence::Construction(completion) = right.kind.evidence() {
+                            if matches!(completion.request().recipe(), RetainedRecipe::Prism(p) if p.role == PrismRole::HalfSpace) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                ReceiptEvidence::Boolean { operation: BoolOp::Intersection, .. } => {
+                    // #7955 M4/M5: this derived cutter is sealed by the band
+                    // plan; arbitrary authored intersections still stop here.
+                    let Some(right) = current._inputs[1].as_deref() else { return false; };
+                    if !matches!(right.kind.evidence(), ReceiptEvidence::Construction(c)
+                        if matches!(c.request().recipe(), RetainedRecipe::Prism(p) if p.role == PrismRole::LayerRegion)) {
+                        return false;
+                    }
+                }
+                ReceiptEvidence::Affine { .. } => {}
+                _ => return false,
+            }
+            let Some(left) = current._inputs[0].as_deref() else { return false; };
+            current = left;
+        }
+        false
+    }
+    /// Whether any construction leaf of this lineage is an authored face set.
+    /// Each shared operand is walked once, so real lineage's 128-operation cap bounds this.
+    pub(super) fn has_face_set(&self) -> bool {
+        let mut stack = vec![self];
+        let mut seen = std::collections::HashSet::new();
+        while let Some(node) = stack.pop() {
+            if !seen.insert(std::ptr::from_ref(node)) { continue; }
+            if matches!(node.kind.evidence(), super::runtime::ReceiptEvidence::Construction(completion)
+                if matches!(completion.request().recipe(), RetainedRecipe::FaceSet(_))) { return true; }
+            stack.extend(node._inputs.iter().flatten().map(|input| &**input));
+        }
+        false
+    }
     pub(super) fn is_empty(&self) -> bool { self.empty }
     pub(super) fn validate_live(&self) -> Result<(), R::Error> {
         self.kind.validate_live()

@@ -1,5 +1,11 @@
 # @ifc-lite/bcf-api
 
+## 0.4.0
+
+### Minor Changes
+
+- [#8655](https://github.com/LTplus-AG/ifc-lite/pull/8655) [`87b96f8`](https://github.com/LTplus-AG/ifc-lite/commit/87b96f8f871e3e9ca94a121ebf253fa2d229c675) Thanks [@louistrue](https://github.com/louistrue)! - Add `topicPaging: 'modified-date'` to `fetchProjectAsBCF` for servers that ignore `$skip` (such as buildagil's openCDE API): topics are paged by `modified_date` keyset instead of offset, deduped by guid across inclusive boundaries, and paging stops with a warning instead of silently truncating or looping. The default `'skip'` paging is unchanged.
+
 ## 0.3.0
 
 ### Minor Changes

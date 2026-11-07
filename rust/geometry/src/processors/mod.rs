@@ -38,6 +38,8 @@ pub(crate) mod surface;
 pub(crate) mod swept;
 mod tessellated;
 pub(crate) use tessellated::{polygonal_plan, triangulated_plan};
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+pub(crate) use tessellated::{read_point_list_f64, PolygonalFaceSetProcessor as PolygonalFaces, SourceTriangles};
 pub(crate) use brep::{faceted_plan, SurfaceModelPlan};
 pub(crate) use swept::{SurfaceCurveSweepPlan, SweptDiskPlan};
 pub mod texture;
@@ -68,6 +70,6 @@ pub use swept::{
 };
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
 pub use texture::{
-    binary_textures_refused, build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    binary_textures_refused, build_texture_index, build_texture_index_with_vertex_lists, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
     TextureSource,
 };

@@ -183,7 +183,7 @@ export function LayerDraftSection() {
         <span
           className={`ml-auto rounded-full border px-1.5 py-px text-2xs leading-none ${
             pendingCount > 0
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300'
+              ? 'border-warn-border bg-warn-surface text-warn'
               : 'border-border text-muted-foreground'
           }`}
         >

@@ -329,7 +329,7 @@ function PresetMenu({
                 e.stopPropagation();
                 onDelete(p.name);
               }}
-              className="rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
             >
               <Trash2 className="h-3 w-3" />
             </button>

@@ -326,6 +326,8 @@ fn convert_record(
                 Adjust::Pad(n) if !args.is_empty() && n > args.len() => {
                     Cow::Owned(format!("{attrs}{}", ",$".repeat(n - args.len())))
                 }
+                // `GridFrames` already wrote this one in the target's layout.
+                Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
                     lost = values_without_a_name(&args, src, tgt);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))

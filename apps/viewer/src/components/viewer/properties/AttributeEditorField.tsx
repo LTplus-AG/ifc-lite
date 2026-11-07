@@ -114,17 +114,17 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             onChange={(e) => { setValue(e.target.value); setError(null); }}
             onKeyDown={handleKeyDown}
             onBlur={save}
-            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-red-500"
+            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-danger-border"
           />
           <IconButton
             label={t('properties.panel.saveAttributeLabel', { attrName })}
             className="h-5 w-5 p-0 shrink-0 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
             onClick={save}
           >
-            <Check className="h-3 w-3 text-emerald-500" />
+            <Check className="h-3 w-3 text-ok" />
           </IconButton>
         </div>
-        {error && <span id={`attr-err-${entityId}-${attrName}`} role="alert" className="text-xs text-red-600 dark:text-red-400">{t(error)}</span>}
+        {error && <span id={`attr-err-${entityId}-${attrName}`} role="alert" className="text-xs text-danger">{t(error)}</span>}
       </div>
     );
   }
@@ -137,7 +137,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
         title={currentValue}
         onClick={begin}
       >
-        {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
+        {currentValue || <span className="text-muted-foreground italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
       </button>
       <IconButton
         label={t('properties.panel.attributeEditor.editTooltip')}

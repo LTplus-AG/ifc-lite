@@ -21,8 +21,8 @@
  * | Control: genuine edit within one unit (2500 mm → 3000 mm) | `modified · data` | `modified · data` | `modified · data` (unaffected) |
  */
 
-import { describe, expect, it } from 'vitest';
-import { diffModels } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initDiff, diffModels } from '@ifc-lite/diff';
 import { buildFileFingerprints } from './diff-engine.js';
 import { loadIfcBytes } from '../loader.js';
 import { guid } from './diff-test-helpers.js';
@@ -35,6 +35,9 @@ import {
   UNIT_SCALE_MILLIMETRE_EDITED_MODEL,
   UNIT_SCALE_MILLIMETRE_MODEL,
 } from './diff-unit-scale-fixtures.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 async function fingerprintsOf(source: string) {
   const store = await loadIfcBytes(new TextEncoder().encode(source), 'model');

@@ -46,7 +46,7 @@ fn distinct_mapped_occurrences_keep_ordered_rigid_frames_and_style_sources() {
     assert_eq!([p.x, p.y, p.z], [14., 30., 43.]);
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure,
         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-        RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 
 #[test]

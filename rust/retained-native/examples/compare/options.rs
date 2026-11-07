@@ -55,7 +55,7 @@ pub fn options() -> Result<Options, Box<dyn std::error::Error>> {
         bless,
     })
 }
-pub fn base_models() -> [&'static str; 14] {
+pub fn base_models() -> [&'static str; 15] {
     [
         "rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc",
         "rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc",
@@ -63,6 +63,7 @@ pub fn base_models() -> [&'static str; 14] {
         "tests/fixtures/synthetic-retained/f-c-brep.ifc",
         "tests/fixtures/synthetic-retained/f-a-curved.ifc",
         "tests/fixtures/synthetic-retained/f-b-mapped.ifc",
+        "tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc",
         "tests/fixtures/cli-retained/layered-wall.ifc",
         "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc",
         "rust/geometry/tests/fixtures/mapped_instances_multi_item.ifc",

@@ -55,7 +55,7 @@ fn issue_7955_openings_cut_in_order_with_host_as_left_and_discharge_closure() {
     assert_eq!(observed, [(50, 0, 0), (70, 1, 0), (100, 2, 0)]);
     let plan = cuts.finish().unwrap();
     assert_eq!(plan.opening(), Some((3, 3, 0)));
-    assert_eq!(plan.requirements().collect::<Vec<_>>(), [Requirement::MaterialLayers, Requirement::IfcAppearance, Requirement::PersistentFaces]);
+    assert_eq!(plan.requirements().collect::<Vec<_>>(), [Requirement::MaterialLayers, Requirement::IfcAppearance, Requirement::PersistentFaces, Requirement::SurfaceNormals]);
 }
 
 fn mapped_source() -> String {

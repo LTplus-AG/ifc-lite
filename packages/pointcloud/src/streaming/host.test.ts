@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { streamPointCloud } from './host.js';
 import { LasStreamingSource } from './las-source.js';
 import type { DecodedPointChunk } from '../types.js';
-import type { StreamingPointSource } from './types.js';
+import type { PointSourceInfo, StreamingPointSource } from './types.js';
 
 function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: number }>): Blob {
   const headerSize = 227;
@@ -385,5 +385,89 @@ describe('streamPointCloud (in-process source)', () => {
     });
     await handle.done;
     expect(factoryCalls).toBe(1);
+  });
+});
+
+/** A Blob that reports a size past the 4 GB default ceiling without allocating it. */
+class OversizedBlob extends Blob {
+  override get size(): number {
+    return 5 * 1024 * 1024 * 1024;
+  }
+}
+
+function emptySource(onOpen: () => void): StreamingPointSource {
+  return {
+    open: async () => {
+      onOpen();
+      return {
+        totalPointCount: 0,
+        bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+        hasColor: false,
+        hasClassification: false,
+        hasIntensity: false,
+      };
+    },
+    next: async () => null,
+    close: () => {},
+  };
+}
+
+describe('streamPointCloud default file-size ceiling (#8773)', () => {
+  it.each(['e57', 'ply', 'las'] as const)('streams a %s file over 4 GB, because its source reads bounded windows', async (format) => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format,
+      blob: new OversizedBlob([]),
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await handle.done;
+    expect(opened).toBe(1);
+  });
+
+  it.each(['pcd', 'pts', 'xyz', 'laz'] as const)('refuses a %s file over 4 GB before opening it, because its source reads the whole file', async (format) => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format,
+      blob: new OversizedBlob([]),
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await expect(handle.done).rejects.toThrow(/exceeds maxFileSize 4295 MB/);
+    expect(opened).toBe(0);
+  });
+
+  it('applies an explicit maxFileSize to a windowed format too', async () => {
+    let opened = 0;
+    const handle = streamPointCloud({
+      format: 'e57',
+      blob: new OversizedBlob([]),
+      maxFileSize: 4 * 1024 * 1024 * 1024,
+      onChunk: () => {},
+      createSource: () => emptySource(() => { opened++; }),
+    });
+    await expect(handle.done).rejects.toThrow(/exceeds maxFileSize/);
+    expect(opened).toBe(0);
+  });
+
+  it('reopens a source in place when it can, instead of building a second one (#8777)', async () => {
+    let built = 0;
+    const reopened: unknown[] = [];
+    const info: PointSourceInfo = { totalPointCount: 10, bbox: { min: [10, 20, 30], max: [12, 22, 32] }, hasColor: false, hasClassification: false, hasIntensity: false };
+    const handle = streamPointCloud({
+      format: 'ply', blob: new Blob([]), maxPointsInMemory: 4, autoOrigin: true, onChunk: () => {},
+      createSource: () => {
+        built++;
+        return {
+          open: async () => info,
+          reopen: async (options) => { reopened.push(options); return { ...info, totalPointCount: 4 }; },
+          next: async () => null,
+          close: () => {},
+        } satisfies StreamingPointSource;
+      },
+    });
+    await handle.done;
+    expect(built).toBe(1);
+    expect(reopened).toEqual([{ stride: 3, originOffset: [11, 21, 31] }]);
   });
 });

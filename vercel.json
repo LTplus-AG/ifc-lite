@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "production": true
+    }
+  },
   "buildCommand": "bash scripts/vercel-build.sh '@ifc-lite/viewer...'",
   "outputDirectory": "apps/viewer/dist",
   "installCommand": "bash scripts/vercel-install.sh",
@@ -62,8 +68,16 @@
       "destination": "https://api.bsdd.buildingsmart.org/:path*"
     },
     {
+      "source": "/api/bimcollab/:path*",
+      "destination": "/api/bimcollab?path=:path*"
+    },
+    {
       "source": "/api/dalux/:path*",
       "destination": "/api/dalux?path=:path*"
+    },
+    {
+      "source": "/api/buildagil/:path*",
+      "destination": "/api/buildagil?path=:path*"
     },
     {
       "source": "/oauth/dropbox/callback",
@@ -86,7 +100,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!.*\\.).*)",
+      "source": "/((?!smlib/|retained-engine/)(?!.*\\.).*)",
       "destination": "/index.html"
     }
   ],
@@ -123,6 +137,55 @@
         {
           "key": "Content-Type",
           "value": "application/wasm"
+        }
+      ]
+    },
+    {
+      "source": "/(smlib|retained-engine)/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/(smlib|retained-engine)/(.*)\\.(js|mjs)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/javascript; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/(smlib|retained-engine)/(.*)\\.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "source": "/(smlib|retained-engine)/(.*)\\.(md|txt)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/(retained-engine/LICENSES/.*|smlib/LICENSE)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
         }
       ]
     },

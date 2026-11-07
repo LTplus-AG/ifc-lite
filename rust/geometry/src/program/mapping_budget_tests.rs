@@ -17,6 +17,14 @@ fn limited(mut program: GeometryProgram<'_>, limit: u32) -> GeometryProgram<'_> 
     program
 }
 
+// Share the existing budget setup with observability witnesses outside inner.
+#[cfg(feature = "observability")]
+impl<'a> GeometryProgram<'a> {
+    pub(in crate::program) fn with_logical_limit(self, limit: u32) -> Self {
+        limited(self, limit)
+    }
+}
+
 fn run<'s>(
     mode: u8,
     source: &'s str,
@@ -526,3 +534,49 @@ fn issue_7873_sticky_cancellation_outranks_logical_refusal_without_content_drop(
 
 #[path = "mapping_eligibility_tests.rs"]
 mod eligibility_tests;
+
+/// #7781 C2-3: logical exhaustion reports the failed nested item under its
+/// parent policy, retains the completed prefix, and never publishes it.
+#[test]
+fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_publication() {
+    for body in [false, true] {
+        let mut source = nested("#8,#8,#8");
+        if !body {
+            source = source.replace(
+                "#15=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation'",
+                "#15=IFCSHAPEREPRESENTATION($,'FootPrint',''",
+            );
+        }
+        let mut decoder = EntityDecoder::new(&source);
+        let item = decoder.decode_by_id(18).unwrap();
+        let mut router = GeometryRouter::new();
+        let cache = GeometryRouter::new_mapped_item_cache();
+        router.enable_shared_mapped_item_cache(cache.clone());
+        let meshes = limited(
+            GeometryProgram::styled_item(
+                &item,
+                crate::SubMeshCollection::new(),
+                false,
+                None,
+                (0., 0., 0.),
+            ),
+            4,
+        )
+        .drain_styled(&router, &mut decoder)
+        .unwrap();
+        assert_eq!(
+            meshes.sub_meshes.len(),
+            1,
+            "only the completed first child survives"
+        );
+        assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 3);
+        assert!(cache.lock().unwrap().is_empty());
+        let drops = router.take_unsupported_items();
+        assert_eq!(
+            drops.get("IfcMappedItem").copied().unwrap_or(0),
+            u64::from(body)
+        );
+        assert_eq!(drops.len(), usize::from(body));
+        assert_eq!(router.unsupported_scope_depth(), 0);
+    }
+}

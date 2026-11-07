@@ -59,6 +59,7 @@ afterEach(() => {
   useViewerStore.setState({
     geomTierOverride: undefined,
     geometryMode: 'exact',
+    loading: false,
   } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
 });
 
@@ -90,6 +91,9 @@ describe('shared command surfaces with a registered locale (#4918 slice 2)', () 
       'lists.panel.title': 'Listen',
     });
     setLocale('shared-commands-partial');
+    // A first load in flight shows every gated export format; an empty
+    // viewer folds them into one control (#8802 R1).
+    useViewerStore.setState({ loading: true });
 
     const container = render(
       <>

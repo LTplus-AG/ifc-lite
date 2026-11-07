@@ -44,11 +44,11 @@ fn parquet_cache_key_matches_writer_format() {
             let writer_metadata_key = format!("{}-parquet-metadata-v6", writer_cache_key);
 
             assert_eq!(
-                parquet_cache_key(hash, mode, quality, ParquetLayout::Flat),
+                parquet_cache_key(hash, mode, quality, ParquetLayout::Flat, false),
                 writer_parquet_key
             );
             assert_eq!(
-                parquet_metadata_cache_key(hash, mode, quality),
+                parquet_metadata_cache_key(hash, mode, quality, false),
                 writer_metadata_key
             );
         }
@@ -78,8 +78,8 @@ fn the_two_layouts_never_share_a_cache_entry() {
         OpeningFilterMode::IgnoreOpaque,
     ] {
         for quality in [TessellationQuality::Medium, TessellationQuality::Highest] {
-            let flat = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::Flat);
-            let shared = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::SharedShapes);
+            let flat = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::Flat, false);
+            let shared = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::SharedShapes, false);
             assert!(
                 flat.ends_with("-parquet-v8"),
                 "the default layout must keep the pre-#3888 key: {flat}"
@@ -108,8 +108,7 @@ fn shared_shapes_geometry_key_ends_with_parquet_v7() {
         "deadbeef",
         OpeningFilterMode::Default,
         TessellationQuality::Medium,
-        ParquetLayout::SharedShapes,
-    );
+        ParquetLayout::SharedShapes, false);
     assert!(
         shared.ends_with("-parquet-v9"),
         "the #5130 content-hash stage must bump the shared-shapes namespace: {shared}"
@@ -118,8 +117,7 @@ fn shared_shapes_geometry_key_ends_with_parquet_v7() {
         "deadbeef",
         OpeningFilterMode::Default,
         TessellationQuality::Medium,
-        ParquetLayout::Flat,
-    );
+        ParquetLayout::Flat, false);
     assert!(
         flat.ends_with("-parquet-v8"),
         "the flat layout is untouched by #5130: {flat}"
@@ -149,15 +147,13 @@ fn parquet_cache_key_default_filter_uses_default_suffix() {
         "abc",
         OpeningFilterMode::Default,
         TessellationQuality::Medium,
-        ParquetLayout::Flat,
-    );
+        ParquetLayout::Flat, false);
     assert_eq!(key, "abc-default-parquet-v8");
     let key = parquet_cache_key(
         "abc",
         OpeningFilterMode::Default,
         TessellationQuality::High,
-        ParquetLayout::Flat,
-    );
+        ParquetLayout::Flat, false);
     assert_eq!(key, "abc-default-qhigh-parquet-v8");
 }
 
@@ -294,6 +290,7 @@ fn request_cache_key_separates_content_filter_and_quality() {
             let query = ParseQuery {
                 opening_filter: mode,
                 tessellation_quality: None,
+                layer_slicing: false,
                 parquet_layout: ParquetLayout::Flat,
                 // Not cache identity either (#5407): both stream modes fill
                 // the same entry. Set to the non-default so a leak would show.
@@ -375,9 +372,8 @@ fn derived_keys_never_collide_with_each_other() {
             "0ab20f4e4014",
             OpeningFilterMode::Default,
             TessellationQuality::Medium,
-            ParquetLayout::Flat,
-        ),
-        parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
+            ParquetLayout::Flat, false),
+        parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium, false),
         parquet_optimized_cache_key(seed),
         parquet_optimized_metadata_cache_key(seed),
     ];
@@ -432,10 +428,9 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         hash,
         OpeningFilterMode::Default,
         TessellationQuality::Medium,
-        ParquetLayout::Flat,
-    );
+        ParquetLayout::Flat, false);
     let flat_metadata =
-        parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium);
+        parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium, false);
     for optimized in [
         parquet_optimized_cache_key(&seed),
         parquet_optimized_metadata_cache_key(&seed),
@@ -446,4 +441,28 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         assert_ne!(optimized, data_model_cache_key(&seed, crate::services::DataModelEntities::All));
         assert_ne!(optimized, json_response_cache_key(&seed));
     }
+}
+
+#[test]
+fn issue_7782_d66_slicing_cache_identity_roundtrips() {
+    let content = include_bytes!("../../../../../rust/processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc");
+    let off = ParseQuery::default();
+    let on = ParseQuery {
+        layer_slicing: true,
+        ..ParseQuery::default()
+    };
+    let quality = TessellationQuality::default();
+    let default_key = request_cache_key(content, &off, quality);
+    let sliced_key = request_cache_key(content, &on, quality);
+    assert_ne!(default_key, sliced_key);
+    let hash = crate::services::cache::DiskCache::generate_key(content);
+    assert_eq!(
+        cache_key_from_parts(&hash, off.opening_filter, quality, false),
+        default_key
+    );
+    assert_eq!(
+        cache_key_from_parts(&hash, on.opening_filter, quality, true),
+        sliced_key
+    );
+    assert!(crate::routes::cache::resolve_request_cache_key(&sliced_key).is_ok());
 }

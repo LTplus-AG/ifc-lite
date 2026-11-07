@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { diffModels } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const { diffModels } = await loadDiffOracle();
 const e = (key, lo, hi, volume, extra = {}) => ({ key, ref: key, ifcType:'IfcWall',
   dataHash:key, geometryHash:key, aabb:{min:[lo,0,0], max:[hi,1,1]},
   ...(volume === undefined ? {} : {volume}), ...extra });
@@ -51,6 +52,6 @@ const vectors=all.map(input=>{
 const path=new URL('../rust/diff/tests/split_vectors.json',import.meta.url);
 const text=`[\n${vectors.map(v=>JSON.stringify(v)).join(',\n')}\n]\n`;
 if(process.argv.includes('--check')) {
-  if(readFileSync(path,'utf8')!==text) throw new Error('Split/merge vectors differ from the built TypeScript engine');
+  if(readFileSync(path,'utf8')!==text) throw new Error('Split/merge vectors differ from the test-only TypeScript oracle');
 } else writeFileSync(path,text);
 console.log(`Split/merge parity: ${vectors.length} cases`);

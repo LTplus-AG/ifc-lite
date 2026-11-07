@@ -5,11 +5,12 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network, Layers3 } from 'lucide-react';
+import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network, Layers3, Shapes } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
+import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useIfcFederation } from '@/hooks/useIfcFederation';
 import { useEntityListMultiSelect } from '@/hooks/useEntityListMultiSelect';
@@ -19,13 +20,15 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
-import type { TreeNode } from './hierarchy/types';
+import { HIERARCHY_ROW_HEIGHT, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveRowType, overlayViewFor } from './hierarchy/treeOverlay';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
+import { reloadGaussianCapture } from '@/hooks/ingest/gaussianReload';
 import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
 import type { NodeActivationModifiers, UseTreeKeyboardResult } from './hierarchy/useTreeKeyboard';
 import { useHierarchyTreeKeyboard } from './hierarchy/useHierarchyTreeKeyboard';
@@ -36,10 +39,10 @@ import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { useModelRowSize } from './hierarchy/ModelRowTags';
 import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
-import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
+import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -72,6 +75,9 @@ export function HierarchyPanel() {
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  // The set the viewport draws (storey Solo ∩ class filter ∩ isolation), so
+  // row dimming agrees with the renderer for every isolation channel (#8802).
+  const viewportIsolation = useVisibilityIsolation();
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
@@ -171,7 +177,7 @@ export function HierarchyPanel() {
   const storeysVirtualizer = useVirtualizer({
     count: storeysNodes.length,
     getScrollElement: () => storeysRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => HIERARCHY_ROW_HEIGHT,
     overscan: 10,
   });
 
@@ -186,7 +192,7 @@ export function HierarchyPanel() {
   const virtualizer = useVirtualizer({
     count: filteredNodes.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => HIERARCHY_ROW_HEIGHT,
     overscan: 10,
   });
 
@@ -391,12 +397,13 @@ export function HierarchyPanel() {
     toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
   });
 
+  const spatialSubtreeOf = useMemo(() => createSpatialSubtreeResolver(models, ifcDataStore, (modelId) => useViewerStore.getState().mutationViews.get(modelId)), [models, ifcDataStore, mutationVersion]);
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>) => {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    const visibility = hierarchyNodeVisibility(node, getNodeElements(node), hiddenEntities);
+    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -405,19 +412,19 @@ export function HierarchyPanel() {
       modelVisible = model?.visible;
     }
 
-    return { isSelected, ...visibility, modelVisible };
-  }, [selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models]);
+    return { isSelected, ...appearance, modelVisible };
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, spatialSubtreeOf]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
   // structure" step must find the panel while a model is absent or loading.
   if (!ifcDataStore && models.size === 0) {
     return (
-      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('hierarchy.panel.title')}</h2>
+      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col bg-background">
+        <div className="flex h-8 items-center px-3 border-b border-border">
+          <h2 className="text-xs font-semibold text-foreground">{t('hierarchy.panel.title')}</h2>
         </div>
         <EmptyState
-          className="flex-1 bg-white dark:bg-black"
+          className="flex-1 bg-background"
           icon={<LayoutTemplate className="size-8" />}
           title={t('hierarchy.panel.noModelTitle')}
           description={t('hierarchy.panel.noModelHint')}
@@ -427,6 +434,10 @@ export function HierarchyPanel() {
   }
 
   const singleModel = models.size === 1 ? Array.from(models.values())[0] : null;
+  if (singleModel?.gaussianSplat) { // #8566: a capture has no tree; its row carries the model controls
+    return <>{removeModelDialog}<CaptureModelPanel model={singleModel} title={t('hierarchy.panel.title')} rootProps={tourAnchor(TOUR_ANCHORS.hierarchyPanel)}
+      onRemove={handleRemoveModel} onReload={(id) => reloadGaussianCapture(id, { addModel, removeModel })} /></>;
+  }
   if (!ifcDataStore && singleModel && !singleModel.ifcDataStore) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
@@ -434,12 +445,12 @@ export function HierarchyPanel() {
       : singleModel.loadState === 'complete' ? 'No hierarchy available for this model.'
       : 'Building the hierarchy. You can explore the geometry while model details load.';
     return (
-      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('hierarchy.panel.title')}</h2>
+      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col bg-background">
+        <div className="flex h-8 items-center px-3 border-b border-border">
+          <h2 className="text-xs font-semibold text-foreground">{t('hierarchy.panel.title')}</h2>
         </div>
         <div className="flex-1 flex items-center justify-center p-6 text-center">
-          <div className="max-w-[220px] text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="max-w-56 text-xs text-muted-foreground">
             {message}
           </div>
         </div>
@@ -449,7 +460,7 @@ export function HierarchyPanel() {
 
   // Each virtualized section has its own selection rows and ARIA keyboard state.
   const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }, section: SelectionSection, keyboard: UseTreeKeyboardResult, ariaAttrs: AriaTreeAttrs[]) => {
-    const { isSelected, nodeHidden, visibilityAction, modelVisible } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
+    const { isSelected, nodeHidden, visibilityAction, modelVisible, outsideIsolation } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
     const modelId = node.type === 'model-header' && node.id.startsWith('model-')
       ? node.modelIds[0]
       : undefined;
@@ -462,6 +473,7 @@ export function HierarchyPanel() {
         virtualRow={virtualRow}
         isSelected={isSelected}
         nodeHidden={nodeHidden}
+        outsideIsolation={outsideIsolation}
         visibilityAction={visibilityAction}
         isMultiModel={isMultiModel}
         modelsCount={models.size}
@@ -489,10 +501,13 @@ export function HierarchyPanel() {
   // Multi-model layout with resizable split
   // Grouping mode toggle component (shared by both layouts)
   const groupingToggle = (
-    <div className="hierarchy-grouping-tabs flex gap-1 mt-2">
+    // One neutral segmented switch with a distinct glyph per mode (Class used
+    // to share Layers' stacked-sheets glyph); the active mode reads as a
+    // raised tile and is named by the section header below (#8802).
+    <div className="hierarchy-grouping-tabs mt-1.5 flex gap-0.5 rounded-md bg-muted p-0.5">
       {([
         ['spatial', Building2, 'hierarchy.panel.grouping.spatial', 'hierarchy.panel.grouping.spatial'],
-        ['type', Layers, 'hierarchy.panel.grouping.class', 'hierarchy.panel.grouping.class'],
+        ['type', Shapes, 'hierarchy.panel.grouping.class', 'hierarchy.panel.grouping.class'],
         ['ifc-type', FileBox, 'hierarchy.panel.grouping.type', 'hierarchy.panel.grouping.type'],
         ['material', Palette, 'hierarchy.panel.grouping.material', 'hierarchy.panel.grouping.materialsTooltip'],
         ['groups', Network, 'hierarchy.panel.grouping.groups', 'hierarchy.panel.grouping.groupsTooltip'],
@@ -500,9 +515,11 @@ export function HierarchyPanel() {
       ] as const).map(([mode, Icon, labelKey, titleKey]) => (
         <Button
           key={mode}
-          variant={groupingMode === mode ? 'default' : 'outline'}
+          variant="toggle"
           size="sm"
-          className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
+          aria-pressed={groupingMode === mode}
+          aria-label={t(titleKey)}
+          className="h-6 min-w-0 flex-1 gap-1 rounded px-1 text-2xs font-medium"
           onClick={() => setGroupingMode(mode)}
           title={t(titleKey)}
         >
@@ -515,22 +532,18 @@ export function HierarchyPanel() {
 
   // Sub-filter chips for the Groups tab (#1622). Session-only; not persisted.
   const groupFilterChips = groupingMode === 'groups' ? (
-    <div className="flex gap-1 mt-2">
+    <div className="mt-1.5 flex gap-0.5 rounded-md bg-muted p-0.5 hierarchy-grouping-tabs">
       {([
         ['all', 'hierarchy.panel.groupFilter.all'], ['systems', 'hierarchy.panel.groupFilter.systems'],
         ['zones', 'hierarchy.panel.groupFilter.zones'], ['other', 'hierarchy.panel.groupFilter.other'],
       ] as const).map(([value, labelKey]) => (
         <Button
           key={value}
-          variant={groupFilter === value ? 'default' : 'outline'}
+          variant="toggle"
           size="sm"
-          className={cn(
-            'h-5 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
-            // Inactive (outline) chips inherited a too-light zinc-400 in light
-            // mode (2.52:1 at 10px). Pin a darker foreground for light mode only;
-            // dark mode kept at zinc-400 which already passes.
-            groupFilter !== value && 'text-zinc-600 dark:text-zinc-400',
-          )}
+          aria-pressed={groupFilter === value}
+          // Same switch as the grouping modes: the shared toggle state (#8802 R4).
+          className="h-5 min-w-0 flex-1 rounded px-1 text-2xs font-medium"
           onClick={() => setGroupFilter(value)}
         >
           {t(labelKey)}
@@ -542,31 +555,29 @@ export function HierarchyPanel() {
   // In type/ifc-type grouping mode, always use flat tree layout (even for multi-model)
   if (isMultiModel && groupingMode === 'spatial') {
     return (
-      <div ref={containerRef} {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+      <div ref={containerRef} {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col bg-background">
         {removeModelDialog}
         {/* Search Header */}
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+        <div className="px-2 pt-2 pb-2 border-b border-border">
           <Input
             placeholder={t('hierarchy.panel.searchPlaceholder')}
             aria-label={t('hierarchy.panel.searchInputLabel')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
-            className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+            className="h-8 text-sm"
           />
           {groupingToggle}
-          {groupingMode === 'spatial' && (
-            <HierarchySortControl value={sortMode} onChange={setSortMode} />
-          )}
         </div>
 
         {/* Resizable content area */}
         {searchEmptyState ?? <div className="flex-1 flex flex-col min-h-0">
           {/* Storeys Section */}
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
-            <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
+            <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length}
+              actions={<><HierarchySortControl value={sortMode} onChange={setSortMode} /><StoreyFloorplanButton /></>} />
             <StoreyDisplayControls />
-            <div ref={storeysRef} role="tree" tabIndex={storeysTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.panel.buildingStoreysTitle')} onKeyDown={storeysTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={storeysRef} role="tree" tabIndex={storeysTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.panel.buildingStoreysTitle')} onKeyDown={storeysTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-background">
               <div
                 style={{
                   height: `${storeysVirtualizer.getTotalSize()}px`,
@@ -593,19 +604,19 @@ export function HierarchyPanel() {
             aria-valuemax={85}
             tabIndex={0}
             className={cn(
-              'flex items-center justify-center h-2 cursor-ns-resize border-y border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors',
+              'flex items-center justify-center h-2 cursor-ns-resize border-y border-border bg-muted hover:bg-accent transition-colors',
               isDragging && 'bg-primary/20'
             )}
             onMouseDown={handleResizeStart}
             onKeyDown={handleResizeKeyDown}
           >
-            <GripHorizontal className="h-3 w-3 text-zinc-400" />
+            <GripHorizontal className="h-3 w-3 text-muted-foreground" />
           </div>
 
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
             <ModelsSectionHeader count={models.size} />
-            <div ref={modelsRef} role="tree" tabIndex={modelsTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.modelsSection.title')} onKeyDown={modelsTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={modelsRef} role="tree" tabIndex={modelsTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.modelsSection.title')} onKeyDown={modelsTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-background">
               <div
                 style={{
                   height: `${modelsVirtualizer.getTotalSize()}px`,
@@ -628,7 +639,6 @@ export function HierarchyPanel() {
           isolatedEntities={isolatedEntities} typeIsolationLabel={typeIsolationLabel}
           clearStoreySelection={clearStoreySelection} clearClassFilter={clearClassFilter}
           clearIsolation={clearIsolation} clearAllFilters={clearAllFilters}
-          idleHint={t('hierarchy.panel.modelsFooterHint', { count: models.size })} idleHintLightShade="500"
         />
       </div>
     );
@@ -636,30 +646,30 @@ export function HierarchyPanel() {
 
   // Single model layout
   return (
-    <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col bg-background">
       {removeModelDialog}
       {/* Header */}
-      <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div className="px-2 pt-2 pb-2 border-b border-border">
         <Input
           placeholder={t('hierarchy.panel.searchPlaceholder')}
           aria-label={t('hierarchy.panel.searchInputLabel')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           leftIcon={<Search className="h-4 w-4" />}
-          className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+          className="h-8 text-sm"
         />
         {groupingToggle}
         {groupFilterChips}
-        {groupingMode === 'spatial' && (
-          <HierarchySortControl value={sortMode} onChange={setSortMode} />
-        )}
       </div>
 
       {/* Section Header */}
       <SectionHeader
-        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : groupingMode === 'presentation-layers' ? Layers3 : FileBox}
+        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Shapes : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : groupingMode === 'presentation-layers' ? Layers3 : FileBox}
         title={singleTreeSectionTitle}
         count={filteredNodes.length}
+        actions={groupingMode === 'spatial'
+          ? <><HierarchySortControl value={sortMode} onChange={setSortMode} /><StoreyFloorplanButton /></>
+          : undefined}
       />
 
       {/* Level display (Stacked / Exploded / Solo) + floorplan — only in the
@@ -672,7 +682,7 @@ export function HierarchyPanel() {
         action={<Button variant="outline" onClick={retryPresentationLayers}>{t('hierarchy.panel.retryPresentationLayers')}</Button>} />
         : searchEmptyState ?? (groupingReady && groupingMode === 'presentation-layers' && filteredNodes.length === 0
         ? <EmptyState className="flex-1" icon={<Layers3 className="size-8" />} title={t('hierarchy.panel.noPresentationLayersTitle')} description={t('hierarchy.panel.noPresentationLayersHint')} />
-        : <div ref={parentRef} role="tree" aria-busy={!groupingReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+        : <div ref={parentRef} role="tree" aria-busy={!groupingReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-background">
         {!groupingReady && groupingMode === 'presentation-layers' && <output className="block p-4 text-sm text-muted-foreground">{t('hierarchy.panel.loadingPresentationLayers')}</output>}
         <div
           style={{
@@ -694,7 +704,6 @@ export function HierarchyPanel() {
         isolatedEntities={isolatedEntities} typeIsolationLabel={typeIsolationLabel}
         clearStoreySelection={clearStoreySelection} clearClassFilter={clearClassFilter}
         clearIsolation={clearIsolation} clearAllFilters={clearAllFilters}
-        idleHint={t('hierarchy.panel.clickToFilterHint')}
       />
     </div>
   );

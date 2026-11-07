@@ -22,7 +22,7 @@ fn h2c_boolean_dag_repeats_both_ordered_occurrences_and_preserves_obligations() 
     assert_eq!(plan.values[0].definition(), operations[6].value().definition(),
         "the final occurrence retains the ordered intersection, with no removal authority");
     assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces]);
+        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals]);
 }
 
 #[test]

@@ -74,6 +74,8 @@ export function buildHelp(version: string): string {
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
+    oci       push <oci://host/repo:tag> <model.ifc>  Publish an IFC file to an OCI registry (any model argument may also be oci://...)
+              [--overwrite] [--annotation key=value]... [--json]  replace an existing tag; extra manifest annotations
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
     delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS + rule sets) from a saved recipe
               recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"],"rules":["checks.rules.json"]}, paths relative to the recipe file
@@ -110,6 +112,7 @@ export function buildHelp(version: string): string {
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
@@ -169,6 +172,7 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main
     ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
     ifc-lite layer merge blake3:abc123 --into main --preview
@@ -272,7 +276,8 @@ export function buildCommandHelp(version: string, command: string): string | nul
       '    --kernel exact|retained       Geometry kernel (default: exact)',
       '    --retained-engine DIR        Staged engine; or IFCLITE_RETAINED_ENGINE (Node >=20.6)',
       '    --retained-report FILE       Deterministic JSON coverage and refusals',
-      '    Retained requires --format obj; shape-only, PresentationObligationsUnmet.',
+      '    Retained requires --format obj; fully presented products are final.',
+      '    Otherwise shape-only, marked PresentationObligationsUnmet.',
       '    No exact fallback. Zero published products fails without writing files.',
     ] : []),
     ``,

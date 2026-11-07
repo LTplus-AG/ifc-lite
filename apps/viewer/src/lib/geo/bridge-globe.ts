@@ -54,7 +54,7 @@ export function createBridgeGlobe(args: {
   if (!mapping) return null;
   const plan = planGlobePlacement(args.requested, mapping, info?.shiftedBounds, {
     projDef,
-    gridCoordinates: origin.gridSource !== null,
+    gridSource: origin.gridSource,
     geoid,
     anchorMap: origin,
     mappingKey: [projDef, args.mapConversion, args.projectedCRS.mapUnitScale, args.lengthUnitScale, origin,

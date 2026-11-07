@@ -21,17 +21,21 @@ impl Basis {
             z,
         })
     }
-    fn vector(&self, p: [f64; 3]) -> [f64; 3] {
+    pub(super) fn origin(&self) -> [f64; 3] { self.origin }
+    pub(super) fn vector(&self, p: [f64; 3]) -> [f64; 3] {
         [dot(p, self.x), dot(p, self.y), dot(p, self.z)]
     }
-    fn point(&self, p: [f64; 3]) -> [f64; 3] {
+    pub(super) fn point(&self, p: [f64; 3]) -> [f64; 3] {
         self.vector(sub(p, self.origin))
     }
 }
+#[derive(Clone)]
 pub(super) struct Prism {
     pub loops: Vec<(bool, Vec<Edge>)>,
     pub low: f64,
     pub high: f64,
+    /// Height of the profile plane (`cap(start)`); `cap(end)` is the other bound.
+    pub start: f64,
 }
 pub(super) fn profile_frame(
     sources: &AnalyticQuantitySources,
@@ -145,5 +149,6 @@ fn prism(sources: &AnalyticQuantitySources, i: &ExtrusionInstance, basis: &Basis
         loops,
         low: z.min(z + d[2]),
         high: z.max(z + d[2]),
+        start: z,
     })
 }

@@ -84,7 +84,7 @@ export function RecipeLibrary() {
       <p className="text-muted-foreground">{t('assistantRecipes.hint')}</p>
       <input ref={input} type="file" accept=".json,application/json" className="hidden" aria-label={t('assistantRecipes.import')}
         onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file); }} />
-      {message && <p role={message.alert ? 'alert' : 'status'} className={message.alert ? 'rounded border border-amber-500/40 bg-amber-500/10 p-2' : 'text-muted-foreground'}>{message.text}</p>}
+      {message && <p role={message.alert ? 'alert' : 'status'} className={message.alert ? 'rounded border border-warn-border bg-warn-surface p-2' : 'text-muted-foreground'}>{message.text}</p>}
       {entries.length > 0 && <>
         <h4 className="font-medium text-muted-foreground">{t('assistantRecipes.saved')}</h4>
         <ul className="space-y-1.5">{entries.map(row)}</ul>

@@ -85,6 +85,7 @@ pub enum ReceiptEvidence<'a, K> {
 pub struct ReceiptMesh<'a> {
     pub positions: &'a [f64],
     pub indices: &'a [u32],
+    pub faces: &'a [u32],
 }
 
 pub trait NumericalReceipt {

@@ -203,8 +203,7 @@ impl GeometryRouter {
                 )));
             }
         }
-        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(element, decoder)?;
         Ok(mat4::col_major_array(&transform))
     }
 

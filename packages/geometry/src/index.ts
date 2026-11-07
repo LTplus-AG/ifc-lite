@@ -112,6 +112,7 @@ import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
+import { omittedTypeRecordsField, readOmittedTypeRecords } from './omitted-type-records.js';
 
 /**
  * Default quantization grid (metres) for per-entity geometry hashing,
@@ -120,42 +121,8 @@ import { buildPrePassWithFinishes } from './style-finishes.js';
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
 
-export interface GeometryProcessorOptions {
-  preferNative?: boolean; // Default: true in Tauri
-  /**
-   * When true, the underlying IFC-Lite WASM API merges Revit-style
-   * multilayer walls — `IfcBuildingElementPart` meshes whose parent
-   * wall is sliceable are suppressed. Default `false` keeps the
-   * existing per-layer rendering behaviour. See issue #540.
-   */
-  mergeLayers?: boolean;
-  /**
-   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
-   * the renderer's instanced path is primary-model only, so a federated model must
-   * keep all geometry on the flat path or its opaque repeated occurrences are dropped.
-   */
-  enableInstancing?: boolean;
-  /**
-   * Tessellation detail level for curved geometry (issue #976):
-   * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
-   * reproduces the engine's historical densities byte-for-byte. Lower
-   * levels trade curved-surface smoothness for throughput; higher levels
-   * reduce faceting on pipes / cylinders / NURBS at a proportional
-   * triangle-count cost. Applies to the WASM paths (main-thread, streaming
-   * and worker-pool); the native desktop path does not consume it yet.
-   */
-  tessellationQuality?: TessellationQuality;
-  /**
-   * Tier-independent small-cut skip (issue #1286). When true, the WASM mesh pass
-   * drops `IfcBooleanResult` differences whose cutter is tiny relative to its
-   * host (steel copes/notches, minor detail recesses) WITHOUT lowering the
-   * tessellation tier — so curves keep full density while the dominant
-   * boolean-heavy load cost is skipped. Default false ⇒ every cut runs
-   * (byte-identical to before). The viewer enables it for the on-screen load;
-   * exporters/drawings leave it off so their geometry stays full fidelity.
-   */
-  skipSmallCuts?: boolean;
-}
+export type { GeometryProcessorOptions } from './geometry-processor-options.js';
+import type { GeometryProcessorOptions } from './geometry-processor-options.js';
 
 /**
  * Dynamic batch configuration for streaming.
@@ -234,6 +201,9 @@ export type StreamingGeometryEvent =
       diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
       /** Elements skipped because their geometry never finished (#4884); omitted when none. */
       skippedHungElements?: import('./hung-job-recovery.js').SkippedHungElements;
+      /** Distinct type records whose type geometry the prepass left out because they could not
+       *  be decoded (F2, #8341). Absent when unknown (older wasm, native path), which is not 0. */
+      omittedTypeRecords?: number;
     };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
@@ -252,6 +222,7 @@ export class GeometryProcessor {
   private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
   private skipSmallCuts: boolean;
+  private skipVoids: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -261,6 +232,10 @@ export class GeometryProcessor {
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     this.skipSmallCuts = options.skipSmallCuts === true;
+    this.skipVoids = options.skipVoids === true;
+    if (this.isNative && this.skipVoids) {
+      throw new Error("skipVoids requires preferNative: false; the third-party native bridge has no gross-geometry contract.");
+    }
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
@@ -272,6 +247,7 @@ export class GeometryProcessor {
       this.bridge.setTessellationQuality(this.tessellationQuality);
       // …and the tier-independent small-cut skip (#1286).
       this.bridge.setSkipSmallCuts(this.skipSmallCuts);
+      this.bridge.setSkipVoids(this.skipVoids);
     }
   }
 
@@ -425,13 +401,14 @@ export class GeometryProcessor {
   private collectMeshesViaPrePass(
     buffer: Uint8Array,
     sharedRtcOffset?: { x: number; y: number; z: number },
-  ): { meshes: MeshData[]; buildingRotation?: number } {
+  ): { meshes: MeshData[]; buildingRotation?: number; omittedTypeRecords?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
     }
 
     const api = this.bridge.getApi();
     const prePass = buildPrePassWithFinishes(api, buffer);
+    const omittedTypeRecords = readOmittedTypeRecords(api); // F2 #8341: before the next install resets it
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
@@ -464,7 +441,7 @@ export class GeometryProcessor {
         for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
 
-      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
+      return { meshes, buildingRotation: prePass.buildingRotation ?? undefined, omittedTypeRecords };
     } finally {
       // Always release the pre-pass cache — even if processGeometryBatch throws.
       api.clearPrePassCache?.();
@@ -495,6 +472,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = buildPrePassWithFinishes(api, buffer);
+    const omitted = omittedTypeRecordsField(readOmittedTypeRecords(api)); // F2 #8341
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
 
     // try/finally releases the pre-pass cache on every exit: the totalJobs===0
@@ -512,7 +490,7 @@ export class GeometryProcessor {
           this.coordinateHandler.getFinalCoordinateInfo(),
           buildingRotation,
         );
-        yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+        yield { type: 'complete', totalMeshes: 0, coordinateInfo, ...omitted };
         return;
       }
 
@@ -571,7 +549,7 @@ export class GeometryProcessor {
         this.coordinateHandler.getFinalCoordinateInfo(),
         buildingRotation,
       );
-      yield { type: 'complete', totalMeshes, coordinateInfo };
+      yield { type: 'complete', totalMeshes, coordinateInfo, ...omitted };
     } finally {
       api.clearPrePassCache?.();
     }
@@ -785,6 +763,7 @@ export class GeometryProcessor {
       // same tiny detail cuts as the main-thread paths. Forwarded every run, so
       // an export processor (default false) never inherits a prior load's skip.
       skipSmallCuts: this.skipSmallCuts,
+      skipVoids: this.skipVoids,
       wasmUrls,
       workerCountOverride,
     });
@@ -868,6 +847,7 @@ export class GeometryProcessor {
 
       let allMeshes: MeshData[];
       let buildingRotation: number | undefined;
+      let omittedTypeRecords: number | undefined;
 
       if (this.isNative && this.platformBridge) {
         // NATIVE PATH - single batch processing
@@ -877,9 +857,7 @@ export class GeometryProcessor {
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
         // WASM PATH — Family-A pre-pass + job batches (SAB-safe, bytes in).
-        const collected = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset);
-        allMeshes = collected.meshes;
-        buildingRotation = collected.buildingRotation;
+        ({ meshes: allMeshes, buildingRotation, omittedTypeRecords } = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset));
       }
 
       // Process coordinate shifts
@@ -897,7 +875,7 @@ export class GeometryProcessor {
         coordinateInfo: coordinateInfo || undefined,
       };
 
-      yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo };
+      yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
     } else {
       // Large files: parallel or streaming
       const useParallel = typeof SharedArrayBuffer !== 'undefined'
@@ -1119,6 +1097,11 @@ export class GeometryProcessor {
    * Export render geometry as a binary GLB. Fails closed: a model whose visible
    * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
    * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   *
+   * `nameByGlobalId` (default `false`) makes each element one top-level node
+   * named by its IFC `GlobalId`, with its mesh parts as children, so tools
+   * that identify objects by node name can map them back to the element
+   * (#9011). Placement, geometry and materials are unchanged.
    */
   exportGlb(
     buffer: Uint8Array,
@@ -1128,9 +1111,10 @@ export class GeometryProcessor {
     hiddenTypesCsv = '',
     lit = true,
     emissive = false,
+    nameByGlobalId = false,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive, nameByGlobalId);
   }
 
   /**

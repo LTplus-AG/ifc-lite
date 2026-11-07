@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { diffModels } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const { diffModels } = await loadDiffOracle();
 const cases=JSON.parse(readFileSync(new URL('../rust/diff/tests/split_vectors.json',import.meta.url),'utf8'))
-  .map(({expected,...v})=>({...v,name:`successor-${v.name}`}));
+  .map(({expected: _expected,...v})=>({...v,name:`successor-${v.name}`}));
 const e=(key,x,size=1,extra={})=>({key,ref:key,ifcType:'IfcWall',dataHash:key,geometryHash:key,
   aabb:{min:[x,0,0],max:[x+size,1,1]},container:'Site/Building/Storey',...extra});
 const add=(name,base,head,options={})=>cases.push({name,base,head,options});
@@ -30,6 +31,6 @@ const vectors=cases.map(input=>{
 const path=new URL('../rust/diff/tests/successor_vectors.json',import.meta.url);
 const text=`[\n${vectors.map(v=>JSON.stringify(v)).join(',\n')}\n]\n`;
 if(process.argv.includes('--check')) {
- if(readFileSync(path,'utf8')!==text) throw new Error('Successor vectors differ from the built TypeScript engine');
+ if(readFileSync(path,'utf8')!==text) throw new Error('Successor vectors differ from the test-only TypeScript oracle');
 } else writeFileSync(path,text);
 console.log(`Successor parity: ${vectors.length} cases`);

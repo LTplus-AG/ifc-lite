@@ -5,6 +5,12 @@
 import type { Catalogue } from '../../registry';
 
 export const semanticRu = {
+  'semantic.resourceBinding': 'Переменная ресурса (без ?)',
+  'semantic.resourceBindingHelp': 'Для ?id используйте id. Для GlobalId в URI выберите соответствующую стратегию идентификации IFC.',
+  'semantic.advancedBindings': 'Дополнительные переменные результатов',
+  'semantic.optionalBindings': 'Необязательные type, label, GlobalId и modelRevision используются только при наличии в результатах.',
+  'semantic.advancedRevision': 'Дополнительно: связать ревизию с моделью',
+
   "semantic.validationEngines": "JSON Schema / SHACL",
   "semantic.title": "Связанные записи",
   "semantic.description": "Свяжите журналы здания, паспорта продукции и подтверждающие данные с загруженными моделями.",
@@ -52,7 +58,6 @@ export const semanticRu = {
   "semantic.rawResults": "Привязки SPARQL",
   "semantic.graph": "RDF-граф для проверки",
   "semantic.validateGraph": "Проверить предоставленный RDF-граф",
-  "semantic.mapping": "Имена привязок результата",
   "semantic.selectRecord": "Выбрать {label}",
   "semantic.close": "Закрыть Связанные записи",
   "semantic.done": "Загружено записей {count}.",

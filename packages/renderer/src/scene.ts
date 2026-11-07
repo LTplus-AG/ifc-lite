@@ -11,6 +11,8 @@ import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type Insta
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
+import type { SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
@@ -37,7 +39,7 @@ import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { TopologyMemo } from './scene-precision.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
-import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
+import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
@@ -45,7 +47,8 @@ import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
-import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
+import { BatchUseFrames, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
+import { SubsetParentResidency, type SceneSubsetResidencyHost } from './scene-subset-residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
@@ -151,6 +154,18 @@ const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 
 export { computeFlushChunkEnd } from './scene-flush.js';
 
+/** Run `task` in a fresh macrotask with no timer clamp (see finalizeStreamingAsync). */
+function yieldTask(task: () => void): void {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    // An open port keeps a Node process alive.
+    channel.port1.close();
+    channel.port2.close();
+    task();
+  };
+  channel.port2.postMessage(null);
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -174,6 +189,8 @@ export class Scene {
   private appearanceBuckets?: AppearanceBuckets;
   private appearanceAccessState?: SceneAppearanceAccess;
   private authoredGeneration = 0;
+  // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
+  private pickGeometryRevision = 0;
   private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
@@ -196,7 +213,7 @@ export class Scene {
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
         release: batch => { this.dropPartialCacheForBatch(batch); this.lastDrawnFrame.delete(batch.id); destroyGpuResources(batch); },
         changed: key => this.markBucketDirty(key),
-        refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); },
+        refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); this.pickGeometryRevision++; },
       },
       adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
       upload: part => this.createTexturedMesh(part, device, pipeline),
@@ -300,8 +317,9 @@ export class Scene {
   // budget, and rebuilt on demand when the draw loop wants them again.
   private gpuBudgetBytes: number | null = null;
   private residencyFrame = 0;                                  // bumped once per render()
-  private lastDrawnFrame: Map<number, number> = new Map();     // batch.id -> residencyFrame
+  private lastDrawnFrame = new BatchUseFrames();               // batch.id -> residencyFrame, own buffers vs pieces (#9050)
   private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
+  private readonly subsetResidency = new SubsetParentResidency(this as unknown as SceneSubsetResidencyHost); // #9050
   private residencyOverBudgetWarned = false;
   // Cold tier (issue #1682 phase 3b): warm buckets (GPU-evicted, CPU kept)
   // can additionally drop their CPU meshData when a HOST budget is set and a
@@ -324,6 +342,7 @@ export class Scene {
   // alone under-reports "still settling" — settle-sensitive consumers
   // (post-load telemetry) must also check this.
   private finalizeInProgress = false;
+  private readonly snapshots = new SceneSnapshotLifecycle(this as unknown as SceneSnapshotHost);
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Per-model shared origins keep all colours and highlights bit-coincident
@@ -372,6 +391,8 @@ export class Scene {
   // Buckets that received streamed meshes since the last finalize — the only
   // ones a finalize re-groups and rebuilds (#5358).
   private streamedBucketKeys: Set<string> = new Set();
+  /** Indices the transient streaming-fragment pass may still draw; see limitStreamingFragments. */
+  private streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
 
   // ─── Mesh command queue ────────────────────────────────────────────
   // Decouples React state updates from GPU work.  Callers push meshes
@@ -383,9 +404,9 @@ export class Scene {
   private geometryReleased: boolean = false;
   private ephemeralStreamingMode: boolean = false;
 
-  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); }
-  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); }
+  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; }
+  restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.pickGeometryRevision++; }
 
   /**
    * Add mesh to scene
@@ -468,11 +489,15 @@ export class Scene {
     this.residencyFrame++;
   }
 
-  /** Record that the draw loop drew this batch this frame. */
+  /** Record that the draw loop drew this batch from its own buffers (full or
+   *  LOD1) this frame. Culled, hidden or not-resident batches are not recorded. */
   recordBatchDrawn(batch: BatchedMesh): void {
     if (this.gpuBudgetBytes === null) return;
     this.lastDrawnFrame.set(batch.id, this.residencyFrame);
   }
+
+  /** A pass drew this batch only as a partial sub-batch: its pieces stay warm, its own buffers may go (#9034, #9050). */
+  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen = true): void { this.subsetResidency.recordSubsetDrawn(batch, onScreen); }
 
   /**
    * The draw loop wants an evicted batch back on the GPU. Queues its bucket
@@ -486,8 +511,12 @@ export class Scene {
     // Warm (CPU kept) OR cold (disk-restorable) — both are restorable.
     if (bucket.meshData.length > 0 || this.coldBuckets.has(bucket.key)) {
       this.residencyRestoreQueue.add(bucket.key);
+      this.subsetResidency.warmOnly.delete(bucket.key);
     }
   }
+
+  /** A partial sub-batch wants an evicted batch's CPU pieces, not its GPU buffers (#9050). */
+  requestBatchPieces(batch: BatchedMesh): void { this.subsetResidency.requestPieces(batch); }
 
   hasResidencyRestoreWork(): boolean {
     return this.residencyRestoreQueue.size > 0;
@@ -508,24 +537,16 @@ export class Scene {
       const old = bucket?.batchedMesh;
       // Only restore a still-evicted bucket batch — a recolour/finalize may
       // have rebuilt (or emptied) it in the meantime.
-      if (!bucket || !old || old.gpuResident !== false) continue;
+      if (!bucket || !old || old.gpuResident !== false) { this.subsetResidency.warmOnly.delete(key); continue; }
       // Cold bucket: geometry is on disk — kick off the async provider fetch
       // (it re-queues the key as warm when the meshes land).
       if (bucket.meshData.length === 0) {
         if (this.coldBuckets.has(key)) this.startColdRestore(key);
         continue;
       }
+      if (this.subsetResidency.warmOnly.delete(key)) { restored++; continue; } // warm again, only a subset wanted it: no parent rebuild
 
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.lastDrawnFrame.delete(old.id);
-      // Seed as just-drawn so the budget pass can't evict it before the
-      // frame that asked for it gets to draw it.
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+      this.subsetResidency.rebuildEvicted(bucket, old, device, pipeline);
       restored++;
       if (performance.now() - start >= budgetMs) break;
     }
@@ -659,7 +680,7 @@ export class Scene {
       shells.push({
         key: bucket.key,
         bytes,
-        lastDrawnFrame: this.lastDrawnFrame.get(b.id) ?? -1,
+        lastDrawnFrame: this.lastDrawnFrame.getAnyUse(b.id) ?? -1, // a subset on screen keeps its pieces (#9050)
       });
     }
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
@@ -679,7 +700,7 @@ export class Scene {
           if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
         }
       }
-      bucket.meshData = [];
+      bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }
@@ -739,9 +760,11 @@ export class Scene {
         }
         if (members.length > 0) {
           this.coldBuckets.delete(key);
-          for (const restoredKey of repartitionHydratedRecoveryBucket(
-            this as unknown as SceneRecoveryHost, key, bucket, shell)) this.residencyRestoreQueue.add(restoredKey);
+          const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
+          if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
+          this.subsetResidency.requeueColdRestore(key, restoredKeys);
         } else {
+          this.subsetResidency.warmOnly.delete(key);
           console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
         }
       })
@@ -768,15 +791,7 @@ export class Scene {
     for (const bucket of this.buckets.values()) {
       const old = bucket.batchedMesh;
       if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
-      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
-      bucket.batchedMesh = rebuilt;
-      bucket.frameOrigin = rebuilt.origin;
-      const idx = this.batchedMeshes.indexOf(old);
-      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
-      else this.batchedMeshes.push(rebuilt);
-      this.lastDrawnFrame.delete(old.id);
-      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
-      this.residencyRestoreQueue.delete(bucket.key);
+      this.subsetResidency.rebuildEvicted(bucket, old, device, pipeline);
       restored++;
     }
     return restored;
@@ -801,25 +816,32 @@ export class Scene {
     const budget = this.gpuBudgetBytes;
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    this.subsetResidency.sweep();
     // During streaming the batch set churns (fragments + finalize rebuild
     // everything anyway) — start enforcing once the scene is stable.
     if (this.streamingFragments.length > 0) return;
 
+    // Sizes only first: this runs after every frame, and under budget (the
+    // common case) the eviction bookkeeping below, whose ownership scan is
+    // O(meshes) per undrawn bucket, is never needed.
     let residentBytes = 0;
+    for (const bucket of this.buckets.values()) {
+      const b = bucket.batchedMesh;
+      if (b && b.gpuResident !== false) residentBytes += residentBatchBytes(b);
+    }
+    if (residentBytes <= budget) return;
+
     const shells: ResidencyShell[] = [];
     for (const bucket of this.buckets.values()) {
       const b = bucket.batchedMesh;
       if (!b || b.gpuResident === false) continue;
-      const bytes = b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0)
-        + (b.lod1IndexBuffer?.size ?? 0);
-      residentBytes += bytes;
+      const bytes = residentBatchBytes(b);
       const lastDrawn = this.lastDrawnFrame.get(b.id) ?? -1;
       if (lastDrawn === this.residencyFrame) continue;      // drawn this frame: not evictable
       if (bucket.meshData.length === 0) continue;           // no rebuild source: keep resident
       if (bucket.meshData.some(part => this.appearanceController?.owns(part.expressId))) continue;
       shells.push({ key: bucket.key, bytes, lastDrawnFrame: lastDrawn });
     }
-    if (residentBytes <= budget) return;
 
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
     let evictedBytes = 0;
@@ -829,10 +851,8 @@ export class Scene {
       if (!bucket || !batch || batch.gpuResident === false) continue;
       destroyGpuResources(batch);
       batch.gpuResident = false;
-      evictedBytes += batch.vertexBuffer.size + batch.indexBuffer.size + (batch.uniformBuffer?.size ?? 0)
-        + (batch.lod1IndexBuffer?.size ?? 0);
-      this.lastDrawnFrame.delete(batch.id);
-      this.dropPartialCacheForBatch(batch);
+      evictedBytes += residentBatchBytes(batch);
+      this.subsetResidency.noteEvicted(batch);
     }
 
     if (residentBytes - evictedBytes > budget && !this.residencyOverBudgetWarned) {
@@ -844,6 +864,9 @@ export class Scene {
       );
     }
   }
+
+  /** Rebuild now, within a per-frame cap, an evicted parent whose subset was on screen last frame (#9050). */
+  restoreSubsetParentNow(batch: BatchedMesh, device: GPUDevice, pipeline: RenderPipeline): BatchedMesh | null { return this.subsetResidency.restoreParentNow(batch, device, pipeline); }
 
   /** Destroy + drop cached partial sub-batches derived from `batch` (their
    *  sourceBatchKeys embed the batch id, so they are stale once it is
@@ -925,7 +948,7 @@ export class Scene {
    * Accumulates multiple mesh pieces per expressId (elements can have multiple geometry pieces)
    */
   addMeshData(meshData: MeshData): void {
-    meshData = this.modelTranslations.placeMesh(meshData);
+    meshData = this.modelTranslations.placeMesh(meshData); this.pickGeometryRevision++;
     // For color-merged batches with per-vertex entityIds, register the mesh
     // under EVERY unique entity so picking/visibility/selection can find it.
     if (meshData.entityIds && meshData.entityIds.length > 0) {
@@ -1275,7 +1298,12 @@ export class Scene {
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
       // finalizeStreaming() destroys fragments and merges the streamed buckets.
       // `renderable` excludes textured meshes (drawn via the textured pipeline).
-      this.createStreamingFragments(renderable, device, pipeline);
+      // Past the fragment budget a retained mesh only joins its bucket and is
+      // first drawn by finalize; ephemeral mode keeps no bucket, so it always draws.
+      if (!retainStreamingGeometry || this.streamingFragmentIndexBudget > 0) {
+        this.createStreamingFragments(renderable, device, pipeline);
+        for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
+      }
       return;
     }
 
@@ -1376,7 +1404,7 @@ export class Scene {
       this.meshDataBucket.delete(meshData);
     }
 
-    this.meshDataMap.delete(expressId);
+    this.meshDataMap.delete(expressId); this.pickGeometryRevision++;
     this.boundingBoxes.delete(expressId);
 
     // #961: textured meshes own GPU buffers outside the colour buckets, so the
@@ -1430,7 +1458,7 @@ export class Scene {
       this.bumpTemplateSelectedCount(expressId, -1);
     }
     this.instanceSuppression.forget(expressId);
-    this.instancedEntityMap.delete(expressId);
+    this.instancedEntityMap.delete(expressId); this.pickGeometryRevision++;
     this.instancedSelected.delete(expressId);
     this.instancedHidden.delete(expressId);
     this.instancedOverridden.delete(expressId);
@@ -1564,6 +1592,7 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: a textured mesh's GPU vertex buffer lives outside the colour buckets,
     // so the in-place position translation above won't reach the GPU on its own —
@@ -1635,6 +1664,7 @@ export class Scene {
       moved = true;
     }
     if (!moved) return false;
+    this.pickGeometryRevision++;
 
     // Rebuild the cached world AABB from the moved occurrence matrices so pick /
     // measure / section bounds stay correct. A simple in-place shift is unsafe for
@@ -1711,7 +1741,7 @@ export class Scene {
   getModelTranslation(modelIndex: number) { return this.modelTranslations.get(modelIndex); }
   setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
     const changed = translateSceneModel(this.translationScope(), modelIndex, translation);
-    this.dropOrphanedSuppressedBounds();
+    this.dropOrphanedSuppressedBounds(); if (changed) this.pickGeometryRevision++;
     return changed;
   }
 
@@ -1723,7 +1753,7 @@ export class Scene {
   setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
     const yaw: ModelYaw | null = angle === 0 ? null : { angle, px: pivot[0], pz: pivot[2] };
     const changed = rotateSceneModelInstances(this.translationScope(), modelIndex, yaw);
-    this.dropOrphanedSuppressedBounds();
+    this.dropOrphanedSuppressedBounds(); if (changed) this.pickGeometryRevision++;
     return changed;
   }
 
@@ -1793,6 +1823,7 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+    this.pickGeometryRevision++;
 
     // #961: textured meshes render from their own GPU vertex buffer — re-upload
     // the rotated parts so they don't render stale (mirrors the translate path).
@@ -1840,6 +1871,7 @@ export class Scene {
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
+        this.snapshots.notePiece(fragments[j]);
         this.meshQueue.push(fragments[j]);
       }
     }
@@ -1872,6 +1904,20 @@ export class Scene {
 
   setEphemeralStreamingMode(enabled: boolean): void {
     this.ephemeralStreamingMode = enabled;
+  }
+
+  /**
+   * Stop the current stream's transient fragment pass once `maxIndices` have
+   * been drawn. A first-paint target, not a hard limit: the append that crosses
+   * it still draws whole, so the overshoot is at most one append.
+   * Every streamed mesh is merged and uploaded twice: once as a throwaway
+   * fragment so it shows while streaming, then again by finalize. A load that
+   * holds its whole geometry up front (a cache hit) needs fragments only for
+   * first paint; the rest appears at the finalize swap, uploaded once.
+   * Finalize, ending an ephemeral stream and clear() restore the default (no limit).
+   */
+  limitStreamingFragments(maxIndices: number): void {
+    this.streamingFragmentIndexBudget = maxIndices;
   }
 
   /**
@@ -1930,10 +1976,10 @@ export class Scene {
         const color = chunk[0].color;
         const fragment = this.createBatchedMesh(
           chunk, color, device, pipeline, undefined, undefined,
-          this.buckets.get(key)?.frameOrigin,
+          this.buckets.get(key)?.frameOrigin, key,
         );
         this.batchedMeshes.push(fragment);
-        this.streamingFragments.push(fragment);
+        this.streamingFragments.push(fragment); this.pickGeometryRevision++;
       }
     }
   }
@@ -1960,6 +2006,7 @@ export class Scene {
       this.finalizeStreamingInner(device, pipeline);
     } finally {
       this.finalizeInProgress = false;
+      this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     }
   }
 
@@ -2005,7 +2052,7 @@ export class Scene {
       regroup = this.regroupStreamed();
       // Build into a fresh array; rebuildPendingBatches republishes every
       // bucket's batch, untouched ones included.
-      this.batchedMeshes = [];
+      this.batchedMeshes = []; this.pickGeometryRevision++; // meshes past the fragment budget become pickable here
       this.rebuildPendingBatches(device, pipeline);
       rebuilt = true;
     } finally {
@@ -2138,9 +2185,11 @@ export class Scene {
             bucket.frameOrigin = batchedMesh.origin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
 
-            // Check time budget — yield if exceeded
+            // Check time budget — yield if exceeded. A MessageChannel task, not
+            // setTimeout(0): nested timers clamp to >= 4 ms, idling a third of
+            // every 8 ms slice; rAF and input still run between slices.
             if (performance.now() - chunkStart >= budgetMs) {
-              setTimeout(processChunk, 0);
+              yieldTask(processChunk);
               return;
             }
           }
@@ -2160,9 +2209,11 @@ export class Scene {
             ...[...scene.buckets.values()].flatMap((b) => (b.batchedMesh ? [b.batchedMesh] : [])),
             ...scene.streamingFragments,
           ];
-          scene.retireFinalizedBatches(retired);
+          scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
+          scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+          scene.snapshots.completeCapture();
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {
@@ -2194,6 +2245,8 @@ export class Scene {
   }
 
   finishEphemeralStreaming(): void {
+    this.snapshots.dropCapture();
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
       return;
@@ -2213,12 +2266,13 @@ export class Scene {
     this.streamingFragments = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     // Keep occurrence transforms for placement; release heavy template vertices.
     releaseInstanceVertices(this.instancedTemplateCpu);
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
@@ -2273,7 +2327,7 @@ export class Scene {
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     // Keep occurrence transforms for placement; release heavy template vertices.
     releaseInstanceVertices(this.instancedTemplateCpu);
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
@@ -2285,6 +2339,7 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     // Released mode has no restore source at all — drop the cold tier state
     // (the geometryReleased guards stop any further cold activity).
     this.coldBuckets.clear();
@@ -2424,16 +2479,16 @@ export class Scene {
   }
 
   /**
-   * Create a new batched mesh from mesh data array.
-   * @param bucketKey - Optional unique key for this batch. When omitted the
-   *   base color key is used (fine for overlay / partial batches that don't
-   *   participate in the main buckets map).
+   * Upload `meshes` as one GPU batch. `bucketKey` marks it as that bucket's live batch.
+   * Without it the batch is derived, and its `colorKey` is `ownerKey` (the bucket a
+   * streaming fragment's pieces live in, with model/cell/id-page/`#N`) or else the bare
+   * colour key (overlay / partial batches).
    * @param quantization - 'auto' for bucket batches; derived batches pass `inheritedQuantization(source)` (#4832).
    */
   private createBatchedMesh(
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
-    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number],
+    quantization: BatchQuantization = this.quantizedBatchesEnabled ? 'auto' : 'off', frameOrigin?: [number, number, number], ownerKey?: string,
   ): BatchedMesh {
     // Keep main's model-local frame and translation registration while staging
     // every GPU allocation before publishing Scene state.
@@ -2449,9 +2504,10 @@ export class Scene {
     const result = createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
-      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color, meshes[0]?.material),
+      id: this.nextBatchId, colorKey: bucketKey ?? ownerKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
+      onMerged: this.snapshots.mergedSink(bucketKey, this.nextBatchId),
     }, bucketKey);
     this.nextBatchId++;
     if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
@@ -2591,6 +2647,7 @@ export class Scene {
     // wise land on each other's cache entry — the second slot's invalidation
     // then destroys the clone the first one just built and is drawing from.
     const cacheKey = `${sourceBatchKey}:${idsHash}`;
+    if (this.snapshots.hydrating) return this.buckets.get(colorKey)?.batchedMesh ?? undefined; // no pieces yet: draw whole
 
     // Check if we already have this exact partial batch cached
     const currentCacheKey = this.partialBatchCacheKeys.get(sourceBatchKey);
@@ -2617,7 +2674,7 @@ export class Scene {
     // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
     // Matching the base key (suffix "#N" stripped) pulled sibling overflow
     // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
-    // Only a batch with no bucket (a streaming fragment) uses the base key.
+    // A streaming fragment carries its owning bucket's key too (`ownerKey`).
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const visibleMeshData: MeshData[] = [];
@@ -2648,6 +2705,14 @@ export class Scene {
 
     return partialBatch;
   }
+
+  // Finished-scene snapshot (scene-snapshot-lifecycle.ts).
+  sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
+  isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
+  hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
+  abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }
 
   // ─── Colour overrides (#6076) ────────────────────────────────────────
   // Overrides live in a per-entity colour table the base pass reads
@@ -2701,6 +2766,9 @@ export class Scene {
   getColorOverrideGeneration(): number {
     return this.colorOverrideGeneration;
   }
+
+  /** Changes whenever what a CPU pick (raycast, snap) can hit may have changed: pieces added or dropped, their positions, the batch and textured lists the pick walks, instances. Selection highlight meshes, recolours and GPU or host residency demotion keep it (#8998). */
+  getPickGeometryRevision(): number { return this.pickGeometryRevision; }
 
   /** The per-entity colour table the renderer binds at group(1) (#6076). */
   getEntityColorTable(): EntityColorTable {
@@ -2830,6 +2898,7 @@ export class Scene {
       freed.add(i);
     }
     if (freed.size === 0) return 0;
+    this.pickGeometryRevision++;
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
       const kept = occurrences.filter((o) => !freed.has(o.templateIndex));
@@ -2925,7 +2994,7 @@ export class Scene {
     if (shard.instances.some(instance => this.instanceSuppression.owns(instance.entityId))) {
       throw new Error('Cannot append geometry to a retained appearance occurrence');
     }
-    this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
+    this.instancedDevice = device; this.pickGeometryRevision++; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
     // Selected ids whose occurrences arrived in THIS shard (selection recorded
     // before the shard streamed in) — their flags are written after upload.
@@ -3320,6 +3389,17 @@ export class Scene {
   }
 
   /**
+   * True when the opaque instanced pass's fragment discards can fire: an
+   * occurrence carries the hidden bit (hide/isolate or an appearance
+   * suppression) or is translucent (the opacity routing). While false the
+   * renderer may draw that pass with the discard-free shader
+   * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   */
+  instancedMayDiscard(): boolean {
+    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+  }
+
+  /**
    * Per-instance X-RAY GHOSTING: fade every instanced occurrence outside
    * `ghostExceptIds` to `ghostAlpha`, leaving the excepted set and the current
    * selection solid.
@@ -3536,7 +3616,7 @@ export class Scene {
           : [0, 0, 0],
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
       }, meshData.modelIndex ?? 0);
-      this.texturedMeshes.push(drawable);
+      this.texturedMeshes.push(drawable); this.pickGeometryRevision++;
       this.texturedSourcePositions.set(drawable, meshData.positions);
     } catch (error) {
       vertexBuffer?.destroy();
@@ -3579,7 +3659,7 @@ export class Scene {
     this.liveInstancedTemplates = [];
     this.instancedTemplateCpu = [];
     this.instanceSuppression.forget();
-    this.instancedEntityMap.clear();
+    this.instancedEntityMap.clear(); this.pickGeometryRevision++;
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
     this.instancedHidden.clear();
@@ -3613,6 +3693,7 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
+    this.snapshots.onFlatCleared();
     this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
@@ -3622,6 +3703,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
+    this.snapshots.onFlatCleared();
     this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
@@ -3666,18 +3748,20 @@ export class Scene {
     this.batchedMeshes = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
-    this.meshDataMap.clear();
+    this.meshDataMap.clear(); this.pickGeometryRevision++;
     this.modelTranslations.clearFlatBounds();
     this.boundingBoxes.clear();
     for (const eid of this.instancedEntityMap.keys()) this.recomputeInstancedBounds(eid);
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.subsetResidency.clear();
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
     this.streamedBucketKeys.clear();
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     this.meshQueue = [];
     this.meshQueueReadIndex = 0;
     this.geometryReleased = false;

@@ -37,6 +37,17 @@ export function updateCameraRelativeFrame(state: CameraInternalState, frame: Rel
   frame.update(eye, state.projMatrix, state.viewMatrix);
 }
 
+const NO_LENS_SHIFT: Readonly<{ x: number; y: number }> = Object.freeze({ x: 0, y: 0 });
+
+/**
+ * The lens shift the current projection actually applies (#8688): the stored
+ * shift in perspective, zero in orthographic. Every reader that rebuilds the
+ * frustum from the camera basis instead of the matrix goes through this.
+ */
+export function activeLensShift(state: CameraInternalState): Readonly<{ x: number; y: number }> {
+  return state.projectionMode === 'orthographic' ? NO_LENS_SHIFT : state.lensShift;
+}
+
 export function updateCameraMatrices(state: CameraInternalState): void {
   const dx = state.camera.position.x - state.camera.target.x;
   const dy = state.camera.position.y - state.camera.target.y;
@@ -94,6 +105,14 @@ export function updateCameraMatrices(state: CameraInternalState): void {
       state.camera.near,
       state.camera.far
     );
+    // Lens shift (#8688): clip.xy += shift * clip.w, and clip.w = -z_view
+    // (m[11] = -1), so the third column's x/y entries carry it. Only the x/y
+    // rows change, so reverse-Z depth is untouched.
+    const { x: sx, y: sy } = activeLensShift(state);
+    if (sx !== 0 || sy !== 0) {
+      state.projMatrix.m[8] = -sx;
+      state.projMatrix.m[9] = -sy;
+    }
   }
 
   state.viewProjMatrix = MathUtils.multiply(state.projMatrix, state.viewMatrix);
@@ -110,7 +129,12 @@ export function computeOrthoNearFar(
   state: CameraInternalState,
   distance: number,
 ): { near: number; far: number } {
-  const bounds = state.sceneBounds;
+  const extra = state.depthOnlyBounds;
+  const scene = state.sceneBounds;
+  const bounds = scene && extra ? {
+    min: { x: Math.min(scene.min.x, extra.min.x), y: Math.min(scene.min.y, extra.min.y), z: Math.min(scene.min.z, extra.min.z) },
+    max: { x: Math.max(scene.max.x, extra.max.x), y: Math.max(scene.max.y, extra.max.y), z: Math.max(scene.max.z, extra.max.z) },
+  } : scene ?? extra;
   if (!bounds) {
     // Fallback: generous range centered on camera
     return { near: -Math.max(distance, 500), far: Math.max(distance, 500) };

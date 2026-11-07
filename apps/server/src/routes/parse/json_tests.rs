@@ -171,7 +171,7 @@ fn records_outside_302_to_305() -> u64 {
 }
 
 /// POST `content` to `/api/v1/parse/metadata` and return the decoded body.
-async fn metadata_json(label: &str, content: &str) -> Value {
+pub(super) async fn metadata_json(label: &str, content: &str) -> Value {
     let state = test_state(label).await;
     let (content_type, body) = multipart_body(content.as_bytes());
     let request = Request::builder()

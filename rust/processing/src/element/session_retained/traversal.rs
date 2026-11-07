@@ -32,14 +32,12 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             let values = std::mem::take(&mut self.type_values);
             let plan = self.resources.with_scope(|| RetainedProductPlan::type_maps(values).and_then(|p| p.discharge_type_origin(self.state.job.id, &self.type_map_members_planned))).map_err(common)?;
             if let Err(error) = self.validate_manifest(&plan) { self.failed = true; return Err(error); }
-            self.plan = Some(plan);
+            // Type-map plans have no occurrence layer phase. M4 discharges
+            // that inapplicable obligation just as it does for plain products.
+            self.plan = Some(plan.discharge_layers());
             self.outer = None;
             return Ok(());
         };
-        if matches!(kind, WorkKind::Primary { layer_class, .. } if layer_class != 0) {
-            self.failed = true;
-            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
-        }
         if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes | super::super::plan::PrimaryStrategy::VoidedSubmeshes, .. }
             | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {
             self.failed = true;
@@ -89,7 +87,12 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         self.state.protocol.executed(outer);
         self.state.protocol.accepted();
         self.outer = None;
-        self.complete_opening_plan(plan, outer.kind)?;
+        if self.layer_active {
+            self.layer_active = false;
+            self.band_ms = self.layer_start.take().map_or(0., |start| start.elapsed().as_secs_f64()*1000.);
+            self.plan = Some(plan);
+            self.state.stage = Stage::Complete;
+        } else { self.complete_opening_plan(plan, outer.kind)?; }
         Ok(())
     }
     pub(super) fn complete_unvoided_plan(&mut self, plan: RetainedProductPlan, kind: WorkKind) -> Result<(), RetainedExecutionError> {
@@ -100,8 +103,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             }
             WorkKind::Primary { .. } if plan.values().len() == 0 => self.state.stage = Stage::PlainParts,
             _ => {
-                self.plan = Some(plan.discharge_unvoided());
-                self.state.stage = Stage::Complete;
+                self.complete_layers(plan.discharge_unvoided())?;
             }
         }
         Ok(())

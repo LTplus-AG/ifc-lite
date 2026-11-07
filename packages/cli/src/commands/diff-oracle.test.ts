@@ -10,11 +10,14 @@
  * convention; this file covers unit-of-measure cases that sweep did not.
  */
 
-import { describe, expect, it } from 'vitest';
-import { diffModels } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initDiff, diffModels } from '@ifc-lite/diff';
 import { buildFileFingerprints } from './diff-engine.js';
 import { loadIfcBytes } from '../loader.js';
 import { classificationModel, guid, quantityModel } from './diff-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 describe('oracle: quantity unit-of-measure', () => {
   it('a Qto_ length quantity re-authored in a different project length unit, same physical length, classifies as unchanged', async () => {

@@ -58,8 +58,8 @@ fn geometry_abstention_ignores_excluded_hashes_issue_8042() {
 fn components_use_utf16_order_and_container_requires_two_nonempty_paths_issue_8042() {
     let mut base = vec![entity("a", "same", None)];
     let mut head = vec![entity("a", "same", None)];
-    base[0].components = Some(HashMap::new());
-    head[0].components = Some(HashMap::from([("\u{e000}".into(), "a".into()), ("\u{10000}".into(), "b".into())]));
+    base[0].components = Some(ComponentMap::default());
+    head[0].components = Some([("\u{e000}".into(), "a".into()), ("\u{10000}".into(), "b".into())].into_iter().collect());
     base[0].container = Some(crate::JsString::default());
     head[0].container = Some("Level 2".into());
     let options = KeyDiffOptions::default();
@@ -68,4 +68,21 @@ fn components_use_utf16_order_and_container_requires_two_nonempty_paths_issue_80
     assert_eq!(result.entries[0].changed_components, Some(vec!["\u{10000}".into(), "\u{e000}".into()]));
     base[0].container = Some("Level 1".into());
     assert_eq!(diff_by_key(&base, &head, &options).entries[0].change_kinds, [DiffChangeKind::Container]);
+}
+
+#[test]
+fn issue_8042_component_walk_keeps_additions_deletions_and_equal_size_replacements() {
+    // Exhaust all absent/first-value/second-value states for two keys on both
+    // sides. Fixed expected key order is UTF-16, including astral-before-BMP.
+    let keys: [JsString; 2] = ["\u{10000}".into(), "\u{e000}".into()];
+    for mut encoding in 0..81 {
+        let mut states = [0; 4];
+        for state in &mut states { *state = encoding % 3; encoding /= 3; }
+        let map = |states: &[usize]| keys.iter().zip(states).filter_map(|(key, state)| {
+            match state { 0 => None, 1 => Some((key.clone(), "a".into())), _ => Some((key.clone(), "b".into())) }
+        }).collect::<ComponentMap>();
+        let expected: Vec<_> = keys.iter().enumerate().filter(|(i, _)| states[*i] != states[*i + 2])
+            .map(|(_, key)| key.clone()).collect();
+        assert_eq!(changed_components(&map(&states[..2]), &map(&states[2..])), expected);
+    }
 }

@@ -21,6 +21,7 @@ import {
   createLineageSidecar,
   identityMapSidecarMismatches,
   lineageOfDiff,
+  initDiff,
   parseIdentityMapSidecar,
   serializeIdentityMapSidecar,
   serializeLineageSidecar,
@@ -69,6 +70,11 @@ export async function comparedModelIdentities(
       };
     }
     out[side] = { hash, path: model.name };
+  }
+  try {
+    await initDiff();
+  } catch (error) {
+    return { error: `Cannot prepare comparison sidecar: ${error instanceof Error ? error.message : String(error)}` };
   }
   return { base: out.base!, head: out.head! };
 }

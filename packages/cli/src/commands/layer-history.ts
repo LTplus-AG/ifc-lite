@@ -9,6 +9,7 @@
  * re-planned three-way (no operational transform).
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { writeFileSync } from 'node:fs';
 import type { AuthorKind, IfcxFile } from '@ifc-lite/ifcx';
 import {
@@ -226,6 +227,7 @@ export async function layerRevertCommand(args: string[]): Promise<void> {
     }
     options.resolve = resolve;
   }
+  await initDiff();
   const result = revertInRef(store, layerId, refName, options);
   const json = hasFlag(args, '--json');
   if (result.status === 'conflicts') {
@@ -334,6 +336,7 @@ export async function layerRebaseCommand(args: string[]): Promise<void> {
   const options: { principal?: string } = {};
   const principal = getFlag(args, '--principal');
   if (principal !== undefined) options.principal = principal;
+  await initDiff();
   const outcome = rebaseLayerOnto(store, layerId, ontoRef, options);
   const json = hasFlag(args, '--json');
   if (outcome.status === 'conflicts') {

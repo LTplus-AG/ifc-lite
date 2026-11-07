@@ -5,6 +5,7 @@
 import path from 'node:path';
 
 // Specific subpaths must precede package prefixes in Vite's alias resolution.
+// WASM uses package exports so geometry and the independent diff subpath resolve separately.
 export const viewerAliases = {
       '@': path.resolve(__dirname, './src'),
       '@ifc-lite/parser/browser': path.resolve(__dirname, '../../packages/parser/src/browser.ts'),
@@ -21,7 +22,6 @@ export const viewerAliases = {
       '@ifc-lite/collab': path.resolve(__dirname, '../../packages/collab/src'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
-      '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
       '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
       '@ifc-lite/sandbox/network': path.resolve(__dirname, '../../packages/sandbox/src/network-request.ts'),

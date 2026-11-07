@@ -7,20 +7,20 @@ import { PLACEMENT_IDENTITY_PREFIX } from '@/lib/model-placement/source-identity
  * Which persisted-cache tier a model of a given byte length qualifies for.
  *   - `none`: too small to bother caching (parses fast), or too big for any
  *     tier, or the mesh-only tier is disabled (kill switch) and the file is >150MB.
- *   - `source`: the classic tier — persist tables + geometry AND the source
- *     buffer, so lazy property/quantity accessors + re-export read the source
- *     directly from IndexedDB.
- *   - `mesh-only`: the source-decoupled tier. Persist tables + geometry +
- *     instanced shards WITHOUT the source (too big for IndexedDB at 150-400MB);
+ *   - `source`: the 10-150MB band, always cached. The name is historical: this
+ *     tier used to persist the raw source buffer beside tables + geometry. It
+ *     no longer does (see {@link planCacheWrite}).
+ *   - `mesh-only`: the 150-400MB band, cached only while the kill switch
+ *     (`?meshCache=0`) is off. Persist tables + geometry + instanced shards;
  *     on re-open the freshly read file buffer hydrates the accessors. The
  *     spread-sampled cache key (see `@ifc-lite/cache`'s `source-fingerprint.ts`) only KEYS the
  *     lookup; the hit is VALIDATED by the mtime guard plus the load's
  *     full-content identity ({@link decideCacheHit}), so repeat opens still
  *     have no main-thread stall.
  *
- * The ONLY difference between the two caching tiers is `persistSource` (and the
- * size band that selects them) — the save/load code is otherwise shared, so
- * {@link planCacheWrite} derives both in one place.
+ * Both caching tiers write the same source-decoupled entry; they differ only in
+ * the size band and the kill switch. The `tier` value is kept apart because it
+ * is reported with every cached load (`cacheTier` on the load trace).
  */
 export type CacheTier = 'none' | 'source' | 'mesh-only';
 
@@ -35,13 +35,11 @@ export interface CacheTierOptions {
   maxMeshOnlySize: number;
 }
 
-/** The write decision for a model: its tier and whether to persist the source. */
+/** The write decision for a model: its tier and whether to cache it at all. */
 export interface CachePlan {
   tier: CacheTier;
   /** `true` unless the tier is `none` — whether to cache this model at all. */
   shouldCache: boolean;
-  /** `true` only for the `source` tier — whether the raw source is persisted. */
-  persistSource: boolean;
 }
 
 /**
@@ -65,18 +63,22 @@ export function classifyCacheTier(byteLength: number, opts: CacheTierOptions): C
 }
 
 /**
- * Single home for the tier decision AND the `persistSource` derivation, so the
- * loader never re-derives `persistSource` from the tier name and the two tiers
- * can't drift. `source` persists the source; `mesh-only` does not; `none`
- * doesn't cache.
+ * Single home for the tier decision, so the loader never re-derives whether to
+ * cache from the tier name. `none` doesn't cache.
+ *
+ * No tier persists the raw source any more. The `source` tier used to store it
+ * in the IndexedDB record (up to 150 MB), and a cache hit then deserialized that
+ * copy IN ADDITION to the freshly read file buffer the loader already holds:
+ * two resident sources for the session, on exactly the reopen path. Every
+ * entry is now source-decoupled and hydrates against the fresh buffer, which
+ * puts it under the stricter mtime + full-hash rule of
+ * {@link decideMeshOnlyCacheHit} — the guard the 150-400MB tier has always
+ * relied on. Entries written before this still carry a source and are still
+ * served self-consistently under {@link decideSourceTierCacheHit}.
  */
 export function planCacheWrite(byteLength: number, opts: CacheTierOptions): CachePlan {
   const tier = classifyCacheTier(byteLength, opts);
-  return {
-    tier,
-    shouldCache: tier !== 'none',
-    persistSource: tier === 'source',
-  };
+  return { tier, shouldCache: tier !== 'none' };
 }
 
 /**
@@ -95,8 +97,8 @@ export function planCacheWrite(byteLength: number, opts: CacheTierOptions): Cach
  *     revalidate the full hash and reload on mismatch).
  *
  * `lastModified` of `0`/`undefined` counts as "unknown" (some `File`s lack it).
- * The classic source-persisting tier does NOT use this — it serves the cached
- * source alongside the cached geometry, so a hit is always self-consistent.
+ * Since the source stopped being persisted, this rule covers every new entry
+ * of either tier; only legacy entries that still carry a source skip it.
  */
 export function decideMeshOnlyCacheHit(opts: {
   storedMtime?: number;
@@ -111,8 +113,9 @@ export function decideMeshOnlyCacheHit(opts: {
 }
 
 /**
- * Whether a SOURCE-PERSISTING cache hit may be served, given the file's
- * modified-time guard (#4269).
+ * Whether a LEGACY source-persisting cache hit may be served, given the file's
+ * modified-time guard (#4269). No entry is written with a source any more (see
+ * {@link planCacheWrite}); this keeps the ones already on disk readable.
  *
  * The spread-sampled cache key only KEYS the lookup — it cannot see a
  * byte-length-preserving in-place edit between its sample windows (a GUID

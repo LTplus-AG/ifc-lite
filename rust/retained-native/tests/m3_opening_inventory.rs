@@ -23,6 +23,7 @@ fn every_committed_opening_has_an_explicit_quantity_classification() {
         ("issue_3641_voiding_trap.ifc", vec![], 0), // IfcVoidingFeature, not OpeningElement.
         ("f-a-curved.ifc", vec![63, 129, 195, 261], 0),
         ("f-b-mapped.ifc", vec![135, 160], 0),
+        ("f-e-mapped-booleans.ifc", vec![190], 0), // M7 e13 opening is a .4 m cube.
         ("issue_098_wall_W.ifc", vec![], 7), // All seven Body items are IfcFacetedBrep.
         ("f-c-extrusion.ifc", vec![], 0),
         ("f-c-brep.ifc", vec![], 0),

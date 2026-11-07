@@ -34,7 +34,7 @@ ENDSEC;END-ISO-10303-21;";
                 RetainedRequirement::OpeningClosure,
                 RetainedRequirement::MaterialLayers,
                 RetainedRequirement::IfcAppearance,
-                RetainedRequirement::PersistentFaces,
+                RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals,
             ]
         );
     }

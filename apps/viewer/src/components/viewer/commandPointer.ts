@@ -9,7 +9,8 @@
  *
  * Resolution, on the session workplane:
  *   1. the cursor: the geometry under it (mapped onto the plane), else the
- *      cursor ray ∩ the plane;
+ *      cursor ray ∩ the plane; a gesture that aims at a region of the plane
+ *      (`aimsAtRegion`) always takes the ray ∩ the plane, and does not snap;
  *   2. the shared solver (`snap-solve.ts`, also the plan's): the command's anchor, chain and typed
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
  *      snapping is on — the WP3 sources: the mesh source over the renderer's
@@ -38,17 +39,20 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { cancelMeasureRaycast } from './measureHandlers.js';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
 const latest = new WeakMap<MouseHandlerContext, { x: number; y: number; mods: PointerModifiers; runtime: CommandRuntimeState }>();
 
-/** Discard a coalesced preview before a press, release, cancellation or teardown. */
+/**
+ * Discard a coalesced preview before a press, release, cancellation or teardown.
+ * Only the shared frame cancel: Point mode's trailing hover (`cancelQueuedHover`)
+ * belongs to Measure and is not the command tool's to drop.
+ */
 export function cancelCommandPointer(ctx: MouseHandlerContext): void {
   latest.delete(ctx);
-  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-  ctx.measureRaycastFrameRef.current = null;
-  ctx.measureRaycastPendingRef.current = false;
+  cancelMeasureRaycast(ctx);
 }
 
 /** The cursor ray in render space, from CSS-pixel canvas coordinates. */
@@ -111,15 +115,17 @@ function resolveCommandSnap(
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
-  const snapping = ctx.snapEnabledRef.current && !mods.altKey;
+  const region = command.aimsAtRegion?.(runtime.gesture) === true;
+  const snapping = ctx.snapEnabledRef.current && !mods.altKey && !region;
   const pick = snapping ? magneticPick(ctx, command, x, y) : null;
   if (!snapping) ctx.setSnapTarget(null);
-  const hit = pick ? pick.intersection : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
+  const onlyPlane = region || plane.spec.kind === 'section';
+  const hit = pick ? pick.intersection : onlyPlane ? null : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
   const toLocal = (p: { x: number; y: number; z: number }) => {
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = plane.spec.kind === 'section' ? onPlane(ctx, plane, x, y) : hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
+  const cursor = onlyPlane || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
@@ -166,5 +172,20 @@ export function routeCommandPointer(
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
   });
+  return true;
+}
+
+/**
+ * A touch tap (#9042): what a click does. A command that follows the press
+ * itself (`pointerDownOnPress`, a drag) gets the press and the release in
+ * place, as a mouse press and release with no drag between them; any other
+ * gets the click's down.
+ */
+export function routeCommandTap(ctx: MouseHandlerContext, x: number, y: number): boolean {
+  const runtime = getCommandRuntime();
+  if (!runtime.command || !runtime.ctx) return false;
+  const onPress = runtime.command.pointerDownOnPress?.(runtime.gesture) === true;
+  routeCommandPointer(ctx, 'down', x, y);
+  if (onPress) routeCommandPointer(ctx, 'up', x, y);
   return true;
 }

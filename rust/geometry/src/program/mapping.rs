@@ -320,3 +320,6 @@ mod stop;
 mod execute;
 #[path = "mapping_affine.rs"]
 mod affine;
+
+#[path = "mapping_drop.rs"]
+mod drop;

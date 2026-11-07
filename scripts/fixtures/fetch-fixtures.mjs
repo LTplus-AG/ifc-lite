@@ -226,7 +226,17 @@ async function fetchOne(entry) {
         writeFileSync(tmp, extractZipMember(readFileSync(archiveTmp), archive.member, entry.size));
         unlinkSync(archiveTmp);
       } else {
-        await pipeline(res.body, createWriteStream(tmp));
+        // Bound direct downloads too: a bad upstream must not exhaust storage
+        // before its final hash can be checked (#8567).
+        let received = 0;
+        const limit = new Transform({
+          transform(chunk, _encoding, callback) {
+            received += chunk.length;
+            callback(received > entry.size ? new Error('fixture exceeds declared size') : null, chunk);
+          },
+        });
+        await pipeline(res.body, limit, createWriteStream(tmp));
+        if (received !== entry.size) throw new Error('fixture size mismatch');
       }
       const got = await sha256OfFile(tmp);
       if (got !== entry.sha256) {

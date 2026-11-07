@@ -74,9 +74,12 @@ export interface SuggestionRow {
   confidence?: SuccessorConfidence;
 }
 
-/** Display form of a component key: `pset:Pset_WallCommon` → `Pset_WallCommon`. */
+/** Display form of a component key: `pset:Pset_WallCommon` → `Pset_WallCommon`,
+ *  and a repeated set name `pset#2:Pset_WallCommon` → `Pset_WallCommon (2)` (#8136). */
 function componentLabel(key: string): string {
-  return key.replace(/^(pset|qset):/, '');
+  const set = /^(?:pset|qset)(?:#(\d+))?:([\s\S]*)$/.exec(key);
+  if (!set) return key;
+  return set[1] ? `${set[2]} (${set[1]})` : set[2];
 }
 
 const MAX_LISTED_COMPONENTS = 3;

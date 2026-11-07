@@ -268,8 +268,8 @@ fn split_dispositions<'p>(
 /// goes. A patched object (not also deleted: delete wins) survives pruning by
 /// construction, since a copy-on-write patch can give it a relationship the
 /// source never had, which the reference count cannot see. So does what an
-/// Add names (its container, placement parent, type, host, and the owner
-/// history): deleting a type's last occurrence must not take the type an Add
+/// Add names (its container, nesting host, placement parent, type, opening
+/// host, and the owner history): deleting a type's last occurrence must not take the type an Add
 /// in the same plan is typed by. Only what an Add names keeps a hostless
 /// feature: a patch cannot make an opening without a host valid IFC, so it
 /// is refused instead.

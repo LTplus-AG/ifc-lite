@@ -62,15 +62,16 @@ use crate::mesh::Mesh;
 /// state — it has nothing to gate a bare, freshly-produced `Mesh` (e.g. a
 /// zone-split piece) that never went through the hasher. A caller of THIS
 /// function that needs the same trustworthiness guarantee must establish
-/// closedness itself first — `router::voids::geom::mesh_is_closed_exact` is
-/// the crate's existing closed-surface check but is `pub(super)`-scoped to
-/// that module today, so a caller outside it needs either that visibility
-/// widened or an equivalent check of its own — same requirement
-/// `GeometryHasher::volume`'s own gate establishes upstream.
+/// closedness itself first. Use the shared `mesh_check` predicates with the
+/// caller's required key/degenerate policy: `directed_closed_exact` checks
+/// exact f32 bits, while `is_watertight` requires strict edge pairing on a
+/// 0.1 mm grid. The module is crate-visible and public under `test-support`;
+/// do not introduce another local edge-pairing map. Neither predicate alone
+/// establishes the hasher's stronger single-solid/orientability contract.
 ///
-/// `router::voids::geom::mesh_signed_volume` folds the same sum over the f32
-/// positions unsnapped and panics on a bad index; this one reads the kernel
-/// grid through `mesh_to_tris`.
+/// `mesh_check::signed_volume` (also used by the void-path wrapper) folds the
+/// sum over unsnapped f32 positions and panics on a bad index; this function
+/// reads the kernel grid through `mesh_to_tris`.
 pub fn mesh_volume(mesh: &Mesh) -> f64 {
     signed_volume_of(&mesh_to_tris(mesh))
 }

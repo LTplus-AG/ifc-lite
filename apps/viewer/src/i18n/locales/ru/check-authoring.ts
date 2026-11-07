@@ -116,9 +116,9 @@ export const checkAuthoringRu = {
   "checkAuthoring.validationTable": "Таблица проверки",
   "checkAuthoring.allChecks": "каждая проверка",
   "checkAuthoring.liveRows": {
-    one: "сейчас: {count} строка {rows} для {target}",
-    many: "сейчас: {count} строк {rows} для {target}",
-    other: "сейчас: {count} строки {rows} для {target}",
+    one: "сейчас: {count} строка для {target} (выбор: {rows})",
+    many: "сейчас: {count} строк для {target} (выбор: {rows})",
+    other: "сейчас: {count} строки для {target} (выбор: {rows})",
   },
   "checkAuthoring.liveRuleMissing": "{target} отсутствует в текущем отчёте о проверке",
   "checkAuthoring.liveEvidenceChanged": "{target} был составлен на основе другого отчёта о проверке, нежели тот, который показан сейчас",

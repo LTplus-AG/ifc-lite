@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
@@ -87,6 +88,10 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
   );
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: a dialog can stay open while a model switches kernels; recheck the live launch policy.
+    if (hasRetainedGeometryModel(useViewerStore.getState().models)) {
+      return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+    }
     if (!selectedModel?.sourceFile) {
       return { success: false, message: t('geometryExport.usd.noSourceDescription') };
     }

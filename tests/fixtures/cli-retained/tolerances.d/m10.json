@@ -1,0 +1,9 @@
+{"m10Status":"preregistered; never widen on failure",
+ "affineFinalVolumeRelative":{"linear":1e-6,"curved":2e-3},
+ "affineFinalBboxMetres":{"absolute":1e-5,"extentFactor":2.4e-7,"scope":"linear"},
+ "affineFinalCentroidMetres":{"linear":{"absolute":1e-5,"extentFactor":2.4e-7},"curved":{"extentFactor":2e-3}},
+ "affineFinalSignedVolume":"every affine-final part > 0; |signed| == volume within affineFinalVolumeRelative",
+ "affineFinalKernelEquivalenceRelative":{"linear":1e-9,"curved":2e-3},
+ "affineFinalChordRule":"sigma_max*min(chord,R*(1-cos angle)) <= chord*(1+1e-12); narrows to sigma_max<=1 if the sagitta witness fails",
+ "affineFinalSagittaWitness":"measured sagitta <= min(chord,R*(1-cos angle))*(1+1e-12)",
+ "affineFinalExactComparison":"report only"}

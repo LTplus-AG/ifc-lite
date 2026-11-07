@@ -8,6 +8,8 @@ impl RetainedProgram<'_> {
         self.check()?;
         #[cfg(any(test, feature = "retained-runtime"))]
         if let RetainedInner::Cuts(cuts) = self.inner { return cuts.finish(); }
+        #[cfg(feature = "retained-runtime")]
+        if let RetainedInner::Layers(layers) = self.inner { return layers.finish(); }
         let failure = self.completion_handle()?;
         match self.finish_retained_output(&failure, FailureSite::ProductCompletion)? {
             Output::Product(ProductOutput::Retained(values, selection)) => {
@@ -15,12 +17,12 @@ impl RetainedProgram<'_> {
                     return Err(RetainedFailure::Completion(CompletionReason::ProductPlacementMissing));
                 }
                 let _ = selection.program();
-                Ok(RetainedProductPlan { #[cfg(any(test, feature = "retained-runtime"))] opening: None,
+                Ok(RetainedProductPlan { #[cfg(feature = "retained-runtime")] layers: None, #[cfg(any(test, feature = "retained-runtime"))] opening: None,
                     values,
                     // Construction/placement discharge none of these obligations.
                     remaining: vec![RetainedRequirement::OpeningClosure,
                         RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
-                        RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
@@ -50,11 +52,11 @@ impl RetainedProgram<'_> {
                     value.present(binding).map_err(|error| failure.common(FailureSite::TypeBinding, error))?;
                 }
                 if let Some(error) = failure.reported() { return Err(error); }
-                Ok(RetainedProductPlan { #[cfg(any(test, feature = "retained-runtime"))] opening: None,
+                Ok(RetainedProductPlan { #[cfg(feature = "retained-runtime")] layers: None, #[cfg(any(test, feature = "retained-runtime"))] opening: None,
                     values,
                     remaining: vec![RetainedRequirement::ProductPlacement,
                         RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces],
+                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces, RetainedRequirement::SurfaceNormals],
                 })
             }
             _ => Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),

@@ -263,3 +263,55 @@ fn an_unwinding_source_item_publishes_nothing_and_restores_counting() {
     assert!(router.mapped_item_cache.borrow().is_empty());
     assert!(router.unsupported_scope_depth() == 0);
 }
+
+/// #7781 C2-3: both source-admission policies scale before the existing
+/// instance-capture boundary, including a nontrivial target and origin.
+#[test]
+fn issue_7781_occurrence_and_styled_mapping_scale_once_before_capture() {
+    let content = "#1=IFCCARTESIANPOINT((1000.,2000.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\
+        #3=IFCCARTESIANPOINT((10000.,0.,0.));\
+        #4=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#3,2.,$);\
+        #5=IFCCARTESIANPOINT((0.,0.,0.));#6=IFCAXIS2PLACEMENT3D(#5,$,$);\
+        #10=IFCBLOCK(#6,1000.,1000.,1000.);\
+        #11=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));\
+        #12=IFCREPRESENTATIONMAP(#2,#11);#13=IFCMAPPEDITEM(#12,#4);";
+    for styled in [false, true] {
+        let router = GeometryRouter::with_scale(0.001);
+        let mut decoder = EntityDecoder::new(content);
+        let item = decoder.decode_by_id(13).unwrap();
+        let meshes = if styled {
+            GeometryProgram::styled_item(
+                &item,
+                crate::SubMeshCollection::new(),
+                false,
+                None,
+                (0., 0., 0.),
+            )
+            .drain_styled(&router, &mut decoder)
+            .unwrap()
+            .sub_meshes
+            .into_iter()
+            .map(|part| part.mesh)
+            .collect::<Vec<_>>()
+        } else {
+            GeometryProgram::mapped_item(&item)
+                .drain_parts(&router, &mut decoder)
+                .unwrap()
+        };
+        assert_eq!(meshes.len(), 1);
+        let mesh = &meshes[0];
+        let (min, max) = mesh.bounds();
+        assert_eq!([min.x, min.y, min.z], [12., 4., 0.]);
+        assert_eq!([max.x, max.y, max.z], [14., 6., 2.]);
+        let local = mesh
+            .instance_meta
+            .as_ref()
+            .unwrap()
+            .local_transform
+            .unwrap();
+        assert_eq!(
+            local,
+            [2., 0., 0., 12., 0., 2., 0., 4., 0., 0., 2., 0., 0., 0., 0., 1.]
+        );
+    }
+}

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+# M11-N changes normals and obligations only; existing model ownership stays in its manifest.
+# Shared f-i qualification is pending the orchestrator's reviewed fixture.
+model	id	status	code

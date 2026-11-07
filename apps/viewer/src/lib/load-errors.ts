@@ -27,6 +27,8 @@
 
 import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
 import { isFileNotFoundMessage } from './file-not-found-errors.js';
+import { isInvalidInputError } from './invalid-input-errors.js';
+import { isInvalidArchiveError } from './invalid-archive-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
 import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
 
@@ -89,6 +91,15 @@ export type LoadErrorKind =
    * ./file-not-found-errors.ts.
    */
   | 'file_unreadable'
+  /**
+   * A readable .ifcZIP has zero/multiple model entries, or its declared/actual
+   * extracted size exceeds the parser's safety limit. A user-file problem,
+   * distinct from an unreadable file and from actual memory exhaustion.
+   * Only the anchored parser refusals in ./invalid-archive-errors.ts qualify.
+   */
+  | 'invalid_archive'
+  /** Recognised content/header refusals; unreadable files keep their own kind. */
+  | 'invalid_input'
   /**
    * The WebAssembly geometry engine trapped at runtime on THIS thread — a Rust
    * panic, a failed `assert!` or an allocator abort, all of which reach JS
@@ -217,7 +228,10 @@ function isStreamStalledError(message: string): boolean {
  *  - `worker.onerror` wrapped as "Geometry worker failed: …" (an empty
  *    `ErrorEvent` from a hard crash — classic OOM kill of the worker thread),
  *  - "Geometry worker error: …" (the worker posted a `{type:'error'}` message,
- *    e.g. "Geometry worker error: unreachable").
+ *    e.g. "Geometry worker error: unreachable"),
+ *  - the streaming pre-pass worker's "Pre-pass worker error: …" /
+ *    "Pre-pass worker failed: …" — the same `geometry.worker.ts`, so the same
+ *    attribution (#8246: its bare "unreachable" used to land in `unknown`).
  *
  * Deliberately keyed on the "geometry worker" marker only. A *bare* wasm trap
  * (`unreachable`, `RuntimeError`) is NOT attributed here: the viewer runs other
@@ -228,7 +242,7 @@ function isStreamStalledError(message: string): boolean {
  * prefix.)
  */
 function isGeometryWorkerCrashError(message: string): boolean {
-  return /geometry worker (?:failed|error|crashed|terminated)/i.test(message);
+  return /(?:geometry|pre-pass) worker (?:failed|error|crashed|terminated)/i.test(message);
 }
 
 /**
@@ -267,7 +281,17 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
  * wording its kind. It can never change any other answer.
  */
 export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKind {
+  // #7955: the retained host names its failure; the message is only the engine's raw trap text.
+  const retained = errorNameOf(err) === 'RetainedHostError' ? (err as { code?: unknown }).code : undefined;
+  if (retained === 'out_of_memory') return 'out_of_memory';
+  if (retained === 'worker_crash') return 'geometry_worker_crash';
+  if (errorNameOf(err) === 'RetainedStallError') return 'geometry_stream_stalled';
   const message = messageOf(err);
+  // Before broad memory/engine/file matchers: entry names are user-controlled
+  // and may contain their keywords. Only complete parser refusals claim this
+  // warning-level kind; actual OOMs while decompressing keep their own kind.
+  if (isInvalidArchiveError(message)) return 'invalid_archive';
+  if (isInvalidInputError(err, message)) return 'invalid_input';
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
   // be read...permission problems...") must not be mistaken for one of them.

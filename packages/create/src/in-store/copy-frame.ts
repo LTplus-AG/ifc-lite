@@ -125,6 +125,25 @@ export function frameInAncestor(read: LiveRead, placementId: number | null, ance
   return id === ancestorId ? frame : null;
 }
 
+/**
+ * Whether a placement is, or hangs through local placements from, an
+ * IfcGridPlacement: its place comes from grid axes, not from its storey.
+ * Iterative with a visited set, because file-supplied chains can cycle.
+ */
+export function hangsFromGrid(read: LiveRead, placementId: number | null): boolean {
+  const visited = new Set<number>();
+  let id = placementId;
+  while (id !== null && !visited.has(id)) {
+    visited.add(id);
+    const placement = read(id);
+    const type = placement?.type.toUpperCase();
+    if (type === 'IFCGRIDPLACEMENT') return true;
+    if (type !== 'IFCLOCALPLACEMENT') return false;
+    id = asRef(placement?.attributes[0]);
+  }
+  return false;
+}
+
 /** `v` turned counter-clockwise about the vertical by the frame's turn (directions do not translate). */
 export function turnDirection(f: Pick<RigidFrame, 'c' | 's'>, v: CopyVec3): CopyVec3 {
   return [f.c * v[0] - f.s * v[1], f.s * v[0] + f.c * v[1], v[2]];

@@ -29,7 +29,7 @@ async function readVersion(): Promise<string> {
  * `Commands:` block carries. Their handlers already tested for it; before
  * #5527 that branch was simply unreachable.
  */
-const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext']);
+const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci']);
 
 let activeCommand = '';
 /** True when --debug was passed (stack traces on error). */
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
     // the real help written in `layer`/`ref`/`ext` was unreachable (#5527).
     const requested = args[0];
     if (HELP_DELEGATING_COMMANDS.has(requested)) {
-      // These three write richer help of their own; let them answer.
+      // These write richer help of their own; let them answer.
     } else {
       const version = await readVersion();
       const commandHelp = buildCommandHelp(version, requested);
@@ -180,6 +180,9 @@ async function main(): Promise<void> {
       break;
     case 'layer':
       await (await import('./commands/layer.js')).layerCommand(commandArgs);
+      break;
+    case 'oci':
+      await (await import('./commands/oci.js')).ociCommand(commandArgs);
       break;
     case 'ref':
       await (await import('./commands/ref.js')).refCommand(commandArgs);

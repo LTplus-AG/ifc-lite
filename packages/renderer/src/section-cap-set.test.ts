@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Section2DOverlayRenderer } from './section-2d-overlay.js';
-import { EXTRA_CLIP_FLOATS } from './extra-clip-planes.js';
+import { CAP_CLIP_FLOATS } from './extra-clip-planes.js';
+import { CAP_FILL_VERTEX_FLOATS } from './section-2d-lift.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_CAP_LINE_WGSL,
@@ -88,7 +89,7 @@ function decodeClip(data: Float32Array): { count: number; mask: number; distance
     normals: Array.from({ length: count }, (_, i) => [data[4 + i * 4]!, data[5 + i * 4]!, data[6 + i * 4]!]),
   };
 }
-const clipWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === EXTRA_CLIP_FLOATS);
+const clipWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === CAP_CLIP_FLOATS);
 const uniformWrites = (writes: Rec[]) => writes.filter((w) => w.data.length === SECTION_2D_UNIFORM_FLOATS);
 
 describe('a cap per cutting plane (#7545)', () => {
@@ -137,6 +138,17 @@ describe('a cap per cutting plane (#7545)', () => {
     assert.equal(forB!.mask, 0b10, 'C is flipped and keeps that when it clips B');
     // Each cap has its own clip block (a dynamic-offset slot), so none overwrites another.
     assert.equal(new Set(clipWrites(writes).map((w) => w.offset)).size, 3);
+  });
+
+  it('a cap\'s block holds every plane in the fullest scene: six other planes and the six box faces (#8696)', () => {
+    const { renderer, writes } = newRenderer();
+    renderer.uploadExtraDrawing('b', TRIANGLE, [], 'side', 2);
+    const { pass } = makePass();
+    const clippedBy = Array.from({ length: 12 }, (_, i) => plane(1, 0, 0, i + 1));
+    renderer.drawExtras(pass, OPTIONS, [{ key: 'b', clippedBy }]);
+    const block = decodeClip(clipWrites(writes)[0]!.data);
+    assert.equal(block.count, 12, 'no plane dropped');
+    assert.deepEqual(block.distances, clippedBy.map((p) => p.distance));
   });
 
   it('keeps the primary cap\'s uniform record the last write of its draw, as before', () => {
@@ -218,8 +230,9 @@ describe('cap highlight (#7950)', () => {
     { polygon: { outer: [{ x: 3, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 1 }], holes: [] }, ifcType: 'IfcSlab', expressId: 2, color: [0.5, 0.5, 0.5, 1] as [number, number, number, number] },
   ];
   const lastFill = (writes: Rec[], created: Array<{ __size: number }>) =>
-    [...writes].reverse().find((w) => created[w.buffer.__id].__size === w.data.byteLength && w.data.length === 6 * 7);
-  const colorAt = (data: Float32Array, vertex: number) => Array.from(data.slice(vertex * 7 + 3, vertex * 7 + 7));
+    [...writes].reverse().find((w) => created[w.buffer.__id].__size === w.data.byteLength && w.data.length === 6 * CAP_FILL_VERTEX_FLOATS);
+  const colorAt = (data: Float32Array, vertex: number) =>
+    Array.from(data.slice(vertex * CAP_FILL_VERTEX_FLOATS + 3, vertex * CAP_FILL_VERTEX_FLOATS + 7));
 
   it('recolours only the highlighted element, restores on clear, and survives a re-upload', () => {
     const { renderer, writes, created } = newRenderer();

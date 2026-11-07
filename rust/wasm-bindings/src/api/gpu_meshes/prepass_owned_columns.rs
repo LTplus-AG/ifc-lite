@@ -91,7 +91,7 @@ impl IfcAPI {
         let columns = ShardedColumns::owned(index_ids, index_starts, index_lengths, index_classes)
             .map_err(|message| JsValue::from_str(&message))?;
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
-            skip_type_geometry, Some(columns), true, false)
+            skip_type_geometry, super::prepass_mode::PrepassOptions::sharded(columns, false))
     }
 
     /// Existing sharded prepass plus an exact full-source key in complete.
@@ -105,7 +105,7 @@ impl IfcAPI {
         let columns = ShardedColumns::owned(index_ids, index_starts, index_lengths, index_classes)
             .map_err(|message| JsValue::from_str(&message))?;
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
-            skip_type_geometry, Some(columns), true, true)
+            skip_type_geometry, super::prepass_mode::PrepassOptions::sharded(columns, true))
     }
 }
 
@@ -142,7 +142,7 @@ impl IfcAPI {
         let columns = ShardedColumns::borrowed(index_ids, index_starts, index_lengths, index_classes)
             .map_err(|message| JsValue::from_str(&message))?;
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
-            skip_type_geometry, Some(columns), true, compute_source_fingerprint)
+            skip_type_geometry, super::prepass_mode::PrepassOptions::sharded(columns, compute_source_fingerprint))
     }
 }
 

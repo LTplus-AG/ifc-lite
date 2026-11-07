@@ -29,6 +29,25 @@ export function viewportCaptureOwnsFrame(renderer: Renderer): boolean {
   return sessions.get(renderer)?.owned ?? false;
 }
 
+/** Renderers a capture has drawn for since the live loop last submitted a frame (#9031). */
+const awaitingLiveFrame = new WeakSet<object>();
+
+/**
+ * A pick now, or the Measure pass that compares what a pick reads (#8886),
+ * would read a capture's frame rather than the live view (#9031): the
+ * capture's camera while it owns the frame, then its clip, which the pickers
+ * mirror until the live loop draws again. A tick that renders nothing (no
+ * texture, a lost device, a GPU backlog, a replaced session) keeps it.
+ */
+export function viewportPicksAwaitLiveFrame(renderer: object): boolean {
+  return awaitingLiveFrame.has(renderer);
+}
+
+/** The live loop submitted a frame: the pickers mirror the live view again. */
+export function noteLiveFrameSubmitted(renderer: Renderer): void {
+  awaitingLiveFrame.delete(renderer);
+}
+
 interface CaptureRequest<T> {
   canvas?: HTMLCanvasElement;
   options?: RenderOptions;
@@ -106,6 +125,7 @@ export function captureViewportFrame<T>(renderer: Renderer, request: Synchronous
     const signal = session.controller.signal;
     if (signal.aborted || sessions.get(renderer) !== session) return null;
     session.owned = true;
+    awaitingLiveFrame.add(renderer);
     let restore: void | (() => void) = undefined;
     try {
       restore = request.prepare?.();

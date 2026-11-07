@@ -64,6 +64,24 @@ map of rule IDs to selected global IDs as the required third argument to
 criteria shape private to its JSON migration path; the published Lens package
 exposes only shared group based manual rules.
 
+## Lenses as custom groupings
+
+Because a rule-based Lens gives every element to the first rule it matches, its
+rule names form an exclusive, one-level classification. The viewer reuses them
+everywhere a filter is authored: add a **Custom grouping** rule in the search
+filter, a clash set, a list scope, a validation rule or another Lens, pick the
+Lens, then pick the groups (rule names) to keep or exclude. The rule is
+`customGrouping` from `@ifc-lite/rules`; hosts pass the definitions on
+`EvaluatorModel.customGroupings`.
+
+A reference stores the Lens id and name. An existing Lens with that id wins,
+even if it was renamed; only when no Lens has the id does the name decide, and
+then it must match exactly one Lens (trimmed, case-insensitive). So a Lens file
+imported into another project still resolves. A disabled rule keeps its name
+but has no members, and its action (colour, hide, transparent) does not change
+membership. An unknown Lens or group matches nothing and the chip says so; a
+Lens that reaches itself through its own rules is refused.
+
 ## Worked Example: Color by Fire Rating
 
 Hand-authored groups, one rule per rating value you care about:

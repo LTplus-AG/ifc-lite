@@ -1,0 +1,32 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+export const influxEn = {
+  'influx.title': 'InfluxDB 2',
+  'influx.experimental': 'Experimental',
+  'influx.help': 'Read-only synthetic or live telemetry, matched by IFC GlobalId. Select an IfcSpace or IfcSensor in the model.',
+  'influx.bounds': 'Loads the last hour, up to 10,000 samples. Overflow or invalid data fails the entire load. Display units are labels, not conversions.',
+  'influx.url': 'InfluxDB URL',
+  'influx.org': 'Organization',
+  'influx.bucket': 'Bucket',
+  'influx.measurement': 'Measurement',
+  'influx.field': 'Numeric field',
+  'influx.guidTag': 'GUID tag key',
+  'influx.unit': 'Display unit',
+  'influx.token': 'Token (memory only)',
+  'influx.load': 'Load',
+  'influx.loading': 'Loading…',
+  'influx.loaded': 'Loaded {samples} samples.',
+  'influx.select': 'Select a uniquely mapped IfcSpace or IfcSensor to see its reading.',
+  'influx.latest': 'Latest: {value} {unit}',
+  'influx.history': 'History for {name}: {samples} samples',
+  'influx.timestamp': 'Latest sample: {time}',
+  'influx.unmatched': 'Unmatched series ({count})',
+  'influx.ambiguous': 'Ambiguous series ({count}) — no assignment made',
+  'influx.none': 'None',
+  'influx.error.config': 'Check all connection fields. Use HTTPS, or http://localhost for development. Credentials, query strings and fragments are forbidden in the URL.',
+  'influx.error.network': 'CORS or network error. The InfluxDB server must allow this viewer origin, or you can run a fixed-upstream gateway.',
+  'influx.error.http': 'InfluxDB refused the query. Check the organization, bucket and token read permissions.',
+  'influx.error.data': 'Load failed: malformed, truncated, oversized, nonnumeric or conflicting data, an error table, or more than 10,000 samples. Narrow the source data before retrying.',
+  'influx.error.storage': 'Configuration could not be saved. Check browser storage access.',
+} as const;

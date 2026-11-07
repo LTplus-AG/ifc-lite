@@ -48,7 +48,7 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
   const runtime = getCommandRuntime();
   const { command, ctx } = runtime;
   if (!command || !ctx?.workplane || ctx.workplane.spec.kind === 'section') return null;
-  const snapping = input.snapping && !input.mods.altKey;
+  const snapping = input.snapping && !input.mods.altKey && command.aimsAtRegion?.(runtime.gesture) !== true;
   const sources = snapping ? [...modelSnapSources(ctx.modelId), ...input.planSources] : [];
   return solveCommandSnap(runtime, ctx.workplane, {
     cursor: input.local,

@@ -31,6 +31,7 @@ import type { MeshData } from './types.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
+import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
@@ -186,6 +187,7 @@ export async function* processParallel(
   // Pre-pass worker drives the entire pipeline via streaming events.
   let prepassMeta: PrepassMeta | null = null;
   let prepassJobsTotal = 0;
+  let omittedTypeRecords: number | undefined; // F2 #8341, from the prepass worker's `complete`
   let prepassDone = false;
   let prepassError: Error | null = null;
 
@@ -867,8 +869,10 @@ export async function* processParallel(
     trace.end(shardScanSpan);
     const shards = shardResults as ShardColumns[];
     const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
-    if (!stitched) {
-      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
+    // An EMPTY stitch falls back too: workers store an empty index as none, so
+    // the sharded-only finalize-styles always threw "no entity index".
+    if (!stitched || stitched.ids.length === 0) {
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }
@@ -1292,6 +1296,7 @@ export async function* processParallel(
         drainQueuedChunksIfReady();
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
+        omittedTypeRecords = parseOmittedTypeRecords(evt.omittedTypeRecords);
         console.log(`[stream] prepass complete @ ${elapsed()}ms totalJobs=${prepassJobsTotal} chunks=${chunkArrivals}`);
         trace.milestone('prepass.complete');
         // Unconditionally drive the prepass-complete handler here.
@@ -1320,7 +1325,11 @@ export async function* processParallel(
       // fields on its `{type:'error'}` message — this handler previously
       // dropped them on the floor.
       restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
-      prepassError = new Error(data.message);
+      // Wrapped like the process-worker pool's `Geometry worker error: …`
+      // (#8246): a bare "unreachable" carries no geometry marker, so the
+      // viewer's classifier filed pre-pass traps on 1.6+ GB files as
+      // `unknown` and showed the raw trap text instead of memory guidance.
+      prepassError = new Error(`Pre-pass worker error: ${data.message}`);
       prepassDone = true;
       prepassWorker.terminate();
       wake();
@@ -1477,7 +1486,7 @@ export async function* processParallel(
         terminateWorkerQuietly(w, 'process worker');
       }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
-      yield { type: 'complete', totalMeshes: 0, coordinateInfo };
+      yield { type: 'complete', totalMeshes: 0, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
       return;
     }
 
@@ -1514,6 +1523,7 @@ export async function* processParallel(
     coordinateInfo,
     ...(loadDiagnostics ? { diagnostics: loadDiagnostics } : {}),
     ...(skippedReport ? { skippedHungElements: skippedReport } : {}),
+    ...omittedTypeRecordsField(omittedTypeRecords),
   };
   } finally {
     trace.end(poolSpan);

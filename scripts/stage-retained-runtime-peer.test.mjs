@@ -11,13 +11,17 @@ import { stageRetainedRuntimePeer } from './stage-retained-runtime-peer.mjs';
 // Node loader hooks or any /smlib directory. Missing fixture modules must fail.
 test('staged runtime driver explicitly owns its inert peer and refuses replacement', async t => {
   const root = await mkdtemp(join(tmpdir(), 'retained-runtime-peer-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  // One hook: node:test runs after hooks in registration order, so the driver
+  // staged under root retires before root is removed.
+  let driver;
+  t.after(async () => {
+    try { await driver?.retire(); } finally { await rm(root, { recursive: true, force: true }); }
+  });
   const out = join(root, 'retained-test');
   await stageRetainedRuntimePeer(out);
   const { RetainedDriver } = await import(pathToFileURL(join(out, 'retained-driver.mjs')));
   const { peers } = await import(pathToFileURL(join(out, 'peer.mjs')));
-  const driver = new RetainedDriver();
-  t.after(() => driver.retire());
+  driver = new RetainedDriver();
   await driver.qualify();
   const result = await driver.evaluate(new Uint8Array([7, 7]), 1, 1, 4, 1, 0.001, 5, 4096);
   assert.equal(peers.length, 1, 'construction selected this fixture transport');

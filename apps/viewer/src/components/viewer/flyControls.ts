@@ -137,7 +137,7 @@ const MAX_FRAME_S = 0.1;
  * ONE threshold for both on purpose (#4868 review). A lock taken below the
  * click verdict made the browser withhold `contextmenu` for a press that was
  * still classified as a click, so the menu was simply lost. It equals the
- * caller's own 5px client-coordinate drag threshold, and the summed travel is
+ * caller's 5px client-coordinate drag threshold for fly presses, and the summed travel is
  * never less than the displacement, so anything that caller counts as a drag
  * is a gesture here too. Under pointer lock the cursor does not move, which is
  * why the controller has to measure this itself.
@@ -185,6 +185,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
   let frameId: number | null = null;
   let lastFrame = 0;
   let lookTravel = 0;
+  let heldLook = { x: 0, y: 0 }; // look held back while the press may still be a click
   let pressedAt = 0;
   let suppressMenuUntil = -Infinity;
   let velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -220,7 +221,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
 
     // The hold itself is what promotes a press to a gesture; the loop already
     // runs every frame, so it doubles as that timer.
-    if (t - pressedAt >= HOLD_TO_FLY_MS) lock.request();
+    if (t - pressedAt >= HOLD_TO_FLY_MS) { lock.request(); flushHeldLook(); }
 
     const current = pose();
     const speed = baseFlySpeed(camera.getSceneBounds())
@@ -237,10 +238,17 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
     if (Math.hypot(velocity.x, velocity.y, velocity.z) > speed * 1e-3) {
       apply(flyTranslate(current, { x: velocity.x * dt, y: velocity.y * dt, z: velocity.z * dt }));
       flew = true;
+      flushHeldLook();
     } else {
       velocity = { x: 0, y: 0, z: 0 };
     }
     frameId = requestFrame(tick);
+  };
+
+  /** The press stopped being a possible click: turn by the look held back so far. */
+  const flushHeldLook = (): void => {
+    const held = heldLook; heldLook = { x: 0, y: 0 };
+    if ((held.x !== 0 || held.y !== 0) && canFly()) apply(flyLook(pose(), held.x, held.y));
   };
 
   const onKeyDown = (e: Event): void => {
@@ -319,6 +327,7 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       // swallow the menu of this press (#4868 review).
       suppressMenuUntil = -Infinity;
       lookTravel = 0;
+      heldLook = { x: 0, y: 0 };
       pressedAt = now();
       velocity = { x: 0, y: 0, z: 0 };
       // Armed, not locked: the lock waits for the hold or for movement.
@@ -339,8 +348,12 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       const lookY = locked && movementY !== undefined ? movementY : dy;
       if (lookX === 0 && lookY === 0) return;
       lookTravel += Math.abs(lookX) + Math.abs(lookY);
-      if (lookTravel > LOOK_CLICK_SLOP_PX) lock.request();
-      apply(flyLook(pose(), lookX, lookY));
+      // While the press may still be a click, a nudge (and its interaction frame) would discard the
+      // menu's pick as stale; once held, flown or past the slop, fine aiming turns at once.
+      heldLook = { x: heldLook.x + lookX, y: heldLook.y + lookY };
+      if (!flew && now() - pressedAt < HOLD_TO_FLY_MS && lookTravel <= LOOK_CLICK_SLOP_PX) return;
+      lock.request();
+      flushHeldLook();
     },
 
     wheel(e) {
@@ -363,6 +376,8 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
       if (!active) return 'none';
       stop();
       const wasHeld = now() - pressedAt >= HOLD_TO_FLY_MS;
+      // Released after the hold deadline but before its frame: still a flight, so turn by the held look.
+      if (wasHeld) flushHeldLook();
       if (flew || wasHeld || lookTravel > LOOK_CLICK_SLOP_PX) {
         suppressMenuUntil = now() + MENU_SUPPRESSION_MS;
         return 'flew';

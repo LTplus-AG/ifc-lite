@@ -107,6 +107,7 @@ fn run_vectors(file: &str) {
         transport_assertions::assert_transport(&vector);
         let raw_options = &vector["options"];
         let options = KeyDiffOptions {
+            strip_placement_geometry: false,
             scope: scope(&raw_options["scope"]),
             exclude_types: raw_options["excludeTypes"].as_array().map(|values| values.iter()
                 .map(|value| value.as_str().unwrap().into()).collect()).unwrap_or_default(),

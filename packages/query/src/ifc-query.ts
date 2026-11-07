@@ -98,13 +98,15 @@ export class IfcQuery {
     //
     //  2. A real IFC entity name that `TYPE_STRING_TO_ENUM` (data/types.ts)
     //     simply has no entry for. That table is a curated subset, so standard
-    //     types such as `IfcChiller` and `IfcActuator` - and IFC2X3's
-    //     `IfcDoorStyle` and `IfcWindowStyle`, which is how 2X3 files carry
-    //     door and window typing - map to `Unknown` too. For those the Unknown
-    //     bucket is the only representation available and querying it is the
-    //     documented, working behaviour: a file whose sole unclassified
-    //     entities are door styles really does answer `ofType('IfcDoorStyle')`
-    //     correctly this way.
+    //     types such as `IfcChiller`, `IfcPipeFitting` and
+    //     `IfcDistributionPort` - and IFC2X3's `IfcDoorStyle` and
+    //     `IfcWindowStyle`, which is how 2X3 files carry door and window
+    //     typing - map to `Unknown` too. These are valid queries. They are
+    //     answered from the Unknown bucket narrowed to entities whose own
+    //     class is the queried name: the bucket alone holds every unmapped
+    //     class in the file at once, so in an MEP model
+    //     `ofType('IfcDistributionPort')` returned fittings, `IfcRelNests` and
+    //     `IfcSIUnit` as well (#8671).
     //
     // Only case 1 is rejected, and the oracle deciding which case a name falls
     // in has to span every schema the parser reads. `IFC_ENTITY_NAMES` does
@@ -128,8 +130,8 @@ export class IfcQuery {
     // entity in any schema -- the real IFC2X3 name has no "AL", and being in
     // `ENTITIES_IFC2X3` it never needed the alias table at all.)
     //
-    // A genuine query for the Unknown bucket is still made by passing the
-    // literal string `'Unknown'`.
+    // A genuine query for the whole Unknown bucket is still made by passing
+    // the literal string `'Unknown'`.
     //
     // One normalisation feeds both steps. `trim()` has to happen BEFORE the
     // enum lookup, not just inside the guard: `IfcTypeEnumFromString` only
@@ -140,12 +142,15 @@ export class IfcQuery {
     // at one place only is what creates that window; trimming at both closes
     // it. For every unpadded name `trim()` is the identity, so no name that
     // resolves correctly today changes meaning.
-    const typeEnums = types.map(t => {
+    const typeEnums: IfcTypeEnum[] = [];
+    const unmappedTypeNames: string[] = [];
+    for (const t of types) {
       const trimmed = t.trim();
       const typeEnum = IfcTypeEnumFromString(trimmed);
-      if (typeEnum === IfcTypeEnum.Unknown) {
+      if (typeEnum !== IfcTypeEnum.Unknown || trimmed.toUpperCase() === 'UNKNOWN') {
+        typeEnums.push(typeEnum);
+      } else {
         const known =
-          trimmed.toUpperCase() === 'UNKNOWN' ||
           isKnownType(trimmed) ||
           isKnownType(resolveEntityNameAlias(trimmed));
         if (!known) {
@@ -156,10 +161,10 @@ export class IfcQuery {
             `whose type could not be classified.`
           );
         }
+        unmappedTypeNames.push(trimmed);
       }
-      return typeEnum;
-    });
-    return new EntityQuery(this.store, typeEnums);
+    }
+    return new EntityQuery(this.store, typeEnums, null, unmappedTypeNames);
   }
   
   all(): EntityQuery {

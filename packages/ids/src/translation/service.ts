@@ -19,10 +19,13 @@ import type {
 
 import {
   describeConstraint as renderConstraint,
+  describePropertyPath,
   interpolate as interpolateTemplate,
 } from './describe-constraint.js';
 import { en, de, fr, it, ru } from './locales/index.js';
 import { describeWithNestedFacets } from '../preview/partof-nested.js';
+import { failedName } from '../validation/format-failure-reason.js';
+import { selfQuotedCatalogue } from './self-quoted.js';
 
 type Translations = typeof en;
 
@@ -39,11 +42,15 @@ export function createTranslationService(
 
 class IDSTranslationServiceImpl implements TranslationService {
   readonly locale: SupportedLocale;
+  /** The exported catalogue, which `t()` reads. */
+  private catalogue: Translations;
+  /** The catalogue the service's own descriptions render from (#8306). */
   private translations: Translations;
 
   constructor(locale: SupportedLocale) {
     this.locale = locale;
-    this.translations = LOCALES[locale] || LOCALES.en;
+    this.catalogue = LOCALES[locale] || LOCALES.en;
+    this.translations = selfQuotedCatalogue(this.catalogue);
   }
 
   /**
@@ -52,7 +59,7 @@ class IDSTranslationServiceImpl implements TranslationService {
   t(key: string, params?: Record<string, string | number>): string {
     // Navigate to the translation value
     const parts = key.split('.');
-    let value: unknown = this.translations;
+    let value: unknown = this.catalogue;
 
     for (const part of parts) {
       if (value && typeof value === 'object' && part in value) {
@@ -184,61 +191,54 @@ class IDSTranslationServiceImpl implements TranslationService {
     context: 'applicability' | 'requirement'
   ): string {
     const t = this.translations;
-    const pset = this.describeConstraint(facet.propertySet);
-    const property = this.describeConstraint(facet.baseName);
+    // `exists` names the set and property apart; every other template
+    // names the joined `path`.
+    const names = {
+      pset: this.describeConstraint(facet.propertySet),
+      property: this.describeConstraint(facet.baseName),
+      path: describePropertyPath(facet.propertySet, facet.baseName, t),
+    };
 
     if (context === 'applicability') {
       if (facet.value) {
         if (facet.value.type === 'pattern') {
           return this.interpolate(t.applicability.property.pattern, {
-            pset,
-            property,
+            ...names,
             pattern: this.describeConstraint(facet.value),
           });
         }
         if (facet.value.type === 'bounds') {
           return this.interpolate(t.applicability.property.bounded, {
-            pset,
-            property,
+            ...names,
             bounds: this.describeConstraint(facet.value),
           });
         }
         return this.interpolate(t.applicability.property.equals, {
-          pset,
-          property,
+          ...names,
           value: this.describeConstraint(facet.value),
         });
       }
-      return this.interpolate(t.applicability.property.exists, {
-        pset,
-        property,
-      });
+      return this.interpolate(t.applicability.property.exists, names);
     } else {
       if (facet.value) {
         if (facet.value.type === 'pattern') {
           return this.interpolate(t.requirements.property.mustMatch, {
-            pset,
-            property,
+            ...names,
             pattern: this.describeConstraint(facet.value),
           });
         }
         if (facet.value.type === 'bounds') {
           return this.interpolate(t.requirements.property.mustBeBounded, {
-            pset,
-            property,
+            ...names,
             bounds: this.describeConstraint(facet.value),
           });
         }
         return this.interpolate(t.requirements.property.mustEqual, {
-          pset,
-          property,
+          ...names,
           value: this.describeConstraint(facet.value),
         });
       }
-      return this.interpolate(t.requirements.property.mustExist, {
-        pset,
-        property,
-      });
+      return this.interpolate(t.requirements.property.mustExist, names);
     }
   }
 
@@ -390,9 +390,7 @@ class IDSTranslationServiceImpl implements TranslationService {
 
       // Attribute failures
       case 'ATTRIBUTE_MISSING':
-        return this.interpolate(t.attributeMissing, {
-          name: field || '?',
-        });
+        return this.interpolate(t.attributeMissing, { name: failedName(result.failure) });
 
       case 'ATTRIBUTE_VALUE_MISMATCH':
         return this.interpolate(t.attributeValueMismatch, {
@@ -412,22 +410,22 @@ class IDSTranslationServiceImpl implements TranslationService {
       case 'PSET_MISSING':
         if (context?.availablePsets) {
           return this.interpolate(t.psetMissingAvailable, {
-            pset: field || expected || '?',
+            pset: failedName(result.failure),
             available: context.availablePsets,
           });
         }
-        return this.interpolate(t.psetMissing, { pset: field || expected || '?' });
+        return this.interpolate(t.psetMissing, { pset: failedName(result.failure) });
 
       case 'PROPERTY_MISSING':
         if (context?.availableProperties) {
           return this.interpolate(t.propertyMissingAvailable, {
-            property: field || '?',
+            property: failedName(result.failure),
             pset: context.propertySet || '?',
             available: context.availableProperties,
           });
         }
         return this.interpolate(t.propertyMissing, {
-          property: field || '?',
+          property: failedName(result.failure),
           pset: context?.propertySet || '?',
         });
 

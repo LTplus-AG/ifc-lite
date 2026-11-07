@@ -38,6 +38,9 @@ use std::sync::Arc;
 /// Query parameters shared by all parse endpoints.
 #[derive(serde::Deserialize, Default, Clone)]
 pub struct ParseQuery {
+    /// Opt into material-layer wall slicing; omitted is false.
+    #[serde(default)]
+    pub layer_slicing: bool,
     /// Opening filter mode: "default", "ignore_all", or "ignore_opaque".
     #[serde(default)]
     pub opening_filter: OpeningFilterMode,
@@ -159,6 +162,9 @@ mod parquet_optimized_tests;
 
 #[cfg(test)]
 mod json_tests;
+
+#[cfg(test)]
+mod geometry_count_8341_tests;
 
 #[cfg(test)]
 mod finish_tests;

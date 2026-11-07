@@ -1,5 +1,27 @@
 # @ifc-lite/drawing-2d
 
+## 5.0.0
+
+### Major Changes
+
+- [#8722](https://github.com/LTplus-AG/ifc-lite/pull/8722) [`a75b717`](https://github.com/LTplus-AG/ifc-lite/commit/a75b71705172edb0cc1b04e595ad3d274bc257c5) Thanks [@louistrue](https://github.com/louistrue)! - Release the open-surface section result contract as a major version. `SectionCutResult` now requires `openSurfaceSegments`; callers constructing results must provide that set. Consumers of `polygons` must also handle open-surface segments, which no longer produce an artificial closing polygon. Use `openSurfaceSegments` for those cuts and `isPolygonCutLine` when deciding which drawing lines a polygon already covers.
+
+### Minor Changes
+
+- [#8670](https://github.com/LTplus-AG/ifc-lite/pull/8670) [`2fa7dc6`](https://github.com/LTplus-AG/ifc-lite/commit/2fa7dc6d2640cd62dc212d40976ace7721e0f566) Thanks [@louistrue](https://github.com/louistrue)! - Sections through open surfaces (such as an `IfcShellBasedSurfaceModel` with an `IfcOpenShell`) now produce cut lines instead of filled `cutPolygons`. Open chains on an entity whose mesh has free edges no longer get closed by an invented chord; those segments carry the new `DrawingLine.openSurfaceCut` flag so renderers draw them (`isPolygonCutLine` tells them apart from polygon-covered cut lines), and `SectionCutter`/`cutMeshesStreaming` results report them as `openSurfaceSegments`. Solids keep their fill, including ones with hairline mesh cracks.
+
+## 4.4.0
+
+### Minor Changes
+
+- [#8274](https://github.com/LTplus-AG/ifc-lite/pull/8274) [`443576f`](https://github.com/LTplus-AG/ifc-lite/commit/443576fbaf30d8bc3a40e041104c23ce570cc387) Thanks [@louistrue](https://github.com/louistrue)! - Door plan symbols now follow the model's stated handedness. A door whose own `OperationType` is `NOTDEFINED` or absent uses its type's (`EntityMetadata.typeOperationType`, supplied by the host from `IfcDoorType`, or `IfcDoorStyle` in IFC2X3) instead of drawing as `SINGLE_SWING_LEFT`. `DoorSymbolGenerator.generateFromOpening` takes optional `doorAxes` (the placement's local X and Y projected into the drawing plane) and derives the hinge side from them per IFC4.3 `IfcDoorTypeOperationEnum`, so a mirrored placement flips the hand; without it `wallDirection` is used as before. `generateSymbol` now sweeps its arc in the sense of the given frame: a `swingDir` clockwise of `wallDir` used to start the arc off the wall line, and now closes on the opposite jamb.
+
+### Patch Changes
+
+- [#8177](https://github.com/LTplus-AG/ifc-lite/pull/8177) [`799812f`](https://github.com/LTplus-AG/ifc-lite/commit/799812fdc29a2a8cf61bc0c989702492f6915797) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `EdgeExtractor.extractEdges` now matches triangle edges by vertex position instead of by vertex buffer index. Meshes that repeat their vertices per face, which is how the geometry pipeline emits flat-shaded solids, no longer report every triangle edge as a `boundary` edge (and so as a silhouette in every view); their outline edges are classified as creases as intended. Coincident vertices are welded with a tolerance of two f32 ULPs of the mesh's own coordinate magnitude, and zero-area triangles are ignored.
+- Updated dependencies [[`87f917e`](https://github.com/LTplus-AG/ifc-lite/commit/87f917e646ee7b9769dfab8b236cfe27432a6196)]:
+  - @ifc-lite/geometry@8.0.1
+
 ## 4.3.1
 
 ### Patch Changes

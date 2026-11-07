@@ -25,6 +25,7 @@
  * models proves nothing.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,6 +54,9 @@ import type { PendingOverlay } from '@ifc-lite/sdk/headless';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { overlayFromView } from '@ifc-lite/sdk/headless';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 interface DiffShape {
   entityDiff: { added: string[]; removed: string[]; common: number } | null;

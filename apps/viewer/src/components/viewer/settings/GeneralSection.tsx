@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Settings → General (#5857): theme, hover tooltips, and the LandXML
- * georeferencing assumptions (off by default).
+ * Settings → General (#5857): theme, UI language (#9061), hover tooltips, and
+ * IFC/LandXML georeferencing assumptions (off by default).
  */
 
 import { useTranslation } from '@/i18n';
@@ -12,6 +12,8 @@ import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { Switch } from '@/components/ui/switch';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
+import { LanguageSetting } from './LanguageSetting';
+import { IfcFederationSettingsSlot } from '../IfcFederationAssumptionsLazy';
 import { LandXmlGeorefSettingsSlot } from '../LandXmlGeorefAssumptionsLazy';
 
 export function GeneralSection() {
@@ -36,6 +38,7 @@ export function GeneralSection() {
             onChange={setTheme}
           />
         </SettingsRow>
+        <LanguageSetting />
       </SettingsGroup>
       <SettingsGroup title={t('settings.general.helpersTitle')}>
         <SettingsRow
@@ -50,6 +53,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
       </SettingsGroup>
+      <IfcFederationSettingsSlot />
       <LandXmlGeorefSettingsSlot />
     </div>
   );

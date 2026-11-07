@@ -5485,8 +5485,8 @@
    ]
   },
   {
-   "name": "typed-marker-type-is-case-sensitive",
-   "why": "#8142: a typed marker resolves its base by the exact registry name; an upper-case name finds none and the value shape decides",
+   "name": "typed-marker-type-is-case-insensitive",
+   "why": "#8312: a typed marker resolves its base case-insensitively, so an upper-case name writes the REAL base, not the value shape",
    "source": "values",
    "log": {
     "modelId": "model",
@@ -5540,7 +5540,7 @@
     "#21=IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('NEW'),IFCLABEL('EXISTING')),$);",
     "#22=IFCPROPERTYBOUNDEDVALUE('Range',$,IFCLENGTHMEASURE(20.),IFCLENGTHMEASURE(1.),#6,$);",
     "#23=IFCPROPERTYLISTVALUE('Tags',$,(IFCLABEL('a'),IFCLABEL('b')),$);",
-    "#24=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(7),#6);",
+    "#24=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(7.),#6);",
     "#25=IFCPROPERTYSINGLEVALUE('Span',$,IFCLENGTHMEASURE(3.),#10);",
     "#26=IFCPROPERTYSINGLEVALUE('Unknown',$,IFCLOGICAL(.U.),$);",
     "#27=IFCPROPERTYSINGLEVALUE('Ratio',$,IFCNORMALISEDRATIOMEASURE(0.5),$);",

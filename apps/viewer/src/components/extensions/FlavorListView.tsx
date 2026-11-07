@@ -287,7 +287,7 @@ export function FlavorListView({
                         )}
                         {hasUncaptured && (
                           <span
-                            className="text-xs uppercase tracking-wide bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 font-semibold"
+                            className="text-xs uppercase tracking-wide bg-amber-500/20 text-warn rounded px-1.5 py-0.5 font-semibold"
                             title={t('extensionsFlavors.flavorListView.uncapturedTitle', {
                               count: uncapturedCount,
                               countDisplay: formatLocaleNumber(locale, uncapturedCount),

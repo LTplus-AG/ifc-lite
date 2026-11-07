@@ -13,6 +13,7 @@
  * 5 unrelated base.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import type { ProvenanceBase } from '@ifc-lite/ifcx';
 import {
   mergeIntoRef as mergeIntoRefShared,
@@ -115,6 +116,7 @@ export async function layerMergeCommand(args: string[]): Promise<void> {
   const principal = getFlag(args, '--principal');
   if (principal !== undefined) init.principal = principal;
 
+  await initDiff();
   const outcome = mergeIntoRef(store, init);
   const json = hasFlag(args, '--json');
 

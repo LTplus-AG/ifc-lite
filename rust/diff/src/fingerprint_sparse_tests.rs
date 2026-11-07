@@ -127,3 +127,27 @@ fn issue_8114_serialized_absent_null_and_empty_collections_stay_equivalent_and_d
     ])])));
     assert_eq!((present.property_sets.present().count(), present.property_sets.holes()), (1, 0));
 }
+
+#[test]
+fn issue_8042_paired_projection_preserves_sparse_check_order_and_rejection() {
+    let input = DataFingerprintInput {
+        property_sets: vec![PropertySetInput { name: "P".into(), properties: holes(2) }].into(),
+        quantity_sets: vec![QuantitySetInput { name: "Q".into(), quantities: holes(3) }].into(),
+        type_assignments: holes(1), ..Default::default()
+    };
+    let mut separate = Vec::new();
+    let data = build_data_fingerprint_checked(&input, |n| { separate.push(n); Ok::<(), usize>(()) }).unwrap();
+    let components = build_component_fingerprint_entries_checked(&input, |n| { separate.push(n); Ok::<(), usize>(()) }).unwrap();
+    let mut paired = Vec::new();
+    assert_eq!(build_fingerprint_pair_checked(&input, |n| { paired.push(n); Ok::<(), usize>(()) }).unwrap(), (data, components));
+    assert_eq!(paired, separate);
+    for reject_at in 0..separate.len() {
+        let mut seen = Vec::new();
+        let error = build_fingerprint_pair_checked(&input, |n| {
+            seen.push(n);
+            if seen.len() - 1 == reject_at { Err(reject_at) } else { Ok(()) }
+        }).unwrap_err();
+        assert_eq!(error, reject_at);
+        assert_eq!(seen, separate[..=reject_at]);
+    }
+}

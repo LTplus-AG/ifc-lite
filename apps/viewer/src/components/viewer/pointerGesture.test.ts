@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePointerGesture, type PointerGestureInput } from './pointerGesture.js';
+import { pressPastClickSlop, resolvePointerGesture, type PointerGestureInput } from './pointerGesture.js';
 
 const base: PointerGestureInput = {
   tool: 'select', button: 0, shiftKey: false, ctrlKey: false,
@@ -47,6 +47,21 @@ describe('pointer gesture mapping (#5887)', () => {
     for (const measureMode of ['polyline', 'angle', 'radius'] as const) {
       assert.equal(gesture({ tool: 'measure', measureMode }), 'orbit');
     }
+  });
+
+  it('Shift+left finishes a pending distance instead of panning; Shift+Alt still pans (#8771)', () => {
+    assert.equal(gesture({ tool: 'measure', shiftKey: true, distancePending: true }), 'tool');
+    assert.equal(gesture({ tool: 'measure', shiftKey: true, distancePending: false }), 'pan');
+    assert.equal(gesture({ tool: 'measure', shiftKey: true, altKey: true, distancePending: true }), 'pan');
+    assert.equal(gesture({ tool: 'select', shiftKey: true, distancePending: true }), 'pan');
+    assert.equal(gesture({ tool: 'measure', measureMode: 'polyline', shiftKey: true, distancePending: true }), 'pan');
+  });
+
+  it('a press is a click until it moves past the slop on either axis (#8740)', () => {
+    const press = { startX: 100, startY: 100 };
+    assert.equal(pressPastClickSlop(press, { clientX: 103, clientY: 97 }), false);
+    assert.equal(pressPastClickSlop(press, { clientX: 104, clientY: 100 }), true);
+    assert.equal(pressPastClickSlop(press, { clientX: 100, clientY: 96 }), true);
   });
 
   it('Pan claims plain left; modelling owns left; other tools leave it for orbit (#6232)', () => {

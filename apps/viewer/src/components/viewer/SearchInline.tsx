@@ -46,7 +46,8 @@ import { VimCycleHint, RecentsPopoverBody, SearchPopoverBody } from './SearchInl
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
 
-export function SearchInline() {
+/** `compact`: the 28px field the ribbon's 32px tab strip hosts (#8802 R1). */
+export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -416,7 +417,7 @@ export function SearchInline() {
             }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
-            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9', compact && 'h-7 bg-raised text-xs shadow-none')}
             // Input renders a native input; the combobox role permits its expanded state.
             // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="combobox"
@@ -436,7 +437,7 @@ export function SearchInline() {
                   e.preventDefault();
                   clearAllFilterGroups();
                 }}
-                className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -455,7 +456,7 @@ export function SearchInline() {
                 'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:inset-x-0 after:-top-px after:-bottom-px after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 hasFilters
                   ? 'bg-primary/10 text-primary hover:bg-primary/15'
-                  : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -507,7 +508,7 @@ export function SearchInline() {
           if (target && containerRef.current?.contains(target)) e.preventDefault();
         }}
         style={{ width: 'var(--radix-popper-anchor-width)' }}
-        className="w-72 rounded-md border border-zinc-200 bg-white p-0 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+        className="w-72 rounded-md border border-border bg-white p-0 shadow-lg"
       >
         {showRecents ? (
           <RecentsPopoverBody

@@ -10,6 +10,7 @@
  */
 
 import type { TranslationKey } from '@/i18n';
+import { clippingSectionPlanes } from './section-active';
 
 /** A candidate product that has no retained geometry: refused by the kernel, or never reached. */
 export interface RetainedUnpublishedRow {
@@ -19,6 +20,14 @@ export interface RetainedUnpublishedRow {
   code: string;
   origin?: { site: string; entity?: number; cause: string };
   kernelStatus?: number;
+}
+
+/** One persistent source face of a published product (#7955 M11-F): `#item[>#via]:role`. */
+export interface RetainedFaceRow {
+  key: string;
+  triangles: number;
+  /** Display-precision area of its triangles, square metres. */
+  areaM2: number;
 }
 
 export interface RetainedGeometrySummary {
@@ -43,16 +52,38 @@ export interface RetainedGeometrySummary {
   completeness: 'running' | 'complete' | 'incomplete';
   /** Model-level failure (engine missing, host crash, stall), if the run ended in one. */
   failure?: string;
+  /** Persistent face table per published product id (M11-F), source order. */
+  faces?: Record<number, RetainedFaceRow[]>;
+}
+
+/** Kernel scope and worker lifetime depend on the open model, independently of presentation. */
+export function hasRetainedGeometryModel(models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>): boolean {
+  for (const model of models.values()) if (model.retainedGeometry) return true;
+  return false;
 }
 
 /** Tooltip/reason for every mesh-derived export and tool refused on a retained model. */
 export const RETAINED_SHAPE_ONLY_REASON: TranslationKey = 'retainedGeometry.shapeOnlyReason';
+
+/** Tooltip/reason for the exports that rebuild their geometry from the file with the exact engine, refused on any retained model. */
+export const RETAINED_EXACT_ONLY_REASON: TranslationKey = 'retainedGeometry.exactOnlyExportReason';
 
 /**
  * The one guard for mesh-derived exports and tools (GLB/USD/KMZ export,
  * measure, clash): their output would present shape-only meshes as the model.
  */
 export function hasRetainedShapeOnlyModel(models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>): boolean {
-  for (const model of models.values()) if (model.retainedGeometry) return true;
+  for (const model of models.values()) if (model.retainedGeometry && (model.retainedGeometry.obligationsUnmet.length > 0
+    || model.retainedGeometry.completeness !== 'complete' || model.retainedGeometry.failure
+    || model.retainedGeometry.published === 0)) return true;
+  return false;
+}
+
+/** Sectioned STEP rebuilds exact tessellation; reject retained models included in this export (#8415). */
+export function hasRetainedSectionExport(state: Parameters<typeof clippingSectionPlanes>[0] & {
+  models: ReadonlyMap<string, { retainedGeometry?: RetainedGeometrySummary }>;
+}, modelIds: Iterable<string>): boolean {
+  if (clippingSectionPlanes(state).length === 0) return false;
+  for (const id of modelIds) if (state.models.get(id)?.retainedGeometry) return true;
   return false;
 }

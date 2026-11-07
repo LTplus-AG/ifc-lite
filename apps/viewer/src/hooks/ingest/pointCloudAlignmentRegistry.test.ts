@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import type { PointCloudAlignmentTransform } from './pointCloudAlignment.js';
 import {
   applyPointCloudAlignmentToggle,
+  reframeRegisteredPointClouds,
   realignRegisteredPointClouds,
   registerPointCloudAlignment,
   retargetPointCloudDecodeOrigin,
@@ -48,6 +49,30 @@ test('point-cloud GPU toggle rolls back every prior asset on a failed write (#50
   } finally {
     unregisterPointCloudAlignment(first.id);
     unregisterPointCloudAlignment(second.id);
+  }
+});
+
+test('point-cloud frame update rolls back every prior GPU write (#8781)', () => {
+  const first = { id: 87_811 }, second = { id: 87_812 };
+  registerPointCloudAlignment(first, undefined);
+  registerPointCloudAlignment(second, undefined);
+  const writes: Array<[number, number]> = [];
+  const failingRenderer = {
+    setPointCloudTransform(handle: { id: number }, matrix: Float32Array | Float64Array | null) {
+      if (handle.id === second.id) throw new Error('GPU write failed');
+      writes.push([handle.id, matrix?.[12] ?? Number.NaN]);
+    },
+  };
+  try {
+    assert.throws(() => reframeRegisteredPointClouds(failingRenderer, { x: 100, y: 0, z: 0 }), /GPU write failed/);
+    assert.deepEqual(writes, [[first.id, -100], [first.id, 0]]);
+    const recovered: number[] = [];
+    reframeRegisteredPointClouds({ setPointCloudTransform(_handle, matrix) { recovered.push(matrix?.[12] ?? Number.NaN); } }, { x: 100, y: 0, z: 0 });
+    assert.deepEqual(recovered, [-100, -100], 'failed frame update was not committed');
+  } finally {
+    unregisterPointCloudAlignment(first.id);
+    unregisterPointCloudAlignment(second.id);
+    reframeRegisteredPointClouds({ setPointCloudTransform() {} }, { x: 0, y: 0, z: 0 });
   }
 });
 

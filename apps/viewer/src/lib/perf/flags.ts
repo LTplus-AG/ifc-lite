@@ -153,6 +153,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_QUANTIZED', urlParam: 'perf.quantized', benchmarkEnv: 'VIEWER_BENCHMARK_QUANTIZED' },
   },
   {
+    id: 'sceneSnapshot',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete the flag and the streaming fallback for snapshot hits once finished-scene snapshots have served warm opens for two releases with no rendering report.',
+    introducedAt: '2026-11-01',
+    default: true,
+    bindings: { global: '__IFC_LITE_SCENE_SNAPSHOT', urlParam: 'perf.sceneSnapshot' },
+  },
+  {
     id: 'geomTier',
     kind: 'kill-switch',
     owner: '@louistrue',

@@ -9,6 +9,8 @@ import {
   Crosshair,
   Copy,
   Info,
+  Settings2,
+  GitCompare,
   Focus,
   ArrowUpDown,
   ChevronDown,
@@ -19,7 +21,6 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -36,7 +37,7 @@ import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
-import { ClashSavedReportsDialog } from '@/components/viewer/ClashSavedReportsDialog';
+import { useClashSavedReportsAction } from '@/components/viewer/ClashSavedReportsDialog';
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
@@ -344,6 +345,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const clashSolidThicknessM = useViewerStore((s) => s.clashSolidThicknessM);
   const clashSolidRequiredM = useViewerStore((s) => s.clashSolidRequiredM);
   const [showHelp, setShowHelp] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const savedReports = useClashSavedReportsAction();
   const [creatingTopic, setCreatingTopic] = useState(false);
   // The whole detection-controls block is collapsible so the result list gets
   // vertical room: auto-open before the first run (discoverability), auto-collapse
@@ -714,18 +718,17 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         cancelLabel: t('clashPanel.cancel'),
       }}
       onClearResults={clearAll}
-      actions={(
+      actions={[
+        { id: 'clash-settings', label: t('clashTools.settings.title'), icon: <Settings2 className="h-4 w-4" />, onSelect: () => setSettingsOpen(true) },
+        savedReports.action,
+        { id: 'clash-revision-compare', label: t('clashTools.revisionCompare.triggerTooltip'), icon: <GitCompare className="h-4 w-4" />, onSelect: () => setCompareOpen(true) },
+        { id: 'clash-help', label: t('clashPanel.helpTooltip'), icon: <Info className="h-4 w-4" />, pressed: showHelp, onSelect: () => setShowHelp((v) => !v) },
+      ]}
+      dialogs={(
         <>
-          <IconButton
-            label={t('clashPanel.helpTooltip')}
-            className={cn('h-7 w-7', showHelp && 'text-primary')}
-            onClick={() => setShowHelp((v) => !v)}
-          >
-            <Info className="h-4 w-4" />
-          </IconButton>
-          <ClashSettingsDialog />
-          <ClashRevisionCompareDialog />
-          <ClashSavedReportsDialog />
+          <ClashSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+          <ClashRevisionCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
+          {savedReports.dialog}
         </>
       )}
       error={error}
@@ -763,16 +766,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
                 {(['hard', 'clearance'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'px-2.5 py-1 capitalize transition-colors',
-                      mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  // The selected mode is the shared pressed state (#8802 R4), so
+                  // the panel's one solid primary stays "Detect all clashes".
+                  <Button key={m} type="button" variant="toggle" aria-pressed={mode === m} onClick={() => setMode(m)}
+                    className="h-auto rounded-none px-2.5 py-1 text-xs font-normal capitalize">
                     {m}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <label className="flex items-center gap-1 text-xs text-muted-foreground" title={t('clashPanel.tolLabelTooltip')}>
@@ -978,17 +977,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   ['isolate', 'clashPanel.focusMode.isolateLabel', 'clashPanel.focusMode.isolateTooltip'],
                   ['ghost', 'clashPanel.focusMode.ghostLabel', 'clashPanel.focusMode.ghostTooltip'],
                 ] as [ClashFocusMode, TranslationKey, TranslationKey][]).map(([m, labelKey, tipKey]) => (
-                  <button
-                    key={m}
-                    title={t(tipKey)}
-                    onClick={() => changeFocusMode(m)}
-                    className={cn(
-                      'px-1.5 py-0.5 transition-colors',
-                      focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  <Button key={m} type="button" variant="toggle" aria-pressed={focusMode === m} title={t(tipKey)}
+                    onClick={() => changeFocusMode(m)} className="h-auto rounded-none px-1.5 py-0.5 text-xs font-normal">
                     {t(labelKey)}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1192,11 +1184,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         >
           {!result && !running && (
             <AnalysisEmptyState
-              className="h-full"
-              icon={<Crosshair className="size-8" />}
+              align="start"
+              icon={<Crosshair />}
               title={t('clashPanel.empty.title')}
               description={modelCount <= 1 ? t('clashPanel.empty.singleModelHint') : t('clashPanel.empty.multiModelHint')}
-              hint={t('clashPanel.empty.hint')}
               loadDemo={loadDemoClashModel}
             />
           )}

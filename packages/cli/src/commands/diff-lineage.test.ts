@@ -12,12 +12,13 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  initDiff,
   createIdentityMapSidecar,
   createLineageSidecar,
   diffModels,
   serializeLineageSidecar,
 } from '@ifc-lite/diff';
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { contentDiffCommand } from './diff-content.js';
 import { buildFileFingerprints, modelIdentityOf } from './diff-engine.js';
@@ -25,6 +26,9 @@ import { mergeLineage } from './diff-lineage-io.js';
 import { parseCsv, rekeyCommand, serializeCsv } from './rekey.js';
 import { loadIfcBytes } from '../loader.js';
 import { BASE_MODEL, HEAD_MODEL, guid, model } from './diff-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 describe('diffPositionals with the lineage flags', () => {
   it('never mistakes a flag value for a third file', () => {

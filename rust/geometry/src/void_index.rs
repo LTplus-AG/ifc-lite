@@ -11,7 +11,7 @@
 //! - RelatingBuildingElement: The host (wall, slab, beam, etc.)
 //! - RelatedOpeningElement: The opening (IfcOpeningElement)
 
-use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{EntityDecoder, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate openings from hosts that aggregate parts to every aggregated
@@ -89,7 +89,8 @@ fn walk_aggregate_descendants(
 }
 
 /// Scan `content` for `IfcRelAggregates` and build the full (unfiltered)
-/// parent → children map used by [`propagate_voids_via_aggregates`].
+/// parent → children map used by [`propagate_voids_via_aggregates`], with the
+/// production prepass's bare-tolerant fold (`void_rels::fold_aggregate_rels`).
 pub fn build_aggregate_children_index<T>(
     content: &T,
     decoder: &mut EntityDecoder,
@@ -97,36 +98,8 @@ pub fn build_aggregate_children_index<T>(
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let mut scanner = EntityScanner::new(content.as_ref());
-    let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if !ifc_lite_core::keyword_eq(type_name, "IFCRELAGGREGATES") {
-            continue;
-        }
-        let entity = match decoder.decode_at_with_id(id, start, end) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        // IfcRelAggregates: attr 4 = RelatingObject, attr 5 = RelatedObjects
-        let parent_id = match entity.get_ref(4) {
-            Some(id) => id,
-            None => continue,
-        };
-        let children: Vec<u32> = match entity.get(5).and_then(|a| a.as_list()) {
-            Some(list) => list
-                .iter()
-                .filter_map(|item| item.as_entity_ref())
-                .collect(),
-            None => continue,
-        };
-        if !children.is_empty() {
-            aggregate_children
-                .entry(parent_id)
-                .or_default()
-                .extend(children);
-        }
-    }
-    aggregate_children
+    let (_, aggregate_spans) = crate::void_rels::scan_rel_spans(content.as_ref(), false, true);
+    crate::void_rels::fold_aggregate_rels(&aggregate_spans, decoder)
 }
 
 /// Propagate void (opening) relationships from aggregate parents to their children
@@ -207,20 +180,9 @@ where
     part_to_parent
 }
 
-/// Compute the set of aggregated `IfcBuildingElementPart` ids to skip when the
-/// "merge multilayer wall as a single solid" toggle is on (issue #540): a part
-/// is skipped when its parent's layered build-up is *sliceable*, so the parent's
-/// merged-layer geometry is drawn instead of the individual parts.
-///
-/// This is the layer/void **driver** — it composes the two shared geometry
-/// kernels ([`propagate_voids_to_parts`] for part→parent + void propagation, and
-/// [`MaterialLayerIndex::is_sliceable`]) so the driver lives in the geometry
-/// crate next to its kernels rather than inline in a consumer (#913 Phase 4 /
-/// §2.6). The browser's `merge_layers` path calls it. The `void_index` it hands
-/// to [`propagate_voids_to_parts`] is EMPTY and stays empty: propagation is a
-/// no-op on an empty index, and only the part → parent map is wanted here.
-/// Callers that also need the propagated voids call
-/// [`propagate_voids_to_parts`] directly with their own seeded `void_index`.
+/// [`compute_parts_to_skip_with_index`](crate::compute_parts_to_skip_with_index)
+/// with a material-layer index built from `content`. Callers that already hold
+/// the index should pass it instead, which avoids this extra full-file scan.
 #[must_use]
 pub fn compute_parts_to_skip<T>(
     content: &T,
@@ -231,13 +193,7 @@ where
 {
     let content = content.as_ref();
     let material_layer_index = crate::MaterialLayerIndex::from_content(content, decoder);
-    let mut void_index_scratch: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let part_to_parent = propagate_voids_to_parts(&mut void_index_scratch, content, decoder);
-    part_to_parent
-        .into_iter()
-        .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
-        .map(|(part_id, _)| part_id)
-        .collect()
+    crate::compute_parts_to_skip_with_index(content, decoder, &material_layer_index)
 }
 
 /// Index mapping host elements to their voids
@@ -267,7 +223,10 @@ impl VoidIndex {
     /// Build void index from IFC content
     ///
     /// Scans the content for `IfcRelVoidsElement` entities and builds
-    /// the host-to-void mapping.
+    /// the host-to-void mapping with the production void fold
+    /// (`void_rels::for_each_void_rel`). Direct relationships only, in file
+    /// order: the index production cuts with (aggregate propagation plus
+    /// canonical opening order) is [`crate::void_index_from_content`].
     ///
     /// # Arguments
     /// * `content` - The raw IFC file content
@@ -279,27 +238,11 @@ impl VoidIndex {
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
         let mut index = Self::new();
-        let mut scanner = EntityScanner::new(content);
-
-        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-            // Look for IfcRelVoidsElement relationships
-            if ifc_lite_core::keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
-                if let Ok(entity) = decoder.decode_at(start, end) {
-                    // IfcRelVoidsElement structure:
-                    // #id = IFCRELVOIDSELEMENT(GlobalId, OwnerHistory, Name, Description,
-                    //                          RelatingBuildingElement, RelatedOpeningElement);
-                    // Indices: 0=GlobalId, 1=OwnerHistory, 2=Name, 3=Description,
-                    //          4=RelatingBuildingElement, 5=RelatedOpeningElement
-
-                    if let (Some(host_id), Some(void_id)) = (entity.get_ref(4), entity.get_ref(5)) {
-                        index.add_relationship(host_id, void_id);
-                    }
-                }
-            }
-        }
-
+        let (void_spans, _) = crate::void_rels::scan_rel_spans(content.as_ref(), true, false);
+        crate::void_rels::for_each_void_rel(&void_spans, decoder, |host_id, void_id| {
+            index.add_relationship(host_id, void_id);
+        });
         index
     }
 

@@ -15,21 +15,23 @@ import { act, useRef } from 'react';
 import type { Renderer, VisualEnhancementOptions } from '@ifc-lite/renderer';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import { cleanup, render } from '@/test/render.js';
+import { SECTION_BOX_CAP_FACES, sectionBoxCapKey } from '@ifc-lite/renderer';
+import { sectionBoxCapPlanes } from '@/lib/section/section-box-caps';
 import { useViewerStore } from '@/store';
 import { capSignature } from '@/lib/section/section-cut-config';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 const state = () => useViewerStore.getState();
 
-interface Upload { axis: string; position: number; flipped: boolean; planeId?: string; polygons: number; range?: { min: number; max: number } }
+interface Upload { axis: string; position: number; flipped: boolean; planeId?: string; polygons: number; range?: { min: number; max: number }; colored: boolean; custom?: unknown }
 
 function recordingRenderer() {
   const uploads: Upload[] = [];
   const kept: string[][] = [];
   const cleared: (string | undefined)[] = [];
   const target = {
-    uploadSection2DOverlay: (polygons: unknown[], _l: unknown, axis: string, position: number, range: Upload['range'], flipped: boolean, _c: unknown, planeId?: string) =>
-      uploads.push({ axis, position, flipped, planeId, polygons: polygons.length, range }),
+    uploadSection2DOverlay: (polygons: Array<{ color?: unknown }>, _l: unknown, axis: string, position: number, range: Upload['range'], flipped: boolean, custom: unknown, planeId?: string) =>
+      uploads.push({ axis, position, flipped, planeId, polygons: polygons.length, range, colored: polygons.some((p) => p.color !== undefined), custom }),
     clearSection2DExtraOverlays: (keep: string[]) => kept.push([...keep]),
     clearSection2DOverlay: (id?: string) => cleared.push(id),
   };
@@ -176,5 +178,50 @@ describe('the other cutting planes\' caps reach the renderer (#7545)', () => {
     const plane = state().inactiveSectionPlanes[0];
     act(() => state().setSectionExtraCap(b, { signature: `1:${capSignature(plane)}`, cutPolygons: [], lines: [] }));
     assert.ok(cleared.includes(b));
+  });
+});
+
+describe('the section box\'s face caps reach the renderer (#8696)', () => {
+  const BOX = { min: [0, 0, 0] as [number, number, number], max: [4, 3, 2] as [number, number, number] };
+  const faceKeys = SECTION_BOX_CAP_FACES.map(sectionBoxCapKey);
+  const cutFaces = () => {
+    for (const face of sectionBoxCapPlanes(state().sectionPlane.box ?? state().inactiveSectionPlanes.find((p) => p.box)!.box!)) {
+      state().setSectionExtraCap(face.id, { signature: `1:${capSignature(face)}`, cutPolygons: [{ polygon: { outer: [], holes: [] }, ifcType: 'IfcWall', entityId: 1, sourceColor: [1, 0, 0, 1] } as never], lines: [] });
+    }
+  };
+
+  it('uploads every face of a cutting box under its key, on the face, and keeps them', () => {
+    state().setActiveTool('section');
+    state().addSectionPlane('down');
+    state().setSectionBox(BOX);
+    const { uploads, kept, renderer } = recordingRenderer();
+    render(<Probe renderer={renderer} bounds={BOUNDS} />);
+    act(() => cutFaces());
+
+    assert.deepEqual(kept.at(-1), faceKeys);
+    const maxX = uploads.find((u) => u.planeId === sectionBoxCapKey('maxX'));
+    assert.ok(maxX, 'the +X face was uploaded');
+    assert.equal(maxX.range, undefined, 'a face is placed by its own basis, not a slider range');
+    assert.deepEqual((maxX.custom as { origin: number[] }).origin, [4, 0, 0]);
+
+    act(() => state().toggleSectionPlane());
+    assert.deepEqual(kept.at(-1), [], 'a box whose Cut is off keeps no face caps');
+  });
+
+  it('fills the faces like the plane holding the box, not like the active plane', () => {
+    state().setActiveTool('section');
+    state().addSectionPlane('down');
+    state().setSectionBox(BOX);
+    state().addSectionPlane('front'); // the new plane is active; the box is now inactive
+    assert.equal(state().sectionPlane.box, undefined);
+    // The Cap popover writes one look to every plane; planes installed from a saved set or BCF can differ.
+    useViewerStore.setState((s) => ({
+      sectionPlane: { ...s.sectionPlane, capStyle: { ...s.sectionPlane.capStyle, fillMode: 'uniform' } },
+      inactiveSectionPlanes: s.inactiveSectionPlanes.map((p) => (p.box ? { ...p, capStyle: { ...p.capStyle, fillMode: 'element' } } : p)),
+    }));
+    const { uploads, renderer } = recordingRenderer();
+    render(<Probe renderer={renderer} bounds={BOUNDS} />);
+    act(() => cutFaces());
+    assert.equal(uploads.find((u) => u.planeId === sectionBoxCapKey('minY'))?.colored, true);
   });
 });

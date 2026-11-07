@@ -402,3 +402,17 @@ fn a_hit_memoises_none_for_the_exhausted_subtrees_it_passed() {
         );
     }
 }
+
+#[test]
+fn element_colour_precedence_prefers_the_representation_style_and_reads_the_material_lazily() {
+    let (style, material) = ([1., 0., 0., 1.], [0., 1., 0., 1.]);
+    let mut looked_up = false;
+    assert_eq!(
+        element_color_precedence(Some(style), || { looked_up = true; Some(material) }),
+        Some(style),
+        "a style under the representation wins over the material fallback"
+    );
+    assert!(!looked_up, "the material chain is not consulted when a style resolved");
+    assert_eq!(element_color_precedence(None, || Some(material)), Some(material), "no style: the material fallback applies");
+    assert_eq!(element_color_precedence(None, || None), None, "neither: the caller's own default stays in force");
+}

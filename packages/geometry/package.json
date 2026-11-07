@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "description": "Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers",
   "type": "module",
   "main": "./dist/index.js",
@@ -55,12 +55,13 @@
     "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "optionalDependencies": {
-    "@tauri-apps/api": "^2.12.2"
+    "@tauri-apps/api": "^2.12.4"
   },
   "devDependencies": {
-    "@tauri-apps/api": "^2.12.2",
+    "@mergifyio/vitest": "^2026.10.11",
+    "@tauri-apps/api": "^2.12.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

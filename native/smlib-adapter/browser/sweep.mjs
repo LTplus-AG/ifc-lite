@@ -4,7 +4,8 @@ export async function uploadSweep(transport, session, recipe, { loops, segments,
   if (!(recipe instanceof Uint8Array) || !Number.isInteger(segments) || segments < 1 ||
       segments > 8192 || !Number.isInteger(loops) || loops < 1 || loops > 128 || loops > segments ||
       !((format === 1 && recipe.byteLength === 48 + 8 * loops + 104 * segments) ||
-        (format === 2 && loops === 1 && segments === 1 && recipe.byteLength >= 168)) ||
+        (format === 2 && loops === 1 && segments === 1 && recipe.byteLength >= 168) ||
+        (format === 3 && loops === 1 && recipe.byteLength >= 16)) ||
       recipe.byteLength > 1048576 || typeof session !== 'bigint' || session <= 0n || session > 0xffffffffffffffffn) throw new Error('invalid sweep declaration');
   recipe = new Uint8Array(recipe); // Own coefficients before the first await.
   const retire = () => {
@@ -34,7 +35,7 @@ export async function uploadSweep(transport, session, recipe, { loops, segments,
   }
   const capability = await call(12, new Uint8Array());
   if (capability.byteLength !== 8 || new DataView(capability).getUint32(0, true) !== 1 ||
-      !(new DataView(capability).getUint32(4, true) & (format === 2 ? 2 : 1))) malformed('staged sweep unavailable');
+      !(new DataView(capability).getUint32(4, true) & (format === 3 ? 64 : format === 2 ? 2 : 1))) malformed('staged sweep unavailable');
   const begin = body(24), beginView = new DataView(begin.buffer);
   [format, recipe.byteLength, loops, segments].forEach((value, i) => beginView.setUint32(8 + i * 4, value, true));
   const tokenBytes = await call(13, begin);

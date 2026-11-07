@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState, useEffect } from 'react';
+import { requestAdapterWithTimeout } from '@ifc-lite/renderer';
 
 /**
  * Why WebGPU is unavailable, grouped by the remedy that actually applies —
@@ -77,7 +78,7 @@ function probeWebGPU(force = false): Promise<WebGPUStatus> {
     }
 
     try {
-      const adapter = await gpu.requestAdapter();
+      const adapter = await requestAdapterWithTimeout(gpu); // #9076: a hung request reports no-gpu, Retry asks again
       return adapter
         ? { supported: true, checking: false, reason: null, category: null }
         : { supported: false, checking: false, reason: 'No compatible GPU adapter found', category: 'no-gpu' };

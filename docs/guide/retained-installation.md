@@ -1,0 +1,202 @@
+# Installing and hosting retained engines (draft)
+
+Refs #7955. For explicitly qualified builds after the human licence review.
+This document does not enable retained mode or authorize distributing an SDK.
+Exact remains the default. `npm install @ifc-lite/wasm` supplies the retained
+loader/types, **not** the separately deployed retained engine binaries.
+
+## Build and stage
+
+Use the repository-pinned Rust/wasm-pack setup and Emscripten 4.0.15 from emsdk
+`3b3963d86a5c97adaf6eaa845cdfe0b811c2f960`. Check out usd-brep at
+`c9c5979f04cea8c38213004d4f04df0dcfb40d05`; keep kernel/API and licence files clean.
+Build from clean committed source in the release qualification environment:
+
+```sh
+env BUILD_RETAINED=1 bash scripts/build-wasm.sh
+emcmake cmake -S native/smlib-adapter -B /absolute/managed/smlib-build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DSMLIB_SOURCE=/absolute/pinned-usd-brep
+cmake --build /absolute/managed/smlib-build --parallel 4
+node scripts/retained-notices.mjs --check
+node scripts/stage-cli-retained-engine.mjs \
+  --build /absolute/managed/smlib-build --sdk /absolute/pinned-usd-brep \
+  --pkg-retained /absolute/checkout/packages/wasm/pkg-retained \
+  --out /absolute/new-engine-directory
+```
+
+Activate emsdk in the build environment before `emcmake`; merely having
+`emcc` on another machine does not qualify the command. Additional platform
+runtime notices can be supplied with repeatable `--toolchain-notice NAME=ABS`.
+The stager refuses an existing destination, malformed WASM, stale configured
+modules and modified SDK sources. It never builds or executes the supplied SDK.
+Keep `engine-manifest.json` and **every** file it inventories, including notices
+and nested wasm-bindgen `snippets/`; hashes identify bytes but are not build
+attestations. Do not assemble an engine by copying just two WASM files.
+
+The staged directory is also consumed by CLI:
+
+```sh
+ifc-lite export model.ifc --format obj --kernel retained \
+  --retained-engine /absolute/new-engine-directory --out model.obj
+```
+
+The native standalone worker uses the ordinary CMake build instead of
+`emcmake`; `cmake --install` places the binary in `bin/` and notices in
+`share/licenses/ifclite-smlib/`. It is a separate executable from the CLI's
+Node/Emscripten engine. Native worker binaries are not distributed in this release; users build them
+from the pinned SDK. Before any future native binary distribution, archive both
+installation directories together and complete the platform-specific link/runtime
+review described in the licensing record.
+
+## Source availability and notices
+
+IFC-Lite covered source is available under MPL-2.0 at
+`https://github.com/LTplus-AG/ifc-lite/tree/<tag>`. Before release staging, replace
+`<tag>` in the distributed THIRD_PARTY_NOTICES header with the exact root
+`v<version>` tag for the release source commit (`release.yml` resolves that
+commit explicitly). Verify the URL and keep that covered source available;
+linking to `main` does not identify the distributed build. Fill the notice copies
+used for staging before producing the final hash manifests; the committed notice
+template and its CI drift check retain the placeholder.
+
+Serve the notices with the assets: `/smlib/LICENSE` and
+`/smlib/THIRD_PARTY_NOTICES.md` are the original SDK texts;
+`/smlib/IFC_LITE_LICENSE.txt` and `/smlib/IFC_LITE_THIRD_PARTY_NOTICES.txt` carry
+IFC-Lite's MPL and combined notice. The retained Rust package build copies
+`IFC_LITE_LICENSE.txt` and `THIRD_PARTY_NOTICES.txt` alongside its JS/WASM;
+the complete staged engine also has `LICENSES/ifc-lite/LICENSE` and
+`THIRD_PARTY_NOTICES.txt` at its root. Deploy these inventoried files together,
+including the filled source URL. Staging manifests still say
+`buildAttestation: false`: source-to-binary attestation is recommended evidence,
+not a licence obligation. See the [licensing review record](../architecture/retained-licensing.md#review-record).
+
+## URL layout and headers
+
+Serve over HTTPS (localhost is suitable for development), preferably same-origin.
+Map `/smlib/` to `<engine>/smlib/` and `/retained-engine/` to `<engine>/`. Thus the
+retained Rust module URL is `/retained-engine/pkg-retained/ifc-lite.js`; its WASM
+and snippet imports remain relative to that URL. `/smlib/worker.mjs` is the
+SMLib module Worker, and loads sibling `ifclite_smlib_browser.mjs` and `.wasm`.
+These paths are part of the current driver contract. Deploy all files atomically;
+never mix the two WASM builds or their JS glue across release revisions.
+
+Send these headers on the document, assets and module Worker responses,
+including errors and redirects, matching the existing viewer serving contract:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: credentialless
+X-Content-Type-Options: nosniff
+```
+
+Use `text/javascript` for `.js`/`.mjs`, `application/wasm` for `.wasm`, and
+`application/json` for manifests. Do not let a SPA fallback return HTML for a
+missing Worker or WASM URL. Preserve cross-origin isolation for all embedded
+resources; an alternative `require-corp` setup needs appropriate CORS/CORP
+headers for every cross-origin dependency. The current SMLib build is single
+threaded, but the viewer's isolation policy still applies to module Workers.
+
+For local viewer development, point `IFCLITE_RETAINED_ENGINE` at the staged
+directory and set `VITE_RETAINED_GEOMETRY=on` for the existing root `pnpm dev`
+workflow. Its middleware validates the manifest and serves both URL prefixes
+with the above headers. `VITE_RETAINED_GEOMETRY=lazy` builds the production
+opt-in instead: the eager graph holds only the kernel choice, and the retained
+module, its strings and the Settings control are lazy chunks, fetched when the
+choice (Settings → Performance → Geometry kernel, saved per browser, or
+`?kernel=retained` for one tab) asks for retained. The Vite plugin **does not
+copy** engines into build output. It rejects Vercel builds with `on`, and a
+`lazy` build refuses to start without a valid `IFCLITE_RETAINED_ENGINE`. Serving an
+engine in production is a separate install step after a verified download, never
+this plugin. A custom host must implement the URL mappings explicitly after release approval. The retained-only
+preview host is assembled and smoked by the scripts in
+[Hosted retained preview](retained-release.md#hosted-retained-preview).
+
+## Verify the installed copy
+
+Check with HEAD and GET (a host may configure them differently):
+
+```sh
+curl -I https://your-host.example/smlib/worker.mjs
+curl -I https://your-host.example/smlib/ifclite_smlib_browser.wasm
+curl -I https://your-host.example/retained-engine/pkg-retained/ifc-lite.js
+curl -I https://your-host.example/retained-engine/THIRD_PARTY_NOTICES.txt
+```
+
+Then use a fresh browser tab: verify `crossOriginIsolated`, successful module
+Worker startup, correct MIME types and no missing snippet requests. Explicitly
+select retained, load a real IFC fixture, confirm reported refusals, and exercise
+cancel. Missing/broken retained assets must fail explicitly; they must never
+silently execute exact. Repeat after downloading/installing the actual release
+artifact rather than serving a developer checkout. Use the existing
+`geometry-platform.yml` real Worker and `viewer-retained` tests as the executable
+smoke recipe; this document is a draft, not a claim that a release was hosted.
+
+## Production on ifclite.com (opt-in setting)
+
+The viewer on ifclite.com serves a retained engine only when
+`apps/viewer/retained-engine.lock.json` is committed. Without the lock, the
+production build is the exact-only viewer it was.
+Vercel cannot build SMLib (it needs the pinned usd-brep SDK and emsdk), so:
+
+1. **Build and publish.** A maintainer runs the **Retained engine** workflow
+   (`.github/workflows/retained-engine.yml`) for a root release tag. It checks
+   out the tag, reads the SDK, emsdk and Emscripten pins from the tag's
+   `licenses/retained/manifest.json`, fills the covered-source URL with the tag,
+   builds `pkg-retained` and the SMLib browser module, stages the engine, packs
+   `ifc-lite-retained-engine-<tag>.tar.gz` deterministically
+   (`scripts/pack-retained-engine.mjs`) and verifies the archive exactly as the
+   Vercel build will. The archive and its lock are a run artifact; with
+   `publish` the archive is also attached to the tag's GitHub Release. An
+   existing asset is never replaced.
+2. **Pin.** Commit the lock the run prints as
+   `apps/viewer/retained-engine.lock.json`. It names the release asset URL, the
+   archive's byte count and SHA-256, the engine manifest's SHA-256, the SDK
+   revision and the source commit.
+3. **Deploy.** On the production branch, `scripts/vercel-build.sh` finds the
+   lock and runs `scripts/fetch-retained-engine.mjs`: download, byte count and
+   SHA-256, regular files only, full engine inventory, manifest hash and SDK
+   revision, every notice, and the exact tag in each IFC-Lite notice. It then
+   builds the viewer with `VITE_RETAINED_GEOMETRY=lazy`, and
+   `scripts/install-retained-engine.mjs` copies the engine to `/smlib/` and
+   `/retained-engine/`, with `/retained-engine/deployment.json` naming the tag
+   and hashes. It does that only after `check-viewer-retained-free.mjs --lazy`
+   shows the startup graph carries no retained code. A failed verification
+   fails the deploy, so the previous production deployment stays live.
+4. **API drift.** The viewer is built from the deploying commit and the engine
+   from the tag, so the engine's `pkg-retained/ifc-lite.d.ts` must equal the
+   commit's committed declarations. If they differ, the build log says so and
+   the deploy is exact-only (no kernel setting) until the lock is re-pinned to a
+   release built from compatible source.
+5. **Smoke.** `node scripts/smoke-retained-preview.mjs --production --url
+   https://www.ifclite.com --lock apps/viewer/retained-engine.lock.json` checks
+   the identity against the lock, every engine file's hash, headers and type,
+   the notices, the startup graph as served, a retained load chosen through the
+   saved Settings choice, and an exact load that downloads no retained code.
+   To rehearse locally, build and install the same way, serve the checkout
+   with `node scripts/serve-retained-preview.mjs --production --dir "$PWD"`,
+   and point the smoke at it.
+
+Headers: `vercel.json` has sent `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: credentialless` on every response since the
+parallel geometry work (#439), so production is already cross-origin isolated
+in browsers that implement `credentialless`. The engine paths only add
+`nosniff`, `no-cache`, explicit types, and an SPA fallback that excludes them.
+In a browser without `credentialless`, the page is not isolated
+(`crossOriginIsolated` is false) and the setting offers only Exact.
+
+## Exports from the retained viewer
+
+A model the viewer holds from the retained kernel (`?kernel=retained`) exports the geometry on screen or refuses.
+
+- **GLB** takes the meshes the viewer holds, GPU-instanced occurrences included; it never re-meshes the file with the
+  exact engine, so products the retained kernel refused are absent from the GLB exactly as they are absent from the
+  viewport. (The GLB writer gives every material the same default metallic/roughness, on both kernels.)
+- **USD, Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with the exact
+  engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained their commands
+  are disabled with a reason; reload the model with the exact kernel to use them.
+- **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
+  or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
+- **Unsectioned IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged. Sectioned STEP export
+  rebuilds exact tessellation, including its outside test, and is refused when an exported model is retained.
+  The IFC ribbon still opens the dialog with section planes visible: keep **Export Visible Only** off for
+  unsectioned STEP, or choose geometry-disabled IFC5. Reload with the exact kernel to export a section.

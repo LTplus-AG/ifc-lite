@@ -9,6 +9,8 @@ import { validateEngine } from '../../../packages/cli/src/retained/engine';
 
 export interface RetainedEngineOptions {
   enabled: boolean;
+  /** `on` (retained preview, default when enabled) or `lazy` (production opt-in, #7955). */
+  mode?: 'on' | 'lazy';
   directory?: string;
   vercel?: string;
 }
@@ -41,7 +43,7 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
       }
       const path = decoded.startsWith('/smlib/') ? decoded.slice(1) : decoded.slice('/retained-engine/'.length);
       if (!allowed.has(path) || (!decoded.startsWith('/smlib/') &&
-          !/^(pkg-retained\/|LICENSES\/|engine-manifest\.json$)/.test(path))) {
+          !/^(pkg-retained\/|LICENSES\/|engine-manifest\.json$|THIRD_PARTY_NOTICES\.txt$)/.test(path))) {
         res.statusCode = 404; res.end(); return;
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -68,10 +70,18 @@ async function middleware(directory?: string): Promise<Connect.NextHandleFunctio
   };
 }
 
-/** Local serving only: no copy plugin, emitted assets, service worker or cache. */
+/**
+ * Local serving only: no copy plugin, emitted assets, service worker or cache.
+ * A production (`lazy`) build gets its engine files from
+ * scripts/install-retained-engine.mjs after the build, never from here; this
+ * plugin only refuses a `lazy` build whose engine does not verify.
+ */
 export function retainedEngine(options: RetainedEngineOptions): Plugin | false {
   if (!options.enabled) return false;
-  if (options.vercel !== undefined) throw new Error('Retained geometry is forbidden in Vercel builds');
+  const mode = options.mode ?? 'on';
+  if (options.vercel !== undefined && mode !== 'lazy') {
+    throw new Error('Retained geometry is forbidden in Vercel builds except VITE_RETAINED_GEOMETRY=lazy with a verified engine (scripts/vercel-build.sh)');
+  }
   // Validate in configResolved, which Vite awaits BEFORE it creates the
   // watcher, HTTP and WebSocket servers. Throwing from configureServer left
   // those running: a refused `vite dev` printed the error and never exited.
@@ -85,6 +95,8 @@ export function retainedEngine(options: RetainedEngineOptions): Plugin | false {
     enforce: 'pre',
     async configResolved(config) {
       if (config.command === 'serve') serve = await middleware(options.directory);
+      // A lazy build ships beside an installed engine: refuse to build without a verified one.
+      else if (mode === 'lazy') await validateEngine(options.directory);
     },
     configureServer: use,
     configurePreviewServer: use,

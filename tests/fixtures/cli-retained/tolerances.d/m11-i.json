@@ -1,0 +1,9 @@
+{
+  "instanceGroupEquality": "byte exact; no tolerance matching",
+  "instanceReconstruction": "existing #3666 verify_pairing, unchanged",
+  "instanceTriangleCountDelta": 0,
+  "instanceCoverageDelta": 0,
+  "instanceExactComparison": "report only",
+  "instanceMinimumOccurrences": 8,
+  "instanceFlushProducts": 256
+}

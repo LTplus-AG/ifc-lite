@@ -92,8 +92,11 @@ export class OpeningRelationshipBuilder {
         };
 
         // Add door operation type if available
-        if (type === 'door' && fillingMeta?.properties) {
-          info.doorOperation = this.extractDoorOperation(fillingMeta.properties);
+        if (type === 'door' && fillingMeta) {
+          info.doorOperation = this.extractDoorOperation(
+            fillingMeta.properties ?? {},
+            fillingMeta.typeOperationType
+          );
         }
 
         // Add window partitioning type if available
@@ -125,20 +128,27 @@ export class OpeningRelationshipBuilder {
     return 'opening';
   }
 
-  private extractDoorOperation(properties: Record<string, unknown>): DoorOperationType {
-    // Look for OperationType in properties
-    const operationType = properties['OperationType'] as string | undefined;
-    if (operationType) {
-      return operationType as DoorOperationType;
-    }
-
-    // Look in nested property sets
+  /**
+   * The occurrence's OperationType unless it is NOTDEFINED or absent, else the type's
+   * (`typeOperationType`), else the default. NOTDEFINED states no handedness, so it must not
+   * shadow the type's value (#8232).
+   */
+  private extractDoorOperation(
+    properties: Record<string, unknown>,
+    typeOperationType?: string
+  ): DoorOperationType {
     const psets = properties['Pset_DoorCommon'] as Record<string, unknown> | undefined;
-    if (psets?.['OperationType']) {
-      return psets['OperationType'] as DoorOperationType;
-    }
-
-    return 'SINGLE_SWING_LEFT'; // Default
+    const stated = (v: unknown): DoorOperationType | null => {
+      if (typeof v !== 'string') return null;
+      const t = v.replace(/\./g, '').trim().toUpperCase();
+      return t === '' || t === 'NOTDEFINED' ? null : (t as DoorOperationType);
+    };
+    return (
+      stated(properties['OperationType']) ??
+      stated(psets?.['OperationType']) ??
+      stated(typeOperationType) ??
+      'SINGLE_SWING_LEFT' // Default
+    );
   }
 
   private extractWindowPartitioning(properties: Record<string, unknown>): WindowPartitioningType {

@@ -104,13 +104,14 @@ const PRESET_KERNELS: Readonly<Record<AoQuality, Float32Array>> = {
 export const AO_UNIFORM_LAYOUT = {
   depthParams: 0,
   xyParams: 4,
-  viewport: 8,
-  ao: 12,
-  misc: 16,
-  kernel: 20,
+  shearParams: 8,
+  viewport: 12,
+  ao: 16,
+  misc: 20,
+  kernel: 24,
 } as const;
 
-/** Byte size of `AoParams` (13 vec4s: five of parameters, eight of kernel). */
+/** Byte size of `AoParams` (14 vec4s: six of parameters, eight of kernel). */
 export const AO_UNIFORM_BYTES = (AO_UNIFORM_LAYOUT.kernel + AO_MAX_SAMPLES * 2) * 4;
 
 export interface AoFrameParams {
@@ -133,6 +134,7 @@ export function packAoUniforms(out: Float32Array, frame: AoFrameParams): void {
   const L = AO_UNIFORM_LAYOUT;
   out.set(recon.depth, L.depthParams);
   out.set(recon.xy, L.xyParams);
+  out.set(recon.shear, L.shearParams);
   out[L.viewport] = frame.width;
   out[L.viewport + 1] = frame.height;
   out[L.viewport + 2] = 1 / frame.width;

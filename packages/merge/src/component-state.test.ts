@@ -15,7 +15,8 @@
  * pins that this package actually holds up its end.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import {
   applyNode,
@@ -26,6 +27,9 @@ import {
 } from './component-state.js';
 import type { EntityState } from './component-state.js';
 import { planThreeWayMerge } from './three-way.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 describe('componentKeyForAttribute', () => {
   it('buckets a custom (non-Pset_) set name as pset:<name> when the value is a typed property record', () => {

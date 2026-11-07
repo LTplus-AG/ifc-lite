@@ -161,3 +161,58 @@ test('regeneration retains a source-hosted IFC only for the same extracted bytes
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const extension of ['ply', 'splat']) test(`Gaussian ${extension} regeneration preserves reviewed metadata, excludes private files, refuses unreviewed bytes (#8567)`, () => {
+  const { root } = makeRoot(Buffer.from('<LandXML version="1.2"/>\n'), 1);
+  const path = `gaussian/control.${extension}`;
+  const bytes = Buffer.alloc(32);
+  const entry = { ...reviewedEntry(path, bytes), gaussian: {
+    count: 1, sh_degree: 0, units: 'synthetic', up_axis: 'y', source_method: 'analytic',
+    metadata_url: 'https://example.invalid/control',
+  } };
+  delete entry.landxml; delete entry.producer; delete entry.feature_inventory;
+  try {
+    const dir = join(root, 'tests', 'models');
+    mkdirSync(join(dir, 'gaussian'));
+    mkdirSync(join(dir, 'local'));
+    writeFileSync(join(dir, path), bytes);
+    writeFileSync(join(dir, 'local/private.splat'), bytes);
+    writeFileSync(join(dir, 'gaussian/private.ply'), bytes);
+    writeFileSync(join(dir, '.manifest-ignore'), 'gaussian/private.ply\n');
+    const manifestPath = join(dir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.files.push(entry);
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.equal(build(root).status, 0);
+    const actual = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.deepEqual(actual.files.find(file => file.path === path), entry);
+    assert.equal(actual.files.length, 2);
+    writeFileSync(join(dir, path), Buffer.alloc(32, 1));
+    assert.match(build(root).stderr, /without reviewed Gaussian provenance/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('regeneration ignores ordinary pointcloud PLY without altering its bytes (#8580)', () => {
+  const { root, entry } = makeRoot(Buffer.from('<LandXML version="1.2"/>\n'), 1);
+  const bytes = Buffer.from('ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n1 2 3\n');
+  try {
+    const dir = join(root, 'tests/models/pointcloud');
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'ordinary.ply'), bytes);
+    const result = build(root);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, 'tests/models/manifest.json'), 'utf8')).files, [entry]);
+    assert.deepEqual(readFileSync(join(dir, 'ordinary.ply')), bytes);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('unregistered Gaussian PLY in reserved directory cannot disappear from regeneration (#8580)', () => {
+  const { root } = makeRoot(Buffer.from('<LandXML version="1.2"/>\n'), 1);
+  try {
+    mkdirSync(join(root, 'tests/models/gaussian'));
+    writeFileSync(join(root, 'tests/models/gaussian/unreviewed.ply'), Buffer.from('ply\n'));
+    const result = build(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /without reviewed Gaussian provenance/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

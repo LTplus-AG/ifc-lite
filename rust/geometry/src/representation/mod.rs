@@ -15,6 +15,7 @@ pub(crate) mod product_budget;
 mod refusal;
 mod select;
 pub(crate) mod structural;
+pub use structural::{mapped_item_representation_id, pds_representation_ids, product_shape_id, rep_item_ids};
 pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};
@@ -22,6 +23,7 @@ pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkR
 
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
+    is_drawing_camera_annotation,
 };
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

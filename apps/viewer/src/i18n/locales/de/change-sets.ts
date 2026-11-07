@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const changeSetsDe = {
+  "changeSets.panel.title": "Änderungssätze",
+  "changeSets.panel.close": "Änderungssätze schließen",
+  "changeSets.panel.count": {"one": "{count} Satz", "other": "{count} Sätze"},
+  "changeSets.panel.intro": "Neue Bearbeitungen werden im aktiven Änderungssatz gesammelt. Exportieren Sie einen Satz, um ihn als Datei zu teilen.",
+  "changeSets.empty": "Noch keine Änderungssätze. Ihre erste Bearbeitung startet einen Satz namens „Nicht gespeicherte Änderungen“. Sie können auch jetzt einen erstellen.",
+  "changeSets.noActive": "Kein aktiver Änderungssatz. Ihre nächste Bearbeitung beginnt mit „Nicht gespeicherte Änderungen“.",
+  "changeSets.defaultName": "Änderungssatz {number}",
+  "changeSets.new": "Neu",
+  "changeSets.newTitle": "Neuer Änderungssatz",
+  "changeSets.newDescription": "Benennen Sie den Änderungssatz. Neue Bearbeitungen werden darin gesammelt.",
+  "changeSets.import": "Importieren",
+  "changeSets.importFailed": "{file} ist keine Änderungssatzdatei.",
+  "changeSets.importDone": "Importiert {name}.",
+  "changeSets.row.edits": {"one": "{count} Änderung", "other": "{count} Änderungen"},
+  "changeSets.row.created": "Erstellt {time}",
+  "changeSets.row.active": "Aktiv",
+  "changeSets.row.setActive": "Aktiv setzen",
+  "changeSets.row.activate": "Aktiv setzen: {name}",
+  "changeSets.row.deactivate": "Aktiv: {name}. Drücken, um keine weiteren Bearbeitungen darin zu sammeln",
+  "changeSets.row.show": "Zeigen Sie die Änderungen in {name} an",
+  "changeSets.row.hide": "Blenden Sie die Änderungen in {name} aus",
+  "changeSets.row.rename": "Benennen Sie {name} um",
+  "changeSets.row.export": "Exportieren Sie {name}",
+  "changeSets.row.discard": "{name} verwerfen",
+  "changeSets.renameTitle": "Änderungssatz umbenennen",
+  "changeSets.renameDescription": "Neuer Name für {name}.",
+  "changeSets.discardTitle": "Änderungssatz verwerfen",
+  "changeSets.discardDescription": "{name} und seine Aufzeichnung der {count} Änderungen verwerfen? Die Änderungen bleiben im Modell; nur diese Liste wird entfernt.",
+  "changeSets.discardConfirm": "Verwerfen",
+  "changeSets.contents.empty": "In diesem Änderungssatz liegen noch keine Änderungen vor.",
+  "changeSets.contents.entity": "{type} #{id}",
+  "changeSets.contents.modelLevel": "Modellweite Änderungen",
+  "changeSets.contents.select": "Wählen Sie {entity} in {model} aus",
+  "changeSets.contents.edits": {"one": "{count} Änderung", "other": "{count} Änderungen"},
+  "changeSets.contents.created": "Erstellt",
+  "changeSets.contents.deleted": "Gelöscht",
+  "changeSets.contents.retyped": "Klasse geändert",
+  "changeSets.rail.label": "Änderungssätze",
+  "changeSets.rail.active": "Aktiv: {name}",
+  "changeSets.rail.none": "Kein aktiver Änderungssatz",
+} satisfies Catalogue;

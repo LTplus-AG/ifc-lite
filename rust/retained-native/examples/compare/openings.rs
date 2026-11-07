@@ -6,14 +6,23 @@ use ifc_lite_processing::{
     prepass::{resolve_prepass, PrepassSpans, ResolveOptions},
     AnalyticQuantitySources,
 };
-use ifc_lite_retained_native::oracle::openings::{self, OpeningExpectation};
+use ifc_lite_retained_native::oracle::{face_set_host, openings::{self, OpeningExpectation}};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+#[allow(dead_code)] // The opening witnesses read the expectations alone.
 pub fn expectations(
     bytes: &[u8],
     sources: &AnalyticQuantitySources,
 ) -> Result<BTreeMap<u32, Option<OpeningExpectation>>, String> {
+    expectations_and_gaps(bytes, sources).map(|(expected, _)| expected)
+}
+/// [`expectations`], plus why each host without a complete one lacks it.
+#[allow(clippy::type_complexity)]
+pub fn expectations_and_gaps(
+    bytes: &[u8],
+    sources: &AnalyticQuantitySources,
+) -> Result<(BTreeMap<u32, Option<OpeningExpectation>>, BTreeMap<u32, String>), String> {
     let source = SourceBundle::new(bytes.to_vec());
     let mut decoder = source.decoder();
     let mut scanner = EntityScanner::new(bytes);
@@ -24,6 +33,7 @@ pub fn expectations(
     let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
     let router = GeometryRouter::with_scale(decoder.length_unit_scale());
     let mut result = BTreeMap::new();
+    let mut gaps = BTreeMap::new();
     for (host, ids) in prepass.void_index {
         let mut cuts = Vec::new();
         for id in ids {
@@ -35,10 +45,35 @@ pub fn expectations(
             }
         }
         if !cuts.is_empty() {
-            result.insert(host, openings::expected(sources, host, &cuts));
+            // A face set in the host or a cutter: nominal extrusion quantities miss it.
+            let any_face_set = std::iter::once(&host).chain(&cuts).any(|id| face_set_host::authors_face_set(&source, *id));
+            let mut gap = None;
+            let expected = if any_face_set {
+                face_set_host::expected(&source, sources, host, &cuts).map_err(|reason| gap = Some(reason)).ok()
+            } else {
+                openings::expected(sources, host, &cuts).or_else(|| ifc_lite_retained_native::oracle::mapped::opened_in(&source, host, &cuts))
+            };
+            if expected.as_ref().is_none_or(|e| e.result_volume.is_none()) { gaps.insert(host, gap.map_or_else(|| gap_reason(sources, host, &cuts), str::to_owned)); }
+            result.insert(host, expected);
         }
     }
-    Ok(result)
+    Ok((result, gaps))
+}
+/// The first source of a voided host or cutter that no opening oracle models (#7955).
+fn gap_reason(sources: &AnalyticQuantitySources, host: u32, cuts: &[u32]) -> String {
+    let describe = |role: &str, id: u32| {
+        let instances = sources.extrusion_definitions.instances.get(&id);
+        let reason = match instances {
+            None => "not_an_extrusion",
+            Some(v) if v.is_empty() => "not_an_extrusion",
+            Some(v) if v.iter().any(|i| i.source_modified) => "boolean_body",
+            Some(v) if v.iter().any(|i| i.status != ifc_lite_geometry::analytic::AnalyticStatus::Complete) => "incomplete_source",
+            Some(_) => return None,
+        };
+        Some(format!("{role}_{reason}"))
+    };
+    describe("host", host).or_else(|| cuts.iter().find_map(|c| describe("cutter", *c)))
+        .unwrap_or_else(|| "prism_cut_family".into())
 }
 /// A published voided host is checked against its source cut expectation.
 /// The pre-cut host volume no longer applies to it, so a host the source
@@ -105,6 +140,26 @@ pub fn check(
 mod tests {
     use super::*;
     #[test]
+    fn m7_mapped_boolean_opening_has_a_gated_source_expectation() {
+        // #7955: M3-A publishes the mapped Boolean host; the corpus gate must
+        // check its post-cut volume and reject a runtime that omits the cut.
+        let bytes = include_bytes!("../../../../tests/fixtures/synthetic-retained/f-e-mapped-booleans.ifc");
+        let sources = ifc_lite_processing::extract_analytic_quantity_sources(bytes, None);
+        let expectations = expectations(bytes, &sources).unwrap();
+        let expected = expectations.get(&181).unwrap().as_ref().unwrap();
+        assert!((expected.result_volume.unwrap() - 5.186).abs() < 1e-12);
+        let actual = super::super::metrics::Metrics {
+            volume: 5.25,
+            area: 0.,
+            bbox: [0., 0., 0., 2., 1., 3.],
+            defects: 0,
+            ..Default::default()
+        };
+        let mut violations = Vec::new();
+        check_opened("e13", &actual, Some(expected), &crate::tolerances::registered().unwrap(), &mut violations);
+        assert!(!violations.is_empty());
+    }
+    #[test]
     fn m3_source_gates_detect_cut_errors_and_allow_shrunken_bbox() {
         let t = crate::tolerances::registered().unwrap();
         // Hand box: host 4*2*3=24, cutter 1*2*1=2, remaining 22.
@@ -120,6 +175,7 @@ mod tests {
             area: 0.,
             bbox: [0.1, 0., 0., 3.9, 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check("box", &m, &e, &t, &mut violations), Some(0.));
@@ -137,6 +193,7 @@ mod tests {
             area: 0.,
             bbox: [0., 0., 0., 4., 2., 3.],
             defects: 0,
+            ..Default::default()
         };
         let mut violations = Vec::new();
         assert_eq!(check_opened("brep", &m, None, &t, &mut violations), None);

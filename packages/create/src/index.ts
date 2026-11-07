@@ -208,3 +208,15 @@ export { alignmentStoreyInStore, alignElementsInStore, type ElementAlignParams }
 
 export { planStoreyReassignment, planStoreyReassignmentCandidates, type StoreyReassignmentPlan } from './in-store/storey-reassignment-plan.js';
 export { reassignElementsToStoreyInStore } from './in-store/storey-reassignment.js';
+export {
+  readStoreyInventory, summarizeStoreys, storeyContents, storeySpacingAbove,
+  addStoreyInStore, addStoreyRefusal, renameStoreyInStore,
+  planStoreyLevelEdit, applyStoreyLevelEdit, storeyLevelPlanSignature,
+  planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, suggestStorey, DEFAULT_STOREY_HEIGHT,
+  type StoreyLevelResult,
+  MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,
+  type StoreyInventory, type StoreyRecord, type StoreySummary, type AddStoreyParams, type AddStoreyResult,
+  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,
+  type StoreyDeleteMode, type StoreyDeletePlan, type StoreySuggestion,
+  type StoreyRefusal, type StoreyRefusalCode, type StoreyNotice,
+} from './in-store/storey/index.js';

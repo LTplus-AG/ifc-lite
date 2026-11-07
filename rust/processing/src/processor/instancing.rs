@@ -6,6 +6,17 @@
 //! [`RawInstanceOccurrence`]s into [`InstanceRecord`]s against the retained template
 //! meshes, recovering any (effectively unreachable) orphan from the shared source
 //! registry so geometry is never silently lost.
+//!
+//! Also the home of what this finalize shares with the browser batch's
+//! `resolve_batch_occurrences` (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`):
+//! occurrence grouping ([`group_occurrences_by_rep`]), template selection
+//! ([`index_templates_by_rep`]) and flat recovery ([`recover_occurrences_flat`])
+//! (EDGE-WASM-18, #8341). The keep-or-recover decision is NOT shared, because
+//! the policies differ: native runs once, model-wide, and turns every group
+//! with a template into template-relative records; the browser runs per batch,
+//! over that batch's templates only, and keeps a group on the IFNS shard only
+//! when its template is shard-eligible and the group clears the instancing
+//! threshold, splitting off class-toggled occurrences.
 
 use crate::types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 use rustc_hash::FxHashMap;
@@ -23,31 +34,12 @@ pub(super) fn finalize_instances(
     if raw.is_empty() {
         return Vec::new();
     }
-    // Group occurrences by shared-template key (IfcRepresentationMap id).
-    let mut by_source: FxHashMap<u128, Vec<RawInstanceOccurrence>> = FxHashMap::default();
-    for occ in raw {
-        by_source.entry(occ.rep_identity).or_default().push(occ);
-    }
-    // rep_identity ⇒ the template mesh (a retained, non-empty occurrence carrying
-    // this rep_identity in its InstanceMeta — the min-id occurrence that materialized).
-    let mut template_by_rep: FxHashMap<u128, usize> = FxHashMap::default();
-    for (i, m) in meshes.iter().enumerate() {
-        if m.positions.is_empty() {
-            continue;
-        }
-        if let Some(im) = m.instance.as_ref() {
-            if im.instanceable {
-                template_by_rep.entry(im.rep_identity).or_insert(i);
-            }
-        }
-    }
+    // rep_identity ⇒ the template mesh's index (the min-id occurrence that materialized).
+    let template_by_rep = index_templates_by_rep(meshes.iter(), |i, _| i);
 
     let mut records: Vec<InstanceRecord> = Vec::new();
     let mut orphan_flats: Vec<MeshData> = Vec::new();
-    // Deterministic output order: sort the source groups by id.
-    let mut groups: Vec<(u128, Vec<RawInstanceOccurrence>)> = by_source.into_iter().collect();
-    groups.sort_by_key(|(rep, _)| *rep);
-    for (rep, occs) in groups {
+    for (rep, occs) in group_occurrences_by_rep(raw) {
         // Template present (the common, expected case): emit template-relative records.
         if let Some(&t_idx) = template_by_rep.get(&rep) {
             if let Some(im) = meshes[t_idx].instance.as_ref() {
@@ -104,6 +96,44 @@ pub(super) fn finalize_instances(
     orphan_flats.sort_by_key(|m| m.express_id);
     meshes.append(&mut orphan_flats);
     records
+}
+
+/// Group don't-bake occurrences by shared-template key (`rep_identity`, the
+/// `IfcRepresentationMap` id). Groups come back in ascending rep order so the
+/// output is deterministic; each group keeps its occurrences in arrival order.
+pub fn group_occurrences_by_rep(
+    raw: Vec<RawInstanceOccurrence>,
+) -> Vec<(u128, Vec<RawInstanceOccurrence>)> {
+    let mut by_rep: FxHashMap<u128, Vec<RawInstanceOccurrence>> = FxHashMap::default();
+    for occ in raw {
+        by_rep.entry(occ.rep_identity).or_default().push(occ);
+    }
+    let mut groups: Vec<(u128, Vec<RawInstanceOccurrence>)> = by_rep.into_iter().collect();
+    groups.sort_by_key(|(rep, _)| *rep);
+    groups
+}
+
+/// Index the template meshes a set of occurrences can be placed against, by
+/// `rep_identity`. A template is a non-empty mesh whose instance metadata is
+/// `instanceable`; the FIRST such mesh per rep wins. `info` maps the winner's
+/// position in `meshes` and the mesh itself to what the caller records: the
+/// native finalize keeps the index, the browser batch its shard eligibility.
+/// The caller decides the scope `meshes` covers (the whole model natively, one
+/// batch in the browser).
+pub fn index_templates_by_rep<'a, T>(
+    meshes: impl IntoIterator<Item = &'a MeshData>,
+    mut info: impl FnMut(usize, &'a MeshData) -> T,
+) -> FxHashMap<u128, T> {
+    let mut templates: FxHashMap<u128, T> = FxHashMap::default();
+    for (i, m) in meshes.into_iter().enumerate() {
+        if m.positions.is_empty() {
+            continue;
+        }
+        if let Some(im) = m.instance.as_ref().filter(|im| im.instanceable) {
+            templates.entry(im.rep_identity).or_insert_with(|| info(i, m));
+        }
+    }
+    templates
 }
 
 /// Rebuild each don't-bake occurrence of `rep` as a standalone flat [`MeshData`],
@@ -254,3 +284,7 @@ mod orphan_recovery_tests {
         assert_eq!(meshes[0].material_id, None);
     }
 }
+
+#[cfg(test)]
+#[path = "instancing_shared_tests.rs"]
+mod shared_helper_tests;

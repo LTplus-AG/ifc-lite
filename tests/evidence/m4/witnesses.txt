@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
+m4_straight_bands
+m4_curved_authored_bands
+m4_order_atomicity
+m4_unsliced_skips
+m4_synthetic
+m4_material_appearance
+m4_mapped_layer_skips_no_instances

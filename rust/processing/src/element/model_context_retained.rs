@@ -13,11 +13,21 @@ impl ProductionModel {
     pub(in crate::element) fn from_source(source: Arc<ifc_lite_core::SourceBundle>) -> Self {
         Self { source: Some(source), ..Self::new() }
     }
+
+    /// Each textured face set's `IfcTextureVertexList`, beside the texture index it came with.
+    #[cfg(feature = "retained-runtime")]
+    pub(in crate::element) fn with_texture_vertex_lists(self, lists: FxHashMap<u32, u32>) -> Self {
+        Self { texture_vertex_lists: Arc::new(lists), ..self }
+    }
 }
 
 impl OwnedMeshProductionContext {
     #[cfg(feature = "retained-runtime")]
     pub(in crate::element) fn source(&self) -> Option<&Arc<ifc_lite_core::SourceBundle>> { self.source.as_ref() }
+    #[cfg(feature = "retained-runtime")]
+    pub(in crate::element) fn texture_vertex_list(&self, face_set: u32) -> Option<u32> {
+        self.texture_vertex_lists.get(&face_set).copied()
+    }
     pub(in crate::element) fn validate_decoder(
         &self,
         decoder: &ifc_lite_core::EntityDecoder<'_>,
@@ -30,6 +40,14 @@ impl OwnedMeshProductionContext {
         Ok(())
     }
 
+    /// Retain the same immutable source and map owners for presentation after execution.
+    #[cfg(feature = "retained-runtime")]
+    pub(in crate::element) fn presentation_snapshot(&self) -> Self {
+        Self {
+            id: self.id, data: self.data.clone(), state: self.state.clone(), source: self.source.clone(),
+            texture_vertex_lists: self.texture_vertex_lists.clone(),
+        }
+    }
     pub(in crate::element) fn lifecycle(&self) -> ProductionLifecycle {
         ProductionLifecycle { id: self.id, state: self.state.clone() }
     }

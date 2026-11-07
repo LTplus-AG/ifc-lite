@@ -19,7 +19,8 @@ import '@/lib/commands/modeling/builtin';
 import { getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/runtime';
 import type { WallPlaceGesture } from '@/lib/commands/modeling/commands/wall-place-geometry';
 import type { SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
-import { routeCommandPointer } from './commandPointer.js';
+import { cancelCommandPointer, routeCommandPointer } from './commandPointer.js';
+import { hoverMeasurePointAt } from './measurePointMode.js';
 import { handleSelectionClick } from './selectionHandlers.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
@@ -43,6 +44,19 @@ function fakeCtx(): MouseHandlerContext {
     measureRaycastPendingRef: { current: false },
     measureRaycastFrameRef: { current: null },
   } as unknown as MouseHandlerContext;
+}
+
+/** What the measure reprojection pass reads, which a Point hover move runs (#9022). */
+function measurePass() {
+  const camera = {
+    projectToScreen: () => null, getPosition: () => ({ x: 0, y: 0, z: 0 }), getRotation: () => ({ azimuth: 0, elevation: 0 }),
+    getDistance: () => 1, getProjectionMode: () => 'perspective', getOrthoSize: () => 1, getFOV: () => 45, getUp: () => ({ x: 0, y: 1, z: 0 }),
+  };
+  return {
+    camera, canvas: { width: W, height: H }, lastCameraStateRef: { current: null }, updateMeasurementScreenCoords: () => {},
+    hiddenEntitiesRef: { current: new Set<number>() }, isolatedEntitiesRef: { current: null },
+    renderer: { ...fakeCtx().renderer, getPickClipRevision: () => 0, getPickGeometryRevision: () => 0 },
+  };
 }
 
 const gesture = () => getCommandRuntime().gesture as WallPlaceGesture;
@@ -135,5 +149,79 @@ describe('command pointer: clicks and modifiers for the placing commands (#6232 
     assert.equal(slabs().length, 0);
     await clickAt(13, 13, 2); // its second click: close
     assert.equal(slabs().length, 1, 'the double-click closed the slab');
+  });
+});
+
+describe('command pointer: cancelling a queued preview (#8952)', () => {
+  /** Queue one coalesced move and capture the frame bookkeeping. */
+  function withFrames(run: (frames: FrameRequestCallback[], cancelled: number[]) => void): void {
+    const raf = globalThis.requestAnimationFrame, caf = globalThis.cancelAnimationFrame;
+    const frames: FrameRequestCallback[] = [], cancelled: number[] = [];
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => frames.push(cb)) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: number) => { cancelled.push(id); }) as typeof cancelAnimationFrame;
+    try { run(frames, cancelled); } finally {
+      globalThis.requestAnimationFrame = raf;
+      globalThis.cancelAnimationFrame = caf;
+    }
+  }
+
+  it('cancels the queued frame through the shared measure raycast cancel', () => {
+    withFrames((frames, cancelled) => {
+      const ctx = fakeCtx();
+      routeCommandPointer(ctx, 'move', 100, 100);
+      assert.equal(ctx.measureRaycastFrameRef.current, 1);
+      assert.equal(ctx.measureRaycastPendingRef.current, true);
+
+      cancelCommandPointer(ctx);
+      assert.deepEqual(cancelled, [1], 'the queued preview frame was not cancelled');
+      assert.equal(ctx.measureRaycastFrameRef.current, null);
+      assert.equal(ctx.measureRaycastPendingRef.current, false);
+
+      // A frame that slipped through has nothing to resolve; the next move queues afresh.
+      const before = gesture();
+      frames[0](0);
+      assert.equal(gesture(), before, 'a cancelled preview still moved the gesture');
+      routeCommandPointer(ctx, 'move', 120, 100);
+      assert.equal(frames.length, 2, 'the next move did not queue a frame');
+    });
+  });
+
+  it("never clears Measure or Point state: Point mode's trailing hover and live point survive", (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+    const prevMode = useViewerStore.getState().measureMode;
+    useViewerStore.setState({ measureMode: 'point', measurePointLive: { x: 1, y: 2, z: 3, screenX: 4, screenY: 5 } });
+    try { withFrames(() => {
+      const ctx = fakeCtx() as MouseHandlerContext & Record<string, unknown>;
+      Object.assign(ctx, { HOVER_SNAP_THROTTLE_MS: 100, lastHoverSnapTimeRef: { current: 1000 }, mouseState: { isDragging: false } }, measurePass());
+      // Inside the throttle window: queues a trailing pick. Keep its own timer id.
+      const set = globalThis.setTimeout;
+      let trailing: unknown;
+      globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => (trailing = set(...args))) as typeof setTimeout;
+      try { hoverMeasurePointAt(ctx, 3, 4); } finally { globalThis.setTimeout = set; }
+      assert.ok(trailing !== undefined, 'no trailing hover was queued');
+
+      const measure = () => {
+        const s = useViewerStore.getState();
+        return [s.measurements, s.activeMeasurement, s.measurePointLive, s.measurePointLast, s.measureMode];
+      };
+      const before = measure();
+      const cleared: unknown[] = [];
+      const clear = globalThis.clearTimeout;
+      globalThis.clearTimeout = ((id: unknown) => { cleared.push(id); clear(id as Parameters<typeof clearTimeout>[0]); }) as typeof clearTimeout;
+      try {
+        cancelCommandPointer(ctx);
+        routeCommandPointer(ctx, 'down', 100, 100);
+      } finally {
+        globalThis.clearTimeout = clear;
+      }
+      assert.ok(!cleared.includes(trailing), "a command-tool cancel dropped Point mode's trailing hover");
+      assert.ok(useViewerStore.getState().measurePointLive !== null, "a command-tool cancel cleared Point mode's live point");
+      const after = measure();
+      assert.ok(after.every((v, i) => v === before[i]), 'a command-tool cancel changed Measure state');
+      (ctx.mouseState as { isDragging: boolean }).isDragging = true; // let the trailing pick lapse quietly
+      t.mock.timers.tick(200);
+    }); } finally {
+      useViewerStore.setState({ measureMode: prevMode, measurePointLive: null });
+    }
   });
 });

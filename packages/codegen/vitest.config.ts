@@ -6,6 +6,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],

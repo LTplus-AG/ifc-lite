@@ -5,15 +5,17 @@ These controls apply to the first-party web viewer, with one model or a federati
 | Gesture | Action |
 | --- | --- |
 | Left drag | Orbit, except when the active tool claims the drag |
-| Shift + left drag | Pan in every tool, including Measure |
+| Shift + left drag | Pan in every tool, including Measure (except to finish a pending distance) |
 | Middle drag | Pan in every tool |
 | Right drag | Fly mode: look around while the button is held; use WASD and Q/E to move, and the wheel to change fly speed |
 | Wheel without right drag | Zoom |
 
 The Select tool uses Ctrl/⌘ + left drag for rectangle selection. In the Measure
-tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
+tool, Distance takes two clicks: the first sets the start, the second finishes
+(press-drag-release also works). While a start is pending, Shift + click
+finishes on an axis and Esc cancels; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
-place points. Shift + left drag always pans, even when a measurement is active.
+place points.
 
 In the Model workspace, plain left movement and dragging update the active
 command preview without moving the camera. Placement commands commit on
@@ -27,7 +29,7 @@ While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.
 
-![Orbit pivot marker on building-architecture.ifc](../architecture/evidence/orbit-pivot-marker-5891/mid-orbit.png)
+![Orbit pivot marker on building-architecture.ifc](../assets/orbit-pivot-marker.png)
 
 An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
@@ -267,5 +269,33 @@ are assigned to several layers can appear in each; the viewer does not split
 its faces by layer or automatically apply authored layer visibility/style flags.
 Presentation layers are separate from the IFCX layer stack.
 
-Hiding a presentation layer also hides its curve-only IFC annotations. During
-isolation, symbolic annotation overlays continue to follow their global visibility setting.
+Hiding a presentation layer also hides its curve-only IFC annotations. Annotation
+overlays follow isolation and section clipping. Click an annotation curve, filled
+region or label in 3D to select its owning `IfcAnnotation`, including in large
+models. Thin curves have a four-pixel click tolerance; hidden and clipped portions
+do not select. Grid references remain a separate, unpickable overlay.
+
+### Orthophoto backgrounds
+
+Load a georeferenced IFC model and wait for all models to finish loading, then
+drop a **GeoTIFF** onto the viewer. Placement requires usable geometry bounds;
+if geometry is incomplete or unavailable, the viewer asks you to retry. A PNG
+or JPEG also works when selected together with its world file (`.pgw`, `.jgw`,
+or `.wld`) and EPSG-bearing `.prj` or `.aux.xml`. The image is placed beneath
+the model automatically using its committed `IfcMapConversion` and
+`IfcProjectedCRS`. Differing coordinate systems are reprojected per pixel;
+missing coordinate systems or unavailable exact datum transformations produce
+an error instead of a guessed placement.
+
+The **Appearance → Place as reference** workspace lists the background under
+**Registered drawings**. Use its eye, opacity and remove controls to compare
+imagery with the model; removal supports Undo. The pencil opens calibrated
+placement controls, including **Point A · Z (m)** under **Alignment** for the
+background elevation. The background is a flat display plane just below the loaded geometry, not a terrain elevation measurement or
+an IFC object. Loaded LandXML terrain retains its existing imagery-draping
+behavior instead.
+
+Backgrounds are resampled to at most 2048 pixels on the longest side. The
+existing raster reader accepts images up to 64 megapixels and 8-bit TIFF
+imagery. A change to the workspace coordinate system hides an old registration
+rather than silently moving it; load the image again after realignment.

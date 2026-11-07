@@ -9,11 +9,11 @@
  * without a request.
  */
 
+import { bimcollabSpaceOrigin } from '../shared/bimcollab-space.js';
+
 /** BIMcollab's per-space token endpoint path, from `/bcf/2.1/auth`. */
 export const BIMCOLLAB_TOKEN_PATH = '/identity/connect/token';
 
-/** One DNS label under bimcollab.com, lowercase as `URL` normalizes it. */
-const BIMCOLLAB_SPACE_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.bimcollab\.com$/;
 /** Visible ASCII, no spaces: what an IdentityServer code or refresh token is. */
 const OPAQUE_TOKEN = /^[\x21-\x7e]{1,4096}$/;
 /** RFC 7636 §4.1 code_verifier. */
@@ -33,7 +33,8 @@ export function bimcollabTokenEndpoint(raw: unknown): string | null {
   }
   if (url.protocol !== 'https:') return null;
   if (url.username !== '' || url.password !== '' || url.port !== '') return null;
-  if (!BIMCOLLAB_SPACE_HOST.test(url.hostname)) return null;
+  if (!url.hostname.endsWith('.bimcollab.com')
+    || !bimcollabSpaceOrigin(url.hostname.slice(0, -'.bimcollab.com'.length))) return null;
   if (url.pathname !== BIMCOLLAB_TOKEN_PATH || url.search !== '' || url.hash !== '') return null;
   return `https://${url.hostname}${BIMCOLLAB_TOKEN_PATH}`;
 }

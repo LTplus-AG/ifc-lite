@@ -90,9 +90,7 @@ export function RenderTable({ node, ctx }: { node: TableNode; ctx: WidgetRendere
 }
 
 export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendererContext }) {
-  // Lightweight ASCII-bar chart for v1. Avoids pulling in a chart lib.
-  // Real charting can swap this implementation later without changing
-  // the DSL.
+  // Lightweight charts using host theme tokens, without a chart library.
   const { t } = useTranslation();
   const rows = asArray(resolveBinding(node.data, ctx.state));
   const xField = node.xField ?? 'label';
@@ -105,6 +103,13 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
     }
     return m || 1;
   }, [rows, yField]);
+  const points = node.variant === 'line' ? rows.map((row, i) => {
+    const v = Number((row as Record<string, unknown>)[yField] ?? 0);
+    return {
+      x: rows.length === 1 ? 50 : 5 + (i / (rows.length - 1)) * 90,
+      y: 95 - (Math.max(0, Number.isFinite(v) ? v : 0) / max) * 90,
+    };
+  }) : [];
   return (
     <div className="rounded-md border p-3 space-y-1.5">
       <div className="text-2xs text-muted-foreground">
@@ -112,6 +117,12 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
           variant: localizedChartVariant(node.variant, t),
         })}
       </div>
+      {points.length > 0 && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-32 w-full text-primary" aria-hidden="true">
+          <polyline points={points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="1" fill="currentColor" />)}
+        </svg>
+      )}
       {rows.map((row, i) => {
         const label = String((row as Record<string, unknown>)[xField] ?? '');
         const v = Number((row as Record<string, unknown>)[yField] ?? 0);
@@ -122,9 +133,11 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
               <span className="truncate">{label}</span>
               <span className="text-muted-foreground tabular-nums">{v}</span>
             </div>
-            <div className="h-1.5 bg-muted rounded">
-              <div className="h-1.5 bg-primary rounded" style={{ width: `${pct}%` }} />
-            </div>
+            {node.variant !== 'line' && (
+              <div className="h-1.5 bg-muted rounded">
+                <div className="h-1.5 bg-primary rounded" style={{ width: `${pct}%` }} />
+              </div>
+            )}
           </div>
         );
       })}

@@ -32,8 +32,20 @@ pub struct ModelDiff<'a, R> {
 }
 pub fn diff_models<'a, R>(base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &DiffOptions) -> ModelDiff<'a, R> {
     let core = diff_by_key(base,head,&options.key);
+    finish_diff(core, options, true)
+}
+
+/// Packed transports restore their lookup Map in the destination runtime.
+/// The core's by_key index is deliberately empty; all other results are identical.
+#[doc(hidden)]
+pub fn diff_models_for_transport<'a, R>(base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &DiffOptions) -> ModelDiff<'a, R> {
+    finish_diff(crate::key_diff::diff_by_key_for_transport(base, head, &options.key), options, false)
+}
+
+fn finish_diff<'a, R>(core: KeyDiff<'a, R>, options: &DiffOptions, build_index: bool) -> ModelDiff<'a, R> {
     let (core,content_matches) = if options.match_unpaired_by_content {
-        let matched = apply_content_matching(core,options.geometry);
+        let matched = if build_index { apply_content_matching(core,options.geometry) }
+            else { crate::content_match::apply_content_matching_for_transport(core,options.geometry) };
         (matched.core,Some(matched.content_matches))
     } else { (core,None) };
     let families = options.class_families.as_deref();

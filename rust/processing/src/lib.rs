@@ -15,9 +15,12 @@ pub mod determinism;
 mod fingerprint;
 pub(crate) mod parallel_scan;
 mod shard_classes;
+#[allow(deprecated)] // Compatibility exports until C10.
 pub use parallel_scan::{
+    scan_shard_result, ShardScan, scan_shard_with_diagnostics,
     build_entity_index_parallel, scan_shard, scan_shard_with_refusals, ShardRecords, ShardRefusals,
 };
+#[allow(deprecated)] // Compatibility exports until C10.
 pub use shard_classes::{
     classify_type_name, scan_shard_classified, scan_shard_classified_with_refusals,
     PREPASS_CLASS_CODE_MASK,
@@ -39,6 +42,7 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+pub mod execution;
 pub mod retained_geometry;
 pub mod retained_requests;
 mod geometry_pool;
@@ -56,10 +60,12 @@ pub mod prepass;
 mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
+mod prepass_wire;
 mod processor;
 mod product_geometry_audit;
 pub use product_geometry_audit::ProductGeometryAudit;
 pub mod scan;
+pub mod discovery;
 pub(crate) mod point_pca;
 pub mod scan_proposals;
 pub mod scan_segmentation;
@@ -98,15 +104,18 @@ pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };
 pub use pipeline_diagnostics::{
-    PipelineDiagnostics, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+    PipelineDiagnostics, PipelineDiagnosticsReport, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
 };
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.
 pub use ifc_lite_geometry::TessellationQuality;
-/// The don't-bake occurrence → flat `MeshData` recovery, shared with the browser
-/// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
-/// has one home rather than two clones. See its doc comment.
-pub use processor::instancing::recover_occurrences_flat;
+/// The don't-bake occurrence grouping, template selection and occurrence → flat
+/// `MeshData` recovery, shared with the browser batch
+/// (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so each has one home
+/// rather than two clones. See their doc comments.
+pub use processor::instancing::{
+    group_occurrences_by_rep, index_templates_by_rep, recover_occurrences_flat,
+};
 #[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use processor::{
     convert_mesh_to_site_local, detect_schema_version, is_quick_spatial_type_ci, native_to_baked,
@@ -141,3 +150,7 @@ pub use types::response::{
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
     QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
 };
+
+#[cfg(feature = "parity-test-support")]
+#[doc(hidden)]
+pub mod parity_test_support;

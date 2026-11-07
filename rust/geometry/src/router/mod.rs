@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Geometry Router - Dynamic dispatch to geometry processors
+//! Geometry routing: [`RouterConfig`], caches and processor selection.
 //!
-//! Routes IFC representation entities to appropriate processors based on type.
+//! Walks, controllers and frames: `docs/architecture/geometry-pipeline.md`.
 
 pub(crate) mod annotation;
 mod annotation_polygon;
@@ -541,8 +541,8 @@ impl GeometryRouter {
     /// Set the tessellation quality level.
     ///
     /// A quality change invalidates `mapped_item_cache` (keyed by RepresentationMap
-    /// id, not by quality) and the record of which sources' drops are already
-    /// counted, since every source is re-walked; both are cleared here. The
+    /// id, not by quality) and the record of which sources' and openings' drops
+    /// are already counted, since every one is re-walked; all are cleared. The
     /// content-hash-keyed caches stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
         if self.config.tessellation_quality == quality {
@@ -676,8 +676,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
-        self.scale_transform(&mut transform);
+        let transform = self.element_world_placement(entity, decoder)?;
         Ok(crate::math::mat4::col_major_array(&transform))
     }
 

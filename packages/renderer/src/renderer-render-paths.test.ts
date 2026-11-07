@@ -14,7 +14,9 @@ import { mainShaderSource } from './shaders/main.wgsl.js';
 import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
-import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { MESH_UNIFORM_BYTES, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import type { MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { GaussianBackend } from './gaussian/gaussian-backend.js';
 
 async function requireColorTable() {
     const module = await import('./entity-color-table.js').catch(() => null);
@@ -77,7 +79,9 @@ interface Harness {
         /** how many times a readback buffer was actually mapped */
         mapAsync: number;
         /** every `queue.writeBuffer` payload, copied at call time */
-        writes: { buffer: unknown; floats: Float32Array }[];
+        writes: { buffer: unknown; offset: number; floats: Float32Array }[];
+        /** what each buffer holds after every write, kept when a test clears `writes` */
+        gpuBytes: Map<unknown, Uint8Array>;
         /**
          * Ordered log of `setPipeline` / `setBindGroup` / `drawIndexed` calls on
          * the render pass, so a test can assert command ORDER (e.g. that the
@@ -138,7 +142,7 @@ const TRANSPARENT_PIPELINE = { label: 'transparent' };
 const GHOST_PIPELINE = { label: 'ghost' };
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], gpuBytes: new Map(), commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', visibilityCompilation: null, encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false, pickFault: null,
@@ -237,11 +241,17 @@ function makeHarness(): Harness {
         // Copied eagerly: the renderer reuses one scratch array for every
         // per-mesh uniform, so holding the reference would read back only the
         // LAST value written in the frame.
-        writeBuffer(buffer: unknown, _offset: number, data: ArrayBufferView | ArrayBuffer) {
+        writeBuffer(buffer: unknown, offset: number, data: ArrayBufferView | ArrayBuffer) {
             const floats = ArrayBuffer.isView(data)
                 ? new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength))
                 : new Float32Array(data.slice(0));
-            stats.writes.push({ buffer, floats });
+            stats.writes.push({ buffer, offset, floats });
+            const written = new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength);
+            const previous = stats.gpuBytes.get(buffer);
+            const held = new Uint8Array(Math.max(previous?.length ?? 0, offset + written.length));
+            if (previous) held.set(previous);
+            held.set(written, offset);
+            stats.gpuBytes.set(buffer, held);
         },
         writeTexture() { /* no-op */ },
         copyExternalImageToTexture() { /* no-op */ },
@@ -252,7 +262,7 @@ function makeHarness(): Harness {
         get(_t, prop) {
             switch (prop) {
                 case 'lost': return lost;
-                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024 };
+                case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024, maxStorageBufferBindingSize: 128 * 1024 * 1024 };
                 case 'queue': return queue;
                 case 'pushErrorScope': return () => { stats.push++; };
                 case 'popErrorScope': return () => {
@@ -328,10 +338,13 @@ function makeHarness(): Harness {
                     case 'needsResize': return () => false;
                     case 'getSampleCount': return () => 1;
                     case 'getMultisampleTextureView': return () => null;
-                    case 'getUniformBufferSize': return () => 336;
+                    case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES; // the real block size: arena slots stage exactly this many bytes
                     case 'getQuantizedPipelineVariant': return () => null;
                     // Stable identities so a test can tell which pipeline drew what.
                     case 'getPipeline': return () => OPAQUE_PIPELINE;
+                    // Opaque draws resolve through opaquePipeline (its twin or the base); the
+                    // stub answers with the base, as before the twins compile.
+                    case 'opaquePipeline': return (kind: string) => kind === 'instanced' ? {} : OPAQUE_PIPELINE;
                     case 'getTransparentPipeline': return () => TRANSPARENT_PIPELINE;
                     case 'getGhostPipeline': return () => GHOST_PIPELINE;
                     case 'setEntityColorTableBuffer': return (buffer: unknown) => { stats.boundColorTables.push(buffer); };
@@ -405,6 +418,72 @@ function seedBatches(h: Harness): { grey: BatchedMesh; red: BatchedMesh } {
     return { grey, red };
 }
 
+// #8564 round 5: section resolution used to persist the visible Gaussian union
+// into fit bounds. Exercise the real render/submit path, not just layer callbacks.
+for (const action of ['hide', 'remove'] as const) {
+    for (const keepSection of [false, true]) {
+        it(`#8564 section render preserves model/annotation bounds after ${action}, section=${keepSection}`, async () => {
+            const h = makeHarness();
+            const fields = h.renderer as unknown as Record<string, unknown>;
+            fields.ready = true;
+            const layer = fields.gaussianLayer as Record<string, unknown>;
+            (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+                upstreamReverseZ: true,
+                createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+            });
+            const mesh = triangle(1, GREY);
+            mesh.positions = new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 100]);
+            assert.equal(h.renderer.loadGeometry([mesh]).ok, true);
+            // Keep the real overlay/bounds facade, stubbing only its GPU renderer.
+            (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = new Proxy({}, { get: () => () => undefined });
+            h.renderer.setLineOverlay('annotation', new Float32Array([-20, -20, -20, 120, 120, 120]));
+            const persistent = structuredClone(h.renderer.getModelBounds());
+            assert.deepEqual(persistent, { min: { x: -20, y: -20, z: -20 }, max: { x: 120, y: 120, z: 120 } });
+            const camera = h.renderer.getCamera();
+            camera.setProjectionMode('orthographic');
+            camera.setPosition(-200, 50, 50);
+            camera.setTarget(0, 50, 50);
+            const attributes = {
+                count: 1, positions: new Float32Array([500, 50, 50]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            const handle = await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+            const render = (enabled: boolean) => {
+                const before = h.stats.submissions;
+                h.render({ sectionPlane: { enabled, axis: 'side', position: 50 } });
+                assert.equal(h.stats.submissions, before + 1, 'the actual section frame submits successfully');
+            };
+            // Reverse-Z orthographic clip depth for a point 700m along +X from
+            // this eye: view z=-700, and the public projection must map to [0,1].
+            const centreClipDepth = () => {
+                const m = camera.getProjMatrix().m;
+                return -700 * m[10] + m[14];
+            };
+            try {
+                render(true);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 250, 'transient slider spans IFC 0..100 plus the visible centre at 500');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'section rendering cannot pollute fit bounds or drop annotations');
+                assert.deepEqual(camera.getSceneBounds(), persistent, 'persistent camera bounds also retain annotations');
+                assert.ok(centreClipDepth() >= 0 && centreClipDepth() <= 1, 'visible centre is inside the rendered near/far interval');
+                render(keepSection);
+                if (action === 'hide') h.renderer.gaussianSplats.setVisible(handle, false);
+                else h.renderer.gaussianSplats.remove(handle);
+                render(keepSection);
+                assert.equal(h.renderer.getSectionPlaneFrames()[0].distance, 50, 'slider returns to IFC bounds after withdrawal');
+                assert.deepEqual(h.renderer.getModelBounds(), persistent, 'fits retain only model/annotation bounds');
+                assert.deepEqual(camera.getSceneBounds(), persistent);
+                assert.ok(centreClipDepth() < 0, 'withdrawn far centre no longer inflates the rendered depth interval');
+                assert.equal(h.renderer.getDiagnostics().errors, 0);
+            } finally {
+                h.renderer.gaussianSplats.remove(handle);
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+}
+
 describe('canonical render submission result (#6709)', () => {
     it('reports a new submitted frame while preserving render() void behavior', () => {
         const h = makeHarness();
@@ -447,6 +526,60 @@ describe('canonical render submission result (#6709)', () => {
             assert.strictEqual(h.renderer.renderWithResult({ visualEnhancement: { enabled: false } }), true);
             assert.strictEqual(h.stats.submissions, 1);
         } finally { restore.mock.restore(); warn.mock.restore(); }
+    });
+});
+
+// #9002: render() is what notes the pick clip, so a cut change moves
+// getPickClipRevision() (the viewer's Measure Point Live reading, #8886). A
+// capture render's cleared or swapped clip is restored by the next frame, so it
+// must not count as a change; a real change around a capture still does.
+describe('pick clip revision wiring (#9002)', () => {
+    const cut = (distance: number): RenderOptions => ({ sectionPlane: { axis: 'side', position: 50, enabled: true, normal: [0, 1, 0], distance } });
+
+    it('a cut change bumps the revision; the same cut on the next frame does not', () => {
+        const h = makeHarness();
+        h.render();
+        const uncut = h.renderer.getPickClipRevision();
+        h.render(cut(2));
+        const cutRev = h.renderer.getPickClipRevision();
+        assert.ok(cutRev > uncut, 'adding a section kept the revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), cutRev, 'an unchanged cut bumped the revision');
+        h.render(cut(3));
+        assert.ok(h.renderer.getPickClipRevision() > cutRev, 'moving the section kept the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() > cutRev + 1, 'removing the section kept the revision');
+    });
+
+    it('a capture render with the clip cleared does not outlive its frame', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        // idsBcfViewpoints captures with the section, extra planes and clip box cleared.
+        assert.strictEqual(h.renderer.renderWithResult({ sectionPlane: undefined, restoreEvictedForCapture: true, visualEnhancement: { enabled: false } }), true);
+        const during = h.renderer.getPickClipRevision();
+        // A pick until the next frame reads through the cleared clip: it must not match the cut's revision.
+        assert.notStrictEqual(during, before, 'the capture frame\'s cleared clip shares the cut\'s revision');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before, 'restoring the cut after a capture left a new revision, ending Live');
+        h.render(cut(2));
+        assert.strictEqual(h.renderer.getPickClipRevision(), before);
+        assert.notStrictEqual(during, before, 'a reading taken during the capture would survive the restore');
+    });
+
+    it('a real cut change across a capture still bumps the revision', () => {
+        const h = makeHarness();
+        h.render(cut(2));
+        const before = h.renderer.getPickClipRevision();
+        h.renderer.renderWithResult({ restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        const during = h.renderer.getPickClipRevision();
+        h.render(cut(3));
+        const moved = h.renderer.getPickClipRevision();
+        assert.ok(moved !== before && moved !== during, 'a cut moved during the capture reused an earlier revision');
+        h.renderer.renderWithResult({ ...cut(3), restoreEvictedForCapture: true, visualEnhancement: { enabled: false } });
+        assert.strictEqual(h.renderer.getPickClipRevision(), moved, 'a capture of the same cut moved the revision');
+        h.render();
+        assert.ok(h.renderer.getPickClipRevision() !== moved, 'removing the cut after a capture kept the revision');
     });
 });
 
@@ -722,6 +855,28 @@ describe('lighting environment bind ordering', () => {
         );
         assert.ok(envBind >= 0, 'group(1) must be bound before the first geometry draw');
     });
+
+    // #9060: the main layout pads group(2). WebGPU before gpuweb#4946 rejects
+    // a draw with any layout slot unbound, empty or not, so every frame was
+    // invalid ("No bind group set at group index 2") and nothing rendered.
+    for (const skyEnabled of [false, true]) {
+        it(`binds the group(2) padding after the sky and before geometry (sky ${skyEnabled ? 'on' : 'off'})`, () => {
+            const h = makeHarness();
+            seedBatches(h);
+            h.stats.commands.length = 0;
+            h.render(skyEnabled ? { environment: { skyEnabled: true, sunDirection: [0.45, 0.83, 0.33] } } : {});
+
+            const cmds = h.stats.commands;
+            const skyDraw = cmds.findIndex((c) => c.op === 'draw');
+            const firstGeometryDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
+            assert.ok(firstGeometryDraw >= 0, 'geometry must draw');
+            assert.equal(skyDraw >= 0, skyEnabled);
+            const paddingBind = cmds.findIndex(
+                (c, i) => c.op === 'setBindGroup' && c.index === 2 && i > skyDraw && i < firstGeometryDraw,
+            );
+            assert.ok(paddingBind >= 0, 'group(2) must be bound before the first geometry draw');
+        });
+    }
 });
 
 describe('visibility epoch drives the batched draw path', () => {
@@ -813,6 +968,427 @@ describe('visibility epoch drives the batched draw path', () => {
         for (const buf of h.stats.createdBuffers) {
             assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
         }
+    });
+});
+
+describe('residency records a batch drawn only as a partial sub-batch (#9034)', () => {
+    // Any use, own buffers or pieces: a subset draw keeps the pieces warm (#9050).
+    const lastDrawn = (h: Harness, batch: BatchedMesh) => sceneOf(h)['lastDrawnFrame'].getAnyUse(batch.id);
+    const frame = (h: Harness) => sceneOf(h)['residencyFrame'];
+    const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
+
+    for (const [label, filter] of [
+        ['hide', { hiddenIds: new Set([1, 3]) }],
+        ['isolate', { isolatedIds: new Set([2]) }],
+    ] as const) {
+        it(`${label}: the partially visible batch stays fresh and warm; the undrawn batch still ages out`, () => {
+            const h = makeHarness();
+            const { grey, red } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1); // everything is over budget
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(filter);
+
+            // grey {1,2} draws only as its {2} sub-batch.
+            assert.strictEqual(scene['partialBatchCache'].size, 1, 'grey draws as a partial sub-batch');
+            assert.strictEqual(lastDrawn(h, grey), frame(h), 'partial-only batch is recorded as drawn this frame');
+            assert.ok(sceneOf(h).getMeshDataPieces(2)?.length, 'partial-only batch keeps the CPU pieces its subset draws from');
+            // red {3} is hidden / not isolated: never drawn, so it must still age out.
+            assert.strictEqual(red.gpuResident, false, 'a batch that is truly not drawn is still evicted');
+            assert.strictEqual(lastDrawn(h, red), undefined);
+        });
+    }
+
+    it('a GPU-evicted parent drawn as a partial sub-batch is not demoted cold by the host pass', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        const scene = sceneOf(h);
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return []; } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+
+        // Everything hidden: both batches age out of the GPU tier (warm: CPU kept).
+        // The host pass runs on the first post-submit hook only, before anything
+        // is GPU-evicted, so nothing goes cold yet.
+        for (let i = 0; i < 40; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        assert.strictEqual(grey.gpuResident, false);
+        assert.strictEqual(red.gpuResident, false);
+        assert.ok(scene.getMeshDataPieces(2), 'still warm before the host pass');
+
+        // Reveal id 2: grey draws its {2} sub-batch from CPU meshData while the
+        // parent stays GPU-evicted (nothing processes the restore queue here).
+        // Run past the host pass cadence (every 120 post-submit hooks).
+        for (let i = 0; i < 130; i++) h.render({ hiddenIds: new Set([1, 3]) });
+        assert.ok(scene['partialBatchCache'].size >= 1, 'grey draws as a partial sub-batch');
+        assert.strictEqual(lastDrawn(h, grey), frame(h), 'GPU-evicted parent of a drawn sub-batch is recorded');
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'on-screen geometry keeps its CPU pieces (picks, snaps)');
+        assert.ok(!scene['coldBuckets'].has(grey.colorKey), 'on-screen bucket is not demoted cold');
+        // red is never drawn: the host pass still demotes it.
+        assert.strictEqual(scene.getMeshDataPieces(3), undefined, 'undrawn bucket is still demoted cold');
+        assert.ok(scene['coldBuckets'].has(red.colorKey));
+        // The subset reads warm pieces, so nothing asks for grey's own buffers
+        // (#9050) and nothing ever needed the provider.
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+        assert.strictEqual(coldLoads, 0, 'on-screen geometry never needed a cold restore');
+    });
+});
+
+describe('a partial-only parent releases its own GPU buffers but keeps its CPU pieces (#9050)', () => {
+    const IDLE_FRAMES = 100; // well past MIN_EVICTION_AGE_FRAMES (30)
+    const device = (h: Harness) => h.renderer['device'].getDevice();
+    const pipeline = (h: Harness) => h.renderer['pipeline'] as never;
+    const greyOf = (h: Harness) => sceneOf(h).getBatchedMeshes().find((b) => b.expressIds.includes(2))!;
+    const subBatchKeys = (h: Harness) => [...sceneOf(h)['partialBatchCacheKeys'].keys()];
+
+    for (const [label, filter] of [
+        ['hide', { hiddenIds: new Set([1, 3]) }],
+        ['isolate', { isolatedIds: new Set([2]) }],
+    ] as const) {
+        it(`${label}: the parent's full buffers are evicted, the sub-batch keeps drawing, nothing asks for a GPU rebuild`, () => {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1); // everything is over budget
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(filter);
+
+            assert.strictEqual(grey.gpuResident, false, 'nothing reads the parent buffers, so the GPU tier frees them');
+            assert.ok(scene.getMeshDataPieces(2)?.length, 'the parent stays warm: the sub-batch is cut from its CPU pieces');
+            assert.strictEqual(scene['partialBatchCache'].size, 1, 'the {2} sub-batch is cached');
+            const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+            assert.notStrictEqual(sub.gpuResident, false);
+            const drawsBefore = h.stats.draws.length;
+            h.render(filter);
+            assert.ok(h.stats.draws.length > drawsBefore, 'the sub-batch is still drawn');
+            assert.strictEqual(scene.hasResidencyRestoreWork(), false, 'a warm parent drawn only as a subset is not rebuilt on the GPU');
+        });
+    }
+
+    it('the host pass still keeps a partial-only parent warm after its GPU buffers are gone', () => {
+        const h = makeHarness();
+        const { red } = seedBatches(h);
+        const scene = sceneOf(h);
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return []; } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(greyOf(h).gpuResident, false);
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'on-screen geometry keeps its CPU pieces (picks, snaps, sub-batch rebuilds)');
+        assert.ok(!scene['coldBuckets'].has(greyOf(h).colorKey));
+        assert.ok(scene['coldBuckets'].has(red.colorKey), 'the undrawn bucket is still demoted cold');
+        assert.strictEqual(coldLoads, 0);
+    });
+
+    it('isolate off and back on: the parent is rebuilt on the transition frame, the stale sub-batch slot is freed, isolate evicts it again', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const oldSlot = subBatchKeys(h)[0];
+        const oldSub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(oldSlot)!) as BatchedMesh;
+
+        // Hide only red: grey is fully visible again (filtering stays active,
+        // so the show-all drop of every partial cache does not run). Its subset
+        // was on screen last frame, so the parent is rebuilt in this very frame.
+        const drawsBefore = h.stats.draws.length;
+        h.render({ hiddenIds: new Set([3]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the elements on screen are drawn on the transition frame');
+        const rebuilt = greyOf(h);
+        assert.notStrictEqual(rebuilt, grey);
+        assert.notStrictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false, 'nothing left for the time-sliced queue');
+        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the sub-batch cut from the replaced shell is not orphaned');
+        assert.strictEqual((oldSub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+
+        // Isolate again: the rebuilt parent is partial-only and ages out again.
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+        assert.strictEqual(scene['partialBatchCache'].size, 1);
+        for (const buf of h.stats.createdBuffers) assert.ok(buf.destroyed <= 1, 'a buffer was destroyed more than once');
+    });
+
+    it('a sub-batch on screen survives its parent\'s eviction', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        let evictedAt = -1;
+        for (let i = 0; i < IDLE_FRAMES && evictedAt < 0; i++) {
+            h.render({ isolatedIds: new Set([2]) });
+            if (grey.gpuResident === false) evictedAt = i;
+        }
+        assert.ok(evictedAt >= 0, 'parent evicted');
+        assert.strictEqual(scene['partialBatchCache'].size, 1);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'not destroyed with the parent');
+        const createdBefore = h.stats.createdBuffers.length;
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the frame after eviction still draws the subset');
+        assert.strictEqual([...scene['partialBatchCache'].values()][0], sub, 'the same sub-batch, not a rebuild');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore);
+        assert.deepStrictEqual([...sub.expressIds], [2]);
+    });
+
+    it('a capture restores the parent, then live isolate frees its buffers again without leaking the capture slot', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const oldSlot = subBatchKeys(h)[0];
+        h.render({ isolatedIds: new Set([2]), restoreEvictedForCapture: true });
+        const rebuilt = greyOf(h);
+        assert.notStrictEqual(rebuilt, grey);
+        assert.notStrictEqual(rebuilt.gpuResident, false);
+        assert.ok(!subBatchKeys(h).includes(oldSlot), 'the replaced shell\'s sub-batch slot is released');
+        assert.strictEqual(scene['partialBatchCache'].size, 1, 'one live sub-batch, cut for the rebuilt parent');
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(rebuilt.gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+    });
+
+    it('a full draw and a subset draw of the same parent in one frame keep its own buffers resident, in either order', () => {
+        for (const order of ['full-first', 'subset-first'] as const) {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1);
+            for (let i = 0; i < IDLE_FRAMES; i++) {
+                scene.beginResidencyFrame();
+                if (order === 'full-first') { scene.recordBatchDrawn(grey); scene.recordBatchSubsetDrawn(grey); }
+                else { scene.recordBatchSubsetDrawn(grey); scene.recordBatchDrawn(grey); }
+                scene.enforceGpuBudget();
+            }
+            assert.notStrictEqual(grey.gpuResident, false, `${order}: the full draw reads the parent buffers`);
+        }
+    });
+
+    it('a cold partial-only parent is restored to warm only: the subset reappears without a parent GPU rebuild', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
+        let coldLoads = 0;
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => { coldLoads++; return source.map((m) => ({ ...m })); } });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        // Everything hidden: both batches go GPU-evicted, then cold.
+        for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        const grey = greyOf(h);
+        assert.ok(scene['coldBuckets'].has(grey.colorKey), 'grey went cold while hidden');
+        grey.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'the subset needs its CPU pieces back');
+        const createdBefore = h.stats.createdBuffers.length;
+        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 0, 'cold: the disk fetch starts');
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'warm again');
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0, 'the completed warm restore asks for a render');
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no parent GPU buffers were rebuilt');
+        assert.strictEqual(greyOf(h).gpuResident, false);
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the subset draws from the restored pieces');
+        assert.strictEqual(coldLoads, 1);
+        // Revealing the whole batch rebuilds it in that frame: its subset was on screen.
+        h.render({ hiddenIds: new Set([3]) });
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        assert.strictEqual(scene.hasResidencyRestoreWork(), false);
+    });
+
+    // Shared set-up: grey {1,2} cold (hidden past both passes), provider ready.
+    const coldGrey = (h: Harness) => {
+        const scene = sceneOf(h);
+        const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
+        const grey = greyOf(h);
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        grey.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+        return grey;
+    };
+
+    it('a warm-only cold restore that repartitions keeps every chunk warm-only and leaves no stale mark', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        const grey = coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene['cachedMaxBufferSize'] = 1; // every restored piece needs its own chunk
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        const chunks = scene.getBatchedMeshes().filter((b) => b.expressIds.includes(1) || b.expressIds.includes(2));
+        assert.strictEqual(chunks.length, 2, 'grey split into two chunks');
+        assert.ok(!chunks.includes(grey));
+        const createdBefore = h.stats.createdBuffers.length;
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) > 0);
+        assert.strictEqual(h.stats.createdBuffers.length, createdBefore, 'no chunk was rebuilt on the GPU');
+        assert.ok(chunks.every((b) => b.gpuResident === false));
+        assert.deepStrictEqual([...scene['subsetResidency'].warmOnly], [], 'no stale warm-only mark');
+        // The split put {2} in a chunk of its own, which isolate {2} now shows
+        // whole: that chunk's own buffers are wanted, the {1} chunk's are not.
+        for (const b of chunks) b.bounds = undefined; // the default camera must not cull the fixture
+        h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(scene.processResidencyRestores(device(h), pipeline(h), Infinity), 1);
+        const shown = scene.getBatchedMeshes().find((b) => b.expressIds.includes(2))!;
+        const hidden = scene.getBatchedMeshes().find((b) => b.expressIds.includes(1))!;
+        assert.notStrictEqual(shown.gpuResident, false);
+        assert.strictEqual(hidden.gpuResident, false);
+        shown.bounds = undefined;
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore, 'the restored chunk draws');
+    });
+
+    it('isolate cleared while a warm-only cold restore is in flight: the full draw still gets its GPU rebuild', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        coldGrey(h);
+        h.render({ isolatedIds: new Set([2]) });
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity); // disk fetch in flight
+        h.render({ hiddenIds: new Set([3]) });                            // grey fully visible now
+        await Promise.all(scene['coldRestoresInFlight'].values());
+        scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'the full draw\'s request wins over the earlier subset request');
+    });
+
+    it('a cold demotion frees the sub-batch VRAM of a parent no longer drawn at all', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+        scene.setGpuResidencyBudget(1);
+        scene.setHostResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = scene['partialBatchCache'].get(scene['partialBatchCacheKeys'].get(subBatchKeys(h)[0])!) as BatchedMesh;
+        // Grey leaves the view entirely (only red is isolated): nothing asks for
+        // its slot again, so only the cold demotion can free it.
+        for (let i = 0; i < 260; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.ok(scene['coldBuckets'].has(grey.colorKey));
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)), 'the cold parent\'s slot is released');
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+    });
+
+    it('without a host budget, the sub-batch of an evicted parent that leaves the view is freed after the eviction age', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const sub = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        for (let i = 0; i < 10; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 0, 'kept while it may come right back');
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([3]) });
+        assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'freed once idle');
+        assert.ok(!subBatchKeys(h).some((k) => k.startsWith(`${grey.colorKey}:${grey.id}`)));
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
+        // Showing it again cuts a fresh subset from the warm pieces.
+        const drawsBefore = h.stats.draws.length;
+        h.render({ isolatedIds: new Set([2]) });
+        assert.ok(h.stats.draws.length > drawsBefore);
+    });
+
+    it('show-all after isolate draws the formerly isolated elements on the transition frame', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.stats.draws.length = 0;
+        h.render({});
+        assert.notStrictEqual(greyOf(h).gpuResident, false, 'rebuilt in the transition frame');
+        assert.ok(h.stats.draws.length > 0, 'drawn in the transition frame');
+        assert.strictEqual(scene['partialBatchCache'].size, 0);
+        assert.strictEqual(scene['subsetResidency'].parents.size, 0);
+    });
+
+    it('past the per-frame cap, a subset parent shown whole falls back to the queue, which keeps frames coming', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene['subsetResidency'].rebuildBudgetMs = 0;
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt past the cap');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'queued: the app loop rebuilds it and requests a render');
+        assert.ok(scene.processResidencyRestores(device(h), pipeline(h), Infinity) >= 1); // red, undrawn under isolate, too
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+    });
+
+    it('with sun shadows on, the un-isolate frame rebuilds the parent once in the shadow pass and the colour pass draws that rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        scene.setGpuResidencyBudget(1);
+        const sun = { sunShadows: { enabled: true } } as const;
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        const residency = scene['subsetResidency'];
+        const rebuild = residency.rebuildEvicted.bind(residency);
+        let rebuilds = 0;
+        residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => { rebuilds++; return rebuild(...args); }) as typeof rebuild;
+        // draws[] and the drawIndexed commands stay index-aligned: clear both.
+        h.stats.draws.length = 0;
+        h.stats.commands.length = 0;
+        h.render({ ...sun });
+        assert.strictEqual(rebuilds, 1, 'one rebuild, shared by both passes');
+        assert.notStrictEqual(greyOf(h).gpuResident, false);
+        // Only the colour pass draws through OPAQUE_PIPELINE; the shadow pass's
+        // draws of the same buffers must not satisfy this.
+        const colourDrawsOf = (vertexBuffer: GPUBuffer): number => {
+            let pipeline: unknown = null;
+            let draw = 0;
+            let n = 0;
+            for (const c of h.stats.commands) {
+                if (c.op === 'setPipeline') pipeline = c.pipeline;
+                if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer && pipeline === OPAQUE_PIPELINE) n++;
+            }
+            return n;
+        };
+        assert.ok(colourDrawsOf(greyOf(h).vertexBuffer) > 0, 'the colour pass draws the rebuilt parent in the transition frame');
+        assert.ok(!scene['residencyRestoreQueue'].has(greyOf(h).colorKey), 'grey was not skipped into the queue');
+    });
+
+    it('a subset drawn only as a shadow caster does not qualify its parent for the un-isolate rebuild', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        scene.beginResidencyFrame();
+        scene.recordBatchSubsetDrawn(grey, false); // the shadow pass cast {2}; the view did not show it
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
+        assert.ok(scene.getMeshDataPieces(2)?.length, 'its pieces still count as used');
+    });
+
+    it('an evicted batch whose subset was NOT on screen is still restored through the time-sliced queue', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.setGpuResidencyBudget(1);
+        for (let i = 0; i < IDLE_FRAMES; i++) h.render({ hiddenIds: new Set([1, 2]) });
+        assert.strictEqual(grey.gpuResident, false);
+        h.render({});
+        assert.strictEqual(greyOf(h), grey, 'not rebuilt synchronously');
+        assert.strictEqual(scene.hasResidencyRestoreWork(), true);
     });
 });
 
@@ -1135,6 +1711,17 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     }
 
     /**
+     * The picker allocates its id/depth targets and per-mesh slot buffers on
+     * its first pick and keeps them; they are not per-pick transients. Warm it
+     * so an allocation count taken afterwards measures one pick's own buffers.
+     */
+    async function warm(h: Harness, picker: Picker): Promise<Picker> {
+        await picker.pick(0, 0, 64, 64, [], new Float32Array(16));
+        h.stats.mapAsync = 0;
+        return picker;
+    }
+
+    /**
      * Run the pick up to the point where it is parked on `mapAsync`. Boxed in
      * an object because `await` unwraps a promise-of-a-promise — returning the
      * in-flight promise directly would await the very thing we want to keep
@@ -1151,7 +1738,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const kind of ['point', 'rectangle'] as const) {
         it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => kind === 'point'
                 ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
@@ -1264,7 +1851,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     it('point-pick transient allocation stays bounded across viewport sizes (#6881)', async () => {
         for (const [width, height] of [[64, 64], [1292, 1047]]) {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             const { inflight } = await park(h, () => picker.pick(0, 0, width, height, [], new Float32Array(16)));
             const owned = h.stats.createdBuffers.slice(before);
@@ -1280,7 +1867,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'depth-encode', 'depth-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`point-pick releases every owned buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1302,7 +1889,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
     for (const fault of ['id-copy', 'finish', 'submit', 'mapped-range'] as const) {
         it(`rectangle-pick releases its staging buffer when ${fault} fails (#6881)`, async () => {
             const h = makeHarness();
-            const picker = installPicker(h);
+            const picker = await warm(h, installPicker(h));
             const before = h.stats.createdBuffers.length;
             if (fault === 'submit') h.knobs.submitThrows = true;
             else h.knobs.pickFault = fault;
@@ -1340,7 +1927,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         // device. Promise.all rejects the moment ONE map fails, so the other
         // buffer can be mapped and live at that point — both must be freed.
         const h = makeHarness();
-        installPicker(h);
+        await warm(h, installPicker(h));
         const before = h.stats.createdBuffers.length;
         const { inflight } = await park(h, () => h.renderer.pick(10, 10));
         h.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
@@ -1442,26 +2029,39 @@ function texturedTriangle(expressId: number, origin?: [number, number, number]):
     };
 }
 
-/** The model-matrix translation column of the uniform written for `tm`. */
-function translationFor(h: Harness, uniformBuffer: unknown): number[] | null {
-    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-        const w = h.stats.writes[i];
-        if (w.buffer === uniformBuffer && w.floats.length > 30) {
-            return [w.floats[28], w.floats[29], w.floats[30]];
-        }
+function isArenaSlot(target: unknown): target is MeshUniformSlot {
+    return typeof target === 'object' && target !== null && 'release' in target && 'offset' in target;
+}
+
+/**
+ * The uniform blocks `target` received, oldest first. A colour batch's arena
+ * slot reports what the frame's flush queued for it on the GPU, not its CPU
+ * mirror, so a stale flush fails here (mesh-uniform-arena.ts); a standalone
+ * uniform buffer reports each write.
+ */
+function uniformBlocks(h: Harness, target: unknown): Float32Array[] {
+    if (isArenaSlot(target)) {
+        const held = h.stats.gpuBytes.get(target.buffer);
+        if (!held || held.length < target.offset + target.size) return [];
+        return [new Float32Array(held.slice(target.offset, target.offset + target.size).buffer)];
     }
-    return null;
+    return h.stats.writes.filter((w) => w.buffer === target).map((w) => w.floats);
+}
+
+/** The last uniform block `target` received with at least `minFloats` floats. */
+function lastBlock(h: Harness, target: unknown, minFloats: number): Float32Array | null {
+    return uniformBlocks(h, target).filter((b) => b.length >= minFloats).at(-1) ?? null;
+}
+
+/** The model-matrix translation column of the uniform written for `tm`. */
+function translationFor(h: Harness, target: unknown): number[] | null {
+    const block = lastBlock(h, target, 31);
+    return block ? [block[28], block[29], block[30]] : null;
 }
 
 /** RTE drawable delta lanes appended after the legacy + quantized uniform ABI. */
-function rteDeltaFor(h: Harness, uniformBuffer: unknown): Float32Array | null {
-    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-        const w = h.stats.writes[i];
-        if (w.buffer === uniformBuffer && w.floats.length >= 84) {
-            return w.floats.slice(76, 84);
-        }
-    }
-    return null;
+function rteDeltaFor(h: Harness, target: unknown): Float32Array | null {
+    return lastBlock(h, target, 84)?.slice(76, 84) ?? null;
 }
 
 describe('textured sub-pass carries the per-element origin (#1973)', () => {
@@ -1545,16 +2145,51 @@ describe('batched RTE draw uniforms (#5049)', () => {
         h.stats.writes.length = 0;
         h.render();
 
-        const packed = rteDeltaFor(h, batch.uniformBuffer);
+        const slot = batch.uniformSlot!;
+        const packed = rteDeltaFor(h, slot);
         assert.ok(packed, 'flat batch must receive the appended RTE lanes');
         assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.015625);
-        let write: { buffer: unknown; floats: Float32Array } | undefined;
-        for (const candidate of h.stats.writes) {
-            if (candidate.buffer === batch.uniformBuffer) write = candidate;
+        const write = h.stats.writes.find((w) => w.buffer === slot.buffer
+            && w.offset <= slot.offset && slot.offset + slot.size <= w.offset + w.floats.byteLength);
+        assert.ok(write, 'the frame flush must upload the batch uniform block');
+        const block = write.floats.slice((slot.offset - write.offset) / 4, (slot.offset - write.offset + slot.size) / 4);
+        assert.equal(new Uint32Array(block.buffer)[44] & 0x10000, 0x10000);
+        assert.deepStrictEqual(Array.from(block.slice(56, 60)), [1, 2, 3, Math.fround(0.001)]);
+    });
+});
+
+describe('batch uniforms reach the GPU in one write per arena page', () => {
+    /** Queue writes aimed at the arena pages the batches share. */
+    function arenaWrites(h: Harness, batches: BatchedMesh[]): number {
+        const pages = new Set(batches.map((b) => b.uniformSlot!.buffer));
+        return h.stats.writes.filter((w) => pages.has(w.buffer as GPUBuffer)).length;
+    }
+
+    it('a moving camera rewrites every drawn batch with ONE queue write; a still one writes none', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        assert.strictEqual(grey.uniformSlot!.buffer, red.uniformSlot!.buffer, 'batches share one arena page');
+        h.render();
+        h.stats.writes.length = 0;
+        h.renderer['camera'].setPosition(3, 4, 12);
+        h.render();
+        assert.strictEqual(arenaWrites(h, [grey, red]), 1, 'two drawn batches, one queue operation');
+        assert.strictEqual(lastBlock(h, grey.uniformSlot, 36)?.[32], Math.fround(GREY[0]));
+        assert.strictEqual(lastBlock(h, red.uniformSlot, 36)?.[32], Math.fround(RED[0]));
+        h.stats.writes.length = 0;
+        h.render();
+        assert.strictEqual(arenaWrites(h, [grey, red]), 0, 'unchanged camera and state: nothing to upload');
+    });
+
+    it('binds each redundant pipeline once across consecutive batches', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.stats.commands.length = 0;
+        h.render();
+        const sets = h.stats.commands.filter((c) => c.op === 'setPipeline');
+        for (let i = 1; i < sets.length; i++) {
+            assert.notStrictEqual(sets[i]!.pipeline, sets[i - 1]!.pipeline, `setPipeline #${i} re-binds the bound pipeline`);
         }
-        assert.ok(write, 'batch draw must upload its uniform block');
-        assert.equal(new Uint32Array(write.floats.buffer)[44] & 0x10000, 0x10000);
-        assert.deepStrictEqual(Array.from(write.floats.slice(56, 60)), [1, 2, 3, Math.fround(0.001)]);
     });
 });
 
@@ -1580,15 +2215,11 @@ describe('individual mesh RTE fallback (#5049)', () => {
 
 describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
     /**
-     * The alpha (uniform float 35) of the LAST write aimed at `uniformBuffer`,
+     * The alpha (uniform float 35) of the LAST block `target` received,
      * compared against the f32 the GPU actually receives.
      */
-    function assertAlpha(h: Harness, uniformBuffer: unknown, expected: number, message?: string): void {
-        let actual: number | null = null;
-        for (let i = h.stats.writes.length - 1; i >= 0 && actual === null; i--) {
-            const w = h.stats.writes[i];
-            if (w.buffer === uniformBuffer && w.floats.length > 35) actual = w.floats[35];
-        }
+    function assertAlpha(h: Harness, target: unknown, expected: number, message?: string): void {
+        const actual = lastBlock(h, target, 36)?.[35] ?? null;
         assert.strictEqual(actual, Math.fround(expected), message ?? `expected alpha ${expected}`);
     }
 
@@ -1615,8 +2246,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         const solid = subBatchFor(h, [2]);
         assert.ok(h.stats.draws.includes(faded.vertexBuffer), 'the X-Rayed entity draws');
         assert.ok(h.stats.draws.includes(solid.vertexBuffer), 'so does the entity nobody asked to fade');
-        assertAlpha(h, faded.uniformBuffer, 0.18);
-        assertAlpha(h, solid.uniformBuffer, 1, 'batchmate keeps the batch colour alpha');
+        assertAlpha(h, faded.uniformSlot, 0.18);
+        assertAlpha(h, solid.uniformSlot, 1, 'batchmate keeps the batch colour alpha');
         assert.ok(h.stats.draws.includes(red.vertexBuffer), 'an untouched batch still draws whole');
     });
 
@@ -1628,7 +2259,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         assert.strictEqual(sceneOf(h)['partialBatchCache'].size, 0, 'no sub-batch worth building');
         assert.ok(h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, grey.uniformBuffer, 0.18);
+        assertAlpha(h, grey.uniformSlot, 0.18);
     });
 
     it('keeps a ghost-excepted entity solid without co-selecting it', () => {
@@ -1638,8 +2269,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({ ghostExceptIds: new Set([2]) });
 
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
     });
 
     it('draws context ghosts with the ghost pipeline, and an X-Ray override with the transparent one', () => {
@@ -1684,8 +2315,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         // Move the X-Ray to the other entity: both slots re-key by content.
         h.stats.draws.length = 0;
         h.render({ transparencyOverrides: new Map([[2, 0.18]]) });
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 1);
         assert.strictEqual(firstVb.destroyed, 1, 'the superseded clone is freed exactly once');
 
         // X-Ray off: the batch draws whole again and the clones are released.
@@ -1693,7 +2324,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({});
         assert.strictEqual(scene['partialBatchCache'].size, 0, 'X-Ray clones leaked past the last X-Ray frame');
         assert.ok(h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, grey.uniformBuffer, 1);
+        assertAlpha(h, grey.uniformSlot, 1);
         for (const buf of h.stats.createdBuffers) {
             assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
         }
@@ -1709,8 +2340,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         h.render({ hiddenIds: new Set([3]), transparencyOverrides: new Map([[1, 0.18]]) });
 
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
         assert.strictEqual(scene['partialBatchCache'].size, 2, 'the hidden id must not reach either sub-batch');
     });
 
@@ -1759,8 +2390,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         h.render({ ghostExceptIds: new Set([1]) });
         assert.notStrictEqual(h.renderer['_xrayAlpha'], first, 'a changed X-Ray kept the old resolution');
         assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [1]).uniformSlot, 1);
     });
 
     it('holds the X-Ray it resolved when the caller later mutates a set it has replaced', () => {
@@ -1785,8 +2416,8 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
         h.render({ ghostExceptIds: new Set([2]), selectedIds: new Set<number>() });
 
-        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, DEFAULT_GHOST_ALPHA);
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformSlot, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 1);
     });
 
     it('re-splits when SELECTION changes, since selection exempts an entity from fading', () => {
@@ -1807,13 +2438,13 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         // Entity 1 selected → exempt → it belongs to the SOLID group.
         h.render({ transparencyOverrides: overrides(), selectedIds: new Set([1]) });
-        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformSlot, 1);
 
         // Deselect: entity 1 is X-Rayed again and must rejoin the faded group.
         h.render({ transparencyOverrides: overrides() });
-        assertAlpha(h, subBatchFor(h, [1, 2]).uniformBuffer, 0.18);
-        assertAlpha(h, subBatchFor(h, [3]).uniformBuffer, 1);
+        assertAlpha(h, subBatchFor(h, [1, 2]).uniformSlot, 0.18);
+        assertAlpha(h, subBatchFor(h, [3]).uniformSlot, 1);
     });
 
     it('frees the sub-batch slots of a batch that stops splitting while X-Ray stays on', () => {
@@ -1893,7 +2524,7 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         assert.strictEqual(scene['partialBatchCache'].size, 0);
         assert.ok(h.stats.draws.includes(batch.vertexBuffer), 'geometry must not go missing');
-        assertAlpha(h, batch.uniformBuffer, 0.18, 'batch-wide minimum, as documented');
+        assertAlpha(h, batch.uniformSlot, 0.18, 'batch-wide minimum, as documented');
     });
 });
 
@@ -2076,15 +2707,10 @@ describe('the textured draw path passes authored alpha and material to packMeshM
     }
 
     /** The material row (metallic, roughness, transmission flag) of the uniform written for `tm`. */
-    function materialRowFor(h: Harness, uniformBuffer: unknown): number[] | null {
+    function materialRowFor(h: Harness, target: unknown): number[] | null {
         const at = MESH_UNIFORM_OFFSET.metallicRoughness;
-        for (let i = h.stats.writes.length - 1; i >= 0; i--) {
-            const w = h.stats.writes[i];
-            if (w.buffer === uniformBuffer && w.floats.length > at + 3) {
-                return [w.floats[at], w.floats[at + 1], w.floats[at + 2]];
-            }
-        }
-        return null;
+        const block = lastBlock(h, target, at + 4);
+        return block ? [block[at], block[at + 1], block[at + 2]] : null;
     }
 
     it('gives an opaque textured mesh the default dielectric', () => {
@@ -2142,10 +2768,10 @@ describe('colour overrides shade from the entity colour table, not overlay copie
     const GREEN: [number, number, number, number] = [0.125, 0.875, 0.25, 1];
 
     /** overrideParams (x = anchor, y = mode bits) of the LAST uniform write into `buffer`. */
-    function overrideLanes(h: Harness, buffer: GPUBuffer | undefined): number[] | null {
-        const write = h.stats.writes.filter((w) => w.buffer === buffer).at(-1);
-        if (!write) return null;
-        return [...new Uint32Array(write.floats.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4)];
+    function overrideLanes(h: Harness, target: unknown): number[] | null {
+        const block = uniformBlocks(h, target).at(-1);
+        if (!block) return null;
+        return [...new Uint32Array(block.buffer, block.byteOffset + MESH_UNIFORM_OFFSET.overrideParams * 4, 4)];
     }
 
     /** The pipeline bound when the draw that used `vertexBuffer` fired. */
@@ -2186,11 +2812,11 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         const table = sceneOf(h).getEntityColorTable().getBuffer();
         assert.equal(created[0], table, 'the one allocation is the colour table');
         assert.equal(h.stats.boundColorTables.at(-1), table, 'the frame binds the scene table at group(1)');
-        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT, 0, 0], 'red batch paints from its anchor');
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0], 'grey batch paints from its anchor');
+        assert.deepEqual(overrideLanes(h, red.uniformSlot), [3, OVERRIDE_PARAM_PAINT, 0, 0], 'red batch paints from its anchor');
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, OVERRIDE_PARAM_PAINT, 0, 0], 'grey batch paints from its anchor');
 
         h.render({ emphasizeOverrides: true });
-        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
+        assert.deepEqual(overrideLanes(h, red.uniformSlot), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
     });
 
     it('holds the colour at the entity slot, and clearing empties the table without touching a batch', async () => {
@@ -2214,7 +2840,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
 
         h.stats.writes.length = 0;
         h.render();
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, 0, 0, 0], 'the entity anchor remains, with painting disabled after clearing');
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, 0, 0, 0], 'the entity anchor remains, with painting disabled after clearing');
     });
 
     it('keeps colour overrides available after CPU geometry is released (#6148 review)', async () => {
@@ -2228,7 +2854,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         setOverrides(h, new Map([[2, GREEN]]));
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 2), GREEN);
         h.render();
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, grey.uniformSlot), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
     });
 
     it('paints a mesh that streams in AFTER the override without another setColorOverrides call', async () => {
@@ -2250,7 +2876,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
 
         h.stats.writes.length = 0;
         h.render();
-        assert.deepEqual(overrideLanes(h, late.uniformBuffer), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, late.uniformSlot), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 9), GREEN);
     });
 
@@ -2272,7 +2898,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         for (const id of [low, high]) {
             const batch = batches.find((b) => b.expressIds.includes(id));
             assert.ok(batch, `batch for ${id}`);
-            assert.deepEqual(overrideLanes(h, batch.uniformBuffer), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
+            assert.deepEqual(overrideLanes(h, batch.uniformSlot), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
             assert.equal(resolveLaneEntityId(Math.min(...batch.expressIds), id & 0xFFFFFF), id, `${id} resolves to itself`);
             assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), id), [1, 0, 0, 1]);
             assert.equal(pipelineOfDraw(h, batch.vertexBuffer), OPAQUE_PIPELINE, `${id} is promoted to opaque`);
@@ -2299,7 +2925,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
             assert.equal(scene.getEntityColorTable().getBuffer(), table, 'finalize does not touch the table');
             h.stats.writes.length = 0;
             h.render();
-            assert.deepEqual(overrideLanes(h, finalBatch.uniformBuffer), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
+            assert.deepEqual(overrideLanes(h, finalBatch.uniformSlot), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
         });
     }
 
@@ -2320,9 +2946,9 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         setOverrides(h, new Map([[4, [1, 0, 0, 0.5]], [5, [1, 0, 0, 0.15]]]));
         h.render();
         assert.equal(pipelineOfDraw(h, promoted.vertexBuffer), OPAQUE_PIPELINE, 'alpha >= 0.2 override promotes to opaque');
-        assert.deepEqual(overrideLanes(h, promoted.uniformBuffer), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(overrideLanes(h, promoted.uniformSlot), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.equal(pipelineOfDraw(h, ghost.vertexBuffer), TRANSPARENT_PIPELINE, 'ghost-tier override stays transparent');
-        assert.deepEqual(overrideLanes(h, ghost.uniformBuffer), [5, 0, 0, 0], 'a transparent draw keeps its entity anchor with painting disabled');
+        assert.deepEqual(overrideLanes(h, ghost.uniformSlot), [5, 0, 0, 0], 'a transparent draw keeps its entity anchor with painting disabled');
     });
 });
 
@@ -2337,10 +2963,10 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
     const FLAGS = MESH_UNIFORM_OFFSET.flags;
 
     /** flags as u32 for every write that landed on one of `buffers`. */
-    function flagsWrittenTo(h: Harness, buffers: Set<unknown>): Uint32Array[] {
-        return h.stats.writes
-            .filter((w) => buffers.has(w.buffer) && w.floats.length >= FLAGS + 4)
-            .map((w) => new Uint32Array(w.floats.buffer, w.floats.byteOffset + FLAGS * 4, 4));
+    function flagsWrittenTo(h: Harness, targets: Set<unknown>): Uint32Array[] {
+        return [...targets].flatMap((t) => uniformBlocks(h, t))
+            .filter((b) => b.length >= FLAGS + 4)
+            .map((b) => new Uint32Array(b.buffer, b.byteOffset + FLAGS * 4, 4));
     }
 
     it('batched, selected-individual and textured draws write 0 to flags.z and flags.w with edgeContrast on', () => {
@@ -2368,7 +2994,7 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
         const selected = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 1);
         assert.strictEqual(selected.length, 1, 'selection hydrates an individual mesh');
         const buffers = new Set<unknown>([
-            grey.uniformBuffer, red.uniformBuffer, textured[0].uniformBuffer, selected[0].uniformBuffer,
+            grey.uniformSlot, red.uniformSlot, textured[0].uniformBuffer, selected[0].uniformBuffer,
         ]);
         const flags = flagsWrittenTo(h, buffers);
         assert.ok(flags.length >= 4, `expected a uniform write per draw, got ${flags.length}`);
@@ -2383,4 +3009,295 @@ describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
             assert.strictEqual(f[3], 0, 'flags.w (was edgeIntensityMilli) must stay 0');
         }
     });
+});
+
+/**
+ * Opaque draws pick the discard-free / no-object-id twin only on frames where
+ * it draws the same pixels (opaque-draw-variants.ts): no clipping of any kind,
+ * and the object id only while the edge pass reads it.
+ */
+describe('per-frame opaque draw mode', () => {
+    type Mode = { discardFree: boolean; objectId: boolean };
+    function recordModes(h: Harness): { kind: string; mode: Mode }[] {
+        const modes: { kind: string; mode: Mode }[] = [];
+        const stub = h.renderer['pipeline'] as unknown as Record<string | symbol, unknown>;
+        (h.renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy(stub, {
+            get(target, prop) {
+                if (prop === 'opaquePipeline') return (kind: string, mode: Mode) => { modes.push({ kind, mode }); return OPAQUE_PIPELINE; };
+                return Reflect.get(target, prop);
+            },
+        });
+        return modes;
+    }
+
+    it('an unclipped perspective frame without edges asks for the discard-free twin without object-id writes', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        const modes = recordModes(h);
+        h.render();
+        assert.ok(modes.length >= 2, 'both colour batches resolve their pipeline');
+        for (const { kind, mode } of modes) {
+            assert.strictEqual(kind, 'flat');
+            assert.deepStrictEqual(mode, { discardFree: true, objectId: false });
+        }
+    });
+
+    it('a section plane, clip box or terrain clip keeps the discards', () => {
+        const box = { enabled: true, min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] };
+        for (const clip of [
+            { sectionPlane: { enabled: true, axis: 'down', position: 50 } },
+            { clipBox: box },
+            { terrainClipY: 0 },
+        ] as RenderOptions[]) {
+            const h = makeHarness();
+            seedBatches(h);
+            const modes = recordModes(h);
+            h.render(clip);
+            assert.ok(modes.length > 0);
+            assert.ok(modes.every(({ mode }) => !mode.discardFree), JSON.stringify(clip));
+        }
+    });
+});
+
+describe('the GPU picker allocates on its first pick', () => {
+    it('holds no id/depth targets or 100K mesh slots until a pick, then sizes them to it', async () => {
+        const h = makeHarness();
+        const texturesBefore = h.stats.textures.length;
+        const picker = new Picker(h.renderer['device'], 256, 256);
+        assert.strictEqual(h.stats.textures.length, texturesBefore, 'construction allocates no texture');
+        assert.deepStrictEqual(picker.renderTargets(), [null, null]);
+        assert.ok(!h.stats.createdBuffers.some((b) => b.size >= 1024 * 1024), 'no megabyte-scale slot buffer up front');
+
+        (h.renderer as unknown as Record<string, unknown>)['picker'] = picker;
+        h.renderer['pickingManager'].setPicker(picker);
+        await h.renderer.pick(10, 10);
+        const pickTextures = h.stats.textures.slice(texturesBefore).filter((t) => t.label.startsWith('pick-'));
+        assert.deepStrictEqual(pickTextures.map((t) => [t.label, t.width, t.height]), [['pick-id', 256, 256], ['pick-depth', 256, 256]]);
+        assert.ok(picker.renderTargets().every((t) => t !== null));
+
+        await h.renderer.pick(20, 20);
+        assert.strictEqual(h.stats.textures.filter((t) => t.label.startsWith('pick-')).length, 2, 'a same-size pick reuses them');
+    });
+});
+
+// #8564 option B: the nearest-glass split driven through the REAL renderFrame. The stub
+// pass log shows where transparent IFC draws: held out of the main pass, replayed
+// depth-only for P1 and the layer count, and drawn between the two splat passes.
+describe('#8564 nearest-glass split in the render loop', () => {
+    const GLASS: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+    const glassDescriptor = {
+        layout: {}, vertex: { module: {}, entryPoint: 'vs_main' },
+        fragment: { module: {}, entryPoint: 'fs_main', targets: [{ format: 'bgra8unorm' }, { format: 'rgba8unorm' }] },
+        depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: false, depthCompare: 'greater' }, multisample: { count: 1 },
+    } as unknown as GPURenderPipelineDescriptor;
+
+    async function splitHarness(options: { transparent?: boolean; splats?: boolean; depthInterval?: boolean } = {}) {
+        const h = makeHarness();
+        const fields = h.renderer as unknown as Record<string, unknown>;
+        fields.ready = true;
+        const stub = fields.pipeline as Record<string, unknown>;
+        fields.pipeline = new Proxy(stub, { get: (target, key) => key === 'getDepthFormat' ? () => 'depth24plus-stencil8' : Reflect.get(target, key) });
+        (stub.visibility as OpaqueVisibilityPass).register(TRANSPARENT_PIPELINE as unknown as GPURenderPipeline, glassDescriptor, mainShaderSource);
+        const layer = fields.gaussianLayer as Record<string, unknown>;
+        (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
+            upstreamReverseZ: true, upstreamDepthInterval: options.depthInterval ?? true,
+            createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, destroy() {},
+                encode: (_target, _camera, interval) => { h.stats.commands.push({ op: `splats:${interval?.compare ?? 'all'}` }); } }),
+        });
+        const passes = h.stats.passes;
+        const push = passes.push.bind(passes);
+        passes.push = (...labels: string[]) => { for (const label of labels) h.stats.commands.push({ op: `pass:${label}` }); return push(...labels); };
+        const scene = sceneOf(h);
+        scene.appendToBatches([triangle(1, GREY), ...(options.transparent === false ? [] : [triangle(2, GLASS)])], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        if (options.splats !== false) {
+            const attributes = {
+                count: 1, positions: new Float32Array([0, 0, 0]), scales: new Float32Array([1, 1, 1]),
+                rotations: new Float32Array([1, 0, 0, 0]), colors: new Float32Array([1, 0, 0, 1]),
+                opacities: new Float32Array([1]), sphericalHarmonics: new Float32Array(), sphericalHarmonicsDegree: 0 as const,
+            };
+            await h.renderer.gaussianSplats.add({ attributes, placement: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, modelIndex: 0 }, { qualification: 'internal-unqualified' });
+        }
+        const named = (pipeline: unknown) => (pipeline as { label?: string } | undefined)?.label;
+        const frame = (options: RenderOptions = {}) => { h.stats.commands.length = 0; h.render(options); return h.stats.commands.map((c) => c.op === 'setPipeline'
+            ? (c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.pipeline === OPAQUE_PIPELINE ? 'opaque' : ['overlay', 'reference-image'].includes(named(c.pipeline) ?? '') ? named(c.pipeline)! : 'variant')
+            : c.op).filter((op) => op !== 'setBindGroup'); };
+        const report = () => h.renderer.gaussianSplats.getStats().compositionReport;
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+        return { h, frame, report, tick };
+    }
+    /** The ops from the main pass's first draw to its end, i.e. before any Gaussian pass. */
+    const mainPass = (ops: string[]) => ops.slice(0, ops.findIndex((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+
+    it('splits a splat frame around transparent IFC once the depth-only variants exist', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        try {
+            const first = frame();
+            assert.ok(mainPass(first).includes('glass'), 'while compiling, transparent IFC draws in the main pass as before');
+            assert.deepEqual(first.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'over-transparent-approximate');
+            assert.equal(report()?.fallback, 'pipelines-compiling');
+            await tick();
+            const ops = frame();
+            assert.ok(!mainPass(ops).includes('glass'), 'transparent IFC is held out of the main pass');
+            const at = (op: string) => ops.indexOf(op);
+            assert.deepEqual(['pass:ifc-lite-gaussian-nearest-transparent', 'pass:ifc-lite-gaussian-transparent-layers', 'splats:less-equal', 'pass:ifc-lite-gaussian-transparent', 'splats:greater'].map(at).every((index, i, all) => index >= 0 && (i === 0 || index > all[i - 1])), true, ops.join(' '));
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-nearest-transparent') + 1, at('pass:ifc-lite-gaussian-transparent-layers')), ['variant', 'drawIndexed'], 'P1 replays the glass draw depth-only');
+            assert.deepEqual(ops.slice(at('pass:ifc-lite-gaussian-transparent') + 1, at('splats:greater')), ['glass', 'drawIndexed'], 'the held draw replays between the splat passes');
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.transparentLayers, 'unknown');
+            await tick();
+            assert.equal(report()?.transparentLayers, 'single', 'the frame\'s own occlusion count read back as zero and was published');
+            assert.equal(h.renderer.getDiagnostics().errors, 0);
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    it('keeps the single splat pass, unchanged, without transparent IFC', async () => {
+        const { h, frame, report, tick } = await splitHarness({ transparent: false });
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian')));
+            assert.deepEqual(ops.filter((op) => op.startsWith('splats:')), ['splats:all']);
+            assert.equal(report()?.composition, 'no-transparent');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+
+    /** Spy every pass descriptor, texture and pipeline compile of the stub device. */
+    function spyDevice(h: Harness) {
+        const wdev = h.renderer['device'] as unknown as Record<string, unknown>;
+        const raw = wdev['device'] as Record<string, unknown>;
+        const spy = { passes: [] as GPURenderPassDescriptor[], textures: [] as string[], compiles: 0, querySets: 0 };
+        wdev['device'] = new Proxy(raw, { get: (target, key) => {
+            const member = Reflect.get(target, key) as (...args: unknown[]) => unknown;
+            if (key === 'createCommandEncoder') return () => new Proxy(member() as Record<string, unknown>, { get: (encoder, method) => method === 'beginRenderPass'
+                ? (d: GPURenderPassDescriptor) => { spy.passes.push(d); return (encoder.beginRenderPass as (d: unknown) => unknown)(d); } : Reflect.get(encoder, method) });
+            if (key === 'createTexture') return (d: GPUTextureDescriptor) => { spy.textures.push(d.label ?? ''); return member(d); };
+            if (key === 'createRenderPipelineAsync') return (d: unknown) => { spy.compiles++; return member(d); };
+            if (key === 'createQuerySet') return (d: unknown) => { spy.querySets++; return member(d); };
+            return member;
+        } });
+        return spy;
+    }
+
+    // #8564 review: IFC-only scenes must provably pay nothing for the split.
+    for (const scene of ['no splats', 'hidden splats'] as const) {
+        it(`records no extra pass, attachment, texture, query or pipeline with ${scene}`, async () => {
+            const { h, frame } = await splitHarness({ splats: scene === 'hidden splats' });
+            try {
+                if (scene === 'hidden splats') {
+                    const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { records: Map<unknown, { handle: unknown }> };
+                    assert.equal(layer.records.size, 1, 'a resident asset exists, only hidden');
+                    for (const record of layer.records.values()) h.renderer.gaussianSplats.setVisible(record.handle as never, false);
+                }
+                const spy = spyDevice(h);
+                for (let i = 0; i < 3; i++) {
+                    const ops = frame();
+                    assert.ok(mainPass(ops).includes('glass') && ops.indexOf('glass') > ops.indexOf('opaque'), 'transparent IFC draws in the main pass');
+                    assert.ok(!ops.some((op) => op.startsWith('pass:ifc-lite-gaussian') || op.startsWith('splats:')));
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+                assert.deepEqual(spy.passes.filter((d) => d.label?.startsWith('ifc-lite-gaussian')), []);
+                const main = spy.passes.filter((d) => d.colorAttachments.length === 2);
+                assert.equal(main.length, 3, 'one main pass per frame');
+                for (const d of main) {
+                    const [colour, ids] = d.colorAttachments as GPURenderPassColorAttachment[];
+                    assert.equal(colour.loadOp, 'clear');
+                    assert.equal(colour.storeOp, 'store', 'the stub has no MSAA, so the swapchain is stored as before');
+                    assert.equal(ids.loadOp, 'clear');
+                    assert.equal(d.depthStencilAttachment?.stencilStoreOp, 'discard');
+                }
+                assert.deepEqual(spy.textures.filter((label) => label.includes('gaussian')), []);
+                assert.equal(spy.compiles, 0, 'no depth-only variant compiles');
+                assert.equal(spy.querySets, 0);
+                const layer = (h.renderer as unknown as Record<string, unknown>).gaussianLayer as { glass: { split: unknown } };
+                assert.equal(layer.glass.split, null, 'the split never allocated its per-device state');
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    for (const [why, setup] of [
+        ['single-pass-mode', (h: Harness) => h.renderer.gaussianSplats.setCompositionMode('single-pass')],
+        ['upstream-interval-missing', () => {}],
+    ] as const) {
+        it(`reports ${why} and composites over transparent IFC in one pass`, async () => {
+            const { h, frame, report, tick } = await splitHarness({ depthInterval: why !== 'upstream-interval-missing' });
+            try {
+                setup(h);
+                frame();
+                await tick();
+                const ops = frame();
+                assert.ok(mainPass(ops).includes('glass'));
+                assert.deepEqual(ops.filter((op) => op.startsWith('splats:') || op.startsWith('pass:ifc-lite-gaussian')), ['splats:all']);
+                assert.equal(report()?.composition, 'over-transparent-approximate');
+                assert.equal(report()?.fallback, why);
+            } finally {
+                h.renderer.destroy();
+                await h.settle();
+            }
+        });
+    }
+
+    it('#8564 review F3: split frames draw reference images and overlays after transparent IFC and before the splats in front, as single passes do', async () => {
+        const { h, frame, report, tick } = await splitHarness();
+        const fields = h.renderer as unknown as Record<string, Record<string, unknown>>;
+        const drawsWith = (label: string) => (pass: GPURenderPassEncoder) => { pass.setPipeline({ label } as unknown as GPURenderPipeline); pass.draw(3); };
+        fields.referenceImages.draw = drawsWith('reference-image');
+        fields.overlays.draw = drawsWith('overlay');
+        try {
+            frame();
+            await tick();
+            const ops = frame();
+            const at = (op: string, from = 0) => ops.indexOf(op, from);
+            const glassPass = at('pass:ifc-lite-gaussian-transparent');
+            assert.ok(glassPass > 0 && !mainPass(ops).includes('overlay') && !mainPass(ops).includes('reference-image'), ops.join(' '));
+            assert.deepEqual(ops.slice(glassPass + 1, at('splats:greater')), ['glass', 'drawIndexed', 'reference-image', 'draw', 'overlay', 'draw'],
+                'glass, then reference images and overlays in their established order, then the splats in front');
+            assert.ok(at('splats:less-equal') < glassPass);
+            assert.equal(report()?.composition, 'nearest-glass-split');
+            assert.equal(report()?.laterOverBehindSplats, true, 'drawing them after the splats behind the glass is disclosed');
+            h.renderer.gaussianSplats.setCompositionMode('single-pass');
+            const single = frame();
+            assert.deepEqual(single.filter((op) => ['glass', 'reference-image', 'overlay', 'splats:all'].includes(op)), ['glass', 'reference-image', 'overlay', 'splats:all'],
+                'the single pass has the same relative order');
+        } finally {
+            h.renderer.destroy();
+            await h.settle();
+        }
+    });
+});
+
+// #8564 review (Codex on 372b9ec): established draw order is preserved.
+describe('#8564 review: draw order around transparent IFC', () => {
+    it('#8564 review F2: IFC-only frames draw transparent partial batches where they always did, before selection hydration and transparent instances', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const glassColour: [number, number, number, number] = [0.2, 0.4, 0.8, 0.5];
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, glassColour), triangle(4, glassColour)], h.renderer['device'].getDevice(), h.renderer['pipeline'] as never, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const hydrate = h.renderer.createMeshFromData.bind(h.renderer);
+        h.renderer.createMeshFromData = (piece) => { h.stats.commands.push({ op: 'hydrate' }); return hydrate(piece); };
+        try {
+            h.stats.commands.length = 0;
+            h.render({ hiddenIds: new Set([4]), selectedId: 1 }); // glass {3,4} with 4 hidden: one transparent sub-batch
+            const ops = h.stats.commands.map((c) => c.op === 'setPipeline' && c.pipeline === TRANSPARENT_PIPELINE ? 'glass' : c.op);
+            const glass = ops.indexOf('glass'), hydration = ops.indexOf('hydrate');
+            assert.ok(glass >= 0 && hydration >= 0, ops.join(' '));
+            assert.equal(ops[glass + 1], 'setBindGroup');
+            assert.ok(ops.indexOf('drawIndexed', glass) < hydration, `transparent sub-batch draws before selection hydration, as at 750b33165a: ${ops.join(' ')}`);
+        } finally {
+            h.renderer.destroy();
+        }
+    });
+
 });

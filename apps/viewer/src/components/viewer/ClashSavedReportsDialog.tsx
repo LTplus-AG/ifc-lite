@@ -3,21 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Clash panel header's entry to saved clash reports (#6947). Only this
- * button is part of the panel; the dialog loads on first open
- * (`ClashSavedReportsDialogContent`).
+ * The Clash panel header's entry to saved clash reports (#6947), as a shared
+ * panel header action (#8802). Only the action is part of the panel; the
+ * dialog loads on first open (`ClashSavedReportsDialogContent`).
  */
 
-import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { Save } from 'lucide-react';
-import { IconButton } from '@/components/ui/icon-button';
+import type { PanelHeaderAction } from '@/components/ui/panel-header';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
 type DialogContent = ComponentType<{ open: boolean; onOpenChange: (open: boolean) => void }>;
 
-export function ClashSavedReportsDialog() {
+export function useClashSavedReportsAction(): { action: PanelHeaderAction; dialog: ReactNode } {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [Content, setContent] = useState<DialogContent | null>(null);
@@ -39,12 +39,8 @@ export function ClashSavedReportsDialog() {
     consumed.current = requested;
     show();
   }, [requested, show]);
-  return (
-    <>
-      <IconButton label={t('clashTools.savedReports.triggerTooltip')} className="h-7 w-7" onClick={show}>
-        <Save className="h-4 w-4" />
-      </IconButton>
-      {Content && <Content open={open} onOpenChange={setOpen} />}
-    </>
-  );
+  return {
+    action: { id: 'clash-saved-reports', label: t('clashTools.savedReports.triggerTooltip'), icon: <Save className="h-4 w-4" />, onSelect: show },
+    dialog: Content ? <Content open={open} onOpenChange={setOpen} /> : null,
+  };
 }

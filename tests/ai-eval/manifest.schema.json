@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ifclite.dev/schemas/ai-eval/manifest-v1.json",
   "title": "IFClite AI evaluation manifest (version 1)",
-  "description": "Versioned, privacy-reviewed corpus for viewer AI evaluation (#6928). Enforced by scripts/ai-eval/check-ai-eval-manifest.mjs; see docs/architecture/viewer-ai-evaluation.md.",
+  "description": "Versioned, privacy-reviewed corpus for viewer AI evaluation (#6928). Enforced by scripts/ai-eval/check-ai-eval-manifest.mjs.",
   "type": "object",
   "required": ["version", "updated", "privacy", "journeys", "scenes", "fixtures", "liveEvaluation", "tasks"],
   "additionalProperties": false,

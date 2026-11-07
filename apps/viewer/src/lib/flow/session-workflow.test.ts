@@ -10,6 +10,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash';
 import { IfcParser } from '@ifc-lite/parser';
+import { DiffModel } from '@ifc-lite/wasm/diff';
 import { parseIDS } from '@ifc-lite/ids';
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { Rule, parseRuleSetFile, type RuleSetFile } from '@ifc-lite/rules';
@@ -152,7 +153,8 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.deepEqual(document.blocks.map((block) => block.kind === 'ids-report' && block.scale), [1.5]);
   });
 
-  it('retains comparison recipe identity and every effective option beside native evidence', async () => {
+  it('retains comparison recipe identity and options after releasing its native pair (#8042)', async (t) => {
+    const freed = t.mock.method(DiffModel.prototype, 'free');
     run = startWorkflowRun();
     useViewerStore.setState({ savedComparisons: [] });
     const options = { scope: 'data', excludedTypes: ['IfcDoor'], matchByContent: true, keyProperty: 'Pset_Custom.AuthoredKey' };
@@ -167,6 +169,19 @@ describe('session validation pipeline through native engines (#6612)', () => {
     assert.deepEqual(evidence.automation?.effectiveOptions, { ...options, acceptedIdentity: [] });
     assert.match(evidence.automation?.resource?.fingerprint ?? '', /^[a-f0-9]{64}$/);
     assert.equal(evidence.automation?.models[0].sourceFingerprint, 'full-source-A');
+    assert.equal(freed.mock.callCount(), 2);
+  });
+
+  it('releases both comparison handles when automation rejects unavailable geometry (#8042)', async (t) => {
+    const freed = t.mock.method(DiffModel.prototype, 'free');
+    run = startWorkflowRun();
+    const recipe = { kind: 'ifc-lite-comparison-recipe', version: 1, id: 'recipe', name: 'A versus B',
+      base: { kind: 'slot', slotId: 'structure' }, head: { kind: 'slot', slotId: 'services' },
+      options: { scope: 'both', excludedTypes: [], matchByContent: false },
+    };
+    await assert.rejects(compareChecks(run, 'workflow', modelSet(run), [{ id: 'geometry', enabled: true,
+      source: { kind: 'embedded', value: recipe } }], undefined), /full geometry is unavailable/);
+    assert.equal(freed.mock.callCount(), 2);
   });
 
   it('comparison targets constrain both recipe roles before fingerprint preparation', async () => {

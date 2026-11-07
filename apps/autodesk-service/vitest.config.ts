@@ -6,6 +6,14 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      // #8525: skip native reporting after the Windows post-test abort.
+      ...(process.platform !== 'win32' && process.env.MERGIFY_TOKEN
+        ? ['@mergifyio/vitest']
+        : []),
+    ],
     include: ['test/**/*.test.ts'],
   },
 });

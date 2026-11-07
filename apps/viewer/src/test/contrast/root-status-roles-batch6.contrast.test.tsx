@@ -42,7 +42,7 @@ describe('remaining root status roles (Refs #8802)', () => {
   }
   it('dark range chip and remove hover differ from their restored surface', async () => {
     const ui = render(<FoldedGroupEditor groups={[{ combinator: 'AND', rules: [Rule.attribute('Tag', 'gte', '10'), Rule.attribute('Tag', 'lte', '20')] }]} activeGroup={0} models={[]} onChange={() => {}} />);
-    const chip = ui.querySelector('span.uppercase');
+    const chip = ui.querySelector('input[type="number"]')?.parentElement?.querySelector('span');
     assert.ok(chip?.parentElement);
     await withThemedPage('dark', `<div id="range">${chip.parentElement.outerHTML}</div>`, async page => {
       const surface = await page.$eval('#range > div', el => getComputedStyle(el).backgroundColor);

@@ -122,5 +122,6 @@ export const shellChromeDe = {
   "shellChrome.activityBar.morePanels": "Weitere Bereiche ({count})",
   "shellChrome.activityBar.morePanelsSomeOpen": "Weitere Bereiche ({count}), einige geöffnet",
   "shellChrome.activityBar.morePanelsHint": "Bereiche, die nicht in die Seitenleiste passen",
+  "shellChrome.activityBar.morePanelsWaitingHint": "Bereiche, die ein Modell brauchen, und alle, die nicht in die Seitenleiste passen",
   "shellChrome.activityBar.moreCaption": "Mehr",
 } satisfies Catalogue;

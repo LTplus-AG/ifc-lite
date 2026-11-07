@@ -57,6 +57,7 @@ export const shellChromeEn = {
   'shellChrome.activityBar.morePanels': 'More panels ({count})',
   'shellChrome.activityBar.morePanelsSomeOpen': 'More panels ({count}), some open',
   'shellChrome.activityBar.morePanelsHint': 'Panels that do not fit the rail',
+  'shellChrome.activityBar.morePanelsWaitingHint': 'Panels that need a model, and any that do not fit the rail',
   'shellChrome.activityBar.moreCaption': 'More',
   'shellChrome.activityBar.expandSidebar': 'Expand sidebar',
   'shellChrome.activityBar.sidebarOptions': 'Sidebar options',

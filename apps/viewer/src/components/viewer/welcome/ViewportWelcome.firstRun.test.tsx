@@ -50,7 +50,8 @@ describe('first-run start screen (#8802 R6)', () => {
     const prompts = [...screen.querySelectorAll('*')].filter((el) => ownText(el) === PROMPT);
     assert.equal(prompts.length, 1, 'one "New here?" on the screen');
     const line = screen.querySelector('[data-welcome-learn-line]');
-    assert.ok(line?.contains(prompts[0]), 'the prompt heads the learn line');
+    assert.ok(line, 'the learn line renders');
+    assert.ok(line.contains(prompts[0]), 'the prompt heads the learn line');
     assert.ok(line.querySelector('a[href="https://ifclite.dev"]'), 'the line links the docs');
     assert.ok([...line.querySelectorAll('button')].some((b) => b.textContent?.trim() === TOUR), 'the line offers the tour');
   });
@@ -58,7 +59,8 @@ describe('first-run start screen (#8802 R6)', () => {
   it('keeps the docs answer when the tour is not offered (no WebGPU)', () => {
     const screen = renderWelcome(false);
     const line = screen.querySelector('[data-welcome-learn-line]');
-    assert.ok(line?.querySelector('a[href="https://ifclite.dev"]'));
+    assert.ok(line, 'the learn line renders');
+    assert.ok(line.querySelector('a[href="https://ifclite.dev"]'));
     assert.ok(![...line.querySelectorAll('button')].some((b) => b.textContent?.trim() === TOUR));
   });
 

@@ -13,9 +13,10 @@
  * the active state (`ActivityBarItem`). Icons that don't fit the rail's height
  * go into an overflow menu rather than being clipped (#8802 R1). With no model
  * loaded, model-dependent panels wait in that menu, marked as needing one, so
- * the first screen's rail shows only what works without a model (#8802 R6). The footer toggles customize mode,
- * collapse, and a layout menu. In customize mode every icon becomes
- * drag-reorderable and gains an eye toggle inline (the rail scrolls then).
+ * the first screen's rail shows only what works without a model (#8802 R6).
+ * The footer toggles customize mode, collapse, and a layout menu. In customize
+ * mode every icon becomes drag-reorderable and gains an eye toggle inline (the
+ * rail scrolls then).
  */
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';

@@ -25,6 +25,7 @@ export const shellChromeRu = {
   "shellChrome.activityBar.iconAriaLabelHide": "{title}, активируйте, чтобы скрыть из боковой панели",
   "shellChrome.activityBar.iconAriaLabelFloating": "{title} (плавающий)",
   "shellChrome.activityBar.iconAriaLabelPopped": "{title} (в отдельном окне)",
+  "shellChrome.activityBar.morePanelsWaitingHint": "Панели, которым нужна модель, и те, что не помещаются на боковой панели",
   "shellChrome.activityBar.clickToHideHint": "нажмите, чтобы скрыть",
   "shellChrome.activityBar.altShortcutHint": "Alt+{key}",
   "shellChrome.activityBar.floatingHint": "плавающий",

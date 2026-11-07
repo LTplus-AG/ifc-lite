@@ -87,7 +87,9 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect, waiting = [] }:
         </TooltipTrigger>
         <TooltipContent side="left">
           {label}
-          <span className="block text-muted-foreground">{t('shellChrome.activityBar.morePanelsHint')}</span>
+          <span className="block text-muted-foreground">
+            {t(waiting.length > 0 ? 'shellChrome.activityBar.morePanelsWaitingHint' : 'shellChrome.activityBar.morePanelsHint')}
+          </span>
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent side="left" align="end" className="w-56">

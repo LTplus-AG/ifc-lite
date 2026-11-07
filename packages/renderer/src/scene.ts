@@ -2677,18 +2677,15 @@ export class Scene {
     // A streaming fragment carries its owning bucket's key too (`ownerKey`).
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
-    const visibleMeshData: MeshData[] = [];
+    // A colour-merged piece is listed under every id it holds: collect it once (#9220).
+    const pieces = new Set<MeshData>();
     for (const expressId of visibleIds) {
       for (const piece of this.meshDataMap.get(expressId) ?? []) {
-        if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) {
-          visibleMeshData.push(piece);
-        }
+        if (bucket ? this.meshDataBucket.get(piece) === bucket : this.bucketBaseKey(piece) === baseKey) pieces.add(piece);
       }
     }
-
-    if (visibleMeshData.length === 0) {
-      return undefined;
-    }
+    if (pieces.size === 0) return undefined;
+    const visibleMeshData = [...pieces];
 
     // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
     // decision (#4832): the overlay built from the same source must match its depth.

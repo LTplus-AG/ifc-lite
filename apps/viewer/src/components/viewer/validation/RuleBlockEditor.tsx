@@ -60,7 +60,7 @@ export function RuleBlockEditor({ block, onChange, allowedKinds, models, schemaV
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+        <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
           <button
             type="button"
             onClick={() => onChange({ ...block, authoredAs: 'chips' })}

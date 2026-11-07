@@ -1141,11 +1141,11 @@ export function PropertiesPanel() {
     // Multi-model or no model loaded: show empty state
     return (
       <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50 dark:bg-black">
-        <div className="p-3 border-b-2 border-border bg-white dark:bg-black">
+        <div className="p-3 border-b-2 border-border bg-white">
           <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">{t('properties.panel.title')}</h2>
         </div>
         <EmptyState
-          className="flex-1 bg-white dark:bg-black"
+          className="flex-1 bg-white"
           icon={<MousePointer2 className="size-8" />}
           title={t('properties.panel.emptyTitle')}
           description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
@@ -1728,7 +1728,7 @@ function EntityDataSection({
   }
 
   return (
-    <div className="bg-white dark:bg-black">
+    <div className="bg-white">
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (

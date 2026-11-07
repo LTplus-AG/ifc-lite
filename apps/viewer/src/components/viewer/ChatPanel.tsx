@@ -1078,7 +1078,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
           size="icon-xs"
           onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
-          className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+          className={keyStateAnthropic || keyStateOpenai ? 'text-ok' : ''}
         >
           <KeyRound className="h-3.5 w-3.5" />
         </IconButton>
@@ -1107,7 +1107,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           onClick={() => openByokModal(needsAnthropicKey ? 'anthropic' : 'openai')}
           className="w-full border-b bg-amber-500/10 px-3 py-2 text-left text-xs hover:bg-amber-500/15 transition-colors flex items-center gap-2"
         >
-          <KeyRound className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <KeyRound className="h-3.5 w-3.5 text-warn" />
           <span>
             <strong>
               {t('chat.panel.keyNeededStrong', {

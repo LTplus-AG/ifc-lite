@@ -253,7 +253,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               </Field>
             )}
             {inheritedFrom && isInheritedOnly({ inheritedFrom }, effectivePsetName) && (
-              <p className="text-2xs text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
+              <p className="text-2xs text-info">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
             )}
           </div>
 

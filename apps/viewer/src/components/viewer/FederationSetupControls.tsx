@@ -45,13 +45,13 @@ const EVENT_OPEN = 'ifc-lite:open-federation-setup';
 function confidenceBadge(match: FederationSetupSlotMatch): { labelKey: TranslationKey; icon: typeof Check; tone: string } {
   switch (match.confidence) {
     case 'content':
-      return { labelKey: 'federationSetupControls.confidence.content', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.content', icon: Check, tone: 'text-ok' };
     case 'name-size':
-      return { labelKey: 'federationSetupControls.confidence.nameSize', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameSize', icon: Check, tone: 'text-ok' };
     case 'name-only':
-      return { labelKey: 'federationSetupControls.confidence.nameOnly', icon: FileWarning, tone: 'text-amber-600 dark:text-amber-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameOnly', icon: FileWarning, tone: 'text-warn' };
     case 'none':
-      return { labelKey: 'federationSetupControls.confidence.none', icon: AlertTriangle, tone: 'text-red-600 dark:text-red-400' };
+      return { labelKey: 'federationSetupControls.confidence.none', icon: AlertTriangle, tone: 'text-danger' };
   }
 }
 

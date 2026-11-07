@@ -105,8 +105,8 @@ function LensCard({
       className={cn(
         'border-2 transition-colors group rounded-sm',
         isActive
-          ? 'border-primary bg-white dark:bg-zinc-900'
-          : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-500',
+          ? 'border-primary bg-white'
+          : 'border-zinc-200 dark:border-zinc-700 bg-white hover:border-zinc-400 dark:hover:border-zinc-500',
       )}
       onClick={(event) => {
         if (!(event.target as Element).closest('button')) onToggle(lens.id);
@@ -502,7 +502,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   }, [importLenses]);
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-950">
+    <div className="h-full flex flex-col bg-white">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
         <div className="flex items-center gap-2">

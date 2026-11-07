@@ -68,7 +68,7 @@ export interface RuleRowProps {
 export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-white px-2 py-1.5 dark:bg-zinc-950">
+    <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-white px-2 py-1.5">
       <span className="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
         {RULE_KIND_LABEL[rule.kind]}
       </span>

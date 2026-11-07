@@ -203,7 +203,7 @@ export function PropertyEditor({
               if (showScopeConfirm) setShowScopeConfirm(false);
             }}
             onKeyDown={handleKeyDown}
-            className="h-7 text-xs font-mono flex-1 bg-white dark:bg-zinc-900"
+            className="h-7 text-xs font-mono flex-1 bg-white"
             placeholder={t('propertyEditor.inline.enterValue')}
             type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
             step={valueType === PropertyValueType.Real ? 'any' : undefined}
@@ -213,10 +213,10 @@ export function PropertyEditor({
         {/* Action buttons */}
         <IconButton
           label={editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}
-          className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
+          className="h-6 w-6 hover:bg-ok-surface"
           onClick={handleSave}
         >
-          <Check className="h-3.5 w-3.5 text-green-600" />
+          <Check className="h-3.5 w-3.5 text-ok" />
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.cancel')}
@@ -227,10 +227,10 @@ export function PropertyEditor({
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.delete')}
-          className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
+          className="h-6 w-6 hover:bg-danger-surface"
           onClick={handleDelete}
         >
-          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+          <Trash2 className="h-3.5 w-3.5 text-danger" />
         </IconButton>
       </div>
 
@@ -324,7 +324,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* Data-enrichment cluster — one segmented control of icon keys */}
-          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:bg-zinc-800/50 dark:ring-zinc-700">
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:ring-zinc-700">
             <NewPropertyDialog
               modelId={modelId}
               entityId={entityId}

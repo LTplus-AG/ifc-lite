@@ -121,7 +121,12 @@ const SAME_SPOT_M = 1e-3;
 
 const gap = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-/** Where a target physically is: a point target's own position, or an edge-like target's point nearest the pointer. */
+/**
+ * Where a target physically is: a point target's own position, or an edge-like
+ * target's landing point, because its `local` follows the cursor. Under a lock
+ * that landing point sits on the lock. No shipped profile ranks an edge-like kind
+ * above an aimed kind, so an edge never reaches this comparison beside a crossing.
+ */
 const targetOf = (r: Ranked): Vec2 => (r.cand.guide ? r.point : r.cand.local);
 
 /**

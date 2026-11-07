@@ -49,6 +49,8 @@ export interface AddStoreyResult {
   readonly placementId: number;
   readonly relAggregatesId: number;
   /** Walls drawn attached with no storey above, now bound to this storey and resized to reach it. */
+  /** Walls drawn attached that the new storey binds but cannot resize (their body or placement is unreadable). */
+  readonly unresizedWalls: readonly number[];
   readonly boundWalls: readonly WallHeightChange[];
   /** Products whose shape changed (the bound walls and their openings). */
   readonly reshaped: readonly number[];
@@ -151,7 +153,9 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
 
     const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
     const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
-    const boundWalls = planAttachmentBindings(inventory, params.Elevation, parentId).map((wall) => ({ ...wall, targetStoreyId: storeyId }));
+    const bindings = planAttachmentBindings(inventory, params.Elevation, parentId);
+    const boundWalls = bindings.walls.map((wall) => ({ ...wall, targetStoreyId: storeyId }));
+    for (const wallId of bindings.unreadable) writeTopAttachment(draft.getMutationView(), wallId, guid);
     const reshaped: number[] = [];
     for (const wall of boundWalls) {
       writeTopAttachment(draft.getMutationView(), wall.wallId, guid);
@@ -164,7 +168,7 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
       scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from);
       reshaped.push(...outcome.remesh);
     }
-    return { storeyId, placementId, relAggregatesId, boundWalls, reshaped };
+    return { storeyId, placementId, relAggregatesId, boundWalls, unresizedWalls: bindings.unreadable, reshaped };
   });
 }
 

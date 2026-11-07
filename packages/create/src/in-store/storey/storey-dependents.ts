@@ -156,9 +156,12 @@ function planStairRefit(
 ): StairRefit | 'unreadable' | null {
   const storey = inventory.storeys.find((candidate) => candidate.expressId === storeyId)!;
   const dims = readStairDimensions(inventory.store, stairId, inventory.view);
-  // The flight carries the steps and may sit above its stair's placement: measure from it.
-  const base = heightAboveStorey(inventory, dims ? dims.flightId : stairId, storeyId);
-  const rise = dims ? dims.NumberOfRisers * dims.RiserHeight : genericRise(inventory, stairId);
+  const generic = dims ? null : genericFlights(inventory, stairId);
+  // The flights carry the steps and may sit above their stair's placement: measure from the lowest.
+  const flightBases = (dims ? [dims.flightId] : generic?.flights ?? [])
+    .map((flight) => heightAboveStorey(inventory, flight, storeyId)).filter((h): h is number => h !== null);
+  const base = flightBases.length ? Math.min(...flightBases) : heightAboveStorey(inventory, stairId, storeyId);
+  const rise = dims ? dims.NumberOfRisers * dims.RiserHeight : generic?.rise ?? null;
   if (rise === null || base === null) {
     // The file records no rise (a spiral or freeform stair whose body is the
     // IfcStair itself): it cannot be checked or refit. Report it whenever the
@@ -193,13 +196,15 @@ function planStairRefit(
 }
 
 /** NumberOfRisers × RiserHeight read off a stair's flight, for third-party stairs; metres. */
-function genericRise(inventory: StoreyInventory, stairId: number): number | null {
+function genericFlights(inventory: StoreyInventory, stairId: number): { rise: number; flights: number[] } | null {
   for (const rel of inventory.outgoing.get(stairId) ?? []) {
     if (rel.type !== 'IFCRELAGGREGATES') continue;
     let rise = 0;
+    const flights: number[] = [];
     for (const child of rel.children) {
       const flight = inventory.reader.entity(child);
       if (!flight || !getInheritanceChainAcrossSchemas(flight.type).includes('IfcStairFlight')) continue;
+      flights.push(child);
       const at = (name: string) => flight.attributes[flight.names.indexOf(name)];
       const n = at(inventory.schema === 'IFC2X3' ? 'NumberOfRiser' : 'NumberOfRisers');
       const raw = at('RiserHeight');
@@ -207,7 +212,7 @@ function genericRise(inventory: StoreyInventory, stairId: number): number | null
       if (typeof n !== 'number' || typeof r !== 'number') return null;
       rise += n * r * inventory.scale;
     }
-    return rise > 0 ? rise : null;
+    return rise > 0 ? { rise, flights } : null;
   }
   return null;
 }
@@ -218,16 +223,19 @@ function genericRise(inventory: StoreyInventory, stairId: number): number | null
  * them (`NextStoreyAbove`). Each takes the height from its base to the new
  * floor. Pure read.
  */
-export function planAttachmentBindings(inventory: StoreyInventory, elevation: number, parentId: number | null): WallHeightChange[] {
+export function planAttachmentBindings(
+  inventory: StoreyInventory, elevation: number, parentId: number | null,
+): { walls: WallHeightChange[]; unreadable: number[] } {
   // Only storeys of the building the new storey joins.
   const storeys = inventory.storeys.filter((storey) => storey.parentId === parentId);
   const below = [...storeys].reverse().find((storey) => storey.elevation < elevation);
-  if (!below) return [];
+  if (!below) return { walls: [], unreadable: [] };
   const above = storeys.find((storey) => storey.elevation > below.elevation);
   // Only the storey that has nothing above it can hold unbound walls.
-  if (above && above.elevation < elevation) return [];
+  if (above && above.elevation < elevation) return { walls: [], unreadable: [] };
   const target = { dataStore: inventory.store, view: inventory.view, editor: new StoreEditor(inventory.store, inventory.view) };
   const changes: WallHeightChange[] = [];
+  const unreadable: number[] = [];
   // A read of the storey below; only its unbound attached walls are written.
   for (const id of storeyContents(inventory, below.expressId, Infinity)) {
     if (!WALL_TYPES.has(inventory.reader.entity(id)?.type.toUpperCase() ?? '')) continue;
@@ -235,9 +243,11 @@ export function planAttachmentBindings(inventory: StoreyInventory, elevation: nu
     if (!attachment || attachment.targetStoreyId !== null) continue;
     const wall = readWallMetres(target, id);
     const base = heightAboveStorey(inventory, id, below.expressId);
-    if (!wall || base === null) continue;
+    // A wall whose body or placement cannot be read is still bound (its record names the new storey,
+    // so later edits report it as not resized) but cannot be resized now.
+    if (!wall || !Number.isFinite(wall.height) || base === null) { unreadable.push(id); continue; }
     // targetStoreyId is filled in by the add, which knows the new storey's id.
     changes.push({ wallId: id, storeyId: below.expressId, targetStoreyId: -1, from: wall.height, to: elevation - below.elevation - base });
   }
-  return changes;
+  return { walls: changes, unreadable };
 }

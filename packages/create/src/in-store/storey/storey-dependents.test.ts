@@ -167,6 +167,66 @@ describe('quantities and stairs as the file records them (#9036 review)', () => 
     expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(16, 9);
   });
 
+  it('a net side area in mm² beside a gross one in m² changes by the gross change, converted', async () => {
+    const { s, anchor } = await blank();
+    const drawn = addOrdinaryElementInStore(s.editor, anchor, { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } });
+    api('writeTopAttachment')(s.view, drawn, create.NEXT_STOREY_ABOVE);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    // The exported file gains a quantity set whose net area carries its own unit (mm²).
+    let text = s.text();
+    const wallRef = /^#(\d+)=IFCWALL\(/m.exec(text)![1];
+    text = text.replace('ENDSEC;\nEND-ISO', `#900001=IFCSIUNIT(*,.AREAUNIT.,.MILLI.,.SQUARE_METRE.);
+#900002=IFCQUANTITYLENGTH('Height',$,$,3.,$);
+#900003=IFCQUANTITYAREA('GrossSideArea',$,$,12.,$);
+#900004=IFCQUANTITYAREA('NetSideArea',$,#900001,10000000.,$);
+#900005=IFCELEMENTQUANTITY('3QtoWaLLAAAAAAAAAAAAAA',$,'Qto_WallBaseQuantities',$,$,(#900002,#900003,#900004));
+#900006=IFCRELDEFINESBYPROPERTIES('3QtoReLLAAAAAAAAAAAAAA',$,$,$,(#${wallRef}),#900005);
+ENDSEC;
+END-ISO`);
+    const r = session(await parse(text));
+    const inventory = api('readStoreyInventory')(r.store, r.view);
+    api('applyStoreyLevelEdit')(r.store, r.editor, { kind: 'floorHeight', storeyId: inventory.storeys[0].expressId, Height: 4 });
+    const qto = r.view.getQuantitiesForEntity(Number(wallRef), (id) => extractQuantitiesOnDemand(r.store, id)).find((set) => set.name === 'Qto_WallBaseQuantities')!;
+    expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(16, 9);
+    // 10 m² net + 4 m² of gross change, in mm².
+    expect(qto.quantities.find((q) => q.name === 'NetSideArea')?.value).toBeCloseTo(14_000_000, 3);
+  });
+
+  it('a wall drawn attached whose body cannot be read is still bound by the storey above, and reported', async () => {
+    const { s, level1 } = await blank();
+    const storeyPlacement = refId(new AnchorEntityReader(s.store, s.view).entity(level1)?.attributes[5])!;
+    const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+    const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+    const placement = s.editor.addEntity('IfcLocalPlacement', [`#${storeyPlacement}`, `#${axis}`]).expressId;
+    const wall = s.editor.addEntity('IfcWall', ['1BoDyLeSSAAAAAAAAAAAAA', null, 'No body', null, null, `#${placement}`, null, null, null]).expressId;
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['1BoDyReLLAAAAAAAAAAAAA', null, null, null, [`#${wall}`], `#${level1}`]);
+    api('writeTopAttachment')(s.view, wall, create.NEXT_STOREY_ABOVE);
+    const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
+    expect(added.unresizedWalls).toEqual([wall]);
+    expect(added.boundWalls).toEqual([]);
+    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: added.storeyId, source: 'ifclite' });
+  });
+
+  it('an imported stair whose recorded flight sits above it is reported when its landing moves', async () => {
+    const { s, level1 } = await blank();
+    const reader = new AnchorEntityReader(s.store, s.view);
+    const storeyPlacement = refId(reader.entity(level1)?.attributes[5])!;
+    const place = (parent: number, z: number) => {
+      const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, z]]).expressId;
+      const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+      return s.editor.addEntity('IfcLocalPlacement', [`#${parent}`, `#${axis}`]).expressId;
+    };
+    const stairPlacement = place(storeyPlacement, 0);
+    const stair = s.editor.addEntity('IfcStair', ['2ImPoRtStAIRAAAAAAAAAA', null, 'Imported stair', null, null, `#${stairPlacement}`, null, null, '.STRAIGHT_RUN_STAIR.']).expressId;
+    // A flight with a recorded 3 m rise (15 x 0.2 m), raised 0.2 m inside the stair, with no body this editor can rebuild.
+    const flight = s.editor.addEntity('IfcStairFlight', ['2ImPoRtFLiGHTAAAAAAAAA', null, 'Flight', null, null, `#${place(stairPlacement, 0.2)}`, null, null, 15, 15, 0.2, 0.27, '.STRAIGHT.']).expressId;
+    s.editor.addEntity('IfcRelAggregates', ['2ImPoRtAgGRAAAAAAAAAAA', null, null, null, `#${stair}`, [`#${flight}`]]);
+    s.editor.addEntity('IfcRelContainedInSpatialStructure', ['2ImPoRtCoNTAAAAAAAAAAA', null, null, null, [`#${stair}`], `#${level1}`]);
+    api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3.2 });
+    const plan = api('planStoreyLevelEdit')(api('readStoreyInventory')(s.store, s.view), { kind: 'floorHeight', storeyId: level1, Height: 3.5 });
+    expect(plan.notices.find((n) => n.code === 'stairNotRefit')?.elementIds).toEqual([stair]);
+  });
+
   it('a flight that sits above its stair\'s placement lands, and refits, at its own top', async () => {
     const { s, level1, anchor } = await blank();
     const built = s.editor.runAtomic((draft) => addStairToStore(draft, anchor(draft), {

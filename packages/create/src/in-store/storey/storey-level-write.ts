@@ -10,7 +10,8 @@
  */
 
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
+import type { QuantityType } from '@ifc-lite/data';
 import { editStairDimensionsInStore } from '../stair-edit.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import type { StoreyLevelPlan } from './storey-level-plan.js';
@@ -67,8 +68,22 @@ export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyVi
   };
   const height = value('Height');
   if (height) set('Height', height.value * k);
+  // Quantities may carry their own unit (a NetSideArea in mm² beside a GrossSideArea in m²):
+  // the arithmetic between them runs in SI, each read through its own scale.
+  let units: ProjectUnits | null = null;
+  const scaleOf = (q: { name: string; type: QuantityType; value: number } | undefined): number | undefined => {
+    if (!q) return undefined;
+    units ??= extractProjectUnits(store.source, store.entityIndex);
+    const explicit = 'explicitUnitSiScale' in q && typeof q.explicitUnitSiScale === 'number' ? { explicitUnitSiScale: q.explicitUnitSiScale } : {};
+    const scale = quantitySiScale({ name: q.name, type: q.type, value: q.value, ...explicit }, units);
+    return Number.isFinite(scale) && scale > 0 ? scale : undefined;
+  };
+  const si = (q: { name: string; type: QuantityType; value: number } | undefined): number | undefined => {
+    const scale = scaleOf(q);
+    return q && scale !== undefined ? q.value * scale : undefined;
+  };
   // Without the gross value, the set's own Length × Height (× Width) is the gross prism it stands for.
-  const length = value('Length')?.value, width = value('Width')?.value, h = height?.value;
+  const length = si(value('Length')), width = si(value('Width')), h = si(height);
   const grossFromSet = {
     GrossSideArea: length !== undefined && h !== undefined ? length * h : undefined,
     GrossVolume: length !== undefined && width !== undefined && h !== undefined ? length * width * h : undefined,
@@ -76,8 +91,10 @@ export function scaleWallQuantities(store: IfcDataStore, view: MutablePropertyVi
   for (const [gross, net] of [['GrossSideArea', 'NetSideArea'], ['GrossVolume', 'NetVolume']] as const) {
     const g = value(gross), n = value(net);
     if (g) set(gross, g.value * k);
+    if (!n) continue;
     // Openings are the same before and after, so the net value changes by exactly the gross change.
-    const before = g?.value ?? grossFromSet[gross];
-    if (n) set(net, before !== undefined ? n.value + before * (k - 1) : n.value * k);
+    const beforeSi = si(g) ?? grossFromSet[gross];
+    const netScale = scaleOf(n);
+    set(net, beforeSi !== undefined && netScale !== undefined ? n.value + beforeSi * (k - 1) / netScale : n.value * k);
   }
 }

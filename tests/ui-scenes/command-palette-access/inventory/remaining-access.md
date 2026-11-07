@@ -1,0 +1,32 @@
+Read-only reconciliation for #8947 at `701972ef57c27f1e7051086cab2c3e8f731971f7`. No acceptance claim; all 813 IDs and 3994 anchors retained by reference. Authenticated `louistrue` assignment and `claimed` verified.
+
+The old run failed overall (19812 passed, 39 failed, 338 skipped). Only exact passed leaf-test names are attached in the JSON, with 1-based uncompressed log lines, test-source lines and hashes. Each selected source file is compared at 492a, 15bd and pinned 701. No current execution is inferred.
+
+| Binding | Evidence boundary | Remaining access |
+|---|---|---|
+| bcf-configuration | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 16 exact child witnesses | Observe palette opening actual BCF body, then server control opening dialog and cancel/reopen; new/edit topic review path as applicable. No paid server/network publication required. |
+| ids-information-validation | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 11 exact child witnesses | Observe palette opening ValidationPanel; reach IDS and Information configuration plus Manual review entry and cancel. Existing actual child behaviors need not be rewritten; actual imported definition selection 1/N may reuse definitionLibrary tests after exact template-name reconciliation. |
+| clash-configuration | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 11 exact child witnesses | Observe palette -> actual ClashPanel -> controlled Settings dialog; Detection/Rules and cancel/reopen. Existing standalone dialog proof cannot prove this controlled consumer. No collision parameter accuracy sweep. |
+| source-provider-settings | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 12 exact child witnesses | Palette test opens sourcesPanelVisible only; actual lazy SourcesPanel body and provider Configure -> dialog must be observed; cancel or truthful unavailable reason. No remote download required. |
+| federation-setup | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 4 exact child witnesses | Locate a functioning palette/clearly named child entry for saved federation setup; reach real save/reopen configuration and refusal. Open/Add file-picker witnesses do not establish this different child. |
+| drawing-pdf-options | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 8 exact child witnesses | Observe palette actual Drawing body -> Export PDF dialog with ready drawing; source-config and annotation/underlay entry review if requested. No PDF geometry/scale permutations. |
+| document-configuration | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 3 exact child witnesses | Observe palette actual Document body -> template/new or existing document and configuration controls; cancellation/reopen. Do not claim PDF binary verification from fake PDF sink. |
+| list-configuration | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 2 exact child witnesses | Observe palette actual Lists -> New/Edit builder -> one column/filter configuration and cancel/save-launch. Result table or builder mount alone does not prove parent opens. |
+| search-filter | COMPOSED_PROOF_HISTORICAL_ONLY; 23 exact child witnesses | Current integrated runtime pending; capture-scope configuration and saved-library branches only covered if separately witnessed. Do not transfer shared editor proof to AutoColor. |
+| lens-autocolor | CHILD_PASSED_PARENT_REAL_BODY_UNWITNESSED; 15 exact child witnesses | Observe palette Lens -> actual AutoColor editor; capture/clear scope, change source/config and cancel/save-launch. C1081 remains unvisited; a different CapturedScopeControl consumer is insufficient. |
+| settings | COMPOSED_PROOF_HISTORICAL_ONLY; 6 exact child witnesses | Current integrated runtime pending. Physical devices, real collaboration service and all performance values are outside access boundary. |
+| about-help | COMPOSED_PROOF_HISTORICAL_ONLY; 4 exact child witnesses | Current integrated runtime pending; external link navigation is not inferred from translated labels. |
+
+Composition means separate historical parent and child executions through the named same production consumer, never one end-to-end run. Generic panel-state tests and Cloud Sources visible-flag tests do not prove the actual body opens. Where the parent is missing, reuse the listed child evidence after observing the real entry; do not write another copy of every child test.
+C1104: propose dormant exclusion while retaining the ID: whole-tree search found no canonical production registration caller. C1168: propose dormant exclusion while retaining the ID. Ordinary editing enters Model workspace; `authoringSessionSlice.syncRuntime` (lines 101–110) also disables edit mode after removal-driven workspace closure, ruling out the apparent teardown loophole. Neither proposal asserts runtime acceptance. C1243 remains the unvisited non-footprint Split numeric child.
+
+Sol owns entity-menu/native-export witnesses. Coordinator owns the six branch-init defects and current runtime. No jobs, source changes, builds, tests or browser work performed. Cleanup: removed own completed helper only, reclaiming 20727 bytes.
+PR https://github.com/LTplus-AG/ifc-lite/pull/9005, head 701972ef57c27f1e7051086cab2c3e8f731971f7, checks/reviews pending.
+
+
+Current authored overlay (execution pending): real parent/body cases now exist
+for BCF, IDS/Information/Manual, Clash, Sources, Drawing PDF, Document, Lists and
+Lens Auto-Color. `CommandPalette.split-numeric-access.test.tsx` adds the C1243
+scalar-input path in 1/N models. These supplement the historical child bindings;
+they do not convert any row to a passed route without matching execution. Saved
+federation setup remains a distinct open parent/child join.

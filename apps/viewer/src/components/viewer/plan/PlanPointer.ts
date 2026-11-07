@@ -18,7 +18,8 @@
  */
 
 import { commandDoubleClick, commandPointerDown, commandPointerMove, commandPointerUp, getCommandRuntime } from '@/lib/commands/modeling/runtime';
-import { modelSnapSources, profileOf, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
+import { modelSnapSources, pointerAim, profileOf, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
+import { rememberCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
 import { beginWallEndpointDrag } from '@/lib/commands/modeling/commands/wall-move-endpoint';
@@ -56,6 +57,7 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
     sources,
     mods: input.mods,
     profile: planProfile(profileOf(command)),
+    aim: pointerAim(command, runtime.gesture, ctx.workplane, input.snapping, input.mods.altKey),
   });
 }
 
@@ -66,6 +68,7 @@ export function routePlanPointer(kind: 'move' | 'down' | 'up', input: PlanPointe
   if (getCommandRuntime().ctx?.workplane?.spec.kind === 'section') return true;
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
+  if (kind === 'move') rememberCommandPointer((altKey) => { routePlanPointer('move', { ...input, mods: { ...input.mods, altKey } }); });
   // The second click of a double-click (detail 2) closes a polygon, as in 3D.
   if (kind === 'down') ((input.mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
   else if (kind === 'up') commandPointerUp(snap);

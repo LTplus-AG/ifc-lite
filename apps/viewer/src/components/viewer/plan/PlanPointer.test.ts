@@ -50,6 +50,16 @@ describe('PlanPointer on the shared solver (#6232 M2.4)', () => {
     assert.deepEqual(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.local, [2.3, 2.2]);
   });
 
+  it('Alt and the snap toggle mark the point as on the workplane, as in 3D (#9201)', () => {
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { mods: { shiftKey: false, altKey: true } }))?.winner?.kind, 'workplane');
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.winner?.kind, 'workplane');
+  });
+
+  it('a window keeps its unmarked pointer with snapping suspended (#9201)', () => {
+    useViewerStore.getState().startCommand('window.place');
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.winner, null);
+  });
+
   it('a typed length holds the end on its circle, and the result is on the workplane in render space', () => {
     commandPointerDown({ local: [0, 0], winner: null, guides: [], locked: false });
     writeCommandField(0, 3);

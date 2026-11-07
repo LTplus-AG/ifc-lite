@@ -51,7 +51,7 @@ export interface SnapCandidate {
   /** The snap target itself (for an edge: the closest point on it to the cursor). */
   local: Vec2;
   elevation?: number;
-  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference';
+  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference' | 'workplane';
   entity?: { modelId: string; expressId: number };
   /** Actual axis references of an IFC grid crossing, for persisted placement. */
   gridIntersection?: { IntersectingAxes: readonly [number, number] };

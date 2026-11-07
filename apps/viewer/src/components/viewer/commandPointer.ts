@@ -9,8 +9,11 @@
  *
  * Resolution, on the session workplane:
  *   1. the cursor: the geometry under it (mapped onto the plane), else the
- *      cursor ray ∩ the plane; a gesture that aims at a region of the plane
- *      (`aimsAtRegion`) always takes the ray ∩ the plane, and does not snap;
+ *      cursor ray ∩ the plane. A gesture that aims at a region of the plane
+ *      (`aimsAtRegion`) always takes the ray ∩ the plane, and does not snap.
+ *      So does any pointer with snapping suspended (Alt or the toggle), past
+ *      whatever stands in front (#9201), unless the command picks an element
+ *      from the point (`aimsAtElement`); see `pointerAim`;
  *   2. the shared solver (`snap-solve.ts`, also the plan's): the command's anchor, chain and typed
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
  *      snapping is on — the WP3 sources: the mesh source over the renderer's
@@ -33,8 +36,9 @@ import {
 import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import {
-  NO_MODIFIERS, modelSnapSources, solveCommandSnap, type PointerModifiers,
+  NO_MODIFIERS, modelSnapSources, pointerAim, solveCommandSnap, type PointerModifiers,
 } from '@/lib/commands/modeling/snap-solve';
+import { rememberCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
@@ -115,17 +119,16 @@ function resolveCommandSnap(
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
-  const region = command.aimsAtRegion?.(runtime.gesture) === true;
-  const snapping = ctx.snapEnabledRef.current && !mods.altKey && !region;
-  const pick = snapping ? magneticPick(ctx, command, x, y) : null;
-  if (!snapping) ctx.setSnapTarget(null);
-  const onlyPlane = region || plane.spec.kind === 'section';
-  const hit = pick ? pick.intersection : onlyPlane ? null : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
+  const aim = pointerAim(command, runtime.gesture, plane, ctx.snapEnabledRef.current, mods.altKey);
+  const pick = aim === 'snap' ? magneticPick(ctx, command, x, y) : null;
+  if (!pick) ctx.setSnapTarget(null);
+  const section = plane.spec.kind === 'section';
+  const hit = pick ? pick.intersection : aim === 'surface' && !section ? ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection : null;
   const toLocal = (p: { x: number; y: number; z: number }) => {
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = onlyPlane || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
+  const cursor = section || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
@@ -139,7 +142,7 @@ function resolveCommandSnap(
     ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
   ctx.setSnapTarget(pick?.snapTarget ?? null);
-  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods });
+  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
 }
 
 /** True when a command is running and took the event. */
@@ -159,6 +162,8 @@ export function routeCommandPointer(
     return true;
   }
   latest.set(ctx, { x, y, mods, runtime });
+  const { shiftKey } = mods;
+  rememberCommandPointer((altKey) => { routeCommandPointer(ctx, 'move', x, y, { shiftKey, altKey }); });
   if (ctx.measureRaycastPendingRef.current) return true;
   ctx.measureRaycastPendingRef.current = true;
   ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {

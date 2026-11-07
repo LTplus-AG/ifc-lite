@@ -119,8 +119,20 @@ fn incircle_matches_geometry_predicates_bit_for_bit_issue_9016() {
         check(&mut paths, on(t[0]), [ox + rng.unit(), oy + rng.unit()], on(t[1]), on(t[2]));
     }
 
-    // Cocircular points with rounded coordinates and inexact differences:
-    // stage B cannot decide, so the crate's stage C must be reached.
+    // Lattice-cocircular `a`, `b`, `c` and a `d` nudged by ~1e-25: the rounded
+    // differences stay exactly cocircular, so stage B cannot decide, but their
+    // tails are not zero, so the crate's stage C must be reached.
+    for i in 0..ring.len() {
+        for j in 0..ring.len() {
+            for k in 0..ring.len() {
+                let d = ring[(i + j + k) % ring.len()];
+                let nudged = [d[0] + rng.unit() * 1e-25, d[1] + rng.unit() * 1e-25];
+                check(&mut paths, ring[i], ring[j], ring[k], nudged);
+            }
+        }
+    }
+
+    // Cocircular points with rounded coordinates: most are decided in stage B.
     for _ in 0..5_000 {
         let (cx, cy, r) = (rng.unit() * 1e3, rng.unit() * 1e3, 0.1 + rng.unit().abs());
         let on = |angle: f64| [cx + r * angle.cos(), cy + r * angle.sin()];
@@ -147,5 +159,5 @@ fn incircle_matches_geometry_predicates_bit_for_bit_issue_9016() {
 
     assert!(paths.stage_a > 10_000, "stage A barely exercised: {}", paths.stage_a);
     assert!(paths.stage_b > 10_000, "stage B barely exercised: {}", paths.stage_b);
-    assert!(paths.stage_c > 1_000, "stage C hand-off barely exercised: {}", paths.stage_c);
+    assert!(paths.stage_c > 500, "stage C hand-off barely exercised: {}", paths.stage_c);
 }

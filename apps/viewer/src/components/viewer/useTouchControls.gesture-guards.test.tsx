@@ -192,6 +192,9 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     const marked = mouseEvent('contextmenu', 200, 300);
     Object.defineProperty(marked, 'sourceCapabilities', { value: { firesTouchEvents: true } });
     assert.equal(reachesPage(canvas, marked), false, 'the touch\'s native menu, marked as from touch, was shown');
+    const markedMouse = mouseEvent('contextmenu', 200, 300, 0, 'mouse');
+    Object.defineProperty(markedMouse, 'sourceCapabilities', { value: { firesTouchEvents: true } });
+    assert.equal(reachesPage(canvas, markedMouse), false, 'BUG: a menu typed mouse but marked as from touch was shown');
     act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
     assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s trailing native menu was shown');
     mock.timers.reset();

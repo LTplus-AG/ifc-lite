@@ -89,7 +89,8 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       if (!point || !near(point, event.clientX, event.clientY)) return;
       const source = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };
       const touchTyped = source.pointerType === 'touch' || source.pointerType === 'pen' || source.sourceCapabilities?.firesTouchEvents;
-      if (source.pointerType === 'mouse' || (point.mouse && !touchTyped)) {
+      // Marked as from touch first, as `isTouchSelectionClick` reads it: never the mouse's
+      if (!touchTyped && (source.pointerType === 'mouse' || point.mouse)) {
         for (const p of [start, menuWindow]) if (p) p.mouse = false; // the press's one menu
         return;
       }

@@ -29,8 +29,8 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
-import { measureSnapToggle } from './measureSnapToggle.js';
-import { noteMeasureCursor, noteMeasureShift } from './measureCursor.js';
+import { measureShiftChange, measureSnapToggle } from './measureSnapToggle.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { forgetTouchSelection } from './referenceSelection.js';
@@ -224,7 +224,7 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
  * reposition) reaches the context's press state and queued frame (#8786),
  * a Snap toggle drops the queued frame and re-picks the live preview under
- * the new setting (#8881, #8992, #9022), and Shift is noted for that re-pick.
+ * the new setting (#8881, #8992, #9022), and a Shift change re-picks the Distance rubber band (#9161).
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
@@ -236,8 +236,8 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
     else if (prev.snapEnabled !== state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapToggle(ctx, state.snapEnabled);
   });
   // The event's modifier state, so releasing one Shift key with the other held keeps the axis
-  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.shiftKey); };
-  const onBlur = () => noteMeasureShift(ctx, false); // a release while the window is away sends no keyup
+  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') measureShiftChange(ctx, e.shiftKey); };
+  const onBlur = () => measureShiftChange(ctx, false); // a release while the window is away sends no keyup
   window.addEventListener('keydown', onShift);
   window.addEventListener('keyup', onShift);
   window.addEventListener('blur', onBlur);

@@ -74,12 +74,14 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-disabled={disabled || undefined}
       aria-describedby={reason ? reasonId : undefined}
       className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-active-surface text-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-active' : 'text-foreground hover:bg-accent/50')}
+        selected && 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full',
+        selected ? (disabled ? 'bg-accent before:bg-muted-foreground' : 'bg-active-surface before:bg-active') : 'hover:bg-accent/50',
+        disabled ? 'text-muted-foreground cursor-not-allowed' : 'text-foreground')}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
       <Icon className={cn("h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
-        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1"><MatchHighlight text={label} query={query} /></span>
+        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1"><MatchHighlight text={label} query={disabled ? '' : query} /></span>
         {reason && <span id={reasonId} className="block text-xs text-muted-foreground">{reason}</span>}
         {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
       </span>

@@ -180,7 +180,7 @@ try {
       // The observed phone UI replaces the ribbon with a compact toolbar (#8892).
       await page.getByRole('button', {name:'Home', exact:true}).waitFor({state:'visible'});
       await page.getByRole('button', {name:'Altre azioni', exact:true}).click();
-      await page.getByRole('menuitem', {name:'Impostazioni', exact:true}).waitFor({state:'visible'});
+      await page.getByRole('menuitem', {name:'Impostazioni…', exact:true}).waitFor({state:'visible'});
       await page.keyboard.press('Escape');
       await page.getByRole('button', {name:"Apri l'elenco dei pannelli", exact:true}).click();
       await page.getByRole('button', {name:'Validazione dei dati', exact:true}).click();

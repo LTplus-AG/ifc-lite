@@ -78,6 +78,8 @@ interface ChunkErrorBoundaryProps {
   label: ChunkLabel;
   tone?: ChunkErrorTone;
   children: ReactNode;
+  /** Keep an overlay failure inside its dismissible overlay instead of panel flow. */
+  renderFallback?: (fallback: ReactNode) => ReactNode;
 }
 
 interface ChunkErrorBoundaryState {
@@ -121,13 +123,14 @@ export class ChunkErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
-    return (
+    const fallback = (
       <ChunkErrorFallback
         label={this.props.label}
         tone={this.props.tone}
         chunk={isStaleDeploymentError(error)}
       />
     );
+    return this.props.renderFallback ? this.props.renderFallback(fallback) : fallback;
   }
 }
 

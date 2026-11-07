@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 (globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, click, render, type as typeInto, advance, waitFor } from '@/test/render.js';
+import { cleanup, click, render, type as typeInto, advance, waitFor, press } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -36,6 +36,13 @@ test('the visible ribbon Commands button opens the palette (#5862)', async () =>
   const button = [...layout.querySelectorAll('button')]
     .find((candidate) => candidate.textContent?.includes('Commands…'));
   assert.ok(button, 'the ribbon exposes the Commands button');
+  click(button);
+  const pending = document.body.querySelector('[role="dialog"]');
+  assert.ok(pending?.querySelector('output'), 'first open exposes the cancellable loading shell');
+  press(pending, 'Escape');
+  await advance(20);
+  assert.equal(document.body.querySelector('[role="dialog"]'), null,
+    'Escape cancels the pending open; a late chunk must not reopen it (#8947)');
   click(button);
   await waitFor(() => document.body.querySelector('[role="dialog"][aria-label="Command palette"]') !== null,
     'the first Commands activation must load and open the palette');

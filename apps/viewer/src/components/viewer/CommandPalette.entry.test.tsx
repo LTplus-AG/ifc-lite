@@ -38,7 +38,8 @@ test('the visible ribbon Commands button opens the palette (#5862)', async () =>
   assert.ok(button, 'the ribbon exposes the Commands button');
   click(button);
   const pending = document.body.querySelector('[role="dialog"]');
-  assert.ok(pending?.querySelector('output'), 'first open exposes the cancellable loading shell');
+  assert.ok(pending, 'first open mounts the loading dialog');
+  assert.ok(pending.querySelector('output'), 'first open exposes the cancellable loading shell');
   press(pending, 'Escape');
   await advance(20);
   assert.equal(document.body.querySelector('[role="dialog"]'), null,

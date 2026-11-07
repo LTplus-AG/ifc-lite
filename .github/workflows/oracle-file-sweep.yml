@@ -1,0 +1,85 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Oracle file sweep
+
+# A PR's oracle.json and *.oracle.patch are read only while that PR is open
+# (scripts/revert-oracle-discover.mjs reads manifests the PR adds), so they go
+# unused once it merges. Once a week this opens a delete-only PR for them, so
+# tests/evidence/ stays down to its witnesses.txt registrations (#9054).
+on:
+  schedule:
+    # Sunday 03:07 UTC: a slot no other scheduled lane uses.
+    - cron: '7 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-file-sweep
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SWEEP_BRANCH: chore/sweep-oracle-files
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Remove merged oracle files
+        run: node scripts/sweep-oracle-files.mjs --apply
+      # GITHUB_TOKEN pushes trigger no workflows, so the PR's own CI would never
+      # start: this needs the same PAT as the perf-ratchet lowering PR. Unset,
+      # the job lists the files in its log, warns, and stays green.
+      - name: Open or update the sweep PR
+        env:
+          PUSH_TOKEN: ${{ secrets.PERF_RATCHET_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          if git diff --cached --quiet; then
+            echo "No merged oracle files; nothing to sweep."
+            exit 0
+          fi
+          if [ -z "$PUSH_TOKEN" ]; then
+            echo "::warning::PERF_RATCHET_PAT is unset, so the sweep PR was not opened."
+            exit 0
+          fi
+          git config user.name 'ifc-lite oracle sweep'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$SWEEP_BRANCH"
+          git commit -q -m 'chore: remove merged oracle files'
+          auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+          echo "::add-mask::${auth}"
+          # Force: the branch is regenerated from main on every run.
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+            push --force "https://github.com/${REPO}.git" "HEAD:refs/heads/${SWEEP_BRANCH}"
+          export GH_TOKEN="$PUSH_TOKEN"
+          existing=$(gh pr list --repo "$REPO" --head "$SWEEP_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh pr create --repo "$REPO" --base main --head "$SWEEP_BRANCH" \
+              --title 'chore: remove merged oracle files' \
+              --body 'Automated from `.github/workflows/oracle-file-sweep.yml`. Delete-only: these `oracle.json` and `*.oracle.patch` files are read only while the PR that adds them is open.' \
+              --label unqueued --label revert-oracle-exempt --label mergify-trial
+          fi
+
+  report-scheduled-failure:
+    needs: [sweep]
+    if: always() && github.event_name == 'schedule' && needs.sweep.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Oracle file sweep
+      jobs: sweep
+      result: sweep=${{ needs.sweep.result }}
+    permissions:
+      contents: read
+      issues: write

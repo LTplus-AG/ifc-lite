@@ -18,10 +18,13 @@ export function groupStreamingPieces(
   const groups = new Map<string, MeshData[]>();
   const sourceOf = new Map<MeshData, MeshData>();
   for (const mesh of meshes) {
+    const pieces = split(mesh);
+    // An index-less mesh over the vertex-byte limit splits into no piece; an empty group cannot be uploaded.
+    if (pieces.length === 0) continue;
     const key = keyOf(mesh);
     let group = groups.get(key);
     if (!group) groups.set(key, (group = []));
-    for (const piece of split(mesh)) {
+    for (const piece of pieces) {
       if (piece !== mesh) sourceOf.set(piece, mesh);
       group.push(piece);
     }
@@ -48,8 +51,17 @@ export class FragmentPieces {
 
   /** Append this fragment's pieces of the registered mesh `mesh` to `into`. */
   collect(mesh: MeshData, into: MeshData[]): void {
-    if (this.whole.has(mesh)) into.push(mesh);
-    else into.push(...(this.split.get(mesh) ?? []));
+    if (this.whole.has(mesh)) {
+      into.push(mesh);
+      return;
+    }
+    for (const piece of this.split.get(mesh) ?? []) {
+      // A model translation re-places the registered mesh, not the copies cut from it.
+      piece.origin = mesh.origin;
+      piece.localToWorld = mesh.localToWorld;
+      piece.geometryAabb = mesh.geometryAabb;
+      into.push(piece);
+    }
   }
 }
 

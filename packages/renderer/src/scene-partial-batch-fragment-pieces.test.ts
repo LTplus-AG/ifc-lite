@@ -132,6 +132,27 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
     stream(scene, meshes);
     assertSpread(scene, P);
     assertDrawnOnce(scene, meshes, { 'isolate P': [P], 'hide P': [B], 'isolate B': [B] });
+
+    // A model translation re-places P; the pieces cut from it must follow.
+    scene.setModelTranslation(0, [100, 0, 0]);
+    const shared = scene.getBatchedMeshes().find((batch) => batch.expressIds.includes(P) && batch.expressIds.includes(B));
+    assert.ok(shared, 'one fragment holds a piece of P and B');
+    const partial = scene.getOrCreatePartialBatch(`${shared.colorKey}:${shared.id}`, shared.colorKey, new Set([P]), device, pipeline);
+    assert.deepStrictEqual(partial?.bounds, { min: [100, 0, 0], max: [101, 1, 0] }, 'isolate P after translation');
+  });
+
+  it('index-less mesh over the streaming vertex-byte limit', () => {
+    const scene = new Scene();
+    const empty = 1, B = 2;
+    // 8 MiB of positions + normals with no indices: splitting it yields no piece,
+    // and its own colour would leave its fragment group empty.
+    const vertices = (4 * 1024 * 1024) / 12 + 1;
+    const meshes = [
+      { ...mesh(empty, 0, { color: GLASS }), positions: new Float32Array(vertices * 3), normals: new Float32Array(vertices * 3), indices: new Uint32Array(0) },
+      mesh(B, 2),
+    ];
+    stream(scene, meshes);
+    assertDrawnOnce(scene, meshes, { 'isolate B': [B] });
   });
 
   it('translucent entity split across two appends', () => {

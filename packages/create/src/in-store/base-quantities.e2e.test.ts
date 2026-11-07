@@ -238,6 +238,18 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities')).toMatchObject({ GrossArea: 48, NetArea: 45, NetVolume: 11.25 });
   });
 
+  it('a rectangle turned by its solid position keeps its sides as Length and Depth', async () => {
+    const s = await session();
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 });
+    const solidPosition = s.editor.addEntity('IfcAxis2Placement3D', [
+      `#${s.editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId}`,
+      `#${s.editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId}`,
+      `#${s.editor.addEntity('IfcDirection', [[Math.SQRT1_2, Math.SQRT1_2, 0]]).expressId}`,
+    ]).expressId;
+    s.view.setPositionalAttribute(slab.solidId, 1, `#${solidPosition}`);
+    expect(values(s.view, slab.slabId, 'Qto_SlabBaseQuantities')).toMatchObject({ Length: 8, Depth: 6, GrossArea: 48, Perimeter: 28 });
+  });
+
   it('a tilted slab reads none rather than a plan area it does not have', async () => {
     const s = await session();
     const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.25 });

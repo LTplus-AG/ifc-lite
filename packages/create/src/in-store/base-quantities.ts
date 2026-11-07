@@ -245,10 +245,10 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   }
   const rows: Row[] = [['Width', QuantityType.Length, chain.thickness]];
   if (chain.profileKind === 'rectangle') {
-    // Length and Depth are the plan's two sides, and the schema gives them only for a rectangle.
-    const xs = local.map(([x]) => x);
-    const ys = local.map(([, y]) => y);
-    rows.push(['Length', QuantityType.Length, Math.max(...xs) - Math.min(...xs)], ['Depth', QuantityType.Length, Math.max(...ys) - Math.min(...ys)]);
+    // Length and Depth are the rectangle's two sides, read off its edges so a turned solid keeps them;
+    // the schema gives them only for a rectangle.
+    const [a, b, c] = local;
+    rows.push(['Length', QuantityType.Length, Math.hypot(b[0] - a[0], b[1] - a[1])], ['Depth', QuantityType.Length, Math.hypot(c[0] - b[0], c[1] - b[1])]);
   }
   rows.push(
     ['Perimeter', QuantityType.Length, polygonPerimeter(chain.footprint)],

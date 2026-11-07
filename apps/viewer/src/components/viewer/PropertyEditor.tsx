@@ -203,7 +203,7 @@ export function PropertyEditor({
               if (showScopeConfirm) setShowScopeConfirm(false);
             }}
             onKeyDown={handleKeyDown}
-            className="h-7 text-xs font-mono flex-1 bg-white dark:bg-zinc-900"
+            className="h-7 text-xs font-mono flex-1 bg-white"
             placeholder={t('propertyEditor.inline.enterValue')}
             type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
             step={valueType === PropertyValueType.Real ? 'any' : undefined}
@@ -324,7 +324,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* Data-enrichment cluster — one segmented control of icon keys */}
-          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:bg-zinc-800/50 dark:ring-zinc-700">
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:ring-zinc-700">
             <NewPropertyDialog
               modelId={modelId}
               entityId={entityId}

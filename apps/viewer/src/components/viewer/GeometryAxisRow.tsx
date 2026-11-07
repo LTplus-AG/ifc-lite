@@ -42,7 +42,7 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-6 text-xs font-mono px-1 flex-1 border-overlay-accent/40 bg-white dark:bg-zinc-950"
+        className="h-6 text-xs font-mono px-1 flex-1 border-overlay-accent/40 bg-white"
         step="any"
       />
       <IconButton

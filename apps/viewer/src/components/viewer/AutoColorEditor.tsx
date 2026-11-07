@@ -99,10 +99,10 @@ export function AutoColorEditor({
     && (!needsPset || psetName.trim().length > 0)
     && (!needsPropertyName || propertyName.trim().length > 0);
 
-  const selectClass = 'text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm';
+  const selectClass = 'text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm';
 
   return (
-    <div className="border-2 border-primary bg-white dark:bg-zinc-900 rounded-sm">
+    <div className="border-2 border-primary bg-white rounded-sm">
       <div className="px-3 pt-3 pb-2">
         <input
           type="text" value={name} aria-label={t('lensPanel.autoColor.namePlaceholder')}

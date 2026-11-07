@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { Rule } from '@ifc-lite/rules';
 import { IDSAuditSummary } from '@/components/viewer/IDSAuditSummary.js';
 import { FoldedGroupEditor } from '@/components/viewer/validation/FoldedGroupEditor.js';
+import { FLOW_PRIMARY_BUTTON } from '@/components/viewer/flow/flow-button.js';
 import { cleanup, render, click } from '@/test/render.js';
 import { closeContrastBrowser, withThemedPage, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
@@ -40,7 +41,32 @@ describe('remaining root status roles (Refs #8802)', () => {
       });
     }
   }
-  it('dark range chip and remove hover differ from their restored surface', async () => {
+  for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
+    it(`Flow's primary action uses the primary role in ${theme}`, async () => {
+      await withThemedPage(theme, `<div class="bg-card"><button id="action" class="${FLOW_PRIMARY_BUTTON}">Run</button><i id="expected" class="border border-primary text-primary"></i></div>`, async page => {
+        const read = (selector: string) => page.$eval(selector, el => {
+          const s = getComputedStyle(el);
+          return { ink: s.color, edge: s.borderTopColor };
+        });
+        assert.deepEqual(await read('#action'), await read('#expected'));
+      });
+      // The colorful theme's primary is low contrast everywhere (3.33:1 here), an
+      // open decision on #8802, so it only follows the role until that is made.
+      if (theme === 'colorful') return;
+      const ratio = await measureTextContrastOnSurface(theme, 'bg-card', FLOW_PRIMARY_BUTTON);
+      assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `contrast ${ratio.toFixed(2)}:1 in ${theme}`);
+    });
+  }
+  // `.dark .bg-white` wins over any `dark:bg-*` beside it, which is why those
+  // classes could be dropped: dark mode paints the panel surface either way.
+  it('a white surface paints the panel in dark mode, so a dark:bg class beside it does nothing', async () => {
+    await withThemedPage('dark', '<div id="white" class="bg-white"></div><div id="both" class="bg-white dark:bg-muted"></div><div id="panel" class="bg-card"></div>', async page => {
+      const bg = (selector: string) => page.$eval(selector, el => getComputedStyle(el).backgroundColor);
+      assert.equal(await bg('#both'), await bg('#white'));
+      assert.equal(await bg('#white'), await bg('#panel'));
+    });
+  });
+  it('dark range chip and remove hover differ from their surface', async () => {
     const ui = render(<FoldedGroupEditor groups={[{ combinator: 'AND', rules: [Rule.attribute('Tag', 'gte', '10'), Rule.attribute('Tag', 'lte', '20')] }]} activeGroup={0} models={[]} onChange={() => {}} />);
     const chip = ui.querySelector('input[type="number"]')?.parentElement?.querySelector('span');
     assert.ok(chip?.parentElement);

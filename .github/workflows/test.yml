@@ -517,6 +517,7 @@ jobs:
               - 'tests/fixtures/appearance/**'
               - 'tests/fixtures/frame-ratchet-6975/**'
               - 'tests/fixtures/ids/**'
+              - 'tests/fixtures/renderer-density-6881/**'
               # The UI overhaul's scene/council tooling (#8802) is walked by the
               # same conservative gate inputs as every other tests/ subtree.
               - 'tests/ui-scenes/**'

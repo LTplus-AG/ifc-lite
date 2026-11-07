@@ -73,9 +73,12 @@ describe('sets a view base derives for an overlay-created element', () => {
     expect(extractQuantitiesOnDemand(reopened, f.overlayWall)[0].quantities[0].value).toBe(7);
   });
 
-  it('are not nominated for a loaded element or for a copy of one', async () => {
+  it('are not nominated for a copy of a loaded element, even when its base answers', async () => {
     const f = await fixture();
+    // A base that answers for the copy itself, so only the exporter's own rule keeps it out.
+    f.view.setQuantityExtractor((_id, asking, occurrence) => (asking.getNewEntity(occurrence) ? derived(occurrence) : []));
     f.view.setEntityAlias(f.overlayWall, WALL_ID);
+    expect(f.view.getQuantitiesForEntity(f.overlayWall)).toHaveLength(1);
     expect(exported(f)).not.toContain(SET);
   });
 });

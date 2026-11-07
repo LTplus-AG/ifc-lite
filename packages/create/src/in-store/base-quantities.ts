@@ -164,7 +164,8 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
   if (!read || !(read.height > 0)) return null;
   const { wall, height } = read;
   const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
-  const footprint = polygonArea(wallBodyOutline(wall).corners);
+  const outline = wallBodyOutline(wall);
+  const footprint = polygonArea(outline.corners);
   const side = length * height;
   const volume = footprint * height;
   const footprintKey = reading.dataStore.schemaVersion?.startsWith('IFC4X3') ? 'FootPrintArea' : 'FootprintArea';
@@ -180,7 +181,7 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
   // footprint where they reach the floor: a door does, a window with a sill does not.
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
-  if (boxes && (boxes.length === 0 || body)) {
+  if (boxes && (boxes.length === 0 || (body && withinFullThickness(read, outline, boxes)))) {
     let netFootprint = footprint;
     let netSide = side;
     let netVolume = volume;
@@ -201,6 +202,24 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
     );
   }
   return toQuantitySet(reading.dataStore, reading.scale, 'Qto_WallBaseQuantities', rows);
+}
+
+/**
+ * Whether every opening lies along the stretch where a joined wall has its
+ * whole thickness: beyond it, a mitre has cut the body's box away, and the
+ * box overlap would subtract wall that is not there.
+ */
+function withinFullThickness(read: { origin: readonly [number, number]; wall: { start: readonly [number, number]; end: readonly [number, number] } },
+  outline: ReturnType<typeof wallBodyOutline>, boxes: readonly HostBounds[]): boolean {
+  if (outline.rectangular) return true;
+  const { wall, origin } = read;
+  const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+  // The outline is measured from the axis Start; an opening's box from the placement origin.
+  const along = ((wall.start[0] - origin[0]) * (wall.end[0] - wall.start[0]) + (wall.start[1] - origin[1]) * (wall.end[1] - wall.start[1])) / length;
+  const [rightStart, rightEnd, leftEnd, leftStart] = outline.corners;
+  const from = along + Math.max(rightStart[0], leftStart[0]);
+  const to = along + Math.min(rightEnd[0], leftEnd[0]);
+  return boxes.every((box) => box.min[0] >= from - 1e-6 && box.max[0] <= to + 1e-6);
 }
 
 function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet | null {
@@ -275,7 +294,7 @@ function linearSet(reading: Reading, id: number, type: string): QuantitySet | nu
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
   // A box overlap is the material cut only for a solid rectangle: beside an I's web it cuts air.
-  if (boxes && (boxes.length === 0 || (body && chain.profile === null))) {
+  if (boxes && (boxes.length === 0 || (body && (chain.profile === null || chain.profile.Type === 'Rectangle')))) {
     const cut = boxes.reduce((sum, box) => sum + axisOverlap(box, body!, 0) * axisOverlap(box, body!, 1) * axisOverlap(box, body!, 2), 0);
     if (boxes.length === 0) rows.push(['NetSurfaceArea', QuantityType.Area, gross]);
     rows.push(['NetVolume', QuantityType.Volume, Math.max(0, volume - cut)]);

@@ -29,6 +29,8 @@ import { addRoofToStore } from './roof.js';
 import { addSlabToStore } from './slab.js';
 import { addWallToStore } from './wall.js';
 import { applyWallJoinToStore, wallJoinTargetFromBuild } from './wall-join-apply.js';
+import { readWallJoinTarget } from './wall-join-read.js';
+import { wallBodyOutline } from './wall-join.js';
 import { parse } from './wall-join-mesh.oracle.js';
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
@@ -306,6 +308,26 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(after.GrossFootprintArea).toBeCloseTo(0.78, 9);
     expect(after.GrossVolume).toBeCloseTo(2.34, 9);
     expect(values(s.view, b.wallId, WALL_QTO).GrossFootprintArea).toBeCloseTo(1.2, 9);
+  });
+
+  it('an angled join subtracts an opening in the full-thickness stretch, and leaves the net out for one where the end is cut away', async () => {
+    const s = await session();
+    const aParams = { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } satisfies Parameters<typeof addWallToStore>[2];
+    const bParams = { Start: [4, 0, 0], End: [6, 2, 0], Thickness: 0.2, Height: 3 } satisfies Parameters<typeof addWallToStore>[2];
+    const a = addWallToStore(s.editor, s.anchor, aParams);
+    const b = addWallToStore(s.editor, s.anchor, bParams);
+    applyWallJoinToStore(s.editor, s.anchor, wallJoinTargetFromBuild(a, aParams), wallJoinTargetFromBuild(b, bParams), {});
+    const joined = readWallJoinTarget(s.store, s.view, a.wallId, 1)!;
+    const outline = wallBodyOutline(joined.wall);
+    expect(outline.rectangular).toBe(false);
+    // Where the slanted end starts thinning the body, in the placement's frame.
+    const thinsAt = Math.min(outline.corners[1][0], outline.corners[2][0]);
+    const host = () => resolveHostAnchor(s.store, a.wallId, s.view);
+    addOpeningToStore(s.editor, host(), { Offset: 2, Width: 1, Height: 2 });
+    const inside = values(s.view, a.wallId, WALL_QTO);
+    expect(inside.GrossVolume - inside.NetVolume).toBeCloseTo(0.4, 9);
+    addOpeningToStore(s.editor, host(), { Offset: thinsAt, Width: 0.2, Height: 2 });
+    expect(values(s.view, a.wallId, WALL_QTO).NetVolume).toBeUndefined();
   });
 
   it('answers for the class a retype gave the element', async () => {

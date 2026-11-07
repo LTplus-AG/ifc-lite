@@ -115,6 +115,7 @@ describe('a tap\'s compatibility click is dropped within the tap slop (#9091)', 
     assert.equal(selectionCount(), 1, `BUG: the tap's compatibility click selected again (${selectionCount()} selections)`);
   });
 
+  // Guard (passes on main, which drops nothing at 8 px): fails if only the drop widened and not the forget path.
   it('a trackpad press where a drifting tap lifted closes its window: that click selects', async () => {
     const { canvas, selectionCount } = rig('select', 42);
     await driftTap(canvas, 200, 300, 8, 0);
@@ -175,6 +176,7 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     assert.equal(menus.length, 2, `BUG: a Pencil long press then a trackpad right-click opened ${menus.length} menus`);
   });
 
+  // The guards below pass on main, which suppresses every menu near a long press: each fails an over-permissive fix.
   it('the native menu of the touch itself stays suppressed, before and after a trackpad press', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     const { canvas, menus } = rig('select', 42);
@@ -227,6 +229,21 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     mock.timers.reset();
     await act(settle);
     assert.equal(menus.length, 1);
+  });
+
+  it('macOS ctrl+click next to a held finger opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    const down = pointer('pointerdown', 'mouse', 205, 300, 1, 0);
+    Object.defineProperty(down, 'ctrlKey', { value: true });
+    await act(async () => {
+      canvas.dispatchEvent(down);
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, `BUG: a ctrl+click next to a held finger opened ${menus.length} menus`);
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
   });
 
   it('Windows order: a mouse right press before the finger lands, its menu at the release, opens the viewer menu', async () => {
@@ -357,6 +374,20 @@ describe('a finger resting off the canvas is not part of a canvas gesture (#9122
       await settle();
     });
     assert.equal(selectionCount(), 1, 'BUG: the tap after the pinch was still read as multi-touch');
+  });
+
+  it('a canvas finger that slides off the canvas still drives its gesture (control)', () => {
+    const { canvas, camera } = rig('select');
+    const before = pos(camera);
+    act(() => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[760, 300]]));
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[760 + 20 * i, 300]]));
+    });
+    const moved = pos(camera);
+    assert.notEqual(moved, before, 'the drag did not orbit');
+    act(() => canvas.dispatchEvent(touch('touchmove', canvas, [[900, 340]])));
+    assert.notEqual(pos(camera), moved, 'the finger past the canvas edge stopped driving the orbit');
+    act(() => canvas.dispatchEvent(touch('touchend', canvas, [])));
   });
 
   // Control: a new pen press clears a stale touch-owned one anyway, so this guards the pen gate's filter, not a bug on main.

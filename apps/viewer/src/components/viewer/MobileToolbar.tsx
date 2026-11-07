@@ -107,7 +107,7 @@ export function MobileToolbar() {
         <Button
           variant="ghost"
           size="icon-sm"
-          className="h-9 w-9 flex-shrink-0 text-[#9ece6a]"
+          className="h-9 w-9 flex-shrink-0"
           data-command-id={addModel.id}
           onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: fileCommands.handleAddModelClick })}
           disabled={loading}

@@ -23,3 +23,8 @@ Deployment administrators configure the vendor applications on the cloud gateway
 The cloud session ends when the gateway restarts. Reconnect if IFClite reports that it expired. Autodesk refreshes its gateway session before Sign in, Sign out and other mutations, so idle expiry or a restart does not require reloading the viewer to reconnect or sign out. Unconfigured sources explain that an administrator needs to enable the application. Failed sign-out keeps the account visible so users can retry.
 
 Self-hosted deployments without `VITE_CLOUD_HOSTED=true` retain the direct SDK sign-in setup described in the [Dropbox package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-dropbox/README.md) and [Microsoft Graph package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-msgraph/README.md). Dalux currently uses the vendor's API credentials; hosted OAuth for Dropbox and Microsoft does not change that source.
+
+## Local OCI registry demo
+
+For a local sign-in, pull, edit and publish walkthrough, see the
+[local registry guide](local-registry.md).

@@ -13,6 +13,9 @@ import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, render, type as typeInto } from '@/test/render.js';
 import { ActivityBar } from './sidebar/ActivityBar.js';
+import { readRailSurface } from '@/test/rail-surface.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import type { FederatedModel } from '@/store/types';
 import { AnalyzeTab } from './ribbon/tabs/AnalyzeTab.js';
 import { CommandPalette } from './CommandPalette.js';
 
@@ -37,13 +40,28 @@ describe('workspace panel name parity (#5858)', () => {
       pointCloudAssetCount: 1, floatingPanels: [], poppedOutIds: [],
     });
 
-    render(<ActivityBar />);
-    for (const panel of WORKSPACE_PANELS) {
-      // The Room rail entry is intentionally gated by the collaboration feature flag.
-      if (panel.id === 'collab') continue;
-      assert.ok(document.querySelector(`button[aria-label="${titles.get(panel.id)}"]`), `${panel.id} rail name`);
+    // The rail offers every panel under its one name: as an icon, or as a row
+    // of its More menu (on an empty viewer the panels that need a model wait
+    // there, #8802 R6). Both states, so a name that differs in either fails.
+    const states: Array<[string, Map<string, FederatedModel>]> = [
+      ['empty viewer', new Map()],
+      ['model loaded', fixtureModels(fixtureModel('m')).models],
+    ];
+    for (const [state, models] of states) {
+      useViewerStore.setState({ models });
+      render(<ActivityBar />);
+      const rail = readRailSurface();
+      for (const panel of WORKSPACE_PANELS) {
+        // The Room rail entry is intentionally gated by the collaboration feature flag.
+        if (panel.id === 'collab') continue;
+        assert.equal(rail.names.get(panel.id), titles.get(panel.id), `${panel.id} rail name (${state})`);
+        if (state === 'model loaded') assert.equal(rail.where.get(panel.id), 'icon', `${panel.id} is an icon with a model loaded`);
+      }
+      // Not vacuous: on the empty viewer the More rows are really read.
+      if (state === 'empty viewer') assert.equal(rail.where.get('properties'), 'more', 'Properties waits in More on an empty viewer');
+      cleanup();
     }
-    cleanup();
+    useViewerStore.setState({ models: new Map() });
 
     render(<BimReactContext.Provider value={{} as BimContext}><CommandPalette open onOpenChange={() => {}} /></BimReactContext.Provider>);
     const search = document.querySelector('input') as HTMLInputElement;

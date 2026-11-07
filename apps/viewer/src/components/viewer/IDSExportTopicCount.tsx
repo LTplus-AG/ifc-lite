@@ -27,7 +27,7 @@ export function IDSExportTopicCount({ specificationResults, settings }: IDSExpor
     return <p className="text-xs text-muted-foreground">{t('idsPanel.export.topicCount', { count, countDisplay })}</p>;
   }
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-warn">
       <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
       <span>
         {t('idsPanel.export.topicCapWarning', {

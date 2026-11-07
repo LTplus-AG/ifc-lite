@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #8567 integrated-viewer recorder. Explicit manual tool, not a CI gate.
-// Drives a running ifc-lite viewer build in ifc-gpu-check's hardware Chrome and
+// Drives a running ifc-lite viewer build in a hardware Chrome and
 // records the whole page (UI + WebGPU canvas) with a CDP screencast on
 // wall-clock timestamps. Input is real: the capture enters the viewer's own
 // file input, and the camera moves by mouse and wheel events.
@@ -28,7 +28,7 @@ const { values: args } = parseArgs({ options: {
 requireOptions(args, ['viewer-url', 'asset', 'out'], '--viewer-url URL --asset NAME.ply --assets DIR --out ABS_DIR');
 absoluteOutput(args.out);
 const cdpUrl = process.env.IFC_GPU_CDP_URL;
-if (!cdpUrl) throw new Error('IFC_GPU_CDP_URL is not set: run under ~/build-workers/ifc-gpu-check for a hardware Chrome');
+if (!cdpUrl) throw new Error('IFC_GPU_CDP_URL is not set: point it at a Windows hardware Chrome CDP endpoint and run from WSL');
 
 const { entry, localPath } = await verifiedFixture(args.asset, assetsDirectory(args.assets));
 // The take's own source binding, captured before and after so a mid-take edit shows.

@@ -21,6 +21,7 @@ import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { entityOwnership } from '@/utils/entity-ownership';
+import { effectiveEntityCount } from '@/lib/effective-entity-count';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { appendOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
@@ -61,7 +62,6 @@ function storeyDisplayElevationFor(
 
 /** Two contributors show the same badge when they round to the same centimetre. */
 const DISPLAY_ELEVATION_AGREEMENT_M = 0.005;
-
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
 export function elevationKey(elevation: number): string {
   return (Math.round(elevation * 2) / 2).toFixed(2);
@@ -88,7 +88,6 @@ function isLevelLikeSpatialType(type: IfcTypeEnum): boolean {
 
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level 10". */
 const storeyNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 /** Order two storey-like entries (unified storeys or spatial nodes) by the
  *  browser sort mode chosen in the hierarchy panel (issue #1296). */
 export function compareStoreyEntries(
@@ -524,7 +523,7 @@ export function buildTreeData(
         hasChildren: hasSpatialHierarchy,
         isExpanded: isModelExpanded,
         isVisible: model.visible,
-        elementCount: model.ifcDataStore?.entityCount,
+        elementCount: effectiveEntityCount(model.ifcDataStore, overlayViewFor(overlay, modelId)),
       });
 
       // If expanded, show Project -> Site -> Building (stop at building, no storeys)
@@ -629,6 +628,7 @@ export interface AuthoredProduct {
   globalId: number;
   name: string;
   ifcType: string;
+  parts?: number[];
 }
 
 /** Build tree data grouped by IFC class instead of spatial hierarchy.
@@ -710,7 +710,7 @@ export function buildTypeTree(
     let list = typeGroups.get(p.ifcType);
     if (!list) { list = []; typeGroups.set(p.ifcType, list); }
     if (!list.some((e) => e.globalId === p.globalId)) {
-      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId });
+      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId, parts: p.parts });
     }
   }
 

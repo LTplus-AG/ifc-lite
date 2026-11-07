@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/renderer/src/gaussian/gaussian-readiness.ts",
-  "mutation": "tests/evidence/gaussian-8564-readiness/behaviour.oracle.patch",
-  "test": "packages/renderer/src/renderer-device-loss-latch.test.ts",
-  "why": "#8564: Reverse applying hides actual GPU loss behind a qualification-blocked state; the real render-frame device-loss witness must fail."
-}

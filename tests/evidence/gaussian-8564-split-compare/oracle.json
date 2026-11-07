@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/renderer/src/gaussian/gaussian-glass-frame.ts",
-  "mutation": "tests/evidence/gaussian-8564-split-compare/behaviour.oracle.patch",
-  "test": "packages/renderer/src/gaussian-glass-split.test.ts",
-  "why": "#8564 option B: reverse applying swaps the behind/front per-sample tests, so splats behind the glass draw over it and splats in front draw under it; the frame-schedule witness must fail."
-}

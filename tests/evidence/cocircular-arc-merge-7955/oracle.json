@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/face_set_dropped_triangles.rs",
-  "mutation": "tests/evidence/cocircular-arc-merge-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/comparison_rulings_7955.rs",
-  "why": "Without co-circular runs two arcs of one circle are no merge run, so the ruling 19 witness fails."
-}

@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * WebGPU device initialization
- */
+/** WebGPU device initialization */
+import { requestAdapterWithTimeout } from './adapter-request.js';
+export { ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './adapter-request.js';
 import { meterGpuDevice } from './gpu-counters.js';
 
 /**
@@ -66,7 +66,7 @@ export class WebGPUDevice {
       throw new Error('WebGPU not available');
     }
 
-    this.adapter = await navigator.gpu.requestAdapter();
+    this.adapter = await requestAdapterWithTimeout(navigator.gpu);
     if (!this.adapter) {
       throw new Error('Failed to get GPU adapter');
     }

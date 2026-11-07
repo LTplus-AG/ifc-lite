@@ -95,7 +95,7 @@ export function SelectionSummaryPanel({ models, ifcDataStore }: { models: Map<st
   );
 
   return (
-    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black">
+    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-border bg-white">
       <div className="p-3 border-b-2 border-border bg-muted dark:bg-black flex items-center gap-2">
         <Boxes className="h-4 w-4 text-emerald-600" aria-hidden="true" />
         <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">

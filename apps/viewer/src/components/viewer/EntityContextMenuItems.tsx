@@ -43,13 +43,13 @@ type MenuItemProps = MenuItemViewProps & (
 function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId, extensionCommandId }: MenuItemProps) {
   const descriptionId = useId();
   const iconClass = tone === 'destructive'
-    ? 'h-4 w-4 text-red-500 dark:text-red-400'
+    ? 'h-4 w-4 text-danger'
     : 'h-4 w-4 text-muted-foreground';
   const focusClass = tone === 'destructive'
-    ? 'focus:bg-red-50 focus:text-red-700 dark:focus:bg-red-950/40 dark:focus:text-red-300'
+    ? 'focus:bg-danger-surface focus:text-danger'
     : 'focus:bg-muted';
   return (
-    <ContextMenuItem asChild disabled={disabled}>
+    <ContextMenuItem asChild disabled={disabled} className={focusClass}>
       <button
         type="button"
         data-command-id={commandId}
@@ -58,7 +58,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
         aria-describedby={disabled && title ? descriptionId : undefined}
         title={title}
         disabled={disabled}
-        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none ${focusClass}`}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none"
         onClick={onClick}
       >
         <Icon className={iconClass} />

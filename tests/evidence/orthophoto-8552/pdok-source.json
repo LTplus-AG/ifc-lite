@@ -1,5 +1,0 @@
-{
-  "url": "https://service.pdok.nl/hwh/luchtfotorgb/wms/v1_0?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=2025_ortho25&STYLES=&SRS=EPSG%3A28992&BBOX=90670%2C435220%2C90870%2C435420&WIDTH=800&HEIGHT=800&FORMAT=image%2Fjpeg",
-  "size": 56370,
-  "attribution": "Samenwerkingsverband Beeldmateriaal / PDOK, CC BY 4.0"
-}

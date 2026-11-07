@@ -43,7 +43,7 @@ export function CaptureModelPanel({ model, title, onRemove, onReload, rootProps 
   const state = useGaussianCaptureState(model);
   const label = gaussianStateLabel(state);
   return (
-    <div {...rootProps} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div {...rootProps} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white">
       <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{title}</h2>
       </div>

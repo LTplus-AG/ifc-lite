@@ -66,7 +66,7 @@ export const miscPanelsADe = {
   "exportChangesReviewDialog.entityTypeIdLabel": "{type} #{id}",
   "exportChangesReviewDialog.entityTypeIdNameLabel": "{type} #{id} — {name}",
   "exportChangesReviewDialog.noPendingChanges": "Keine ausstehenden Änderungen zum Exportieren.",
-  "exportChangesReviewDialog.modelsCount": {"one": "Modell {count}", "other": "{count} Modelle"},
+  "exportChangesReviewDialog.modelsCount": {"one": "{count} Modell", "other": "{count} Modelle"},
   "exportChangesReviewDialog.changesSummaryOneFile": {"one": "Die {count} Änderung in {models} wird auf die exportierte Datei angewendet.", "other": "{count} Änderungen in {models} werden auf die exportierte Datei angewendet."},
   "exportChangesReviewDialog.changesSummaryMultipleFiles": {"one": "Die {count} Änderung in {models} wird auf die exportierten Dateien angewendet.", "other": "{count} Änderungen in {models} werden auf die exportierten Dateien angewendet."},
   "exportChangesReviewDialog.emptyStateMessage": "Seit dem letzten Export hat sich nichts geändert – es kann kein Overlay angewendet werden.",

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { emptyBindGroup, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
  * meshes into two resolved targets the edge
@@ -152,10 +152,12 @@ export class SelectionMaskPass {
         }],
         ...(visible ? { depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilReadOnly: true } } : {}),
       });
+      // Group 1 is padding in both mesh mask layouts; group 2 is padding unless geometric (#9060).
+      pass.setBindGroup(1, emptyBindGroup(this.device));
       if (visible && frame.geometricVisibility) {
         this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount);
         pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
-      } else pass.setPipeline(this.pipelines[kind]);
+      } else { pass.setPipeline(this.pipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
       for (const mesh of meshes) {
         pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);

@@ -18,7 +18,7 @@
 //! Not pinned here: the shard sweep's `host_mutated` gate. Forcing the sweep
 //! always on or always off changes no output in this crate's tests, and no
 //! host in the local corpus has a face the sweep would drop either way, so no
-//! reachable fixture tells the two apart (`tests/evidence/c2-7a/port-notes.txt`).
+//! reachable fixture tells the two apart.
 
 use super::super::*;
 use crate::csg::CsgCensus;

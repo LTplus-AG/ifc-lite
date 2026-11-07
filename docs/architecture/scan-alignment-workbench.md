@@ -146,7 +146,7 @@ The planner retains its work and memory limits. A capacity refusal is actionable
 and does not authorize reducing the chosen scope. The public boulder control
 uses an explicitly created 350-triangle region from the full 66,122-triangle
 source, with real image transfer, unknown retention and fresh IFCZIP import.
-The [committed browser and independent IFC evidence](evidence/scan-transfer-workspace/README.md) records the original/transfer comparison and normal reimport. [Room portability acceptance](evidence/scan-transfer-room/README.md) also verifies fresh guest/rejoin and room IFCX export/reopen with identical atlas pixels, world/UV association and object picking. This same-source control proves the workflow; it is not evidence of independent
+The [committed browser and independent IFC evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-transfer-workspace/README.md) records the original/transfer comparison and normal reimport. [Room portability acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-transfer-room/README.md) also verifies fresh guest/rejoin and room IFCX export/reopen with identical atlas pixels, world/UV association and object picking. This same-source control proves the workflow; it is not evidence of independent
 scan-to-BIM accuracy or full-model transfer capacity. Independent scan/model
 registration, RGB-point adapters and broader transfer acceptance remain #4381
 work.
@@ -158,7 +158,7 @@ Three kinds of evidence exist, and they answer different questions:
 1. **Controlled surface behaviour** (native tests in
    `rust/processing/src/appearance/transfer_acceptance_tests.rs`, mirrored over
    the real WASM boundary by `scripts/lib/wasm-mesh-transfer-surfaces-contract.mjs`,
-   summarised in [mesh-transfer-surfaces](evidence/mesh-transfer-surfaces/README.md)).
+   summarised in [mesh-transfer-surfaces](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-surfaces/README.md)).
    A 4 mm two-sided partition observes each side only from its own capture; a
    gap in one capture stays unknown instead of receiving the opposite side; a
    slab in front of an uncaptured region is refused by its wall-facing normal,
@@ -166,14 +166,14 @@ Three kinds of evidence exist, and they answer different questions:
    are stated invariants over synthetic fixtures with an identity registration.
    They prove the classification rules, not registration accuracy.
 2. **Same-source workflow controls** in the browser
-   ([workspace](evidence/scan-transfer-workspace/README.md),
-   [room portability](evidence/scan-transfer-room/README.md),
-   [full selected target](evidence/mesh-transfer-full-target/README.md)) prove
+   ([workspace](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-transfer-workspace/README.md),
+   [room portability](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-transfer-room/README.md),
+   [full selected target](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-full-target/README.md)) prove
    Preview, Compare, Apply, Undo/Redo, IFCZIP export, fresh import and shared
    rooms with retained unknown pixels. The GLB and IFC derive from one surface,
    so residuals there say nothing about aligning independent captures.
 3. **Independent real-pair registration** is met by the
-   [CRAS registration and transfer evidence](evidence/scan-registration-cras/README.md):
+   [CRAS registration and transfer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-registration-cras/README.md):
    the complete CC BY 4.0 archive (584,701,977 points, MD5 verified) against the
    published model, 16 landmarks each defined as the intersection of three named
    planar building faces, measured on the scan side by a seeded plane fit and on

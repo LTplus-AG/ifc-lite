@@ -188,6 +188,7 @@ export const propertiesDe = {
   "properties.modelMetadata.sourceModel": "Quellmodell",
   "properties.modelMetadata.fileInformationHeading": "Dateiinformationen",
   "properties.modelMetadata.fileSize": "Dateigröße",
+  "properties.modelMetadata.fileSizeAsLoaded": "Dateigröße (beim Laden)",
   "properties.modelMetadata.loadedAt": "Geladen am",
   "properties.modelMetadata.parseTime": "Einlesedauer",
   "properties.modelMetadata.parseTimeValue": "{ms} ms",

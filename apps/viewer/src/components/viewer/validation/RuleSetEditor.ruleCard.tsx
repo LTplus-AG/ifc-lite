@@ -207,7 +207,7 @@ function cleanCardinality(
 function SeverityToggle({ value, onChange }: { value: 'error' | 'warning'; onChange: (v: 'error' | 'warning') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs dark:bg-muted">
+    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
       {(['error', 'warning'] as const).map((s) => (
         <button
           key={s}

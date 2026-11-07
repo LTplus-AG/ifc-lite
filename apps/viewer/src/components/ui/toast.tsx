@@ -122,7 +122,7 @@ const iconMap = {
 const colorMap = {
   success: 'border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200',
   error: 'border-red-500/50 bg-red-50 dark:bg-red-950/80 text-red-800 dark:text-red-200',
-  info: 'border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200',
+  info: 'border-zinc-300 dark:border-zinc-700 bg-white text-zinc-800 dark:text-zinc-200',
 };
 
 export interface ToasterProps {

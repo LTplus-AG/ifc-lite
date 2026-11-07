@@ -46,6 +46,19 @@ function fakeCtx(): MouseHandlerContext {
   } as unknown as MouseHandlerContext;
 }
 
+/** What the measure reprojection pass reads, which a Point hover move runs (#9022). */
+function measurePass() {
+  const camera = {
+    projectToScreen: () => null, getPosition: () => ({ x: 0, y: 0, z: 0 }), getRotation: () => ({ azimuth: 0, elevation: 0 }),
+    getDistance: () => 1, getProjectionMode: () => 'perspective', getOrthoSize: () => 1, getFOV: () => 45, getUp: () => ({ x: 0, y: 1, z: 0 }),
+  };
+  return {
+    camera, canvas: { width: W, height: H }, lastCameraStateRef: { current: null }, updateMeasurementScreenCoords: () => {},
+    hiddenEntitiesRef: { current: new Set<number>() }, isolatedEntitiesRef: { current: null },
+    renderer: { ...fakeCtx().renderer, getPickClipRevision: () => 0, getPickGeometryRevision: () => 0 },
+  };
+}
+
 const gesture = () => getCommandRuntime().gesture as WallPlaceGesture;
 const down = (ctx: MouseHandlerContext, x: number, y: number, altKey = false) =>
   routeCommandPointer(ctx, 'down', x, y, { shiftKey: false, altKey });
@@ -179,7 +192,7 @@ describe('command pointer: cancelling a queued preview (#8952)', () => {
     useViewerStore.setState({ measureMode: 'point', measurePointLive: { x: 1, y: 2, z: 3, screenX: 4, screenY: 5 } });
     try { withFrames(() => {
       const ctx = fakeCtx() as MouseHandlerContext & Record<string, unknown>;
-      Object.assign(ctx, { HOVER_SNAP_THROTTLE_MS: 100, lastHoverSnapTimeRef: { current: 1000 }, mouseState: { isDragging: false } });
+      Object.assign(ctx, { HOVER_SNAP_THROTTLE_MS: 100, lastHoverSnapTimeRef: { current: 1000 }, mouseState: { isDragging: false } }, measurePass());
       // Inside the throttle window: queues a trailing pick. Keep its own timer id.
       const set = globalThis.setTimeout;
       let trailing: unknown;

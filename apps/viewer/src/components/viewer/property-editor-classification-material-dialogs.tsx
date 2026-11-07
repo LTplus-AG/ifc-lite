@@ -97,12 +97,12 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                     <SelectItem key={cs.name} value={cs.name}>
                       <div className="flex flex-col">
                         <span className="font-medium">{cs.name}</span>
-                        <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.classification.standardSystemDescription') ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
+                        <span className="text-2xs text-muted-foreground">{locale === 'en' || !hasActiveTranslation('propertyEditor.classification.standardSystemDescription') ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
                       </div>
                     </SelectItem>
                   ))}
                   <SelectItem value="__custom__">
-                    <span className="text-zinc-500">{t('propertyEditor.classification.customSystem')}</span>
+                    <span className="text-muted-foreground">{t('propertyEditor.classification.customSystem')}</span>
                   </SelectItem>
                 </SelectContent>
               </Select>

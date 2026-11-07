@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "scripts/fetch-retained-engine.mjs",
-  "mutation": "tests/evidence/retained-prod-7955/behaviour.oracle.patch",
-  "test": "scripts/retained-engine-artifact.test.mjs",
-  "why": "Reverse applying lets the production engine fetch accept a same-size archive whose SHA-256 differs from the committed lock; a tampered release asset must be refused before it is unpacked."
-}

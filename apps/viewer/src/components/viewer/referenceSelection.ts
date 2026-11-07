@@ -14,6 +14,14 @@ export function invalidateSelectionPick(canvas: HTMLCanvasElement): void {
 export function markTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
   touchClicks.set(canvas, { time: Date.now(), x, y });
 }
+/**
+ * A mouse or trackpad press at a tap's point: the click after it is the
+ * press's own, not the tap's compatibility click (#9043).
+ */
+export function forgetTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
+  const touch = touchClicks.get(canvas);
+  if (touch && Math.abs(touch.x - x) <= 5 && Math.abs(touch.y - y) <= 5) touchClicks.delete(canvas);
+}
 /** Touchend owns a tap. Ignore its compatibility click rather than selecting twice. */
 export function isTouchSelectionClick(canvas: HTMLCanvasElement, event: MouseEvent, x: number, y: number): boolean {
   const pointer = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };

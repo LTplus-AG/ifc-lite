@@ -311,7 +311,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
                     role="radio"
                     aria-checked={role === opt.role}
-                    variant={role === opt.role ? 'default' : 'outline'}
+                    variant="toggle"
                     size="sm"
                     // Only the room admin mints role-scoped links; a joiner
                     // forwards the invite they hold, so the role is fixed.

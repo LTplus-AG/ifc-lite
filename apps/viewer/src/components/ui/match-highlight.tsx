@@ -15,6 +15,10 @@ export interface MatchHighlightProps {
   query: string;
 }
 
+/** The find-match treatment shared by every search surface (#8802 R4/R5):
+ *  semibold active ink, no fill, so a match reads as "found" not "warning". */
+export const MATCH_MARK_CLASS = 'bg-transparent font-semibold text-active';
+
 export function MatchHighlight({ text, query }: MatchHighlightProps) {
   const needle = query.trim();
   if (!needle) return <>{text}</>;
@@ -29,7 +33,7 @@ export function MatchHighlight({ text, query }: MatchHighlightProps) {
   return (
     <>
       {text.slice(0, at)}
-      <mark data-match="" className="bg-transparent font-semibold text-active">{text.slice(at, end)}</mark>
+      <mark data-match="" className={MATCH_MARK_CLASS}>{text.slice(at, end)}</mark>
       {text.slice(end)}
     </>
   );

@@ -253,6 +253,21 @@
   --color-info: #006f94;
   --color-info-surface: color-mix(in srgb, var(--color-info) 10%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  /* #8802 R5 solid status fills: a dot, bar or count badge that IS the
+     status. Each clears 3:1 as an indicator against the panel, the raised
+     surface and the input well, and `solid-foreground` (the ink of a label
+     on any of them) clears 4.5:1 on every fill, in all three themes. Light
+     and colorful share these values; dark uses the Tokyo Night hues. */
+  --color-danger-solid: #c4194d;
+  --color-warn-solid: #b45309;
+  --color-ok-solid: #2f7d32;
+  --color-info-solid: #0369a1;
+  --color-solid-foreground: #ffffff;
+  /* The dimming layer behind a modal, a tour spotlight or a caption over an
+     image (#8802 R5). Use it with an opacity step (`bg-scrim/80`); a label on
+     it uses `scrim-foreground`. Fixed dark in every theme, tinted in colorful. */
+  --color-scrim: #000000;
+  --color-scrim-foreground: #ffffff;
   /* Smallest viewer text step; replace sub-11px arbitrary utilities (#5821). */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.875rem;
@@ -347,6 +362,11 @@
   --color-ok: #9ece6a;
   --color-danger: #f7768e;
   --color-info: #7dcfff;
+  --color-danger-solid: var(--tokyo-red);
+  --color-warn-solid: var(--tokyo-yellow);
+  --color-ok-solid: var(--tokyo-green);
+  --color-info-solid: var(--tokyo-cyan);
+  --color-solid-foreground: var(--tokyo-night);
 
   --viewer-icon-accent: var(--tokyo-blue);
   /* Structural surfaces come from the neutral shell scale (#8802 R1, see
@@ -759,6 +779,7 @@ body {
   --color-ok: #3e5228;
   --color-danger: #93193d;
   --color-info: #00516d;
+  --color-scrim: #1a1b2e;
 
   /* Tokyo Night accent palette — used only where colour already exists */
   --cf-blue: #7aa2f7;

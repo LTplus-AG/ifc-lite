@@ -66,7 +66,7 @@ const SEVERITY_TOKENS: Record<
   error: {
     labelKey: 'idsPanel.audit.severity.error',
     pluralLabelKey: 'idsPanel.audit.severity.errors',
-    dot: 'bg-red-500',
+    dot: 'bg-danger-solid',
     rail: 'border-l-danger-border',
     chipBg: 'bg-danger-surface',
     chipFg: 'text-danger',
@@ -77,7 +77,7 @@ const SEVERITY_TOKENS: Record<
   warning: {
     labelKey: 'idsPanel.audit.severity.warning',
     pluralLabelKey: 'idsPanel.audit.severity.warnings',
-    dot: 'bg-amber-500',
+    dot: 'bg-warn-solid',
     rail: 'border-l-warn-border',
     chipBg: 'bg-warn-surface',
     chipFg: 'text-warn',
@@ -88,7 +88,7 @@ const SEVERITY_TOKENS: Record<
   info: {
     labelKey: 'idsPanel.audit.severity.note',
     pluralLabelKey: 'idsPanel.audit.severity.notes',
-    dot: 'bg-sky-400',
+    dot: 'bg-info-solid',
     rail: 'border-l-info-border',
     chipBg: 'bg-info-surface',
     chipFg: 'text-info',

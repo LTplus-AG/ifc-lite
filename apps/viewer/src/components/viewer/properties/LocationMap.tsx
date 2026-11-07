@@ -653,7 +653,7 @@ export function LocationMap({
       {/* Map container */}
       {mapState === 'loading' && (
         <div className="flex items-center justify-center h-[180px] bg-muted">
-          <Spinner size="md" className="text-teal-500" />
+          <Spinner size="md" className="text-muted-foreground" />
           <span className="text-xs text-muted-foreground ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
@@ -685,12 +685,12 @@ export function LocationMap({
             <div className="relative">
               <div
                 ref={containerRef}
-                className="h-[180px] w-full [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-white/40 [&_.maplibregl-ctrl-attrib]:dark:!bg-black/30 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal"
+                className="h-[180px] w-full [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-popover/40 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal"
                 style={{ minHeight: 180 }}
               />
               {/* Edit mode hint overlay */}
               {editable && !pickedLatLon && (
-                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-xs text-muted-foreground pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
+                <div className="absolute top-2 left-2 bg-popover/90 backdrop-blur-sm px-2 py-1 text-xs text-muted-foreground pointer-events-none shadow-sm border border-border/50">
                   {t('properties.locationMap.clickToPlacePin')}
                 </div>
               )}

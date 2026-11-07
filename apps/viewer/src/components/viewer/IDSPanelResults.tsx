@@ -28,6 +28,7 @@ import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -294,13 +295,13 @@ export function IDSPanelResults({
             ['isolate', 'idsPanel.focus.isolate', 'idsPanel.focus.isolateTip'],
             ['ghost', 'idsPanel.focus.ghost', 'idsPanel.focus.ghostTip'],
           ] as [IDSFocusMode, TranslationKey, TranslationKey][]).map(([m, labelKey, tipKey]) => (
-            <button
-              key={m} title={t(tipKey)} aria-pressed={focusMode === m}
+            <Button
+              key={m} type="button" variant="toggle" size="segment" title={t(tipKey)} aria-pressed={focusMode === m}
               onClick={() => setFocusMode(m)}
-              className={cn('px-1.5 py-0.5 transition-colors', focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              className="rounded-none px-1.5 font-normal"
             >
               {t(labelKey)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

@@ -22,6 +22,7 @@
 
 import { useId } from 'react';
 import { Play, Pause, Sun, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
@@ -112,7 +113,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
       {/* House header — icon, title, close, the same shape as every other
           docked side panel (Location zones, Load report, Cost). */}
       <div className="flex items-center gap-2 border-b p-3">
-        <Sun className="h-4 w-4 text-amber-600" />
+        <Sun className="h-4 w-4 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium">{t('viewportLighting.sunSkyPanel.header.title')}</span>
         {onClose && (
           <IconButton label={t('viewportLighting.sunSkyPanel.header.closeTitle')} className="h-6 w-6" onClick={onClose}>
@@ -197,8 +198,10 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
           <>
             <div className="flex items-center justify-between gap-2 pt-2 border-t">
               <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.sunStudy.title')}</span>
-              <button
+              <Button
                 type="button"
+                variant="toggle"
+                size="segment"
                 aria-pressed={solarEnabled}
                 onClick={() => {
                   const next = !solarEnabled;
@@ -213,13 +216,10 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                     });
                   }
                 }}
-                className={cn(
-                  'px-2 py-0.5 rounded text-2xs font-semibold uppercase transition-colors',
-                  solarEnabled ? 'bg-amber-500 text-zinc-950' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
+                className="font-semibold uppercase"
               >
                 {solarEnabled ? t('viewportLighting.sunSkyPanel.sunStudy.on') : t('viewportLighting.sunSkyPanel.sunStudy.off')}
-              </button>
+              </Button>
             </div>
 
             {solarEnabled && (
@@ -248,18 +248,17 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                       className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground"
                     />
                   </div>
-                  <button
+                  <Button
                     type="button"
+                    variant="toggle"
+                    size="icon-xs"
                     onClick={togglePlaying}
                     aria-label={playing ? t('viewportLighting.sunSkyPanel.sunStudy.pauseAria') : t('viewportLighting.sunSkyPanel.sunStudy.playAria')}
                     aria-pressed={playing}
-                    className={cn(
-                      'h-[26px] w-[26px] flex items-center justify-center rounded transition-colors shrink-0',
-                      playing ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                    )}
+                    className="shrink-0 rounded [&_svg]:size-3.5"
                   >
-                    {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                  </button>
+                    {playing ? <Pause /> : <Play />}
+                  </Button>
                 </div>
 
                 {/* Time of day */}
@@ -287,21 +286,18 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                 {/* Sweep mode */}
                 <div className="flex gap-1">
                   {SWEEP_MODES.map((m) => (
-                    <button
+                    <Button
                       key={m.value}
                       type="button"
+                      variant="toggle"
+                      size="segment"
                       title={t(m.hintKey)}
                       aria-pressed={sweepMode === m.value}
                       onClick={() => setSweepMode(m.value)}
-                      className={cn(
-                        'flex-1 px-1.5 py-1 rounded text-2xs transition-colors',
-                        sweepMode === m.value
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      )}
+                      className="flex-1 px-1.5 py-1 font-normal"
                     >
                       {t(m.labelKey)}
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
@@ -324,7 +320,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                 )}
 
                 {!sunInfo && (
-                  <p className="text-2xs leading-snug text-amber-600 dark:text-amber-500">
+                  <p className="text-2xs leading-snug text-warn">
                     {t('viewportLighting.sunSkyPanel.sunStudy.noSiteWarning')}
                   </p>
                 )}
@@ -355,19 +351,17 @@ function ToggleChip({ label, active, onClick, title, className }: {
   label: string; active: boolean; onClick: () => void; title?: string; className?: string;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="toggle"
+      size="segment"
       onClick={onClick}
       aria-pressed={active}
       title={title}
-      className={cn(
-        'px-2 py-1 rounded text-2xs font-semibold uppercase transition-colors',
-        active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        className,
-      )}
+      className={cn('py-1 font-semibold uppercase', className)}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

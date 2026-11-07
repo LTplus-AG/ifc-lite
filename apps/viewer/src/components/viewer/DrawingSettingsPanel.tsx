@@ -143,8 +143,9 @@ export function DrawingSettingsPanel() {
           functional enable/disable toggle, not a redundant close button. */}
       <div className="flex items-center justify-end px-4 py-2 border-b bg-muted/50">
         <Button
-          variant={overridesEnabled ? 'default' : 'outline'}
+          variant="toggle"
           size="sm"
+          aria-pressed={overridesEnabled}
           onClick={toggleOverridesEnabled}
           className="h-7 text-xs"
         >
@@ -292,7 +293,7 @@ function PresetRuleItem({ rule }: { rule: GraphicOverrideRule }) {
     <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/30 rounded text-xs">
       {rule.style.fillColor && (
         <div
-          className="w-4 h-4 rounded border border-black/20"
+          className="w-4 h-4 rounded border border-foreground/20"
           style={{ backgroundColor: rule.style.fillColor }}
         />
       )}
@@ -363,7 +364,7 @@ function CustomRuleItem({
         <button type="button" className="flex flex-1 min-w-0 items-center gap-2 text-left" onClick={onEdit}>
           <GripVertical className="h-3 w-3 text-muted-foreground" />
           {rule.style.fillColor && (
-            <span className="w-4 h-4 rounded border border-black/20" style={{ backgroundColor: rule.style.fillColor }} />
+            <span className="w-4 h-4 rounded border border-foreground/20" style={{ backgroundColor: rule.style.fillColor }} />
           )}
           <span className="flex-1 min-w-0">
             <span className="block font-medium truncate">{rule.name}</span>

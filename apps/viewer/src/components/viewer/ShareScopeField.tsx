@@ -77,7 +77,7 @@ export function ShareScopeField({
               type="button"
               role="radio"
               aria-checked={scope === 'active'}
-              variant={scope === 'active' ? 'default' : 'outline'}
+              variant="toggle"
               size="sm"
               className="truncate"
               disabled={!editable}
@@ -89,7 +89,7 @@ export function ShareScopeField({
               type="button"
               role="radio"
               aria-checked={scope === 'all'}
-              variant={scope === 'all' ? 'default' : 'outline'}
+              variant="toggle"
               size="sm"
               disabled={!editable}
               onClick={() => onScopeChange('all')}

@@ -51,6 +51,20 @@ function storeyGlobalId(s: State, modelId: string, storeyId: number): string | n
   return guid ? guid : null;
 }
 
+/**
+ * A height the user typed for the next wall means that height: the wall
+ * becomes fixed unless it would already reach exactly that high. On the top
+ * storey (`NextStoreyAbove`) there is no height to match, so it is fixed too.
+ */
+export function typeWallHeight(
+  s: Pick<ViewerState, 'setAuthoringDims' | 'setAuthoringDefaults'>, top: WallTopResolution | null, Height: number,
+): void {
+  s.setAuthoringDims('wall', { Height });
+  if (!top || (top.attachTo !== null && (top.above === null || Math.abs(top.Height - Height) > 1e-9))) {
+    s.setAuthoringDefaults({ wallTop: 'fixed' });
+  }
+}
+
 /** Record a placed wall's attachment in the caller's undo batch. Throws when the write is refused. */
 export function recordWallTop(s: Pick<ViewerState, 'setProperty'>, modelId: string, wallId: number, attachTo: string): void {
   const written = s.setProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint', attachTo, PropertyValueType.Label);

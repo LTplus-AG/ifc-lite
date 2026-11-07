@@ -21,6 +21,8 @@ import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/mode
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 let restore: () => void = () => {};
 beforeEach(async () => {
@@ -60,6 +62,34 @@ describe('storey manager (#9013)', () => {
     // One click on the row switches the storey being drawn on.
     act(() => click(upper.querySelector('[role="radio"]')!));
     assert.equal(useViewerStore.getState().session?.storeyId, UPPER_STOREY);
+  });
+
+  it('an isolated storey hands its isolation to the storey picked or added in the manager (#9037 review)', async () => {
+    const soloOn = (storeyId: number) => {
+      const st = useViewerStore.getState();
+      return st.levelDisplayMode === 'solo' && st.selectedStoreys.has(toGlobalIdFromModels(st.models, MODEL_ID, storeyId));
+    };
+    act(() => applyLevelDisplayMode('solo', [{ modelId: MODEL_ID, expressId: STOREY }]));
+    const ui = await mount();
+    act(() => click(rows(ui)[0].querySelector('[role="radio"]')!));
+    assert.equal(useViewerStore.getState().session?.storeyId, UPPER_STOREY);
+    assert.equal(soloOn(UPPER_STOREY), true, 'the storey now drawn on is the one shown');
+    assert.equal(soloOn(STOREY), false);
+    const add = [...ui.querySelectorAll('button')].find((b) => b.textContent?.includes('Add storey above'))!;
+    act(() => click(add));
+    await waitFor(() => rows(ui).length === 3, 'the new row appears');
+    const created = useViewerStore.getState().session!.storeyId!;
+    assert.equal(soloOn(created), true, 'a new storey drawn on straight away is shown too');
+  });
+
+  it('a model with no editable data is a read error, not a model without storeys (#9037 review)', async () => {
+    const { StoreyManager } = await requiredModule(() => import('./StoreyManager'), 'the storey manager exists (#9013)');
+    const models = new Map([...useViewerStore.getState().models].map(([id, model]) => [id, { ...model, ifcDataStore: null }]));
+    act(() => { useViewerStore.setState({ models }); });
+    const ui = render(<StoreyManager onBack={() => {}} />);
+    await waitFor(() => ui.querySelector('[role="alert"]') !== null, 'the read error shows');
+    assert.match(ui.querySelector('[role="alert"]')!.textContent ?? '', /No model loaded/);
+    assert.equal([...ui.querySelectorAll('button')].some((b) => b.textContent?.includes('±0.00')), false, 'no offer to add a first storey');
   });
 
   it('adds a storey above in one click; it becomes active with the next name and spacing', async () => {

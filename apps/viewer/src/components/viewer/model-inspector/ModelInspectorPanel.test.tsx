@@ -72,6 +72,19 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
     });
   }
 
+  it('a wall height typed in the defaults makes the next wall fixed at that height (#9037 review)', () => {
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    const height = input(ui, 'Height in metres');
+    act(() => height.focus());
+    type(height, '2.4');
+    blur(height);
+    assert.equal(s().authoringDefaults.wallTop, 'fixed');
+    assert.equal(s().authoringDefaults.dims.wall.Height, 2.4);
+  });
+
   it('a selection still shows while such a tool runs', () => {
     const ui = render(<ModelInspectorPanel />);
     act(() => s().startCommand('grid.place'));

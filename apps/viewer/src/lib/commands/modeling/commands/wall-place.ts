@@ -27,7 +27,7 @@ import { chainOn, defaultsField, planeZ } from './placement-shared.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
 import { joinPlacedWallIn } from '@/store/slices/mutation-wall-joins';
 import { authoringDim, type AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
-import { resolveWallTop, recordWallTop } from '../wall-top.js';
+import { resolveWallTop, recordWallTop, typeWallHeight } from '../wall-top.js';
 
 const wallDims = (d: AuthoringDefaults) => ({ Thickness: authoringDim(d, 'wall', 'Thickness'), Height: authoringDim(d, 'wall', 'Height') });
 /** Up to the storey above, or the default height (`wall-top.ts`). */
@@ -54,12 +54,7 @@ const FIELDS: readonly CommandField<WallPlaceGesture>[] = [
     read: (_g, ctx) => wallTopOf(ctx).Height,
     write: (g, v, ctx) => {
       if (!(v > 0)) return g;
-      const s = ctx.get();
-      s.setAuthoringDims('wall', { Height: v });
-      // On the top storey the wall would wait for the next storey above
-      // (`NextStoreyAbove`): a typed height is fixed there too.
-      const top = wallTopOf(ctx);
-      if (top.attachTo !== null && (top.above === null || Math.abs(top.Height - v) > 1e-9)) s.setAuthoringDefaults({ wallTop: 'fixed' });
+      typeWallHeight(ctx.get(), wallTopOf(ctx), v);
       return g;
     },
   },

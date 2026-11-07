@@ -16,13 +16,19 @@ import type { TransactionStore } from '@/lib/commands/modeling/transaction';
 import type { ViewerState } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, storeyOpRefusals, type StoreyOpOutcome } from '@/store/slices/mutation-storey';
+import { activateStorey, switchSessionStorey } from './storey-session';
 
 export { openStoreyManager } from './storey-manager-open';
+export { activateStorey } from './storey-session';
 
-/** The rows a storey manager lists, highest first; empty when the model has no editable data. */
+/**
+ * The rows a storey manager lists, highest first. Throws when the model has
+ * no editable data: that is a failed read, not a model without storeys.
+ */
 export function storeyRows(s: ViewerState, modelId: string): StoreySummary[] {
   const target = modelEditTarget(s, modelId);
-  return target ? summarizeStoreys(readStoreyInventory(target.dataStore, target.view)) : [];
+  if (!target) throw new Error(`No model loaded for id "${modelId}"`);
+  return summarizeStoreys(readStoreyInventory(target.dataStore, target.view));
 }
 
 /** The default storey next to `referenceId`; null when the model cannot be read. */
@@ -48,20 +54,6 @@ export function addStoreyNextTo(
   });
   if (outcome.ok && outcome.storeyId !== null) activateStorey(store.getState(), modelId, outcome.storeyId);
   return outcome;
-}
-
-/** Make `storeyId` the storey the session draws on (workplane, plan and tools follow). */
-export function activateStorey(s: ViewerState, modelId: string, storeyId: number): void {
-  const session = s.session;
-  if (session?.modelId === modelId) {
-    if (session.storeyId !== storeyId) s.setSessionStorey(storeyId);
-    return;
-  }
-  if (s.workspaceMode === 'model' && session) {
-    const command = session.activeCommandId ?? undefined;
-    s.exitModelWorkspace();
-    s.enterModelWorkspace({ modelId, storeyId, command });
-  }
 }
 
 /**
@@ -103,10 +95,10 @@ export function deleteStorey(
     const rows = storeyRows(s, modelId);
     const index = rows.findIndex((row) => row.expressId === storeyId);
     const next = rows[index + 1] ?? rows[index - 1];
-    if (next) s.setSessionStorey(next.expressId);
+    if (next) switchSessionStorey(s, next.expressId);
   }
   const outcome = commitStoreyOp(store, modelId, op);
   // A refused write leaves the storey in place: so is the session.
-  if (!outcome.ok && previous === storeyId) store.getState().setSessionStorey(storeyId);
+  if (!outcome.ok && previous === storeyId) switchSessionStorey(store.getState(), storeyId);
   return outcome;
 }

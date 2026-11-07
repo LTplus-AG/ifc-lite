@@ -19,6 +19,7 @@ import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
 import type { EntityRef } from './types.js';
 import type { LevelDisplayMode } from './slices/levelDisplaySlice.js';
+import { effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
 
 type ElevationCarrier = { spatialHierarchy?: { storeyElevations?: Map<number, number> } | null } | null | undefined;
 
@@ -54,7 +55,11 @@ function storeyExists(ref: EntityRef): boolean {
   const s = useViewerStore.getState();
   const ds = (ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore) as ElevationCarrier;
   const elevs = ds?.spatialHierarchy?.storeyElevations;
-  return !!elevs && elevs.has(ref.expressId);
+  if (elevs?.has(ref.expressId)) return true;
+  // A storey added this session (#9013) is only in the model's edit overlay.
+  const store = s.models.get(ref.modelId)?.ifcDataStore;
+  const view = s.mutationViews.get(ref.modelId);
+  return !!store && !!view && effectiveStoreyIds(store, view).includes(ref.expressId);
 }
 
 /**

@@ -14,6 +14,7 @@
  */
 
 import { WallTopRow, setWallHeightFixed } from './WallTopRow';
+import { typeWallHeight } from '@/lib/commands/modeling/wall-top';
 import { useId, useMemo } from 'react';
 import { readHostedElementSize, readStairDimensions, type StairDimensions } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
@@ -65,7 +66,12 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
           key={param}
           param={param}
           value={authoringDim(defaults, kind, param)}
-          onCommit={(metres) => { setDims(kind, { [param]: metres }); return true; }}
+          onCommit={(metres) => {
+            // A typed wall height means that height, as in the Wall tool's own field.
+            if (kind === 'wall' && param === 'Height') typeWallHeight(useViewerStore.getState(), null, metres);
+            else setDims(kind, { [param]: metres });
+            return true;
+          }}
         />
       ))}
     </InspectorSection>

@@ -216,6 +216,9 @@ describe('storey manager (#9013)', () => {
     assert.ok(!('error' in later));
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
     act(() => click(undoButton()!));
+    // Undoing a wall's creation can drop it from the new entities without marking it deleted:
+    // check it is still authored, and that its own step is still the newest one.
+    assert.ok(view.getNewEntity(later.expressId), 'the later wall is still authored');
     assert.equal(view.isDeleted(later.expressId), false, 'the later wall stays');
     assert.equal(rows(ui).length, 1, 'the storey stays deleted');
     await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this deletion'), 'the toast says why');

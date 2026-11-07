@@ -98,6 +98,16 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
     assert.equal(input(ui, 'Height in metres').value, '3.00', 'a fixed wall uses the stored height');
   });
 
+  it('leaving the Model workspace closes the storey manager: the next session opens on the inspector (#9037 review)', () => {
+    act(() => s().setStoreyManagerOpen(true));
+    act(() => s().exitModelWorkspace());
+    assert.equal(s().storeyManagerOpen, false);
+    act(() => { s().enterModelWorkspace(); });
+    const ui = render(<ModelInspectorPanel />);
+    assert.equal(ui.querySelector('[data-storey-manager]'), null, 'not the storey manager');
+    assert.ok(ui.querySelector('[data-model-inspector]'), 'the inspector');
+  });
+
   it('a selection still shows while such a tool runs', () => {
     const ui = render(<ModelInspectorPanel />);
     act(() => s().startCommand('grid.place'));

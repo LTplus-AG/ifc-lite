@@ -16,10 +16,11 @@ first selection, so the cost was decode and inflate per record, multiplied by th
 relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
 the reads. The parsed graph already records which relationship names which element (with
 repeats as shadowed ids), so the read now walks effective rows from the index only and
-decodes a relationship only when an edit touched it, the parser recorded no edge for it, or
-it names the element or type being read. A definition relationship whose graph count can
-exceed what a read counts (it names a non-definition, or a definition an edit removed) enters
-the reference budget at that upper bound and is decoded only if the bound would cross it.
+decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
+edge of it has the wrong class on its relating side (the byte reader misread the record, or a
+definition set names a non-definition), or it names the element or type being read. A
+definition relationship an edit over-counts enters the reference budget at its graph count, an
+upper bound, and is decoded only if that bound would cross it.
 Answers were compared against base by digest,
 under edits, on five large fixtures. That included raised-limit copies of the two models
 whose row count passes `MAX_RELATIONSHIPS`, and a probe quantity on every type so each digest

@@ -259,25 +259,63 @@ test('#9192 a refusal holds for the edit revision, like an answer', async () => 
   assert.ok(seen(47) > quantity, 'a new revision reads again');
 });
 
-test('#9192 a definition relationship the graph over-counts is read only when it decides the budget', async () => {
+test('#9192 a definition relationship an edit over-counts is read only when it decides the budget', async () => {
   const objects = Array.from({ length: 600 }, (_, i) => 3000 + i);
-  const named = Array.from({ length: 600 }, (_, i) => 5000 + i);
-  const relationship = `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
+  const psets = Array.from({ length: 600 }, (_, i) => 5000 + i);
+  const relationship = (members: number[]) => `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${members.map(id => `#${id}`).join(',')}),(${psets.map(id => `#${id}`).join(',')}));`;
+  const model = (members: number[]) => parse([...BASE, ...objects.map(wall), ...psets.map(id => `#${id}=IFCPROPERTYSET('${gid(id)}',$,'P${id}',$,());`), relationship(members)]);
   const readsOf90 = (store: IfcDataStore, view: MutablePropertyView) => {
     let reads = 0;
     const counted: IfcDataStore = { ...store, getEntity: id => { if (id === 90) reads++; return store.getEntity(id); } };
     return { answer: describe(counted, 10, view), reads };
   };
+  const deleting = (count: number) => { const view = new MutablePropertyView(null, 'm'); for (const id of psets.slice(0, count)) view.deleteEntity(id); return view; };
 
-  // 360,000 references written, none a definition: the bound crosses the budget, so #90 is read, and holds nothing.
-  const walls = await parse([...BASE, ...objects.map(wall), ...named.map(wall), relationship]);
-  assert.deepEqual(readsOf90(walls, new MutablePropertyView(null, 'm')), { answer: 'A: Qto_Own,Qto_Related', reads: 1 });
+  // 60 x 600 = 36,000 references with one definition deleted: inside the budget whatever the read
+  // counts, and #90 names neither #10 nor its type, so selecting #10 does not read it.
+  assert.deepEqual(readsOf90(await model(objects.slice(0, 60)), deleting(1)), { answer: 'A: Qto_Own,Qto_Related', reads: 0 });
+  // 600 x 600 with 200 deleted: the bound (360,000) crosses the budget, so #90 is read, and 600 x 400 fits.
+  assert.deepEqual(readsOf90(await model(objects), deleting(200)), { answer: 'A: Qto_Own,Qto_Related', reads: 1 });
+});
 
-  // 60 objects x 600 is 36,000 references, inside the budget whatever they are: #90 names neither #10 nor
-  // type #20, so selecting #10 does not read it.
-  const small = `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.slice(0, 60).map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
-  const fits = await parse([...BASE, ...objects.map(wall), ...named.map(wall), small]);
-  assert.deepEqual(readsOf90(fits, new MutablePropertyView(null, 'm')), { answer: 'A: Qto_Own,Qto_Related', reads: 0 });
+test('#9192 the budget fallback for a view that cannot list its deletions', async () => {
+  // Without getTombstones, a deleted definition cannot be found through the graph, so every
+  // definition relationship is counted as a read counts it.
+  const objects = Array.from({ length: 600 }, (_, i) => 3000 + i);
+  const psets = Array.from({ length: 600 }, (_, i) => 5000 + i);
+  const store = await parse([...BASE, ...objects.map(wall), ...psets.map(id => `#${id}=IFCPROPERTYSET('${gid(id)}',$,'P${id}',$,());`),
+    `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.map(id => `#${id}`).join(',')}),(${psets.map(id => `#${id}`).join(',')}));`]);
+  const view = new MutablePropertyView(null, 'm');
+  for (const id of psets.slice(0, 200)) view.deleteEntity(id);
+  const withoutTombstones = Object.assign(Object.create(view) as MutablePropertyView, { getTombstones: undefined });
+  assert.equal(describe(store, 10, withoutTombstones), 'A: Qto_Own,Qto_Related', '600 x 400 references fit the budget');
+  assert.equal(describe(everyRelationshipRead(store), 10, withoutTombstones), 'A: Qto_Own,Qto_Related');
+});
+
+test('#9192 a record the byte reader misread refuses the model, whichever element is asked first', async () => {
+  // readRefList stops at a nested or typed value and shifts the rest into the relating slot, so the
+  // graph holds one edge typing #10 by the wall #14, and none for #14 or the real relating entity.
+  for (const line of [
+    typing(5, '((#10),#14)', '#40'),
+    typing(5, "(#10,IFCLABEL('x'),#14)", '#40'),
+    `#5=IFCRELDEFINESBYPROPERTIES('${gid(5)}',$,$,$,((#10),#20),#24);`,
+  ]) {
+    const store = await parse([line, ...BASE]);
+    const view = new MutablePropertyView(null, 'm');
+    assert.equal(describe(store, 14, view), 'refused', `${line}: #14 asked first`);
+    assert.deepEqual(describeAll(store, view), ['refused', 'refused', 'refused', 'refused', 'refused'], line);
+    assert.deepEqual(describeAll(everyRelationshipRead(store), view), ['refused', 'refused', 'refused', 'refused', 'refused'], line);
+  }
+});
+
+test('#9192 a refused record naming more than the graph lists refuses the model once it is read', async () => {
+  // Here the shifted value is a type, so the edge looks regular: 40 types #10. The graph cannot show
+  // that #5 also names #40 as a member; reading #5 for #10 does, and from then on the model refuses.
+  // An element asked before any lookup reads #5 is answered from the graph.
+  const store = await parse([typing(5, '((#10),#40)', '#40'), ...BASE]);
+  const view = new MutablePropertyView(null, 'm');
+  assert.equal(describe(store, 10, view), 'refused');
+  assert.deepEqual(describeAll(store, view), ['refused', 'refused', 'refused', 'refused', 'refused']);
 });
 
 test('#9192 a read of the store emitted before the definition edges exist still finds them', async () => {

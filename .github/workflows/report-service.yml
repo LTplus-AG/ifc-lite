@@ -109,7 +109,31 @@ jobs:
         with:
           cache-prefix: report-public-ui-wasm
       - name: Root Turbo viewer dependency graph and test-source typecheck
-        run: pnpm typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          # #8947: viewer-embed exceeded Node's default 4 GiB heap before
+          # mounted tests. Match test.yml's qualified 8 GiB profile, with one
+          # Turbo task at a time and at least 4 GiB left for native/OS memory.
+          # Inspect this runner, including its cgroup limit, rather than
+          # assuming every ubuntu-latest machine has the hosted 16 GiB RAM.
+          node --input-type=module <<'NODE'
+          import { totalmem, freemem } from 'node:os';
+          const constrained = process.constrainedMemory();
+          const capacity = Math.min(totalmem(), constrained || Infinity);
+          const available = Math.min(freemem(), process.availableMemory());
+          console.log(JSON.stringify({ totalBytes: totalmem(), constrainedBytes: constrained,
+            capacityBytes: capacity, availableBytes: available, heapMiB: 8192, turboConcurrency: 1 }));
+          if (capacity < 12 * 1024 ** 3 || available < 10 * 1024 ** 3) {
+            throw new Error('Root typecheck needs a runner with 12 GiB capacity and 10 GiB available for its 8 GiB heap profile');
+          }
+          NODE
+          # Preserve preloads and other inherited options; the final heap
+          # option sets this step's profile only. Reporting flags below remain.
+          export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192"
+          export TURBO_CONCURRENCY=1
+          node -e 'console.log("Effective V8 heap limit MiB:", require("node:v8").getHeapStatistics().heap_size_limit / 1024 ** 2)'
+          pnpm typecheck
       - name: Provision real report integration prerequisites
         uses: ./.github/actions/setup-report-integration
       - name: Fetch bounded authentic reporter IFC for mounted HTTP qualification

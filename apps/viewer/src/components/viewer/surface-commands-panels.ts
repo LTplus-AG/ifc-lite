@@ -38,12 +38,12 @@ const CHILD_PATH_KEYS: Partial<Record<WorkspacePanelId, TranslationKey>> = {
 };
 
 function bottomCommand<const Id extends BottomPanelId>(
-  panel: Id, keywords: string, icon: Command['icon'],
+  panel: Id, keywords: string, icon: Command['icon'], ribbon = true,
 ): SurfaceCommandDefinition & { id: `panel:${Id}` } {
   return {
     id: `panel:${panel}`, panelId: panel, panelGroup: panelGroupFor(panel),
     labelKey: panelTitleKey(panel), keywords, keywordsKey: CHILD_PATH_KEYS[panel], detailKey: CHILD_PATH_KEYS[panel],
-    category: 'Panels', icon, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    category: 'Panels', icon, surfaces: ribbon ? paletteAndRibbon : paletteOnly, enabled: alwaysEnabled,
     run: (context) => {
       if (!context.activateBottomPanel) throw new Error(`Cannot open ${panel} without a panel host`);
       context.activateBottomPanel(panel);
@@ -68,7 +68,7 @@ function rightCommand<const Id extends string>(
 }
 
 export const PANEL_SURFACE_COMMANDS = [
-  bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout),
+  bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout, false),
   bottomCommand('script', 'code automation console import script export script promote to tool save script run script undo redo reset sandbox', FileCode2),
   bottomCommand('lists', 'entity lists table spreadsheet columns sort filter selection CSV export templates', FileSpreadsheet),
   bottomCommand('gantt', 'construction schedule (gantt) 4d timeline tasks ifctask sequence playback animation', CalendarClock),
@@ -79,7 +79,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:properties', panelId: 'properties', panelGroup: panelGroupFor('properties'),
     labelKey: panelTitleKey('properties'),
-    keywords: 'properties attributes material classification schedule task panel right inspector information',
+    keywords: 'properties attributes material classification schedule task panel right inspector information select entity edit mode location zones volume split add reassign geometry property editing',
+    keywordsKey: 'commandPalette.paths.properties', detailKey: 'commandPalette.paths.properties',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();
@@ -90,7 +91,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),
     labelKey: panelTitleKey('hierarchy'),
-    keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+    keywords: 'spatial tree hierarchy left panel model tags tag grouping isolate tagged models storey sort exploded gap source sync changed model removal',
+    keywordsKey: 'commandPalette.paths.tree', detailKey: 'commandPalette.paths.tree', category: 'Panels', icon: TreeDeciduous,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();

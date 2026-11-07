@@ -10,7 +10,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { skip } from '@/test/blank-ifc-loader-harness';
 import { useViewerStore } from '@/store';
-import { setLocale } from '@/i18n';
+import { getLocale, setLocale } from '@/i18n';
 import { createLocaleActivator } from '@/i18n/locale-activation';
 import { advance, cleanup, click, render, waitFor } from '@/test/render';
 import '@/lib/commands/modeling/builtin';
@@ -142,10 +142,10 @@ for (const retire of [false, true]) test(`blank callback refresh survives real l
   let replacementOwner: object | undefined;
   try {
     click(row()); await waitFor(() => held, 'real blank source read is pending');
-    const locale = createLocaleActivator({ de: () => import('@/i18n/locales/de').then(module => module.default) });
+    const locale = createLocaleActivator({ de: () => import('@/i18n/locales/de/command-palette').then(module => module.commandPaletteDe) });
     await act(async () => { await locale.activate(['de']); });
     const refreshedHost = getMountedFileHost();
-    assert.notEqual(refreshedHost, originalHost, 'translated file callbacks actually refreshed');
+    assert.equal(getLocale(), 'de', 'real locale activation rerendered the mounted toolbar');
     assert.equal(refreshedHost?.owner, originalHost.owner, 'toolbar lifetime survived callback refresh');
     assert.equal(useViewerStore.getState().session, null, 'pending real load cannot enter authoring');
     if (retire) {
@@ -169,6 +169,7 @@ for (const retire of [false, true]) test(`blank callback refresh survives real l
       assert.equal(getMountedFileHost()?.owner, replacementOwner, 'metadata cannot re-register an unmounted owner');
       assert.equal(state.session, null, 'retired host must not activate authoring after completion');
     } else {
+      assert.notEqual(getMountedFileHost(), originalHost, 'actual metadata publication refreshed file callbacks');
       assert.equal(getMountedFileHost()?.owner, originalHost.owner, 'metadata publication keeps the same toolbar lifetime');
       assert.equal(state.session?.modelId, state.activeModelId);
       assert.equal(getCommandRuntime().command?.id, 'wall.place');

@@ -42,10 +42,11 @@ const sources = [
   ['access-assistant-routes', 'focused-source-trace'],
   ['access-appearance-routes', 'focused-source-trace'],
   ['access-drawing-hierarchy-routes', 'focused-source-trace'],
+  ['access-final-shared-routes', 'focused-source-trace'],
   ['access-indirect-resolved', 'indirect-source-classification'],
 ];
 const omitted = new Set(['rawCensusRow', 'pinnedAnchorExcerpt', 'evidence', 'ownerEvidence',
-  'childBranchEvidence', 'sourceGates', 'sourceMountEdges', 'sourceSha256']);
+  'childBranchEvidence', 'sourceGates', 'sourceMountEdges', 'sourceSha256', 'bindingExcerpt']);
 function compact(value) {
   if (Array.isArray(value)) return value.map(compact);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
@@ -67,7 +68,7 @@ function summarize(row) {
     terminal: control.terminalCanonicalPublicAction ?? control.canonicalHandlerBoundary
       ?? control.operationTargets ?? control.canonicalAction ?? control.semanticAction
       ?? control.bindings?.map(binding => binding.handler) ?? control.binding ?? null,
-    qualification: control.classification ?? control.disposition ?? control.sequenceStatus ?? null,
+    qualification: control.classification ?? control.disposition ?? control.sequenceStatus ?? control.bindingQualification ?? null,
     unresolved: control.unresolved ?? control.uncertainty ?? null,
     oracle: control.finiteOracle ?? control.oracleRef ?? control.scenarioOracleRef ?? control.scenarioRef ?? control.scenario ?? null,
     ...(control.publicHandler ? { publicHandler: control.publicHandler } : {}),

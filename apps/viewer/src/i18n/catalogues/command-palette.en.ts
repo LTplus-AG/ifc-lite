@@ -24,6 +24,14 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+
+  "commandPalette.errorReport.label": "Review error report…",
+  "commandPalette.errorReport.aliases": "report error bug failed load report help improve resume recent report pending report",
+  "commandPalette.paths.errorReport": "Error report → existing invitation first; otherwise recent or pending report → review, attachment consent, send",
+  "commandPalette.availability.errorReportHost": "Error reporting is not available in this viewer.",
+  "commandPalette.availability.errorReportContext": "No eligible error or retained report reference. A report invitation appears after a reportable error.",
+  "commandPalette.paths.properties": "Select entity → Edit mode → Properties → edit properties, add or reassign; Location zones above tabs → volume split for straddling elements",
+  "commandPalette.paths.tree": "Hierarchy → model tags; multiple models in Spatial mode → tag grouping, isolate tagged models; storey sort, exploded gap, source sync and changed-model removal",
   "commandPalette.paths.learn": "Learn → Get started / Layers tours → load demo projects",
   "commandPalette.paths.about": "About → version, privacy, dependencies, MCP playground",
   "commandPalette.view.orientation.front-left-top": "View from front / left / top",
@@ -64,7 +72,7 @@ export const commandPaletteEn = {
   "commandPalette.paths.settings.display": "Settings Display → navigation preset Default Navisworks Trackpad, SpaceMouse, performance statistics",
   "commandPalette.paths.settings.performance": "Settings Performance → worker overrides, workers tier, reset overrides; kernel only in supported builds",
   "commandPalette.paths.settings.collaboration": "Settings Collaboration → display name, save name",
-  "commandPalette.paths.settings.privacy": "Settings Privacy → analytics consent, local action log export and clear, personal prompt overlay",
+  "commandPalette.paths.settings.privacy": "Settings → Privacy → analytics consent, local action log export and clear, personal prompt overlay",
   "commandPalette.paths.measure": "Measure toolbar → Distance Polyline Angle Radius Point; Angle → points edges faces; Geo XYZ → geographic reference",
   "commandPalette.paths.measurePanel": "Measurements panel → List Point Qty Centreline; List → clear all confirmation; Point → coordinates reference offset; Qty → selection quantities area volume weight",
   "commandPalette.paths.sectionAdd": "Section toolbar → Add Down Front Side Face Box Alignment; face pick; alignment chooser",
@@ -108,8 +116,8 @@ export const commandPaletteEn = {
   'commandPalette.paths.panels.chat': 'Model · API keys · Attachments · Code actions',
   'commandPalette.extension.conditions': 'This tool’s conditions are not met. Check the model or selection requirement shown beside its owner.',
   'commandPalette.extension.busy': 'Wait for the current extension export to finish',
-  'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
-  'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',
+  'commandPalette.availability.undo': 'No workspace edits to undo',
+  'commandPalette.availability.redo': 'No workspace edits to redo',
   'commandPalette.aliases.bulk': 'bulk properties query set attribute construction stage',
   'commandPalette.aliases.import': 'CSV spreadsheet data mapping import',
   'commandPalette.aliases.classes': 'class visibility spaces openings annotations grids merge layers fast exact geometry',
@@ -126,7 +134,7 @@ export const commandPaletteEn = {
   'commandPalette.availability.camera': 'Wait for the viewer camera to be ready',
   'commandPalette.availability.workplane': 'Choose a valid modeling workplane first',
   'commandPalette.availability.schedule': 'Create or import a schedule first',
-  'commandPalette.availability.host': 'Open the viewer tool host first',
+  'commandPalette.availability.host': 'This tool is not available in the current view',
   'commandPalette.availability.loading': 'Wait for model loading to finish',
   'commandPalette.state.on': 'On',
   'commandPalette.state.off': 'Off',

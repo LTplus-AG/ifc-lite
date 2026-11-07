@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useInlineSearchHost } from './inline-search-focus';
+import { useErrorReportDestination } from '@/lib/error-reports/destination';
 import { useRetainedReportHost } from './retained-report-destination';
 import { useSplitWidth } from './model/model-layout';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -106,6 +107,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
   const inlineSearchHost = useInlineSearchHost();
+  const errorReportDestination = useErrorReportDestination();
   const retainedReportHost = useRetainedReportHost();
   const splitWidth = useSplitWidth();
   const placementGeoref = usePlacementGeorefContext();
@@ -159,7 +161,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
+  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, errorReportDestination, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
@@ -335,7 +337,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted-foreground select-none">
             {flatItems.length > 0 && <>
               <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-              <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>
+              {activeOption && activeOption.cmd.availability?.status !== 'disabled' && <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>}
             </>}
             <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
           </div>

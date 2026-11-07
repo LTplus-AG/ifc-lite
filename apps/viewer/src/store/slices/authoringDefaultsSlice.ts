@@ -36,6 +36,7 @@ export type AuthoredElementKind =
   | 'member';
 
 export type WallAlign = 'left' | 'centre' | 'right';
+export type WallTop = 'storeyAbove' | 'fixed';
 export type SlabDrawMode = 'rectangle' | 'polygon';
 /** The IFC class the Slab bar writes: IfcSlab, IfcRoof or IfcPlate. */
 export type SlabClass = Extract<AuthoredElementKind, 'slab' | 'roof' | 'plate'>;
@@ -68,6 +69,11 @@ export interface AuthoringDefaults {
   readonly dims: Readonly<Record<AuthoredElementKind, Readonly<Record<string, number>>>>;
   /** Which face of a new wall the drawn line is. */
   readonly wallAlign: WallAlign;
+  /**
+   * Where a new wall's top goes (#9013): up to the storey above, recorded so
+   * the wall follows that storey when it is re-levelled, or a fixed height.
+   */
+  readonly wallTop: WallTop;
   /** Keep drawing from the last end after a commit. */
   readonly chain: boolean;
   readonly slabMode: SlabDrawMode;
@@ -111,6 +117,7 @@ const INITIAL: AuthoringDefaults = {
   dims: AUTHORING_DIM_DEFAULTS,
   roomCreation: DEFAULT_ROOM_CREATION,
   wallAlign: 'centre',
+  wallTop: 'storeyAbove',
   chain: true,
   slabMode: 'rectangle',
   spaceMode: 'rectangle',

@@ -307,6 +307,18 @@ END-ISO`);
     expect(deletion.refusals.map((r) => [r.code, r.elementIds])).toEqual([['dependent', [112]]]);
   });
 
+  it('a deletion reviewed while refused does not apply once the refusal went away', async () => {
+    const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
+    const mode = { kind: 'deleteContents' } as const;
+    const reviewed = api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode);
+    expect(reviewed.refusals.map((r) => r.code)).toEqual(['dependent']);
+    // Take the column off the grid: the refusal is gone, but the review saw one.
+    s.editor.setPositionalAttribute(112, 5, '#47');
+    expect(api('planStoreyDelete')(api('readStoreyInventory')(s.store, s.view), 42, mode).refusals).toEqual([]);
+    expect(() => api('applyStoreyDelete')(s.store, s.editor, 42, mode, reviewed)).toThrow('planned against a model that has changed');
+    expect(s.view.isDeleted(42)).toBe(false);
+  });
+
   it('a column of another storey bound to a moved grid is found and refused, not carried along', async () => {
     const s = session(await parse(GRID.replace('(#100,#112),#42);', '(#100),#42);\n#117=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'0Gr1dRe2AAAAAAAAAAAAAA\',$,$,$,(#112),#46);')));
     const p = plan(s, { kind: 'elevation', storeyId: 42, Elevation: 3.5 });

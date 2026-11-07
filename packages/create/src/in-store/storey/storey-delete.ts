@@ -22,7 +22,7 @@ import { reassignElementsToStoreyInStore } from '../storey-reassignment.js';
 import { countedElements, crossStoreyRefusal, readStoreyInventory, ref, storeyTooLarge, walkStoreyContents, type StoreyInventory } from './storey-model.js';
 import { productsOnGrid } from './storey-grid.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
-import { StoreyEditRefusedError, type StoreyRefusal } from './storey-validation.js';
+import { StoreyEditRefusedError, refusalSignature, type StoreyRefusal } from './storey-validation.js';
 
 export type StoreyDeleteMode =
   | { readonly kind: 'empty' }
@@ -139,6 +139,7 @@ export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
     contents: [...plan.contents].sort((x, y) => x - y),
     roots: [...plan.roots].sort((x, y) => x - y),
     fingerprint: plan.fingerprint,
+    refusals: refusalSignature(plan.refusals),
   });
 }
 

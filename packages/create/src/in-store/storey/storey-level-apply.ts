@@ -7,7 +7,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { readStoreyInventory } from './storey-model.js';
 import { planStoreyLevelEdit, type StoreyLevelEdit, type StoreyLevelPlan } from './storey-level-plan.js';
 import { writeStoreyLevelPlan } from './storey-level-write.js';
-import { StoreyEditRefusedError } from './storey-validation.js';
+import { StoreyEditRefusedError, refusalSignature } from './storey-validation.js';
 
 const micro = (value: number): number => Math.round(value * 1e6);
 
@@ -29,6 +29,7 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
     // The floor-to-floor gaps as reviewed: a neighbour moved since changes them.
     spacing: plan.spacing.map(({ lowerId, upperId, from, to }) => [lowerId, upperId, micro(from), micro(to)]),
     fingerprint: plan.fingerprint,
+    refusals: refusalSignature(plan.refusals),
   });
 }
 

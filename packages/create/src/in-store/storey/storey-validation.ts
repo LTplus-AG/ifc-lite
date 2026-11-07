@@ -53,6 +53,15 @@ export class StoreyEditRefusedError extends Error {
   }
 }
 
+/**
+ * The refusals of a plan, for its stale-plan signature: a plan reviewed with
+ * a refusal is a different plan from one without, so it never applies.
+ */
+export function refusalSignature(refusals: readonly StoreyRefusal[]): Array<[string, number[]]> {
+  return refusals.map(({ code, elementIds }): [string, number[]] => [code, [...(elementIds ?? [])].sort((x, y) => x - y)])
+    .sort(([a, x], [b, y]) => a.localeCompare(b) || x.join().localeCompare(y.join()));
+}
+
 /** `+3.00 m`, `−0.40 m`, `±0.00 m`: the storey picker's convention. */
 export function describeElevation(metres: number): string {
   const rounded = Math.round(metres * 100) / 100;

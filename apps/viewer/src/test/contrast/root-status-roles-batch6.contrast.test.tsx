@@ -51,8 +51,9 @@ describe('remaining root status roles (Refs #8802)', () => {
         });
         assert.deepEqual(await read('#action'), await read('#expected'));
       });
-      // The colorful theme's primary is low contrast everywhere (3.33:1 here), an
-      // open decision on #8802, so it only follows the role until that is made.
+      // The colorful theme's primary is low contrast everywhere (3.33:1 here). The
+      // maintainer accepted it as a deliberate exception on #8802 (2026-11-07), so
+      // in colorful this checks only that Flow follows the role.
       if (theme === 'colorful') return;
       const ratio = await measureTextContrastOnSurface(theme, 'bg-card', FLOW_PRIMARY_BUTTON);
       assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `contrast ${ratio.toFixed(2)}:1 in ${theme}`);

@@ -33,11 +33,11 @@ interface RoomPanelProps {
 
 /** Connection status → dot color + label key. */
 const STATUS_META: Record<string, { tone: string; labelKey: TranslationKey; pulse: boolean }> = {
-  connected: { tone: 'bg-emerald-500', labelKey: 'zonesPanel.roomPanel.status.live', pulse: true },
-  syncing: { tone: 'bg-amber-500', labelKey: 'zonesPanel.roomPanel.status.syncing', pulse: true },
-  connecting: { tone: 'bg-amber-500', labelKey: 'zonesPanel.roomPanel.status.connecting', pulse: true },
-  indexeddb: { tone: 'bg-sky-500', labelKey: 'zonesPanel.roomPanel.status.local', pulse: false },
-  memory: { tone: 'bg-sky-500', labelKey: 'zonesPanel.roomPanel.status.local', pulse: false },
+  connected: { tone: 'bg-ok-solid', labelKey: 'zonesPanel.roomPanel.status.live', pulse: true },
+  syncing: { tone: 'bg-warn-solid', labelKey: 'zonesPanel.roomPanel.status.syncing', pulse: true },
+  connecting: { tone: 'bg-warn-solid', labelKey: 'zonesPanel.roomPanel.status.connecting', pulse: true },
+  indexeddb: { tone: 'bg-info-solid', labelKey: 'zonesPanel.roomPanel.status.local', pulse: false },
+  memory: { tone: 'bg-info-solid', labelKey: 'zonesPanel.roomPanel.status.local', pulse: false },
   disconnected: { tone: 'bg-muted-foreground/50', labelKey: 'zonesPanel.roomPanel.status.offline', pulse: false },
 };
 /**
@@ -45,22 +45,22 @@ const STATUS_META: Record<string, { tone: string; labelKey: TranslationKey; puls
  * going in (#4446): the socket IS connected, but a room that does not yet
  * hold the model is not "Live" to anyone who would join it.
  */
-const SEEDING_META = { tone: 'bg-amber-500', labelKey: 'zonesPanel.roomPanel.status.uploading' as TranslationKey, pulse: true };
+const SEEDING_META = { tone: 'bg-warn-solid', labelKey: 'zonesPanel.roomPanel.status.uploading' as TranslationKey, pulse: true };
 
-/** Role → badge accent. Subtle, role-tinted, dark-mode aware. */
-const ROLE_META: Record<CollabRole, { labelKey: TranslationKey; cls: string }> = {
-  admin: { labelKey: 'zonesPanel.roomPanel.role.admin', cls: 'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300' },
-  editor: { labelKey: 'zonesPanel.roomPanel.role.editor', cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' },
-  commenter: { labelKey: 'zonesPanel.roomPanel.role.commenter', cls: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300' },
-  viewer: { labelKey: 'zonesPanel.roomPanel.role.viewer', cls: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300' },
+/** Role → badge label. The role is read from its label, so every badge uses
+ *  the same neutral chip: a hue per role would read as a status (#8802 R5). */
+const ROLE_LABEL: Record<CollabRole, TranslationKey> = {
+  admin: 'zonesPanel.roomPanel.role.admin',
+  editor: 'zonesPanel.roomPanel.role.editor',
+  commenter: 'zonesPanel.roomPanel.role.commenter',
+  viewer: 'zonesPanel.roomPanel.role.viewer',
 };
 
 function RoleBadge({ role }: { role: CollabRole }) {
   const { t } = useTranslation();
-  const m = ROLE_META[role];
   return (
-    <span className={`shrink-0 rounded-full border px-1.5 py-px text-2xs font-medium leading-none ${m.cls}`}>
-      {t(m.labelKey)}
+    <span className="shrink-0 rounded-full border border-border bg-muted px-1.5 py-px text-2xs font-medium leading-none text-muted-foreground">
+      {t(ROLE_LABEL[role])}
     </span>
   );
 }

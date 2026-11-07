@@ -82,7 +82,13 @@ export async function runExtensionCommand(
   deps: RunCommandDeps,
   commandId: string,
   extensionId: string,
+  args?: Record<string, unknown>,
 ): Promise<RuntimeRunResult | undefined> {
+  // Arguments belong to this evaluation, not the activation's shared globals.
+  // Capture before awaiting storage/activation; the wrapper captures the fresh
+  // context synchronously before entering an asynchronous handler (#8947).
+  const argumentField = args === undefined ? '' : `, args: ${JSON.stringify(args)}`;
+  const preamble = `globalThis.__ifclite_ctx__ = { bim: (globalThis.__ifclite_ctx__ || { bim: globalThis.bim }).bim${argumentField} };`;
   const records = await deps.storage.listExtensions();
   for (const record of records) {
     if (record.id !== extensionId) continue;
@@ -107,6 +113,7 @@ export async function runExtensionCommand(
     const wrapResult = wrapEntrySource(source, {
       entryFnName: 'run',
       filename: entry,
+      preamble,
     });
     if (!wrapResult.ok) {
       throw new Error(

@@ -15,6 +15,7 @@ import { manifestToContributions } from '../../../../../packages/extensions/src/
 export class PaletteCommandTestHost extends ExtensionHostService {
   readonly activations: string[] = [];
   readonly executions: string[] = [];
+  readonly commandArgs: unknown[] = [];
   readonly events: string[] = [];
   readonly records: InstalledExtensionRecord[] = [];
   readonly bundles = new Map<string, Bundle>();
@@ -53,10 +54,10 @@ export class PaletteCommandTestHost extends ExtensionHostService {
     this.slotRegistry.register(owner, manifestToContributions(owner, bundle.manifest.contributes));
   }
 
-  override runCommand(command: string, owner: string): Promise<RuntimeRunResult | undefined> {
+  override runCommand(command: string, owner: string, args?: Record<string, unknown>): Promise<RuntimeRunResult | undefined> {
     let ctx: unknown;
     const deps: RunCommandDeps = {
-      sdk: { record: () => { this.executions.push(owner); } },
+      sdk: { record: (value: unknown) => { this.executions.push(owner); this.commandArgs.push(value); } },
       storage: { listExtensions: async () => this.records },
       loader: { getBundle: id => this.bundles.get(id) },
       dispatcher: this.dispatcher,
@@ -85,6 +86,6 @@ export class PaletteCommandTestHost extends ExtensionHostService {
         },
       },
     };
-    return runExtensionCommand(deps, command, owner);
+    return runExtensionCommand(deps, command, owner, args);
   }
 }

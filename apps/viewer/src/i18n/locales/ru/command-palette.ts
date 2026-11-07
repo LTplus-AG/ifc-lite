@@ -49,6 +49,7 @@ export const commandPaletteRu = {
   "commandPalette.availability.textSelection": "Снимите выделение текста перед копированием элементов",
   "commandPalette.availability.rendererEntity": "Выберите доступный элемент в модели; ссылка только в свойствах не открывает действия",
   "commandPalette.availability.world": "Сначала включите доступный 3D-контекст мира",
+  'commandPalette.extension.conditions': 'Условия инструмента не выполнены. Проверьте требование к модели или выбору рядом с владельцем.',
   'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
   'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены (история IDS и календарного плана ведётся отдельно)',
   'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора (история IDS и календарного плана ведётся отдельно)',

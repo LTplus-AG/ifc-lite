@@ -421,6 +421,21 @@ describe('flat batch appearance ownership (#4243)', () => {
       .getBatchedMeshes()
       .flatMap((batch) => batch.expressIds)
       .sort();
+  it('captures an owner whose shared batch the GPU budget evicted while it drew only as sub-batches (#9136)', () => {
+    const { scene, parts, api } = setup();
+    const [batch] = scene.getBatchedMeshes();
+    scene.setGpuResidencyBudget(1);
+    // X-Ray, hide or isolate: the frame draws the batch only as sub-batches cut from its pieces.
+    for (let i = 0; i < 40; i++) { scene.beginResidencyFrame(); scene.recordBatchSubsetDrawn(batch); scene.enforceGpuBudget(); }
+    assert.equal(batch.gpuResident, false, 'its own buffers were evicted');
+    const token = api.begin({ expressId: 7, modelIndex: 0 });
+    api.update(token, [{ ...parts[0], texture: mesh(0, new Uint8Array(4)).texture, uvs: new Float32Array(6) }]);
+    assert.deepEqual(ids(scene), [8, 9], 'the owner left the shared batch');
+    assert.ok(scene.getBatchedMeshes().every((b) => b.gpuResident !== false));
+    assert.ok(!scene.getBatchedMeshes().includes(batch), 'the evicted shell is gone');
+    api.cancel(token);
+    assert.deepEqual(ids(scene), [7, 8, 9]);
+  });
   it('isolates owners sharing a batch; cancel order and undo retain every draw/pick identity', () => {
     const { scene, state, parts, api } = setup();
     assert.equal(scene.getBatchedMeshes().length, 1);

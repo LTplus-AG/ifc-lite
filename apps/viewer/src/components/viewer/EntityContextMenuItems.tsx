@@ -49,7 +49,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
     ? 'focus:bg-danger-surface focus:text-danger'
     : 'focus:bg-muted';
   return (
-    <ContextMenuItem asChild disabled={disabled}>
+    <ContextMenuItem asChild disabled={disabled} className={focusClass}>
       <button
         type="button"
         data-command-id={commandId}
@@ -58,7 +58,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
         aria-describedby={disabled && title ? descriptionId : undefined}
         title={title}
         disabled={disabled}
-        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none ${focusClass}`}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none"
         onClick={onClick}
       >
         <Icon className={iconClass} />

@@ -36,7 +36,8 @@ describe('remaining root status roles (Refs #8802)', () => {
           assert.equal(await page.$eval('code', el => getComputedStyle(el).backgroundColor), colors.bg);
           assert.equal(await page.$eval('code', el => getComputedStyle(el).color), colors.ink);
         });
-        const ratio = await measureTextContrastOnSurface(theme, `bg-card`, `${chip.className}`);
+        // The chip's own status surface over the card, which is what users read.
+        const ratio = await measureTextContrastOnSurface(theme, `bg-${role}-surface`, `text-${role}`, 'bg-card');
         assert.ok(ratio >= WCAG_AA_NORMAL_TEXT, `contrast ${ratio.toFixed(2)}:1 in ${theme}`);
       });
     }
@@ -74,9 +75,12 @@ describe('remaining root status roles (Refs #8802)', () => {
       const surface = await page.$eval('#range > div', el => getComputedStyle(el).backgroundColor);
       const chipColor = await page.$eval('#range > div > span', el => getComputedStyle(el).backgroundColor);
       assert.notEqual(chipColor, surface, 'between chip stays visible');
+      const button = () => page.$eval('#range button', el => getComputedStyle(el).backgroundColor);
+      const resting = await button();
       await page.hover('#range button');
-      const hover = await page.$eval('#range button', el => getComputedStyle(el).backgroundColor);
-      assert.notEqual(hover, surface, 'remove hover stays visible');
+      const hover = await button();
+      assert.notEqual(hover, resting, 'remove hover changes the button');
+      assert.notEqual(hover, surface, 'remove hover stays visible on its surface');
     });
   });
 });

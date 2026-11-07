@@ -1690,7 +1690,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-git"
-version = "26.0.0"
+version = "28.2.0"
 dependencies = [
  "blake3",
  "unicode-normalization",

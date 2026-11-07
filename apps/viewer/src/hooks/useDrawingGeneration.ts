@@ -194,7 +194,6 @@ export function useDrawingGeneration({
     elementToStorey: ReadonlyMap<number, number>;
   }>());
 
-  // Generate drawing when panel opens
   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
     if (!geometryResult?.meshes || geometryResult.meshes.length === 0) {
       // Clear the drawing when no geometry is available (e.g., all models hidden)
@@ -996,10 +995,11 @@ export function useDrawingGeneration({
   const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
   const previousInputs = useRef<unknown[]>([]);
   const wasActive = useRef(false);
+  const wasPanelVisible = useRef(false);
   const previousPlane = useRef('');
   useEffect(() => () => {
     queue.cancel();
-    wasActive.current = false;
+    wasActive.current = false; wasPanelVisible.current = false;
     previousInputs.current = [];
   }, [queue]);
   useEffect(() => {
@@ -1012,17 +1012,18 @@ export function useDrawingGeneration({
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;
     const deactivated = !drawingActive && wasActive.current;
+    const openedEmpty = panelVisible && !wasPanelVisible.current && !drawing && !queue.busy(); // #9026: the 2D button clears then opens; no input moved.
     previousInputs.current = inputs;
     previousPlane.current = plane;
-    wasActive.current = drawingActive;
+    wasActive.current = drawingActive; wasPanelVisible.current = panelVisible;
     if (!drawingActive) { if (deactivated) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();
       if (drawing) { setDrawing(null); setDrawingStatus('idle'); }
       return;
     }
-    if (activated || changed || planeChanged) {
-      const regenerate = !activated && !changed && planeChanged;
+    if (activated || changed || planeChanged || openedEmpty) {
+      const regenerate = !activated && !changed && !openedEmpty && planeChanged;
       void generateDrawing(regenerate).catch(error => {
         console.error('Automatic drawing request failed:', error);
         setDrawingError(error instanceof Error ? error.message : 'Generation failed');

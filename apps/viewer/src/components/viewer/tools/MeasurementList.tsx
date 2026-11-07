@@ -114,6 +114,9 @@ export function MeasurementList() {
       candidates = [...lost.order.slice(at + 1), ...lost.order.slice(0, Math.max(at, 0)).reverse()];
     }
     const shown = new Map([...list.querySelectorAll<HTMLElement>('[data-measurement-id]')].map((el) => [el.dataset.measurementId, el]));
+    // Only a row that really went away hands focus on. Under StrictMode a new
+    // row's effects run cleanup once more on mount: that report is stale.
+    if ('live' in lost ? (lost.live === 'polyline' ? activePolyline : activeRadius) : shown.has(lost.row)) return;
     const row = candidates.map((id) => shown.get(id)).find((el) => el !== undefined);
     (row ?? list).focus();
   });
@@ -269,7 +272,9 @@ function LiveRowActions({ kind, onFinish, onCancel, lostFocus }: {
   // prevents its default, so the keyboard dispatcher skips it), and cancelling
   // took two presses. Here, whose labels name Enter and Esc, an Esc pressed ON
   // one of these buttons runs its key command at once, as it would with no
-  // tooltip open; ending the row closes the tooltip with it. An Esc from
+  // tooltip open; the command that wins (normally Measure's cancel) ends the
+  // row and the tooltip with it. If no command takes the Esc, the tooltip
+  // closes as before. An Esc from
   // elsewhere while the pointer only hovers a button, and an Esc on any other
   // button, still just closes the tooltip (WCAG 1.4.13), so it never also
   // clears a selection or a tool.

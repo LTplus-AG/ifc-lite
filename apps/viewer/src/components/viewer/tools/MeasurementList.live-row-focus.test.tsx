@@ -19,7 +19,7 @@
 import '@/test/setup-dom.js';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { render, cleanup, click, press, activate } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
 import type { MeasurePoint } from '@/store/types.js';
@@ -171,15 +171,11 @@ describe('the live row hands focus on when it goes away (#9041)', () => {
     useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
     const container = mount();
     const finish = button(container, 'Finish (Enter)');
-    // Focused inside act, as a user's Tab is: the button's tooltip opens, and
-    // its own Escape handler may take the first press.
+    // Focused inside act, as a user's Tab is: the button's tooltip opens. One
+    // Esc both closes it and cancels (#9169).
     act(() => { finish.focus(); });
-    let presses = 0;
-    while (useViewerStore.getState().activePolyline !== null && presses < 2) {
-      press(document.activeElement ?? finish, 'Escape');
-      presses += 1;
-    }
-    assert.equal(useViewerStore.getState().activePolyline, null, `Esc cancelled the polyline (${presses} presses)`);
+    press(document.activeElement ?? finish, 'Escape');
+    assert.equal(useViewerStore.getState().activePolyline, null, 'one Esc cancelled the polyline');
     assert.equal(focused(), 'Measurements taken');
   });
 
@@ -428,6 +424,31 @@ describe('a deleted row hands focus on (#9124)', () => {
     press(target, ' ', { repeat: true });
     assert.deepEqual(useViewerStore.getState().polylineMeasurements.map((m) => m.id), ['pl2']);
     assert.equal(focused(), 'Poly #1 · Length 10.000 m');
+  });
+
+  it('Space on a focused delete deletes the row and does not hide the selection', () => {
+    useViewerStore.setState({ polylineMeasurements: [PL1, PL2], selectedEntityId: 7 });
+    const container = mount();
+    activate(button(container, 'Delete polyline measurement 1'), ' ');
+    assert.deepEqual(useViewerStore.getState().polylineMeasurements.map((m) => m.id), ['pl2']);
+    assert.equal(useViewerStore.getState().selectedEntityId, 7, 'Space pressed the button, not Hide selection');
+  });
+
+  it('under StrictMode a row mounted with focus does not pull focus back later', () => {
+    useViewerStore.setState({ activePolyline: OPEN_POLYLINE, polylineMeasurements: [PL1] });
+    const container = render(
+      <StrictMode>
+        <Shortcuts />
+        <canvas id="viewport-canvas" tabIndex={-1} />
+        <MeasurementsPanel />
+      </StrictMode>,
+    );
+    activate(button(container, 'Finish (Enter)'), ' ');
+    assert.equal(focused(), 'Poly #2 · Length 2.000 m', 'Finish landed on the recorded row');
+    (document.activeElement as HTMLElement).blur();
+    // Any later re-render of the list must leave focus alone.
+    act(() => { useViewerStore.setState({ unitDisplayOverrides: { LENGTHUNIT: 'MILLIMETRE' } }); });
+    assert.equal(focused(), 'body');
   });
 
   it('a delete without focus in its row leaves focus where it was', () => {

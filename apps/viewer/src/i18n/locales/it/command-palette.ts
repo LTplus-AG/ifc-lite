@@ -5,6 +5,20 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteIt = {
+  'commandPalette.extension.busy': 'Attendi il completamento dell’esportazione dell’estensione in corso',
+  'commandPalette.availability.editor': 'Richiede l’accesso in modifica',
+  'commandPalette.availability.feature': 'Non disponibile in questa configurazione',
+  'commandPalette.availability.selection': 'Seleziona prima gli elementi nel visualizzatore',
+  'commandPalette.availability.entity': 'Seleziona prima un’entità IFC',
+  'commandPalette.availability.ifc': 'Carica prima un modello con dati IFC',
+  'commandPalette.availability.model': 'Carica prima un modello',
+  'commandPalette.availability.camera': 'Attendi che la camera del visualizzatore sia pronta',
+  'commandPalette.availability.workplane': 'Scegli prima un piano di lavoro di modellazione valido',
+  'commandPalette.availability.schedule': 'Crea o importa prima un programma lavori',
+  'commandPalette.availability.host': 'Apri prima l’ambiente degli strumenti del visualizzatore',
+  'commandPalette.availability.loading': 'Attendi il completamento del caricamento del modello',
+  'commandPalette.state.on': 'Attivo',
+  'commandPalette.state.off': 'Disattivo',
   'commandPalette.file.open.label': 'Apri file',
   'commandPalette.file.saveFederationSetup.label': 'Salva la configurazione della federazione',
   'commandPalette.file.openFederationSetup.label': 'Apri una configurazione della federazione',

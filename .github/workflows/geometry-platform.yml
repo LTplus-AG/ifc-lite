@@ -6,6 +6,10 @@
 # for main, with the corpus), on demand, and on a PR only with the `ci:native-adapter`
 # label and a change it can observe. Add the label to a PR whose retained or native
 # change needs this evidence. It does not run on every push to main.
+# A merge-queue batch whose diff touches the paths below also runs it, through
+# `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the merge
+# via the required `Build + WASM + Rust + Node` aggregate. The batch decision reads
+# this paths list (scripts/check-native-adapter-triggers.mjs --batch-decide).
 name: Geometry platform (native adapter)
 
 on:
@@ -156,6 +160,15 @@ on:
         type: boolean
         default: false
         description: Run the downloaded model corpus as well as committed fixtures
+  # A merge-queue batch (test.yml). Inside a called workflow `github.event_name` is the
+  # caller's `pull_request`, so `batch` is what lets the job past the label gate. There
+  # is no `corpus` input: the corpus jobs stay nightly and dispatch only.
+  workflow_call:
+    inputs:
+      batch:
+        type: boolean
+        default: false
+        description: Called by a merge-queue batch's Test run
 
 permissions:
   contents: read
@@ -163,16 +176,20 @@ permissions:
 jobs:
   native-adapter:
     # A bot applying any other label must neither start nor restart this job.
+    # A merge-queue batch calls it with `batch` (see on.workflow_call).
     if: >-
+      inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
       (github.event.action != 'labeled' || github.event.label.name == 'ci:native-adapter'))
     # At job level, because a workflow-level group would let a skipped run cancel
     # this one. A new commit makes the PR's running job worthless; nightly and
-    # manual runs are never cancelled.
+    # manual runs are never cancelled. A batch run gets its own group (the caller's
+    # run id, never the batch PR's number) and is never cancelled from here: a
+    # re-pushed batch cancels the whole Test run through test.yml's own concurrency.
     concurrency:
-      group: geometry-platform-${{ github.event.pull_request.number || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      group: geometry-platform-${{ !inputs.batch && github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' && !inputs.batch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

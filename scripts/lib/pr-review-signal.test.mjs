@@ -133,10 +133,13 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Perf ratchet ceilings',
     // #6982: the callgrind measurement the perf-ratchet gate judges.
     'Native instruction counts',
+    // The SMLib lane on merge-queue batches (geometry-platform.yml via
+    // workflow_call). Every PR this gate reads publishes it as `skipped`.
+    'Native adapter (merge-queue batch)',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 50);
+  assert.equal(names.length, 51);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

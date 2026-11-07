@@ -21,7 +21,11 @@ import { refId } from '../host-geometry-frame.js';
 import { assertHostedGlobalIdAvailable } from '../hosted-global-id.js';
 import { readStoreyInventory, ref, type StoreyInventory, type StoreyRecord } from './storey-model.js';
 import { readPlacementLeaf, worldLiftInParent } from './storey-placement.js';
-import { MIN_STOREY_SPACING, describeElevation } from './storey-validation.js';
+import { MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation } from './storey-validation.js';
+import { planAttachmentBindings, type WallHeightChange } from './storey-dependents.js';
+import { writeTopAttachment } from './storey-attachment.js';
+import { setWallSectionInStore } from '../wall-section-edit.js';
+import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
 
 export interface AddStoreyParams {
   readonly Name: string;
@@ -44,6 +48,12 @@ export interface AddStoreyResult {
   readonly storeyId: number;
   readonly placementId: number;
   readonly relAggregatesId: number;
+  /** Walls drawn attached with no storey above, now bound to this storey and resized to reach it. */
+  /** Walls drawn attached that the new storey binds but cannot resize (their body or placement is unreadable). */
+  readonly unresizedWalls: readonly number[];
+  readonly boundWalls: readonly WallHeightChange[];
+  /** Products whose shape changed (the bound walls and their openings). */
+  readonly reshaped: readonly number[];
 }
 
 const OP = 'addStoreyInStore';
@@ -142,7 +152,24 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
     ]).expressId;
 
     const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
-    return { storeyId, placementId, relAggregatesId };
+    const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
+    const bindings = planAttachmentBindings(inventory, params.Elevation, parentId);
+    const boundWalls = bindings.walls.map((wall) => ({ ...wall, targetStoreyId: storeyId }));
+    for (const wallId of bindings.unreadable) writeTopAttachment(draft.getMutationView(), wallId, guid);
+    const reshaped: number[] = [];
+    for (const wall of boundWalls) {
+      writeTopAttachment(draft.getMutationView(), wall.wallId, guid);
+      if (Math.abs(wall.to - wall.from) < 1e-9) continue;
+      const geometry = wallGeometry(store, draft.getMutationView(), draft, wall.wallId);
+      const outcome = setWallSectionInStore({ dataStore: store, view: draft.getMutationView(), editor: draft }, wall.wallId, { height: wall.to });
+      if (!outcome.ok) {
+        throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} is attached to the storey above but cannot reach the new storey: ${outcome.reason}` }]);
+      }
+      // The same quantity upkeep as a re-level: Height, areas and volumes follow the new height.
+      scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from, geometry);
+      reshaped.push(...outcome.remesh);
+    }
+    return { storeyId, placementId, relAggregatesId, boundWalls, unresizedWalls: bindings.unreadable, reshaped };
   });
 }
 

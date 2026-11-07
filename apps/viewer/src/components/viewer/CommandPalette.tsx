@@ -251,6 +251,14 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
             paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
             inputRef.current?.focus();
           }}
+          onOpenAutoFocus={event => {
+            // #8947: Radix selects all input text by default. A cold-load query
+            // must keep accepting typing instead of replacing the buffered text.
+            event.preventDefault();
+            const input = inputRef.current;
+            input?.focus();
+            input?.setSelectionRange(input.value.length, input.value.length);
+          }}
           onCloseAutoFocus={event => {
             event.preventDefault();
             if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();

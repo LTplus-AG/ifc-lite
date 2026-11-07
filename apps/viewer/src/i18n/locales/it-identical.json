@@ -87,10 +87,6 @@
     "value": "name@example.com",
     "reason": "bcf.createForm.assigneePlaceholder: Literal sample email address demonstrates email syntax; it is not a sentence or an actual recipient."
   },
-  "bcf.panel.formatBcfzip": {
-    "value": "BCF",
-    "reason": "bcf.panel.formatBcfzip: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
-  },
   "bcf.serverConnect.emailLabel": {
     "value": "Email",
     "reason": "bcf.serverConnect.emailLabel: Email is the established Italian label for an email address."

@@ -13,14 +13,15 @@ import { useViewerStore } from '@/store';
 import { installLayout } from '@/test/dom-layout.js';
 import { cleanup, click, render } from '@/test/render.js';
 import it from './locales/it';
-import { activateStartupLocale, createLocaleActivator } from './locale-activation';
+import { activateStartupLocale, createLocaleActivator, createLocaleChoice } from './locale-activation';
 import { registerEnglish, setLocale } from './registry';
 
 test('Italian startup synchronizes IDS descriptions and later English switching', async () => {
   const html = { lang: 'en' };
   const activator = createLocaleActivator({ it: async () => it }, html);
   try {
-    await activateStartupLocale(activator, { search: '?lang=it', languages: [], storage: null });
+    await activateStartupLocale(activator, { languages: ['en-US'], storage: null });
+    await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('it');
     const service = () => createTranslationService(useViewerStore.getState().idsLocale);
     assert.equal(service().t('status.fail'), 'NON CONFORME');
     assert.match(service().describeFacet({ type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } }, 'requirement'), /IFCWALL/);
@@ -28,7 +29,7 @@ test('Italian startup synchronizes IDS descriptions and later English switching'
     useViewerStore.getState().setIdsLocale('de');
     registerEnglish({});
     assert.equal(service().locale, 'de');
-    await activator.activate(['en']);
+    await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('en');
     assert.equal(service().t('status.fail'), 'FAIL');
   } finally { setLocale('en'); }
 });
@@ -90,7 +91,8 @@ END-ISO-10303-21;`;
     const validate = () => validateIDS(document, accessor, {
       modelId: 'ids-locale-model', schemaVersion: store.schemaVersion, entityCount: store.entityCount,
     }, { translator: createTranslationService(useViewerStore.getState().idsLocale) });
-    await activateStartupLocale(activator, { search: '?lang=it', languages: [], storage: null });
+    await activateStartupLocale(activator, { languages: ['en-US'], storage: null });
+    await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('it');
     const italianReport = await validate();
     const result = italianReport.specificationResults[0];
     assert.equal(result.status, 'fail');
@@ -115,7 +117,7 @@ END-ISO-10303-21;`;
     }
     assert.doesNotMatch(ui.textContent ?? '', /Property "Pset_WallCommon.FireRating"/);
 
-    await act(async () => { await activator.activate(['en']); });
+    await act(async () => { await createLocaleChoice(activator, { languages: ['en-US'], storage: null }).choose('en'); });
     assert.match(ui.textContent ?? '', /1 failed/);
     assert.ok(ui.querySelector('[role="status"][aria-label="Failed"]'));
     const englishReport = await validate();

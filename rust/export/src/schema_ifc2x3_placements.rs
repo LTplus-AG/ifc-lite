@@ -372,11 +372,23 @@ impl<'w> Body<'w> {
     /// Write the held section, adapted; the change in record count.
     pub(crate) fn finish(self) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
-        let placed = std::str::from_utf8(&held).ok().and_then(place_each_object_once);
+        let placed = match std::str::from_utf8(&held) {
+            Ok(text) => place_each_object_once(text).map(|p| (p.body.into_bytes(), p.added, p.removed)),
+            // Bytes that are not UTF-8 (a source's Latin-1 name, say) are read
+            // one char per byte and written back the same way: what the pass
+            // writes is ASCII or copied from them, so every char fits a byte.
+            Err(_) => {
+                let text: String = held.iter().map(|&b| char::from(b)).collect();
+                place_each_object_once(&text).and_then(|p| {
+                    let bytes = p.body.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect::<Option<Vec<u8>>>()?;
+                    Some((bytes, p.added, p.removed))
+                })
+            }
+        };
         match placed {
-            Some(p) => {
-                self.out.write_all(p.body.as_bytes())?;
-                Ok(p.added as isize - p.removed as isize)
+            Some((bytes, added, removed)) => {
+                self.out.write_all(&bytes)?;
+                Ok(added as isize - removed as isize)
             }
             None => self.out.write_all(&held).map(|()| 0),
         }

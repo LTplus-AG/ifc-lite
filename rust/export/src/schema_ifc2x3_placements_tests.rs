@@ -69,3 +69,16 @@ fn ids_with_no_room_for_new_records_leave_the_file_as_it_was() {
     let room = body.replace("42949672", "1");
     assert_eq!(place_each_object_once(&room).expect("the second wall gets a copy").added, 1);
 }
+
+#[test]
+fn a_section_that_is_not_utf8_is_adapted_byte_for_byte() {
+    let mut data = b"#1=IFCLOCALPLACEMENT($,$);\n#2=IFCSITE('a',$,'Caf".to_vec();
+    data.push(0xE9);
+    data.extend_from_slice(b"',$,$,#1,$,$,.ELEMENT.,$,$,$,$,$);\n#3=IFCBUILDING('b',$,$,$,$,#1,$,$,.ELEMENT.,$,$,$);\n");
+    let mut out = Vec::new();
+    let mut body = Body::new(&mut out, true);
+    body.write_all(&data).unwrap();
+    assert_eq!(body.finish().unwrap(), 1);
+    assert!(out.windows(5).any(|w| w == b"Caf\xE9'"), "{:?}", String::from_utf8_lossy(&out));
+    assert!(out.ends_with(b"#3=IFCBUILDING('b',$,$,$,$,#4,$,$,.ELEMENT.,$,$,$);\n#4=IFCLOCALPLACEMENT($,$);\n"), "{:?}", String::from_utf8_lossy(&out));
+}

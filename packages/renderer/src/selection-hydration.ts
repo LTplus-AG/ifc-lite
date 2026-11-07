@@ -127,7 +127,9 @@ export function retireStaleSelectionHydration(
 ): void {
   if (selected.size === 0) return;
   const mergedByEntity = mergedMeshesByEntity(scene);
-  const authoredByEntity = authoredMeshCounts(scene, modelIndex);
+  // Only an entity that is or was merged needs the authored counts, so an
+  // ordinary selection skips this walk (independent review of #9238).
+  let authoredByEntity: Map<number, number> | undefined;
   const revision = scene.getPickGeometryRevision();
   let authoredPieceCounts: Map<string, number> | undefined;
   for (const id of selected) {
@@ -135,7 +137,7 @@ export function retireStaleSelectionHydration(
     const merged = mergedByEntity.get(id);
     if (!merged && (listed?.length ?? 0) <= MERGE_PIECES_ABOVE) continue;
     const itemId = id === itemFilterExpressId ? itemFilterItemId : undefined;
-    const authored = authoredByEntity.get(id) ?? 0;
+    const authored = (authoredByEntity ??= authoredMeshCounts(scene, modelIndex)).get(id) ?? 0;
     if (merged?.every((mesh) => coversSelection(mesh.mergedSelection!, listed, modelIndex, itemId, revision, authored))) continue;
     const pieces = scene.getMeshDataPieces(id, modelIndex, itemId) ?? [];
     const missing = authored === 0 ? pieces.length : unrepresentedPieces(pieces, authoredPieceCounts ??= scenePieceCounts(scene, true)).length;

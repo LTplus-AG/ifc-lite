@@ -487,7 +487,9 @@ describe('selecting an entity with a huge piece count (#9192)', () => {
   // fewer pieces than it lost has a SMALLER length than the merge recorded, so a
   // length comparison called a merge missing the new piece current.
   it('rebuilds when a piece arrives after eviction shrank the list, whatever the length comes to', () => {
-    for (const [evict, arrive] of [[20, 1], [3, 3]]) {
+    // [30, 1] ends below the merge threshold: the merge must still be retired,
+    // not kept because the entity no longer looks huge (independent review of #9238).
+    for (const [evict, arrive] of [[20, 1], [3, 3], [30, 1]]) {
       const h = makeHarness();
       const pieces = entity(9, HUGE + 20);
       load(h, pieces);

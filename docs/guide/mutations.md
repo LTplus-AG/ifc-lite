@@ -1027,3 +1027,52 @@ function reassignProducts(dataStore: IfcDataStore, editor: StoreEditor,
 ```
 
 Select 1–200 distinct roots; the complete dependency closure is bounded to 5,000 products and the effective relationship inventory to 2,000,000 references. Missing or duplicate identities/ownership, detached hosted or assembly children, cycles, shared placements, unsupported or unreadable world frames, and spatial roots such as sites/buildings/storeys refuse. IFC2X3 requires OwnerHistory; IFC4 and IFC4X3 allow it to be omitted. Native grids and grid-based product placements are unsupported; ordinary local placements may include translated, rotated or tilted frames. A refusal or late transaction failure preserves the graph, journal and allocation state. Recorded Undo restores the complete graph and journal; the native ID allocator remains monotonic after a successful operation.
+
+### Storey authoring
+
+`@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). `bim.store` runs the same functions. Lengths are metres, in the frame the parsed spatial hierarchy reports storey elevations in, and are written in the file's own length unit. Storeys form one sequence per spatial parent (their building, or the site or project when the file aggregates them there): neighbours, floor-to-floor shifts, elevation clashes and suggested names are taken within it. A storey nothing aggregates has no neighbours; its elevation can be edited, but a floor-to-floor edit is refused. An element another storey contains but this storey's elements host (a window filling an opening in a wall here) belongs to its own storey: an edit that would separate it from its host is refused.
+
+- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. It joins the spatial element that aggregates `referenceStoreyId` (usually the building; a file that aggregates its storeys under the site or the project keeps that). Without a reference, it joins the one spatial element the storeys share, or `buildingId`, which a model with several buildings requires. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. It is refused when the name is empty, the elevation is already taken, the `GlobalId` is already carried by a live entity, or `buildingId` disagrees with `referenceStoreyId`'s building. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
+- `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically. With `expected`, the reviewed plan, it refuses (code `stale`) a model that changed since: a point moved, an axis turned, a product attached or a storey re-levelled. The plan's `fingerprint` hashes the moved storeys and every written placement chain. Edits:
+  - `{ kind: 'elevation', storeyId, Elevation }` moves one storey.
+  - `{ kind: 'floorHeight', storeyId, Height }` shifts every storey above by the same delta.
+- Geometry follows storeys. Everything a moved storey holds moves with it, and nothing else does:
+  - Contents hanging from the storey placement need no write of their own.
+  - Contents placed relative to the building or the world, which is common in exported files, get their own root placement lifted.
+  - A product of another storey that hangs from a moved placement is compensated so it stays put.
+  - A product bound to a grid (`IfcGridPlacement`) follows the grid's placement: it moves with a grid on its own storey, and a grid-bound product of another storey under a moved grid is refused, because a grid placement cannot be compensated.
+  - Every move is a fresh `IfcCartesianPoint` and `IfcAxis2Placement3D`, so a shared origin point is never moved.
+- An edit is refused before anything is written, with a specific `code` and `message`, when it would:
+  - leave no height between storeys (`spacing`);
+  - pass a neighbour (`crossing`);
+  - measure floor-to-floor on the top storey (`topStorey`);
+  - move a placement that elements on another storey share (`sharedPlacement`);
+  - meet a placement that cannot be read;
+  - move a storey holding more than 50,000 products (`tooLarge`).
+- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode, expected?)` delete a storey without orphaning anything. With `expected`, it refuses (code `stale`, checked before any other refusal) when contents were added after the review, or the storey or a reviewed product was edited or moved since; the plan's `fingerprint` hashes the contents' records and placement chains. Modes:
+  - `{ kind: 'empty' }` is refused while the storey holds elements.
+  - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above. It is refused for a storey that nests products through `IfcRelNests`, which have no spatial owner to move.
+  - `{ kind: 'deleteContents' }` removes them with the storey. It is refused while another storey's element fills or stands on one of them (an opening's filling, a grid's column).
+
+  The storey's placement is kept, and relationships listing it are narrowed. A model always keeps one storey.
+
+```ts
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
+import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+
+// Two writes, two Undo steps: the storey is added even if the raise is then refused,
+// so the caller reports the refusal (and can undo the add) rather than retrying the add.
+function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId: number) {
+  const view = editor.getMutationView();
+  const { storeyId } = recordCompoundMutation(view, (draft) =>
+    addStoreyInStore(dataStore, new StoreEditor(dataStore, draft), { Name: 'Level 2', Elevation: 3 }));
+  const edit = { kind: 'floorHeight', storeyId: groundId, Height: 3.5 } as const;
+  const plan = planStoreyLevelEdit(readStoreyInventory(dataStore, view), edit);
+  if (plan.refusals.length) return { storeyId, raised: false, refusals: plan.refusals };
+  recordCompoundMutation(view, (draft) => applyStoreyLevelEdit(dataStore, new StoreEditor(dataStore, draft), edit, plan));
+  return { storeyId, raised: true, refusals: [] };
+}
+```
+
+The SDK's headless backend exposes the same operations on `bim.store`: `listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. The viewer and its script sandbox gain them with the storey manager (#9037) and the CLI work (#9121). `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.

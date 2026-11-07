@@ -194,6 +194,21 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(set.NetSurfaceArea).toBeUndefined();
   });
 
+  it('a void through a picker section leaves its net volume out, since its box may cut air', async () => {
+    const s = await session();
+    const wall = addWallToStore(s.editor, s.anchor, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 }).wallId;
+    const opening = addOpeningToStore(s.editor, resolveHostAnchor(s.store, wall, s.view), { Offset: 0, Sill: 1, Width: 1, Height: 1 });
+    const column = addColumnToStore(s.editor, s.anchor, {
+      Position: [1, 1, 0], Height: 3,
+      Profile: { Type: 'I', OverallWidth: 0.2, OverallDepth: 0.3, WebThickness: 0.01, FlangeThickness: 0.02 },
+    }).columnId;
+    expect(values(s.view, column, 'Qto_ColumnBaseQuantities').NetVolume).toBeCloseTo(0.0318, 9);
+    s.view.setPositionalAttribute(opening.relVoidsId, 4, `#${column}`);
+    const set = values(s.view, column, 'Qto_ColumnBaseQuantities');
+    expect(set.GrossVolume).toBeCloseTo(0.0318, 9);
+    expect(set.NetVolume).toBeUndefined();
+  });
+
   it('starts over when the view is rebound to another store', async () => {
     const metres = await session();
     const wall = wallAt(metres).wallId;

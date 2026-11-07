@@ -274,7 +274,8 @@ function linearSet(reading: Reading, id: number, type: string): QuantitySet | nu
   // but which outer faces it removes is not knowable from its box, so the net surface is left out.
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
-  if (boxes && (boxes.length === 0 || body)) {
+  // A box overlap is the material cut only for a solid rectangle: beside an I's web it cuts air.
+  if (boxes && (boxes.length === 0 || (body && chain.profile === null))) {
     const cut = boxes.reduce((sum, box) => sum + axisOverlap(box, body!, 0) * axisOverlap(box, body!, 1) * axisOverlap(box, body!, 2), 0);
     if (boxes.length === 0) rows.push(['NetSurfaceArea', QuantityType.Area, gross]);
     rows.push(['NetVolume', QuantityType.Volume, Math.max(0, volume - cut)]);

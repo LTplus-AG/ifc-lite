@@ -14,6 +14,7 @@ export async function editedRegistryModel() {
   const bytes = new Uint8Array(await readFile(new URL('../../public/samples/hello-wall.ifc', import.meta.url)));
   const parser = new IfcParser();
   const store = await parser.parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  // @raw-entity-enumeration-ok fixture locates the wall in a freshly parsed source before creating its mutation view
   const wall = store.entityIndex.byType.get('IFCWALL')?.[0] ?? store.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
   assert.notEqual(wall, undefined);
   const id = 'registry-model';

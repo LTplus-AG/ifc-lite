@@ -26,6 +26,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EpsgLookupError } from './EpsgLookupError';
 
@@ -355,19 +356,16 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     >
       <DialogTrigger asChild>
         {children || (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs font-mono text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50"
-          >
-            <Search className="h-2.5 w-2.5" />
+          <Button type="button" variant="outline" size="segment" className="gap-1 px-1.5 font-mono text-xs [&_svg]:size-2.5">
+            <Search />
             {t('properties.epsgLookup.triggerButton')}
-          </button>
+          </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden" hideCloseButton>
         <DialogHeader className="px-4 pt-4 pb-3">
           <DialogTitle className="flex items-center gap-2 text-sm">
-            <Globe className="h-4 w-4 text-teal-500" />
+            <Globe className="h-4 w-4 text-muted-foreground" />
             {t('properties.epsgLookup.title')}
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
@@ -397,7 +395,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
                 onClick={() => handleSelect(result)}
               >
                 <div className="flex items-baseline gap-2 min-w-0">
-                  <code className="text-xs font-bold text-teal-600 dark:text-teal-400 shrink-0">{result.code}</code>
+                  <code className="text-xs font-bold text-foreground shrink-0">{result.code}</code>
                   <span className="text-xs text-foreground truncate">{result.name}</span>
                   {result.kind && (
                     <span className="text-xs text-muted-foreground shrink-0 ml-auto">{result.kind}</span>

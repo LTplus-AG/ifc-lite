@@ -64,10 +64,10 @@ describe('ScanCreateBar (#6894)', () => {
     assert.ok(create && !create.disabled);
     await act(async () => create.click());
     assert.match(ui.root.textContent ?? '', /4 elements created in .*, one undo step\./);
-    assert.equal(ui.root.querySelectorAll('li .bg-teal-600').length, 4, 'the four walls show as Created');
+    assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 4, 'the four walls show as Created');
     assert.equal(button(ui.root, /^Create accepted elements$/)?.disabled, true, 'nothing left to create');
     await act(async () => useViewerStore.getState().undo(primary.id));
-    assert.equal(ui.root.querySelectorAll('li .bg-teal-600').length, 0, 'undone: no longer created');
+    assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 0, 'undone: no longer created');
     assert.ok(button(ui.root, /^Create 4 accepted elements in /), 'and creatable again');
     await ui.unmount();
   });
@@ -94,7 +94,7 @@ describe('ScanCreateBar (#6894)', () => {
     await act(async () => button(ui.root, /^Create 1 accepted element in /)!.click());
     assert.match(ui.root.textContent ?? '', /The scan has moved since it was detected/);
     assert.equal(useViewerStore.getState().undoStacks.get(primary.id)?.length ?? 0, before, 'nothing was written');
-    assert.equal(ui.root.querySelectorAll('li .bg-teal-600').length, 0);
+    assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 0);
     await ui.unmount();
   });
 
@@ -151,7 +151,7 @@ describe('ScanCreateBar (#6894)', () => {
     useViewerStore.setState({ activeModelId: reopened.id });
     assert.ok(useViewerStore.getState().scanDetectionRun, 'the run survives the reload');
     ui = await mount(run);
-    assert.equal(ui.root.querySelectorAll('li .bg-teal-600').length, 4, 'the four walls show as Created in the reopened copy');
+    assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 4, 'the four walls show as Created in the reopened copy');
     assert.equal(button(ui.root, /^Create accepted elements$/)?.disabled, true, 'nothing is offered for creation again');
     await ui.unmount();
   });

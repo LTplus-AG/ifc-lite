@@ -22,6 +22,7 @@
  */
 
 import { QuantityType, type QuantitySet } from '@ifc-lite/data';
+import { uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { toNativeLength, type HostBounds } from './anchor.js';
@@ -116,6 +117,16 @@ function unitScales(dataStore: IfcDataStore): { area: number; volume: number } {
 
 /** Twelve significant figures: 5 x 0.2 x 3 reads 3, not 3.0000000000000004. */
 const clean = (value: number): number => Number(value.toPrecision(12));
+
+/** ifc-lite's fixed namespace for derived quantity set GlobalIds. Never change it: saved models depend on it. */
+const DERIVED_SET_NAMESPACE = 'b8e0d7a4-5f2c-4e1b-8c3d-6a9f1e2b7c45';
+
+/** A name-based id from the element's GlobalId and the set's name, so each export writes the same one. */
+function setGlobalId(reading: Reading, id: number, name: string): string | undefined {
+  const elementGlobalId = readAttributes(reading.dataStore, reading.view, reading.editor, id)?.[0];
+  return typeof elementGlobalId === 'string' && elementGlobalId.length > 0
+    ? uuidToIfcGuid(uuidV5(DERIVED_SET_NAMESPACE, `${elementGlobalId}/${name}`)) : undefined;
+}
 
 function toQuantitySet(dataStore: IfcDataStore, scale: number, name: string, rows: readonly Row[]): QuantitySet {
   const { area, volume } = unitScales(dataStore);
@@ -325,7 +336,10 @@ export function deriveAuthoredBaseQuantities(dataStore: IfcDataStore, view: Muta
     revision.openings ??= overlayOpenings(dataStore, view, editor);
     const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openings: revision.openings };
     const set = isWall ? wallSet(reading, expressId) : isSlabLike ? slabLikeSet(reading, expressId, type === 'IFCROOF') : linearSet(reading, expressId, type);
-    if (set) sets = [set];
+    if (set) {
+      const globalId = setGlobalId(reading, expressId, set.name);
+      sets = [globalId ? { ...set, globalId } : set];
+    }
   } catch (error) {
     console.warn(`[quantities] #${expressId} has no base quantities: its geometry could not be read`, error);
   }

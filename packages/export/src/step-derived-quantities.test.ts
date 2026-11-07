@@ -31,7 +31,8 @@ const parse = (text: string): Promise<IfcDataStore> => {
   const bytes = new TextEncoder().encode(text);
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 };
-const derived = (value: number): QuantitySet[] => [{ name: SET, quantities: [{ name: 'Length', type: QuantityType.Length, value }] }];
+const SET_GUID = '2Xy0dRb8n0H8ux5QZ0aB7c';
+const derived = (value: number): QuantitySet[] => [{ name: SET, globalId: SET_GUID, quantities: [{ name: 'Length', type: QuantityType.Length, value }] }];
 
 interface Fixture { store: IfcDataStore; view: MutablePropertyView; overlayWall: number }
 
@@ -53,6 +54,23 @@ describe('sets a view base derives for an overlay-created element', () => {
     const f = await fixture();
     const reopened = await parse(exported(f));
     expect(extractQuantitiesOnDemand(reopened, f.overlayWall)).toMatchObject([{ name: SET, quantities: [{ name: 'Length', value: f.overlayWall }] }]);
+  });
+
+  it('keep the same GlobalIds from one export to the next', async () => {
+    const f = await fixture();
+    const body = (text: string) => text.slice(text.indexOf('DATA;'));
+    const first = exported(f);
+    expect(body(exported(f))).toBe(body(first));
+    expect(first).toContain(`IFCELEMENTQUANTITY('${SET_GUID}'`);
+  });
+
+  it('give a person\'s own set a fresh id, never a derived one', async () => {
+    const f = await fixture();
+    f.view.createQuantitySet(f.overlayWall, 'Custom', [{ name: 'Count', value: 2, quantityType: QuantityType.Count }]);
+    const first = exported(f);
+    const custom = (text: string) => text.match(/IFCELEMENTQUANTITY\('([^']+)',[^,]*,'Custom'/)?.[1];
+    expect(custom(first)).toBeDefined();
+    expect(custom(exported(f))).not.toBe(custom(first));
   });
 
   it('do not reach the file when the caller excludes quantities', async () => {

@@ -389,6 +389,18 @@ describe('the export carries what the view shows', () => {
     });
   }
 
+  it('writes the same file twice: a derived set\'s GlobalId is named from its element', async () => {
+    const s = await session();
+    const a = wallAt(s).wallId;
+    const b = addWallToStore(s.editor, s.anchor, { Start: [1, 4, 0], End: [3, 4, 0], Thickness: 0.2, Height: 3 }).wallId;
+    const body = (text: string) => text.slice(text.indexOf('DATA;'));
+    const first = exportText(s);
+    expect(body(exportText(s))).toBe(body(first));
+    const ids = [a, b].map((id) => s.view.getQuantitiesForEntity(id)[0].globalId);
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(first).toContain(`IFCELEMENTQUANTITY('${id}'`);
+  });
+
   it('writes the edited shape, not the shape it was authored with', async () => {
     const s = await session();
     const wall = wallAt(s).wallId;

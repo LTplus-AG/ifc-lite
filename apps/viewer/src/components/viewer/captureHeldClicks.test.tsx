@@ -22,6 +22,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { mountViewportControls, pointer, tap, click } from '@/test/touch-controls-fixture.js';
+import { mousePointer } from '@/test/mouse-controls-fixture';
 import { captureViewportFrame, noteLiveFrameSubmitted, registerViewportCapture, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
 let initialState: ReturnType<typeof useViewerStore.getState>;
@@ -47,6 +48,7 @@ function rig(tool: string, pickedId: number | null = null) {
       renderWithResult: () => true,
       getGPUDevice: () => null,
       pick: counted(async () => pickedId === null ? null : { expressId: pickedId }),
+      pickRect: counted(async () => [41, 42]),
       // Not counted: a press's orbit pivot reads it too, and places nothing. A face-pick is asserted on its cut.
       raycastScene: () => ({ intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: 1 }, expressId: 7 } }),
       raycastSceneMagnetic: counted((x: number) => ({
@@ -67,6 +69,10 @@ function rig(tool: string, pickedId: number | null = null) {
       assert.equal(viewportPicksAwaitLiveFrame(renderer), true, 'fixture: the pickers must wait on the live frame');
     },
     liveFrame: () => noteLiveFrameSubmitted(renderer as Renderer),
+    /** Send these events to the canvas, then let a pick they started settle. */
+    async send(...events: Event[]) {
+      await act(async () => { for (const e of events) canvas.dispatchEvent(e); await Promise.resolve(); });
+    },
     /** A mouse click as a browser sends it: press, release, click. */
     async mouseClick(x: number, y: number) {
       await act(async () => {
@@ -175,5 +181,49 @@ describe('a click or tap just after a capture is refused, and the next one picks
     h.liveFrame();
     await tap(h.canvas, 200, 300);
     assert.equal(s().measurePointLast?.x, 2, 'the tap after the live frame placed no point');
+  });
+
+  it('a Distance press before the capture, released after it, finishes nothing and keeps its start', async () => {
+    useViewerStore.setState({ measureMode: 'drag' });
+    const h = rig('measure');
+    await h.send(pointer('pointerdown', 'mouse', 200, 300, 1));
+    assert.equal(s().activeMeasurement?.start.x, 2, 'fixture: the press must set the start');
+    await h.capture();
+    // Dragged past the click slop: its release would finish where it lands.
+    await h.send(pointer('pointermove', 'mouse', 500, 300, 1), pointer('pointerup', 'mouse', 500, 300), click(500, 300, 'mouse'));
+    assert.equal(s().measurements.length, 0, 'a Distance release finished on the capture\'s frame');
+    assert.equal(s().activeMeasurement?.start.x, 2, 'a refused release dropped the pending start');
+    h.liveFrame();
+    await h.mouseClick(500, 300);
+    assert.equal(s().measurements.length, 1, 'the click after the live frame did not finish');
+  });
+
+  it('a right-click opens no context menu for what the capture shows, then the next one does', async () => {
+    const h = rig('select', 42);
+    await h.capture();
+    const menu = () => new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 });
+    await h.send(menu());
+    assert.equal(h.count.picks, 0, 'a context-menu pick read the capture\'s clip');
+    assert.deepEqual(h.menus, [], 'a context menu opened for an entity on the capture\'s frame');
+    h.liveFrame();
+    await h.send(menu());
+    assert.deepEqual(h.menus.map(m => m.id), [42], 'the right-click after the live frame opened no menu');
+  });
+
+  it('a Ctrl-drag rectangle selects nothing through the capture, then the next one selects', async () => {
+    const h = rig('select');
+    const rectangle = () => [
+      mousePointer('pointerdown', 0, 100, 100, { ctrlKey: true }),
+      mousePointer('pointermove', 0, 300, 300, { ctrlKey: true }),
+      mousePointer('pointerup', 0, 300, 300, { ctrlKey: true }),
+    ];
+    useViewerStore.getState().setSelectedEntityIds([7]);
+    await h.capture();
+    await h.send(...rectangle());
+    assert.equal(h.count.picks, 0, 'a rectangle pick read the capture\'s clip');
+    assert.deepEqual([...s().selectedEntityIds], [7], 'a rectangle replaced the selection with ids on the capture\'s frame');
+    h.liveFrame();
+    await h.send(...rectangle());
+    assert.deepEqual([...s().selectedEntityIds].sort(), [41, 42], 'the rectangle after the live frame selected nothing');
   });
 });

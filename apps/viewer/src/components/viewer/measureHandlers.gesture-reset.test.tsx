@@ -33,18 +33,22 @@ const EDGE = { v0: { x: 0, y: 0, z: 0 }, v1: { x: 9, y: 0, z: 0 } };
 /**
  * Canvas x/100 is world x, and (300 - y)/100 world y. A snapping pick snaps onto
  * and locks EDGE (world y 0); one with snapping off reads the bare surface. The
- * locks each pick is handed are recorded.
+ * model ends at canvas x 700: past it is background, where a snapping pick still
+ * pulls onto the corner at world 7,0 within its snap radius (60 px, 40 after a
+ * slow frame). The locks each pick is handed are recorded.
  */
 const locksSeen: Array<unknown> = [];
-function raycastSceneMagnetic(x: number, y: number, lock: { edge: unknown }, options?: { snapOptions?: { snapToEdges?: boolean } }) {
+const NO_LOCK = { shouldRelease: false, shouldLock: false, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 };
+function raycastSceneMagnetic(x: number, y: number, lock: { edge: unknown }, options?: { snapOptions?: { snapToEdges?: boolean; screenSnapRadius?: number } }) {
   locksSeen.push(lock.edge);
+  const background = x >= 700;
   const point = { x: x / 100, y: (300 - y) / 100, z: 0 };
-  if (options?.snapOptions?.snapToEdges === false) {
-    return { intersection: { point }, snapTarget: null, edgeLock: { shouldRelease: false, shouldLock: false, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };
-  }
+  const snapping = options?.snapOptions?.snapToEdges !== false;
+  if (background && (!snapping || x - 700 >= (options?.snapOptions?.screenSnapRadius ?? 60))) return { intersection: null, snapTarget: null, edgeLock: NO_LOCK };
+  if (!snapping) return { intersection: { point }, snapTarget: null, edgeLock: NO_LOCK };
   return {
-    intersection: { point },
-    snapTarget: { type: 'edge', position: { x: point.x, y: 0, z: 0 }, metadata: { vertices: [EDGE.v0, EDGE.v1] } },
+    intersection: background ? null : { point },
+    snapTarget: { type: 'edge', position: { x: background ? 7 : point.x, y: 0, z: 0 }, metadata: { vertices: [EDGE.v0, EDGE.v1] } },
     edgeLock: { shouldRelease: false, shouldLock: true, edge: EDGE, meshExpressId: 1, edgeT: 0.5, isCorner: false, cornerValence: 0 },
   };
 }
@@ -94,8 +98,8 @@ function mount(overrides: Partial<UseMouseControlsParams> = {}) {
   return { ...rig, ctx };
 }
 
-const fire = (canvas: HTMLCanvasElement, type: string, x: number, y: number) =>
-  act(() => { canvas.dispatchEvent(mousePointer(type, 0, x, y)); });
+const fire = (canvas: HTMLCanvasElement, type: string, x: number, y: number, modifiers: PointerEventInit = {}) =>
+  act(() => { canvas.dispatchEvent(mousePointer(type, 0, x, y, modifiers)); });
 
 /** A browser click: press, release, then the `click` the browser sends after it. */
 function click(canvas: HTMLCanvasElement, x: number, y: number): void {
@@ -504,6 +508,7 @@ describe('turning Snap off re-picks the live preview unsnapped at the cursor (#8
     fire(canvas, 'pointermove', 400, 250); // queued, not yet run
     assert.equal(frames.size, 1, 'setup: a rubber-band frame is queued');
     await pressKey('s');
+    assert.equal(frames.size, 0, 'Snap off left the queued rubber-band frame to run (#9052)');
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'the rubber band reads the cursor unsnapped');
     assertNoGestureLeft('a rubber-band frame queued before Snap off');
@@ -548,11 +553,12 @@ describe('turning Snap off re-picks the live preview unsnapped at the cursor (#8
   });
 
   it("Distance, the cursor gone to the toolbar's Snap toggle: the rubber-band end moves off the snapped spot", () => {
-    const { canvas } = mount();
+    const { canvas, ctx } = mount();
     click(canvas, 200, 300);
     fire(canvas, 'pointermove', 400, 250);
     flushFrames();
     fire(canvas, 'mouseleave', 400, 250); // the HUD toggle sits over the canvas
+    act(() => syncMeasureScreenCoords(ctx)); // idle frames while the cursor travels there keep the pass's state (#9052)
     act(() => s().toggleSnap()); // the toggle's own handler
     assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'BUG: the toolbar toggle left the rubber band on the snapped spot');
     assertNoGestureLeft('the toolbar Snap toggle mid-Distance');
@@ -702,6 +708,7 @@ describe('the Snap-off re-pick with the refs a render behind, as Viewport has th
     fire(canvas, 'pointermove', 400, 250);
     flushFrames();
     render();
+    act(() => syncMeasureScreenCoords(ctx)); // an idle frame before the toggle keeps the pass's state (#9052)
     assert.ok(refs.edgeLockStateRef.current.edge !== null, 'setup: the rendered lock ref holds EDGE');
     locksSeen.length = 0;
     act(() => s().toggleSnap()); // the refs still say Snap on, locked
@@ -712,5 +719,537 @@ describe('the Snap-off re-pick with the refs a render behind, as Viewport has th
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'the next frame moved the re-picked end');
     assertNoGestureLeft('the next frame after Snap off');
+  });
+});
+
+describe('a Snap toggle re-picks the live preview under the new setting at the cursor (#9022, #9052)', () => {
+  const xy = (p: { x: number; y: number } | null | undefined) => (p ? `${p.x},${p.y}` : 'none');
+  /** The pass bound to the store, as Viewport binds it, so a view change ends Point's Live (#8828). */
+  const boundPass: Partial<UseMouseControlsParams> = { updateMeasurementScreenCoords: (project, moved) => s().updateMeasurementScreenCoords(project, moved) };
+
+  it('Point mode: Live moves back onto the snapped spot, and the next frame keeps it', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'setup: Snap off re-picked Live unsnapped');
+    act(() => syncMeasureScreenCoords(ctx)); // a frame with Snap off
+    await pressKey('s');
+    assert.equal(s().snapEnabled, true, 'setup: S turned Snap back on');
+    assert.equal(xy(s().measurePointLive), '4,0', 'BUG: Snap on left Live on the unsnapped point');
+    assert.equal(s().snapVisualization !== null, true, 'Snap on showed no snap glyph');
+    act(() => syncMeasureScreenCoords(ctx)); // the next frame's measure pass
+    assert.equal(xy(s().measurePointLive), '4,0', 'a later frame ended or replaced the re-picked Live');
+  });
+
+  it('Distance: the rubber-band end moves back onto the snapped spot and locks, and the next frame keeps it', async () => {
+    const { canvas, ctx } = mount(boundPass);
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    const start = xy(s().activeMeasurement?.start);
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'setup: Snap off re-picked the end unsnapped');
+    act(() => syncMeasureScreenCoords(ctx)); // idle frames with Snap off
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'BUG: Snap on left the rubber band unsnapped');
+    assert.equal(xy(s().activeMeasurement?.start), start, 'Snap on moved the start');
+    assert.equal(s().edgeLockState.edge !== null, true, 'Snap on did not lock the edge under the cursor');
+    assert.equal(s().snapVisualization !== null, true, 'Snap on showed no snap glyph');
+    act(() => syncMeasureScreenCoords(ctx));
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'the next frame moved the re-picked end');
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'a second Snap off no longer re-picked');
+  });
+
+  it('Distance, the view moved and no frame ran since: Snap on does not re-pick under the new view', async () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    await pressKey('s');
+    camera.setPosition(2, 1.6, 10); // keyboard navigation; the measure pass has not run since
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'Snap on re-picked at the old pixel under a moved view');
+    assert.equal(locksSeen.length, 0, 'Snap on picked under a moved view');
+  });
+
+  it('Distance: a navigation press nudged within the click slop keeps the cursor, so Snap off still re-picks', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 402, 251)); }); // under the 3 px slop: no pan
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'BUG: a nudge under the click slop forgot the cursor');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 402, 251)); });
+  });
+
+  it('Distance: a navigation press with no move keeps the cursor, so Snap off still re-picks (#9052)', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'a press alone forgot the cursor');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 400, 250)); });
+  });
+
+  it('Distance: a pan past the click slop and back near its press still forgets the cursor', async () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    Object.assign(camera, { pan: () => {} }); // a pan clamped to nothing: only the drag tells the press moved
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 450, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 401, 250)); });
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked after a pan');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a pan');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 401, 250)); });
+  });
+
+  it('Distance on the Shift axis: Snap off re-picks the unsnapped point projected onto the axis (#9052)', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300); // the start, world 2,0
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true }); // snapped 2.5,0 is mostly along x
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,0', 'setup: the end follows the x axis from the snapped point');
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'setup: the move followed the Shift axis');
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'the re-pick left the axis, or projected the snapped point');
+  });
+
+  it('Distance: Shift released without a move, Snap off re-picks off the axis, as a move there would', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'setup: the move followed the Shift axis');
+    act(() => { window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'BUG: the re-pick still followed the released Shift axis');
+  });
+
+  it('Distance: Shift pressed without a move, Snap off re-picks on the axis, as a move there would', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100);
+    flushFrames();
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'the re-pick ignored the Shift held since the move');
+  });
+
+  it('Point mode, the view moved and no frame ran since: Snap on ends Live instead of re-picking under the new view', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, camera, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    await pressKey('s');
+    act(() => syncMeasureScreenCoords(ctx));
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'setup: Snap off re-picked Live unsnapped');
+    camera.setPosition(2, 1.6, 10);
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'Snap on re-picked Live at the old pixel under a moved view');
+    assert.equal(locksSeen.length, 0, 'Snap on picked under a moved view');
+  });
+
+  it('Distance: a navigation drag past the click slop forgets the cursor, even with the view unchanged', async () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    Object.assign(camera, { pan: () => {} }); // a pan clamped to nothing: only the slop tells the press dragged
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 410, 250)); });
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked after a drag past the slop');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a drag past the slop');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 410, 250)); });
+  });
+
+  it('Distance on the Shift axis: Snap back on re-picks the snapped point projected onto the axis', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'setup: Snap off re-picked on the axis unsnapped');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,0', 'Snap on left the axis, or kept the unsnapped point');
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'Snap on did not follow the axis the snapped point lies along');
+  });
+
+  it('Distance: one Shift key released with the other still held keeps the axis', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    act(() => { window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', code: 'ShiftLeft', shiftKey: true })); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'releasing one Shift key dropped the axis');
+  });
+
+  it('known limit: a wheel zoom under the resting cursor skips the Distance re-pick (#9052)', async () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    const pose = JSON.stringify([camera.getPosition(), camera.getDistance()]);
+    act(() => { canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: 400, clientY: 250, bubbles: true, cancelable: true })); });
+    assert.notEqual(JSON.stringify([camera.getPosition(), camera.getDistance()]), pose, 'setup: the wheel zoomed');
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'the re-pick ran after a wheel zoom: update the known limit in #9052');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a wheel zoom');
+  });
+
+  it('Point mode over background within snap reach: Snap on re-picks the corner Snap off had missed', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 730, 250); // background, 30 px from the corner at 7,0
+    flushFrames();
+    assert.equal(xy(s().measurePointLive), '7,0', 'setup: Live snapped onto the corner');
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'setup: the unsnapped re-pick missed');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '7,0', 'BUG: Snap on left Live empty where a click places the corner');
+  });
+
+  it('Point mode, just after a click: Snap off keeps the placed point and shows no Live reading', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    click(canvas, 400, 250);
+    assert.equal(s().measurePointLive === null, true, 'setup: the click replaced the Live reading');
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'Snap off brought a Live reading back over the placed point');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after a click');
+  });
+
+  it('Point mode: a navigation press nudged within the click slop keeps the cursor, so Snap off still re-picks', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 402, 251)); });
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'a nudge under the click slop forgot the Point cursor');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 402, 251)); });
+  });
+
+  it('Distance: Shift released while the window was away (blur, no keyup), Snap off re-picks off the axis', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'setup: the move followed the Shift axis');
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'a blur left the re-pick on the axis');
+  });
+
+  it('Point mode: a camera move then a plain move in one frame still re-picks', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, camera } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    camera.setPosition(2, 1.6, 10); // the measure pass has not run since
+    fire(canvas, 'pointermove', 400, 250); // throttled: queues a trailing pick, notes the cursor
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'BUG: the Point move noted the view of the frame before it');
+  });
+
+  it('Point mode: a pan released inside the hover throttle does not re-pick at the pixel before it', async (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 });
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    t.mock.timers.tick(10);
+    fire(canvas, 'pointermove', 450, 250); // inside the throttle window: a trailing pick is queued at 450
+    act(() => { canvas.dispatchEvent(mousePointer('pointerdown', 1, 450, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointermove', 1, 550, 250)); });
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 550, 250)); });
+    locksSeen.length = 0;
+    act(() => t.mock.timers.tick(200));
+    flushFrames();
+    assert.equal(locksSeen.length, 0, 'the trailing pick ran at the pixel the pan left');
+    await pressKey('s');
+    assert.equal(locksSeen.length, 0, 'Snap off re-picked at the pixel the pan left');
+  });
+
+  it('Point mode: Shift pressed while a trailing hover is queued still lets it read the resting cursor', async (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 });
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    t.mock.timers.tick(10);
+    fire(canvas, 'pointermove', 500, 250); // inside the throttle window: a trailing pick is queued at 500
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })); });
+    act(() => t.mock.timers.tick(200));
+    flushFrames();
+    assert.equal(xy(s().measurePointLive), '5,0', 'BUG: Shift dropped the trailing pick, so Live stayed behind the cursor');
+  });
+
+  it('Point mode: a click that misses keeps the cursor, so Snap on still re-picks the corner there', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas, ctx } = mount(boundPass);
+    fire(canvas, 'pointermove', 730, 250);
+    flushFrames();
+    await pressKey('s');
+    assert.equal(s().measurePointLive === null, true, 'setup: the unsnapped re-pick missed');
+    click(canvas, 730, 250); // Snap off: misses, places nothing
+    assert.equal(s().measurePointLive === null, true, 'setup: the missed click shows no Live point');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '7,0', 'a missed click forgot the cursor');
+  });
+
+  it('Distance: a pen navigation press nudged within the slop in the same task keeps the cursor', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    act(() => {
+      canvas.dispatchEvent(mousePointer('pointerdown', 1, 400, 250, { pointerType: 'pen' })); // held for a task
+      canvas.dispatchEvent(mousePointer('pointermove', 1, 401, 250, { pointerType: 'pen' }));
+    });
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'the held pen press was judged before it began');
+    act(() => { canvas.dispatchEvent(mousePointer('pointerup', 1, 401, 250, { pointerType: 'pen' })); });
+  });
+
+  it('Distance just finished, no move since: neither Snap toggle picks or brings a lock or glyph back', async () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    click(canvas, 400, 250);
+    assert.equal(s().measurements.length, 1, 'setup: the distance was finished');
+    locksSeen.length = 0;
+    await pressKey('s');
+    await pressKey('s');
+    assert.equal(locksSeen.length, 0, 'a Snap toggle picked over a finished distance');
+    assert.equal(s().snapVisualization === null, true, 'a Snap toggle brought the snap glyph back');
+    assert.equal(s().edgeLockState.edge === null, true, 'a Snap toggle brought the edge lock back');
+  });
+
+  for (const mode of ['point', 'drag'] as const) {
+    it(`${mode === 'point' ? 'Point mode' : 'Distance'}: a drawing-buffer pixel-ratio swap since the move still re-picks`, async () => {
+      act(() => s().setMeasureMode(mode));
+      const { canvas, ctx } = mount(boundPass);
+      if (mode === 'drag') click(canvas, 200, 300);
+      fire(canvas, 'pointermove', 400, 250);
+      flushFrames();
+      Object.assign(canvas, { width: 1600, height: 1200 }); // the HiDPI buffer back after a zoom's low-ratio frames
+      act(() => syncMeasureScreenCoords(ctx));
+      await pressKey('s');
+      const end = mode === 'point' ? s().measurePointLive : s().activeMeasurement?.current;
+      assert.equal(xy(end), '4,0.5', 'BUG: a pixel-ratio swap alone cancelled the re-pick');
+    });
+  }
+
+  it('Distance: a canvas reshaped since the move (a new aspect) still skips the re-pick', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    Object.assign(canvas, { width: 800, height: 300 }); // a panel opened: another view under the cursor
+    act(() => syncMeasureScreenCoords(ctx));
+    locksSeen.length = 0;
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'Snap off re-picked after the canvas changed shape');
+    assert.equal(locksSeen.length, 0, 'Snap off picked after the canvas changed shape');
+  });
+
+  it('Point mode: a left-button orbit press nudged within the click slop keeps the cursor', async () => {
+    act(() => s().setMeasureMode('point'));
+    const { canvas } = mount(boundPass);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    fire(canvas, 'pointerdown', 400, 250); // Point mode's left press orbits once past the slop
+    fire(canvas, 'pointermove', 402, 251);
+    await pressKey('s');
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'an orbit press nudged within the slop forgot the cursor');
+    fire(canvas, 'pointerup', 402, 251);
+  });
+
+  it('the Shift and blur listeners are removed with the mouse controls', () => {
+    const added: Array<[string, unknown]> = [];
+    const removed: Array<[string, unknown]> = [];
+    const add = window.addEventListener, remove = window.removeEventListener;
+    const watched = new Set(['keydown', 'keyup', 'blur']);
+    window.addEventListener = ((type: string, fn: EventListenerOrEventListenerObject, o?: AddEventListenerOptions | boolean) => {
+      if (watched.has(type)) added.push([type, fn]);
+      add.call(window, type, fn, o);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((type: string, fn: EventListenerOrEventListenerObject, o?: EventListenerOptions | boolean) => {
+      if (watched.has(type)) removed.push([type, fn]);
+      remove.call(window, type, fn, o);
+    }) as typeof window.removeEventListener;
+    try {
+      mount();
+      assert.equal(added.length > 0, true, 'setup: no window key or blur listener was added');
+      cleanupMouseControls();
+    } finally {
+      window.addEventListener = add;
+      window.removeEventListener = remove;
+    }
+    const left = added.filter(([type, fn]) => !removed.some(([t, f]) => t === type && f === fn)).map(([type]) => type);
+    assert.deepEqual(left, [], 'window listeners outlived the mouse controls');
+  });
+
+  it('Distance: a camera move then a plain move in one frame still re-picks (#9052)', async () => {
+    const { canvas, camera } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    camera.setPosition(2, 1.6, 10); // an arrow-key pan in its own rAF; the measure pass has not run since
+    fire(canvas, 'pointermove', 400, 250); // the move draws under the new view
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'BUG: the move noted the view of the frame before it');
+  });
+});
+
+describe('the Distance end over background (#9049)', () => {
+  const xy = (p: { x: number; y: number } | null | undefined) => (p ? `${p.x},${p.y}` : 'none');
+
+  it('collapses onto the start, as the first click left it, and drops the snap glyph', () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'setup: the end is on the model');
+    fire(canvas, 'pointermove', 780, 250); // background, out of snap reach
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), xy(s().activeMeasurement?.start), 'BUG: the end stayed on the last hit over background');
+    assert.equal(s().activeMeasurement?.distance, 0, 'the readout kept a distance a click there cannot make');
+    assertNoGestureLeft('the rubber band over background');
+    click(canvas, 780, 250);
+    assert.equal(s().measurements.length, 0, 'a click over background measured something');
+    assert.ok(s().activeMeasurement, 'a click over background dropped the start');
+    fire(canvas, 'pointermove', 500, 250);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '5,0', 'the end did not follow the cursor back onto the model');
+  });
+
+  it('after a slow frame, a reduced pick that misses within the full snap reach keeps the corner a click would measure', () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 750, 250); // 50 px past the model: in the 60 px reach, not the reduced 40 px
+    ctx.lastMeasureRaycastDurationRef.current = 1e6; // the last raycast was slow
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '7,0', 'BUG: the reduced pick collapsed the end where a click measures');
+    click(canvas, 750, 250);
+    assert.equal(s().measurements.length, 1, 'setup: the click measured to the corner');
+    assert.equal(xy(s().measurements[0].end), '7,0', 'the click measured somewhere else');
+  });
+
+  it('picks per frame over background after a slow frame: one retry with Snap on, none with Snap off, none on the next fast frame', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    const frame = (x: number) => {
+      ctx.lastMeasureRaycastDurationRef.current = 1e6;
+      fire(canvas, 'pointermove', x, 250);
+      locksSeen.length = 0;
+      flushFrames();
+      return locksSeen.length;
+    };
+    assert.equal(frame(780), 2, 'a reduced miss with Snap on is checked once with the full options');
+    fire(canvas, 'pointermove', 781, 250);
+    locksSeen.length = 0;
+    flushFrames(); // the retry was not timed: this frame is not reduced
+    assert.equal(locksSeen.length, 1, 'the retry kept the next frame reduced');
+    await pressKey('s');
+    assert.equal(frame(780), 1, 'with Snap off the reduced options are the full ones: no retry');
+  });
+
+  it('on the Shift axis, collapses too and drops the active axis', () => {
+    const { canvas } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250, { shiftKey: true });
+    flushFrames();
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, 'axis1', 'setup: the x axis is active');
+    fire(canvas, 'pointermove', 780, 250, { shiftKey: true });
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), xy(s().activeMeasurement?.start), 'the end stayed on the axis over background');
+    assert.equal(s().measurementConstraintEdge?.activeAxis ?? null, null, 'an axis stayed active with no end on it');
+  });
+
+  it('Snap off where only the snapped corner was hit collapses the end, and Snap on brings the corner back', async () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 730, 250); // background, within reach of the corner at 7,0
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '7,0', 'setup: the end snapped onto the corner');
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), xy(s().activeMeasurement?.start), 'BUG: Snap off kept the snapped corner over background');
+    assertNoGestureLeft('Snap off over background');
+    act(() => syncMeasureScreenCoords(ctx));
+    await pressKey('s');
+    assert.equal(xy(s().activeMeasurement?.current), '7,0', 'Snap on did not snap the end back onto the corner');
+  });
+});
+
+describe('the Snap-on re-pick with the refs a render behind, as Viewport has them (#9022)', () => {
+  const xy = (p: { x: number; y: number } | null | undefined) => (p ? `${p.x},${p.y}` : 'none');
+
+  it('Point mode: Live is re-picked snapped although the Snap ref still says off, and the next frame keeps it', () => {
+    act(() => s().setMeasureMode('point'));
+    const snapEnabledRef = { current: s().snapEnabled };
+    const edgeLockStateRef = { current: s().edgeLockState };
+    const render = () => { act(() => { snapEnabledRef.current = s().snapEnabled; edgeLockStateRef.current = s().edgeLockState; }); };
+    const { canvas, ctx } = mount({ snapEnabledRef, edgeLockStateRef, updateMeasurementScreenCoords: (p, moved) => s().updateMeasurementScreenCoords(p, moved) });
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    render();
+    act(() => s().toggleSnap());
+    render();
+    act(() => syncMeasureScreenCoords(ctx));
+    assert.equal(xy(s().measurePointLive), '4,0.5', 'setup: Snap off re-picked Live unsnapped');
+    act(() => s().toggleSnap()); // the ref still says Snap off
+    assert.equal(xy(s().measurePointLive), '4,0', 'BUG: the re-pick read the not-yet-rendered Snap ref');
+    render();
+    act(() => syncMeasureScreenCoords(ctx));
+    assert.equal(xy(s().measurePointLive), '4,0', 'the next frame ended or replaced the re-picked Live');
+  });
+
+  it('Distance: the end is re-picked snapped although the Snap ref still says off', () => {
+    const snapEnabledRef = { current: s().snapEnabled };
+    const edgeLockStateRef = { current: s().edgeLockState };
+    const render = () => { act(() => { snapEnabledRef.current = s().snapEnabled; edgeLockStateRef.current = s().edgeLockState; }); };
+    const { canvas, ctx } = mount({ snapEnabledRef, edgeLockStateRef });
+    click(canvas, 200, 300);
+    fire(canvas, 'pointermove', 400, 250);
+    flushFrames();
+    render();
+    act(() => s().toggleSnap());
+    render();
+    act(() => syncMeasureScreenCoords(ctx)); // a frame with Snap off
+    assert.equal(xy(s().activeMeasurement?.current), '4,0.5', 'setup: Snap off re-picked the end unsnapped');
+    act(() => s().toggleSnap()); // the ref still says Snap off
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'BUG: the re-pick read the not-yet-rendered Snap ref');
+    render();
+    act(() => syncMeasureScreenCoords(ctx));
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '4,0', 'the next frame moved the re-picked end');
   });
 });

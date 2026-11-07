@@ -42,7 +42,7 @@ export function IfcFederationSettingsGroup({ SettingsGroup, SettingsRow }: {
 export function IfcSharedVerticalDatumNotice({ model }: { model: FederatedModel }) {
   const { t } = useTranslation();
   return (
-    <section className="border-b border-amber-500/30 bg-amber-500/10 p-3 text-xs space-y-1">
+    <section className="border-b border-warn-border bg-warn-surface p-3 text-xs space-y-1">
       <h4 className="font-semibold">{t('settings.ifcFederation.assumed')}</h4>
       <p>{t(model.ifcSharedVerticalDatumAssumed === 'unresolved'
         ? 'settings.ifcFederation.appliedUnresolved' : 'settings.ifcFederation.applied')}</p>

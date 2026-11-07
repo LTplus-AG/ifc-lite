@@ -439,5 +439,6 @@ jobs:
       jobs: wide-arithmetic-tripwire
       result: ${{ needs.wide-arithmetic-tripwire.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

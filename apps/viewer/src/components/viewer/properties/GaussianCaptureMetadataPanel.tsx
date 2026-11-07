@@ -54,8 +54,8 @@ export function GaussianCaptureMetadataPanel({ model, capture }: { model: Federa
   const [changingAxis, setChangingAxis] = useState(false);
   const fileSize = formatLocaleNumber(locale, model.fileSize / (1024 * 1024), { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 });
   return (
-    <div className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black" data-testid="gaussian-capture-metadata">
-      <div className="p-4 border-b-2 border-border bg-muted dark:bg-black space-y-3">
+    <div className="h-full flex flex-col border-l-2 border-border bg-card" data-testid="gaussian-capture-metadata">
+      <div className="p-4 border-b-2 border-border bg-muted space-y-3">
         <div className="flex items-start gap-3">
           <div className="p-2 border-2 border-primary/30 bg-primary/10 shrink-0">
             <Sparkles className="h-5 w-5 text-primary" />

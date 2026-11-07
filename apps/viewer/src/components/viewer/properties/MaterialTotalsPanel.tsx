@@ -304,32 +304,32 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   }
 
   return (
-    <div className="h-full flex flex-col border-l-2 border-border bg-white dark:bg-black">
+    <div className="h-full flex flex-col border-l-2 border-border bg-card">
       {/* Header */}
-      <div className="p-4 border-b-2 border-border bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
+      <div className="p-4 border-b-2 border-border bg-muted space-y-2">
         <div className="flex items-start gap-3">
-          <div className="p-2 border-2 border-amber-200 dark:border-amber-800 bg-white dark:bg-muted shrink-0">
-            <Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          <div className="p-2 border-2 border-border bg-card shrink-0">
+            <Layers className="h-5 w-5 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
             <h3 className="font-bold text-sm truncate uppercase tracking-tight text-foreground min-w-0">
               {display.name}
             </h3>
-            <p className="text-xs font-mono text-amber-600/80 dark:text-amber-400/80">{display.type}</p>
+            <p className="text-xs font-mono text-muted-foreground">{display.type}</p>
           </div>
         </div>
       </div>
 
-      <ScrollArea className="flex-1 bg-white dark:bg-black">
+      <ScrollArea className="flex-1 bg-card">
         <div className="p-3 space-y-3 w-full overflow-hidden">
           {pendingEditsMissing && <output className="block text-xs text-warn">{t('properties.materialTotals.pendingEditsMissing')}</output>}
           {/* Totals */}
-          <div className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20">
-            <div className="flex items-center gap-2 px-2.5 py-2 border-b-2 border-amber-200 dark:border-amber-800">
-              <Calculator className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span className="font-bold text-xs text-amber-700 dark:text-amber-400 uppercase tracking-wide">{t('properties.materialTotals.totalsHeading')}</span>
+          <div className="border-2 border-border">
+            <div className="flex items-center gap-2 px-2.5 py-2 border-b-2 border-border">
+              <Calculator className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="font-bold text-xs text-foreground uppercase tracking-wide">{t('properties.materialTotals.totalsHeading')}</span>
             </div>
-            <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
+            <div className="divide-y divide-border">
               <TotalRow label={t('properties.materialTotals.elements')} value={formatLocaleNumber(locale, totals.elementCount)} />
               {totals.hasVolume && (
                 <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
@@ -342,13 +342,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-border">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>{t('properties.materialTotals.noVolumeQuantities')}</span>
               </div>
             )}
             {totals.hasVolume && totals.elementsWithVolume < totals.elementCount && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-muted-foreground border-t border-border">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
                   {t('properties.materialTotals.partialVolumeNote', { counted: formatLocaleNumber(locale, totals.elementsWithVolume), total: formatLocaleNumber(locale, totals.elementCount) })}
@@ -378,7 +378,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           {/* Material property sets */}
           {psetCount > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-2xs text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
+              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-2xs text-muted-foreground uppercase tracking-wider font-semibold">
                 <Layers className="h-3 w-3 shrink-0" />
                 <span className="truncate">{t('properties.materialTotals.materialPropertiesHeading')}</span>
               </div>
@@ -410,7 +410,7 @@ function TotalRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between px-2.5 py-2 text-xs">
       <span className="text-muted-foreground font-medium">{label}</span>
-      <span className="font-mono font-semibold text-amber-700 dark:text-amber-300 tabular-nums">{value}</span>
+      <span className="font-mono font-semibold text-foreground tabular-nums">{value}</span>
     </div>
   );
 }

@@ -20,7 +20,8 @@
  * The turn and move are storey-local metres: a turn counter-clockwise about
  * the vertical through `pivot`, then `offset`. On another storey the copy is
  * placed relative to that storey's placement at the same plan position and
- * height above the floor.
+ * height above the floor. Where a copy goes is `copy-placement.ts`, including
+ * one of an element on a grid: on the crossing it lands on, or free (#9199).
  */
 
 import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
@@ -30,12 +31,14 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
+import { follow, gridCopyRefusal, placeOnStorey, type Placed } from './copy-placement.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
 import {
-  IDENTITY_FRAME, applyRigid, composeRigid, frameInAncestor, invertRigid, readOwnPlacement,
-  refToken, remapRefs, turnDirection, turnThenMove, finiteCopyFrame,
+  readOwnPlacement, refToken, remapRefs, turnDirection, turnThenMove, finiteCopyFrame,
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
+
+export { productStoreyOrigin } from './copy-placement.js';
 
 export interface CopyTransform {
   /** Move after the turn, storey-local metres (IFC Z-up). */
@@ -61,6 +64,14 @@ export interface CopyProductResult {
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
   readonly meshed: readonly number[];
+  /**
+   * Copies that found their own place on the grid and bound to the crossing they
+   * landed on. A part or opening placed under a copied placement follows that
+   * copy and is not listed: it is not a second copy to tell anyone about.
+   */
+  readonly boundToGrid: readonly number[];
+  /** Copies that found their own place on the grid and landed on no crossing, now free of it. Listed as {@link boundToGrid}. */
+  readonly cameFree: readonly number[];
 }
 
 /** Classes that are copied with their host, never on their own. */
@@ -138,15 +149,16 @@ export function createCopyContext(store: IfcDataStore, editor: StoreEditor, opti
   };
 }
 
-/** Why `sourceId` cannot be copied on its own, or null when it can. */
+/** Why `sourceId` cannot be copied, or null when it can. Throws when what it carries is too large to walk. */
 export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
-  const type = ctx.read(sourceId)?.type.toUpperCase();
-  if (!type) return `#${sourceId} is not in the model`;
+  const source = ctx.read(sourceId);
+  const type = source?.type.toUpperCase();
+  if (!type) return 'This element is no longer in the model';
   if (HOSTED_TYPES.has(type)) return 'An opening is copied with the element it is cut into: copy that element';
   if (ctx.filledBy.has(sourceId)) return 'A door or window is copied with its wall: copy the wall';
   if (ctx.partOf.has(sourceId)) return 'A part is copied with its assembly: copy the assembly';
   if (SPATIAL_TYPES.has(type)) return 'Spaces and spatial structure are not copied: copy the elements';
-  return null;
+  return gridCopyRefusal(ctx, sourceId);
 }
 
 /** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
@@ -162,16 +174,18 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const move = finiteCopyFrame(turnThenMove(transform.turn ?? 0, [native(px), native(py)], [native(ox), native(oy), native(oz)]));
 
   const targetStoreyId = transform.targetStoreyId ?? source.storeyId;
-  const placed = placeOnStorey(ctx.read, source, targetStoreyId, move);
+  const placed = placeOnStorey(ctx, source, targetStoreyId, move);
   const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]) };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), boundToGrid: [], cameFree: [] };
+  noteGridOutcome(acc, placed, copy.id);
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
   for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,
+    boundToGrid: acc.boundToGrid, cameFree: acc.cameFree,
   };
 }
 
@@ -182,6 +196,13 @@ interface Dependents {
   readonly fillingIds: number[];
   readonly partIds: number[];
   readonly copiedFrom: Map<number, number>;
+  readonly boundToGrid: number[];
+  readonly cameFree: number[];
+}
+
+function noteGridOutcome(acc: Dependents, placed: Placed, copyId: number): void {
+  if (placed.grid === 'bound') acc.boundToGrid.push(copyId);
+  else if (placed.grid === 'free') acc.cameFree.push(copyId);
 }
 
 /** The copies of `sourceId`'s openings (with their doors and windows) and parts (recursively), written under `copyId`. */
@@ -195,7 +216,9 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
     }
     const parentCopy = copies.get(step.parentId)!;
     const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor);
-    const copy = writeCopy(ctx, source, follow(ctx.read, source, root, targetStoreyId, acc.placements, move), step.kind === 'filling' ? targetStoreyId : null);
+    const placed = follow(ctx, source, root, targetStoreyId, acc.placements, move);
+    const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null);
+    noteGridOutcome(acc, placed, copy.id);
     acc.placements.set(source.placementExpressId, copy.placementId);
     acc.copiedFrom.set(copy.id, step.sourceId); copies.set(step.sourceId, copy.id);
     if (step.kind === 'part') acc.partIds.push(copy.id);
@@ -209,71 +232,10 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
   }
 }
 
-/** Where a copy sits: its parent placement and its own placement in that parent. */
-interface Placed {
-  readonly parentPlacementId: number | null;
-  readonly location: CopyVec3;
-  /** The turn to apply to the source's Axis and RefDirection. */
-  readonly turn: RigidFrame;
-}
-
-function storeyPlacementId(read: LiveRead, storeyId: number | null): number | null {
-  return storeyId === null ? null : asRef(read(storeyId)?.attributes[5]);
-}
-
-/**
- * The source's parent placement as a frame in its storey's. A storey without a
- * placement has no frame to tie to (the storey plane is then the model frame).
- * A parent that does not chain to the storey's placement has no known place on
- * the storey, so the copy is refused: the preview (`copy-ghost.ts`) works in
- * the storey's frame, and a guess here would commit the copy somewhere else.
- */
-function parentFrameInStorey(read: LiveRead, source: SourceAttributes, fromStorey: number | null): RigidFrame {
-  if (fromStorey === null) return IDENTITY_FRAME;
-  const parent = frameInAncestor(read, source.parentPlacementId, fromStorey);
-  if (!parent) throw new Error(`#${source.placementExpressId}: its placement is not tied to its storey's, so it cannot be copied`);
-  return parent;
-}
-
-function placeOnStorey(read: LiveRead, source: SourceAttributes, targetStoreyId: number | null, move: RigidFrame): Placed {
-  const own = readOwnPlacement(read, source.placementExpressId);
-  if (!own) throw new Error(`#${source.placementExpressId}: the placement does not read as a local placement`);
-  const fromStorey = storeyPlacementId(read, source.storeyId);
-  const parent = parentFrameInStorey(read, source, fromStorey);
-  if (targetStoreyId === source.storeyId) {
-    const location = applyRigid(invertRigid(parent), applyRigid(move, applyRigid(parent, own.location)));
-    return { parentPlacementId: source.parentPlacementId, location, turn: move };
-  }
-  const toStorey = storeyPlacementId(read, targetStoreyId);
-  if (toStorey === null) {
-    throw new Error(`#${source.placementExpressId}: the storey it is copied to has no placement to copy under`);
-  }
-  // Same plan position and height above the floor, now under the other storey's placement.
-  return { parentPlacementId: toStorey, location: applyRigid(move, applyRigid(parent, own.location)), turn: composeRigid(move, parent) };
-}
-
-/**
- * A hosted element: under the copy of the placement it was placed relative
- * to, unchanged; otherwise moved as its host was, on the host's storey (an
- * opening is not contained in one of its own).
- */
-function follow(
-  read: LiveRead,
-  source: SourceAttributes,
-  host: SourceAttributes,
-  targetStoreyId: number | null,
-  placements: ReadonlyMap<number, number>,
-  move: RigidFrame,
-): Placed {
-  const mapped = source.parentPlacementId === null ? undefined : placements.get(source.parentPlacementId);
-  if (mapped !== undefined) return { parentPlacementId: mapped, location: [...source.sourceLocation], turn: IDENTITY_FRAME };
-  return placeOnStorey(read, { ...source, storeyId: host.storeyId }, targetStoreyId, move);
-}
-
 function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null, name?: string): { id: number; placementId: number } {
   if (![...placed.location, ...placed.turn.origin, placed.turn.c, placed.turn.s].every(Number.isFinite)) throw new Error('Copy placement must remain finite in native model units');
   const turned = Math.abs(placed.turn.s) > 1e-12 || placed.turn.c < 0;
-  const own = turned ? readOwnPlacement(ctx.read, source.placementExpressId) : null;
+  const own = turned ? placed.own ?? readOwnPlacement(ctx.read, source.placementExpressId) : null;
   const direction = (v: CopyVec3 | null, fallback: CopyVec3 | null): string | null => {
     const base = v ?? fallback;
     if (!base) return null;
@@ -289,6 +251,8 @@ function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, s
     attributes,
     sourceLocation: placed.location,
     parentPlacementId: placed.parentPlacementId,
+    // `placed` is where it goes, read through its grid placement when it has one.
+    onGridPlacement: false,
     storeyId,
     // An upright Axis does not change under a turn about the vertical.
     axisRef: own && own.axis && (Math.abs(own.axis[0]) > 1e-12 || Math.abs(own.axis[1]) > 1e-12) ? direction(own.axis, null) : source.axisRef,
@@ -353,26 +317,4 @@ function childRefs(values: readonly unknown[]): number[] {
   };
   values.forEach(visit);
   return out;
-}
-
-/**
- * Where a product's placement origin is on its storey, metres: the point a
- * paste lines up with the cursor. Null when its placement does not read;
- * throws (with the reason) when it is not tied to its storey, as a copy would.
- */
-export function productStoreyOrigin(ctx: CopyContext, id: number): { storeyId: number | null; origin: CopyVec3 } | null {
-  let source: SourceAttributes;
-  try {
-    source = resolveDuplicateSource(ctx.store, id, ctx.editor);
-  } catch (error) {
-    console.warn(`[create] #${id} has no readable placement to copy from`, error);
-    return null;
-  }
-  const own = readOwnPlacement(ctx.read, source.placementExpressId);
-  if (!own) return null;
-  const fromStorey = storeyPlacementId(ctx.read, source.storeyId);
-  const parent = parentFrameInStorey(ctx.read, source, fromStorey);
-  const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
-  const [x, y, z] = applyRigid(parent, own.location);
-  return { storeyId: source.storeyId, origin: [x * scale, y * scale, z * scale] };
 }

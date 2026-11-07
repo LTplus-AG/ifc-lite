@@ -65,6 +65,7 @@ export const ELEMENT_PUSH_PULL: ModelingCommand<PushPullGesture> = {
   init,
   // The drag is followed on the window (`push-pull-drag.ts`), in pixels along the face's own axis;
   // the workplane cursor has no meaning for a vertical face.
+  aimsAtElement: () => true,
   pointerMove: (g) => g,
   // A click once a face is armed and has a size writes it.
   pointerDown: (g) => (g.faceId !== null && g.size !== null ? { commit: true } : g),

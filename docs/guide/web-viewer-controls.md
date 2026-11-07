@@ -25,11 +25,19 @@ Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,
 middle, and right-button navigation keep the controls above.
 
+A plain click on a surface above or below the workplane lands on the point you
+see, so you can draw on top of a slab. Hold **Alt** (⌥ on a Mac), or turn
+snapping off with **S**, to ignore snaps and surfaces: the point lands where
+the pointer's ray meets the workplane, through whatever stands in front, and
+the HUD marks it **On workplane**. Typed locks and Shift still apply. Commands
+that pick an element from the point (doors, windows, openings, trim, split,
+align, push/pull) keep reading the surface, so Alt only suspends their snapping.
+
 While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.
 
-![Orbit pivot marker on building-architecture.ifc](../architecture/evidence/orbit-pivot-marker-5891/mid-orbit.png)
+![Orbit pivot marker on building-architecture.ifc](../assets/orbit-pivot-marker.png)
 
 An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the

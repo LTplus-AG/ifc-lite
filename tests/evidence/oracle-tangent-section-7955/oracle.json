@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/examples/compare/unverified.rs",
-  "mutation": "tests/evidence/oracle-tangent-section-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/oracle_gaps_7955.rs",
-  "why": "Without adaptive refinement a tangent section stops at the first split, far from the closed-form wedge volume, so the witness fails."
-}

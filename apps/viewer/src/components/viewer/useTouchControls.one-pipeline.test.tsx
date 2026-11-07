@@ -19,135 +19,15 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { Camera, type Renderer } from '@ifc-lite/renderer';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click as clickElement } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
-import { useTouchControls, type UseTouchControlsParams } from './useTouchControls.js';
+import {
+  mountViewportControls as rig, pointer, touchEvent, tap, pointerDrag, pos,
+  settle, click, pencilTap, pencilDrag, fingerDrag,
+} from '@/test/touch-controls-fixture.js';
 import { measureHintKey } from './tools/measure-modes/readouts.js';
 import { measureEn } from '@/i18n/catalogues/measure.en';
 import { MeasurementList } from './tools/MeasurementList.js';
-
-const ref = <T,>(current: T) => ({ current });
-const noop = () => {};
-
-function rig(tool: string, pickedId: number | null = null) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 800; canvas.height = 600;
-  canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 800, height: 600 });
-  Object.assign(canvas, { setPointerCapture: noop, releasePointerCapture: noop });
-  document.body.appendChild(canvas);
-
-  const camera = new Camera();
-  camera.setAspect(800 / 600);
-  camera.setPosition(0, 0, 10);
-  camera.setTarget(0, 0, 0);
-  // Every pick lands on the plane z = 0, at x = canvas x / 100.
-  const renderer = {
-    getCamera: () => camera,
-    requestRender: noop,
-    getScene: () => ({ getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 0 }),
-    pick: async () => pickedId === null ? null : { expressId: pickedId },
-    pickRect: async () => [],
-    raycastScene: () => null,
-    raycastSceneMagnetic: (x: number) => ({
-      intersection: { point: { x: x / 100, y: 0, z: 0 } },
-      snapTarget: null,
-      edgeLock: { shouldRelease: false, shouldLock: false, edge: null },
-    }),
-  } as unknown as Renderer;
-  const state = useViewerStore.getState();
-  const menus: Array<{ id: number | null; x: number; y: number }> = [];
-  let selections = 0;
-  const activeToolRef = ref(tool);
-  // One stable object, as between real frames: the select path refuses a pick whose options changed.
-  const stablePickOptions = { isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null };
-  const pickOptions = () => stablePickOptions;
-
-  const mouseParams = {
-    canvasRef: ref(canvas), rendererRef: ref(renderer), isInitialized: true,
-    mouseStateRef: ref<MouseState>({ isDragging: false, isPanning: false, lastX: 0, lastY: 0, button: 0, startX: 0, startY: 0, didDrag: false }),
-    // Distance state is store-bound, as Viewport.tsx binds it: a tap's start is the store's (#8771).
-    activeToolRef, snapEnabledRef: ref(false),
-    activeMeasurementRef: { get current() { return useViewerStore.getState().activeMeasurement; }, set current(_v) { /* store-owned */ } },
-    edgeLockStateRef: ref(state.edgeLockState), measurementConstraintEdgeRef: ref(null),
-    sectionPickModeRef: ref(false), modelBoundsRef: ref(null),
-    hiddenEntitiesRef: ref(new Set<number>()), isolatedEntitiesRef: ref(null),
-    selectedEntityIdRef: ref(null), selectedModelIndexRef: ref(undefined),
-    clearColorRef: ref<[number, number, number, number]>([0, 0, 0, 1]),
-    sectionPlaneRef: ref(state.sectionPlane), sectionRangeRef: ref(null), geometryRef: ref(null),
-    measureRaycastPendingRef: ref(false), measureRaycastFrameRef: ref(null),
-    lastMeasureRaycastDurationRef: ref(0), lastHoverSnapTimeRef: ref(0), lastHoverCheckRef: ref(0),
-    hoverTooltipsEnabledRef: ref(false),
-    isInteractingRef: ref(false), lastClickTimeRef: ref(0), lastClickPosRef: ref(null), lastCameraStateRef: ref(null),
-    handlePickForSelection: () => { selections++; }, setHoverState: noop, clearHover: noop,
-    openContextMenu: (id, x, y) => menus.push({ id, x, y }),
-    startMeasurement: (p) => useViewerStore.getState().startMeasurement(p),
-    updateMeasurement: (p) => useViewerStore.getState().updateMeasurement(p),
-    finalizeMeasurement: () => useViewerStore.getState().finalizeMeasurement(),
-    setSnapTarget: noop, setSnapVisualization: noop, setEdgeLock: noop, updateEdgeLockPosition: noop,
-    clearEdgeLock: noop, incrementEdgeLockStrength: noop, setMeasurementConstraintEdge: noop,
-    updateConstraintActiveAxis: noop, updateMeasurementScreenCoords: noop, updateCameraRotationRealtime: noop,
-    toggleSelection: noop, calculateScale: noop, getPickOptions: pickOptions,
-    hasPendingMeasurements: () => false, setSectionPlaneFromFace: noop, setSectionPickMode: noop, setSectionPickPreview: noop,
-    HOVER_SNAP_THROTTLE_MS: 50, SLOW_RAYCAST_THRESHOLD_MS: 50, hoverThrottleMs: 50,
-    fastZoomRef: ref(false),
-  } satisfies UseMouseControlsParams;
-  const touchParams: UseTouchControlsParams = {
-    canvasRef: ref(canvas), rendererRef: ref(renderer), isInitialized: true, activeToolRef,
-    hiddenEntitiesRef: ref(new Set<number>()), isolatedEntitiesRef: ref(null), selectedEntityIdRef: ref(null),
-    selectedModelIndexRef: ref(undefined), clearColorRef: ref([0, 0, 0, 1]), sectionPlaneRef: ref(state.sectionPlane),
-    sectionRangeRef: ref(null), geometryRef: ref(null), isInteractingRef: ref(false),
-    handlePickForSelection: () => { selections++; },
-    openContextMenu: (id, x, y) => menus.push({ id, x, y }),
-    getPickOptions: pickOptions,
-    touchStateRef: ref({ touches: [], lastDistance: 0, lastCenter: { x: 0, y: 0 }, tapStartTime: 0,
-      tapStartPos: { x: 0, y: 0 }, didMove: false, multiTouch: false, twoFingerGesture: 'none' as const,
-      gestureDistanceAccum: 0, gesturePanAccum: 0 }),
-  };
-  function Probe() {
-    useMouseControls(mouseParams);
-    useTouchControls(touchParams);
-    return null;
-  }
-  render(<Probe />);
-  return { canvas, camera, menus, selectionCount: () => selections };
-}
-
-function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0): PointerEvent {
-  const e = new PointerEvent(type, { button: 0, buttons, pointerId: 1, bubbles: true, cancelable: true });
-  Object.defineProperties(e, {
-    clientX: { value: x, configurable: true },
-    clientY: { value: y, configurable: true },
-    pointerType: { value: pointerType, configurable: true },
-  });
-  return e;
-}
-
-function touchEvent(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus'): Event {
-  const event = new window.Event(kind, { bubbles: true, cancelable: true });
-  const touches = points.map(([x, y], i) => ({ identifier: i + 1, target: canvas, clientX: x, clientY: y, touchType }));
-  Object.defineProperty(event, 'touches', { value: touches });
-  Object.defineProperty(event, 'changedTouches', { value: touches });
-  return event;
-}
-
-async function tap(canvas: HTMLCanvasElement, x: number, y: number): Promise<void> {
-  await act(async () => {
-    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]]));
-    canvas.dispatchEvent(touchEvent('touchend', canvas, []));
-  });
-}
-
-function pointerDrag(canvas: HTMLCanvasElement, pointerType: 'touch' | 'mouse' | 'pen'): void {
-  act(() => {
-    canvas.dispatchEvent(pointer('pointerdown', pointerType, 400, 300));
-    for (let i = 1; i <= 5; i++) canvas.dispatchEvent(pointer('pointermove', pointerType, 400 + 20 * i, 300));
-    canvas.dispatchEvent(pointer('pointerup', pointerType, 500, 300));
-  });
-}
-
-const pos = (camera: Camera) => JSON.stringify(camera.getPosition());
 
 afterEach(() => {
   mock.timers.reset();
@@ -418,48 +298,6 @@ function wheelAt(init: { ctrlKey?: boolean } = {}): WheelEvent {
  * events only. Either way one pipeline owns the press.
  */
 describe('a pen press goes through one pipeline (#9000)', () => {
-  const settle = () => new Promise((r) => setTimeout(r, 0));
-  const click = (x: number, y: number, pointerType: string | undefined = 'pen') => {
-    const e = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y });
-    if (pointerType) Object.defineProperty(e, 'pointerType', { value: pointerType });
-    return e;
-  };
-
-  /** iOS order: pointerdown, touchstart, pointermove, touchmove ... pointerup, touchend, then a possible click. */
-  async function pencilTap(canvas: HTMLCanvasElement, x: number, y: number, touchType: 'stylus' | undefined = 'stylus') {
-    await act(async () => {
-      canvas.dispatchEvent(pointer('pointerdown', 'pen', x, y));
-      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], touchType));
-      await settle();
-      canvas.dispatchEvent(pointer('pointerup', 'pen', x, y));
-      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
-      canvas.dispatchEvent(click(x, y));
-      await settle();
-    });
-  }
-
-  function pencilDrag(canvas: HTMLCanvasElement, touchFirst = false, touchType: 'stylus' | undefined = 'stylus') {
-    act(() => {
-      const down = [pointer('pointerdown', 'pen', 400, 300), touchEvent('touchstart', canvas, [[400, 300]], touchType)];
-      for (const e of touchFirst ? down.reverse() : down) canvas.dispatchEvent(e);
-    });
-    act(() => {
-      for (let i = 1; i <= 5; i++) {
-        canvas.dispatchEvent(pointer('pointermove', 'pen', 400 + 20 * i, 300, 1));
-        canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]], touchType));
-      }
-      canvas.dispatchEvent(pointer('pointerup', 'pen', 500, 300));
-      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
-    });
-  }
-
-  function fingerDrag(canvas: HTMLCanvasElement) {
-    act(() => {
-      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]]));
-      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]]));
-      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
-    });
-  }
 
   it('an iPad pen drag orbits once, exactly as a finger drag does', () => {
     const finger = rig('select');
@@ -489,7 +327,7 @@ describe('a pen press goes through one pipeline (#9000)', () => {
     const expected = pos(finger.camera);
     cleanup(); finger.canvas.remove();
     const pen = rig('select');
-    pencilDrag(pen.canvas, true, undefined);
+    pencilDrag(pen.canvas, true, null);
     assert.equal(pos(pen.camera), expected, 'BUG: the pen drag orbited through both pipelines');
   });
 
@@ -545,7 +383,7 @@ describe('a pen press goes through one pipeline (#9000)', () => {
 
   it('a touch at the pen point without touchType still claims the press', async () => {
     const { canvas, selectionCount } = rig('select', 42);
-    await pencilTap(canvas, 200, 300, undefined);
+    await pencilTap(canvas, 200, 300, null);
     assert.equal(selectionCount(), 1, `BUG: one pen tap selected ${selectionCount()} times`);
   });
 
@@ -676,6 +514,168 @@ describe('a pen press goes through one pipeline (#9000)', () => {
     });
     assert.equal(selectionCount(), 2, `pen tap then mouse click selected ${selectionCount()} times`);
   });
+
+  const mouseEvent = (type: string, x: number, y: number, button = 0) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button, detail: type === 'dblclick' ? 2 : 1 });
+  async function trackpadClick(canvas: HTMLCanvasElement, x: number, y: number, dbl = false) {
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', x, y));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', x, y));
+      canvas.dispatchEvent(click(x, y, null));
+      if (dbl) canvas.dispatchEvent(mouseEvent('dblclick', x, y));
+      await settle();
+    });
+  }
+
+  it('a trackpad click with no pointerType right after an iPad pen tap at the same spot still selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    await trackpadClick(canvas, 201, 300);
+    assert.equal(selectionCount(), 2, `BUG: pen tap then trackpad click selected ${selectionCount()} times`);
+  });
+
+  it('a trackpad double-click at the last pen-placed polyline point finishes the polyline', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    await pencilTap(canvas, 500, 300);
+    await trackpadClick(canvas, 500, 300);
+    await trackpadClick(canvas, 500, 300, true);
+    assert.equal(useViewerStore.getState().activePolyline === null, true, 'BUG: the trackpad double-click after a pen tap was dropped');
+    const finished = useViewerStore.getState().polylineMeasurements;
+    assert.equal(finished.length, 1, 'the trackpad double-click did not finish one polyline');
+    assert.equal(finished[0].closed, false, 'a double-click finishes the polyline open');
+    assert.deepEqual(finished[0].points.slice(0, 2).map((p) => p.x), [2, 5], 'both pen-placed points survive');
+  });
+
+  it('a trackpad right-click right after an iPad pen tap at the same spot opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 200, 300, 2, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 200, 300, 0, 2));
+      await settle();
+    });
+    assert.equal(menus.length, 1, `BUG: the trackpad right-click after a pen tap opened ${menus.length} menus`);
+  });
+
+  it('a Pencil double-tap: its compatibility clicks and dblclick stay dropped', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    await pencilTap(canvas, 500, 300);
+    await pencilTap(canvas, 500, 300);
+    const points = useViewerStore.getState().activePolyline?.points.length;
+    await act(async () => {
+      canvas.dispatchEvent(click(500, 300, null));
+      canvas.dispatchEvent(mouseEvent('dblclick', 500, 300));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, points, 'a Pencil compatibility event reached the mouse side');
+    assert.equal(useViewerStore.getState().activePolyline === null, false, 'BUG: the Pencil double-tap\'s dblclick finished the polyline through the mouse side');
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 0, 'BUG: the Pencil double-tap\'s dblclick recorded a polyline through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  // Polyline, not Select: a pointerType-less click near a touch selection is
+  // dropped by isTouchSelectionClick anyway, and a newer press cancels a pending
+  // selection pick. A leaked click here adds a point anyone can count.
+  const xs = () => useViewerStore.getState().activePolyline?.points.map((p) => p.x) ?? [];
+  async function liftedPencil(canvas: HTMLCanvasElement, x: number, y: number) {
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], 'stylus'));
+      await settle();
+      canvas.dispatchEvent(pointer('pointerup', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle(); // the tap has placed its point; its compatibility click is still to come
+    });
+  }
+
+  it('a second Pencil press before the first tap\'s late click does not let that click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 500, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[500, 300]], 'stylus'));
+      canvas.dispatchEvent(click(200, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2], 'BUG: the first tap\'s late click added a point through the mouse side');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 500, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      canvas.dispatchEvent(click(500, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 5], 'two Pencil taps place two points');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a trackpad click elsewhere before a pen tap\'s late click does not let that click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      // the other hand's trackpad press lands away from the Pencil before its compatibility click
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 600, 100));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 600, 100));
+      canvas.dispatchEvent(click(200, 300, null));
+      canvas.dispatchEvent(click(600, 100, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 6], 'BUG: the pen tap\'s late click added a point through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a finger tap between a pen tap and its click does not let the click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      // a finger's pointer events are the touch side's and say nothing about a mouse
+      canvas.dispatchEvent(pointer('pointerdown', 'touch', 600, 100));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[600, 100]], 'direct'));
+      canvas.dispatchEvent(pointer('pointerup', 'touch', 600, 100));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle();
+      canvas.dispatchEvent(click(200, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 6], 'BUG: the pen tap\'s late click added a point through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a trackpad click with no pointerType right after a finger tap at the same spot still selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await tap(canvas, 200, 300);
+    await act(settle);
+    assert.equal(selectionCount(), 1, 'the finger tap selected');
+    await trackpadClick(canvas, 201, 300);
+    assert.equal(selectionCount(), 2, `BUG: finger tap then trackpad click selected ${selectionCount()} times`);
+  });
+
+  it('a Pencil long press opens the viewer menu once and suppresses the native one', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+      mock.timers.tick(1);
+    });
+    await act(async () => { mock.timers.tick(600); await Promise.resolve(); });
+    const native = mouseEvent('contextmenu', 200, 300, 2);
+    assert.equal(canvas.dispatchEvent(native), false, 'the native menu during a Pencil long press was not prevented');
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    mock.timers.reset();
+    await act(async () => { await settle(); });
+    assert.equal(menus.length, 1, `a Pencil long press opened ${menus.length} viewer menus`);
+  });
 });
 
 /** The Measurements list's Finish button for the open sequence, by its accessible name. */
@@ -694,7 +694,7 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
     const finish = finishButton();
     assert.equal(finish !== null, true, 'the live polyline row offers Finish');
-    act(() => click(finish!));
+    act(() => clickElement(finish!));
     const { activePolyline, polylineMeasurements } = useViewerStore.getState();
     assert.equal(activePolyline, null, 'the sequence is finished');
     assert.equal(polylineMeasurements.length, 1);
@@ -711,7 +711,7 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     assert.match(hint(), /✓ in List/, 'the hint names where touch finishes');
     const finish = finishButton();
     assert.equal(finish !== null, true, 'the live radius row offers Finish');
-    act(() => click(finish!));
+    act(() => clickElement(finish!));
     const { activeRadius, radiusMeasurements } = useViewerStore.getState();
     assert.equal(activeRadius, null, 'the sequence is finished');
     assert.deepEqual(radiusMeasurements.map((m) => m.points.length), [3]);
@@ -724,7 +724,7 @@ describe('touch finishes an open Polyline or Radius (#8991)', () => {
     // Rendered outside act: a render inside it is not committed until act ends.
     const finish = finishButton();
     assert.equal(finish !== null, true, 'a one-point polyline still offers Finish');
-    act(() => click(finish!));
+    act(() => clickElement(finish!));
     const { activePolyline, polylineMeasurements } = useViewerStore.getState();
     assert.equal(polylineMeasurements.length, 0);
     assert.equal(activePolyline?.points.length, 1, 'the open point survives for the next tap');

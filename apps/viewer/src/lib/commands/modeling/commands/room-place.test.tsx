@@ -40,6 +40,10 @@ import '../builtin.js';
 import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
+import { routeCommandPointer } from '@/components/viewer/commandPointer';
+import type { MouseHandlerContext } from '@/components/viewer/mouseHandlerTypes';
+import { resolvePlanSnap } from '@/components/viewer/plan/PlanPointer';
+import { createPlanCutSource } from '@/components/viewer/plan/plan-cut-source';
 import type { RoomPlaceGesture } from './room-place-gesture.js';
 
 const wasmPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..', '..', '..', 'packages', 'wasm', 'pkg', 'ifc-lite_bg.wasm');
@@ -184,6 +188,84 @@ describe('room.place: pick a face (#6232 M4)', () => {
     assert.deepEqual(corners(spaces()[0].footprint), corners([[4, 0], [8, 0], [8, 5], [4, 5]]));
   });
 
+});
+
+/**
+ * #9026 item 12: Pick reads a room off the point the pointer aims at. The
+ * camera looks down at 45°, along +y in plan: the ray through pixel (x, y)
+ * reaches the floor at plan (x/100, y/100), and is 1 m up 1 m nearer the camera
+ * (fake GPU picking; the workplane, pointer router, solver, wasm DCEL, runtime
+ * and transaction are real).
+ */
+function angledPointer(hitAt: (floor: Vec2) => { x: number; y: number; z: number } | null): MouseHandlerContext {
+  const canvas = { width: 1000, height: 1000, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 }) };
+  const released = { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: false, isCorner: false, cornerValence: 0 };
+  const intersection = (x: number, y: number) => {
+    const point = hitAt([x / 100, y / 100]);
+    return point ? { point, expressId: 9000 } : null;
+  };
+  return {
+    renderer: {
+      getCanvas: () => canvas,
+      getCamera: () => ({
+        // Render frame: Y up, render z = −IFC y. From (x, 20, 20 − y) down onto (x, 0, −y).
+        unprojectToRay: (sx: number, sy: number) => ({ origin: { x: sx / 100, y: 20, z: 20 - sy / 100 }, direction: { x: 0, y: -Math.SQRT1_2, z: -Math.SQRT1_2 } }),
+      }),
+      raycastScene: (x: number, y: number) => ({ intersection: intersection(x, y) }),
+      raycastSceneMagnetic: (x: number, y: number) => ({ snapTarget: null, intersection: intersection(x, y), edgeLock: released }),
+    },
+    getPickOptions: () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null }),
+    edgeLockStateRef: { current: { edge: null, meshExpressId: null, lockStrength: 0 } },
+    snapEnabledRef: { current: true },
+    setSnapTarget: () => {}, setEdgeLock: () => {}, clearEdgeLock: () => {},
+    measureRaycastPendingRef: { current: false }, measureRaycastFrameRef: { current: null },
+  } as unknown as MouseHandlerContext;
+}
+
+describe('room.place: Pick reads the room the pointer aims at (#9026 item 12)', () => {
+  /** The front wall's outer face (plan y = −0.1, 3 m tall) stands in front of floor aims up to 2.9 m behind it. */
+  const frontWall = ([x, y]: Vec2) => (y < 2.9 ? { x, y: y + 0.1, z: 0.1 } : null);
+  const clickThrough = (ctx: MouseHandlerContext, x: number, y: number, altKey = false) => act(() => {
+    routeCommandPointer(ctx, 'down', x * 100, y * 100, { shiftKey: false, altKey });
+  });
+  const LEFT_ROOM = corners([[0.1, 0.1], [3.9, 0.1], [3.9, 4.9], [0.1, 4.9]]);
+  const corner = createPlanCutSource(() => ({ segments: [[[0, 0], [4, 0]]], midpoints: true }));
+  const nearCorner = { local: [0.2, 0.2] as Vec2, metresPerPixel: 0.05, mods: { shiftKey: false, altKey: false }, snapping: true, planSources: [corner] };
+
+  it('a floor point behind a wall makes the room', async (t) => {
+    if (!(await startRooms(t))) return;
+    clickThrough(angledPointer(frontWall), 2, 2.5);
+    assert.equal(spaces().length, 1, 'the wall in front does not refuse the click');
+    assert.deepEqual(corners(spaces()[0].footprint), LEFT_ROOM);
+  });
+
+  it('a floor point behind a wall makes the room with snapping suspended too', async (t) => {
+    if (!(await startRooms(t))) return;
+    clickThrough(angledPointer(frontWall), 2, 2.5, true);
+    assert.equal(spaces().length, 1);
+  });
+
+  it('a slab top 0.3 m above the plane does not carry the aim out of the room', async (t) => {
+    if (!(await startRooms(t))) return;
+    clickThrough(angledPointer(([x, y]) => ({ x, y: 0.3, z: 0.3 - y })), 2, 0.2);
+    assert.deepEqual(corners(spaces()[0]?.footprint ?? []), LEFT_ROOM);
+  });
+
+  it('a point near a room corner stays where it is aimed; Draw there still snaps', async (t) => {
+    if (!(await startRooms(t))) return;
+    const pick = resolvePlanSnap(nearCorner)!;
+    assert.deepEqual(pick.local, [0.2, 0.2], 'no wall end pulls the pick out of the room');
+    assert.equal(pick.winner, null);
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'draw' })); });
+    assert.deepEqual(resolvePlanSnap(nearCorner)!.local, [0, 0]);
+  });
+
+  it('Draw still lands on the geometry under the pointer', async (t) => {
+    if (!(await startRooms(t))) return;
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'draw' })); });
+    clickThrough(angledPointer(frontWall), 2, 2.5);
+    assert.deepEqual(gesture().draw.points[0]?.map(r3), [2, -0.1]);
+  });
 });
 
 // Draw mode supersedes lane A2's interim `space.place` (#6471); these are its cases.

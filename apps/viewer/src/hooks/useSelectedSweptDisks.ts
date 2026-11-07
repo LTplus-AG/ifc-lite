@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { useViewerStore, type EntityRef } from '@/store';
+import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
 import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -22,14 +24,48 @@ export interface SelectedSweptDisksState {
   items: SelectedSweptDisk[];
   loading: boolean;
   error: string | null;
+  /**
+   * False once a newer query (selection, visibility, highlight or models)
+   * has superseded the one this state answers; absent on the idle state.
+   */
+  current?: () => boolean;
 }
 
 const EMPTY: SelectedSweptDisksState = { items: [], loading: false, error: null };
 
+/** The products whose swept disks the centreline query loads: selection, visibility and the cap, highlighted product first. */
+export function selectedSweptDiskProducts(state: ViewerState) {
+  const highlighted = state.selectedDirectrixSegment;
+  const priority = highlighted ? { modelId: highlighted.modelId, expressId: highlighted.expressId } : null;
+  return selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+}
+
+/**
+ * The model inputs of the query and the curves it feeds, as keys that keep
+ * their identity while nothing they read changes: `frame` places the curves,
+ * `shown` is the visibility of the models the selection reaches. A collapsed
+ * or renamed model row, or an unrelated model toggled, changes neither (#9158).
+ * `shown` resolves the selection, so it is empty while the caller is off.
+ */
+export function useSourceModelKeys(enabled: boolean): { frame: readonly unknown[]; shown: readonly unknown[] } {
+  const frame = useViewerStore(useShallow((state) => sourceModelFrame(state.models)));
+  const models = useViewerStore((state) => state.models);
+  const selectedIds = useViewerStore((state) => state.selectedEntityIds);
+  const primaryId = useViewerStore((state) => state.selectedEntityId);
+  const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
+  const primaryRef = useViewerStore((state) => state.selectedEntity);
+  const stable = useShallow((key: unknown[]) => key);
+  const shown = stable(useMemo(() => (enabled ? selectedModelVisibility(useViewerStore.getState()) : []),
+    [enabled, models, selectedIds, primaryId, selectedRefs, primaryRef]));
+  return { frame, shown };
+}
+
 /** One selection query shared by drawing and the later source-geometry inspector. */
 export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
   const models = useViewerStore((state) => state.models);
-  const legacyStore = useViewerStore((state) => state.ifcDataStore);
+  // In a federation `ifcDataStore` only mirrors the active model; the query reads it only without one.
+  const legacyStore = useViewerStore((state) => state.models.size === 0 ? state.ifcDataStore : null);
+  const { frame, shown } = useSourceModelKeys(enabled);
   const selectedIds = useViewerStore((state) => state.selectedEntityIds);
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
@@ -63,21 +99,20 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   useEffect(() => {
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
+    const current = () => active;
     const state = useViewerStore.getState();
-    const priority = highlightedSegment
-      ? { modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId } : null;
-    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
+    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
     const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
     ] }));
     if (grouped.size === 0) {
-      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null });
+      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null, current });
       return () => { active = false; };
     }
-    setResult({ items: [], loading: true, error: null });
+    setResult({ items: [], loading: true, error: null, current });
     void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
-      const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
+      const model = state.models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
       if (!model) return [];
       const products = await selectedSweptDiskCache.get(model, ids);
@@ -87,12 +122,12 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       });
     }).then(({ items, errors }) => {
       if (active) setResult({ items: [...items, ...createdInOverlay], loading: false,
-        error: [...diagnostics, ...errors].join('; ') || null });
+        error: [...diagnostics, ...errors].join('; ') || null, current });
     }).catch((error: unknown) => {
-      if (active) setResult({ items: [], loading: false, error: String(error) });
+      if (active) setResult({ items: [], loading: false, error: String(error), current });
     });
     return () => { active = false; };
-  }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
+  }, [enabled, frame, shown, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
     hidden, isolated, classFilter, lensHidden]);
 
   return result;

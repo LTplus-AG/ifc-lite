@@ -129,7 +129,7 @@ impl<'a> MappingControl<'a> {
             budget,
         } = &reply
         {
-            self.budget = *budget;
+            self.budget = budget.clone();
             self.stop_logical(*item_id, *refusal, router);
             return;
         }

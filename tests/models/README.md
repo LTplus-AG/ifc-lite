@@ -17,7 +17,7 @@ bypass review by retaining the legacy root version. Manifest v2 is also
 accepted and may contain both historical IFC rows and reviewed LandXML rows.
 
 The public MiniBIM fixture has [pinned provenance and its complete Apache-2.0
-license](../../docs/architecture/evidence/georeferencer-mini-bim/README.md).
+license](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/georeferencer-mini-bim/README.md).
 
 ## Quick start
 

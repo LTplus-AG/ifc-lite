@@ -6,9 +6,14 @@
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
+import { PaletteLauncherContext } from './command-palette-launcher';
+import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
+import { useShallow } from 'zustand/react/shallow';
+import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -77,6 +82,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+  const hostLauncher = useContext(PaletteLauncherContext);
   const [query, setQuery] = useState('');
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const listId = useId();
@@ -91,6 +97,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
+  const currentExtensionHost = useRef(extensionHost);
+  currentExtensionHost.current = extensionHost;
 
   useEffect(() => {
     if (open) {
@@ -103,8 +111,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
   }, [open]);
 
-  // Collab role: in a shared session only editor/admin may author. Read reactively so authoring commands appear the moment a role is upgraded.
-  const collabRole = useViewerStore((s) => s.collabRole);
+  // Retain export ownership while closed without following invisible command prerequisites.
+  const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
+  const collabRole = prerequisites?.role ?? null;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   // Cesium only has something to show once a model carries georeferencing.
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
@@ -113,19 +122,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
     extensionHost,
+    extensionHostIsCurrent: () => currentExtensionHost.current === extensionHost,
     canEditInSession,
     cesiumAvailable,
     activateRightPanel,
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites]);
 
 
   // ── Search: score, filter, sort ──
@@ -178,19 +188,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [selectedIndex, activeOptionId]);
 
   const runCommand = useCallback((cmd: Command) => {
+    if (!canRunPaletteCommand(cmd)) return;
     onOpenChange(false);
-    recordUsage(cmd.id);
-    if (!cmd.registryOwned) {
-      trackCommandExecution(cmd.id, 'palette');
-    }
-    // File-dialog actions must run while user activation is still live; deferring
-    // them to a frame later voids it and Chrome silently ignores the dialog.
-    if (cmd.immediate) {
+    const activate = () => {
+      if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return;
+      recordUsage(cmd.id);
+      if (!cmd.registryOwned) trackCommandExecution(cmd.id, 'palette');
       cmd.action();
-    } else {
-      requestAnimationFrame(() => cmd.action());
-    }
-  }, [onOpenChange]);
+    };
+    // File picker activation stays in the trusted event stack.
+    if (cmd.immediate) activate();
+    else requestAnimationFrame(activate);
+  }, [onOpenChange, t]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Enter confirms an IME candidate, not a command (#8946). keyCode 229
@@ -212,8 +221,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent overlayClassName="z-(--z-command-palette)" className="z-(--z-command-palette) flex flex-col p-0 gap-0 translate-y-0 w-[calc(100%_-_2rem)] max-w-lg overflow-hidden rounded-lg data-[state=open]:animate-none data-[state=closed]:animate-none"
-          style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+        <DialogContent overlayClassName="z-(--z-command-palette)" className={`${PALETTE_DIALOG_LAYOUT} flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none`}
+          style={{ top: PALETTE_DIALOG_TOP, maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onCloseAutoFocus={event => {
+            if (hostLauncher?.current?.isConnected) {
+              event.preventDefault();
+              hostLauncher.current.focus();
+            }
+          }}
           onEscapeKeyDown={event => {
             if (event.isComposing || event.keyCode === 229) event.preventDefault();
           }}>
@@ -259,12 +274,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     id: optionId(cmd.id, group.category),
                     index: flatIdx,
                     selected: flatIdx === selectedIndex,
+                    query,
                     onActivate: () => runCommand(cmd),
                     onHover: () => setSelectedOptionId(optionId(cmd.id, group.category)),
                   };
                   const key = `${group.category}:${cmd.id}`;
                   return cmd.registryOwned
-                    ? <RegisteredPaletteOption key={key} commandId={registeredPaletteId(cmd)} {...placement} />
+                    ? <RegisteredPaletteOption key={key} commandId={registeredPaletteId(cmd)} projection={cmd} {...placement} />
                     : <DynamicPaletteOption key={key} command={cmd} {...placement} />;
                 })}
               </div>

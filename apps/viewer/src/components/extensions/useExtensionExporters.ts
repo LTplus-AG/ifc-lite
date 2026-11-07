@@ -15,7 +15,8 @@
  * names its owner (the confused-deputy fix of #1930).
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import type { PaletteAvailability } from '@/components/viewer/palette-availability';
 import type { ExporterContribution } from '@ifc-lite/extensions';
 import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
@@ -25,6 +26,7 @@ import { activeModelName, downloadFile, modelExportFilename, normalizeExtension 
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
+import { runningExtensionExport, setRunningExtensionExport, subscribeExtensionExport } from './extension-export-busy';
 import { recordActivity } from '@/lib/activity/activity-journal';
 
 /** One installed exporter, as the export surfaces render it. */
@@ -39,16 +41,23 @@ export interface ExtensionExporter {
   extension: string;
   /** This exporter is the one running. */
   running: boolean;
+  checkAvailability?: () => PaletteAvailability;
 }
 
 export function useExtensionExporters(surface: ExportSurface) {
   const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const contributions = useSlotContributions<ExporterContribution>('exportMenu');
-  const [runningKey, setRunningKey] = useState<string | null>(null);
+  const currentHost = useRef(host);
+  currentHost.current = host;
+  useEffect(() => { currentHost.current = host; return () => { currentHost.current = null; }; }, [host]);
+  const runningKey = useSyncExternalStore(
+    listener => subscribeExtensionExport(host, listener),
+    () => runningExtensionExport(host), () => null,
+  );
 
   const exporters = useMemo<ExtensionExporter[]>(
-    () => (host ? contributions : []).map((c) => {
+    () => (host ? contributions : []).map<ExtensionExporter>((c) => {
       const key = `${c.extensionId}:${c.payload.id}`;
       return {
         key,
@@ -57,6 +66,12 @@ export function useExtensionExporters(surface: ExportSurface) {
         name: c.payload.name,
         extension: normalizeExtension(c.payload.extension),
         running: runningKey === key,
+        checkAvailability: () => {
+          if (!host || currentHost.current !== host) return { status: 'disabled', reasonKey: 'commandPalette.availability.host' };
+          if (!host.slotRegistry.getAll('exportMenu').includes(c)) return { status: 'disabled', reasonKey: 'commandPalette.availability.feature' };
+          if (runningExtensionExport(host)) return { status: 'disabled', reasonKey: 'commandPalette.extension.busy' };
+          return { status: 'available' };
+        },
       };
     }),
     [host, contributions, runningKey],
@@ -64,17 +79,25 @@ export function useExtensionExporters(surface: ExportSurface) {
 
   const runExtensionExporter = useCallback(async (key: string) => {
     const exporter = exporters.find((e) => e.key === key);
-    if (!host || !exporter) throw new Error(`Unregistered extension exporter: ${key}`);
-    const { extensionId, payload } = exporter;
-    setRunningKey(key);
+    if (runningExtensionExport(host)) { toast.info(t('commandPalette.extension.busy')); return; }
+    let started = false;
     try {
+      if (!host || !exporter) throw new Error(`Unregistered extension exporter: ${key}`);
+      const availability = exporter.checkAvailability?.();
+      if (availability?.status === 'disabled') { toast.info(t(availability.reasonKey)); return; }
+      const { extensionId, payload } = exporter;
+      // Capture the model name at invocation, rather than naming old bytes for
+      // a different model selected while the asynchronous exporter is running.
+      const filename = modelExportFilename(activeModelName(useViewerStore.getState()), payload.extension);
+      started = true;
+      setRunningExtensionExport(host, key);
       await recordActivity({ kind: 'export', title: 'activityTray.job.extensionExport',
         subject: `${payload.name} · ${extensionId}` }, async () => {
         const output = await host.runExporter(payload.id, extensionId);
         // Like every one-click export, the file is named for the active model.
         downloadFile(
           output.data,
-          modelExportFilename(activeModelName(useViewerStore.getState()), payload.extension),
+          filename,
           payload.mimeType || 'application/octet-stream',
         );
       });
@@ -83,11 +106,11 @@ export function useExtensionExporters(surface: ExportSurface) {
     } catch (err) {
       console.error(`Extension exporter ${key} failed:`, err);
       toast.error(t('exportCommands.extension.failedToast', {
-        name: payload.name,
+        name: exporter?.name ?? key,
         error: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      setRunningKey(null);
+      if (started && host) setRunningExtensionExport(host, null);
     }
   }, [host, exporters, t, surface]);
 

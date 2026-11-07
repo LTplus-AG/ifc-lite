@@ -207,9 +207,6 @@ preview is also limited to 200,000 triangles. UVs must lie within `[0,1]`; tinte
 or translucent material factors must first be baked into the source image.
 Creation is available outside shared rooms; the saved IFC can then be shared.
 
-For implementation status, shared workflow boundaries and future scan/PDF options,
-see the [appearance roadmap](../architecture/appearance-roadmap.md).
-
 ## Appearance on evaluated occurrences
 
 Select an image or PDF page, choose the IFC scope, and enable **Convert supported
@@ -238,7 +235,7 @@ Models requiring CRS reprojection are excluded from this initial conversion path
 
 Some readers, including IfcOpenShell 0.8.2 with its default subtraction setting,
 incorrectly subtract Reference openings again; see the
-[independent interoperability evidence](../architecture/evidence/evaluated-openings/README.md).
+[independent interoperability evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-openings/README.md).
 
 Native `planAppearance` and `planPageAppearance` requests accept
 `representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
@@ -348,7 +345,7 @@ or work allowance, reduce the chosen density or explicitly narrow the source
 extent, then preview again. The viewer never silently removes target triangles.
 
 The complete selected boulder capture is covered by the
-[full-target acceptance evidence](../architecture/evidence/mesh-transfer-full-target/README.md),
+[full-target acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-full-target/README.md),
 including export, fresh import, selection and an independent IFC reader. This
 known-derived control does not establish automatic alignment of unrelated scans
 and BIM models.

@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { LineVertices } from './section-2d-line-buffer.js';
-import { sectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
+import { PickSourceRevision } from './pick-source-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
 
-export { WebGPUDevice } from './device.js';
+export { WebGPUDevice, ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './device.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
@@ -212,9 +213,10 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { batchForWholeDraw, pushWholeSplit } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -542,6 +544,7 @@ export class Renderer {
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
     private readonly _pickClipRevision = new PickClipRevision(); // see getPickClipRevision()
+    private readonly pickSources = new PickSourceRevision(); // point clouds and source curves in getPickGeometryRevision() (#9029, #9030)
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
@@ -1005,19 +1008,13 @@ export class Renderer {
         }
     }
 
-    /**
-     * Replace all loaded point clouds with `assets`.
-     *
-     * Phase 0 entry point — single-chunk inline assets from IFCx
-     * (`pcd::base64`, `points::array`, `points::base64`). Future phases
-     * accept streaming sources via a different overload.
-     */
+    /** Replace the embedded clouds with single-chunk inline IFCx `assets` (`pcd::base64`, `points::array`, `points::base64`); streamed scans stay. */
     setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-        this.pointCloudRenderer.setAssets(assets);
+        this.pickSources.setEmbeddedClouds(this.pointCloudRenderer, assets);
         this.refreshPlacementBounds();
     }
 
@@ -1026,6 +1023,7 @@ export class Renderer {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
+        this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
         for (const asset of assets) {
             this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
@@ -1047,7 +1045,7 @@ export class Renderer {
 
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
-        this.pointCloudRenderer?.clear();
+        this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.refreshPlacementBounds();
     }
 
@@ -1085,7 +1083,7 @@ export class Renderer {
      * effect on the next render — no GPU buffer rewrite needed.
      */
     relabelPointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
-        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex);
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex); this.pickSources.notePointClouds();
         this.requestRender();
     }
 
@@ -1096,7 +1094,7 @@ export class Renderer {
 
     /** Apply rendering options (color mode, fixed override, point size). */
     setPointCloudOptions(opts: import('./pointcloud/point-cloud-renderer.js').PointCloudRenderOptions): void {
-        this.pointCloudRenderer?.setOptions(opts);
+        if (this.pointCloudRenderer) this.pickSources.setPointCloudOptions(this.pointCloudRenderer, opts);
         this.requestRender();
     }
 
@@ -1125,7 +1123,7 @@ export class Renderer {
 
     /** Streamed clouds are addressed by durable asset handle. */
     setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
-        this.pointCloudRenderer?.setAssetTranslation(handle, translation);
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTranslation(handle, translation));
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1133,6 +1131,7 @@ export class Renderer {
     /** Toggle one resident streamed scan without releasing its GPU buffers. */
     setPointCloudVisibility(handle: { id: number }, visible: boolean): void {
         if (!this.pointCloudRenderer?.setAssetVisible(handle, visible)) return;
+        this.pickSources.notePointClouds();
         this.clearCaches();
         this.refreshPlacementBounds();
     }
@@ -1160,7 +1159,7 @@ export class Renderer {
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
         matrix: Float32Array | Float64Array | null,
     ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        const points = this.pointCloudRenderer; if (points) this.pickSources.placePointCloud(points, handle, () => points.setAssetTransform(handle, matrix));
         this.refreshPlacementBounds();
     }
 
@@ -2248,7 +2247,7 @@ export class Renderer {
             // valid for every main-family draw that follows.
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-            pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+            bindSectionExclusions(pass, device, 2);
 
             // Selected meshes drawn this frame, for the selection-mask pass
             // (#5390) after `pass.end()` below. Populated inside the batched
@@ -2358,7 +2357,7 @@ export class Renderer {
                 const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
                 const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
-                for (const batch of allBatchedMeshes) {
+                for (let batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         if (!isRteAabbVisible(frustum, batch.bounds, rteCullCamera)) {
@@ -2399,46 +2398,27 @@ export class Renderer {
                             if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
-                            // A COLD parent has no CPU meshData, so the partial
-                            // sub-batch above comes back empty — queue the
-                            // residency restore or the visible subset would
-                            // stay missing under hide/isolate forever.
+                            // A COLD parent has no CPU meshData, so the sub-batch above comes back
+                            // empty: restore its pieces (only them, the subset never reads the parent's
+                            // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
                             if (batch.gpuResident === false) {
-                                this.scene.requestBatchResidency(batch);
+                                this.scene.requestBatchPieces(batch);
                             }
                             continue; // Don't add batch to render list
                         }
                     }
 
-                    // Fully visible (or no filtering) — this batch draws from its OWN
-                    // GPU buffers. An evicted batch (residency budget, #1682 phase 3a)
-                    // is skipped for a frame while its rebuild is queued; the partial
-                    // path above is unaffected (sub-batches own separate buffers built
-                    // from CPU meshData).
-                    if (batch.gpuResident === false) {
-                        this.scene.requestBatchResidency(batch);
-                        frameBatchesNotResident++;
-                        continue;
-                    }
-                    this.scene.recordBatchDrawn(batch);
+                    // Fully visible but drawn as sub-batches: per X-Ray alpha (#4129), or
+                    // promoted/remaining for a transparent batch with mixed overrides
+                    // (#677). Decided before the residency step, since the subsets never
+                    // read the parent's own GPU buffers (#9136).
+                    if (pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent)) continue;
 
-                    // X-Ray names entities, not batches: a batch whose entities
-                    // resolve to different alphas splits per alpha (#4129) rather
-                    // than fading whole to the minimum.
-                    if (pushAlphaSplit(batch, null)) continue;
-
-                    // Transparent batches with mixed
-                    // override membership must be split so non-overridden batchmates
-                    // stay transparent — see splitVisibleIdsByPromotion / issue #677.
-                    if (nativelyTransparent) {
-                        const split = splitVisibleIdsByPromotion(batch.expressIds, colorOverrides);
-                        if (split != null && split.remaining.size > 0) {
-                            // Mixed promotion — re-route through the partial-batch path
-                            // with distinct sourceBatchKeys for each subset.
-                            pushVisibleAsPartial(batch, new Set(batch.expressIds), true);
-                            continue;
-                        }
-                    }
+                    // Drawn from its OWN GPU buffers. An evicted batch (residency budget,
+                    // #1682 phase 3a) is skipped for a frame while its rebuild is queued.
+                    const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
+                    if (!whole) { frameBatchesNotResident++; continue; }
+                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
 
                     if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
                         transparentBatches.push(batch);
@@ -2631,7 +2611,7 @@ export class Renderer {
                     usePipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2738,7 +2718,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
+                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2839,7 +2819,7 @@ export class Renderer {
                     usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -3012,7 +2992,7 @@ export class Renderer {
             if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             pass.end();
             if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
-                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });
+                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [2, emptyBindGroup(device)], [3, sectionExclusions(device).bindGroup]] });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
@@ -3208,7 +3188,8 @@ export class Renderer {
 
     /** Bumped when the clip that picks mirror from the last rendered frame changes (#8886). */
     getPickClipRevision(): number { return this._pickClipRevision.revision; }
-    /** Bumped when the geometry a pick can hit changes: an edit or its undo, a move, a stream (#8998). */ getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision(); }
+    /** Bumped when what a pick can hit changes: an edit or its undo, a move, a stream (#8998), points (#9029), source curves (#9030). */
+    getPickGeometryRevision(): number { return this.scene.getPickGeometryRevision() + this.pickSources.revision(); }
     /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
     hasActiveClipping(): boolean {
         return this._activePickSection !== null || this._activePickExtraPlanes !== null || this._activePickClipBox !== null;
@@ -3240,7 +3221,7 @@ export class Renderer {
 
     /** Opt in the currently selected authored curves for exact magnetic picking. */
     setSourceSnapCurves(curves: readonly import('./source-curve-snap.js').SourceSnapCurve[]): void {
-        this.raycastEngine.setSourceSnapCurves(curves);
+        this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
     /**
@@ -3659,7 +3640,7 @@ export class Renderer {
 
         // Point cloud GPU resources
         this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
-        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear(); this.pickSources.noteEmbeddedChanged([]);
         this.pointCloudRenderer = null;
 
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.

@@ -34,18 +34,16 @@ unchanged. This is an experimental backport, not a claim that current master or
 its GPU paged renderer has been qualified. The existing mixed-scene example
 still uses unchanged upstream rendering and retains its original failure.
 
-After root `pnpm install`, run the bounded witness through fleet admission in
+After root `pnpm install`, run the bounded witness in
 the prepared checkout (the command needs Chrome at Playwright's `chrome` channel):
 
 ```sh
-~/build-workers/ifc-fleet run --route local --cwd "$PWD" \
-  --storage-task gaussian-depth-witness --cpu 2 --memory 4 -- \
-  ~/build-workers/ifc-gpu-check -- node examples/gaussian-splat-spike/validate-depth.mjs
+node examples/gaussian-splat-spike/validate-depth.mjs
 ```
 
 This repository workflow explicitly uses Playwright and SwiftShader for direct
-texture readback. The GPU wrapper serializes it against other GPU work; the
-witness intentionally uses its own software browser, not the wrapper's hardware
+texture readback. The
+witness intentionally uses its own software browser, not a hardware
 CDP endpoint. It requires no model downloads. Output is `depth-result.json` under
 `SPLAT_SPIKE_EVIDENCE` (default `/tmp/ifc-splat-8140-depth`); use distinct output
 directories when preserving multiple manual runs. Close the owning storage task
@@ -68,10 +66,6 @@ outside this continuation. Upstream maintainer review/merge and the native viewe
 contract tracked in #8564 remain outstanding; upstream CI does not qualify
 production integration.
 
-The [native transparency contract research](../../docs/research/gaussian-splat-contract/README.md)
-contains the external upstream diagnostic patch and its measured results. These
-are research evidence, not runtime inputs or tests invoked by this package.
-
 ## Showcase recording: research preview (#8567)
 
 `showcase.html` renders one catalogued licensed capture with the complete
@@ -89,16 +83,13 @@ automatic value. On-screen credits come from `showcase-credits.mjs`, which a
 test keeps consistent with the manifest licence record.
 
 Record on real hardware only. `record-showcase.mjs` needs the hardware Chrome
-that `ifc-gpu-check` starts, and refuses a fallback or SwiftShader adapter, or
+that `IFC_GPU_CDP_URL` names, and refuses a fallback or SwiftShader adapter, or
 an engine loop under 25 fps. The camera follows wall-clock time inside
 PlayCanvas's own update loop, and `canvas.captureStream` + `MediaRecorder`
 records it. Frame-interval fields describe that one take, nothing more:
 
 ```sh
-~/build-workers/ifc-fleet run --route local --pool gaussian-production-8562 \
-  --storage-task TASK --cpu 4 --memory 8 --cwd "$PWD" -- \
-  ~/build-workers/ifc-gpu-check --limit 20 -- \
-  node examples/gaussian-splat-spike/record-showcase.mjs --asset seem-kirke-v1.ply \
+node examples/gaussian-splat-spike/record-showcase.mjs --asset seem-kirke-v1.ply \
   --assets ~/ifc-fixtures/gaussian --out /abs/take --mode record --azimuth 330
 node examples/gaussian-splat-spike/finish-showcase.mjs --asset seem-kirke-v1.ply \
   --master /abs/take/seem-kirke-v1-research-preview-master.webm --out /abs/final
@@ -109,8 +100,7 @@ texture readback, for checking orientation and framing before a take.
 `finish-showcase.mjs` adds the title card, the persistent research label and
 the licence credit with ffmpeg. It passes capture timestamps through, so no
 frames are interpolated or duplicated. The untouched master stays alongside.
-Keep recordings and stills outside Git. The first take's evidence and stills are in
-[`docs/architecture/evidence/8567-showcase-research-preview`](../../docs/architecture/evidence/8567-showcase-research-preview/README.md).
+Keep recordings and stills outside Git.
 
 ## Integrated-viewer recording (#8567)
 
@@ -118,7 +108,8 @@ Keep recordings and stills outside Git. The first take's evidence and stills are
 spike. It needs a viewer production bundle built with
 `VITE_GAUSSIAN_SPLATS=internal-unqualified`, and that build exists only on the
 Gaussian integration branches. Serve the bundle with `vite preview`, then run
-the recorder under `ifc-gpu-check`:
+the recorder from WSL with `IFC_GPU_CDP_URL` set to a Windows hardware Chrome's CDP
+endpoint; it passes the capture to that browser as a Windows path through `wslpath`:
 
 - **Load:** the capture enters the viewer's own `#file-input-open` through
   `DOM.setFileInputFiles`, so it takes the canonical `useIfcLoader.loadFile`
@@ -139,7 +130,7 @@ the recorder under `ifc-gpu-check`:
   console errors (with their URLs) and failed HTTP responses apart.
 
 ```sh
-~/build-workers/ifc-gpu-check --limit 12 -- node examples/gaussian-splat-spike/record-integrated.mjs \
+node examples/gaussian-splat-spike/record-integrated.mjs \
   --viewer-url http://127.0.0.1:PORT/ --query gaussianPlacement=rx180 --asset seem-kirke-v1.ply \
   --assets ~/ifc-fixtures/gaussian --out /abs/take --viewer-commit SHA \
   --init-storage '{"ifc-lite-theme":"dark"}' \
@@ -177,12 +168,10 @@ Fixtures stay in `~/.cache/ifc-lite/gaussian-splat-spike`, outside Git. Pass an
 absolute directory as the first argument to change that location, and set
 `SPLAT_SPIKE_ASSETS` to the same directory for subsequent commands.
 
-On a managed host, launch the example through fleet admission:
+Launch the example:
 
 ```sh
-~/build-workers/ifc-fleet run --cwd "$PWD" --kind service \
-  --storage-task gaussian-spike-interactive --cpu 2 --memory 4 -- \
-  pnpm --filter ifc-lite-gaussian-splat-spike dev
+pnpm --filter ifc-lite-gaussian-splat-spike dev
 ```
 
 Open the printed loopback URL. Switch between PlayCanvas and luma.gl with the
@@ -204,9 +193,7 @@ screenshots and compact JSON to `SPLAT_SPIKE_EVIDENCE` (default
 screenshots outside a public PR. Launch it under the same admission policy:
 
 ```sh
-~/build-workers/ifc-fleet run --cwd "$PWD" --kind service \
-  --storage-task gaussian-spike-witness --cpu 2 --memory 4 -- \
-  node examples/gaussian-splat-spike/validate.mjs
+node examples/gaussian-splat-spike/validate.mjs
 ```
 
 The separate package tests run through root Turbo:
@@ -302,7 +289,7 @@ fixture tests decode all 498,237 Gaussians through upstream code and check finit
 positions, positive scales, valid opacity and quaternion norms. Locally supplied
 IFC/scan results and their scene metrics or images are excluded.
 
-The [recovered source provenance](../../docs/research/gaussian-splat-spike-provenance.json)
+The recovered source provenance
 clarifies that the recorded `baseCommit` is the original worker's **pre-edit HEAD**, not a
 checkout that contains the measured example. The original successful receipt
 `b922c7d9-578f-4fc8-8031-364e7400ded0` records a dirty working tree; its recovered

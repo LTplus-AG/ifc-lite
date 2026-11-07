@@ -84,9 +84,26 @@ test('a type choice does not follow a reconnect to another server (#8656 review)
   await waitFor(() => findPicker() !== null, 'type picker shown');
   choose(findPicker()!, 'Information');
 
+  // #9163: receiving the request is earlier than rendering its response.
+  // Hold the real response so this ordering is exercised even on an idle host.
+  let releaseProjects!: () => void;
+  const projectsReady = new Promise<void>(resolve => { releaseProjects = resolve; });
+  t.after(releaseProjects);
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
+    const response = await realFetch(...args);
+    const input = args[0];
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname === '/bcf/2.1/projects') await projectsReady;
+    return response;
+  });
+
   // Reconnect to another server that offers the same types; the project id is the same.
   const other = await connectPeer(t, { topicTypes: SERVER_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'] });
   await waitFor(() => other.state.projectListReads > 0 && findPicker() === null, 'the other server listed, the old check cleared');
+  assert.equal(button(/^Publish 2 topics$/).disabled, true, 'the old readiness condition precedes the response');
+  releaseProjects();
+  await waitFor(() => !button(/^Publish 2 topics$/).disabled, 'the new connection is ready to publish');
   click(button(/^Publish 2 topics$/));
   await waitFor(() => findPicker() !== null, 'the picker is shown again for the new server');
   assert.equal(other.state.receivedWrites, 0, 'nothing published under a choice made for another server');

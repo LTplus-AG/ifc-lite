@@ -36,6 +36,7 @@ import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
+import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { routeCommandPointer } from './commandPointer.js';
 import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
@@ -43,7 +44,7 @@ import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
-import { flyLook } from './flyNavigation.js';
+import { applyDragNavigation, dragNavigationFor } from './dragNavigation.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -631,16 +632,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           return; // fly's onChange signals the render only when the look actually turned the view
         }
 
-        // Always update camera state immediately (feels responsive)
-        if (mouseState.isPanning) {
-          camera.pan(dx, dy, false);
-        } else if (activeToolRef.current === 'walk') {
-          // Walk mode looks around the eye; the walker owns where it stands.
-          const look = flyLook({ position: camera.getPosition(), target: camera.getTarget() }, dx, dy);
-          if (look) camera.setTarget(look.target.x, look.target.y, look.target.z);
-        } else {
-          camera.orbit(dx, dy, false);
-        }
+        // Always update camera state immediately (feels responsive); the touch controls share this (#9042)
+        applyDragNavigation(camera, dragNavigationFor(activeToolRef.current, mouseState.isPanning), dx, dy);
 
         mouseState.lastX = e.clientX;
         mouseState.lastY = e.clientY;
@@ -735,6 +728,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     const handleMouseLeave = () => {
       hoverPicker.cancel();
       if (commandPress.captured()) return; // Captured command presses may finish outside the canvas.
+      forgetCommandPointer();
       commandPress.cancel(); // Capture can be refused; leaving must then abandon the press.
       orbitPivotStore.end();
       const tool = activeToolRef.current;

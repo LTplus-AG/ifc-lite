@@ -148,7 +148,7 @@ describe('preview and apply', () => {
 
   // The committed evidence file is exactly what the generator writes for the recorded dictionary.
   it('reproduces the committed evidence IDS byte for byte, and that file is audit-clean', async () => {
-    const evidence = readFileSync(new URL('../../../../docs/architecture/evidence/ids-studio-p06-bsdd/generated-demo-dictionary.ids', import.meta.url), 'utf8');
+    const evidence = readFileSync(new URL('../../../../tests/fixtures/ids/generated-demo-dictionary.ids', import.meta.url), 'utf8');
     const doc = createStudioDocument({ title: 'Demo Elements requirements (generated from bSDD)', newId: counterIds(0xd0e) });
     const preview = previewDictionaryIds(doc, plan({ fallbackPropertySet: 'Project_Common' }), lint);
     if (!preview.result) throw new Error(JSON.stringify(preview.gate.issues));

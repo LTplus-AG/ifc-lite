@@ -25,7 +25,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { getWebGPUStatus, useWebGPU, type WebGPUStatus } from './useWebGPU.js';
+import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU.js';
 import { useWebGpuOpenGuard, type WebGpuOpenGuard } from './useWebGpuOpenGuard.js';
 import { webGpuBannerBlurb } from '@/components/viewer/WebGpuTroubleshooting.js';
 import { useViewerStore } from '@/store';
@@ -253,5 +253,22 @@ describe('useWebGPU category detection', () => {
     assert.match(webGpuBannerBlurb(status.category), /could not create a GPU adapter/i);
     // Must NOT tell a genuine hardware/driver case that its origin is the problem.
     assert.doesNotMatch(webGpuBannerBlurb(status.category), /secure connection/i);
+  });
+
+  it('settles as no-gpu when requestAdapter() never resolves, instead of checking forever (#9076)', async (t) => {
+    setSecureContext(true);
+    setNavigatorGpu({ requestAdapter: () => new Promise(() => { /* a broken driver: never settles */ }) });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = Symbol('pending');
+    const probe = retryWebGPU();
+    t.mock.timers.tick(10_000);
+    const status = await Promise.race([probe, new Promise<typeof pending>((done) => setImmediate(() => done(pending)))]);
+
+    assert.notEqual(status, pending, 'the probe must settle once the adapter request times out');
+    if (status === pending) return;
+    assert.equal(status.checking, false);
+    assert.equal(status.supported, false);
+    assert.equal(status.category, 'no-gpu');
+    assert.match(status.reason ?? '', /adapter request timed out/);
   });
 });

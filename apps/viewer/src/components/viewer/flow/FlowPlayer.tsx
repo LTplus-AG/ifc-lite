@@ -29,8 +29,9 @@ import { loadPlayerValues, savePlayerValues } from '@/lib/flow/player-values';
 import { FlowPlayerField } from './FlowPlayerField';
 import { FlowValuePreview } from './FlowValuePreview';
 import { useFlowRunner } from './useFlowRunner';
+import { FLOW_BUTTON, FLOW_PRIMARY_BUTTON } from './flow-button';
 
-const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
+const button = FLOW_BUTTON;
 
 export interface FlowPlayerProps {
   readonly doc: FlowDocument;
@@ -121,7 +122,7 @@ export function FlowPlayer({ doc, registry, lastRun, lastError, onDocChange }: F
       </fieldset>
       <button
         type="button"
-        className={`${button} inline-flex w-fit items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`}
+        className={`${FLOW_PRIMARY_BUTTON} inline-flex w-fit items-center gap-1`}
         disabled={!canRun || !validated.ok}
         onClick={onRun}
       >

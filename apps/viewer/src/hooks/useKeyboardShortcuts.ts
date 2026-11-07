@@ -15,7 +15,7 @@ import { finishOpenMeasureSequence } from '@/store/finishMeasureSequence';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
-import { WALK_MOVEMENT_KEYS, eventKey, isTextEditingElement } from '@/lib/keyboard-event';
+import { WALK_MOVEMENT_KEYS, eventKey, isPressableTarget, isTextEditingElement } from '@/lib/keyboard-event';
 import { bindModelWorkspaceKeys } from '@/lib/commands/modeling/keys-workspace';
 import {
   executeBasketIsolate, executeBasketAdd,
@@ -87,12 +87,23 @@ function splitSelected(): void {
   state.startCommand('element.split');
 }
 
+// A focused button presses itself on Space (a native <select> is text entry,
+// which the dispatcher already skips).
 function hideSelected(event: KeyboardEvent): boolean {
-  if (event.key === ' ') {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return false;
-  }
+  if (event.key === ' ' && isPressableTarget(event)) return false;
   return hideSelectionFromStore();
+}
+
+/**
+ * Enter on a focused button presses that button, so Enter on Cancel in the
+ * Measurements list cancels rather than finishes (#9113); Enter from the
+ * canvas, the list or a row still finishes. A held Enter's repeats finish
+ * nothing: after the first press moves focus off a button (a delete hands it
+ * to the next row), a repeat must not finish the open sequence.
+ */
+function finishMeasurement(event: KeyboardEvent): boolean {
+  if (event.repeat || isPressableTarget(event)) return false;
+  return finishOpenMeasureSequence();
 }
 
 function walkOwns(event: KeyboardEvent): boolean {
@@ -135,7 +146,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
     showAllFromStore('a');
   }],
   ['measure.cancel', cancelMeasurement],
-  ['measure.finish', finishOpenMeasureSequence],
+  ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['section.previousPlane', () => stepSectionPlane(-1)],
   ['section.nextPlane', () => stepSectionPlane(1)],

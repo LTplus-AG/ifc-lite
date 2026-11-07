@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { releasePointerFocus } from './HudToggle';
 
 export interface HudSegmentedOption<T extends string> {
   value: T;
@@ -53,7 +54,7 @@ export function HudSegmented<T extends string>({
             aria-checked={active}
             aria-label={option.ariaLabel}
             title={option.title}
-            onClick={() => onChange(option.value)}
+            onClick={(event) => { releasePointerFocus(event); onChange(option.value); }}
             className={cn(
               'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs transition-colors',
               active

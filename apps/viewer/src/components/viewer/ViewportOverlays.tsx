@@ -30,6 +30,7 @@ import { useTranslation } from '@/i18n';
 import { GitHubStarPrompt } from './GitHubStarPrompt';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { WorkspaceStoreyChip } from './model/WorkspaceStoreyChip';
+import { WorkplaneHeightChip } from './model/WorkplaneHeightControl';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
@@ -173,6 +174,7 @@ export function ViewportOverlays({
       <ViewportHud />
       {!hideViewCube && <GitHubStarPrompt />}
       <WorkspaceStoreyChip />
+      <WorkplaneHeightChip />
       {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />

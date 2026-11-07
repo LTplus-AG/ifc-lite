@@ -61,11 +61,12 @@ export function CommandBarContent({ tier, measuring = false }: { tier: number; m
   const { t } = useTranslation();
   const { command, ctx, gesture } = useCommandRuntime();
   const endCommand = useViewerStore((s) => s.endCommand);
-  if (!command || !ctx) return null;
+  const title = useViewerStore((s) => command?.hud.title?.(s) ?? command?.labelKey);
+  if (!command || !ctx || !title) return null;
   const Extra = command.hud.Bar;
   const label = (
     <span className="px-1.5 text-2xs font-medium uppercase tracking-wide text-overlay-ink-muted">
-      {t(command.labelKey)}
+      {t(title)}
     </span>
   );
   const close = (

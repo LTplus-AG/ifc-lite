@@ -53,5 +53,20 @@ export function planeZ(plane: Workplane | null): number {
   return plane?.spec.kind === 'storey' ? plane.spec.offset : 0;
 }
 
+/** The workplane's height above the storey floor, typed in a command's bar: the same offset the height control sets (#9202). */
+export function planeHeightField<G>(): CommandField<G> {
+  return {
+    id: 'planeHeight',
+    labelKey: 'modelWorkspace.height.field',
+    unit: 'm',
+    read: (_g, ctx) => planeZ(ctx.workplane),
+    write: (g, v, ctx) => {
+      const spec = ctx.workplane?.spec;
+      if (spec?.kind === 'storey') ctx.get().setWorkplane({ ...spec, offset: v });
+      return g;
+    },
+  };
+}
+
 /** Chain off: a fresh gesture after each commit. */
 export const chainOn = (ctx: Pick<CommandContext, 'get'>): boolean => ctx.get().authoringDefaults.chain;

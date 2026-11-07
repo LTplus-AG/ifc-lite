@@ -257,5 +257,6 @@ jobs:
       jobs: validate, terrain-imagery
       result: validate=${{ needs.validate.result }}, terrain-imagery=${{ needs.terrain-imagery.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

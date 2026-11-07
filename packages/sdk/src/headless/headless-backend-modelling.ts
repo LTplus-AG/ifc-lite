@@ -6,6 +6,7 @@
  * Shared compound recording preserves every earlier overlay record for undo. */
 import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '../index.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
+import { createStoreyStoreBackend } from '../store-storey-backend.js';
 
 export function createRecordedModellingBackend(resolve: ModellingStoreModelResolver) {
   type Methods = ReturnType<typeof createModellingStoreBackend> & ReturnType<typeof createOrdinaryStoreBackend>;
@@ -23,7 +24,22 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
       return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft) });
     });
   }
+  // Storey dry runs read the live view; storey writes are one compound record each (#9013).
+  const storeyReads = createStoreyStoreBackend(resolve);
+  const storey = <K extends 'addStorey' | 'renameStorey' | 'editStorey' | 'deleteStorey'>(name: K, modelOf: (...args: Parameters<NonNullable<Methods[K]>>) => string) =>
+    (...args: Parameters<NonNullable<Methods[K]>>): ReturnType<NonNullable<Methods[K]>> => record(modelOf(...args), methods => {
+      const method = methods[name] as ((...a: Parameters<NonNullable<Methods[K]>>) => ReturnType<NonNullable<Methods[K]>>) | undefined;
+      if (!method) throw new Error(`bim.store.${name} is not supported by this backend`);
+      return method(...args);
+    });
   return {
+    listStoreyLevels: storeyReads.listStoreyLevels,
+    planStoreyEdit: storeyReads.planStoreyEdit,
+    planStoreyDelete: storeyReads.planStoreyDelete,
+    addStorey: storey('addStorey', (modelId) => modelId),
+    renameStorey: storey('renameStorey', (ref) => ref.modelId),
+    editStorey: storey('editStorey', (modelId) => modelId),
+    deleteStorey: storey('deleteStorey', (ref) => ref.modelId),
     transformElements: (...args: Parameters<NonNullable<Methods['transformElements']>>) => record(args[0], methods => {
       if (!methods.transformElements) throw new Error('Missing transformElements capability');
       return methods.transformElements(...args);

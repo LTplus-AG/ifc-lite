@@ -21,6 +21,7 @@ import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ACTIVE_TAB_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
@@ -101,7 +102,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             key={id}
             value={id}
             title={t(titleKey)}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${ACTIVE_TAB_CLASS}`}
           >
             <Icon className="h-3 w-3" />
             {t(labelKey)}

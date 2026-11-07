@@ -38,13 +38,6 @@ export function noteMeasureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycast
   else cursors.delete(ctx.measureRaycastFrameRef);
 }
 
-/** Shift pressed or released with the cursor at rest: a move there would follow the axis or leave it, so the re-pick does too (#9022). */
-export function noteMeasureShift(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef' | 'measurementConstraintEdgeRef'>, held: boolean): void {
-  // In place: a queued trailing hover keeps its record, since the cursor did not move
-  const cursor = measureCursor(ctx);
-  if (cursor) cursor.orthogonal = held && !!ctx.measurementConstraintEdgeRef.current;
-}
-
 export function measureCursor(ctx: Pick<MouseHandlerContext, 'measureRaycastFrameRef'>): MeasureCursor | null {
   return cursors.get(ctx.measureRaycastFrameRef) ?? null;
 }

@@ -23,6 +23,7 @@ import { useCallback, useId } from 'react';
 import { Sparkles, RotateCcw, Paintbrush, Palette, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { ACTIVE_BORDERED_STATE_CLASS, ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -151,7 +152,7 @@ export function AnimationSettingsPopover({
           label={t('schedule.animation.settingsAriaLabel')}
           tooltip={t('schedule.animation.settingsTooltip')}
           size="icon-sm"
-          variant={animationEnabled ? 'default' : 'ghost'}
+          className={cn(animationEnabled && ACTIVE_STATE_CLASS)}
         >
           <Sparkles className="h-4 w-4" />
         </IconButton>
@@ -400,14 +401,11 @@ function StyleTile({ icon, label, description, active, onSelect }: StyleTileProp
     <button
       type="button"
       onClick={onSelect}
-      className={cn(
-        'flex flex-col gap-0.5 rounded-md border p-2 text-left transition-colors',
-        active ? 'border-primary bg-primary/10' : 'border-input hover:bg-muted/40',
-      )}
+      className={cn('flex flex-col gap-0.5 rounded-md border p-2 text-left transition-colors', active ? ACTIVE_BORDERED_STATE_CLASS : 'border-input hover:bg-muted/40')}
       aria-pressed={active}
     >
       <span className="flex items-center gap-1.5">
-        <span className={active ? 'text-primary' : 'text-muted-foreground'}>{icon}</span>
+        <span className={active ? 'text-active' : 'text-muted-foreground'}>{icon}</span>
         <span className="text-xs font-medium">{label}</span>
       </span>
       <span className="text-2xs text-muted-foreground">{description}</span>

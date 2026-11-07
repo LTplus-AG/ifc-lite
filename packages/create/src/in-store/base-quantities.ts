@@ -192,16 +192,16 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
   // footprint where they reach the floor: a door does, a window with a sill does not.
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
-  if (boxes && (boxes.length === 0 || (body && withinFullThickness(read, outline, boxes)))) {
+  // Only an opening that meets the body cuts it; one moved clear of it changes nothing.
+  const cutting = boxes && body ? boxes.filter((box) => axisOverlap(box, body, 0) * axisOverlap(box, body, 1) * axisOverlap(box, body, 2) > 0) : [];
+  if (boxes && (boxes.length === 0 || (body && withinFullThickness(read, outline, cutting)))) {
     let netFootprint = footprint;
     let netSide = side;
     let netVolume = volume;
-    for (const box of boxes) {
+    for (const box of cutting) {
       const x = axisOverlap(box, body!, 0);
       const y = axisOverlap(box, body!, 1);
       const z = axisOverlap(box, body!, 2);
-      // An opening moved clear of the body in any direction cuts nothing.
-      if (x * y * z === 0) continue;
       netSide -= x * z;
       netVolume -= x * y * z;
       if (box.min[2] <= body!.min[2] + 1e-6) netFootprint -= x * y;

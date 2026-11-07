@@ -338,8 +338,14 @@ describe('deriveAuthoredBaseQuantities', () => {
     addOpeningToStore(s.editor, host(), { Offset: 2, Width: 1, Height: 2 });
     const inside = values(s.view, a.wallId, WALL_QTO);
     expect(inside.GrossVolume - inside.NetVolume).toBeCloseTo(0.4, 9);
-    addOpeningToStore(s.editor, host(), { Offset: thinsAt, Width: 0.2, Height: 2 });
+    const past = addOpeningToStore(s.editor, host(), { Offset: thinsAt, Width: 0.2, Height: 2 });
     expect(values(s.view, a.wallId, WALL_QTO).NetVolume).toBeUndefined();
+    // Moved wholly past the wall's end, the same opening cuts nothing and the net values come back.
+    const point = Number((s.view.getNewEntity(Number((s.view.getNewEntity(past.placementId)!.attributes[1] as string).slice(1)))!.attributes[0] as string).slice(1));
+    const at = s.view.getNewEntity(point)!.attributes[0] as number[];
+    s.view.setPositionalAttribute(point, 0, [at[0] + 2, at[1], at[2]]);
+    const clear = values(s.view, a.wallId, WALL_QTO);
+    expect(clear.GrossVolume - clear.NetVolume).toBeCloseTo(0.4, 9);
   });
 
   it('answers for the class a retype gave the element', async () => {

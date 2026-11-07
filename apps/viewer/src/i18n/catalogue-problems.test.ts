@@ -104,3 +104,11 @@ it('#7040 startup metadata matches every lazy LandXML georeferencing-assumption 
     assert.deepEqual(lazyMessageParameters(key), parameters, key);
   }
 });
+
+it('#8310 startup metadata matches every lazy registry key and placeholder', async () => {
+  const { registryEn } = await import('./catalogues/registry.en');
+  for (const [key, value] of Object.entries(registryEn)) {
+    const parameters = [...new Set([...value.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
+    assert.deepEqual(lazyMessageParameters(key), parameters, key);
+  }
+});

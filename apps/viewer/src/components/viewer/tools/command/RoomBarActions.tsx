@@ -9,6 +9,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { releasePointerFocus } from '../../../viewport-ui/hud/HudToggle';
 import { useViewerStore } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
@@ -53,7 +54,7 @@ export function BarAction({ onClick, disabled, title, icon, children }: {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => { releasePointerFocus(event); onClick(); }}
       disabled={disabled}
       title={title}
       className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"

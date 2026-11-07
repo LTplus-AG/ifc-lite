@@ -133,6 +133,7 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - Model Registry (Experimental): guide/local-registry.md
     - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md

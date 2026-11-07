@@ -53,7 +53,7 @@ export function ViewportWelcome(props: ViewportWelcomeCardProps) {
           </div>
         )}
       </div>
-      <WelcomeFooterChips />
+      <WelcomeFooterChips tourAvailable={props.webgpu.supported && !props.webgpu.checking} />
     </div>
   );
 }

@@ -20,7 +20,7 @@ import '@/test/setup-dom.js';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StrictMode, act } from 'react';
-import { render, cleanup, click, press, activate } from '@/test/render.js';
+import { render, cleanup, click, press, activate, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
 import type { MeasurePoint } from '@/store/types.js';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
@@ -323,13 +323,19 @@ describe('one Esc on a focused live-row button cancels (#9169)', () => {
     }
   }
 
-  it('an Esc aimed elsewhere while a live-row tooltip is open only closes the tooltip', () => {
+  it('Esc from the canvas closes a hover-opened live-row tooltip only (#9233)', async () => {
     useViewerStore.setState({ activePolyline: OPEN_POLYLINE });
     const container = mount();
-    tabTo(button(container, 'Finish (Enter)'));
-    assert.equal(tooltipOpen(), true, 'focus opened the tooltip');
-    // As with a tooltip opened by hover: the Esc's target is not the button.
-    press(canvas(container), 'Escape');
+    const viewport = canvas(container);
+    viewport.focus();
+    const finish = button(container, 'Finish (Enter)');
+    act(() => {
+      finish.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    });
+    await advance(1000);
+    assert.equal(document.activeElement, viewport, 'hover did not move keyboard focus');
+    assert.equal(tooltipOpen(), true, 'hover opened the tooltip');
+    press(viewport, 'Escape');
     assert.equal(tooltipOpen(), false, 'the tooltip closed');
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 3, 'the polyline stays open');
   });

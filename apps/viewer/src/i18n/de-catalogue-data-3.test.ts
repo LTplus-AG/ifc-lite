@@ -30,6 +30,7 @@ catalogueBatchContract('de', 8899, [
   'properties-selection',
   'property-editor',
   'push-pull-align',
+  'registry',
   'relationship-card',
   'remesh',
   'reposition-panel',

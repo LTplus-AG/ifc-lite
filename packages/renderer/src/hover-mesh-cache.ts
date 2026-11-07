@@ -12,14 +12,16 @@
  * over its own batch copy. These copies are only ever drawn into the mask.
  *
  * Every piece of the entity is uploaded (a window or a layered wall is several
- * pieces), through the same `uploadIndividualMesh` selection hydration uses,
- * so the outline is bit-coincident with the batch it traces. The copies are
+ * pieces), through the same uploads selection hydration uses, so the outline
+ * is bit-coincident with the batch it traces. An entity above
+ * `MERGE_PIECES_ABOVE` pieces uploads merged, since merely moving the pointer
+ * over one must not cost a buffer pair per piece (#9192). The copies are
  * rebuilt only when the hovered (model, id) changes, and the previous ones are
  * destroyed then; `release()` frees them when nothing is hovered.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { uploadIndividualMesh, type IndividualMeshFrame, type IndividualMeshGpu } from './individual-mesh-upload.js';
+import { MERGE_PIECES_ABOVE, uploadIndividualMesh, uploadMergedMeshes, type IndividualMeshFrame, type IndividualMeshGpu } from './individual-mesh-upload.js';
 
 export class HoverMeshCache {
   private key: string | null = null;
@@ -27,7 +29,8 @@ export class HoverMeshCache {
 
   /**
    * The GPU pieces for `(modelIndex, id)`: cached while the key is unchanged,
-   * otherwise `pieces()` is re-read and uploaded.
+   * otherwise `pieces()` is re-read and uploaded. Throws when an upload fails,
+   * having freed what it created and cached nothing.
    */
   resolve(
     device: GPUDevice,
@@ -39,8 +42,13 @@ export class HoverMeshCache {
     const key = `${modelIndex ?? 'any'}:${id}`;
     if (key === this.key) return this.pieces;
     this.release();
+    const source = pieces() ?? [];
+    this.pieces = source.length > MERGE_PIECES_ABOVE
+      ? uploadMergedMeshes(device, source, frameOf)
+      : uploadEach(device, source, frameOf);
+    // Only a finished upload is cached: a throw above leaves no key, so the next
+    // frame retries instead of reading an empty result as this hover's pieces.
     this.key = key;
-    this.pieces = (pieces() ?? []).map((meshData) => uploadIndividualMesh(device, meshData, frameOf(meshData)));
     return this.pieces;
   }
 
@@ -53,4 +61,19 @@ export class HoverMeshCache {
     this.pieces = [];
     this.key = null;
   }
+}
+
+/** One upload per piece, freeing the earlier pieces if a later one throws. */
+function uploadEach(device: GPUDevice, source: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame): IndividualMeshGpu[] {
+  const uploaded: IndividualMeshGpu[] = [];
+  try {
+    for (const meshData of source) uploaded.push(uploadIndividualMesh(device, meshData, frameOf(meshData)));
+  } catch (error) {
+    for (const piece of uploaded) {
+      piece.vertexBuffer.destroy();
+      piece.indexBuffer.destroy();
+    }
+    throw error;
+  }
+  return uploaded;
 }

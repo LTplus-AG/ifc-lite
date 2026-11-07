@@ -59,12 +59,17 @@ export function editPointerMove(g: RoomPlaceGesture, s: SnapResult, rooms: reado
   return withEdit({ ...g, cursor: s.local }, { hover: layoutHit(rooms, s.local, PICK_PX * mpp(s)) });
 }
 
+/** A press here grabs the hovered corner: nothing is grabbed, no cut or removal is waiting for it. */
+export function editPressGrabs({ edit: { drag, cut, hover, tool } }: RoomPlaceGesture): boolean {
+  return !drag && !cut && tool !== 'remove' && hover?.kind === 'vertex';
+}
+
 /** A press: drop a grabbed corner, finish a cut or a removal, or grab a corner / start a cut. */
 export function editPointerDown(g: RoomPlaceGesture): RoomPlaceGesture | CommandSignal {
   const { drag, cut, hover, tool } = g.edit;
+  if (editPressGrabs(g) && hover) return withEdit(g, { drag: { from: hover.at, to: hover.at, moved: false } });
   if (drag) return drag.moved ? { commit: true } : withEdit(g, { drag: null });
   if (tool === 'remove' || cut) return hover ? { commit: true } : g;
-  if (hover?.kind === 'vertex') return withEdit(g, { drag: { from: hover.at, to: hover.at, moved: false } });
   if (hover?.kind === 'edge') return withEdit(g, { cut: hover.at });
   return g;
 }

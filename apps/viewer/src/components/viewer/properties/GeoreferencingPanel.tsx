@@ -14,6 +14,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -342,10 +344,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <Globe className="h-3 w-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noGeoreferencing')}</span>
         <EpsgLookupDialog onSelect={handleEpsgSelect}>
-          <button className="flex min-h-6 items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50">
-            <Globe className="h-2.5 w-2.5" />
+          <Button type="button" variant="outline" size="segment" className="min-h-6 gap-1 px-1.5 text-xs [&_svg]:size-2.5">
+            <Globe />
             {t('properties.georef.addGeoreferencing')}
-          </button>
+          </Button>
         </EpsgLookupDialog>
       </div>
     );
@@ -354,27 +356,20 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   return (
     <div>
       {showReloadPrompt && (
-        <div className="mx-2 my-2 border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/40 px-2.5 py-2">
+        <div className="mx-2 my-2 border border-info-border bg-info-surface px-2.5 py-2">
           <div className="flex items-start gap-2">
-            <MapPin className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+            <MapPin className="h-3.5 w-3.5 text-info shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <p className="text-xs text-muted-foreground">
                 {t('properties.georef.reloadPrompt')}
               </p>
               <div className="mt-1.5 flex items-center gap-2">
-                <button
-                  onClick={reloadModelsForAlignment}
-                  disabled={loading}
-                  className="px-2 py-0.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <Button type="button" size="sm" onClick={reloadModelsForAlignment} disabled={loading} className="h-6 px-2 text-xs">
                   {t('properties.georef.reloadModels')}
-                </button>
-                <button
-                  onClick={() => setShowReloadPrompt(false)}
-                  className="px-2 py-0.5 text-xs text-muted-foreground hover:bg-zinc-200/60 dark:hover:bg-muted"
-                >
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowReloadPrompt(false)} className="h-6 px-2 text-xs font-normal text-muted-foreground">
                   {t('properties.georef.later')}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -399,7 +394,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="relative flex items-center gap-1 text-xs text-primary hover:underline transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <button className={`relative ml-auto flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS} after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}>
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.epsgButton')}
             </button>
@@ -475,7 +470,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="flex items-center gap-1 text-xs text-primary hover:underline transition-colors shrink-0">
+            <button className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}>
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.addCrs')}
             </button>
@@ -560,7 +555,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
           <button
             onClick={initializeMapConversionDefaults}
-            className="flex items-center gap-1 text-xs text-primary hover:underline transition-colors shrink-0"
+            className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}
           >
             <MapPin className="h-2.5 w-2.5" />
             {t('properties.georef.addCoordinates')}

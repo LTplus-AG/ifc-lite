@@ -36,6 +36,7 @@ import { endMeasurePointHover, hoverMeasurePointAt } from './measurePointMode.js
 import type { MeasureCameraState } from './measureCameraState.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
+import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { routeCommandPointer } from './commandPointer.js';
 import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
@@ -727,6 +728,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     const handleMouseLeave = () => {
       hoverPicker.cancel();
       if (commandPress.captured()) return; // Captured command presses may finish outside the canvas.
+      forgetCommandPointer();
       commandPress.cancel(); // Capture can be refused; leaving must then abandon the press.
       orbitPivotStore.end();
       const tool = activeToolRef.current;

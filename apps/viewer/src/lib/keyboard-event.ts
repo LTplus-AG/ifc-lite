@@ -89,6 +89,16 @@ export function isTextEditingElement(target: unknown): boolean {
   return typeof el.closest === 'function' && el.closest('.cm-editor') !== null;
 }
 
+/**
+ * True when a key event's target is a control the browser presses on Enter
+ * or Space itself (a button, a link, a `<summary>`), so a global command on
+ * that key must yield rather than run and prevent the press (#9113).
+ */
+export function isPressableTarget(e: Event): boolean {
+  const target = e.target as (Partial<HTMLElement> | null | undefined);
+  return typeof target?.closest === 'function' && target.closest('button, summary, a[href], [role=button]') !== null;
+}
+
 /** {@link isTextEntryElement} for a key event's target. */
 export function isTextEntryTarget(e: Event): boolean {
   return isTextEntryElement(e.target);

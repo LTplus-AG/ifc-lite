@@ -374,5 +374,6 @@ jobs:
       jobs: full, cost-full
       result: full=${{ needs.full.result }}, cost-full=${{ needs.cost-full.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

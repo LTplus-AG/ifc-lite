@@ -50,54 +50,114 @@ fn walk(max_levels: u32) -> RepresentationWalk {
 }
 
 /// O(width) source whose expansion emits width² leaves. Repeated #300 on
-/// sibling paths is intentional: every occurrence contributes geometry.
+/// sibling paths is intentional: every occurrence contributes geometry. The
+/// leaves are the distinct points #1..=width (#9102 charges repeated ones).
 fn wide_source(width: usize) -> String {
     let occurrences = vec!["#300"; width].join(",");
-    let leaves = vec!["#1"; width].join(",");
     format!(
         "#100=IFCREPRESENTATIONMAP($,#200);\
         #200=IFCSHAPEREPRESENTATION($,'Body','Brep',({occurrences}));\
         #300=IFCMAPPEDITEM(#400,$);#400=IFCREPRESENTATIONMAP($,#500);\
-        #500=IFCSHAPEREPRESENTATION($,'Body','Brep',({leaves}));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));"
+        #500=IFCSHAPEREPRESENTATION($,'Body','Brep',({}));{}",
+        distinct_refs(width),
+        distinct_points(width)
     )
+}
+
+fn distinct_refs(width: usize) -> String {
+    (1..=width).map(|id| format!("#{id}")).collect::<Vec<_>>().join(",")
+}
+
+fn distinct_points(width: usize) -> String {
+    (1..=width).map(|id| format!("#{id}=IFCCARTESIANPOINT(({id}.,0.,0.));")).collect()
+}
+
+/// The ids `wide_source`'s leaves report, `times` occurrences of `1..=width`.
+fn leaf_ids(width: u32, times: usize) -> Vec<u32> {
+    (1..=width).cycle().take(width as usize * times).collect()
 }
 
 #[test]
 fn issue_7781_expanded_dag_occurrences_pay_again_at_exact_allowance() {
+    // #9102: the root list repeats #300 seven times (7 members); #500's first
+    // read reaches 8 new leaves for free and its 7 repeated reads pay 8 each.
+    // 7 + 56 = 63 members is the exact allowance; 8 attempts fit under it.
     let model = wide_source(8);
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(100).unwrap();
     let mut work = Work::default();
-    walk(72).map(&root, &mut decoder, &mut work).unwrap();
-    assert_eq!(work.leaves, vec![1; 64]);
+    walk(63).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, leaf_ids(8, 8));
     assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
     assert!(work.refusals.is_empty());
 
     let mut work = Work::default();
-    walk(71).map(&root, &mut decoder, &mut work).unwrap();
-    assert_eq!(work.leaves, vec![1; 56]);
+    walk(62).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, leaf_ids(8, 7));
     assert_eq!(work.events, [(true, 300), (false, 300)].repeat(8));
     assert_eq!(
         work.refusals,
-        [(300, "Budget { max_levels: 71 }".to_string(), 0, None)]
+        [(300, "Budget { max_levels: 62 }".to_string(), 0, None)]
     );
 }
 
+/// #9102: one wide, acyclic list is bounded by the file that spells it out.
+/// Charging its first read refused 65,536+ surface items WASM 10.4 meshed.
 #[test]
-fn issue_7781_root_list_is_precharged_before_its_first_member_is_decoded() {
-    let model = wide_source(8);
+fn issue_9102_first_read_of_a_wide_list_is_free_but_a_repeated_root_list_pays() {
+    let model = format!(
+        "#100=IFCREPRESENTATIONMAP($,#200);\
+        #200=IFCSHAPEREPRESENTATION($,'Body','Brep',({}));{}",
+        distinct_refs(8),
+        distinct_points(8)
+    );
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(100).unwrap();
     let mut work = Work::default();
-    walk(7).map(&root, &mut decoder, &mut work).unwrap();
-    assert!(decoder.get_cached(300).is_none());
-    assert!(work.events.is_empty());
-    assert!(work.leaves.is_empty());
+    walk(0).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, leaf_ids(8, 1));
+    assert!(work.refusals.is_empty());
+
+    let model = format!(
+        "#10=IFCWALL('g',$,$,$,$,$,#11,$);\
+        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#200,#200));{model}"
+    );
+    let mut decoder = EntityDecoder::new(&model);
+    let wall = decoder.decode_by_id(10).unwrap();
+    let mut work = Work::default();
+    walk(7).product(&wall, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, leaf_ids(8, 1));
     assert_eq!(
         work.refusals,
         [(200, "Budget { max_levels: 7 }".to_string(), 0, Some(200))]
     );
+    let mut work = Work::default();
+    walk(8).product(&wall, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, leaf_ids(8, 2));
+    assert!(work.refusals.is_empty());
+}
+
+/// #9102 review: a first read is free only for its distinct items.
+/// `(#B,#B,#B)` re-meshes one item per few bytes, so each repeat pays, even in
+/// a list read for the first time.
+#[test]
+fn issue_9102_a_first_read_pays_for_each_repeated_reference() {
+    let model = "#100=IFCREPRESENTATIONMAP($,#200);\
+        #200=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1,#1,#1));\
+        #1=IFCCARTESIANPOINT((0.,0.,0.));";
+    let mut decoder = EntityDecoder::new(model);
+    let root = decoder.decode_by_id(100).unwrap();
+    let mut work = Work::default();
+    walk(1).map(&root, &mut decoder, &mut work).unwrap();
+    assert!(work.leaves.is_empty());
+    assert_eq!(
+        work.refusals,
+        [(200, "Budget { max_levels: 1 }".to_string(), 0, Some(200))]
+    );
+    let mut work = Work::default();
+    walk(2).map(&root, &mut decoder, &mut work).unwrap();
+    assert_eq!(work.leaves, [1, 1, 1]);
+    assert!(work.refusals.is_empty());
 }
 
 #[test]
@@ -112,12 +172,11 @@ fn issue_7781_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
     let mut decoder = EntityDecoder::new(&model);
     let root = decoder.decode_by_id(600).unwrap();
     let mut work = Work::default();
-    walk(9).mapped_item(&root, &mut decoder, &mut work);
-    assert!(
-        decoder.get_cached(1).is_none(),
-        "unadmitted source leaves were decoded"
-    );
-    assert!(work.leaves.is_empty());
+    // #200 repeats #300 seven times, spending the whole 7-member allowance.
+    // The first #500 read reaches 8 new leaves for free (#9102); the second
+    // #300 repeats it, and is refused before resolving its members.
+    walk(7).mapped_item(&root, &mut decoder, &mut work);
+    assert_eq!(work.leaves, leaf_ids(8, 1));
     // The refused Items belong to an entered level, which leaves before its ancestors.
     assert_eq!(
         work.events,
@@ -126,13 +185,15 @@ fn issue_7781_nested_wide_list_stops_once_and_unwinds_ancestors_in_order() {
             (true, 900),
             (true, 300),
             (false, 300),
+            (true, 300),
+            (false, 300),
             (false, 900),
             (false, 600)
         ]
     );
     assert_eq!(
         work.refusals,
-        [(300, "Budget { max_levels: 9 }".to_string(), 2, None)]
+        [(300, "Budget { max_levels: 7 }".to_string(), 2, None)]
     );
 }
 
@@ -171,28 +232,35 @@ fn issue_7781_level_meter_is_independent_of_the_item_member_meter() {
 
 #[test]
 fn issue_7781_ignored_members_are_charged_before_reference_decoding() {
-    let model = "#10=IFCREPRESENTATIONMAP($,#20);\
+    // #20 is read through #30 and again through #31; the repeat pays all
+    // three slots, the ignored ones included.
+    let model = "#5=IFCREPRESENTATIONMAP($,#6);\
+        #6=IFCSHAPEREPRESENTATION($,'Body','Brep',(#30,#31));\
+        #30=IFCMAPPEDITEM(#10,$);#31=IFCMAPPEDITEM(#10,$);\
+        #10=IFCREPRESENTATIONMAP($,#20);\
         #20=IFCSHAPEREPRESENTATION($,'Body','Brep',($,7,#1));\
         #1=IFCCARTESIANPOINT((0.,0.,0.));";
     let mut decoder = EntityDecoder::new(model);
-    let root = decoder.decode_by_id(10).unwrap();
+    let root = decoder.decode_by_id(5).unwrap();
     let mut work = Work::default();
     walk(2).map(&root, &mut decoder, &mut work).unwrap();
-    assert!(decoder.get_cached(1).is_none());
+    assert_eq!(work.leaves, [1]);
     assert_eq!(
         work.refusals,
-        [(20, "Budget { max_levels: 2 }".to_string(), 0, Some(20))]
+        [(31, "Budget { max_levels: 2 }".to_string(), 0, None)]
     );
     let mut work = Work::default();
     walk(3).map(&root, &mut decoder, &mut work).unwrap();
-    assert_eq!(work.leaves, [1]);
+    assert_eq!(work.leaves, [1, 1]);
     assert!(work.refusals.is_empty());
 }
 
 #[test]
 fn issue_7781_product_representations_share_one_budget_and_reset_between_walks() {
+    // First reads are free (#9102): the repeated #20 pays the one member the
+    // allowance holds, so the repeated #21 is refused before resolving.
     let model = "#10=IFCWALL('g',$,$,$,$,$,#11,$);\
-        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#21,#22));\
+        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#21,#20,#21,#22));\
         #20=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));\
         #21=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2));\
         #22=IFCSHAPEREPRESENTATION($,'Body','Brep',(#3));\
@@ -204,8 +272,7 @@ fn issue_7781_product_representations_share_one_budget_and_reset_between_walks()
     for _ in 0..2 {
         let mut work = Work::default();
         walk(1).product(&root, &mut decoder, &mut work).unwrap();
-        assert_eq!(work.leaves, [1]);
-        assert!(decoder.get_cached(2).is_none());
+        assert_eq!(work.leaves, [1, 2, 1]);
         assert!(decoder.get_cached(3).is_none());
         assert_eq!(
             work.refusals,
@@ -295,7 +362,7 @@ fn issue_7781_non_expand_policies_keep_their_original_wide_list_behavior() {
     }
     .map(&root, &mut decoder, &mut chain)
     .unwrap();
-    assert_eq!(chain.leaves, vec![1; 8]);
+    assert_eq!(chain.leaves, leaf_ids(8, 1));
     assert_eq!(chain.events, [(true, 300), (false, 300)]);
     assert!(chain.refusals.is_empty());
     let mut leaf = Work::default();
@@ -337,6 +404,6 @@ fn issue_7781_skipped_dag_occurrences_do_not_claim_logical_admission() {
     assert!(work.refusals.is_empty());
     assert!(work.leaves.is_empty());
     assert!(decoder.get_cached(1).is_none());
-    // Continue needs 72 member slots, as the positive control above proves.
+    // Continue needs 63 member slots, as the positive control above proves.
     // This lower layer meters actual expansion, not cached logical roots.
 }

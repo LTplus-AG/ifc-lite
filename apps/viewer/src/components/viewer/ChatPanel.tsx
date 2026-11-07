@@ -1038,8 +1038,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     >
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-md flex items-center justify-center pointer-events-none">
-          <div className="flex flex-col items-center gap-2 text-blue-500">
+        <div className="absolute inset-0 z-50 bg-active-surface border-2 border-dashed border-active-border rounded-md flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-active">
             <Paperclip className="h-8 w-8" />
             <span className="text-sm font-medium">{t('chat.panel.dropOverlay')}</span>
           </div>
@@ -1402,7 +1402,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <div className="flex items-center gap-1.5 cursor-default">
                   <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${displayUsage.pct >= 90 ? 'bg-destructive' : displayUsage.pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                      className={`h-full rounded-full transition-all ${displayUsage.pct >= 90 ? 'bg-danger-solid' : displayUsage.pct >= 70 ? 'bg-warn-solid' : 'bg-ok-solid'
                         }`}
                       style={{ width: `${Math.min(100, displayUsage.pct)}%` }}
                     />

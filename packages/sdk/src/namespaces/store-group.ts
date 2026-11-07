@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { StoreModellingNamespace } from './store-modelling.js';
+import { StoreStoreyNamespace } from './store-storey.js';
 import type { GroupStoreCreateParams, GroupStoreIdentity, GroupStorePatch, GroupStoreSnapshot } from '../store-group-types.js';
 
-export class StoreGroupNamespace extends StoreModellingNamespace {
+export class StoreGroupNamespace extends StoreStoreyNamespace {
   readGroup(target: GroupStoreIdentity): GroupStoreSnapshot {
     const method = this.backend.store.readGroup;
     if (!method) throw new Error('bim.store.readGroup: native Group capability is unavailable');

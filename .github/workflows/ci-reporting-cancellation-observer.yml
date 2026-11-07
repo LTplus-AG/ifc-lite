@@ -23,5 +23,6 @@ jobs:
       result: ${{ github.event.workflow_run.conclusion }}
       dry_run: true
     permissions:
+      actions: read
       contents: read
       issues: write

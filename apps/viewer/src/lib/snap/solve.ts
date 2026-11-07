@@ -10,7 +10,8 @@
  *   3. add inferred candidates (extension, perpendicular, parallel, axis
  *      tracking, guide intersections);
  *   4. project every candidate onto the locus;
- *   5. rank by tier, then distance, with hysteresis;
+ *   5. rank by tier, then distance, with hysteresis, unless the pointer is on
+ *      a target of one of the profile's aimed kinds;
  *   6. fall back to the constrained raw cursor.
  * The grid is an ordinary source whose `grid` kind sits in the lowest tier,
  * so it only wins when no geometric target is in range.
@@ -23,7 +24,7 @@
 
 import { buildLocus, dist, locusGuides, projectCandidate, projectOntoLocus } from './constraints.js';
 import { inferCandidates } from './inference.js';
-import { DEFAULT_HYSTERESIS_PX, pickWinner, tierOf, type Ranked } from './rank.js';
+import { aimedOr, DEFAULT_HYSTERESIS_PX, pickWinner, tierOf, type Ranked } from './rank.js';
 import type { Guide, SnapCandidate, SnapKind, SnapProfile, SnapQuery, SnapResult, SnapSource } from './types.js';
 
 /** Kinds only inference produces (chain-closing endpoints ride along with them). */
@@ -70,7 +71,9 @@ export function solveSnap(
     if (d <= reach) ranked.push({ cand, point, dist: d, tier, order: i });
   }
 
-  const win = pickWinner(ranked, radius, hysteresis, prev?.winner ?? null);
+  const held = prev?.winner ?? null;
+  const ladder = pickWinner(ranked, radius, hysteresis, held);
+  const win = p.aimedKinds ? aimedOr(ladder, ranked, p.aimedKinds, (p.aimedPx ?? 0) * mpp, hysteresis, held, q.cursor) : ladder;
   if (!win) return fallback;
   const guides: Guide[] = [...lockGuides];
   if (win.cand.guide) guides.push(win.cand.guide);

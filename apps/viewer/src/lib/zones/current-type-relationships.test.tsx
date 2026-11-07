@@ -76,6 +76,15 @@ const describe = (store: IfcDataStore, id: number, view: MutablePropertyView) =>
 };
 const describeAll = (store: IfcDataStore, view: MutablePropertyView) => ELEMENTS.map(id => describe(store, id, view));
 
+/**
+ * Compare read lists by count and a short sample. On reverted code a list holds tens of
+ * thousands of ids, and a deepEqual failure diffing it against [] ran for most of a minute and
+ * tens of gigabytes before it printed (it took down the revert oracle's runner).
+ */
+const assertReadIds = (actual: readonly number[], expected: readonly number[], message: string) =>
+  assert.ok(actual.length === expected.length && actual.every((id, at) => id === expected[at]),
+    `${message}: read ${actual.length} record(s) [${actual.slice(0, 8).join(', ')}${actual.length > 8 ? ', ...' : ''}], expected [${expected.join(', ')}]`);
+
 const CLEAN = ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related', 'B: Qto_B', 'B: Qto_B', 'none'];
 const EDITS: Array<[string, (view: MutablePropertyView) => void, string[]]> = [
   ['no edit', () => {}, CLEAN],
@@ -133,7 +142,7 @@ test('#9192 a read decodes the relationships of the element and its type, and no
   const fillerReads = () => reads.filter(id => fillerRelations.has(id));
 
   assert.equal(describe(counted, 10, view), 'A: Qto_Own,Qto_Related');
-  assert.deepEqual(fillerReads(), [], 'no unrelated typing relationship is decoded');
+  assertReadIds(fillerReads(), [], 'no unrelated typing relationship is decoded');
   assert.ok(reads.includes(30) && reads.includes(36), 'the relationships naming the element and its type are read from their records');
   assert.ok(!reads.includes(33) && !reads.includes(37), 'the relationships naming other elements and types are not');
 
@@ -141,7 +150,7 @@ test('#9192 a read decodes the relationships of the element and its type, and no
   reads.length = 0;
   view.setPositionalAttribute(1000 + filler[7], 5, '#20');
   assert.equal(describe(counted, filler[7], view), 'A: Qto_Own,Qto_Related');
-  assert.deepEqual(fillerReads(), [1000 + filler[7]]);
+  assertReadIds(fillerReads(), [1000 + filler[7]], 'an edit re-reads only the record it touched');
 });
 
 test('#9192 walking every element reads each relationship once, however many members it names', async () => {
@@ -181,7 +190,7 @@ test('#9192 the row limit still refuses, without reading a relationship and once
   const read = readCurrentTypeQuantities(counted, 11, view);
   assert.equal(read.status, 'unavailable');
   assert.match(read.reason ?? '', /exceeds the read limit/);
-  assert.deepEqual(reads, []);
+  assertReadIds(reads, [], 'the row limit refuses without reading a relationship');
 
   // Not re-derived for the next element: on a large model that walk ran on every click.
   let rowsWalked = 0;

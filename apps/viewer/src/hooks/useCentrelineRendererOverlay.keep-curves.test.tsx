@@ -74,6 +74,8 @@ let loadGate: Promise<void> | null;
 let fail: { build: boolean; upload: boolean; load: boolean };
 /** Bumps the overlay's recoveryEpoch, as a GPU device recovery does. */
 let recover: () => void;
+/** Sets the overlay's isInitialized, as the Viewport does around renderer setup and teardown. */
+let initialize: (value: boolean) => void;
 
 const current = () => held[held.length - 1];
 const lineDrawn = () => lineCalls[lineCalls.length - 1] ?? false;
@@ -155,8 +157,10 @@ function mount(ids: readonly number[], patch: Partial<ViewerState> = {}): void {
   const ref: RefObject<Renderer | null> = { current: renderer };
   const Overlay = () => {
     const [epoch, setEpoch] = useState(0);
+    const [initialized, setInitialized] = useState(true);
     recover = () => setEpoch((value) => value + 1);
-    useCentrelineRendererOverlay(ref, true, epoch, lineBuilder);
+    initialize = setInitialized;
+    useCentrelineRendererOverlay(ref, initialized, epoch, lineBuilder);
     // Declared after the hook, so it runs after the hook's layout pass and before any passive effect.
     useLayoutEffect(() => { layouts.push({ curves: current() ?? '', line: lineDrawn() }); });
     return null;
@@ -180,6 +184,7 @@ beforeEach(() => {
   loadGate = null;
   fail = { build: false, upload: false, load: false };
   recover = () => { throw new Error('the overlay is not mounted'); };
+  initialize = () => { throw new Error('the overlay is not mounted'); };
   toast.error = () => undefined;
   selectedSweptDiskCache.get = async (_model, ids) => {
     const wait = ids.includes(3) ? loadGate : null;
@@ -497,6 +502,17 @@ it('isolating or lens-hiding away the selected product clears its curves before 
   assert.equal(current(), ONE);
   commit({ lensHiddenIds: new Set([OFFSET + 1]) });
   assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a lens-hidden product cannot be snapped to');
+});
+
+it('leaving initialisation clears the line and curves on the renderer that drew them, then a re-init reinstalls them', async () => {
+  await mountInstalled([1], ONE);
+  layoutMark = layouts.length;
+  act(() => { flushSync(() => initialize(false)); });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a renderer leaving initialisation keeps nothing stale');
+  await act(async () => { initialize(true); await Promise.resolve(); });
+  await settle();
+  assert.equal(current(), ONE);
+  assert.ok(lineDrawn());
 });
 
 it('unmounting the overlay clears its curves', async () => {

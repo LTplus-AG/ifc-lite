@@ -84,11 +84,14 @@ export function useCentrelineRendererOverlay(
     setSourceSegmentScreenProbe(null);
     const frame = [enabled, isInitialized, recoveryEpoch, rendererRef.current, models, legacyStore, placement,
       georefMutations, highlightedSegment];
-    const sameFrame = lastFrame.current !== null && sameValues(lastFrame.current, frame);
+    const last = lastFrame.current;
+    const sameFrame = last !== null && sameValues(last, frame);
     lastFrame.current = frame;
     if (!isInitialized) {
-      // The renderer is being torn down; forget what it held.
-      drawnProducts.current = new Set();
+      // Leaving initialisation: the renderer the last pass drew on keeps nothing stale to draw or pick.
+      const previous = last?.[1] === true ? last[3] as Renderer | null : null;
+      clearLine(previous);
+      installCurves(previous, []);
       return;
     }
     // The line is one buffer for every product it draws, and the curves are

@@ -84,8 +84,9 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
   });
 
   it('a pointer nearer the other target keeps it, at any zoom', () => {
-    const c = on(corner, 0.005, 0);
-    assert.equal(pick(c, [c, on(crossing, 0.015, 1)], 0.015), corner);
+    const beside: SnapCandidate = { kind: 'endpoint', local: [6, 6.02], source: 'linework' };
+    const b: Ranked = { cand: beside, point: [6, 6.02], dist: 0.005, tier: 0, order: 0 };
+    assert.equal(pick(b, [b, on(crossing, 0.015, 1)], 0.015), beside);
   });
 
   it('a wall end on the crossing keeps naming its wall', () => {
@@ -120,6 +121,26 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
     const c = on(corner, 0.15, 0);
     const projected: Ranked = { cand: crossing, point: [6, 0], dist: 0, tier: 1, order: 1 };
     assert.equal(pick(c, [c, projected], 0, null, [6, 0]), corner);
+  });
+
+  it('a corner that projects onto the crossing through a lock is still a different target', () => {
+    const c: Ranked = { cand: corner, point: [6, 6], dist: 0, tier: 0, order: 0 };
+    const x: Ranked = { cand: crossing, point: [6, 6], dist: 0, tier: 1, order: 1 };
+    assert.equal(pick(c, [c, x], 0), crossing);
+  });
+
+  it('the nearer target is the physically nearer one, not the one nearer along a lock', () => {
+    const offLock: SnapCandidate = { kind: 'gridIntersection', local: [6.06, 0.06], source: 'ifc-grid' };
+    const cornerOff: SnapCandidate = { kind: 'endpoint', local: [6.03, 0.12], source: 'linework' };
+    const c: Ranked = { cand: cornerOff, point: [6.03, 0], dist: 0.03, tier: 0, order: 0 };
+    const x: Ranked = { cand: offLock, point: [6.06, 0], dist: 0.06, tier: 1, order: 1 };
+    assert.equal(aimedOr(c, [c, x], ['gridIntersection'], 0.1, 0.03, null, [6, 0])?.cand, offLock);
+  });
+
+  it('an edge-like winner is measured at its point near the pointer', () => {
+    const edge: SnapCandidate = { kind: 'edge', local: [50, 50], source: 'linework', guide: { kind: 'segment', a: [0, 6.005], b: [100, 6.005] } };
+    const e: Ranked = { cand: edge, point: [6, 6.005], dist: 0.005, tier: 0, order: 0 };
+    assert.equal(pick(e, [e, on(crossing, 0.015, 1)], 0.015), edge);
   });
 
   it('a lock running through the crossing still lets the pointer aim at it', () => {

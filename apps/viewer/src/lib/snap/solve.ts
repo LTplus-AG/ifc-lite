@@ -73,7 +73,7 @@ export function solveSnap(
 
   const held = prev?.winner ?? null;
   const ladder = pickWinner(ranked, radius, hysteresis, held);
-  const win = p.aimedKinds ? aimedOr(ladder, ranked, p.aimedKinds, (p.aimedPx ?? 0) * mpp, hysteresis, held, cursor) : ladder;
+  const win = p.aimedKinds ? aimedOr(ladder, ranked, p.aimedKinds, (p.aimedPx ?? 0) * mpp, hysteresis, held, q.cursor) : ladder;
   if (!win) return fallback;
   const guides: Guide[] = [...lockGuides];
   if (win.cand.guide) guides.push(win.cand.guide);

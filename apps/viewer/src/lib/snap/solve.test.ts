@@ -267,6 +267,11 @@ describe('solveSnap aimed kinds (#9140)', () => {
     assert.deepEqual(solved.local, [6.06, 0]);
   });
 
+  it('a pointer 10 px off the lock is not on a crossing it projects onto', () => {
+    const q = { ...free, cursor: [6, 0.5] as Vec2, anchor: [0, 0] as Vec2, locks: { axis: 'u' as const } };
+    assert.deepEqual(solveSnap(q, [crossingAt([6, 0])], aimedProfile(2)).local, [6.15, 0]);
+  });
+
   it('aimedPx 0 means exactly on the target, not off', () => {
     assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile(0)).local, [6, 0]);
     assert.deepEqual(solveSnap(free, [crossingAt([6, 0])], aimedProfile()).local, [6, 0]);

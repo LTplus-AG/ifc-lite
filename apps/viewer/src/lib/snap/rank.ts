@@ -119,6 +119,11 @@ export function pickWinner(
 /** Two targets this close are one spot: a computed crossing and a file's wall end differ by rounding. */
 const SAME_SPOT_M = 1e-3;
 
+const gap = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+/** Where a target physically is: a point target's own position, or an edge-like target's point nearest the pointer. */
+const targetOf = (r: Ranked): Vec2 => (r.cand.guide ? r.point : r.cand.local);
+
 /**
  * The ladder's winner, unless the pointer is ON a target of an aimed kind: then
  * that target wins, whatever outranks it nearby. A column on a grid crossing
@@ -129,6 +134,10 @@ const SAME_SPOT_M = 1e-3;
  * pointer on the corner keeps the corner, or lands on the same spot, so a wall
  * end on the crossing keeps naming its wall. A held aimed target stays through
  * the hysteresis band: ±1px at the edge of `aimed` must not swap the landing.
+ *
+ * All of this is measured from the raw pointer to the targets themselves, not
+ * along the active lock: under a lock, distinct targets can project onto one
+ * point, and a pointer far off the lock can project right onto a target.
  */
 export function aimedOr(
   winner: Ranked | null,
@@ -144,12 +153,11 @@ export function aimedOr(
   for (const r of items) {
     if (!kinds.includes(r.cand.kind)) continue;
     const reach = prev !== null && sameTarget(r.cand, prev) ? aimed + hysteresis : aimed;
-    // To the target itself: `dist` runs to its point on the active lock, and a
-    // crossing far off the lock can project right under the pointer.
-    const toTarget = Math.hypot(cursor[0] - r.cand.local[0], cursor[1] - r.cand.local[1]);
+    const toTarget = gap(cursor, r.cand.local);
     if (toTarget <= reach && toTarget < onDist) { on = r; onDist = toTarget; }
   }
-  if (!on || !winner || winner === on || winner.dist < on.dist) return winner;
-  const apart = Math.hypot(winner.point[0] - on.point[0], winner.point[1] - on.point[1]);
-  return apart <= SAME_SPOT_M ? winner : on;
+  if (!on || !winner || winner === on) return winner;
+  const winnerAt = targetOf(winner);
+  if (gap(cursor, winnerAt) < onDist) return winner;
+  return gap(winnerAt, on.cand.local) <= SAME_SPOT_M ? winner : on;
 }

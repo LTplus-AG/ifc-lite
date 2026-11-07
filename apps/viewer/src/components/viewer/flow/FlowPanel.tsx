@@ -33,9 +33,10 @@ import { FlowPlayer } from './FlowPlayer';
 import { FlowPublishButton } from './FlowPublishButton';
 import { FlowReviewCheckpoint } from './FlowReviewCheckpoint';
 import { useFlowRunner } from './useFlowRunner';
+import { FLOW_BUTTON, FLOW_PRIMARY_BUTTON } from './flow-button';
 
 const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
-const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
+const button = FLOW_BUTTON;
 
 function download(name: string, text: string): void {
   downloadBlob(new Blob([text], { type: 'application/json' }), `${sanitizeFilename(name, { fallback: 'flow' })}.flow.json`);
@@ -231,7 +232,7 @@ export function FlowPanel() {
               <button type="button" className={`px-2 py-0.5 ${view === 'player' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'player'} onClick={() => setView('player')}>{t('flowPanel.view.player')}</button>
             </fieldset>
             {view === 'editor' && (
-              <button type="button" className={`${button} inline-flex items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
+              <button type="button" className={`${FLOW_PRIMARY_BUTTON} inline-flex items-center gap-1`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
                 <Play className="h-3 w-3" aria-hidden="true" />{flowRunning ? t('flowPanel.running') : t('flowPanel.run')}
               </button>
             )}

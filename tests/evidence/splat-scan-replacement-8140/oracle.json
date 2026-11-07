@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "examples/gaussian-splat-spike/point-resources.mjs",
-  "mutation": "tests/evidence/splat-scan-replacement-8140/behaviour.oracle.patch",
-  "test": "examples/gaussian-splat-spike/test/point-resources.test.mjs",
-  "why": "#8140: retaining the prior scan mesh/material during replacement must fail real PlayCanvas resource-lifetime assertions; 7955 is the required oracle framework identifier."
-}

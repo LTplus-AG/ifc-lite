@@ -81,8 +81,8 @@ import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 
 const DISCLOSURE_CHEVRON_CLASSES = 'size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90';
-const MULTI_SELECTION_TRIGGER_CLASSES = 'group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs';
-const MULTI_SELECTION_SECTION_CLASSES = 'border-b border-zinc-200 dark:border-zinc-800';
+const MULTI_SELECTION_TRIGGER_CLASSES = 'group/disclosure flex items-center gap-2 w-full p-2 hover:bg-muted text-left text-xs';
+const MULTI_SELECTION_SECTION_CLASSES = 'border-b border-border';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -1140,12 +1140,12 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
+      <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50 dark:bg-black">
+        <div className="p-3 border-b-2 border-border bg-white">
+          <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">{t('properties.panel.title')}</h2>
         </div>
         <EmptyState
-          className="flex-1 bg-white dark:bg-black"
+          className="flex-1 bg-white"
           icon={<MousePointer2 className="size-8" />}
           title={t('properties.panel.emptyTitle')}
           description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
@@ -1369,7 +1369,7 @@ export function PropertiesPanel() {
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
                 && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0 && !documentData.membershipUnavailable
                 && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
-              findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
+              findQuery ? null : <p className="text-sm text-muted-foreground text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
               <div className="flex w-full flex-col overflow-hidden">
                 {/* Occurrence/Type Properties (based on whether entity itself is a type) */}
@@ -1721,14 +1721,14 @@ function EntityDataSection({
 
   if (!entityNode) {
     return (
-      <div className="p-4 text-center text-zinc-500 text-sm">
+      <div className="p-4 text-center text-muted-foreground text-sm">
         {t('properties.panel.multiEntity.loadFailed')}
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-black">
+    <div className="bg-white">
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
@@ -1737,10 +1737,10 @@ function EntityDataSection({
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-600" />
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-sm truncate text-zinc-900 dark:text-zinc-100">
+            <h3 className="font-bold text-sm truncate text-foreground">
               {entityNode.name || `${displayType} #${entityRef.expressId}`}
             </h3>
-            <p className="text-xs font-mono text-zinc-500">{displayType}</p>
+            <p className="text-xs font-mono text-muted-foreground">{displayType}</p>
           </div>
           {elevationInfo !== null && (
             <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
@@ -1754,16 +1754,16 @@ function EntityDataSection({
       {attributes.length > 0 && (
         <PersistentCollapsible id="multi-attributes" className={MULTI_SELECTION_SECTION_CLASSES}>
           <CollapsibleTrigger className={MULTI_SELECTION_TRIGGER_CLASSES}>
-            <Tag className="h-3 w-3 text-zinc-400" />
+            <Tag className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">{t('properties.panel.multiEntity.attributesHeading')}</span>
-            <span className="text-2xs text-zinc-400 ml-auto">{attributes.length}</span>
+            <span className="text-2xs text-muted-foreground ml-auto">{attributes.length}</span>
             <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-900 border-t border-zinc-100 dark:border-zinc-900">
+            <div className="divide-y divide-border border-t border-border">
               {attributes.map((attr) => (
                 <div key={attr.name} className="group/copyrow grid grid-cols-[minmax(60px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-xs">
-                  <span className="text-zinc-500 truncate" title={attr.name}>{attr.name}</span>
+                  <span className="text-muted-foreground truncate" title={attr.name}>{attr.name}</span>
                   <div className="flex items-center gap-1 min-w-0">
                     <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
                       <span className="font-medium whitespace-nowrap">{attr.value}</span>
@@ -1781,9 +1781,9 @@ function EntityDataSection({
       {properties.length > 0 && (
         <PersistentCollapsible id="multi-properties" className={MULTI_SELECTION_SECTION_CLASSES}>
           <CollapsibleTrigger className={MULTI_SELECTION_TRIGGER_CLASSES}>
-            <FileText className="h-3 w-3 text-zinc-400" />
+            <FileText className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">{t('properties.panel.multiEntity.propertiesHeading')}</span>
-            <span className="text-2xs text-zinc-400 ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
+            <span className="text-2xs text-muted-foreground ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
             <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -1800,9 +1800,9 @@ function EntityDataSection({
       {quantities.length > 0 && (
         <PersistentCollapsible id="multi-quantities" className={MULTI_SELECTION_SECTION_CLASSES}>
           <CollapsibleTrigger className={MULTI_SELECTION_TRIGGER_CLASSES}>
-            <Calculator className="h-3 w-3 text-zinc-400" />
+            <Calculator className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">{t('properties.panel.multiEntity.quantitiesHeading')}</span>
-            <span className="text-2xs text-zinc-400 ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
+            <span className="text-2xs text-muted-foreground ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
             <ChevronDown className={DISCLOSURE_CHEVRON_CLASSES} aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>

@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { LineVertices } from './section-2d-line-buffer.js';
-import { sectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
 import { PickSourceRevision } from './pick-source-revision.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
 
-export { WebGPUDevice } from './device.js';
+export { WebGPUDevice, ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './device.js';
 export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
@@ -213,6 +213,7 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { batchForWholeDraw } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -2246,7 +2247,7 @@ export class Renderer {
             // valid for every main-family draw that follows.
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-            pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+            bindSectionExclusions(pass, device, 2);
 
             // Selected meshes drawn this frame, for the selection-mask pass
             // (#5390) after `pass.end()` below. Populated inside the batched
@@ -2356,7 +2357,7 @@ export class Renderer {
                 const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
                 const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
-                for (const batch of allBatchedMeshes) {
+                for (let batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         if (!isRteAabbVisible(frustum, batch.bounds, rteCullCamera)) {
@@ -2397,12 +2398,11 @@ export class Renderer {
                             if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
-                            // A COLD parent has no CPU meshData, so the partial
-                            // sub-batch above comes back empty — queue the
-                            // residency restore or the visible subset would
-                            // stay missing under hide/isolate forever.
+                            // A COLD parent has no CPU meshData, so the sub-batch above comes back
+                            // empty: restore its pieces (only them, the subset never reads the parent's
+                            // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
                             if (batch.gpuResident === false) {
-                                this.scene.requestBatchResidency(batch);
+                                this.scene.requestBatchPieces(batch);
                             }
                             continue; // Don't add batch to render list
                         }
@@ -2413,12 +2413,9 @@ export class Renderer {
                     // is skipped for a frame while its rebuild is queued; the partial
                     // path above is unaffected (sub-batches own separate buffers built
                     // from CPU meshData).
-                    if (batch.gpuResident === false) {
-                        this.scene.requestBatchResidency(batch);
-                        frameBatchesNotResident++;
-                        continue;
-                    }
-                    this.scene.recordBatchDrawn(batch);
+                    const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
+                    if (!whole) { frameBatchesNotResident++; continue; }
+                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
 
                     // X-Ray names entities, not batches: a batch whose entities
                     // resolve to different alphas splits per alpha (#4129) rather
@@ -2629,7 +2626,7 @@ export class Renderer {
                     usePipeline(this.pipeline.opaquePipeline('instanced', opaqueMode(this.scene.instancedMayDiscard())));
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2736,7 +2733,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchDrawn(sourceBatch); // #9034: drawn as a subset is still drawn
+                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2837,7 +2834,7 @@ export class Renderer {
                     usePipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
+                    bindSectionExclusions(pass, device, 2);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -3010,7 +3007,7 @@ export class Renderer {
             if (glass && pass !== mainPass) { pass = mainPass; glass.end(mainPass); }
             pass.end();
             if (splatFrame) this.gaussianLayer.encode({ encoder, colorView: useMSAA ? msaaView : textureView, resolveTarget: useMSAA ? textureView : undefined, depthView: this.pipeline.getDepthTextureView(), depthFormat: this.pipeline.getDepthFormat(), colorFormat: this.device.getFormat(), sampleCount: this.pipeline.getSampleCount(), width: this.canvas.width, height: this.canvas.height, frame: relativeToEyeFrame, clip: { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox },
-                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [3, sectionExclusions(device).bindGroup]] });
+                recorder: glass, objectIdView, objectIdStore: needsObjectIdPass ? 'store' : 'discard', visibility: this.pipeline.visibility, initialBindGroups: [[1, this.pipeline.getEnvironmentBindGroup()], [2, emptyBindGroup(device)], [3, sectionExclusions(device).bindGroup]] });
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.

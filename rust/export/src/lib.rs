@@ -62,6 +62,7 @@ mod schema_ifc2x3_slots;
 mod schema_enum;
 mod schema_ifc4_slots;
 mod schema_owner_history;
+mod schema_grid_frames;
 mod schema_plan;
 mod schema_renames;
 mod schema_style_flatten;

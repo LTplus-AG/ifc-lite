@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MPL-2.0
-// @unwired-by-design explicit release qualification, run under fleet admission
+// @unwired-by-design explicit release qualification
 // Compare default distributed JS/WASM bytes using the canonical build script.
 // Source exports are disposable; compiler output stays in the admitted cache.
 import { execFileSync, spawnSync } from 'node:child_process';

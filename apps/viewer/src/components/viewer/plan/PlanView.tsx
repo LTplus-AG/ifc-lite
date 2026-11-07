@@ -141,7 +141,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const { command, ctx, gesture } = runtime;
   const commandOnPlane = command !== null && ctx?.workplane != null;
   const footprints = useMemo(
-    () => (command?.ghost && ctx?.workplane ? ghostFootprints(command.ghost(gesture, ctx), ctx.workplane) : []),
+    () => (command?.ghost && !command.hud.planReplacesFootprint && ctx?.workplane ? ghostFootprints(command.ghost(gesture, ctx), ctx.workplane) : []),
     [command, ctx, gesture],
   );
 

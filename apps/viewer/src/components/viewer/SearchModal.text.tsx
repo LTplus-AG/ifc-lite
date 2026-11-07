@@ -194,7 +194,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
               'rounded border px-2 py-0.5 transition-colors',
               searchFieldFilter === f.value
                 ? 'border-primary bg-primary/10 text-primary'
-                : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800',
+                : 'border-border hover:bg-muted',
             )}
           >
             {t(f.labelKey)}
@@ -217,7 +217,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     'rounded border px-2 py-0.5 transition-colors',
                     included
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-zinc-300 text-muted-foreground line-through hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800',
+                      : 'border-border text-muted-foreground line-through hover:bg-muted',
                   )}
                   title={id}
                 >
@@ -306,7 +306,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     transform: `translateY(${vRow.start}px)`,
                   }}
                   className={cn(
-                    'flex items-center gap-2 border-b border-zinc-100 px-4 text-xs dark:border-zinc-900',
+                    'flex items-center gap-2 border-b border-border px-4 text-xs',
                     isHighlighted && 'bg-zinc-100 dark:bg-zinc-800',
                   )}
                   onMouseEnter={() => setSearchHighlightIndex(vRow.index)}
@@ -331,7 +331,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     </span>
                   )}
                   {availableModelIds.length > 1 && (
-                    <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-2xs text-muted-foreground dark:border-zinc-700">
+                    <span className="shrink-0 rounded border border-border px-1 py-0.5 text-2xs text-muted-foreground">
                       {(models.get(r.modelId)?.name ?? r.modelId).slice(0, 8)}
                     </span>
                   )}

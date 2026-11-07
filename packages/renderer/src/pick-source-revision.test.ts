@@ -86,6 +86,31 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
     assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the list back after a clear');
   });
 
+  it('#9093 a new chunk with the same embedded pick identity counts', () => {
+    const { renderer, bumps } = setup();
+    const list = [{ expressId: 3, modelIndex: 2, chunk: chunk(3) }];
+    renderer.setPointClouds(list);
+    assert.equal(bumps(() => renderer.setPointClouds([{ ...list[0], chunk: chunk(4) }])), true,
+      'reloading points with the same expressId and modelIndex');
+  });
+
+  it('#9093 re-installing the same embedded list after teardown counts', () => {
+    const { renderer, bumps } = setup();
+    const list = [{ expressId: 3, modelIndex: 2, chunk: chunk(3) }];
+    renderer.setPointClouds(list);
+    renderer.destroy();
+    // Read AFTER teardown: its own bump must not mask a missed re-install.
+    renderer.getPickGeometryRevision();
+    const points = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+    (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = points;
+    try {
+      assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the list back on the replacement point renderer');
+      assert.equal(bumps(() => renderer.setPointClouds(list)), false, 'the installed list re-pushed again');
+    } finally {
+      renderer.destroy();
+    }
+  });
+
   it('a replacement that fails partway counts, and so does the retry of the same list', () => {
     const { renderer, points, bumps } = setup();
     const list = [{ expressId: 3, chunk: chunk(4) }];

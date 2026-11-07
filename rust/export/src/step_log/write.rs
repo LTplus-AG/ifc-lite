@@ -153,6 +153,14 @@ fn write_line<W: Write>(
     out.write_all(b"\n").map(|()| true)
 }
 
+/// The header, naming the source's schema token unless this export converts,
+/// with how many records the log modified.
+fn write_header<W: Write>(out: &mut W, opts: &StepOptions, content: &[u8], converting: bool, target: &str, modifications: usize) -> io::Result<()> {
+    let source_header = crate::source_header::parse_source_header(content);
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, target);
+    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)
+}
+
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
@@ -245,10 +253,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     generate(&mut pass, collected).map_err(unwritable)?;
     write_created(&mut pass).map_err(unwritable)?;
 
-    let modifications = pass.new_entity_count + pass.ledger.modified_count();
-    let source_header = crate::source_header::parse_source_header(content);
-    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target);
-    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)?;
+    write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
 

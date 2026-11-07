@@ -99,6 +99,32 @@ fn write_synthesized<W: std::io::Write>(
     out.write_all(b"\n")
 }
 
+/// Property mutations grouped by (entity, pset) in first-seen order, and how
+/// many were refused: only an entity actually present in the export takes
+/// one, and only a value that is one STEP value (EXPORT-STEP-26).
+#[allow(clippy::type_complexity)]
+fn group_property_mutations<'a>(
+    mutations: &'a [crate::PropMutation],
+    included: &HashSet<u32>,
+) -> (Vec<((u32, String), Vec<(&'a str, &'a str)>)>, usize) {
+    let mut refused = 0usize;
+    let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
+    let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
+    for m in mutations {
+        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
+            refused += 1;
+            continue;
+        }
+        let key = (m.express_id, m.pset_name.clone());
+        let idx = *index_of.entry(key.clone()).or_insert_with(|| {
+            groups.push((key.clone(), Vec::new()));
+            groups.len() - 1
+        });
+        groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
+    }
+    (groups, refused)
+}
+
 #[allow(clippy::type_complexity)]
 fn emit<W: std::io::Write>(
     content: &[u8],
@@ -270,24 +296,7 @@ fn emit<W: std::io::Write>(
     // 4. Synthesize new property sets from property mutations (fresh ids past
     // max_id). Every mutation that does not reach the file is counted
     // (#7682, EXPORT-STEP-10).
-    let mut property_mutations_refused = 0usize;
-    // Group props by (entity, pset) preserving first-seen order.
-    let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
-    let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
-    for m in &opts.property_mutations {
-        // Only attach to entities actually present in the export, and only a
-        // value that is one STEP value (EXPORT-STEP-26).
-        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
-            property_mutations_refused += 1;
-            continue;
-        }
-        let key = (m.express_id, m.pset_name.clone());
-        let idx = *index_of.entry(key.clone()).or_insert_with(|| {
-            groups.push((key.clone(), Vec::new()));
-            groups.len() - 1
-        });
-        groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
-    }
+    let (groups, mut property_mutations_refused) = group_property_mutations(&opts.property_mutations, &included);
     for ((express_id, pset_name), props) in &groups {
         // One property set costs one id per property plus one for the set
         // and one for the relationship, reserved together: a group that does

@@ -58,6 +58,7 @@ pub mod rooted_type;
 mod schema_convert;
 mod schema_mep;
 mod schema_detect;
+mod schema_ifc2x3_body;
 mod schema_ifc2x3_placements;
 mod schema_ifc2x3_records;
 mod schema_ifc2x3_slots;

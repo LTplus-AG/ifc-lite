@@ -17,6 +17,16 @@ pub(crate) const GRID_PLACEMENT: &str = "IFCGRIDPLACEMENT";
 pub(crate) const INTERSECTION: &str = "IFCVIRTUALGRIDINTERSECTION";
 /// `IfcProduct.ObjectPlacement`, the same slot on every IFC2X3 product.
 pub(crate) const OBJECT_PLACEMENT: usize = 5;
+/// `IfcLocalPlacement.RelativePlacement`.
+pub(crate) const RELATIVE_PLACEMENT: usize = 1;
+/// `IfcGridAxis.AxisCurve`.
+const AXIS_CURVE: usize = 1;
+/// `IfcGridAxis.SameSense`.
+const SAME_SENSE: usize = 2;
+/// `IfcVirtualGridIntersection.OffsetDistances`.
+const OFFSET_DISTANCES: usize = 1;
+/// The third of a point's coordinates or an intersection's offsets.
+pub(crate) const Z: usize = 2;
 /// IfcGrid's `UAxes`, `VAxes`, `WAxes`.
 const GRID_AXIS_SLOTS: [usize; 3] = [7, 8, 9];
 /// The reader's tolerance for a degenerate axis, direction or crossing.
@@ -146,7 +156,7 @@ impl<'a> Records<'a> {
     /// `straight` and the polyline bends.
     fn axis_line(&self, id: u32, straight: bool) -> Option<([f64; 2], [f64; 2])> {
         let axis = Self::slots(self.get(Some(id), Some("IFCGRIDAXIS")))?;
-        let curve = Self::slots(self.get(ref_id(axis.get(1).copied()), Some("IFCPOLYLINE")))?;
+        let curve = Self::slots(self.get(ref_id(axis.get(AXIS_CURVE).copied()), Some("IFCPOLYLINE")))?;
         let points = list(curve.first().copied())?;
         if points.len() < 2 || (straight && points.len() != 2) {
             return None;
@@ -157,7 +167,7 @@ impl<'a> Records<'a> {
         if (d[0] * d[0] + d[1] * d[1]).sqrt() < EPS {
             return None;
         }
-        if axis.get(2).is_some_and(|s| s.trim().eq_ignore_ascii_case(".F.")) {
+        if axis.get(SAME_SENSE).is_some_and(|s| s.trim().eq_ignore_ascii_case(".F.")) {
             d = [-d[0], -d[1]];
         }
         Some(([a[0], a[1]], d))
@@ -177,7 +187,7 @@ impl<'a> Records<'a> {
         if axes.len() != 2 || axes.contains(&None) {
             return None;
         }
-        let offsets = match s.get(1) {
+        let offsets = match s.get(OFFSET_DISTANCES) {
             Some(o) if is_dollar(o) => vec![0.0, 0.0],
             o => numbers(o.copied(), 2, 3)?,
         };
@@ -194,7 +204,7 @@ impl<'a> Records<'a> {
             return None;
         }
         let t = ((pb[0] - pa[0]) * bd[1] - (pb[1] - pa[1]) * bd[0]) / denom;
-        Some([pa[0] + t * ad[0], pa[1] + t * ad[1], offsets.get(2).copied().unwrap_or(0.0)])
+        Some([pa[0] + t * ad[0], pa[1] + t * ad[1], offsets.get(Z).copied().unwrap_or(0.0)])
     }
 
     /// Where a grid placement (IFC2X3 layout) sits in its grid's frame, to

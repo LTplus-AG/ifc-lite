@@ -33,14 +33,15 @@
 //! pinned for both by `tests/fixtures/schema_grid_placement_vectors.json`.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::io::{self, Write};
 
 use crate::schema_ifc2x3_records::{
-    is_dollar, list, num, ref_id, triple, GridFrame, Records, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT,
+    is_dollar, list, num, ref_id, triple, GridFrame, Records, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT, RELATIVE_PLACEMENT, Z,
 };
 use crate::step_log::format_step_real;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::slots_of;
+
+pub(crate) use crate::schema_ifc2x3_body::Body;
 
 /// The `#n` references in `text` from `from` on, outside string literals.
 fn references(text: &str, from: usize) -> Vec<u32> {
@@ -133,7 +134,7 @@ fn users(records: &Records) -> Users {
 /// the child turns, tilts or moves in plan, or anything does not read.
 fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
     let l = Records::slots(records.get(Some(kid), None))?;
-    let a = Records::slots(records.get(ref_id(l.get(1).copied()), Some("IFCAXIS2PLACEMENT3D")))?;
+    let a = Records::slots(records.get(ref_id(l.get(RELATIVE_PLACEMENT).copied()), Some("IFCAXIS2PLACEMENT3D")))?;
     if l.len() != 2 || a.len() != 3 {
         return None;
     }
@@ -156,7 +157,7 @@ fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
     if i.len() != 2 || records.crossing(ref_id(Some(g[0]))).is_none() {
         return None;
     }
-    let dz = at.get(2).copied().unwrap_or(0.0);
+    let dz = at.get(Z).copied().unwrap_or(0.0);
     if dz == 0.0 {
         return Some(None);
     }
@@ -164,7 +165,7 @@ fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
     if offsets.len() != 2 && offsets.len() != 3 {
         return None;
     }
-    let z = match offsets.get(2) {
+    let z = match offsets.get(Z) {
         None => 0.0,
         Some(t) => num(t)?,
     } + dz;
@@ -176,7 +177,7 @@ fn lift(records: &Records, kid: u32, g: &[&str]) -> Option<Option<String>> {
 /// of them. `None` when its relative placement does not read.
 fn free(records: &Records, kid: u32, frame: &GridFrame) -> Option<Vec<String>> {
     let l = Records::slots(records.get(Some(kid), None))?;
-    let a = Records::slots(records.get(ref_id(l.get(1).copied()), Some("IFCAXIS2PLACEMENT3D")))?;
+    let a = Records::slots(records.get(ref_id(l.get(RELATIVE_PLACEMENT).copied()), Some("IFCAXIS2PLACEMENT3D")))?;
     if l.len() != 2 || a.len() != 3 {
         return None;
     }
@@ -187,7 +188,7 @@ fn free(records: &Records, kid: u32, frame: &GridFrame) -> Option<Vec<String>> {
     let reference = if ref_given { Some(records.vector(Some(a[2]), "IFCDIRECTION")?) } else { None };
     let [c, s] = frame.turn.unwrap_or([1.0, 0.0]);
     let turn = |v: &[f64]| -> [f64; 3] {
-        let z = v.get(2).copied().unwrap_or(0.0);
+        let z = v.get(Z).copied().unwrap_or(0.0);
         if frame.turn.is_some() {
             [c * v[0] - s * v[1], s * v[0] + c * v[1], z]
         } else {
@@ -355,57 +356,18 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     Some(Placed { body: out, added: added.len(), removed: drops.len() })
 }
 
-/// The DATA section of an IFC2X3 output, held until its last record so
-/// [`place_each_object_once`] sees all of them; any other output passes
-/// straight through. The streaming writers trade their constant memory for
-/// the section's size here, and only when the output is IFC2X3.
-/// Not generic over the writer, so each STEP writer shares one copy.
-pub(crate) struct Body<'w> {
-    out: &'w mut dyn Write,
-    held: Option<Vec<u8>>,
-}
-
-impl<'w> Body<'w> {
-    pub(crate) fn new(out: &'w mut dyn Write, ifc2x3: bool) -> Self {
-        Body { out, held: ifc2x3.then(Vec::new) }
+/// `text`, adapted in place by [`place_each_object_once`] when `schema` is
+/// IFC2X3 and left as it is otherwise: the change in record count.
+pub(crate) fn place_text_for_schema(schema: &str, text: &mut String) -> isize {
+    if !crate::schema_convert::targets_ifc2x3(schema) {
+        return 0;
     }
-
-    /// Write the held section, adapted; the change in record count.
-    pub(crate) fn finish(self) -> io::Result<isize> {
-        let Some(held) = self.held else { return Ok(0) };
-        let placed = match std::str::from_utf8(&held) {
-            Ok(text) => place_each_object_once(text).map(|p| (p.body.into_bytes(), p.added, p.removed)),
-            // Bytes that are not UTF-8 (a source's Latin-1 name, say) are read
-            // one char per byte and written back the same way: what the pass
-            // writes is ASCII or copied from them, so every char fits a byte.
-            Err(_) => {
-                let text: String = held.iter().map(|&b| char::from(b)).collect();
-                place_each_object_once(&text).and_then(|p| {
-                    let bytes = p.body.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect::<Option<Vec<u8>>>()?;
-                    Some((bytes, p.added, p.removed))
-                })
-            }
-        };
-        match placed {
-            Some((bytes, added, removed)) => {
-                self.out.write_all(&bytes)?;
-                Ok(added as isize - removed as isize)
-            }
-            None => self.out.write_all(&held).map(|()| 0),
+    match place_each_object_once(text) {
+        Some(placed) => {
+            *text = placed.body;
+            placed.added as isize - placed.removed as isize
         }
-    }
-}
-
-impl Write for Body<'_> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match &mut self.held {
-            Some(held) => held.write(buf),
-            None => self.out.write(buf),
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.out.flush()
+        None => 0,
     }
 }
 

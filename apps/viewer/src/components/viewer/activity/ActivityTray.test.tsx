@@ -24,7 +24,7 @@ import { isCataloguedKey } from '@/lib/activity/activity-recorders';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { BcfPublication, OutboxState } from '@/lib/bcf-publication/outbox-types';
 import { publicationActivity } from '@/lib/activity/publication-activity';
-import { ActivityTrayButton } from './ActivityTray';
+import { ActivityTrayButton, ActivityTrayDialog } from './ActivityTray';
 
 async function openTray(button: HTMLButtonElement): Promise<void> {
   click(button);
@@ -142,6 +142,22 @@ describe('activity tray (U02, #6925)', async () => {
 });
 
 describe('activity tray announcements (U02, #6925)', async () => {
+  for (const layout of ['desktop', 'mobile'] as const) {
+    it(`palette dialog keeps one completion announcer in the ${layout} shell (#8947)`, async () => {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        {layout === 'desktop' ? <ActivityTrayButton /> : <MobileToolbar />}
+        <ActivityTrayDialog open={false} onOpenChange={() => {}} announce={false} />
+      </BimReactContext.Provider>);
+      let job = '';
+      await act(async () => { job = beginActivity({ kind: 'export', title: 'activityTray.job.export' }); });
+      await act(async () => { finishActivity(job, 'completed'); });
+      const regions = document.querySelectorAll('[data-activity-announcer][aria-live="polite"]');
+      assert.equal(regions.length, 1, 'additional closed entry point does not duplicate announcements');
+      assert.equal(text(regions[0]).trim(), 'Export: Complete');
+      assert.equal(document.querySelector('[role="dialog"]'), null, 'completion does not open a tray');
+    });
+  }
+
   it('announces a job that finishes while the viewer is open, without opening the tray', async () => {
     const done = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }, T0);
     finishActivity(done, 'completed', {}, T0 + 1); // finished before mount (e.g. restored): not news

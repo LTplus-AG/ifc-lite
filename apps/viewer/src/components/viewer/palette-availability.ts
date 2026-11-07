@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasInlineSearchHost } from './inline-search-focus';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
@@ -52,6 +53,7 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
   if (!command.enabled(state)) return blocked('commandPalette.availability.feature');
   const id = command.id;
+  if (id === 'search:inline' && !hasInlineSearchHost()) return blocked('commandPalette.availability.host');
   if (id === 'file:new-blank') {
     if (!context.startBlank || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
     const reason = blankModelUnavailable(s);
@@ -193,7 +195,7 @@ export function paletteToggleState(id: string, s: ViewerState): TranslationKey |
     'view:centreline': s.centrelineOverlayEnabled, 'view:follow-work': s.ribbonContextualTabs,
     'view:move-georef': s.cesiumPlacementEditMode,
     'tool:edit-mode': s.editEnabled, 'pref:tooltips': s.hoverTooltipsEnabled,
-    'pref:hover-outline': s.hoverHighlightEnabled,
+    'pref:hover-outline': s.hoverHighlightEnabled, 'pref:colorful': s.theme === 'colorful',
     'view:stacked': s.levelDisplayMode === 'stacked',
     'view:exploded': s.levelDisplayMode === 'exploded', 'view:solo': s.levelDisplayMode === 'solo',
     'schedule:toggle-animation': s.animationEnabled, 'view:world': s.cesiumEnabled,

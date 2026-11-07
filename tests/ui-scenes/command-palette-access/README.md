@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/2b41c50ccdb10b590f3fa9431c39e7b180f3cdef/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/24371cddf6ec22e9f7a390bac746d7038aa012d8/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -423,3 +423,14 @@ These new assertions remain unexecuted. Original request
 `auto-733abcb75900474aaf129393bb4e0edf` / job
 `835cba3b-6fb4-4f09-88b3-0a347ca04560` is still queued for older source `8021801`;
 it cannot certify these corrections. Other original requests remain preserved.
+
+### R1 inline search and colorful theme — source candidate
+
+U1/U2/U3 now have canonical quick-search host dispatch on desktop and mobile,
+a discoverable colorful-theme toggle with live state, and native click activation
+for inline controls previously bound only to mousedown. Mounted regressions cover
+recents, real search scanning/cycle, stale hosts, theme parity and locale aliases.
+Two browser scenarios additionally exercise actual palette close/focus, native Tab,
+Space/Enter, selected-model cycling, history clearing and real Filter destination.
+Cheap source guards pass; runtime/typecheck/browser execution remains UNRUN.
+Fresh review and matching full validation are required; R1 is not accepted.

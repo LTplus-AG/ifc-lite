@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useInlineSearchHost } from './inline-search-focus';
 import { useRetainedReportHost } from './retained-report-destination';
 import { useSplitWidth } from './model/model-layout';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -104,6 +105,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const dockDestinations = useExtensionDockDestinations();
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
+  const inlineSearchHost = useInlineSearchHost();
   const retainedReportHost = useRetainedReportHost();
   const splitWidth = useSplitWidth();
   const placementGeoref = usePlacementGeorefContext();
@@ -112,6 +114,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
   const paletteLauncher = useRef<HTMLElement | null>(null);
+  const closeFocusAction = useRef<(() => boolean) | null>(null);
   const currentExtensionHost = useRef(extensionHost);
   currentExtensionHost.current = extensionHost;
 
@@ -156,9 +159,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
-
-
+  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
@@ -210,14 +211,19 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
 
   const runCommand = useCallback((cmd: Command) => {
     if (!canRunPaletteCommand(cmd)) return;
-    onOpenChange(false);
     const activate = () => {
-      if (!mounted.current) return;
-      if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return;
+      if (!mounted.current) return false;
+      if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return false;
       recordUsage(cmd.id);
       if (!cmd.registryOwned) trackCommandExecution(cmd.id, 'palette');
       cmd.action();
+      return true;
     };
+    // The destination takes focus only after Radix releases its closing scope.
+    // A frame callback alone does not order its delayed close-focus timer.
+    closeFocusAction.current = cmd.id === 'search:inline' ? activate : null;
+    onOpenChange(false);
+    if (closeFocusAction.current) return;
     // File picker activation stays in the trusted event stack.
     if (cmd.immediate) activate();
     else requestAnimationFrame(activate);
@@ -252,6 +258,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
           }}
           onCloseAutoFocus={event => {
             event.preventDefault();
+            const handoff = closeFocusAction.current; closeFocusAction.current = null;
+            if (handoff?.()) return;
             if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();
           }}
           onEscapeKeyDown={event => {

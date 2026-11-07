@@ -268,6 +268,18 @@ describe('isolation and typed wall heights follow storey edits (#9037 review, ro
     assert.ok(setWallDimensions(MODEL_ID, wall.expressId, { height: 2.4 }));
     assert.equal(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall.expressId), null);
   });
+
+  it('the general element-size edit fixes an attached wall it gives a height (#9037 review)', async () => {
+    await storey();
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 10, 0], End: [4, 10, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in wall));
+    const upper = readStoreyInventory(target.dataStore, target.view).storeys.find((x) => x.expressId === UPPER_STOREY)!;
+    target.view.setProperty(wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', upper.GlobalId, PropertyValueType.Label);
+    const { setElementDimensions } = await import('@/components/viewer/model-inspector/inspector-edits');
+    assert.ok(setElementDimensions(MODEL_ID, wall.expressId, { kind: 'wall', height: 2.4 }));
+    assert.equal(readTopAttachment(readStoreyInventory(target.dataStore, target.view), wall.expressId), null);
+  });
 });
 
 describe('previews and hierarchy rows follow storey edits (#9037 review, round 11)', () => {

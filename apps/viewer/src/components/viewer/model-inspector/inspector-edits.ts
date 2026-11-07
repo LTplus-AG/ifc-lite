@@ -92,28 +92,22 @@ export function createElementType(modelId: string, kind: AuthoredElementKind, na
 /**
  * A wall's, slab's, column's or beam's size, in metres: the one write the
  * push / pull handles make too (`setElementSize`), so the two cannot differ.
- * A wall's openings follow it in the same step.
+ * A wall's openings follow it in the same step, and a typed wall height
+ * makes the wall fixed-height (#9013): a later storey re-level never
+ * replaces the height that was typed.
  */
 export function setElementDimensions(modelId: string, expressId: number, patch: ElementSizePatch): boolean {
   return runInspectorEdit(modelId, (tx) => {
+    if (patch.kind === 'wall' && patch.height !== undefined) fixWallTop(tx, tx.modelId, expressId);
     const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, patch);
     if (!outcome.ok) throw new Error(outcome.reason);
     return outcome.remesh;
   });
 }
 
-/**
- * A wall's thickness and/or height, in metres. A typed height makes the wall
- * fixed-height in the same Undo step (#9013): a later storey re-level never
- * replaces the height that was typed.
- */
+/** A wall's thickness and/or height, in metres. */
 export function setWallDimensions(modelId: string, expressId: number, section: WallSection): boolean {
-  return runInspectorEdit(modelId, (tx) => {
-    if (section.height !== undefined) fixWallTop(tx, tx.modelId, expressId);
-    const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, { kind: 'wall', ...section });
-    if (!outcome.ok) throw new Error(outcome.reason);
-    return outcome.remesh;
-  });
+  return setElementDimensions(modelId, expressId, { kind: 'wall', ...section });
 }
 
 /**

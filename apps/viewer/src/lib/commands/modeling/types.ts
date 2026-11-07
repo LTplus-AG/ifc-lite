@@ -156,6 +156,12 @@ export interface ModelingCommand<G = unknown> {
    * and no target nearby moves it, and a click reads what the hover read.
    */
   aimsAtRegion?(g: G): boolean;
+  /**
+   * This gesture picks an element from the point under the pointer, so with
+   * snapping suspended it keeps reading the surface instead of aiming through
+   * to the workplane (#9201): a wall seen at eye height has to stay under it.
+   */
+  aimsAtElement?(g: G): boolean;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /** Handle this gesture on the actual press/release instead of a browser click. */

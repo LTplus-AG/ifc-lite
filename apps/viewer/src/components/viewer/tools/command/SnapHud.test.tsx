@@ -91,6 +91,24 @@ describe('SnapHud in the command scene (#6232 WP3)', () => {
     assert.equal(glyphKind(container), null);
   });
 
+  it('marks a point aimed through to the workplane with its own glyph and a tag (#9201)', () => {
+    routeCommandPointer(fakeCtx(), 'down', 1000, -1000, { shiftKey: false, altKey: true });
+    const { container, flush } = renderScene(<CommandScene />);
+    flush();
+    assert.equal(glyphKind(container), 'workplane');
+    const g = container.querySelector('[data-scene-primitive="snap-glyph"]') as SVGGElement;
+    // On the point itself: render (10, 0, -10) → the fake camera's (1000, -1000).
+    assert.equal(g.getAttribute('transform'), 'translate(1000 -1000)');
+    assert.equal(g.querySelector('[data-snap-tag]')?.textContent, 'On workplane');
+  });
+
+  it('a snapped point carries no workplane tag (#9201)', () => {
+    routeCommandPointer(fakeCtx(), 'down', 404, -3);
+    const { container, flush } = renderScene(<CommandScene />);
+    flush();
+    assert.equal(container.querySelector('[data-snap-tag]'), null);
+  });
+
   it('draws an extension as a dashed guide from the nearer wall end through the point', () => {
     const plane = getCommandRuntime().ctx!.workplane!;
     const src = createLineworkSource({ segments: [[[0, 0], [4, 0]]], inference: true });

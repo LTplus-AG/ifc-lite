@@ -138,7 +138,7 @@ describe('aimedOr: the pointer on a grid crossing (#9026 item 23)', () => {
   });
 
   it('an edge-like winner is measured at its point near the pointer', () => {
-    const edge: SnapCandidate = { kind: 'edge', local: [50, 50], source: 'linework', guide: { kind: 'segment', a: [0, 6.005], b: [100, 6.005] } };
+    const edge: SnapCandidate = { kind: 'edge', local: [50, 50], source: 'linework', guide: { kind: 'segment', a: [0, 6.005], b: [100, 6.005], role: 'edge' } };
     const e: Ranked = { cand: edge, point: [6, 6.005], dist: 0.005, tier: 0, order: 0 };
     assert.equal(pick(e, [e, on(crossing, 0.015, 1)], 0.015), edge);
   });

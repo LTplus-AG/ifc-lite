@@ -12,6 +12,11 @@ test('#8890 report previews translate all row modes with one and multiple rows',
   const { liveRowsText } = await requiredModule(() => import('./live-rows-text'), '#8890 translated preview formatter');
   const de = await requiredModule(() => import('@/i18n/locales/de').then(module => module.default), '#8890 German catalogue');
   registerEnglish({ ...checkAuthoringEn, ...documentEn });
+  setLocale('en');
+  for (const count of [1, 2]) {
+    assert.equal(liveRowsText(resolve, 'failed', count, 'spec-0'),
+      `live: ${count} ${count === 1 ? 'row' : 'rows'} now for spec-0 (selection: Failed entities)`);
+  }
   registerLocale('de', de);
   setLocale('de');
   try {

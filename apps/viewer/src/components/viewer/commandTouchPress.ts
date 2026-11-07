@@ -152,8 +152,10 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
         if (p) { cancelCommandPointer(p.ctx); clearMarker(); }
         // A press that began in another tool or with no command running, or that outlived its
         // command or tool, places nothing and selects nothing: nor does its compatibility click.
+        // A press begun in the command is marked however long it was: the tool it lifts in may
+        // count no tap past its own window (Select's 300 ms), yet a compatibility click still follows.
         const owned = p !== null || getTool() === 'command';
-        if (owned && tap) markTouchSelection(canvas, x, y);
+        if (owned && (tap || p !== null)) markTouchSelection(canvas, x, y);
         return owned;
       }
       const { ctx } = p;

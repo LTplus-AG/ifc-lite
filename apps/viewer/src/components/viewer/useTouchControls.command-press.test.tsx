@@ -195,6 +195,19 @@ describe('a press that outlived its command or tool places nothing (#9092)', () 
     assert.equal(selectionCount(), 0, 'BUG: a press begun in the command tool selected after Esc');
   });
 
+  it('Esc mid-press, then a 400 ms lift in Select: its compatibility click selects nothing either', async (t) => {
+    const time = clock(t);
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas, activeToolRef, selectionCount } = commandRig();
+    press(canvas, ...at(10, 10));
+    pressKey(document.body, 'Escape');
+    activeToolRef.current = 'select'; // as Viewport.tsx mirrors the store
+    time.advance(400); // past Select's 300 ms tap window, short of the long press
+    await lift(canvas);
+    await act(async () => { canvas.dispatchEvent(click(...at(10, 10), null)); });
+    assert.equal(selectionCount(), 0, 'BUG: the compatibility click of a press begun in the command tool selected');
+  });
+
   it('a tool switch into the command tool mid-press places nothing and selects nothing', async () => {
     const { canvas, activeToolRef, selectionCount } = commandRig('select');
     press(canvas, ...at(10, 10));

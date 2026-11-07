@@ -327,7 +327,7 @@ describe('a pen press goes through one pipeline (#9000)', () => {
     const expected = pos(finger.camera);
     cleanup(); finger.canvas.remove();
     const pen = rig('select');
-    pencilDrag(pen.canvas, true, undefined);
+    pencilDrag(pen.canvas, true, null);
     assert.equal(pos(pen.camera), expected, 'BUG: the pen drag orbited through both pipelines');
   });
 
@@ -383,7 +383,7 @@ describe('a pen press goes through one pipeline (#9000)', () => {
 
   it('a touch at the pen point without touchType still claims the press', async () => {
     const { canvas, selectionCount } = rig('select', 42);
-    await pencilTap(canvas, 200, 300, undefined);
+    await pencilTap(canvas, 200, 300, null);
     assert.equal(selectionCount(), 1, `BUG: one pen tap selected ${selectionCount()} times`);
   });
 
@@ -513,6 +513,168 @@ describe('a pen press goes through one pipeline (#9000)', () => {
       await settle();
     });
     assert.equal(selectionCount(), 2, `pen tap then mouse click selected ${selectionCount()} times`);
+  });
+
+  const mouseEvent = (type: string, x: number, y: number, button = 0) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button, detail: type === 'dblclick' ? 2 : 1 });
+  async function trackpadClick(canvas: HTMLCanvasElement, x: number, y: number, dbl = false) {
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', x, y));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', x, y));
+      canvas.dispatchEvent(click(x, y, null));
+      if (dbl) canvas.dispatchEvent(mouseEvent('dblclick', x, y));
+      await settle();
+    });
+  }
+
+  it('a trackpad click with no pointerType right after an iPad pen tap at the same spot still selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    await trackpadClick(canvas, 201, 300);
+    assert.equal(selectionCount(), 2, `BUG: pen tap then trackpad click selected ${selectionCount()} times`);
+  });
+
+  it('a trackpad double-click at the last pen-placed polyline point finishes the polyline', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    await pencilTap(canvas, 500, 300);
+    await trackpadClick(canvas, 500, 300);
+    await trackpadClick(canvas, 500, 300, true);
+    assert.equal(useViewerStore.getState().activePolyline === null, true, 'BUG: the trackpad double-click after a pen tap was dropped');
+    const finished = useViewerStore.getState().polylineMeasurements;
+    assert.equal(finished.length, 1, 'the trackpad double-click did not finish one polyline');
+    assert.equal(finished[0].closed, false, 'a double-click finishes the polyline open');
+    assert.deepEqual(finished[0].points.slice(0, 2).map((p) => p.x), [2, 5], 'both pen-placed points survive');
+  });
+
+  it('a trackpad right-click right after an iPad pen tap at the same spot opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    await pencilTap(canvas, 200, 300);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 200, 300, 2, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 200, 300, 0, 2));
+      await settle();
+    });
+    assert.equal(menus.length, 1, `BUG: the trackpad right-click after a pen tap opened ${menus.length} menus`);
+  });
+
+  it('a Pencil double-tap: its compatibility clicks and dblclick stay dropped', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await pencilTap(canvas, 200, 300);
+    await pencilTap(canvas, 500, 300);
+    await pencilTap(canvas, 500, 300);
+    const points = useViewerStore.getState().activePolyline?.points.length;
+    await act(async () => {
+      canvas.dispatchEvent(click(500, 300, null));
+      canvas.dispatchEvent(mouseEvent('dblclick', 500, 300));
+      await settle();
+    });
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, points, 'a Pencil compatibility event reached the mouse side');
+    assert.equal(useViewerStore.getState().activePolyline === null, false, 'BUG: the Pencil double-tap\'s dblclick finished the polyline through the mouse side');
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 0, 'BUG: the Pencil double-tap\'s dblclick recorded a polyline through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  // Polyline, not Select: a pointerType-less click near a touch selection is
+  // dropped by isTouchSelectionClick anyway, and a newer press cancels a pending
+  // selection pick. A leaked click here adds a point anyone can count.
+  const xs = () => useViewerStore.getState().activePolyline?.points.map((p) => p.x) ?? [];
+  async function liftedPencil(canvas: HTMLCanvasElement, x: number, y: number) {
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], 'stylus'));
+      await settle();
+      canvas.dispatchEvent(pointer('pointerup', 'pen', x, y));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle(); // the tap has placed its point; its compatibility click is still to come
+    });
+  }
+
+  it('a second Pencil press before the first tap\'s late click does not let that click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 500, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[500, 300]], 'stylus'));
+      canvas.dispatchEvent(click(200, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2], 'BUG: the first tap\'s late click added a point through the mouse side');
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 500, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      canvas.dispatchEvent(click(500, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 5], 'two Pencil taps place two points');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a trackpad click elsewhere before a pen tap\'s late click does not let that click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      // the other hand's trackpad press lands away from the Pencil before its compatibility click
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 600, 100));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 600, 100));
+      canvas.dispatchEvent(click(200, 300, null));
+      canvas.dispatchEvent(click(600, 100, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 6], 'BUG: the pen tap\'s late click added a point through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a finger tap between a pen tap and its click does not let the click through', async () => {
+    useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
+    const { canvas } = rig('measure');
+    await liftedPencil(canvas, 200, 300);
+    await act(async () => {
+      // a finger's pointer events are the touch side's and say nothing about a mouse
+      canvas.dispatchEvent(pointer('pointerdown', 'touch', 600, 100));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[600, 100]], 'direct'));
+      canvas.dispatchEvent(pointer('pointerup', 'touch', 600, 100));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle();
+      canvas.dispatchEvent(click(200, 300, null));
+      await settle();
+    });
+    assert.deepEqual(xs(), [2, 6], 'BUG: the pen tap\'s late click added a point through the mouse side');
+    useViewerStore.getState().cancelPolyline();
+  });
+
+  it('a trackpad click with no pointerType right after a finger tap at the same spot still selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await tap(canvas, 200, 300);
+    await act(settle);
+    assert.equal(selectionCount(), 1, 'the finger tap selected');
+    await trackpadClick(canvas, 201, 300);
+    assert.equal(selectionCount(), 2, `BUG: finger tap then trackpad click selected ${selectionCount()} times`);
+  });
+
+  it('a Pencil long press opens the viewer menu once and suppresses the native one', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+      mock.timers.tick(1);
+    });
+    await act(async () => { mock.timers.tick(600); await Promise.resolve(); });
+    const native = mouseEvent('contextmenu', 200, 300, 2);
+    assert.equal(canvas.dispatchEvent(native), false, 'the native menu during a Pencil long press was not prevented');
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    mock.timers.reset();
+    await act(async () => { await settle(); });
+    assert.equal(menus.length, 1, `a Pencil long press opened ${menus.length} viewer menus`);
   });
 });
 

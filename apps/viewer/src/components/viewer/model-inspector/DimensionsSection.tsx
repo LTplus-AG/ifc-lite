@@ -13,7 +13,7 @@
  * so a handle and a typed value cannot disagree.
  */
 
-import { WallTopRow } from './WallTopRow';
+import { WallTopRow, setWallHeightFixed } from './WallTopRow';
 import { useId, useMemo } from 'react';
 import { readHostedElementSize, readStairDimensions, type StairDimensions } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
@@ -115,7 +115,8 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
         <>
           <MetreRow param="Length" value={measured.length} />
           <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
-          <MetreRow param="Height" value={measured.height} onCommit={(height) => setElementDimensions(modelId, expressId, { kind: 'wall', height })} />
+          {/* Typing a height makes the wall fixed-height, as in the Wall tool (#9013). */}
+          <MetreRow param="Height" value={measured.height} onCommit={(height) => setWallHeightFixed(modelId, expressId, height)} />
           <WallTopRow modelId={modelId} wallId={expressId} />
         </>
       )}

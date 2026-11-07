@@ -94,7 +94,9 @@ describe('storey manager (#9013)', () => {
     assert.deepEqual(elevations(), [0, 3.5], 'Enter kept the preview');
     const s = useViewerStore.getState();
     const stack = s.undoStacks.get(MODEL_ID) ?? [];
-    assert.equal(new Set(stack.map((m) => s.mutationBatchTags.get(m.id))).size, 1, 'one undo step');
+    const tags = stack.map((m) => s.mutationBatchTags.get(m.id));
+    assert.ok(stack.length > 0 && tags.every((tag) => tag !== undefined), 'every record carries a batch tag');
+    assert.equal(new Set(tags).size, 1, 'one undo step');
   });
 
   it('Escape cancels a previewed elevation: the model is as it was', async () => {

@@ -72,8 +72,11 @@ export function effectiveSpatialProject(store: IfcDataStore, view: MutableProper
     if (!storey) return { ...node, children };
     const record = live.get(node.expressId)!;
     const name = effectiveTreeEntityName(store, view, node.expressId, node.name);
-    if (!changed && name === node.name && record.elevation === node.elevation) return node;
-    return { ...node, children, name, elevation: record.elevation };
+    // Live direct containment: an element moved here (or away) this session is listed where it now is.
+    const elements = contained(node.expressId);
+    const sameElements = elements.length === node.elements.length && elements.every((id, i) => id === node.elements[i]);
+    if (!changed && sameElements && name === node.name && record.elevation === node.elevation) return node;
+    return { ...node, children, name, elevation: record.elevation, elements };
   };
 
   const effective = rebuild(project) ?? project;
@@ -90,6 +93,7 @@ export function effectiveStoreyRows(
   hierarchy: SpatialHierarchy, project: SpatialNode | undefined, index: ReadonlyMap<number, SpatialNode>,
 ): Array<[number, readonly number[], SpatialNode | undefined]> {
   if (!project || project === hierarchy.project) return [...hierarchy.byStorey.entries()].map(([id, elements]) => [id, elements, undefined]);
-  return [...index.values()].filter((node) => node.type === IfcTypeEnum.IfcBuildingStorey)
-    .map((node) => [node.expressId, hierarchy.byStorey.get(node.expressId) ?? [], node]);
+  // Every level the parsed rows had (IFC4.3 facility parts included), plus storeys added this session.
+  return [...index.values()].filter((node) => node.type === IfcTypeEnum.IfcBuildingStorey || hierarchy.byStorey.has(node.expressId))
+    .map((node) => [node.expressId, node.type === IfcTypeEnum.IfcBuildingStorey ? node.elements : hierarchy.byStorey.get(node.expressId) ?? [], node]);
 }

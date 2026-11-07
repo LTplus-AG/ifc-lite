@@ -96,7 +96,9 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
 
   // Check if shift is held for orthogonal constraint
   const useOrthogonalConstraint = e.shiftKey && !!ctx.measurementConstraintEdgeRef.current;
-  // With the view the animation loop's measure pass last ran for, for a Snap-off re-pick here (#8992)
+  // With the view this move draws under, for a Snap re-pick here (#8992). A camera move outside the
+  // animation loop (an arrow-key pan, an orbit move) may precede it within one frame: bring the pass up first (#9052).
+  syncMeasureScreenCoords(ctx);
   noteMeasureCursor(ctx, { x, y, orthogonal: useOrthogonalConstraint, view: ctx.lastCameraStateRef.current });
 
   // Throttle raycasting to 60fps max using requestAnimationFrame
@@ -115,7 +117,11 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
   return true;
 }
 
-/** One rubber-band frame: pick under (x, y) and move the distance's end there. Also re-run on Snap off (#8992). */
+/**
+ * One rubber-band frame: pick under (x, y) and move the distance's end there. Also re-run on a Snap toggle
+ * (#8992, #9022). Over background a click misses and leaves the start pending, so the end collapses onto
+ * the start, as the first click left it, rather than staying on the last hit (#9049).
+ */
 export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, useOrthogonalConstraint: boolean): void {
   const { canvas, renderer, camera } = ctx;
   const raycastStart = performance.now();
@@ -129,7 +135,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     ? { edge: null, meshExpressId: null, lockStrength: 0 }
     : ctx.edgeLockStateRef.current;
 
-  const result = renderer.raycastSceneMagnetic(x, y, {
+  const pick = (reduced: boolean) => renderer.raycastSceneMagnetic(x, y, {
     edge: currentLock.edge,
     meshExpressId: currentLock.meshExpressId,
     lockStrength: currentLock.lockStrength,
@@ -137,84 +143,94 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     hiddenIds: ctx.hiddenEntitiesRef.current,
     isolatedIds: ctx.isolatedEntitiesRef.current,
     // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
-    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced: reduceComplexity }),
+    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced }),
   });
+  let result = pick(reduceComplexity);
 
-  // Track raycast duration for adaptive throttling
+  // Track raycast duration for adaptive throttling: the first pick's, so the retry below keeps no frame reduced
   ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;
 
-  if (result.intersection || result.snapTarget) {
-    const snapPoint = result.snapTarget || result.intersection;
-    let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
+  // The release picks with the full snap options: a miss is shown only where a click would miss too (#9049)
+  if (reduceComplexity && ctx.snapEnabledRef.current && !result.intersection && !result.snapTarget) result = pick(false);
 
-    if (pos) {
-      // Apply orthogonal constraint if shift is held and we have a constraint
-      if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
-        const constraint = ctx.measurementConstraintEdgeRef.current!;
-        const start = ctx.activeMeasurementRef.current.start;
-        const projected = projectOntoConstraintAxis(start, pos, constraint);
-        pos = projected.projectedPos;
+  const snapPoint = result.snapTarget || result.intersection;
+  let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
+  if (!pos) {
+    // Background: what a click here leaves, the start alone, with no snap or axis followed (#9049)
+    const start = ctx.activeMeasurementRef.current?.start;
+    if (start) ctx.updateMeasurement(start);
+    if (ctx.measurementConstraintEdgeRef.current?.activeAxis) ctx.updateConstraintActiveAxis(null);
+    ctx.setSnapTarget(null);
+    ctx.clearEdgeLock();
+    updateSnapViz(ctx, null);
+    return;
+  }
 
-        // Update active axis for visualization
-        ctx.updateConstraintActiveAxis(projected.activeAxis);
-      } else if (!useOrthogonalConstraint && ctx.measurementConstraintEdgeRef.current?.activeAxis) {
-        // Clear active axis when shift is released
-        ctx.updateConstraintActiveAxis(null);
-      }
+  // Apply orthogonal constraint if shift is held and we have a constraint
+  if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
+    const constraint = ctx.measurementConstraintEdgeRef.current!;
+    const start = ctx.activeMeasurementRef.current.start;
+    const projected = projectOntoConstraintAxis(start, pos, constraint);
+    pos = projected.projectedPos;
 
-      // Project snapped 3D position to screen - indicator position, not raw cursor
-      const screenPos = projectToCssScreen(camera, canvas, pos);
-      const measurePoint: MeasurePoint = {
-        x: pos.x,
-        y: pos.y,
-        z: pos.z,
-        screenX: screenPos?.x ?? x,
-        screenY: screenPos?.y ?? y,
-      };
+    // Update active axis for visualization
+    ctx.updateConstraintActiveAxis(projected.activeAxis);
+  } else if (!useOrthogonalConstraint && ctx.measurementConstraintEdgeRef.current?.activeAxis) {
+    // Clear active axis when shift is released
+    ctx.updateConstraintActiveAxis(null);
+  }
 
-      ctx.updateMeasurement(measurePoint);
-      ctx.setSnapTarget(result.snapTarget || null);
+  // Project snapped 3D position to screen - indicator position, not raw cursor
+  const screenPos = projectToCssScreen(camera, canvas, pos);
+  const measurePoint: MeasurePoint = {
+    x: pos.x,
+    y: pos.y,
+    z: pos.z,
+    screenX: screenPos?.x ?? x,
+    screenY: screenPos?.y ?? y,
+  };
 
-      // Update edge lock state and snap visualization (even in orthogonal mode)
-      if (result.edgeLock.shouldRelease) {
-        ctx.clearEdgeLock();
-        updateSnapViz(ctx, result.snapTarget || null);
-      } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-        // Check if we're on the same edge to preserve lock strength (hysteresis)
-        const sameDirection = currentLock.edge &&
-          Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v0.x) < 0.0001 &&
-          Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v0.y) < 0.0001 &&
-          Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v0.z) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v1.x) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v1.y) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v1.z) < 0.0001;
-        const reversedDirection = currentLock.edge &&
-          Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v1.x) < 0.0001 &&
-          Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v1.y) < 0.0001 &&
-          Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v1.z) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v0.x) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v0.y) < 0.0001 &&
-          Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v0.z) < 0.0001;
-        const isSameEdge = currentLock.edge &&
-          currentLock.meshExpressId === result.edgeLock.meshExpressId &&
-          (sameDirection || reversedDirection);
+  ctx.updateMeasurement(measurePoint);
+  ctx.setSnapTarget(result.snapTarget || null);
 
-        if (isSameEdge) {
-          ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
-          ctx.incrementEdgeLockStrength();
-        } else {
-          ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-          ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
-        }
-        updateSnapViz(ctx, result.snapTarget, {
-          edgeT: result.edgeLock.edgeT,
-          isCorner: result.edgeLock.isCorner,
-          cornerValence: result.edgeLock.cornerValence,
-        });
-      } else {
-        updateSnapViz(ctx, result.snapTarget || null);
-      }
+  // Update edge lock state and snap visualization (even in orthogonal mode)
+  if (result.edgeLock.shouldRelease) {
+    ctx.clearEdgeLock();
+    updateSnapViz(ctx, result.snapTarget || null);
+  } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
+    // Check if we're on the same edge to preserve lock strength (hysteresis)
+    const sameDirection = currentLock.edge &&
+      Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v0.x) < 0.0001 &&
+      Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v0.y) < 0.0001 &&
+      Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v0.z) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v1.x) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v1.y) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v1.z) < 0.0001;
+    const reversedDirection = currentLock.edge &&
+      Math.abs(currentLock.edge.v0.x - result.edgeLock.edge.v1.x) < 0.0001 &&
+      Math.abs(currentLock.edge.v0.y - result.edgeLock.edge.v1.y) < 0.0001 &&
+      Math.abs(currentLock.edge.v0.z - result.edgeLock.edge.v1.z) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.x - result.edgeLock.edge.v0.x) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.y - result.edgeLock.edge.v0.y) < 0.0001 &&
+      Math.abs(currentLock.edge.v1.z - result.edgeLock.edge.v0.z) < 0.0001;
+    const isSameEdge = currentLock.edge &&
+      currentLock.meshExpressId === result.edgeLock.meshExpressId &&
+      (sameDirection || reversedDirection);
+
+    if (isSameEdge) {
+      ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
+      ctx.incrementEdgeLockStrength();
+    } else {
+      ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
+      ctx.updateEdgeLockPosition(result.edgeLock.edgeT, result.edgeLock.isCorner, result.edgeLock.cornerValence);
     }
+    updateSnapViz(ctx, result.snapTarget, {
+      edgeT: result.edgeLock.edgeT,
+      isCorner: result.edgeLock.isCorner,
+      cornerValence: result.edgeLock.cornerValence,
+    });
+  } else {
+    updateSnapViz(ctx, result.snapTarget || null);
   }
 }
 

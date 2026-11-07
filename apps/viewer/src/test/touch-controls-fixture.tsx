@@ -48,6 +48,8 @@ export function mountViewportControls(tool: string, pickedId: number | null = nu
     pick: async () => pickedId === null ? null : { expressId: pickedId },
     pickRect: async () => [],
     raycastScene: () => null,
+    getPickClipRevision: () => 0, // the measure pass a rubber-band move runs (#9052)
+    getPickGeometryRevision: () => 0,
     raycastSceneMagnetic: (x: number) => ({
       intersection: { point: { x: x / 100, y: 0, z: 0 } },
       snapTarget: null,

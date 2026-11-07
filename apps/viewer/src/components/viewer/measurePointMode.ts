@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
-import { noteMeasureCursor } from './measureCursor.js';
+import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import { viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
@@ -57,6 +57,9 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
   }
   ctx.setSnapTarget(picked.snapTarget);
   useViewerStore.getState().placeMeasurePoint(picked.point);
+  // The placed point, not a Live one, is what the readout shows now; a miss keeps the cursor, as a missed
+  // Distance click does, so a Snap toggle can still re-pick there (#9022)
+  noteMeasureCursor(ctx, null);
 }
 
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */
@@ -97,7 +100,9 @@ function cancelTrailingHover(ctx: MouseHandlerContext): void {
  */
 export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: number): void {
   cancelTrailingHover(ctx);
-  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: null });
+  // With the view this move reads under, as a rubber-band move notes it (#9022)
+  syncMeasureScreenCoords(ctx);
+  noteMeasureCursor(ctx, { x, y, orthogonal: false, view: ctx.lastCameraStateRef.current });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
     armTrailingHover(ctx, x, y, wait);
@@ -107,10 +112,12 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
 }
 
 function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: number): void {
+  const noted = measureCursor(ctx);
   trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
     trailingHover.delete(ctx.lastHoverSnapTimeRef);
-    // A press since then owns the pointer (orbit, or the click's own pick).
-    if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
+    // A press since then owns the pointer (orbit, or the click's own pick); a pan since, even one already
+    // released, has left this spot and forgotten its cursor (#9022).
+    if (!ctx.mouseState.isDragging && measureCursor(ctx) === noted) hoverMeasurePointAt(ctx, x, y);
   }, wait));
 }
 
@@ -157,5 +164,6 @@ export function cancelQueuedHover(ctx: MouseHandlerContext): void {
 /** The cursor left the canvas: drop a queued hover frame and the preview, so the readout falls back to the last point. */
 export function endMeasurePointHover(ctx: MouseHandlerContext): void {
   cancelQueuedHover(ctx);
+  if (pointModeLive()) noteMeasureCursor(ctx, null); // no Live reading for a Snap toggle to re-pick (#9022)
   useViewerStore.getState().setMeasurePointLive(null);
 }

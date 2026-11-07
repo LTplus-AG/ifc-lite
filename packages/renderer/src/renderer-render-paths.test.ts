@@ -1395,13 +1395,29 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
         // Grey {1, 2} resolves to two alphas: {1} faded, {2} native. Red {3} stays uniform.
         const XRAY = { transparencyOverrides: new Map([[1, 0.18]]) } as const;
         const TRANSPARENT: [number, number, number, number] = [0.2, 0.4, 0.8, 0.4];
-        /** Count every parent rebuild, synchronous or queued: both go through rebuildEvicted. */
-        const countRebuilds = (scene: Scene): { n: number } => {
+        /** Count every rebuild of the batch holding `expressId`, synchronous or queued: both go through rebuildEvicted. */
+        const countRebuilds = (scene: Scene, expressId: number): { n: number } => {
             const residency = scene['subsetResidency'];
             const rebuild = residency.rebuildEvicted.bind(residency);
             const count = { n: 0 };
-            residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => { count.n++; return rebuild(...args); }) as typeof rebuild;
+            residency.rebuildEvicted = ((...args: Parameters<typeof rebuild>) => {
+                if (args[1].expressIds.includes(expressId)) count.n++;
+                return rebuild(...args);
+            }) as typeof rebuild;
             return count;
+        };
+        /** The sub-batches cut from `batch`, by slot. */
+        const subBatchesOf = (h: Harness, batch: BatchedMesh): BatchedMesh[] => subBatchKeys(h)
+            .filter((k) => k.startsWith(`${batch.colorKey}:${batch.id}:`))
+            .map((k) => sceneOf(h)['partialBatchCache'].get(sceneOf(h)['partialBatchCacheKeys'].get(k)!) as BatchedMesh);
+        /** Seed glass {4, 5}: natively transparent, with {4} carrying a promoting override. */
+        const seedGlass = (h: Harness): BatchedMesh => {
+            const scene = sceneOf(h);
+            scene.appendToBatches([triangle(4, TRANSPARENT), triangle(5, TRANSPARENT)], device(h), pipeline(h), false);
+            const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+            glass.bounds = undefined;
+            scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+            return glass;
         };
         /** One frame plus the app loop's restore drain, the way the viewer drives it. */
         const frame = (h: Harness, options: RenderOptions) => {
@@ -1414,7 +1430,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             const { grey, red } = seedBatches(h);
             const scene = sceneOf(h);
             scene.setGpuResidencyBudget(1);
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 1);
             for (let i = 0; i < IDLE_FRAMES; i++) h.render(XRAY);
 
             assert.strictEqual(grey.gpuResident, false, 'nothing reads the parent buffers, so the GPU tier frees them');
@@ -1434,12 +1450,9 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             const h = makeHarness();
             seedBatches(h);
             const scene = sceneOf(h);
-            scene.appendToBatches([triangle(4, TRANSPARENT), triangle(5, TRANSPARENT)], device(h), pipeline(h), false);
-            const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
-            glass.bounds = undefined;
-            scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+            const glass = seedGlass(h);
             scene.setGpuResidencyBudget(1);
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 4);
             for (let i = 0; i < IDLE_FRAMES; i++) frame(h, {});
 
             assert.strictEqual(glass.gpuResident, false, 'the :promoted and :remaining sub-batches never read the parent buffers');
@@ -1462,7 +1475,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             const { grey } = seedBatches(h);
             const scene = sceneOf(h);
             scene.setGpuResidencyBudget(1);
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 1);
             const residency = scene['subsetResidency'];
             const noteEvicted = residency.noteEvicted.bind(residency);
             let greyEvictions = 0;
@@ -1486,7 +1499,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             seedBatches(h);
             const scene = sceneOf(h);
             coldGrey(h);
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 1);
             h.render(XRAY);
             assert.strictEqual(scene.hasResidencyRestoreWork(), true, 'the split needs the pieces back');
             scene.processResidencyRestores(device(h), pipeline(h), Infinity);
@@ -1494,14 +1507,73 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             scene.processResidencyRestores(device(h), pipeline(h), Infinity);
             assert.ok(scene.getMeshDataPieces(1)?.length && scene.getMeshDataPieces(2)?.length, 'warm again');
             assert.strictEqual(rebuilds.n, 0, 'no parent GPU rebuild');
-            assert.strictEqual(greyOf(h).gpuResident, false);
-            greyOf(h).bounds = undefined;
+            const grey = greyOf(h);
+            assert.strictEqual(grey.gpuResident, false);
+            grey.bounds = undefined;
             const drawsBefore = h.stats.draws.length;
             h.render(XRAY);
-            assert.ok(h.stats.draws.length > drawsBefore, 'the alpha groups draw from the restored pieces');
-            const greySlots = subBatchKeys(h).filter((k) => k.startsWith(`${greyOf(h).colorKey}:${greyOf(h).id}`));
-            assert.strictEqual(greySlots.length, 2, 'one slot per alpha group');
+            const subs = subBatchesOf(h, grey);
+            assert.strictEqual(subs.length, 2, 'one sub-batch per alpha group');
+            const drawn = h.stats.draws.slice(drawsBefore);
+            for (const sub of subs) assert.ok(drawn.includes(sub.vertexBuffer), 'each alpha group draws from the restored pieces');
+            scene.processResidencyRestores(device(h), pipeline(h), Infinity);
             assert.strictEqual(rebuilds.n, 0);
+            assert.strictEqual(greyOf(h), grey);
+        });
+
+        it('a cold transparent batch with mixed promotion gets its pieces back, not its GPU buffers', async () => {
+            const h = makeHarness();
+            seedBatches(h);
+            const scene = sceneOf(h);
+            let glass = seedGlass(h);
+            scene.setColorOverrides(new Map(), device(h), pipeline(h)); // no split while it goes cold
+            const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED), triangle(4, TRANSPARENT), triangle(5, TRANSPARENT)];
+            scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+            scene.setGpuResidencyBudget(1);
+            scene.setHostResidencyBudget(1);
+            for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3, 4, 5]) });
+            glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+            assert.ok(scene['coldBuckets'].has(glass.colorKey), 'glass went cold while hidden');
+            glass.bounds = { min: [-1, -1, -1], max: [2, 2, 2] }; // the disk fetch is by bounds
+            scene.setColorOverrides(new Map([[4, [1, 0, 0, 1]]]), device(h), pipeline(h));
+            const rebuilds = countRebuilds(scene, 4);
+            h.render({ hiddenIds: new Set([1, 2, 3]) });
+            assert.ok(scene['subsetResidency'].warmOnly.has(glass.colorKey), 'queued for its pieces only');
+            scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+            await Promise.all(scene['coldRestoresInFlight'].values());
+            scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+            assert.ok(scene.getMeshDataPieces(4)?.length && scene.getMeshDataPieces(5)?.length, 'warm again');
+            glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+            glass.bounds = undefined;
+            const drawsBefore = h.stats.draws.length;
+            h.render({ hiddenIds: new Set([1, 2, 3]) });
+            const subs = subBatchesOf(h, glass);
+            assert.strictEqual(subs.length, 2, ':promoted and :remaining');
+            const drawn = h.stats.draws.slice(drawsBefore);
+            for (const sub of subs) assert.ok(drawn.includes(sub.vertexBuffer));
+            scene.processResidencyRestores(device(h), pipeline(h), Infinity);
+            assert.strictEqual(rebuilds.n, 0, 'no parent GPU rebuild');
+            assert.strictEqual(glass.gpuResident, false);
+        });
+
+        it('X-Ray still on but the batch no longer splits: rebuilt and drawn whole on that frame, its alpha slots retired', () => {
+            const h = makeHarness();
+            const { grey } = seedBatches(h);
+            const scene = sceneOf(h);
+            scene.setGpuResidencyBudget(1);
+            for (let i = 0; i < IDLE_FRAMES; i++) h.render(XRAY);
+            assert.strictEqual(grey.gpuResident, false);
+            const oldSubs = subBatchesOf(h, grey);
+            assert.strictEqual(oldSubs.length, 2);
+            h.stats.draws.length = 0;
+            h.render({ transparencyOverrides: new Map([[3, 0.18]]) }); // grey uniform again; X-Ray stays active
+            const rebuilt = greyOf(h);
+            assert.notStrictEqual(rebuilt, grey);
+            assert.notStrictEqual(rebuilt.gpuResident, false);
+            assert.ok(h.stats.draws.includes(rebuilt.vertexBuffer), 'drawn whole on the transition frame');
+            assert.ok(!scene['residencyRestoreQueue'].has(rebuilt.colorKey));
+            assert.deepStrictEqual(subBatchesOf(h, grey), [], 'the old alpha slots are gone');
+            for (const sub of oldSubs) assert.strictEqual((sub.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
         });
 
         it('X-Ray cleared: the evicted parent is rebuilt and drawn on the transition frame', () => {
@@ -1526,7 +1598,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             const scene = sceneOf(h);
             scene.setGpuResidencyBudget(1);
             scene.canPartitionBatch = () => false; // e.g. a colour-merged piece
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 1);
             for (let i = 0; i < IDLE_FRAMES; i++) frame(h, XRAY);
             assert.notStrictEqual(grey.gpuResident, false, 'the whole-batch fallback reads its own buffers');
             assert.strictEqual(scene['partialBatchCache'].size, 0);
@@ -1539,7 +1611,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
             const scene = sceneOf(h);
             h.renderer.setModelBounds(UNIT_BOUNDS);
             scene.setGpuResidencyBudget(1);
-            const rebuilds = countRebuilds(scene);
+            const rebuilds = countRebuilds(scene, 1);
             for (let i = 0; i < IDLE_FRAMES; i++) frame(h, { ...XRAY, sunShadows: { enabled: true } });
             assert.notStrictEqual(grey.gpuResident, false, 'the shadow pass reads its own buffers');
             assert.strictEqual(greyOf(h), grey);

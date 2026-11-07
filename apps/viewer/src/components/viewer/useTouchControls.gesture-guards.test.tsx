@@ -359,7 +359,8 @@ describe('a finger resting off the canvas is not part of a canvas gesture (#9122
     assert.equal(selectionCount(), 1, 'BUG: the tap after the pinch was still read as multi-touch');
   });
 
-  it('a Pencil hover releases a press whose pointerup never came, with the thumb resting', () => {
+  // Control: a new pen press clears a stale touch-owned one anyway, so this guards the pen gate's filter, not a bug on main.
+  it('a pointer-only Pencil drag after a press whose pointerup never came still orbits like a mouse, with the thumb resting (control)', () => {
     const mouse = rig('select');
     pointerDrag(mouse.canvas, 'mouse');
     const expected = pos(mouse.camera);

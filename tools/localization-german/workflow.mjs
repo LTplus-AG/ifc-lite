@@ -52,8 +52,20 @@ const model = '?model=/samples/building-architecture.ifc';
 const save = async name => { await page.screenshot({path:path.join(out, name+'.png')}); fs.writeFileSync(path.join(out,name+'.txt'), await page.locator('body').innerText()); fs.writeFileSync(path.join(out,name+'-aria.txt'),await page.locator('body').ariaSnapshot()); };
 const check = async (name, fn) => { console.log('START',name); try { const detail = await fn(); report.checks.push({name,status:'pass',detail}); console.log('PASS',name); } catch(e) { report.checks.push({name,status:'fail',error:String(e)}); console.log('FAIL',name,String(e)); try { await save('failure-'+name.replace(/\W/g,'-')); } catch (error) { console.warn('Failure snapshot unavailable', name, error); report.errors.push('Failure snapshot: '+String(error)); } } };
 try {
-  // Readiness bounded to two minutes; no server or build is started by this harness.
-  for (let i=0;i<60;i++) { try { const r=await fetch(base); if(r.ok && (await r.text()).includes('<html'))break; report.readinessError='HTTP '+r.status+' or response missing HTML'; } catch(e) { report.readinessError=String(e); } if(i===59)throw Error('Preview did not serve built HTML within 120 seconds: '+report.readinessError); await new Promise(r=>setTimeout(r,2000)); }
+  // Bound network and body reads by elapsed time, including stalled responses.
+  const readyDeadline=Date.now()+120000;
+  while (Date.now()<readyDeadline) {
+    try {
+      const response=await fetch(base,{signal:AbortSignal.timeout(Math.min(5000,readyDeadline-Date.now()))});
+      const html=await response.text();
+      if (response.ok && html.includes('<html')) break;
+      report.readinessError='HTTP '+response.status+' or response missing HTML';
+    } catch(error) {report.readinessError=String(error);}
+    const remaining=readyDeadline-Date.now();
+    if (remaining<=0) throw Error('Preview did not serve built HTML within 120 seconds: '+report.readinessError);
+    await new Promise(resolve=>setTimeout(resolve,Math.min(2000,remaining)));
+  }
+  if (Date.now()>=readyDeadline) throw Error('Preview readiness deadline exceeded: '+report.readinessError);
   await page.goto(base+model);
   await check('locale-settings',async()=>{
   await page.getByRole('button',{name:'Settings',exact:true}).click();
@@ -192,11 +204,13 @@ try {
 finally {
   const writeReport=()=>fs.writeFileSync(path.join(out,report.mode === 'inspection' ? 'inspection.json' : 'workflow.json'),JSON.stringify(report,null,2));
   if(workflowFailed(report))process.exitCode=1;
-  writeReport();
+  try { writeReport(); }
+  catch(error) {console.warn('Initial report write failed',error);report.errors.push('Report write: '+String(error));process.exitCode=1;}
   for (const resource of [context,browser]) {
     try { await resource.close(); }
     catch(error) {console.warn('Browser cleanup failed',error);report.errors.push('Cleanup: '+String(error));process.exitCode=1;}
   }
-  writeReport();
+  try { writeReport(); }
+  catch(error) {console.warn('Final report write failed',error);report.errors.push('Report write: '+String(error));process.exitCode=1;}
   console.log(JSON.stringify(report,null,2));
 }

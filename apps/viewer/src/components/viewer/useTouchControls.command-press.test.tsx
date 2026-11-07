@@ -324,7 +324,9 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     act(() => {
       canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]]));
       for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]]));
-      const end = touchEvent('touchend', canvas, []);
+      // No finger left down, and the lifted one where it left the glass
+      const end = new window.Event('touchend', { bubbles: true, cancelable: true });
+      Object.defineProperty(end, 'touches', { value: [] });
       Object.defineProperty(end, 'changedTouches', { value: [{ identifier: 1, target: canvas, clientX: 500, clientY: 300 }] });
       canvas.dispatchEvent(end);
     });

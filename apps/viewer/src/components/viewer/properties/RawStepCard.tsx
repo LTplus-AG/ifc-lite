@@ -233,7 +233,7 @@ export function RawStepCard({
   }
 
   return (
-    <div className="rounded-md border border-border bg-white dark:bg-muted overflow-hidden">
+    <div className="rounded-md border border-border bg-white dark:bg-zinc-950 overflow-hidden">
       {/* Breadcrumb (only when drilled in) */}
       {!isAtRoot && (
         <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-emerald-50/40 dark:bg-emerald-950/15 text-2xs font-mono">

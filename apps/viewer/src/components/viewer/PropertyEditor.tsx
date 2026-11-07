@@ -213,10 +213,10 @@ export function PropertyEditor({
         {/* Action buttons */}
         <IconButton
           label={editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}
-          className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
+          className="h-6 w-6 hover:bg-ok-surface"
           onClick={handleSave}
         >
-          <Check className="h-3.5 w-3.5 text-green-600" />
+          <Check className="h-3.5 w-3.5 text-ok" />
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.cancel')}
@@ -227,10 +227,10 @@ export function PropertyEditor({
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.delete')}
-          className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
+          className="h-6 w-6 hover:bg-danger-surface"
           onClick={handleDelete}
         >
-          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+          <Trash2 className="h-3.5 w-3.5 text-danger" />
         </IconButton>
       </div>
 

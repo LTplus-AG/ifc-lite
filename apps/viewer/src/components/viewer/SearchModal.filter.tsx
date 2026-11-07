@@ -700,12 +700,12 @@ export function SearchModalFilter() {
 function FilterErrorBox({ raw }: { raw: string }) {
   const { t } = useTranslation();
   return (
-    <div className="border-b bg-red-50/50 px-4 py-3 dark:bg-red-950/20">
+    <div className="border-b bg-danger-surface px-4 py-3">
       <div className="flex items-start gap-2">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
         <div className="min-w-0 flex-1 text-xs">
-          <div className="font-semibold text-red-900 dark:text-red-200">{t('searchModal.filterRun.filterFailed')}</div>
-          <div className="mt-1 break-words text-red-800 dark:text-red-300">{raw}</div>
+          <div className="font-semibold text-danger">{t('searchModal.filterRun.filterFailed')}</div>
+          <div className="mt-1 break-words text-danger">{raw}</div>
         </div>
       </div>
     </div>

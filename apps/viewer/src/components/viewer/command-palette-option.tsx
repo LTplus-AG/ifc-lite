@@ -75,14 +75,15 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       aria-disabled={disabled || undefined}
       aria-describedby={reason ? reasonId : undefined}
       className={cn('relative flex items-start gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-active-surface before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full' : 'hover:bg-accent/50',
-        disabled ? 'text-muted-foreground cursor-not-allowed before:bg-muted-foreground' : 'text-foreground before:bg-active')}
+        selected && 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full',
+        selected ? (disabled ? 'bg-accent before:bg-muted-foreground' : 'bg-active-surface before:bg-active') : 'hover:bg-accent/50',
+        disabled ? 'text-muted-foreground cursor-not-allowed' : 'text-foreground')}
       onMouseDown={event => event.preventDefault()}
       onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-3">
-          <span data-command-label className="min-w-0 flex-1 truncate"><MatchHighlight text={label} query={query} /></span>
+          <span data-command-label className="min-w-0 flex-1 truncate"><MatchHighlight text={label} query={disabled ? '' : query} /></span>
           <span className="flex max-w-[55%] shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground">
             {categoryLabel && <span className="truncate">{categoryLabel}</span>}
             {state && <span className="shrink-0">{state}</span>}

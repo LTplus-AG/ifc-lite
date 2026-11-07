@@ -70,6 +70,10 @@ export const storeyManagerDe = {
     "one": "{count} Wand behält ihre Höhe: Ihre erfasste Oberkante nennt kein eindeutiges Geschoss",
     "other": "{count} Wände behalten ihre Höhe: Ihre erfassten Oberkanten nennen kein eindeutiges Geschoss"
   },
+  "storeyManager.notice.wallQuantitiesPartial": {
+    "one": "{count} angepasste Wand hat mehr als einen Basismengensatz: Nur der erste wird aktualisiert",
+    "other": "{count} angepasste Wände haben mehr als einen Basismengensatz: Nur der erste wird aktualisiert"
+  },
   "storeyManager.notice.stairNotRefit": {
     "one": "{count} Treppe wird verschoben, aber nicht angepasst: Sie ist kein einzelner Treppenlauf",
     "other": "{count} Treppen werden verschoben, aber nicht angepasst: Sie sind keine einzelnen Treppenläufe"

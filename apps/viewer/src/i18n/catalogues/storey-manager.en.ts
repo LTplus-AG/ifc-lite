@@ -51,6 +51,7 @@ export const storeyManagerEn = {
   'storeyManager.impact.planOnly': 'In a shared room the preview is not shown to everyone: Enter applies it',
   'storeyManager.notice.wallNotResized': { one: '{count} attached wall moves but keeps its height: it is not a simple extrusion', other: '{count} attached walls move but keep their height: they are not simple extrusions' },
   'storeyManager.notice.wallAttachmentUnresolved': { one: '{count} wall keeps its height: its recorded top names no single storey', other: '{count} walls keep their height: their recorded tops name no single storey' },
+  'storeyManager.notice.wallQuantitiesPartial': { one: '{count} resized wall has more than one base quantity set: only the first is updated', other: '{count} resized walls have more than one base quantity set: only the first is updated' },
   'storeyManager.notice.stairNotRefit': { one: '{count} stair moves but is not refit: it is not a single stepped flight', other: '{count} stairs move but are not refit: they are not single stepped flights' },
   'storeyManager.notice.select': 'Select them',
   'storeyManager.refusal.spacing': 'That leaves no height between {storey} and {neighbour}',

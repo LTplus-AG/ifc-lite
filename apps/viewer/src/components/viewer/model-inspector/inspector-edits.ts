@@ -24,6 +24,7 @@ import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/model
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { commitElementSize } from '@/lib/element-size-commit';
+import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import type { WallSection } from '@/store/slices/mutation-wall-section';
 import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
@@ -91,10 +92,13 @@ export function createElementType(modelId: string, kind: AuthoredElementKind, na
 /**
  * A wall's, slab's, column's or beam's size, in metres: the one write the
  * push / pull handles make too (`setElementSize`), so the two cannot differ.
- * A wall's openings follow it in the same step.
+ * A wall's openings follow it in the same step, and a typed wall height
+ * makes the wall fixed-height (#9013): a later storey re-level never
+ * replaces the height that was typed.
  */
 export function setElementDimensions(modelId: string, expressId: number, patch: ElementSizePatch): boolean {
   return runInspectorEdit(modelId, (tx) => {
+    if (patch.kind === 'wall' && patch.height !== undefined) fixWallTop(tx, tx.modelId, expressId);
     const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, patch);
     if (!outcome.ok) throw new Error(outcome.reason);
     return outcome.remesh;

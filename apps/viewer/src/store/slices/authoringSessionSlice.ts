@@ -37,6 +37,12 @@ export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';
 
 export interface AuthoringSession {
+  /**
+   * Which entry into the workspace this is: a new number every time a session
+   * starts (a storey switch keeps it). Deferred work started in one session
+   * checks it before acting, so it never acts on a later one (#9013).
+   */
+  readonly entry: number;
   readonly modelId: string;
   readonly storeyId: number | null;
   /** Null while the model has no storey to draw on. */
@@ -122,6 +128,9 @@ function syncRuntime(api: StoreApi<ViewerState>): void {
   });
 }
 
+/** Session entries so far, for `AuthoringSession.entry`. */
+let sessionEntries = 0;
+
 export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], AuthoringSessionSlice> = (set, get, api) => {
   syncRuntime(api);
   return {
@@ -149,6 +158,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
         workspaceMode: 'model',
         editEnabled: true,
         session: {
+          entry: ++sessionEntries,
           modelId,
           storeyId,
           workplane: storeyId === null ? null : { kind: 'storey', storeyId, offset: 0 },
@@ -168,6 +178,8 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
       set({ workspaceMode: 'view', session: null });
       // …and edit mode with it (authoring tools, georef drafts: uiSlice).
       if (get().editEnabled) get().setEditEnabled(false);
+      // …and the storey manager (#9013): the next session opens on the inspector.
+      if (get().storeyManagerOpen) get().setStoreyManagerOpen(false);
     },
 
     setSessionStorey: (storeyId) => {

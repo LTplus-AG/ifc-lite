@@ -10,6 +10,11 @@ export const copyArrayFr = {
   "commands.model.pasteInPlace": "Coller les éléments copiés sur place, à l’étage actuel (espace Modèle)",
   "commands.model.array": "Répéter les éléments sélectionnés en ligne ou autour d’un centre (espace Modèle)",
   "copyArray.copied": {"one":"{countDisplay} élément copié","other":"{countDisplay} éléments copiés","many":"{countDisplay} éléments copiés"},
+  "copyArray.cameFree": {
+    "one": "{countDisplay} copie n’a pas été placée à une intersection de la grille et n’est donc plus liée à la grille",
+    "other": "{countDisplay} copies n’ont pas été placées à une intersection de la grille et ne sont donc plus liées à la grille",
+    "many": "{countDisplay} copies n’ont pas été placées à une intersection de la grille et ne sont donc plus liées à la grille",
+  },
   "copyArray.paste.label": "Coller",
   "copyArray.paste.hint": "Cliquez à l’emplacement de la copie. Pour coller à un autre étage, changez d’abord d’étage",
   "copyArray.paste.empty": "Rien n’est encore copié : sélectionnez d’abord des éléments et copiez-les",

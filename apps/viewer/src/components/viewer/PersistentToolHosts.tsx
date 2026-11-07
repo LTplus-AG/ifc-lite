@@ -9,15 +9,17 @@ import { useViewerStore } from '@/store';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ClassVisibilityControls } from './toolbar/ClassVisibilityMenu';
+import { useSectionPaletteHost } from './section-palette-host';
 import type { SurfaceCommandContext } from './surface-command-types';
 
-type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'toolHostIsCurrent'>;
+type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'toolHostIsCurrent' | 'addSectionPlane' | 'sectionAddUnavailable'>;
 const ToolHosts = createContext<ToolContext>({});
 export const usePersistentToolHosts = () => useContext(ToolHosts);
 
 /** One owner survives palette close, ribbon collapse, and tab changes (#8947). */
 export function PersistentToolHosts({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
+  const sectionHost = useSectionPaletteHost();
   const [bulk, setBulk] = useState(false);
   const [data, setData] = useState(false);
   const [classes, setClasses] = useState(false);
@@ -40,7 +42,7 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
       } },
     };
   }, []);
-  return <ToolHosts.Provider value={context}>
+  return <ToolHosts.Provider value={{ ...context, ...sectionHost }}>
     {children}
     <BulkPropertyEditor open={bulk} onOpenChange={setBulk} />
     <DataConnector open={data} onOpenChange={setData} />

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef } from 'react';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
 import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
@@ -20,7 +20,6 @@ import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
 import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
-import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
@@ -58,17 +57,6 @@ export function StatusBar() {
   // copy since it has no status bar (`ViewerLayout.tsx`'s
   // `{!isMobile && <StatusBar />}`).
   const { storeyNames, objectCounts } = useViewportStatusSummary();
-
-  const [flavorDialogOpen, setFlavorDialogOpen] = useState(false);
-  /** Deep-link from Command Palette → "Manage flavors…". */
-  const flavorDialogRequested = useViewerStore((s) => s.flavorDialogRequested);
-  const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
-  useEffect(() => {
-    if (flavorDialogRequested) {
-      setFlavorDialogOpen(true);
-      setFlavorDialogRequested(false);
-    }
-  }, [flavorDialogRequested, setFlavorDialogRequested]);
 
   // Every model whose objects this bar speaks for, paired with its own
   // geometry. Federated models each carry their own store and meshes; legacy
@@ -339,7 +327,7 @@ export function StatusBar() {
         <ActivityTrayButton />
         <StatusBarPresentationButton />
         <Separator orientation="vertical" className="h-3.5" />
-        <FlavorIndicator onClick={() => setFlavorDialogOpen(true)} />
+        <FlavorIndicator onClick={() => useViewerStore.getState().setFlavorDialogRequested(true)} />
 
         <Separator orientation="vertical" className="h-3.5" />
 
@@ -358,7 +346,6 @@ export function StatusBar() {
         </a>
       </div>
 
-      <FlavorDialog open={flavorDialogOpen} onClose={() => setFlavorDialogOpen(false)} />
     </div>
   );
 }

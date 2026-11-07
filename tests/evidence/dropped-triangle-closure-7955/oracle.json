@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/face_set_dropped_triangles.rs",
-  "mutation": "tests/evidence/dropped-triangle-closure-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/face_set_oracle_7955.rs",
-  "why": "Without the dropped-triangle explanation a sliver's three open edges are never named, so the ruling 20 witness fails."
-}

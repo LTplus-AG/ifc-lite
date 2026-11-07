@@ -58,6 +58,20 @@ const TARGET_FEATURE_PIXELS = 16;
 /** Tilt-down angle when looking along the longest axis, in radians. */
 const LINEAR_TILT_RADIANS = (20 * Math.PI) / 180;
 
+/**
+ * The compact pose's offset from the target, per unit of `distance`: above
+ * and to the front-right of the model (Y-up). Not unit length; the legacy
+ * pose has always been `center + distance * this`.
+ */
+const COMPACT_DIRECTION: Vec3 = { x: 0.6, y: 0.5, z: 0.6 };
+
+/**
+ * Horizontal margin the compact pose keeps when the viewport's width is what
+ * binds (a portrait phone): the box spans 1 / 1.15 of the frame's width, so
+ * it is framed whole with a small border instead of cropped at the sides.
+ */
+const COMPACT_HORIZONTAL_MARGIN = 1.15;
+
 /** Smallest viewport dimension to assume when no explicit value is given. */
 const DEFAULT_VIEWPORT_SHORT_PX = 640;
 
@@ -88,6 +102,12 @@ export interface PickFitPolicyOptions {
   fovY: number;
   /** Shortest viewport dimension in pixels (height for landscape). */
   viewportShortPx?: number;
+  /**
+   * Viewport width / height. When given, the compact pose also keeps the
+   * box inside the horizontal field, which is the narrower one on a portrait
+   * viewport (a phone). Omitted, the compact pose is the legacy one exactly.
+   */
+  aspect?: number;
   /**
    * Override the linear-detection threshold. Production should leave this
    * at the default; exposed for tests that pin the threshold behaviour.
@@ -135,17 +155,20 @@ export function pickFitPolicy(
   // inside the bbox" linear pose, which renders it end-on and invisible
   // (issue #1350).
   if (aspect <= threshold || longest < minLongest) {
-    // Compact: reproduce the legacy SE isometric pose 1:1 so building
-    // models frame exactly as before.
-    const distance = longest * 2.0;
+    // Compact: the legacy SE isometric pose, so building models frame as
+    // before. Its `longest * 2` standoff is sized against the vertical field
+    // and ignores the viewport's shape; on a portrait viewport the horizontal
+    // field is the narrower one, so it is only ever pushed further out, until
+    // the box also fits across (a landscape viewport never binds it).
+    const distance = Math.max(longest * 2.0, horizontalFitDistance(bounds, center, options));
     return {
       kind: 'compact',
       aspect,
       target: center,
       position: {
-        x: center.x + distance * 0.6,
-        y: center.y + distance * 0.5,
-        z: center.z + distance * 0.6,
+        x: center.x + distance * COMPACT_DIRECTION.x,
+        y: center.y + distance * COMPACT_DIRECTION.y,
+        z: center.z + distance * COMPACT_DIRECTION.z,
       },
       up: { x: 0, y: 1, z: 0 },
       distance,
@@ -219,6 +242,44 @@ export function pickFitPolicy(
     up,
     distance,
   };
+}
+
+/**
+ * Smallest compact-pose `distance` (the multiplier on `COMPACT_DIRECTION`)
+ * at which every corner of the box lies inside the horizontal half-field with
+ * `COMPACT_HORIZONTAL_MARGIN` to spare, or 0 when no usable aspect was given.
+ *
+ * The same closed form as `marginDistanceFor` in `camera-framing.ts`, on the
+ * horizontal axis only: a corner at sideways offset `h` and depth `depth`
+ * (along the view) projects inside when `margin * |h| <= tanH * (standoff +
+ * depth)`. Each constraint only relaxes as the standoff grows, so the largest
+ * of the eight satisfies all of them.
+ */
+function horizontalFitDistance(bounds: Bounds3, center: Vec3, options: PickFitPolicyOptions): number {
+  const viewAspect = options.aspect;
+  if (viewAspect === undefined || !Number.isFinite(viewAspect) || viewAspect <= 0) return 0;
+  const tanH = Math.tan(options.fovY / 2) * viewAspect;
+  if (!Number.isFinite(tanH) || tanH <= 0) return 0;
+
+  const length = Math.hypot(COMPACT_DIRECTION.x, COMPACT_DIRECTION.y, COMPACT_DIRECTION.z);
+  // Unit view axes: forward looks from the camera at the target; right is
+  // forward x worldUp, which stays horizontal for this pose.
+  const forward = { x: -COMPACT_DIRECTION.x / length, y: -COMPACT_DIRECTION.y / length, z: -COMPACT_DIRECTION.z / length };
+  const rightLength = Math.hypot(forward.z, forward.x);
+  const right = { x: -forward.z / rightLength, y: 0, z: forward.x / rightLength };
+
+  let standoff = 0;
+  for (const x of [bounds.min.x, bounds.max.x]) {
+    for (const y of [bounds.min.y, bounds.max.y]) {
+      for (const z of [bounds.min.z, bounds.max.z]) {
+        const c = { x: x - center.x, y: y - center.y, z: z - center.z };
+        const depth = c.x * forward.x + c.y * forward.y + c.z * forward.z;
+        const h = Math.abs(c.x * right.x + c.z * right.z);
+        standoff = Math.max(standoff, (COMPACT_HORIZONTAL_MARGIN * h) / tanH - depth);
+      }
+    }
+  }
+  return standoff / length;
 }
 
 function pickLongestUnitAxis(sx: number, sy: number, sz: number): Vec3 {

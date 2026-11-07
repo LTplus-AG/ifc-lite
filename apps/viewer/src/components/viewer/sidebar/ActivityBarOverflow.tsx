@@ -6,7 +6,8 @@
  * The activity rail's overflow menu (#8802 R1): the icons that do not fit
  * the rail's height (a bottom dock or a short window), listed by name under
  * the same task-group headings the rail and the ribbon's panel browser use.
- * Opening one goes through the same handler as its rail icon.
+ * Opening one goes through the same handler as its rail icon. On the empty
+ * start screen it also holds the panels that need a model, each saying so.
  */
 
 import { Fragment } from 'react';
@@ -42,10 +43,12 @@ function locationText(t: T, location: PanelLocation, title: string): { name: str
   }
 }
 
-export function ActivityBarOverflow({ ids, locationOf, onSelect }: {
+export function ActivityBarOverflow({ ids, locationOf, onSelect, waiting = [] }: {
   ids: readonly WorkspacePanelId[];
   locationOf: (id: WorkspacePanelId) => PanelLocation;
   onSelect: (id: WorkspacePanelId) => void;
+  /** Panels here because no model is loaded yet (`foldModelPanels`), marked as such. */
+  waiting?: readonly WorkspacePanelId[];
 }) {
   const { t } = useTranslation();
   const anyOpen = ids.some((id) => locationOf(id) !== 'closed');
@@ -96,7 +99,10 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect }: {
           const group = def.group !== previous ? panelGroupDefinition(def.group) : null;
           const location = locationOf(id);
           const title = t(def.titleKey);
-          const { name, hint } = locationText(t, location, title);
+          const located = locationText(t, location, title);
+          const needsModel = waiting.includes(id);
+          const name = located.name;
+          const hint = needsModel ? t('shellChrome.activityBar.needsModelHint') : located.hint;
           return (
             <Fragment key={id}>
               {group && index > 0 && <DropdownMenuSeparator />}
@@ -108,7 +114,8 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect }: {
               <DropdownMenuItem
                 data-panel-id={id}
                 data-panel-location={location}
-                aria-label={hint ? name : undefined}
+                aria-label={located.hint ? name : needsModel ? `${title} · ${hint}` : undefined}
+                data-needs-model={needsModel ? '' : undefined}
                 onSelect={() => onSelect(id)}
                 className="gap-2"
               >

@@ -12,7 +12,8 @@
  * tooltip), and exactly one icon, the panel shown in the right pane, carries
  * the active state (`ActivityBarItem`). Icons that don't fit the rail's height
  * go into an overflow menu rather than being clipped (#8802 R1). With no model
- * loaded, model-dependent panels sit quiet. The footer toggles customize mode,
+ * loaded, model-dependent panels wait in that menu, marked as needing one, so
+ * the first screen's rail shows only what works without a model (#8802 R6). The footer toggles customize mode,
  * collapse, and a layout menu. In customize mode every icon becomes
  * drag-reorderable and gains an eye toggle inline (the rail scrolls then).
  */
@@ -49,7 +50,7 @@ import { useTourStore } from '@/lib/tours/tour-store';
 import { getTour } from '@/lib/tours/registry';
 import { ActivityBarItem } from './ActivityBarItem';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
-import { fitRail } from './rail-overflow';
+import { fitRail, foldModelPanels } from './rail-overflow';
 import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
 const CustomizeSidebar = lazy(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
 
@@ -142,12 +143,21 @@ export function ActivityBar() {
     }),
     [visibleIds],
   );
-  const fit = useMemo(
-    () => (customizing
-      ? { visible: entries.map((e) => e.id), overflow: [] }
-      : fitRail(entries, listHeight, [tourRailAnchor, primaryId])),
-    [customizing, entries, listHeight, primaryId, tourRailAnchor],
+  // On the empty start screen the rail offers what works without a model;
+  // the model-dependent panels wait in More (`foldModelPanels`).
+  const folded = useMemo(
+    () => (customizing || !viewerEmpty
+      ? { rail: entries, waiting: [] }
+      : foldModelPanels(entries, (id) => needsModel(id) && panelLocation(id) === 'closed', [tourRailAnchor, primaryId])),
+    [customizing, viewerEmpty, entries, panelLocation, tourRailAnchor, primaryId],
   );
+  const fit = useMemo(() => {
+    if (customizing) return { visible: entries.map((e) => e.id), overflow: [] };
+    const railFit = fitRail(folded.rail, listHeight, [tourRailAnchor, primaryId]);
+    // Rail order, so the menu's group headings stay one run per group.
+    const over = new Set([...railFit.overflow, ...folded.waiting]);
+    return { visible: railFit.visible, overflow: entries.map((e) => e.id).filter((id) => over.has(id)) };
+  }, [customizing, entries, folded, listHeight, primaryId, tourRailAnchor]);
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;
@@ -237,7 +247,7 @@ export function ActivityBar() {
           );
         })}
         {fit.overflow.length > 0 && (
-          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} />
+          <ActivityBarOverflow ids={fit.overflow} locationOf={panelLocation} onSelect={onIconClick} waiting={folded.waiting} />
         )}
       </div>
 

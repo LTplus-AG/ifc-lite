@@ -32,7 +32,6 @@ export const toursEn = {
   'tours.tourHost.loadDemoStack': 'Load demo stack',
   'tours.tourHost.loadDemoProject': 'Load demo project',
 
-  'tours.tourInvite.prompt': 'New here?',
   'tours.tourInvite.start': 'Take the two minute tour',
   'tours.tourInvite.dismissAriaLabel': 'Dismiss tour invite',
 

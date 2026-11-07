@@ -418,8 +418,9 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
             <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
 
-            {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
-                (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
+                Properties included (#5853, #8802 R6). Hidden in the empty state so the
+                "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
               <MobilePanelLauncher bottomInset={bottomViewportInset} />
             )}

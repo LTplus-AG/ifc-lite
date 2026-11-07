@@ -369,6 +369,9 @@ export class Camera {
     const fitOpts: PickFitPolicyOptions = {
       fovY: this.state.camera.fov,
       viewportShortPx: options?.viewportShortPx,
+      // The live viewport shape, so a portrait (phone) viewport frames the
+      // whole model across its narrower horizontal field.
+      aspect: this.state.camera.aspect,
     };
     const policy = pickFitPolicy(bounds, fitOpts);
     if (options?.animate) {

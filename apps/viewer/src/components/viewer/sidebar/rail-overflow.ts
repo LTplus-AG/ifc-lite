@@ -90,3 +90,28 @@ export function fitRail<Id extends string>(
 
   return { visible: all.filter((id) => shown.has(id)), overflow: all.filter((id) => !shown.has(id)) };
 }
+
+/**
+ * The empty start screen's rail (#8802 R6): panels that `waits` (they show
+ * only "open a model first" without one) leave the rail for the overflow
+ * menu, after the icons that work now, so twenty quiet icons do not
+ * outnumber the few ways in. Order within each half is rail order.
+ *
+ * A `pinned` id stays on the rail whatever it is: the current tour step's
+ * anchor must be there for the tour to point at, and the open panel keeps its
+ * active mark.
+ */
+export function foldModelPanels<Id extends string>(
+  entries: readonly RailEntry<Id>[],
+  waits: (id: Id) => boolean,
+  pinned: readonly (Id | null | undefined)[] = [],
+): { rail: RailEntry<Id>[]; waiting: Id[] } {
+  const keep = new Set(pinned.filter((id): id is Id => !!id));
+  const rail: RailEntry<Id>[] = [];
+  const waiting: Id[] = [];
+  for (const entry of entries) {
+    if (waits(entry.id) && !keep.has(entry.id)) waiting.push(entry.id);
+    else rail.push(entry);
+  }
+  return { rail, waiting };
+}

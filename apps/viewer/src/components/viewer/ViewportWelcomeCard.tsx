@@ -6,7 +6,13 @@
  * The action column of the no-model start screen: heading, the three ways to
  * start (open a file, open from cloud, start blank), recent files, the
  * "no model handy?" samples and the privacy footnote. `ViewportWelcome` lays
- * it out next to the layered 3D mark.
+ * it out next to the layered 3D mark, with the quiet learn/agent/shortcuts
+ * line (`WelcomeFooterChips`) under both.
+ *
+ * One filled action, then everything else in the theme's plain ink and muted
+ * ink (#8802 R6): the format list is ordinary text at the muted token, not a
+ * dimmed monospace run, and the agent link left the sample list, where it
+ * read as a third sample model.
  *
  * Opening your own model is the primary action. The demo project, which was
  * the first button from #5840 to the redesign, now sits with the other
@@ -18,7 +24,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Upload, Cloud, PackagePlus, Building2, GitMerge, Sparkles, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { Upload, Cloud, PackagePlus, Building2, GitMerge, ShieldCheck } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
@@ -29,7 +35,6 @@ import type { WebGPUStatus } from '@/hooks/useWebGPU';
 import { getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
 import { WelcomeRecentFiles } from './welcome/WelcomeRecentFiles';
 import { WebGpuDisabledCaption } from './WebGpuTroubleshooting';
-import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { trackUiEvent } from '@/lib/analytics';
@@ -42,10 +47,10 @@ const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 const ACTION = `inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold whitespace-nowrap transition-colors ${FOCUS} disabled:cursor-not-allowed disabled:opacity-45`;
 const PRIMARY = `${ACTION} bg-primary text-primary-foreground hover:bg-primary/90`;
-const SECONDARY = `${ACTION} px-2.5 text-sm text-zinc-700 hover:bg-zinc-200/60 hover:text-primary dark:text-[#c0caf5] dark:hover:bg-[#1f2335]`;
-const MUTED = 'text-zinc-500 dark:text-[#9aa3c7]';
+const SECONDARY = `${ACTION} px-2.5 text-sm text-foreground hover:bg-muted hover:text-primary`;
+const MUTED = 'text-muted-foreground';
 const SAMPLE = `group flex min-w-0 items-baseline gap-2 rounded-md py-1.5 text-left ${FOCUS} disabled:cursor-not-allowed disabled:opacity-45`;
-const SAMPLE_TITLE = 'flex items-center gap-1.5 text-sm font-semibold text-zinc-900 group-enabled:group-hover:text-primary dark:text-[#c0caf5]';
+const SAMPLE_TITLE = 'flex items-center gap-1.5 text-sm font-semibold text-foreground group-enabled:group-hover:text-primary';
 
 export interface ViewportWelcomeCardProps {
   webgpu: Pick<WebGPUStatus, 'supported' | 'checking'>;
@@ -109,7 +114,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="flex w-full max-w-[500px] flex-col">
-      <h2 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.035em] text-zinc-900 md:text-5xl dark:text-[#c0caf5]">
+      <h2 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.035em] text-foreground md:text-5xl">
         {t('viewportLighting.container.emptyState.heading')}
       </h2>
       <p className={`mt-4 text-base leading-relaxed ${MUTED}`}>
@@ -158,7 +163,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         {webgpu.supported ? (
           <>
             <span>{t('viewportLighting.container.emptyState.dragDropHint')}</span>{' '}
-            <span className="font-mono text-2xs opacity-80">{MODEL_FORMATS_LABEL}</span>
+            {/* Its own line: a list that breaks mid-run reads as ragged noise. */}
+            <span data-welcome-formats="" className="block">{MODEL_FORMATS_LABEL}</span>
           </>
         ) : <WebGpuDisabledCaption />}
       </p>
@@ -184,20 +190,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
             </span>
             <span className={`text-xs ${MUTED}`}>{t('viewportLighting.container.emptyState.noModel.layersHint')}</span>
           </button>
-          {/* Works without WebGPU: the MCP route drives the toolkit headless. */}
-          <a href="/mcp" className={`group flex min-w-0 items-baseline gap-2 rounded-md py-1.5 ${FOCUS}`}>
-            <span className={`${SAMPLE_TITLE} group-hover:text-primary`}>
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{t('viewportLighting.container.emptyState.driveWithLlm')}</span>
-              <ArrowUpRight className="h-3 w-3 opacity-60" aria-hidden="true" />
-            </span>
-            <span className={`text-xs ${MUTED}`}>{t('viewportLighting.container.emptyState.noModel.llmHint')}</span>
-          </a>
         </div>
       </section>
-
-      {/* First-run tour invite — needs loadFile, so it shares the WebGPU gate. */}
-      {webgpu.supported && !webgpu.checking && <TourInvite />}
 
       {/* Privacy footnote (#5119). The SAME catalogue key as `PrivacyBanner`
           in KeyboardShortcutsDialog.tsx — one key, two call sites, pinned by

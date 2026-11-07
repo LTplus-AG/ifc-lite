@@ -18,7 +18,8 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
-import { VIEW_CUBE_INSET_PX } from './viewcube-box';
+import { VIEW_CUBE_INSET_PX, VIEW_CUBE_RIGHT_INSET_PX } from './viewcube-box';
+import { MOBILE_NAV_BOTTOM } from './mobile-overlay-layout';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { WalkIndicator } from './walk/WalkIndicator';
@@ -184,7 +185,8 @@ export function ViewportOverlays({
           (`toolbar/CameraCommands`). */}
       {isMobile && !cesiumEnabled && (
         <div
-          className="absolute left-4 bottom-[15%] flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
+          className="absolute left-4 flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
+          style={{ bottom: MOBILE_NAV_BOTTOM }}
         >
           <Tooltip>
             <TooltipTrigger asChild>
@@ -258,7 +260,7 @@ export function ViewportOverlays({
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
+        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_RIGHT_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}

@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { fitRail, railHeight, RAIL_DIVIDER_PX, RAIL_ITEM_PX, RAIL_PADDING_PX, type RailEntry } from './rail-overflow.js';
+import { fitRail, foldModelPanels, railHeight, RAIL_DIVIDER_PX, RAIL_ITEM_PX, RAIL_PADDING_PX, type RailEntry } from './rail-overflow.js';
 
 const entries: RailEntry<string>[] = [
   { id: 'a', group: 'one' }, { id: 'b', group: 'one' }, { id: 'c', group: 'one' },
@@ -81,5 +81,21 @@ describe('activity rail overflow (#8802 R1)', () => {
     assert.deepEqual(fitRail(entries, RAIL_PADDING_PX + 5 * RAIL_ITEM_PX + 2 * RAIL_DIVIDER_PX, ['f', 'd']), {
       visible: ['a', 'b', 'd', 'f'], overflow: ['c', 'e'],
     });
+  });
+});
+
+describe('empty start screen rail (#8802 R6)', () => {
+  const waits = (id: string) => ['b', 'd', 'e'].includes(id);
+
+  it('moves the panels that need a model off the rail, keeping rail order in both halves', () => {
+    const { rail, waiting } = foldModelPanels(entries, waits);
+    assert.deepEqual(rail.map((e) => e.id), ['a', 'c', 'f']);
+    assert.deepEqual(waiting, ['b', 'd', 'e']);
+  });
+
+  it('keeps a pinned panel on the rail: the tour anchor and the open panel', () => {
+    const { rail, waiting } = foldModelPanels(entries, waits, ['d', null, undefined]);
+    assert.deepEqual(rail.map((e) => e.id), ['a', 'c', 'd', 'f']);
+    assert.deepEqual(waiting, ['b', 'e']);
   });
 });

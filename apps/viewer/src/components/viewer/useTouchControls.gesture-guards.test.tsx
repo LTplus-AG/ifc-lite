@@ -55,6 +55,21 @@ async function driftTap(canvas: HTMLCanvasElement, x: number, y: number, dx: num
   });
 }
 
+/**
+ * Whether a context menu got past the canvas. The mouse side prevents the
+ * default of any menu it handles, so `dispatchEvent`'s return value cannot
+ * tell a suppressed menu from a handled one; the long press stops its
+ * propagation.
+ */
+function reachesPage(canvas: HTMLCanvasElement, event: MouseEvent): boolean {
+  let reached = false;
+  const seen = () => { reached = true; };
+  window.addEventListener('contextmenu', seen);
+  canvas.dispatchEvent(event);
+  window.removeEventListener('contextmenu', seen);
+  return reached;
+}
+
 /** A trackpad right-click: the browser's contextmenu has no pointerType (Safari, iPadOS). */
 async function trackpadRightClick(canvas: HTMLCanvasElement, x: number, y: number) {
   await act(async () => {
@@ -161,19 +176,67 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     mock.timers.enable({ apis: ['setTimeout'] });
     const { canvas, menus } = rig('select', 42);
     act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
-    assert.equal(canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300)), false, 'an untyped native menu during the hold was shown');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'an untyped native menu during the hold was shown');
     await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
     act(() => {
-      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300));
-      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
     });
-    // Chrome's own long-press menu is a PointerEvent from the touch
-    assert.equal(canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s native menu was shown');
+    // Chrome's own long-press menu is a PointerEvent from the touch; an engine may mark it firesTouchEvents instead
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s native menu was shown');
+    const marked = mouseEvent('contextmenu', 200, 300);
+    Object.defineProperty(marked, 'sourceCapabilities', { value: { firesTouchEvents: true } });
+    assert.equal(reachesPage(canvas, marked), false, 'the touch\'s native menu, marked as from touch, was shown');
     act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
-    assert.equal(canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s trailing native menu was shown');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s trailing native menu was shown');
     mock.timers.reset();
     await act(settle);
     assert.equal(menus.length, 1, `the long press opened ${menus.length} viewer menus`);
+  });
+
+  it('a trackpad right-click lets one menu through: the touch\'s untyped native menu after it stays suppressed', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await trackpadRightClick(canvas, 210, 300);
+    assert.equal(menus.length, 1, 'the trackpad right-click opened no menu');
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    assert.equal(menus.length, 2, 'the long press opened its menu');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the touch\'s untyped native menu passed after the trackpad\'s');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the trailing untyped native menu passed');
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 2);
+  });
+
+  it('a trackpad left click near a held finger does not let its native menu through', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 1, 0));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+    });
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the native menu passed after a left click');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1);
+  });
+
+  it('Windows order: a mouse right press before the finger lands, its menu at the release, opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2, 'mouse'));
+      await settle();
+    });
+    assert.equal(menus.length, 1, `BUG: the mouse's own menu next to a finger that landed after its press opened ${menus.length} menus`);
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
   });
 
   it('a trackpad press far from the long press does not open its window', async () => {
@@ -183,10 +246,10 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
     act(() => {
       canvas.dispatchEvent(touchEvent('touchend', canvas, []));
-      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 600, 100));
-      canvas.dispatchEvent(pointer('pointerup', 'mouse', 600, 100));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 600, 100, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 600, 100, 0, 2));
     });
-    assert.equal(canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300)), false, 'the long press\'s trailing native menu was shown');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the long press\'s trailing native menu was shown');
     mock.timers.reset();
     await act(settle);
     assert.equal(menus.length, 1);
@@ -197,13 +260,13 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
     const { canvas, menus } = rig('select', 42);
     act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
     act(() => {
-      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300));
-      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
       canvas.dispatchEvent(touchEvent('touchend', canvas, []));
     });
     act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
     await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
-    assert.equal(canvas.dispatchEvent(mouseEvent('contextmenu', 200, 300)), false, 'the second long press\'s native menu was shown');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the second long press\'s native menu was shown');
     act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
     mock.timers.reset();
     await act(settle);
@@ -212,15 +275,15 @@ describe('a mouse or trackpad press near a touch long press keeps its context me
 });
 
 describe('a finger resting off the canvas is not part of a canvas gesture (#9122)', () => {
-  /** `event` with a thumb resting on a side panel added to its `touches`, as a browser lists every finger on the screen. */
-  function withRestingThumb<E extends Event>(event: E): E {
-    const panel = document.body;
-    const touches = [{ identifier: 99, target: panel, clientX: 20, clientY: 400 }, ...Array.from((event as unknown as TouchEvent).touches)];
-    Object.defineProperty(event, 'touches', { value: touches });
+  /** The fixture's touch event, with a thumb resting on a side panel in its `touches`: a browser lists every finger on the screen. */
+  function touch(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus'): Event {
+    const onCanvas = touchEvent(kind, canvas, points, touchType) as unknown as TouchEvent;
+    const event = new window.Event(kind, { bubbles: true, cancelable: true });
+    const thumb = { identifier: 99, target: document.body, clientX: 20, clientY: 400 };
+    Object.defineProperty(event, 'touches', { value: [thumb, ...Array.from(onCanvas.touches)] });
+    Object.defineProperty(event, 'changedTouches', { value: onCanvas.changedTouches });
     return event;
   }
-  const touch = (kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus') =>
-    withRestingThumb(touchEvent(kind, canvas, points, touchType));
 
   it('a canvas tap selects while a thumb rests on a panel', async () => {
     const { canvas, selectionCount } = rig('select', 42);

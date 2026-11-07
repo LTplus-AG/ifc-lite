@@ -110,7 +110,7 @@ export function routeMousePointers(
         if (gate.lift && atLift(e, gate.lift)) gate.lift = null;
         const rect = canvas.getBoundingClientRect();
         forgetTouchSelection(canvas, e.clientX - rect.left, e.clientY - rect.top); // nor a tap's, in Select
-        forgetTouchLongPress(canvas, e.clientX, e.clientY); // nor its context menu a long press's (#9087)
+        forgetTouchLongPress(canvas, e); // nor its context menu a long press's (#9087)
         void handlers.down(e);
         return;
       }

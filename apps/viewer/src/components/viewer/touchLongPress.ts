@@ -9,7 +9,7 @@ const HOLD_MS = 500;
 /** How long after a long press fires, and how near its point (CSS px), the touch's own native menu may still come. */
 const MENU_MS = 1_000, MENU_RADIUS_PX = 24;
 
-/** A point whose native menu is the touch's; `mouse` once a mouse or trackpad press near it was seen (#9087). */
+/** A point whose native menu is the touch's; `mouse` once a mouse or trackpad menu press near it was seen (#9087). */
 interface MenuPoint { x: number; y: number; mouse: boolean }
 
 const longPresses = new WeakMap<HTMLCanvasElement, { forget: (clientX: number, clientY: number) => void }>();
@@ -17,12 +17,13 @@ const longPresses = new WeakMap<HTMLCanvasElement, { forget: (clientX: number, c
 /**
  * A mouse or trackpad press near a held or just-fired long press, as the
  * mouse controls see it (the same press that closes a Pencil lift's click
- * window, #9043): the context menu after it is that press's own, so the long
- * press no longer swallows it (#9087). Its own menu, typed `touch` or `pen`,
- * stays suppressed.
+ * window, #9043). A right press, or a ctrl+click, opens a menu: the next
+ * untyped context menu near it is that press's own, so the long press lets it
+ * through once (#9087). The touch's own menu, typed `touch` or `pen`, stays
+ * suppressed; one typed `mouse` is never the touch's.
  */
-export function forgetTouchLongPress(canvas: HTMLCanvasElement, clientX: number, clientY: number): void {
-  longPresses.get(canvas)?.forget(clientX, clientY);
+export function forgetTouchLongPress(canvas: HTMLCanvasElement, e: MouseEvent): void {
+  if (e.button === 2 || e.ctrlKey) longPresses.get(canvas)?.forget(e.clientX, e.clientY);
 }
 
 export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: number, y: number) => void): {
@@ -86,8 +87,13 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
     suppressNativeMenu(event) {
       const point = start ?? (menuWindow && Date.now() < menuWindow.until ? menuWindow : null);
       if (!point || !near(point, event.clientX, event.clientY)) return;
-      const pointerType = (event as MouseEvent & { pointerType?: string }).pointerType;
-      if (point.mouse && pointerType !== 'touch' && pointerType !== 'pen') return;
+      const source = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };
+      if (source.pointerType === 'mouse') return;
+      const touchTyped = source.pointerType === 'touch' || source.pointerType === 'pen' || source.sourceCapabilities?.firesTouchEvents;
+      if (point.mouse && !touchTyped) {
+        for (const p of [start, menuWindow]) if (p) p.mouse = false; // the press's one menu
+        return;
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
     },

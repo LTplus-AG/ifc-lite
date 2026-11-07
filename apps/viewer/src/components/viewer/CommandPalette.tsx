@@ -11,10 +11,11 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
+import { PaletteLauncherContext } from './command-palette-launcher';
 import { useShallow } from 'zustand/react/shallow';
 import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
@@ -86,6 +87,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPaletteProps) {
+  const hostLauncher = useContext(PaletteLauncherContext);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [query, setQuery] = useState('');
@@ -250,7 +252,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext }: CommandPa
           style={{ top: 'min(12dvh, 96px)', maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
           onOpenAutoFocus={event => {
             event.preventDefault();
-            paletteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
             inputRef.current?.focus();
           }}
           onCloseAutoFocus={event => {

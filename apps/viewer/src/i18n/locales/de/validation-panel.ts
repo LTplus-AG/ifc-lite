@@ -36,7 +36,7 @@ export const validationPanelDe = {
   "validationPanel.running.requirements": "Anforderungen prüfen…",
   "validationPanel.result.population": {"one": "{countDisplay} Ergebnis der Entitätsspezifikation", "other": "{countDisplay} Ergebnisse der Entitätsspezifikation"},
   "validationPanel.result.applied": "{applied} von {total} Spezifikationen auf Bauteile angewendet",
-  "validationPanel.result.notApplicable": {"one": "Die Spezifikation {count} enthielt keine anwendbaren Bauteile", "other": "Die {count} Spezifikationen enthielten keine anwendbaren Bauteile"},
+  "validationPanel.result.notApplicable": {"one": "{count} Spezifikation enthielt keine anwendbaren Bauteile", "other": "Die {count} Spezifikationen enthielten keine anwendbaren Bauteile"},
   "validationPanel.result.unevaluable": {"one": "Die {count} Spezifikation konnte nicht ausgewertet werden", "other": "{count} Spezifikationen konnten nicht ausgewertet werden"},
   "validationPanel.result.setsCapped": {"one": "Die {count} Spezifikation hat ihre Satzprüfungen bei Erreichen des Grenzwerts gestoppt", "other": "Die {count} Spezifikationen haben ihre Set-Checks am Limit gestoppt"},
   "validationPanel.results.resizeSummary": "Größe der Validierungszusammenfassung ändern",

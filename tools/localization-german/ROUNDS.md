@@ -65,11 +65,21 @@ remain.
 
 Final root graph: 62 tests passed, 0 failed, 0 skipped across 14 selected files.
 Final GPU rerun: 10/10 checks passed, no page errors, actual render and repaired
-library accessible controls verified; source aea79e9a1c. No known major meaning
-defect remains in reviewed workflows. Both protected campaigns remain identical.
+library accessible controls verified; source aea79e9a1c. This is historical browser evidence, not semantic clearance of the current source. Both protected campaigns remained identical at that revision.
 
-Stop after 5 of 8 rounds: functional acceptance demonstrated. Final aggregate
+Historical stop decision at `aea79e9a1c`: functional acceptance demonstrated only for that source. Current release acceptance is pending. Final aggregate
 Pre-Handoff/root lint are externally blocked by a foreign cache lock on the PC;
 original request auto-0fce1bb98b224ca5af396a9d93a374d4 remains queued and must not
 be resubmitted. REPORT.md gives exact request, blocker, failures and skipped
 coverage. This is not an all-gates-green claim or native-speaker approval.
+
+## Current review reconciliation (after Settings integration)
+
+The adversarial review at `0a92c4aad` remains immutable evidence of four P2 findings at that source. Current dispositions:
+
+1. Cardinal counts: repaired remaining specification/card/model/section singular messages; earlier skipped-model, dry-run and IDS warning repairs remain. Counts describe quantities, never numbered identifiers.
+2. Table-mapping domain: already repaired to Spalte and Eigenschafts-/Mengensatz in merged batch 4.
+3. Elevation filter: repaired to Höhenlage des Geschosses, distinct from floor-to-floor height.
+4. Preview row modes: caller localization is being repaired using the existing document row-mode labels; stored enum values remain unchanged.
+
+Release status: pending current-source root CI, independent review and all ten real-GPU browser checks. Old 10/10 results do not certify the Settings-based workflow. No native-speaker approval is claimed.

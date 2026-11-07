@@ -1,6 +1,7 @@
 # German browser workflow evidence
 
-All ten browser checks pass against the final built preview on Pop (`pop-os`).
+Historical result only: all ten checks passed on source `aea79e9a1ca63c8e3aed03fa2a57ea2dde7bbed8` on Pop (`pop-os`).
+Acceptance of the current Settings-based workflow is pending a fresh passing GPU receipt.
 The coordinator repeated the full run after round 5; exit 0, no page errors,
 including explicit accessible-control assertions for all four repaired library labels. The
 committed building sample rendered on a hardware Intel Gen-12LP WebGPU adapter

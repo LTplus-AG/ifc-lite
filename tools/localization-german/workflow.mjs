@@ -15,11 +15,11 @@ const out = path.join(root, 'tools/localization-german/evidence');
 fs.mkdirSync(out, { recursive: true });
 const dependency = fs.readdirSync('node_modules/.pnpm').find(n => /^playwright@/.test(n));
 const { chromium } = await import(pathToFileURL(path.resolve('node_modules/.pnpm', dependency, 'node_modules/playwright/index.mjs')));
+assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use ifc-gpu-check; do not bypass GPU admission');
 const chromeRoot = path.join(os.homedir(), '.t3/tools/chrome-headless-shell/linux64');
 // A CDP worker owns its browser installation; local Chrome is only for launch.
 const executablePath = process.env.IFC_GPU_CDP_URL ? undefined
   : process.env.IFC_GPU_CHROME_PATH ?? path.join(chromeRoot, fs.readdirSync(chromeRoot).sort().at(-1), 'chrome-headless-shell');
-assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use ifc-gpu-check; do not bypass GPU admission');
 const browser = process.env.IFC_GPU_CDP_URL
   ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)
   : await chromium.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', ...process.env.IFC_GPU_CHROME_ARGS.split(/\s+/)] });
@@ -43,23 +43,26 @@ if (windowsCdp) {
 
 page.setDefaultTimeout(20000);
 const hashes=Object.fromEntries(['apps/viewer/dist/index.html','packages/wasm/pkg/ifc-lite_bg.wasm','apps/viewer/public/samples/building-architecture.ifc','apps/viewer/public/samples/building-architecture.ids'].map(p=>[p,createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
-const report = { mode: process.env.GERMAN_INSPECT === '1' ? 'inspection' : 'acceptance', hashes, at: new Date().toISOString(), host: os.hostname(), source: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), dirty: true, executablePath, gpuArgs: process.env.IFC_GPU_CHROME_ARGS, vulkanDriver: process.env.VK_DRIVER_FILES, checks: [], errors: [], wasm: [] };
+const report = { mode: process.env.GERMAN_INSPECT === '1' ? 'inspection' : 'acceptance', hashes, at: new Date().toISOString(), host: os.hostname(), source: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), dirty: Boolean(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim()), executablePath, gpuArgs: process.env.IFC_GPU_CHROME_ARGS, vulkanDriver: process.env.VK_DRIVER_FILES, checks: [], errors: [], wasm: [] };
 page.on('console',m=>{if(m.type()==='error'||/device|GPU/i.test(m.text()))fs.appendFileSync(path.join(out,'browser-console.log'),m.text()+'\n');});
 collectPageErrors(page, report);
 page.on('response', r => { if (/\.wasm(?:\?|$)/.test(r.url())) report.wasm.push({ url:r.url(), status:r.status() }); });
 const base = process.env.GERMAN_WORKFLOW_URL ?? 'http://127.0.0.1:5188/';
 const model = '?model=/samples/building-architecture.ifc';
 const save = async name => { await page.screenshot({path:path.join(out, name+'.png')}); fs.writeFileSync(path.join(out,name+'.txt'), await page.locator('body').innerText()); fs.writeFileSync(path.join(out,name+'-aria.txt'),await page.locator('body').ariaSnapshot()); };
-const check = async (name, fn) => { console.log('START',name); try { const detail = await fn(); report.checks.push({name,status:'pass',detail}); console.log('PASS',name); } catch(e) { report.checks.push({name,status:'fail',error:String(e)}); console.log('FAIL',name,String(e)); await save('failure-'+name.replace(/\W/g,'-')); } };
+const check = async (name, fn) => { console.log('START',name); try { const detail = await fn(); report.checks.push({name,status:'pass',detail}); console.log('PASS',name); } catch(e) { report.checks.push({name,status:'fail',error:String(e)}); console.log('FAIL',name,String(e)); try { await save('failure-'+name.replace(/\W/g,'-')); } catch (error) { console.warn('Failure snapshot unavailable', name, error); report.errors.push('Failure snapshot: '+String(error)); } } };
 try {
   // Readiness bounded to two minutes; no server or build is started by this harness.
-  for (let i=0;i<60;i++) { try { const r=await fetch(base); if(r.ok && (await r.text()).includes('<html'))break; } catch(e) { report.readinessError=String(e); } if(i===59)throw Error('Preview did not serve built HTML within 120 seconds'); await new Promise(r=>setTimeout(r,2000)); }
+  for (let i=0;i<60;i++) { try { const r=await fetch(base); if(r.ok && (await r.text()).includes('<html'))break; report.readinessError='HTTP '+r.status+' or response missing HTML'; } catch(e) { report.readinessError=String(e); } if(i===59)throw Error('Preview did not serve built HTML within 120 seconds: '+report.readinessError); await new Promise(r=>setTimeout(r,2000)); }
   await page.goto(base+model);
+  await check('locale-settings',async()=>{
   await page.getByRole('button',{name:'Settings',exact:true}).click();
   await page.locator('#settings-language').click();
   await page.getByRole('option',{name:'Deutsch',exact:true}).click();
   await page.waitForFunction(()=>document.documentElement.lang==='de');
   await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'de');
+  });
   await page.waitForFunction(() => document.documentElement.lang === 'de');
   report.gpu = await page.evaluate(async()=>{ const a=await navigator.gpu.requestAdapter(); if(!a)return null; return {...a.info.toJSON?.(),vendor:a.info.vendor,architecture:a.info.architecture,device:a.info.device,description:a.info.description,isFallbackAdapter:a.info.isFallbackAdapter??a.isFallbackAdapter}; });
   assert.ok(report.gpu && !report.gpu.isFallbackAdapter && !/swiftshader|llvmpipe/i.test(JSON.stringify(report.gpu)), 'Real GPU adapter required');
@@ -154,7 +157,6 @@ try {
       assert.ok(widths.document<=widths.viewport,'document must not overflow horizontally'); return widths;
     });
     // Workflow steps below exercise the actual UI; store reads are assertions only.
-    await check('locale-settings',async()=>{assert.equal(await page.locator('html').getAttribute('lang'),'de');assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),'de');});
     await check('locale-persistence',async()=>{
       await page.setViewportSize({width:1600,height:1000});
       await page.goto(base); await page.waitForFunction(()=>document.documentElement.lang==='de');
@@ -175,6 +177,7 @@ try {
       await page.getByRole('tab',{name:'Home',exact:true}).waitFor();
       // An obsolete URL parameter must neither select nor pin German (#9075).
       await page.goto(base+'?lang=de');
+      await page.waitForLoadState('networkidle');
       await page.getByRole('tab',{name:'Home',exact:true}).waitFor();
       assert.equal(await page.locator('html').getAttribute('lang'),'en');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ifc-lite:locale')),null);
@@ -186,4 +189,14 @@ try {
     });
   }
 } catch(e) { report.fatal=String(e); process.exitCode=1; }
-finally { await context.close(); await browser.close(); if(workflowFailed(report))process.exitCode=1; fs.writeFileSync(path.join(out,report.mode === 'inspection' ? 'inspection.json' : 'workflow.json'),JSON.stringify(report,null,2)+'\n'); console.log(JSON.stringify(report,null,2)); }
+finally {
+  const writeReport=()=>fs.writeFileSync(path.join(out,report.mode === 'inspection' ? 'inspection.json' : 'workflow.json'),JSON.stringify(report,null,2));
+  if(workflowFailed(report))process.exitCode=1;
+  writeReport();
+  for (const resource of [context,browser]) {
+    try { await resource.close(); }
+    catch(error) {console.warn('Browser cleanup failed',error);report.errors.push('Cleanup: '+String(error));process.exitCode=1;}
+  }
+  writeReport();
+  console.log(JSON.stringify(report,null,2));
+}

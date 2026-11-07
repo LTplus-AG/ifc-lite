@@ -9,7 +9,7 @@ import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
-import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, selectedSourceProducts, withoutMeasuredOverlayItems } from '@/lib/analytic/selected-source-products';
 import { selectedModelIds, selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
@@ -144,5 +144,7 @@ export function useSelectedSweptDisks(enabled: boolean, modelKeys?: SourceModelK
   }, [enabled, frame, shown, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
     hidden, isolated, classFilter, lensHidden]);
 
-  return result;
+  const mutationVersion = useViewerStore((state) => state.mutationVersion);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the version is what a set gained or lost changes.
+  return useMemo(() => withoutMeasuredOverlayItems(useViewerStore.getState(), result), [result, mutationVersion]);
 }

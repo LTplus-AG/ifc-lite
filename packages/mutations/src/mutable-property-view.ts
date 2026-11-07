@@ -38,9 +38,9 @@ export type PropertyExtractor = (entityId: number) => Array<{
 }>;
 
 /**
- * Function type for on-demand quantity extraction
+ * Function type for on-demand quantity extraction. `view` is the view asking (a draft reads its own edits), `occurrenceId` the entity asked about before any alias.
  */
-export type QuantityExtractor = (entityId: number) => QuantitySet[];
+export type QuantityExtractor = (entityId: number, view: MutablePropertyView, occurrenceId: number) => QuantitySet[];
 
 export class MutablePropertyView extends MutableOverlayState {
   private baseTable: PropertyTable | null;
@@ -682,7 +682,7 @@ export class MutablePropertyView extends MutableOverlayState {
   private getBaseQuantitiesForEntity(entityId: number): QuantitySet[] {
     const baseId = this.resolveBaseEntityId(entityId);
     if (this.quantityExtractor) {
-      return this.quantityExtractor(baseId);
+      return this.quantityExtractor(baseId, this, entityId);
     }
     return [];
   }

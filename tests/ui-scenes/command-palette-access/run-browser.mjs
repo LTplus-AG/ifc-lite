@@ -305,10 +305,10 @@ export default { ...base, testDir: ${JSON.stringify(join(ROOT, 'tests'))},
             manifest.skips = manifest.outcomes.filter(test => test.results.some(result => result.status === 'skipped'));
           } catch (error) { manifest.reportError = String(error); }
         }
-        if (manifest.outcomes.length !== 26 || manifest.skips.length ||
-            SPECS.some((spec, i) => manifest.outcomes.filter(test => test.file?.endsWith(spec.split('/').at(-1))).length !== [11, 14, 1][i]) ||
+        if (manifest.outcomes.length !== 27 || manifest.skips.length ||
+            SPECS.some((spec, i) => manifest.outcomes.filter(test => test.file?.endsWith(spec.split('/').at(-1))).length !== [11, 15, 1][i]) ||
             manifest.outcomes.some(test => test.status !== 'expected' || test.expectedStatus !== 'passed'))
-          throw new Error('Expected exactly 26 passing cases without skips; inspect e2e.json');
+          throw new Error('Expected exactly 27 passing cases without skips; inspect e2e.json');
       } else {
         const [script, scenes] = CAPTURES[mode];
         const captureOut = join(out, mode);

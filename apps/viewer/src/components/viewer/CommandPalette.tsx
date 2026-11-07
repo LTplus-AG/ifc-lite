@@ -14,10 +14,10 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
 
 import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
-import { toast } from '@/components/ui/toast';
-import { Search, X } from 'lucide-react';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
+import { toast } from '@/components/ui/toast';
+import { Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';

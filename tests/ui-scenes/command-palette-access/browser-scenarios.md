@@ -108,7 +108,7 @@ pnpm exec playwright test --project=viewer-e2e-ci --list \
   tests/e2e/command-palette-access-extension.e2e.spec.ts
 ```
 
-Expect 26 tests (11 frozen UX + 14 access + 1 extension). The portable runner
+Expect 27 tests (11 frozen UX + 15 access + 1 extension). The portable runner
 below replaces the machine-specific scratch preload recipe. It does not build,
 install dependencies, enter admission, modify specs or change assertions.
 Browser execution and physical GPU qualification remain **UNRUN** by its author.
@@ -199,7 +199,7 @@ They are transport tests, not substitutes for real browser and GPU acceptance.
 Retain `manifest.json`, `e2e.json`, `test-results/`, command logs, and each capture
 subdirectory. The compact runner manifest records host, observed source/tree/diff,
 artifact/receipt hashes, adapter proof, argv/exits, all test outcomes/attachments,
-skips, completed modes, not-run modes and partial failure. Exactly 26 passing
+skips, completed modes, not-run modes and partial failure. Exactly 27 passing
 cases without skips and 12 exact scene/theme pairs in each requested capture mode
 are required. A discovery or syntax pass is not a browser acceptance result.
 
@@ -302,8 +302,8 @@ remain in the evidence; this is not a claim of zero console messages.
 The runner now requires actual visible-canvas readback before starting cases;
 an offscreen pixel probe missed this failure. Physical-adapter checks remain.
 The PC helper-managed browser is unchanged. This is setup qualification only;
-all 26 cases, three capture matrices, source identity and zero skips still gate
-acceptance. See [evidence/pop-gpu-setup-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/pop-gpu-setup-qualification.json).
+all 27 cases, three capture matrices, source identity and zero skips still gate
+acceptance. See [evidence/pop-gpu-setup-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/pop-gpu-setup-qualification.json).
 
 The additional access case activates Screenshot from the real loaded palette,
 receives its actual PNG download, decodes it, checks nonblank image content and
@@ -319,6 +319,8 @@ not accepted from the mounted input-click witness alone.
 Two additional browser-only closure cases (UNRUN): Presentation creates a
 decoded nonblank live thumbnail and replays a deliberately changed camera;
 Plan refuses measured 800px and mobile 390px contexts without losing the
-loaded model or 3D canvas. The runner requires 26 cases (11 UX, 14 access,
+loaded model or 3D canvas. The runner requires 27 cases (11 UX, 15 access,
 1 installed extension), zero skips. Historical 22/24-case sources are not
 relabelled as this protocol.
+
+R4 adds the exact contextual visibility-reset journey: real loaded IFC, palette collection/Hide/reset, preserved selection and collection, renderer visibility-input recovery, inactive searchable refusal, and separate Show all teardown. Its screenshots and behavior remain UNRUN. The runner now requires 27/27; previous 22/26-case source receipts are not substitutes.

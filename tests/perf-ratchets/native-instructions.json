@@ -8,14 +8,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "parse: entity scan + lookup + preprocess + untimed glue phase, callgrind Ir, single thread",
-      "ceiling": 90489705,
+      "ceiling": 90441551,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
-        "measuredAt": "2026-10-30T09:12:25.476Z"
+        "commit": "fbc7a6acd55cb22b1cb7dba5c145bfb537890cb3",
+        "measuredAt": "2026-11-07T09:26:05.223Z"
       }
     },
     {

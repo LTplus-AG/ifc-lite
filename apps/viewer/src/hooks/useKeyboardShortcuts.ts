@@ -87,11 +87,19 @@ function splitSelected(): void {
   state.startCommand('element.split');
 }
 
+/**
+ * A focused button, link or select acts on its own Space and Enter: the
+ * browser presses it, so a global key must not run instead and prevent that.
+ * Enter on a focused Cancel in the Measurements list cancels rather than
+ * finishes (#9113); Enter from the canvas still finishes.
+ */
+function focusedControlOwnsKey(): boolean {
+  const tag = document.activeElement?.tagName;
+  return tag === 'BUTTON' || tag === 'SELECT' || tag === 'A';
+}
+
 function hideSelected(event: KeyboardEvent): boolean {
-  if (event.key === ' ') {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return false;
-  }
+  if (event.key === ' ' && focusedControlOwnsKey()) return false;
   return hideSelectionFromStore();
 }
 
@@ -135,7 +143,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
     showAllFromStore('a');
   }],
   ['measure.cancel', cancelMeasurement],
-  ['measure.finish', finishOpenMeasureSequence],
+  ['measure.finish', () => !focusedControlOwnsKey() && finishOpenMeasureSequence()],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['section.previousPlane', () => stepSectionPlane(-1)],
   ['section.nextPlane', () => stepSectionPlane(1)],

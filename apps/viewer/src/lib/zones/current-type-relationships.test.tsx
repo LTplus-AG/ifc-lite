@@ -203,7 +203,7 @@ test('#9192 the reference budget counts only what a read of each relationship co
   const objects = Array.from({ length: 600 }, (_, i) => 3000 + i);
   const definitions = Array.from({ length: 600 }, (_, i) => 5000 + i);
   const relationship = (named: number[]) => `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
-  const read = (store: IfcDataStore, view: MutablePropertyView) => [describe(store, 10, view), describe(everyRelationshipRead(store), view)];
+  const read = (store: IfcDataStore, view: MutablePropertyView) => [describe(store, 10, view), describe(everyRelationshipRead(store), 10, view)];
 
   const walls = await parse([...BASE, ...objects.map(wall), ...definitions.map(wall), relationship(definitions)]);
   assert.deepEqual(read(walls, new MutablePropertyView(null, 'm')), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'],

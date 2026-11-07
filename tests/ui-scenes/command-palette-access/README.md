@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/52f38ed030c2c8fd548fd3f1285550501c6c8988/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -199,3 +199,19 @@ unresolved, and candidate behavior coverage is still pending. Source accounting
 is not a completeness verdict. The author-host implementer reclaimed 2,297,930
 bytes of its own redundant dry-run and verbose guard output, retaining compact
 receipts and preserving source, fixtures, evidence and foreign jobs.
+
+## Round 1 extension-command checkpoint
+
+All manifest commands already enter the canonical command slot. Palette rows now
+use an encoded owner/command tuple, show the owner and search the description and
+category. Ambiguous legacy recent IDs are not assigned to an arbitrary owner.
+Palette, toolbar and keyboard dispatch once through the canonical host; they no
+longer pre-fire the activation event. Live checks reject removed/replaced slots
+and a replaced React host before command usage or telemetry is recorded.
+
+New unit and mounted regressions exercise colliding command names, owner routing,
+real wrapped fixture handlers, stale contributions/providers, asynchronous error
+feedback and toolbar/keyboard placement rules. Runtime assertions and typecheck
+remain unexecuted pending dependency builds; no coverage acceptance is claimed.
+The runtime implementer reclaimed 2,239,988 bytes of redundant dry-run output,
+retaining its compact receipt. Original queued validation requests are preserved.

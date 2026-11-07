@@ -4,26 +4,29 @@
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { createElementFieldReader } from './charts/element-field-reader.js';
+import { effectiveStoreyElevation } from '@ifc-lite/create';
 
-/** Metre elevations for the storeys in a live level-display grouping. */
+/**
+ * Metre elevations for the storeys in a live level-display grouping. An
+ * edited or authored storey reads through the canonical live elevation
+ * (named and positional Elevation edits, storeys added this session, #9013);
+ * an untouched one keeps its parsed elevation, and one the parse never
+ * placed stays absent.
+ */
 export function effectiveLevelElevations(
   store: IfcDataStore,
   view: MutablePropertyView,
   storeyIds: Iterable<number>,
 ): Map<number, number> {
   const out = new Map<number, number>();
-  const reader = createElementFieldReader(store, view);
-  const scale = store.lengthUnitScale ?? 1;
   for (const id of storeyIds) {
-    const edited = view.getAttributeMutationsForEntity(id)
-      .find((mutation) => mutation.name === 'Elevation')?.value;
-    const authored = view.getNewEntity(id)
-      ? reader.read(id, { kind: 'attribute', attributeName: 'Elevation', valueKind: 'category' })
-      : undefined;
-    const raw = edited ?? authored;
-    if (raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw))) {
-      out.set(id, Number(raw) * scale);
+    // Only an edit that can move the level counts: a rename leaves it where the parse put it.
+    const touched = view.getNewEntity(id) != null
+      || view.getEntityTypeMutation(id) != null
+      || view.getAttributeMutationsForEntity(id).some(({ name }) => name === 'Elevation')
+      || view.getPositionalMutationsForEntity(id)?.has(9) === true;
+    if (touched) {
+      out.set(id, effectiveStoreyElevation(store, view, id));
       continue;
     }
     const source = store.spatialHierarchy?.storeyElevations.get(id);

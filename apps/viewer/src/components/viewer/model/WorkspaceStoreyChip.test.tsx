@@ -26,6 +26,7 @@ import type { SnapResult } from '@/lib/snap/types';
 import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
+import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { ViewportHud } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
 
@@ -58,6 +59,68 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.match(topLeft()?.textContent ?? '', /L1\+3\.00 m/);
     act(() => { useViewerStore.getState().exitModelWorkspace(); });
     assert.equal(chipButton(), null);
+  });
+
+  it('Add storey above adds nothing once the session has moved to another model (#9037 review)', async () => {
+    const first = useViewerStore.getState().models.get(MODEL_ID)!;
+    const firstView = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
+    const parsedSecond = useViewerStore.getState().models.get(MODEL_ID)!;
+    const second = { ...parsedSecond, id: 'structural', name: 'Structural', idOffset: 1_000_000 };
+    const secondView = new MutablePropertyView(second.ifcDataStore!.properties, second.id);
+    act(() => {
+      useViewerStore.setState({
+        ...fixtureModels(first, second),
+        mutationViews: new Map([[first.id, firstView], [second.id, secondView]]),
+      });
+      useViewerStore.getState().enterModelWorkspace({ modelId: first.id, storeyId: STOREY });
+    });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    const added = (view: MutablePropertyView) => view.getNewEntities().filter((e) => e.type.toUpperCase() === 'IFCBUILDINGSTOREY').length;
+    // The click starts the module load; the session moves to the other model before it resolves.
+    act(() => {
+      click(add);
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
+    });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(added(firstView), 0, 'no storey was written to the model left behind');
+    assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
+  });
+
+  it('Add storey above from a session that has ended does nothing, even after re-entering the same model (#9037 review)', async () => {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    const before = modelStoreys(useViewerStore.getState(), MODEL_ID).length;
+    act(() => {
+      click(add);
+      useViewerStore.getState().exitModelWorkspace();
+      useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY });
+    });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID).length, before, 'the abandoned click added nothing');
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'and the new session stays where it opened');
+  });
+
+  it('Add storey above goes above the storey drawn on when the click resolves (#9037 review)', async () => {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    openList();
+    const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
+      .find((b) => b.textContent?.includes('Add storey above'))!;
+    // Clicked on L0; the session moves to L1 before the module load resolves.
+    act(() => { click(add); useViewerStore.getState().setSessionStorey(UPPER_STOREY); });
+    await import('@/lib/storeys/storey-actions');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const created = useViewerStore.getState().session!.storeyId!;
+    assert.ok(created !== STOREY && created !== UPPER_STOREY, 'the new storey is drawn on');
+    const elevations = new Map(modelStoreys(useViewerStore.getState(), MODEL_ID).map((st) => [st.expressId, st.elevation]));
+    assert.ok(elevations.get(created)! > elevations.get(UPPER_STOREY)!, 'it sits above L1, the storey drawn on, not between L0 and L1');
   });
 
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {
@@ -104,7 +167,11 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       const written = secondView.getNewEntities().filter((entity) => entity.type === 'IfcWall');
       assert.equal(written.length, 1, 'the real command writes a wall only to the chosen model');
       assert.equal(firstView.getNewEntities().length, 0, 'the first model stays untouched');
-      assert.equal(useViewerStore.getState().undoStacks.get(second.id)?.length, 1);
+      // One undo step: the wall and its recorded top (#9013) share one batch.
+      const stack = useViewerStore.getState().undoStacks.get(second.id) ?? [];
+      const tags = stack.map((mutation) => useViewerStore.getState().mutationBatchTags.get(mutation.id));
+      assert.ok(stack.length > 1 && tags.every((tag) => tag !== undefined), 'every record of the wall carries a batch tag');
+      assert.equal(new Set(tags).size, 1);
       act(() => { useViewerStore.getState().undo(second.id); });
       assert.equal(secondView.getNewEntities().filter((entity) => entity.type === 'IfcWall').length, 0);
     } finally {

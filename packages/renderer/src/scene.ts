@@ -212,7 +212,7 @@ export class Scene {
         buckets: this.buckets, reverse: () => this.meshDataBucket,
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
         release: batch => { this.dropPartialCacheForBatch(batch); this.lastDrawnFrame.delete(batch.id); destroyGpuResources(batch); },
-        changed: key => this.markBucketDirty(key),
+        changed: key => this.markBucketDirty(key), restore: bucket => { if (bucket.batchedMesh) this.subsetResidency.rebuildEvicted(bucket, bucket.batchedMesh, device, pipeline); },
         refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); this.pickGeometryRevision++; },
       },
       adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
@@ -516,7 +516,7 @@ export class Scene {
   }
 
   /** A partial sub-batch wants an evicted batch's CPU pieces, not its GPU buffers (#9050). */
-  requestBatchPieces(batch: BatchedMesh): void { this.subsetResidency.requestPieces(batch); }
+  requestBatchPieces(batch: BatchedMesh): boolean { return this.subsetResidency.requestPieces(batch); }
 
   hasResidencyRestoreWork(): boolean {
     return this.residencyRestoreQueue.size > 0;

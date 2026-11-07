@@ -213,10 +213,10 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
-import { batchForWholeDraw } from './residency.js';
+import { batchForWholeDraw, pushWholeSplit } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -2408,32 +2408,17 @@ export class Renderer {
                         }
                     }
 
-                    // Fully visible (or no filtering) — this batch draws from its OWN
-                    // GPU buffers. An evicted batch (residency budget, #1682 phase 3a)
-                    // is skipped for a frame while its rebuild is queued; the partial
-                    // path above is unaffected (sub-batches own separate buffers built
-                    // from CPU meshData).
+                    // Fully visible but drawn as sub-batches: per X-Ray alpha (#4129), or
+                    // promoted/remaining for a transparent batch with mixed overrides
+                    // (#677). Decided before the residency step, since the subsets never
+                    // read the parent's own GPU buffers (#9136).
+                    if (pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent)) continue;
+
+                    // Drawn from its OWN GPU buffers. An evicted batch (residency budget,
+                    // #1682 phase 3a) is skipped for a frame while its rebuild is queued.
                     const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
                     if (!whole) { frameBatchesNotResident++; continue; }
                     batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
-
-                    // X-Ray names entities, not batches: a batch whose entities
-                    // resolve to different alphas splits per alpha (#4129) rather
-                    // than fading whole to the minimum.
-                    if (pushAlphaSplit(batch, null)) continue;
-
-                    // Transparent batches with mixed
-                    // override membership must be split so non-overridden batchmates
-                    // stay transparent — see splitVisibleIdsByPromotion / issue #677.
-                    if (nativelyTransparent) {
-                        const split = splitVisibleIdsByPromotion(batch.expressIds, colorOverrides);
-                        if (split != null && split.remaining.size > 0) {
-                            // Mixed promotion — re-route through the partial-batch path
-                            // with distinct sourceBatchKeys for each subset.
-                            pushVisibleAsPartial(batch, new Set(batch.expressIds), true);
-                            continue;
-                        }
-                    }
 
                     if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
                         transparentBatches.push(batch);

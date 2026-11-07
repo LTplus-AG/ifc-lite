@@ -80,6 +80,8 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     const form = ui.querySelector('form'); assert(form);
     act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
     await waitFor(() => Boolean(ui.textContent?.includes('Can publish')), 'registry login should finish');
+    // Login continues into the catalog and release metadata; let it land before unmounting.
+    await waitFor(() => Boolean(ui.textContent?.includes('Published by writer')), 'release metadata should load');
     const transport = useRegistryWorkspace.getState().transport; assert(transport); assert(transport.can('push'));
     cleanup();
     ui = await mount(); click(button(ui, 'Model registry (experimental)'));
@@ -88,7 +90,7 @@ test('closing and reopening Cloud Sources preserves the connection; explicit sig
     assert.equal(signIns, 1, 'reopening does not ask for a second token');
     assert(ui.textContent?.includes('Published by writer'));
     const details = ui.querySelector('details'); assert(details); assert.equal(details.open, false, 'full fingerprints are collapsed');
-    assert.equal(ui.querySelector<HTMLSelectElement>('select')?.selectedOptions[0]?.textContent, 'Sample building');
+    assert.equal(ui.querySelector('[role="combobox"]')?.textContent, 'Sample building');
     click(button(ui, 'Sign out'));
     await waitFor(() => useRegistryWorkspace.getState().session === null && !useRegistryWorkspace.getState().signOutPending, 'server revocation should complete sign-out');
     assert.equal(useRegistryWorkspace.getState().session, null);

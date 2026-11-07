@@ -7,6 +7,7 @@ import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { localRegistryAddress } from '@/lib/registry/connection';
 import { RegistryError } from '@/lib/registry/protocol';
 import type { RegistryTransport } from '@/lib/registry/transport';
@@ -34,11 +35,12 @@ export function RegistryShares({ transport, repository, tag, busy, run }: {
     <Button variant="ghost" disabled={busy} onClick={() => { setOpened(!opened); if (!opened) run(load); }}>{t('registry.share.manage')}</Button>
     {opened && <>
       <p className="text-xs text-muted-foreground">{t('registry.share.notice')}</p>
-      <Label htmlFor={`${id}-mode`}>{t('registry.share.access')}</Label>
-      <select id={`${id}-mode`} value={mode} onChange={e => { setMode(e.target.value); setLink(''); }} disabled={busy} className="h-9 rounded-md border bg-background px-2 text-sm">
-        <option value="snapshot">{t('registry.share.snapshot')}</option><option value="live">{t('registry.share.live')}</option>
-        {transport.can('push', repository) && <option value="publish">{t('registry.share.publish')}</option>}
-      </select>
+      <Label id={`${id}-mode-label`} htmlFor={`${id}-mode`}>{t('registry.share.access')}</Label>
+      <Select value={mode} onValueChange={value => { setMode(value); setLink(''); }} disabled={busy}>
+        <SelectTrigger id={`${id}-mode`} aria-labelledby={`${id}-mode-label`}><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="snapshot">{t('registry.share.snapshot')}</SelectItem><SelectItem value="live">{t('registry.share.live')}</SelectItem>
+          {transport.can('push', repository) && <SelectItem value="publish">{t('registry.share.publish')}</SelectItem>}</SelectContent>
+      </Select>
       <Label htmlFor={`${id}-ttl`}>{t('registry.share.hours')}</Label>
       <Input id={`${id}-ttl`} type="number" min="1" max="720" step="1" value={hours} disabled={busy} onChange={e => { setHours(e.target.value); setLink(''); }} />
       <Button disabled={busy || !repository || (mode === 'snapshot' && (!tag || tag.startsWith('sha256:')))} onClick={() => run(async () => {

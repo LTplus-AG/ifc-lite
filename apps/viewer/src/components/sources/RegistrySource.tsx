@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
@@ -136,13 +137,13 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
 
   return <li className={`rounded-lg border bg-background ${expanded ? 'border-primary/40' : ''}`}>
     <div className="flex items-center gap-1 p-2">
-      <button type="button" disabled={navigationDisabled || busy} onClick={onToggle} aria-expanded={expanded} aria-controls={`${id}-content`}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1.5 text-left hover:bg-accent disabled:cursor-default">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Database className="h-5 w-5 text-muted-foreground" aria-hidden="true" /></span>
+      <Button type="button" variant="ghost" disabled={navigationDisabled || busy} onClick={onToggle} aria-expanded={expanded} aria-controls={`${id}-content`}
+        className="h-auto min-w-0 flex-1 justify-start whitespace-normal p-1.5 text-left font-normal disabled:pointer-events-auto disabled:cursor-default disabled:opacity-100">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Database className="!size-5 text-muted-foreground" aria-hidden="true" /></span>
         <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t('registry.title')}</span>
           <span className="block truncate text-xs text-muted-foreground">{session ? t('registry.connected') : t('sources.workspace.notConnected')}</span></span>
         {expanded ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
-      </button>
+      </Button>
     </div>
     <fieldset id={`${id}-content`} hidden={!expanded} disabled={navigationDisabled} aria-label={t('registry.title')} className="min-w-0 space-y-3 border-t p-3">
       {signOutPending ? <div className="grid gap-2">
@@ -174,19 +175,21 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
           <Button size="sm" variant="ghost" disabled={busy} onClick={logout}>{t('registry.signOut')}</Button>
         </div>
         {models.length ? <>
-          <Label htmlFor={`${id}-model`}>{t('registry.model')}</Label>
-          <select id={`${id}-model`} value={repository} disabled={busy} className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm" onChange={event => void run(signal => browseModel(event.target.value, signal))}>
-            {models.map(model => <option key={model} value={model}>{modelTitles[model] || displayModel(model)}</option>)}
-          </select>
+          <Label id={`${id}-model-label`} htmlFor={`${id}-model`}>{t('registry.model')}</Label>
+          <Select value={repository} disabled={busy} onValueChange={value => void run(signal => browseModel(value, signal))}>
+            <SelectTrigger id={`${id}-model`} aria-labelledby={`${id}-model-label`} className="min-w-0"><SelectValue /></SelectTrigger>
+            <SelectContent>{models.map(model => <SelectItem key={model} value={model}>{modelTitles[model] || displayModel(model)}</SelectItem>)}</SelectContent>
+          </Select>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">{t(transport.can('push', repository) ? 'registry.writable' : 'registry.readOnly')}</p>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(signal => browseModel(repository, signal))}>{t('registry.refresh')}</Button>
           </div>
           {releases.length ? <>
-            <Label htmlFor={`${id}-release`}>{t('registry.release')}</Label>
-            <select id={`${id}-release`} value={release} disabled={busy} className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm" onChange={event => update({ release: event.target.value, fingerprint: '' })}>
-              {releases.map(item => <option key={item.tag} value={item.tag}>{releaseLabel(item)}</option>)}
-            </select>
+            <Label id={`${id}-release-label`} htmlFor={`${id}-release`}>{t('registry.release')}</Label>
+            <Select value={release} disabled={busy} onValueChange={value => update({ release: value, fingerprint: '' })}>
+              <SelectTrigger id={`${id}-release`} aria-labelledby={`${id}-release-label`} className="min-w-0"><SelectValue /></SelectTrigger>
+              <SelectContent>{releases.map(item => <SelectItem key={item.tag} value={item.tag}>{releaseLabel(item)}</SelectItem>)}</SelectContent>
+            </Select>
             {selected && <RegistryPublication release={selected} />}
             <Button disabled={busy || !release} onClick={() => void run(signal => pull(release, signal))}>{t('registry.open')}</Button>
           </> : <p className="text-sm text-muted-foreground">{t('registry.noReleases')}</p>}

@@ -1141,10 +1141,6 @@ export class Scene {
   }
 
   /**
-   * Get all MeshData pieces for an expressId (without merging).
-   * Optionally filter by modelIndex for multi-model safety.
-   */
-  /**
    * Iterate every CPU-side `MeshData` the scene holds — every piece
    * for every expressId across every model. Used by the BIM ↔ scan
    * deviation BVH builder which needs world-space triangle positions
@@ -1174,6 +1170,9 @@ export class Scene {
       }
     }
   }
+
+  /** How many pieces are listed under `expressId`, across models, without touching them. */
+  getMeshDataPieceListLength(expressId: number): number { return this.meshDataMap.get(expressId)?.length ?? 0; }
 
   /** #4382: `itemId`, when given, narrows the returned pieces to those whose
    *  `geometryItemId` matches (undefined never matches, so no silent fallback). */
@@ -1708,7 +1707,7 @@ export class Scene {
    *  rebuilt from the entity's current geometry on the next render. Used after a
    *  translate or removal, which mutate the underlying geometry but don't touch
    *  these standalone highlight meshes. */
-  private evictHighlightMeshes(expressId: number, hydratedOnly = false): void {
+  evictHighlightMeshes(expressId: number, hydratedOnly = false): void {
     if (this.meshes.length === 0) return;
     const kept: Mesh[] = [];
     for (const mesh of this.meshes) {

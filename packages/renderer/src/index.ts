@@ -197,6 +197,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
+import { addMergedSelectionMeshes, hydrateSelectedEntities, retireStaleSelectionHydration } from './selection-hydration.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -279,6 +280,7 @@ export class Renderer {
     private postPasses: PostPassChain | null = null;
     /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
     private readonly hoverMeshes = new HoverMeshCache();
+    private warnedMergedUpload = false;
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
     private maxPixelRatio = MAX_DRAWING_BUFFER_PIXEL_RATIO;
@@ -1407,6 +1409,19 @@ export class Renderer {
         });
     }
 
+    /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */
+    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): void {
+        const outcome = runGuardedGpuUpload(
+            () => this.isDeviceLost(),
+            () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)),
+            (error) => this.reportUploadLoss(error),
+        );
+        if (!outcome.ok && outcome.reason === 'error' && !this.warnedMergedUpload) {
+            this.warnedMergedUpload = true;
+            console.warn('[Renderer] merged selection highlight upload failed; the entity stays selected without a highlight:', outcome.error);
+        }
+    }
+
     /**
      * On a selection change, free the hydrated (pick/selection-highlight)
      * individual meshes whose entity is no longer selected. These duplicate
@@ -1745,6 +1760,7 @@ export class Renderer {
         // Only acts on a selection change (avoids per-frame buffer churn) and
         // never touches authored (non-hydrated) or batch geometry.
         this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
+        retireStaleSelectionHydration(this.scene, selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
 
         let meshes = this.scene.getMeshes();
 
@@ -2783,33 +2799,11 @@ export class Renderer {
                     visibleSelectedIds.add(selId);
                 }
 
-                // Only build per-mesh piece counts when we actually have selected
-                // elements that need individual mesh rendering. This avoids iterating
-                // 200K+ meshes every frame when nothing is selected.
-                if (visibleSelectedIds.size > 0) {
-                    const allMeshesFromScene = this.scene.getMeshes();
-                    const existingPieceCounts = new Map<string, number>();
-                    for (const mesh of allMeshesFromScene) {
-                        const key = `${mesh.expressId}:${mesh.modelIndex ?? 'any'}`;
-                        existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
-                    }
-
-                    for (const selId of visibleSelectedIds) {
-                        const pieceItemId = selId === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
-                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex, pieceItemId);
-                        if (!pieces || pieces.length === 0) continue;
-
-                        const seenOrdinalsByKey = new Map<string, number>();
-                        for (const piece of pieces) {
-                            const meshKey = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
-                            const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
-                            seenOrdinalsByKey.set(meshKey, ordinal + 1);
-                            const baselineExisting = existingPieceCounts.get(meshKey) ?? 0;
-                            if (ordinal < baselineExisting) continue;
-                            this.createMeshFromData(piece);
-                        }
-                    }
-                }
+                hydrateSelectedEntities(
+                    this.scene, visibleSelectedIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId,
+                    (piece) => { this.createMeshFromData(piece); },
+                    (pieces, merged) => { this.createMergedMeshes(pieces, merged); },
+                );
 
                 const selectedMeshes = visibleSelectedIds.size > 0
                     ? this.scene.getMeshes().filter(mesh => {

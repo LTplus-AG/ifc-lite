@@ -12,14 +12,16 @@
  * over its own batch copy. These copies are only ever drawn into the mask.
  *
  * Every piece of the entity is uploaded (a window or a layered wall is several
- * pieces), through the same `uploadIndividualMesh` selection hydration uses,
- * so the outline is bit-coincident with the batch it traces. The copies are
+ * pieces), through the same uploads selection hydration uses, so the outline
+ * is bit-coincident with the batch it traces. An entity above
+ * `MERGE_PIECES_ABOVE` pieces uploads merged, since merely moving the pointer
+ * over one must not cost a buffer pair per piece (#9192). The copies are
  * rebuilt only when the hovered (model, id) changes, and the previous ones are
  * destroyed then; `release()` frees them when nothing is hovered.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { uploadIndividualMesh, type IndividualMeshFrame, type IndividualMeshGpu } from './individual-mesh-upload.js';
+import { MERGE_PIECES_ABOVE, uploadIndividualMesh, uploadMergedMeshes, type IndividualMeshFrame, type IndividualMeshGpu } from './individual-mesh-upload.js';
 
 export class HoverMeshCache {
   private key: string | null = null;
@@ -40,7 +42,10 @@ export class HoverMeshCache {
     if (key === this.key) return this.pieces;
     this.release();
     this.key = key;
-    this.pieces = (pieces() ?? []).map((meshData) => uploadIndividualMesh(device, meshData, frameOf(meshData)));
+    const source = pieces() ?? [];
+    this.pieces = source.length > MERGE_PIECES_ABOVE
+      ? uploadMergedMeshes(device, source, frameOf)
+      : source.map((meshData) => uploadIndividualMesh(device, meshData, frameOf(meshData)));
     return this.pieces;
   }
 

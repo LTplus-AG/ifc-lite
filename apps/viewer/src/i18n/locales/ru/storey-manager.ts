@@ -129,6 +129,7 @@ export const storeyManagerRu = {
   "storeyManager.delete": "Удалить {storey}",
   "storeyManager.deleted": "{storey} удалён",
   "storeyManager.undo": "Отменить",
+  "storeyManager.undoStale": "Не отменено: после этого удаления были другие изменения. Сначала отмените их на панели инструментов.",
   "storeyManager.delete.title": {
     "one": "{storey} содержит {count} элемент",
     "few": "{storey} содержит {count} элемента",

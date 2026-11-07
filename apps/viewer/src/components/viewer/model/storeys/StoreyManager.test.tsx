@@ -22,6 +22,7 @@ import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { Toaster } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 let restore: () => void = () => {};
@@ -162,6 +163,29 @@ describe('storey manager (#9013)', () => {
     await waitFor(() => rows(ui).length === 1, 'the storey is gone');
     act(() => useViewerStore.getState().undo(MODEL_ID));
     await waitFor(() => rows(ui).length === 2, 'Undo brings it back');
+  });
+
+  it('the deletion toast undoes that deletion only, never a later edit (#9037 review)', async () => {
+    const { StoreyManager } = await requiredModule(() => import('./StoreyManager'), 'the storey manager exists (#9013)');
+    const ui = render(<><StoreyManager onBack={() => {}} /><Toaster /></>);
+    await waitFor(() => rows(ui).length > 0, 'the rows load');
+    const undoButton = () => [...document.body.querySelectorAll('button')].filter((b) => b.textContent === 'Undo').at(-1);
+    const deleteTop = async () => {
+      act(() => click(rows(ui)[0].querySelector<HTMLButtonElement>('button[aria-label^="Delete"]')!));
+      await waitFor(() => rows(ui).length === 1 && undoButton() !== undefined, 'the storey is gone, with Undo');
+    };
+    // With nothing after it, the toast's Undo brings the storey back.
+    await deleteTop();
+    act(() => click(undoButton()!));
+    await waitFor(() => rows(ui).length === 2, 'Undo brings it back');
+    await deleteTop();
+    const later = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok(!('error' in later));
+    const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    act(() => click(undoButton()!));
+    assert.equal(view.isDeleted(later.expressId), false, 'the later wall stays');
+    assert.equal(rows(ui).length, 1, 'the storey stays deleted');
+    await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this deletion'), 'the toast says why');
   });
 
   it('asks what to do with the elements of a storey that holds some', async () => {

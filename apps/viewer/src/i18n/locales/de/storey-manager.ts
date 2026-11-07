@@ -103,6 +103,7 @@ export const storeyManagerDe = {
   "storeyManager.delete": "{storey} löschen",
   "storeyManager.deleted": "{storey} gelöscht",
   "storeyManager.undo": "Rückgängig",
+  "storeyManager.undoStale": "Nicht rückgängig gemacht: Nach dieser Löschung kamen weitere Änderungen. Machen Sie diese zuerst in der Werkzeugleiste rückgängig.",
   "storeyManager.delete.title": {
     "one": "{storey} enthält {count} Element",
     "other": "{storey} enthält {count} Elemente"

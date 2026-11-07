@@ -69,6 +69,7 @@ export const storeyManagerEn = {
   'storeyManager.delete': 'Delete {storey}',
   'storeyManager.deleted': '{storey} deleted',
   'storeyManager.undo': 'Undo',
+  'storeyManager.undoStale': 'Not undone: later edits came after this deletion. Undo them first from the toolbar.',
   'storeyManager.delete.title': { one: '{storey} holds {count} element', other: '{storey} holds {count} elements' },
   'storeyManager.delete.moveTo': 'Move them to',
   'storeyManager.delete.move': 'Move and delete',

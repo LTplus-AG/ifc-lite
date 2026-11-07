@@ -28,12 +28,18 @@ export function parseStoreyLength(text: string, options: { signed: boolean }): n
 export function formatElevation(metres: number): string {
   const rounded = Math.round(metres * 1000) / 1000;
   if (rounded === 0) return '±0.00';
-  const digits = Math.abs(rounded).toFixed(Number.isInteger(rounded * 100) ? 2 : 3);
+  const digits = Math.abs(rounded).toFixed(decimals(rounded));
   return `${rounded > 0 ? '+' : '−'}${digits}`;
 }
 
 /** `3.00`, `3.125`: a positive height, without the unit. */
 export function formatHeight(metres: number): string {
   const rounded = Math.round(metres * 1000) / 1000;
-  return rounded.toFixed(Number.isInteger(rounded * 100) ? 2 : 3);
+  return rounded.toFixed(decimals(rounded));
+}
+
+/** Two decimals unless the millimetre matters; `1.1 * 100` is not an exact integer in binary. */
+function decimals(rounded: number): 2 | 3 {
+  const centimetres = rounded * 100;
+  return Math.abs(centimetres - Math.round(centimetres)) < 1e-6 ? 2 : 3;
 }

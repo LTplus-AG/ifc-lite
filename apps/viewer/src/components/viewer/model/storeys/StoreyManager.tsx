@@ -31,6 +31,13 @@ import { StoreySectionStrip } from './StoreySectionStrip';
 import { StoreyImpact } from './StoreyImpact';
 import { useStoreyEditDenial, useStoreyLevelEditing, useStoreyRename, useStoreyRows } from './useStoreyManager';
 
+/** The batch (or the lone record) on top of a model's undo stack. */
+function topUndoStep(modelId: string): string | null {
+  const s = useViewerStore.getState();
+  const top = s.undoStacks.get(modelId)?.at(-1);
+  return top ? s.mutationBatchTags.get(top.id) ?? top.id : null;
+}
+
 export function StoreyManager({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
@@ -86,9 +93,14 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
       return;
     }
     setDeleting(null);
+    // The toast stays until dismissed: its Undo reverts this deletion only, never a later edit.
+    const step = topUndoStep(modelId);
     toast.success(t('storeyManager.deleted', { storey: row?.Name ?? '' }), {
       label: t('storeyManager.undo'),
-      onClick: () => useViewerStore.getState().undo(modelId),
+      onClick: () => {
+        if (step !== null && topUndoStep(modelId) === step) useViewerStore.getState().undo(modelId);
+        else toast.error(t('storeyManager.undoStale'));
+      },
     });
   };
 

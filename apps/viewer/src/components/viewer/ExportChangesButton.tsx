@@ -375,9 +375,9 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
             {isExporting ? (
               <Spinner size="md" className="mr-2" />
             ) : exportStatus === 'success' ? (
-              <Check className="h-4 w-4 mr-2 text-green-500" />
+              <Check className="h-4 w-4 mr-2 text-ok" />
             ) : exportStatus === 'error' ? (
-              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+              <AlertCircle className="h-4 w-4 mr-2 text-danger" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}

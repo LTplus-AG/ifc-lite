@@ -68,7 +68,7 @@ export function LocationMapSearchBar({
                 onChange={e => onQueryChange(e.target.value)}
                 aria-label={placeholder}
                 placeholder={placeholder}
-                className="w-full text-2xs px-2 py-1 border border-border bg-white dark:bg-muted text-foreground outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
+                className="w-full text-2xs px-2 py-1 border border-border bg-white text-foreground outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
               />
@@ -97,7 +97,7 @@ export function LocationMapSearchBar({
                 if (target instanceof Node && anchorRef.current?.contains(target)) e.preventDefault();
               }}
               style={{ width: 'var(--radix-popper-anchor-width)' }}
-              className="max-h-[160px] overflow-y-auto bg-white dark:bg-muted border border-border p-0 shadow-lg"
+              className="max-h-[160px] overflow-y-auto bg-white border border-border p-0 shadow-lg"
             >
               {results.map((r, i) => (
                 <button

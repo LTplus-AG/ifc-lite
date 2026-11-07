@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/retained-native/src/oracle/face_set_closure.rs",
-  "mutation": "tests/evidence/face-set-degenerate-rows-7955/behaviour.oracle.patch",
-  "test": "rust/retained-native/tests/face_set_oracle_7955.rs",
-  "why": "F2: restoring the old zero-area test makes building-architecture.ifc #74 row 11, collinear to 1.3e-15 m, compare its rounding-noise area again (1.1e-3 against 1e-9), so the collinear-row witness must fail; the key is this PR's added face-set oracle file."
-}

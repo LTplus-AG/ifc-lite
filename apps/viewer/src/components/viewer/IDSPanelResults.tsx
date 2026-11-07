@@ -170,11 +170,11 @@ export function IDSPanelResults({
             <div className="text-muted-foreground">{t('idsPanel.entityResults')}</div>
           </div>
           <div className="bg-background rounded p-2">
-            <div className="font-medium text-green-600">{formatLocaleNumber(locale, report.summary.totalEntitiesPassed)}</div>
+            <div className="font-medium text-ok">{formatLocaleNumber(locale, report.summary.totalEntitiesPassed)}</div>
             <div className="text-muted-foreground">{t('idsPanel.passed')}</div>
           </div>
           <div className="bg-background rounded p-2">
-            <div className="font-medium text-red-600">{formatLocaleNumber(locale, summary.failed)}</div>
+            <div className="font-medium text-danger">{formatLocaleNumber(locale, summary.failed)}</div>
             <div className="text-muted-foreground">{t('idsPanel.failed')}</div>
           </div>
         </div>
@@ -216,7 +216,7 @@ export function IDSPanelResults({
           label={failedLabel}
           variant={failedActive ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
+          className={cn('h-8 w-8 p-0', failedActive && 'text-danger')}
           aria-pressed={failedActive}
           onClick={handleIsolateFailed}
           disabled={noActiveSpec}
@@ -229,7 +229,7 @@ export function IDSPanelResults({
           label={passedLabel}
           variant={passedActive ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
+          className={cn('h-8 w-8 p-0', passedActive && 'text-ok')}
           aria-pressed={passedActive}
           onClick={handleIsolatePassed}
           disabled={noActiveSpec}

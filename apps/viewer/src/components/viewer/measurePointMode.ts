@@ -21,6 +21,7 @@ import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, sync
 import { updateSnapViz } from './measurePick.js';
 import { noteMeasureCursor } from './measureCursor.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
+import { viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
 /** Point mode is live: the Measure tool is open in Point mode. A hover frame queued before a mode or tool switch lands as a no-op. */
 function pointModeLive(): boolean {
@@ -60,7 +61,11 @@ export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number)
 
 /** One hover frame: preview the point a click here would place, or clear the preview on a miss. */
 export function hoverMeasurePoint(ctx: MouseHandlerContext, x: number, y: number): void {
-  if (!pointModeLive()) return;
+  if (!pointModeLive()) { heldBackHovers.delete(ctx.lastHoverSnapTimeRef); return; }
+  // A pick now would read a capture's camera or clip, not the view the user
+  // sees (#9031): read this spot once the live loop has drawn again.
+  if (viewportPicksAwaitLiveFrame(ctx.renderer)) { deferHover(ctx, x, y); return; }
+  heldBackHovers.delete(ctx.lastHoverSnapTimeRef);
   // A live point holds only for the view it was picked under: the camera
   // reprojection pass drops it on any camera or scene change (#8828, #8886).
   // Bring that pass up to this view first, so the next frame does not count
@@ -95,14 +100,47 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
   noteMeasureCursor(ctx, { x, y, orthogonal: false, view: null });
   const wait = ctx.HOVER_SNAP_THROTTLE_MS - (Date.now() - ctx.lastHoverSnapTimeRef.current);
   if (wait > 0) {
-    trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
-      trailingHover.delete(ctx.lastHoverSnapTimeRef);
-      // A press since then owns the pointer (orbit, or the click's own pick).
-      if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
-    }, wait));
+    armTrailingHover(ctx, x, y, wait);
     return;
   }
   handleMeasureHover(ctx, x, y, hoverMeasurePoint);
+}
+
+function armTrailingHover(ctx: MouseHandlerContext, x: number, y: number, wait: number): void {
+  trailingHover.set(ctx.lastHoverSnapTimeRef, setTimeout(() => {
+    trailingHover.delete(ctx.lastHoverSnapTimeRef);
+    // A press since then owns the pointer (orbit, or the click's own pick).
+    if (!ctx.mouseState.isDragging) hoverMeasurePointAt(ctx, x, y);
+  }, wait));
+}
+
+/** Hover picks held back since the capture released the frame, per canvas (#9031). */
+const heldBackHovers = new WeakMap<object, number>();
+/** Like the loop's own live-frame retries: past a transient miss, a timer must not keep the GPU busy. */
+const HOVER_RENDER_REQUESTS = 3;
+
+/**
+ * Retry a hover pick a capture held back (#9031). A trailing pick already
+ * pending is for a later cursor position, so it stands. While the capture
+ * holds the frame nothing is failing, and its release asks for a frame. After
+ * that, ask the loop for the live frame a few times; a frame that keeps
+ * failing ends the Live reading, which is for an older cursor position, and
+ * the retry stays a timer until the live frame lands.
+ */
+function deferHover(ctx: MouseHandlerContext, x: number, y: number): void {
+  const key = ctx.lastHoverSnapTimeRef;
+  if (!viewportCaptureOwnsFrame(ctx.renderer)) {
+    const deferrals = (heldBackHovers.get(key) ?? 0) + 1;
+    heldBackHovers.set(key, deferrals);
+    if (deferrals <= HOVER_RENDER_REQUESTS) ctx.renderer.requestRender();
+    else if (deferrals === HOVER_RENDER_REQUESTS + 1) {
+      // As a miss ends Live: the snap glyph goes with it.
+      ctx.setSnapTarget(null);
+      updateSnapViz(ctx, null);
+      useViewerStore.getState().setMeasurePointLive(null);
+    }
+  }
+  if (!trailingHover.has(key)) armTrailingHover(ctx, x, y, ctx.HOVER_SNAP_THROTTLE_MS);
 }
 
 /**
@@ -112,6 +150,7 @@ export function hoverMeasurePointAt(ctx: MouseHandlerContext, x: number, y: numb
  */
 export function cancelQueuedHover(ctx: MouseHandlerContext): void {
   cancelTrailingHover(ctx);
+  heldBackHovers.delete(ctx.lastHoverSnapTimeRef);
   cancelMeasureRaycast(ctx);
 }
 

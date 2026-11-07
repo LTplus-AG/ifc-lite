@@ -17,8 +17,8 @@ export function StatusIcon({ status, showLabel = false }: { status: 'pass' | 'fa
   };
 
   const icons = {
-    pass: <CheckCircle className="h-4 w-4 text-green-500" aria-hidden="true" />,
-    fail: <XCircle className="h-4 w-4 text-red-500" aria-hidden="true" />,
+    pass: <CheckCircle className="h-4 w-4 text-ok" aria-hidden="true" />,
+    fail: <XCircle className="h-4 w-4 text-danger" aria-hidden="true" />,
     not_applicable: <AlertCircle className="h-4 w-4 text-yellow-500" aria-hidden="true" />,
   };
 

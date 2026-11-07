@@ -16,6 +16,7 @@
  */
 
 import { GridPlaceBar } from '@/components/viewer/tools/command/GridPlaceBar';
+import { GridPlacePlan } from '@/components/viewer/tools/command/GridPlacePlan';
 import { GridPlaceScene } from '@/components/viewer/tools/command/GridPlaceScene';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { useViewerStore } from '@/store';
@@ -50,6 +51,8 @@ export const GRID_PLACE: ModelingCommand<GridPlaceGesture> = {
   hud: {
     Bar: GridPlaceBar,
     Scene: GridPlaceScene,
+    Plan: GridPlacePlan,
+    planReplacesFootprint: true,
     hint: (g) => (g.points.length === 0 ? 'grid.hint.corner' : 'grid.hint.opposite'),
   },
   fields: FIELDS,

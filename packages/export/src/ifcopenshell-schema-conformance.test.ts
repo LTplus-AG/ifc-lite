@@ -295,6 +295,39 @@ describe.skipIf(!canRun)('StepExporter output is schema-conformant per IfcOpenSh
   }
 });
 
+/** A column on the crossing of a grid that is not at the origin, as IFC4 writes it (no PlacementRelTo). */
+const GRID_COLUMN_IFC4 = [
+  'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+  "FILE_NAME('grid.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
+  "#1=IFCPERSON($,$,'a',$,$,$,$,$);", "#2=IFCORGANIZATION($,'a',$,$,$);", '#3=IFCPERSONANDORGANIZATION(#1,#2,$);',
+  "#4=IFCAPPLICATION(#2,'1','a','a');", '#5=IFCOWNERHISTORY(#3,#4,$,.NOCHANGE.,$,$,$,0);',
+  '#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);', '#7=IFCUNITASSIGNMENT((#6));', '#8=IFCCARTESIANPOINT((0.,0.,0.));',
+  '#9=IFCAXIS2PLACEMENT3D(#8,$,$);', "#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#9,$);",
+  "#12=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',#5,'P',$,$,$,$,(#10),#7);", '#20=IFCCARTESIANPOINT((10.,20.,3.));',
+  '#21=IFCAXIS2PLACEMENT3D(#20,$,$);', '#22=IFCLOCALPLACEMENT($,#21);', '#30=IFCCARTESIANPOINT((0.,0.));',
+  '#31=IFCCARTESIANPOINT((12.,0.));', '#32=IFCCARTESIANPOINT((0.,8.));', '#33=IFCPOLYLINE((#30,#31));',
+  '#34=IFCPOLYLINE((#30,#32));', "#35=IFCGRIDAXIS('1',#34,.T.);", "#36=IFCGRIDAXIS('A',#33,.T.);",
+  "#40=IFCGRID('1YvctVUKr0kugbFTf53O9L',#5,'G',$,$,#22,$,(#35),(#36),$,.NOTDEFINED.);",
+  '#50=IFCVIRTUALGRIDINTERSECTION((#35,#36),(4.,5.,0.));', '#51=IFCGRIDPLACEMENT(#50,$);',
+  '#54=IFCLOCALPLACEMENT(#51,#9);', "#70=IFCCOLUMN('2YvctVUKr0kugbFTf53O9L',#5,'C',$,$,#54,$,$,.COLUMN.);",
+  'ENDSEC;', 'END-ISO-10303-21;',
+].join('\n');
+
+describe.skipIf(!ifcopenshellAvailable())('IfcGridPlacement converted to IFC4X3 is schema-conformant per IfcOpenShell (#9026 item 14)', () => {
+  it(
+    'validates, with the grid placement in the three-attribute layout',
+    async () => {
+      const store = await new IfcParser().parseColumnar(toArrayBuffer(Buffer.from(GRID_COLUMN_IFC4)));
+      const content = Buffer.from(new StepExporter(store).export({ schema: 'IFC4X3' }).content);
+      expect(content.toString('utf8')).toContain('#51=IFCGRIDPLACEMENT(#22,#50,$);');
+      const out = join(mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-grid-')), 'grid.ifc');
+      writeFileSync(out, content);
+      runValidateOrThrow([out]);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+});
+
 const canRunIfc4x3 = fixturesAvailable(IFC4X3_FIXTURES) && ifcopenshellAvailable();
 if (!canRunIfc4x3) {
   console.warn('[ifcopenshell-schema-conformance] IFC4X3 block SKIPPED: fixtures missing (run `pnpm fixtures`) or ifcopenshell unavailable.');

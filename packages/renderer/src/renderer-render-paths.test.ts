@@ -1731,13 +1731,22 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
                 for (const sub of subs) assert.deepStrictEqual(pipelinesOf(h, sub.vertexBuffer), [TRANSPARENT_PIPELINE]);
             });
             it('#9227: with sun shadows on, a stand-in casts its shadow as well as drawing (review of #9262)', () => {
+                // Under isolate the shadow pass casts only the visible subset, so the
+                // parent evicts (under X-Ray it casts the parent whole and keeps it resident).
                 const h = makeHarness();
+                const { grey } = seedBatches(h);
+                const scene = sceneOf(h);
                 h.renderer.setModelBounds(UNIT_BOUNDS);
+                scene.setGpuResidencyBudget(1);
                 const sun = { sunShadows: { enabled: true } } as const;
-                const { subs } = evictedUnderXRay(h, { ...XRAY, ...sun });
-                sceneOf(h)['subsetResidency'].rebuildBudgetMs = 0;
+                for (let i = 0; i < IDLE_FRAMES; i++) h.render({ ...sun, isolatedIds: new Set([2]) });
+                assert.strictEqual(grey.gpuResident, false, 'the isolate subset casts, so the parent evicts');
+                const subs = subBatchesOf(h, grey);
+                assert.ok(subs.length > 0, 'the isolate subset is cached');
+                scene['subsetResidency'].rebuildBudgetMs = 0;
                 h.stats.draws.length = 0; h.stats.commands.length = 0;
                 h.render({ ...sun });
+                assert.strictEqual(greyOf(h).gpuResident, false, 'past the cap: the parent is not rebuilt this frame');
                 for (const sub of subs) {
                     const pipelines = pipelinesOf(h, sub.vertexBuffer);
                     assert.ok(pipelines.includes(OPAQUE_PIPELINE), 'the colour pass draws the stand-in');

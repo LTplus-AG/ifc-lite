@@ -103,4 +103,6 @@ export const commandPaletteFr = {
   'commandPalette.category.preferences': 'Préférences',
   'commandPalette.category.extensions': 'Extensions',
   'commandPalette.category.learn': 'Apprendre',
+  'commandPalette.noResultsHint': 'Essayez un autre nom ou mot-clé.',
+  'commandPalette.clearSearch': 'Effacer la recherche',
 } satisfies Catalogue;

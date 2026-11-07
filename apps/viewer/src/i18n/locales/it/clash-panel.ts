@@ -119,7 +119,6 @@ export const clashPanelIt = {
     'Controlla questo modello in pochi secondi: «Rileva tutte le interferenze» trova ogni sovrapposizione al suo interno e «Trova duplicati» individua gli oggetti coincidenti, senza dover configurare le discipline.',
   'clashPanel.empty.multiModelHint':
     'Rileva tutte le interferenze, esegui la matrice delle discipline o scegli una preimpostazione per trovare conflitti tra i modelli caricati.',
-  'clashPanel.empty.hint': 'Fai clic su un risultato per evidenziare entrambi gli elementi; espandi una riga per scorrere ogni oggetto.',
   'clashPanel.matrixNoMatch.title': 'La matrice non si applicava a questo modello: NON è stata eseguita.',
   'clashPanel.matrixNoMatch.description':
     'Nessuna delle {count} regole ha trovato elementi qui, quindi «0 interferenze» non significa che questo modello sia pulito: non è stato controllato nulla. Questo insieme di regole è pensato per il coordinamento MEP/HVAC/elettrico/antincendio; potrebbe non descrivere le discipline di questo modello.',

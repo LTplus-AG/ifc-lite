@@ -1,6 +1,15 @@
 # French browser acceptance
 
-**PASS — all 10 workflow checks, exit 0; no runtime page errors, no browser
+Current acceptance uses Settings → General → Language → Français, saved-choice reload,
+English selection and Auto, plus fresh fr-CH negotiation. Obsolete `?lang=`
+parameters must not select or persist a locale. The harness supports admitted local
+Chrome and Windows Chrome through `IFC_GPU_CDP_URL`, including actual IDS downloads.
+A fresh current-source run is pending; the results below apply only to the named
+historical source and its old URL-selection flow. Run `node tools/localization-french/workflow.mjs`
+through `~/build-workers/ifc-gpu-check` after an admitted build. Set
+`FRENCH_WORKFLOW_URL` to the existing built preview.
+
+**Historical run, source `fd5eaf6277` — all 10 workflow checks, exit 0; no runtime page errors, no browser
 checks skipped.** Actual hardware WebGPU/WASM acceptance on Pop (`pop-os`),
 2026-11-05, shared checkout HEAD `fd5eaf6277940e7c8bdc30c905139f594bc725b1`.
 The checkout remains dirty with coordinator-owned files and the harness changes.

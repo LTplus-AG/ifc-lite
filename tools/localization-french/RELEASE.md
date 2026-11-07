@@ -12,5 +12,5 @@ Earlier hardware IFC/WASM browser evidence is recorded in REPORT.md.
 
 Integration adds current-main translations and shared test/verdict helpers.
 Final-head root checks and full viewer integration remain required. Preview query:
-`?lang=fr`; restore English with `?lang=en`. See the i18n README for normal-commit
+Settings → General → Language → Français; restore English from the same selector. Auto follows browser preferences; obsolete `?lang=` parameters are ignored. See the i18n README for normal-commit
 rollback. Merge after German/shared contracts, before Italian.

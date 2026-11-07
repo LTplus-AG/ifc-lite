@@ -5,8 +5,8 @@
 /**
  * #9042: a finger, and since #9000 an Apple Pencil, gets what a mouse gets in
  * the tools that act on a tap or a drag: Section face-pick, the `command`
- * tool's tap, and Pan / Walk drags. Touch reaches the mouse side's helpers
- * rather than copies of them.
+ * tool's tap, an Annotate pin (#9123), and Pan / Walk drags. Touch reaches the
+ * mouse side's helpers rather than copies of them.
  *
  * Mounts the real `useMouseControls` and `useTouchControls` on one canvas.
  */
@@ -86,6 +86,16 @@ describe('Section face-pick by tap (#9042)', () => {
     assert.equal(selectionCount(), 0);
   });
 
+  it('a careful 400 ms tap places the cut, as a click has no time limit (#9092)', async (t) => {
+    let now = Date.now();
+    t.mock.method(Date, 'now', () => now);
+    const { canvas, planes } = sectionRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[300, 200]])); });
+    now += 400;
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.deepEqual(planes, [EXPECTED_PLANE], 'BUG: a 400 ms tap placed no cut');
+  });
+
   it('a tap with nothing under the finger disarms the pick, as a click on the background does', async () => {
     const { canvas, planes, armed, selectionCount } = sectionRig(null);
     await tap(canvas, 300, 200);
@@ -108,6 +118,61 @@ describe('Section face-pick by tap (#9042)', () => {
     fingerDrag(canvas);
     assert.notEqual(pose(camera), before);
     assert.deepEqual(planes, []);
+  });
+});
+
+describe('an Annotate pin by tap (#9123)', () => {
+  afterEach(() => { useViewerStore.getState().cancelDraft(); });
+  const annotateRig = (hit: unknown = FACE_HIT) => mountViewportControls('annotate', 42, { renderer: { raycastScene: () => hit } });
+  const draft = () => useViewerStore.getState().draft;
+
+  it('a finger tap drops a pin at the tapped surface point, selects nothing, and its compatibility click drops no second', async () => {
+    const { canvas, selectionCount } = annotateRig();
+    await tap(canvas, 300, 200);
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 }, 'BUG: a tap in Annotate dropped no pin');
+    const first = draft()?.draftId;
+    await act(async () => { canvas.dispatchEvent(click(300, 200, null)); });
+    assert.equal(draft()?.draftId, first, 'the compatibility click dropped a second pin');
+    assert.equal(selectionCount(), 0, 'a pin tap must not select');
+  });
+
+  it('a Pencil tap drops one pin', async () => {
+    const { canvas, selectionCount } = annotateRig();
+    await pencilTap(canvas, 300, 200);
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 });
+    assert.equal(selectionCount(), 0);
+  });
+
+  it('a careful 400 ms tap drops the pin (#9092)', async (t) => {
+    let now = Date.now();
+    t.mock.method(Date, 'now', () => now);
+    const { canvas } = annotateRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[300, 200]])); });
+    now += 400;
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 }, 'BUG: a 400 ms tap dropped no pin');
+  });
+
+  it('a tap on empty background drops nothing and selects nothing, as a click there', async () => {
+    const { canvas, selectionCount } = annotateRig(null);
+    await tap(canvas, 300, 200);
+    assert.equal(draft(), null);
+    assert.equal(selectionCount(), 0);
+  });
+
+  it('a mouse click still drops the pin (control)', async () => {
+    const { canvas, selectionCount } = annotateRig();
+    await act(async () => { canvas.dispatchEvent(click(300, 200, 'mouse')); });
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 });
+    assert.equal(selectionCount(), 0);
+  });
+
+  it('a drag in Annotate orbits and drops nothing', () => {
+    const { canvas, camera } = annotateRig();
+    const before = pose(camera);
+    fingerDrag(canvas);
+    assert.notEqual(pose(camera), before);
+    assert.equal(draft(), null);
   });
 });
 

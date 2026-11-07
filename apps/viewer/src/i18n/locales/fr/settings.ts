@@ -55,4 +55,7 @@ export const settingsFr = {
   "settings.collaboration.displayNameHint": "Visible par les autres personnes dans une session partagée.",
   "settings.collaboration.saveName": "Enregistrer le nom",
   "settings.collaboration.emptyName": "Saisissez un nom affiché.",
+  "settings.general.language": "Langue",
+  "settings.general.languageAuto": "Automatique (langue du navigateur)",
+  "settings.general.languageFailed": "Impossible de charger cette langue ; la langue précédente reste active.",
 } satisfies Catalogue;

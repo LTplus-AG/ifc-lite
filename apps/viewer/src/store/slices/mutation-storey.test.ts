@@ -304,6 +304,34 @@ describe('previews and hierarchy rows follow storey edits (#9037 review, round 1
     assert.deepEqual(storeys(), [['L0', 0], ['L1', 3]]);
   });
 
+  it('a preview a script has written over is not reported as kept (#9037 review)', async () => {
+    const m = await storey();
+    assert.ok(m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.5 }).applied);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 4 } }).ok);
+    assert.equal(m.keepStoreyPreview(useViewerStore), false, 'Enter must apply the typed value itself');
+  });
+
+  it('a partial tree\'s row that is only in byStorey shows the live name and elevation (#9037 review)', async () => {
+    const m = await storey();
+    const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: UPPER_STOREY, Name: 'Upper' }).ok);
+    assert.ok(m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.5 } }).ok);
+    const s = useViewerStore.getState();
+    const base = s.models.get(MODEL_ID)!;
+    const ds = base.ifcDataStore!;
+    // The partial tree's root is not the storeys' parent: they are byStorey rows the tree
+    // never had, and the effective tree has nowhere to re-attach them.
+    const root = { expressId: 999_999, type: IfcTypeEnum.IfcProject, name: 'Partial', children: [], elements: [] };
+    const hierarchy = { ...ds.spatialHierarchy!, project: root };
+    const partial = { ...base, ifcDataStore: { ...ds, spatialHierarchy: hierarchy } };
+    const view = s.mutationViews.get(MODEL_ID)!;
+    const models = new Map([[MODEL_ID, partial], ['peer', { ...partial, id: 'peer', name: 'Peer' }]]) as unknown as Parameters<typeof buildUnifiedStoreys>[0];
+    const row = buildUnifiedStoreys(models, undefined, undefined, undefined, undefined, (id) => (id === MODEL_ID ? view : null))
+      .flatMap((unified) => unified.storeys).find((r) => r.modelId === MODEL_ID && r.storeyId === UPPER_STOREY);
+    assert.ok(row, 'the byStorey-only row is listed');
+    assert.deepEqual([row.name, row.elevation], ['Upper', 3.5]);
+  });
+
   it('without a project tree, a unified storey row shows the live name and elevation, and a deleted storey is gone', async () => {
     const m = await storey();
     const { buildUnifiedStoreys } = await import('@/components/viewer/hierarchy/treeDataBuilder');

@@ -71,15 +71,17 @@ export function previewStoreyLevel(store: TransactionStore, modelId: string, edi
 
 /**
  * Keep the running preview as the committed edit. False when there is none,
- * or when its step has left the undo history (a script undid it): the caller
- * then applies the edit itself, so Enter never reports an edit that is gone.
+ * or when it is no longer the latest edit (a script undid it, or wrote over
+ * it): the caller then applies the typed edit itself, so Enter always leaves
+ * the model at the value in the field.
  */
 export function keepStoreyPreview(store: TransactionStore): boolean {
   if (!active) return false;
   const { modelId, batchId } = active;
   active = null;
   const state = store.getState();
-  return (state.undoStacks.get(modelId) ?? []).some((record) => state.mutationBatchTags.get(record.id) === batchId);
+  const top = state.undoStacks.get(modelId)?.at(-1);
+  return !!top && state.mutationBatchTags.get(top.id) === batchId;
 }
 
 /** Undo the running preview, if it is still the latest step, and restore the redo history. */

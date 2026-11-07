@@ -166,12 +166,12 @@ export function buildUnifiedStoreys(
       ...(project ? [] : addedStoreyRows(dataStore, view, hierarchy)),
     ];
     for (const [storeyId, elements, live] of storeyRows) {
-      // Without a project tree there is no live node: read this session's edits (#9013) directly.
+      // A row with no live node (no project tree, or a partial one without it): read this session's edits (#9013) directly.
       if (!live && view?.isDeleted(storeyId)) continue;
       const elevation = live?.elevation
-        ?? (view && !project ? effectiveStoreyElevation(dataStore, view, storeyId) : storeyElevations.get(storeyId)) ?? 0;
+        ?? (view ? effectiveStoreyElevation(dataStore, view, storeyId) : storeyElevations.get(storeyId)) ?? 0;
       const fallbackName = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
-      const name = live?.name || (view && !project ? effectiveTreeEntityName(dataStore, view, storeyId, fallbackName) : fallbackName);
+      const name = live?.name || (view ? effectiveTreeEntityName(dataStore, view, storeyId, fallbackName) : fallbackName);
       const key = elevationKey(elevation);
       const storeyNode = spatialNodes.get(storeyId);
       const directElements = storeyNode

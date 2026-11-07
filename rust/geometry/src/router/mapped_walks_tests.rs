@@ -273,14 +273,14 @@ fn issue_7873_submesh_shared_source_siblings_both_contribute() {
     assert!(router.take_unsupported_items().is_empty());
 }
 
-/// #7873 Class X: the occurrence walk now admits Items against the real
-/// shared structural allowance. No resource account or synthetic small cap.
+/// #7873 Class X: the occurrence walk admits Items against the real shared
+/// structural allowance. Since #9102 only a repeated list pays: a readable
+/// leaf followed by `MAX_WALK_LEVELS` ignored slots is free on its first
+/// read and one member over the allowance on any repeat. No large mesh.
 fn over_allowance_items() -> String {
-    // A readable sentinel followed by dangling references: absent admission,
-    // resolve_ref_list caches #8000 before failing on #999999. No large mesh.
-    let mut items = String::from("#8000");
+    let mut items = String::from("#900");
     for _ in 0..crate::representation::MAX_WALK_LEVELS {
-        items.push_str(",#999999");
+        items.push_str(",$");
     }
     items
 }
@@ -303,47 +303,23 @@ fn collect_occurrence(
     Ok(collection)
 }
 
+/// #9102: a root occurrence's source list is the controller's first read, so
+/// a list wider than the allowance is admitted and meshed, never refused as
+/// budget. Before #9102 this exact list was refused before decoding #900.
 #[test]
-fn issue_7873_submesh_root_structural_allowance_refuses_before_member_decode() {
-    let content = format!(
-        "{}#8000=IFCGEOMETRICSET(());",
-        RAW_WORLD_MAP.replace("(#900)", &format!("({})", over_allowance_items()),)
-    );
+fn issue_9102_submesh_root_wide_list_is_admitted_and_meshed() {
+    let content = RAW_WORLD_MAP.replace("(#900)", &format!("({})", over_allowance_items()));
     let mut decoder = EntityDecoder::new(&content);
     let router = shared_rtc_router();
-    let item = decoder.decode_by_id(1005).unwrap();
-    let error = crate::program::GeometryProgram::styled_item(
-        &item,
-        crate::SubMeshCollection::new(),
-        false,
-        None,
-        router.rtc_offset(),
-    )
-    .drain_styled(&router, &mut decoder)
-    .unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        crate::representation::WalkRefusal::Budget {
-            max_levels: crate::representation::MAX_WALK_LEVELS,
-        }
-        .into_error(1005)
-        .to_string(),
-        "must report budget, not a dangling-reference error"
-    );
-    assert!(
-        decoder.get_cached(8000).is_none(),
-        "no Items member may be decoded before admission"
-    );
-    assert!(
-        router.take_unsupported_items().is_empty(),
-        "root refusal is returned, not a nested drop"
-    );
-    assert_eq!(router.unsupported_scope_depth(), 0);
-
-    let mut decoder = EntityDecoder::new(RAW_WORLD_MAP);
     let parts = collect_occurrence(&router, &mut decoder, 1005).unwrap();
-    assert_eq!(parts.sub_meshes.len(), 1, "a small valid root still meshes");
+    assert_eq!(parts.sub_meshes.len(), 1);
     assert_eq!(parts.sub_meshes[0].mesh.indices.len(), 12);
+    assert!(router.take_unsupported_items().is_empty());
+    assert_eq!(router.unsupported_scope_depth(), 0);
+    let merged = router
+        .process_mapped_item_parts(&decoder.decode_by_id(1005).unwrap(), &mut decoder)
+        .unwrap();
+    assert_eq!(merged.iter().map(|part| part.indices.len()).sum::<usize>(), 12);
     assert!(router.take_unsupported_items().is_empty());
 }
 
@@ -461,13 +437,16 @@ mod structural_allowance_diagnostics {
             ("Body", "", "FootPrint", "", 1),
             ("FootPrint", "", "Body", "", 0),
         ] {
+            // #9102: the first #3000 reads its wide list for free; the
+            // repeated #3000 is the one the allowance refuses.
             let content = nested_fixture(
                 parent,
                 parent_type,
                 child,
                 child_type,
                 &over_allowance_items(),
-            );
+            )
+            .replace("(#2100,#3000,#4000)", "(#2100,#3000,#3000,#4000)");
             let router = shared_rtc_router();
             for expected_count in [expected_count, 0] {
                 let mut decoder = EntityDecoder::new(&content);
@@ -477,15 +456,13 @@ mod structural_allowance_diagnostics {
                 });
                 assert_eq!(
                     parts.sub_meshes.len(),
-                    1,
+                    2,
                     "later mapped-root siblings must stop"
                 );
-                assert_eq!(parts.sub_meshes[0].geometry_id, 900);
-                assert_tetrahedron_at(&parts.sub_meshes[0].mesh, 13.0);
-                assert!(
-                    decoder.get_cached(8000).is_none(),
-                    "refused members were not decoded"
-                );
+                for (part, dx) in parts.sub_meshes.iter().zip([13.0, 10.0]) {
+                    assert_eq!(part.geometry_id, 900);
+                    assert_tetrahedron_at(&part.mesh, dx);
+                }
                 assert!(
                     decoder.get_cached(3000).is_some(),
                     "the refused level was reached"

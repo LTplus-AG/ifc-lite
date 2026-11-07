@@ -32,6 +32,7 @@ import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } 
 import { measureSnapOff } from './measureSnapOff.js';
 import { noteMeasureCursor } from './measureCursor.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
+import { forgetTouchSelection } from './referenceSelection.js';
 
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
 export { beginMeasurePress } from './distanceClick.js';
@@ -45,7 +46,13 @@ interface PenGate {
   owned: Set<number>;
   /** The touches down, as of their touchstart: a pen pointerdown after one of them is the touch side's. */
   touches: Touch[];
-  /** Where and when the last touch-owned pen press lifted, to drop its compatibility click. */
+  /**
+   * Where and when the last touch-owned pen press lifted, to drop its
+   * compatibility click, dblclick or contextmenu. A mouse or trackpad
+   * pointerdown at the lift point clears it (#9043): a genuine click starts with one, a Pencil's
+   * compatibility events never do, and a dblclick has no pointerType to tell.
+   * A pen pointerdown does not: the earlier tap's click may still be on its way.
+   */
   lift: { time: number; x: number; y: number } | null;
 }
 
@@ -54,13 +61,15 @@ const penGates = new WeakMap<HTMLCanvasElement, PenGate>();
 const PEN_TOUCH_SLOP = 8;
 /** The same window and slop `isTouchSelectionClick` uses for a tap's compatibility click. */
 const PEN_CLICK_MS = 700, PEN_CLICK_SLOP = 5;
+const atLift = (e: MouseEvent, lift: { x: number; y: number }) =>
+  Math.abs(e.clientX - lift.x) <= PEN_CLICK_SLOP && Math.abs(e.clientY - lift.y) <= PEN_CLICK_SLOP;
 
 export interface MousePointerRoute {
   down: (e: PointerEvent) => void;
   move: (e: PointerEvent) => void;
   up: (e: PointerEvent) => void;
   cancel: (e: PointerEvent) => void;
-  /** Wrap another mouse-side handler (context menu, click): a held pen press runs first, a touch-owned pen's click is dropped. */
+  /** Wrap another mouse-side handler (context menu, click): a held pen press runs first, a touch-owned pen's compatibility click is dropped. */
   after: <E extends MouseEvent>(handler: (e: E) => unknown) => (e: E) => void;
   dispose: () => void;
 }
@@ -96,7 +105,14 @@ export function routeMousePointers(
       if (e.pointerType === 'touch') return;
       noteMouseSideInput(e.pointerType);
       runHeld();
-      if (e.pointerType !== 'pen') { void handlers.down(e); return; }
+      if (e.pointerType !== 'pen') {
+        // a mouse or trackpad press at the lift point: the click there is its own, not a lifted Pencil's (#9043)
+        if (gate.lift && atLift(e, gate.lift)) gate.lift = null;
+        const rect = canvas.getBoundingClientRect();
+        forgetTouchSelection(canvas, e.clientX - rect.left, e.clientY - rect.top); // nor a tap's, in Select
+        void handlers.down(e);
+        return;
+      }
       e.preventDefault(); // handleMouseDown's own call would come too late to stop compatibility mouse events
       gate.owned.delete(e.pointerId); // a new press: an earlier one's pointerup may have been stopped before reaching us
       if (gate.touches.some((t) => samePress(t, e))) gate.owned.add(e.pointerId);
@@ -131,8 +147,7 @@ export function routeMousePointers(
     after: (handler) => (e) => {
       const pointerType = (e as MouseEvent & { pointerType?: string }).pointerType;
       const lift = gate.lift;
-      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= PEN_CLICK_MS
-        && Math.abs(e.clientX - lift.x) <= PEN_CLICK_SLOP && Math.abs(e.clientY - lift.y) <= PEN_CLICK_SLOP) {
+      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= PEN_CLICK_MS && atLift(e, lift)) {
         if (e.type === 'contextmenu') e.preventDefault(); // as handleContextMenu would have
         return;
       }

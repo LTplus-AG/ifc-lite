@@ -9,7 +9,7 @@ import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
-import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, overlayRefsWithoutQuantities, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 import { selectedModelVisibility, sourceModelFrame } from '@/lib/analytic/source-model-key';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
@@ -103,7 +103,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     const state = useViewerStore.getState();
     const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSweptDiskProducts(state);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
-    const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
+    const createdInOverlay: SelectedSweptDisk[] = overlayRefsWithoutQuantities(state, overlayRefs).map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
     ] }));
     if (grouped.size === 0) {

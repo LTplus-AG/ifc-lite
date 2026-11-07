@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { deriveAuthoredBaseQuantities } from '@ifc-lite/create';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import {
@@ -113,8 +114,9 @@ export function configureMutationView(
   }
 
   if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
-    mutationView.setQuantityExtractor((entityId: number) => {
-      return extractQuantitiesOnDemand(dataStore, entityId, mutationView);
+    mutationView.setQuantityExtractor((entityId, view, occurrenceId) => {
+      const own = extractQuantitiesOnDemand(dataStore, entityId, mutationView);
+      return own.length > 0 ? own : deriveAuthoredBaseQuantities(dataStore, view, occurrenceId);
     });
   }
 

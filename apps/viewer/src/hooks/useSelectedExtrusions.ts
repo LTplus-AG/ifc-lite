@@ -7,7 +7,7 @@ import { useViewerStore, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { selectedExtrusionCache, type ProductExtrusions } from '@/lib/analytic/extrusion-cache';
 import type { AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
-import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, overlayRefsWithoutQuantities, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 
 export interface SelectedExtrusion {
   ref: EntityRef;
@@ -48,7 +48,7 @@ export function useSelectedExtrusions(enabled: boolean): SelectedExtrusionsState
     let active = true;
     const state = useViewerStore.getState();
     const { grouped, overlayRefs, diagnostics } = selectedSourceProducts(state, 'extrusion inspection', resolveEntityRef);
-    const overlayItems: SelectedExtrusion[] = overlayRefs.map((ref) => ({ ref, product: {
+    const overlayItems: SelectedExtrusion[] = overlayRefsWithoutQuantities(state, overlayRefs).map((ref) => ({ ref, product: {
       occurrences: [], lengthUnitScale: 1,
       diagnostics: [`product #${ref.expressId}: created in the overlay; no authored extrusion source is available`],
     } }));

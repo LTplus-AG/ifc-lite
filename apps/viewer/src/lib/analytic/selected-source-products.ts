@@ -117,6 +117,22 @@ export function selectedSourceProducts(
   return { grouped, overlayRefs, diagnostics, priorityMissing: priorityKey !== null && !refs.has(priorityKey) };
 }
 
+/**
+ * The overlay products a source inspection should still mention: one with
+ * quantities of its own (derived base quantities, a room's) has nothing missing.
+ */
+export function overlayRefsWithoutQuantities(state: ViewerState, overlayRefs: readonly EntityRef[]): EntityRef[] {
+  return overlayRefs.filter((ref) => {
+    try {
+      return !state.mutationViews.get(normalizeMutationModelId(state, ref.modelId))?.getQuantitiesForEntity(ref.expressId).length;
+    } catch (error) {
+      // An unreadable base must not take the panel down; the line still says what is missing.
+      console.warn(`[quantities] ${entityRefToString(ref)} could not be read for its source inspection`, error);
+      return true;
+    }
+  });
+}
+
 /** One broken source must not suppress valid records from another model. */
 export async function loadSelectedSourceGroups<T>(
   groups: ReadonlyMap<string, readonly number[]>,

@@ -53,28 +53,33 @@ function seed(...models: FederatedModel[]): void {
 describe('source model key (#9158)', () => {
   it('lists every model field the query, the centreline, its snap curves and the anchor read', async () => {
     const reads = new Set<string>();
+    const all = new Set<string>();
+    const recorded = (model: FederatedModel) => new Proxy(model, { get(object, field, receiver) {
+      if (typeof field === 'string') reads.add(field);
+      return Reflect.get(object, field, receiver);
+    } });
     for (const status of [undefined, 'same-crs', 'reprojected'] as const) {
       for (const spatialReference of [undefined, { horizontal: {}, vertical: {} }]) {
-        const target = Object.assign(sourceModel('live', OFFSET), { federationAlignmentStatus: status, spatialReference }) as FederatedModel;
-        const model = new Proxy(target, { get(object, field, receiver) {
-          if (typeof field === 'string') reads.add(field);
-          return Reflect.get(object, field, receiver);
-        } });
-        // A second model makes the anchor search compare load order.
-        seed(model, Object.assign(sourceModel('other', 2 * OFFSET), { loadedAt: 2 }));
+        const live = Object.assign(sourceModel('live', OFFSET), { federationAlignmentStatus: status, spatialReference });
+        // The other model, loaded later, is the anchor candidate the search compares by load order.
+        const other = Object.assign(sourceModel('other', 2 * OFFSET), { loadedAt: 2, spatialReference });
+        seed(recorded(live as FederatedModel), recorded(other as FederatedModel));
+        reads.clear();
         const state = useViewerStore.getState();
         selectedSweptDiskProducts(state);
         selectedModelVisibility(state);
         await selectedCentrelineWorldLines([item('live')], state);
         await selectedCentrelineSnapCurves([item('live')], state, null, undefined, () => undefined);
+        assert.ok(reads.size > 0, 'the paths read the recorded models');
+        for (const field of reads) all.add(field);
       }
     }
     const listed = new Set<string>([...SOURCE_MODEL_FIELDS, 'visible']);
-    assert.deepEqual([...reads].filter((field) => !listed.has(field)), [],
+    assert.deepEqual([...all].filter((field) => !listed.has(field)), [],
       'a field the curves read but the key ignores would let its change skip the rebuild');
     for (const field of ['geometryResult', 'preAlignment', 'federationAlignmentStatus', 'ifcDataStore', 'visible',
       'spatialReference', 'loadedAt']) {
-      assert.ok(reads.has(field), `the fixture exercises the path that reads ${field}; it read ${[...reads].join(', ')}`);
+      assert.ok(all.has(field), `the fixture exercises the path that reads ${field}; it read ${[...all].join(', ')}`);
     }
   });
 
@@ -91,9 +96,20 @@ describe('source model key (#9158)', () => {
       const next = new Map([['live', { ...model, [field]: field === 'id' ? 'moved' : {} } as FederatedModel]]);
       assert.ok(!shallow(sourceModelFrame(next), key), `${field} changes the frame`);
     }
+    // Alignment and placement replace these on the kept objects.
     const kept = models.get('live')!;
+    let last = key;
+    const replaced = (label: string) => {
+      const next = sourceModelFrame(new Map(models));
+      assert.ok(!shallow(next, last), label);
+      last = next;
+    };
     kept.geometryResult!.coordinateInfo = coordinateInfo();
-    assert.ok(!shallow(sourceModelFrame(new Map(models)), key), 'a frame replaced on the kept geometry object');
+    replaced('a frame replaced on the kept geometry object');
+    kept.preAlignment!.coordinateInfo = coordinateInfo();
+    replaced('a source frame replaced on the kept pre-alignment snapshot');
+    Object.assign(kept.ifcDataStore!, { source: { byteLength: 2 } });
+    replaced('a source replaced on the kept data store');
     assert.ok(!shallow(sourceModelFrame(new Map()), key), 'an unloaded model');
   });
 

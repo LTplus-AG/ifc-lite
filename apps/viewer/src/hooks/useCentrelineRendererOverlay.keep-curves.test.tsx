@@ -12,7 +12,7 @@ import type { Renderer, SourceSnapCurve } from '@ifc-lite/renderer';
 import { toast } from '@/components/ui/toast.js';
 import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render, waitFor } from '@/test/render.js';
-import { entityRefToString, useViewerStore, type ViewerState } from '@/store/index.js';
+import { entityRefToString, useViewerStore, type FederatedModel, type ViewerState } from '@/store/index.js';
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
 import { sourceOccurrenceKey, type selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines.js';
 import { ZERO_ROTATION } from '@/lib/model-placement/rotation.js';
@@ -654,4 +654,34 @@ it('a model field that places the curves clears them before paint (#9158)', asyn
   await settle();
   commit({ models: new Map([[MODEL, { ...useViewerStore.getState().models.get(MODEL)!, federationAlignmentStatus: 'anchor' }]]) });
   assert.deepEqual(firstLayout(), { curves: '', line: false }, 'an alignment change re-places the source');
+});
+
+it('a change to another model that can re-anchor the federation clears before paint (#9158)', async () => {
+  // The drawn model aligns to the federation anchor, which any loaded model can be.
+  await mountInstalled([1], ONE, federated([1]));
+  const models = useViewerStore.getState().models;
+  const other = models.get('other')!;
+  commit({ models: new Map([...models, ['other', { ...other, spatialReference: {} as FederatedModel['spatialReference'] }]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a new anchor candidate can re-place the curves');
+  await settle();
+  assert.equal(current(), ONE);
+  commit({ models: new Map([[MODEL, useViewerStore.getState().models.get(MODEL)!]]) });
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'removing another model can change the anchor');
+});
+
+it('hiding the drawn model mid-rebuild clears before paint and rejects the late result (#9158)', async () => {
+  await mountInstalled([1], ONE, federated([1], [2]));
+  let release: () => void = () => undefined;
+  gate = new Promise((resolve) => { release = resolve; });
+  const before = builds;
+  commit(() => useViewerStore.getState().setModelVisibility('other', false));
+  await waitFor(() => builds > before, 'the rebuild for the hidden non-swept product is pending');
+  assert.equal(current(), ONE);
+  commit(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+  assert.deepEqual(firstLayout(), { curves: '', line: false }, 'a product of a hidden model cannot be snapped to');
+  gate = null;
+  release();
+  await settle();
+  assert.equal(current(), '', 'the pending build never installs the hidden product');
+  assert.equal(lineDrawn(), false);
 });

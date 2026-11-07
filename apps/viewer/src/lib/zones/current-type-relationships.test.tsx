@@ -191,8 +191,33 @@ test('#9192 the row limit still refuses, without reading a relationship and once
   assert.equal(rowsWalked, 1, 'only the asked element is checked');
 
   view.setPositionalAttribute(100_000, 4, ['#11']);
+  rowsWalked = 0;
   assert.equal(readCurrentTypeQuantities(counted, 12, view).status, 'unavailable', 'the limit still holds at the next revision');
-  assert.ok(rowsWalked > 1, 'a new revision walks the rows again');
+  assert.ok(rowsWalked > 65_536, `a new revision walks the rows again (walked ${rowsWalked})`);
+});
+
+test('#9192 the reference budget counts only what a read of each relationship counts', async () => {
+  // 600 objects, each given 600 definitions by one relationship: 360,000 references written, past the
+  // 262,144 budget. A definition set counts only its effective property-definition members (#7681), so
+  // the answer turns on what those 600 are, which the graph's edge count alone cannot tell.
+  const objects = Array.from({ length: 600 }, (_, i) => 3000 + i);
+  const definitions = Array.from({ length: 600 }, (_, i) => 5000 + i);
+  const relationship = (named: number[]) => `#90=IFCRELDEFINESBYPROPERTIES('${gid(90)}',$,$,$,(${objects.map(id => `#${id}`).join(',')}),(${named.map(id => `#${id}`).join(',')}));`;
+  const read = (store: IfcDataStore, view: MutablePropertyView) => [describe(store, 10, view), describe(everyRelationshipRead(store), view)];
+
+  const walls = await parse([...BASE, ...objects.map(wall), ...definitions.map(wall), relationship(definitions)]);
+  assert.deepEqual(read(walls, new MutablePropertyView(null, 'm')), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'],
+    'a set naming walls holds no definition, so it adds no reference');
+
+  const psets = await parse([...BASE, ...objects.map(wall), ...definitions.map(id => `#${id}=IFCPROPERTYSET('${gid(id)}',$,'P${id}',$,());`), relationship(definitions)]);
+  assert.deepEqual(read(psets, new MutablePropertyView(null, 'm')), ['refused', 'refused'], 'a set of 600 definitions does');
+  const fewer = new MutablePropertyView(null, 'm');
+  for (const id of definitions.slice(0, 200)) fewer.deleteEntity(id);
+  assert.deepEqual(read(psets, fewer), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'],
+    'with 200 definitions deleted, 600 x 400 references fit the budget again');
+  const retyped = new MutablePropertyView(null, 'm');
+  for (const id of definitions.slice(0, 200)) retyped.setEntityType(id, 'IfcWall');
+  assert.deepEqual(read(psets, retyped), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'], 'and with 200 of them retyped away');
 });
 
 test('#9192 a read of the store emitted before the definition edges exist still finds them', async () => {

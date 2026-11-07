@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/a95c1795622a059b605b0ae29034e8b5ed2295d2/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/71751094929aab9f09af11f51336fdc777114f9c/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -340,3 +340,86 @@ references, so nothing was force-deleted (0 bytes reclaimed).
 Complete semantic reconciliation, blank-model/load-recovery/camera-edge routes,
 combined runtime validation and candidate UI evidence remain open. This is still
 access round 1, not acceptance; the independently accepted UX hillclimb is unchanged.
+
+## Round 1 load recovery, camera and help checkpoint
+
+New blank model now shares the welcome screen's canonical creation/load/workspace
+flow through the mounted desktop/mobile file host. It refuses replacement of an
+existing session, waits for its exact load target and does not enter authoring
+after cancellation or host retirement. Cancel/Retry/Dismiss share the actual load
+operation/error binding; an error generation distinguishes even repeated failures
+with identical messages and retry callbacks.
+
+The registry also projects the ViewCube's twelve edges and eight corners once,
+using its canonical geometry and existing camera callback. Its six face presets
+remain unchanged. About, What's New and Shortcuts open their actual tabs. About
+also reaches the existing MCP link. Sample loading remains in its real Learn tour
+flow: Get started → Load demo project; Layers tour → demo fulfilment. These are
+source routes, not newly claimed browser evidence.
+
+Mounted regressions exercise actual held load I/O, parser failure/retry, parsed
+blank IFC and wall runtime, live cancellation identity, real renderer-camera
+orientation and repeated help tab navigation. The Cartesian direction invariant
+accounts for all twenty additional camera presets. Runtime assertions are UNRUN;
+syntax (22 files), targeted lint, module-size, i18n and source-text guards passed.
+
+Fresh Astra review of `492a635925` found a P2: overlapping commands staged args on
+one activation's shared globals. Correction `aefa0ac31c` snapshots each invocation's
+arguments in its own wrapper; the shared context only supplies the SDK. The new
+regression drives concurrent canonical commands through one real BimSandboxHandle
+and evaluates their wrappers, including concurrent/subsequent no-args calls. A fresh
+narrow Astra review found no further source defect. Runtime proof remains pending.
+
+Original validation `auto-7b80c76240734befa02b6cc41fcf29fd` / job
+`3fe93140-07e3-4c54-a5e6-10a887e87844` targets `492a635925`, preceding the argument
+correction and this batch. Preserve that outcome; it cannot certify these changes.
+The extension PR is #8967. Full semantic reconciliation and candidate UI acceptance
+remain open; this is still access round 1 of at most eight.
+
+## Round 1 recovery review corrections and browser harness
+
+Fresh Astra reviewed `aefa0ac31c..aec2349d0f` and found three P2 objections.
+The mounted file host now distinguishes its component lifetime from callbacks
+refreshed by metadata or locale. In-flight blank creation keeps its original
+owner check across callback changes; a genuinely replaced/unmounted host still
+cannot enter authoring. Added held real-source read regressions for locale
+refresh and replacement, with actual parsed IFC and wall-command assertions.
+Camera tests now use canonical ViewCube face order. The existing info-dialog
+hook owns the production event receiver, so mounted palette tests exercise it
+when opening, closing, alternating and reopening the actual tabs.
+
+The georeference correction publishes the actual editor controller's capability:
+projected placement works without World; rigid/angular/WKT/read-only contexts
+show their real prerequisite. Source review found the earlier eligibility
+mismatch addressed; runtime verification and tools-layer backport remain pending.
+
+Eight access browser cases and six named flow captures are now authored alongside
+the unchanged eleven accepted-UX cases. Discovery is not execution. Native
+chooser cases cover the browser input fallback with the Chromium-only capability
+absent; persistent File System Access handles require separate evidence. The
+installed-extension → widget → QuickJS → renderer browser witness remains an
+explicit gap. Full source-to-control reconciliation and all candidate access
+browser evidence remain pending; round 1 is not accepted.
+
+### Round 1 continuation: source corrections, not execution acceptance
+
+The georeference capability correction now lives in the tools layer; its shared
+test helper moved unchanged with it. Rebasing the later layers preserved the
+complete candidate tree (`3383fcc9`), not equality between different stack layers.
+Fresh Astra found the production lifetime/camera/help corrections addressed and
+one remaining retirement-test setup error. That test now performs an actual
+keyed React host unmount/remount during a held real load, then checks that
+metadata cannot restore the retired owner or enter its wall tool.
+
+The file/extension route audit found an ion upload eligibility mismatch. The
+palette, canonical export dispatcher and upload dialog now share the same STEP
+IFC candidate list. IFCX-only contexts explain the format prerequisite; adding
+a supported federation member makes the real configuration flow available even
+when another format is active. An excluded capture cannot be resurrected through
+the legacy active-store fallback. Authored regressions parse real IFCX/STEP and
+open the actual model/token dialog; they do not perform a remote upload.
+
+These new assertions remain unexecuted. Original request
+`auto-733abcb75900474aaf129393bb4e0edf` / job
+`835cba3b-6fb4-4f09-88b3-0a347ca04560` is still queued for older source `8021801`;
+it cannot certify these corrections. Other original requests remain preserved.

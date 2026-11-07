@@ -7,6 +7,7 @@ import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
 import { hasRetainedGeometryModel, hasRetainedShapeOnlyModel,
   RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
+import { listIonExportModels } from './export-model-selection';
 import type { RegisteredExportCommand } from './toolbar/export-commands';
 import type { PaletteAvailability } from './palette-availability';
 
@@ -29,6 +30,8 @@ export function paletteExportAvailability(command: RegisteredExportCommand,
   if (hasRetainedGeometryModel(s.models) && ['usd', 'energy', 'ion'].includes(command.id)) {
     return disabled(RETAINED_EXACT_ONLY_REASON);
   }
+  if (command.id === 'ion') return listIonExportModels(s.models, s.ifcDataStore).length > 0
+    ? { status: 'available' } : disabled('ionUpload.noModel');
   if (command.requires === 'dataStore' && !s.ifcDataStore) return disabled('commandPalette.availability.ifc');
   if (command.id === 'csv' && !(s.ifcDataStore && s.ifcDataStore.source.byteLength > 0)) {
     return disabled('commandPalette.availability.ifc');

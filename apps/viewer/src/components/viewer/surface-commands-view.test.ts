@@ -12,7 +12,15 @@ const VIEW_IDS = [
   'view:home', 'view:fit', 'view:frame', 'view:stacked', 'view:exploded',
   'view:solo', 'view:projection', 'view:top', 'view:bottom', 'view:front',
   'view:back', 'view:left', 'view:right', 'view:world', 'view:lighting',
-  'view:spacemouse', 'view:centreline', 'view:zoom-in', 'view:zoom-out', 'view:rotate-left',
+  'view:spacemouse',
+  'view:orientation:front-top-left', 'view:orientation:front-top', 'view:orientation:front-top-right',
+  'view:orientation:front-left', 'view:orientation:front-right', 'view:orientation:front-bottom-left',
+  'view:orientation:front-bottom', 'view:orientation:front-bottom-right', 'view:orientation:back-top-right',
+  'view:orientation:back-top', 'view:orientation:back-top-left', 'view:orientation:back-right',
+  'view:orientation:back-left', 'view:orientation:back-bottom-right', 'view:orientation:back-bottom',
+  'view:orientation:back-bottom-left', 'view:orientation:top-right', 'view:orientation:bottom-right',
+  'view:orientation:top-left', 'view:orientation:bottom-left',
+  'view:centreline', 'view:zoom-in', 'view:zoom-out', 'view:rotate-left',
   'view:rotate-right', 'view:move-georef', 'view:follow-work',
 ] as const;
 

@@ -16,6 +16,9 @@ import { goHomeFromStore } from '@/store/homeView';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
+import { bindLoadRecovery } from '@/hooks/loadRecoveryActions';
+import { CAMERA_ORIENTATION_COMMANDS } from './surface-commands-camera-orientations';
+import { LOAD_SURFACE_COMMANDS } from './surface-commands-load';
 import { MODEL_EDIT_SURFACE_COMMANDS } from './surface-commands-model-edit';
 import { DESTINATION_SURFACE_COMMANDS } from './surface-commands-destinations';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
@@ -188,6 +191,8 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
 ] as const satisfies readonly SurfaceCommandDefinition[];
 type SurfaceCommandEntry =
   | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]
+  | (typeof CAMERA_ORIENTATION_COMMANDS)[number]
+  | (typeof LOAD_SURFACE_COMMANDS)[number]
   | (typeof MODEL_EDIT_SURFACE_COMMANDS)[number]
   | (typeof DESTINATION_SURFACE_COMMANDS)[number]
   | (typeof TOOL_SURFACE_COMMANDS)[number]
@@ -208,6 +213,8 @@ export type SurfaceCommandIdFor<Surface extends CommandSurface> = SurfaceCommand
   : never;
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
+  ...CAMERA_ORIENTATION_COMMANDS,
+  ...LOAD_SURFACE_COMMANDS,
   ...DESTINATION_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,
   ...MODEL_EDIT_SURFACE_COMMANDS,
@@ -238,10 +245,11 @@ export function paletteSurfaceCommands(
   execute: (code: string) => void,
   context: Omit<SurfaceCommandContext, 'surface' | 'execute'> = {},
 ): Command[] {
+  const loadRecovery = bindLoadRecovery();
   return SURFACE_COMMANDS
     .filter((command) => command.surfaces.some((surface) => surface === 'palette') && (command.enabled(state) || (!state.canEditInSession && command.enabled({ ...state, canEditInSession: true }))))
     .map((command) => {
-      const fullContext: SurfaceCommandContext = { ...context, surface: 'palette', execute };
+      const fullContext: SurfaceCommandContext = { ...context, surface: 'palette', execute, loadRecovery };
       const checkAvailability = () => paletteAvailability(command, fullContext, undefined, state);
       return { ...commandRowFromDefinition(command, fullContext),
         availability: checkAvailability(), checkAvailability,

@@ -73,14 +73,16 @@ export class SubsetParentResidency {
    * A partial sub-batch wants the CPU pieces of an evicted batch, not its GPU
    * buffers. A warm batch already has them; a cold one is queued for a disk
    * restore that stops at warm, unless a full draw also asks for it.
+   * Returns true while the pieces are on disk only (#9136).
    */
-  requestPieces(batch: BatchedMesh): void {
+  requestPieces(batch: BatchedMesh): boolean {
     const host = this.host;
     const bucket = host.buckets.get(batch.colorKey);
-    if (!bucket || bucket.batchedMesh !== batch || !host.coldBuckets.has(bucket.key)) return;
-    if (host.residencyRestoreQueue.has(bucket.key)) return;
+    if (!bucket || bucket.batchedMesh !== batch || !host.coldBuckets.has(bucket.key)) return false;
+    if (host.residencyRestoreQueue.has(bucket.key)) return true;
     host.residencyRestoreQueue.add(bucket.key);
     this.warmOnly.add(bucket.key);
+    return true;
   }
 
   /** Queue the keys a cold restore of `key` came back as. A restore only a

@@ -65,7 +65,7 @@ export function WellKnownTextRow({ wkt }: { wkt: string | undefined }) {
       <GeorefRow label="WellKnownText" value={`${wkt.slice(0, 96)}…`} />
       <details className="px-3 py-1.5 text-xs">
         <summary className="cursor-pointer text-muted-foreground">{t('properties.georef.showFullWellKnownText')}</summary>
-        <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-2xs text-teal-700 dark:text-teal-400">{wkt}</pre>
+        <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-2xs text-foreground">{wkt}</pre>
       </details>
     </>
   );

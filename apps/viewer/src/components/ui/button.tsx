@@ -42,6 +42,9 @@ const buttonVariants = cva(
         icon: 'h-9 w-9',
         'icon-sm': 'h-8 w-8',
         'icon-xs': 'h-7 w-7',
+        // One option of a compact inline mode switch inside a bordered
+        // `p-0.5` track (#8802 R5), paired with `variant="toggle"`.
+        segment: 'h-auto rounded px-2 py-0.5 text-2xs',
       },
     },
     defaultVariants: {

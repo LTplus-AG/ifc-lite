@@ -203,7 +203,7 @@ export function PropertyEditor({
               if (showScopeConfirm) setShowScopeConfirm(false);
             }}
             onKeyDown={handleKeyDown}
-            className="h-7 text-xs font-mono flex-1 bg-white"
+            className="h-7 text-xs font-mono flex-1 bg-card"
             placeholder={t('propertyEditor.inline.enterValue')}
             type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
             step={valueType === PropertyValueType.Real ? 'any' : undefined}
@@ -235,12 +235,13 @@ export function PropertyEditor({
       </div>
 
       {/* Type selector - always visible */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5 self-start rounded-md border p-0.5">
         {INLINE_VALUE_TYPES.map(({ type, labelKey }) => (
           <Button
             key={type}
-            variant={valueType === type ? 'default' : 'outline'}
+            variant="toggle"
             size="sm"
+            aria-pressed={valueType === type}
             className="h-5 px-2 text-2xs"
             onClick={() => {
               setValueType(type);
@@ -258,7 +259,7 @@ export function PropertyEditor({
       </div>
 
       {showScopeConfirm && editScope && (
-        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-2xs">
+        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-card/75 px-2.5 py-2 text-2xs">
           <div className="font-medium text-foreground">
             {editScope.mode === 'type'
               ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
@@ -324,7 +325,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* Data-enrichment cluster — one segmented control of icon keys */}
-          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:ring-zinc-700">
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-card shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:ring-zinc-700">
             <NewPropertyDialog
               modelId={modelId}
               entityId={entityId}

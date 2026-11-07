@@ -34,7 +34,8 @@ import { downloadFile } from '@/lib/export/download';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import { deviationAssetIdentities } from '@/lib/point-cloud/deviation-asset-identity';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { DeviationHistogramBars } from './DeviationStatistics';
 import { DeviationResultChrome } from './DeviationResultChrome';
 import { useDeviationStatisticsDerivation } from './useDeviationStatisticsDerivation';
@@ -288,16 +289,13 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       <span className="text-2xs uppercase text-muted-foreground tracking-wider">
         {t('deviationPanel.sectionLabel')}
       </span>
-      <button
+      <Button
         type="button"
+        variant={running ? 'secondary' : 'default'}
+        size="sm"
         onClick={handleCompute}
         disabled={running || exporting}
-        className={cn(
-          'text-xs px-2 py-1 rounded transition-colors',
-          running
-            ? 'bg-muted text-muted-foreground'
-            : 'bg-teal-600 text-white hover:bg-teal-500 disabled:opacity-50',
-        )}
+        className="h-auto px-2 py-1 text-xs"
         title={t('deviationPanel.computeButtonTitle', { count: triangleCount.toLocaleString() })}
       >
         {running
@@ -305,7 +303,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
           : computed
             ? t('deviationPanel.recomputeLabel')
             : t('deviationPanel.computeLabel')}
-      </button>
+      </Button>
       {error && (
         <span className="text-2xs text-destructive">{error}</span>
       )}
@@ -342,7 +340,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               step={1}
               value={Math.round(halfRange * 1000)}
               onChange={(e) => setHalfRange(Number(e.target.value) / 1000)}
-              className="flex-1 h-1 accent-teal-600 cursor-pointer"
+              className="flex-1 h-1 accent-primary cursor-pointer"
               title={t('deviationPanel.rangeSliderTitle')}
               aria-label={t('deviationPanel.rangeSliderAriaLabel')}
             />
@@ -365,7 +363,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             <button
               type="button"
               onClick={() => setColorMode('deviation')}
-              className="text-2xs text-teal-600 hover:text-teal-500 underline text-left mt-0.5"
+              className={`mt-0.5 text-left text-2xs ${TEXT_LINK_CLASS}`}
             >
               {t('deviationPanel.switchToDeviationButton')}
             </button>

@@ -65,13 +65,13 @@ export function PresentationViewCard({
         )}
 
         {isActive && (
-          <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground">
+          <div className="absolute left-1 top-1 rounded bg-popover active-overlay px-1.5 py-0.5 text-2xs font-semibold text-active ring-1 ring-inset ring-active-border">
             {t('presentationPanel.activeBadge')}
           </div>
         )}
       </button>
 
-      <div className={cn('absolute inset-x-0 bottom-0 bg-black/60 text-white px-2 py-1', !isEditing && 'pointer-events-none')}>
+      <div className={cn('absolute inset-x-0 bottom-0 bg-scrim/60 text-scrim-foreground px-2 py-1', !isEditing && 'pointer-events-none')}>
         {isEditing ? (
           <Input
             aria-label={`${t('presentationPanel.renameViewTitle')}: ${view.name}`}
@@ -91,12 +91,12 @@ export function PresentationViewCard({
                 onCancelRename();
               }
             }}
-            className="h-6 bg-black/40 text-xs border-white/30 text-white placeholder:text-white/60"
+            className="h-6 bg-scrim/40 text-xs border-scrim-foreground/30 text-scrim-foreground placeholder:text-scrim-foreground/60"
           />
         ) : (
           <>
             <div className="text-xs font-medium truncate">{view.name}</div>
-            <div className="text-2xs opacity-80">
+            <div className="text-2xs">
               {t('presentationPanel.objectsCount', { count: view.entityRefs.length })}
               {view.transitionMs ? t('presentationPanel.transitionSuffix', { duration: (view.transitionMs / 1000).toFixed(1) }) : ''}
             </div>

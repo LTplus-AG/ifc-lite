@@ -261,10 +261,10 @@ export function ScriptPanel() {
           {/* AI Chat toggle */}
           <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
-            variant={chatPanelVisible ? 'default' : 'ghost'}
+            variant="toggle"
             size="icon-xs"
+            aria-pressed={chatPanelVisible}
             onClick={toggleChat}
-            className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
             {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
           >
             <Bot className="h-3.5 w-3.5" />

@@ -550,7 +550,7 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 
 `readStairDimensions(dataStore, stairOrFlightExpressId, view?)` reads one canonical straight stepped flight in IFC2X3, IFC4 or IFC4X3, whether the selected occurrence is its `IfcStair` parent or its `IfcStairFlight`. It returns `Width`, `RiserHeight`, `TreadLength`, optional `WaistThickness` in metres and the held `NumberOfRisers`. The source reader uses the schema's native attribute names, including IFC2X3's `NumberOfRiser`. Mapped bodies, different profiles, additional representations, multiple flights and unreadable local frames return null. Profile inspection is bounded to at most 10,000 points.
 
-`editStairDimensionsInStore(dataStore, editor, stairOrFlightExpressId, patch)` accepts the four length fields. It rebuilds only that flight's occurrence body through the same geometry emitter and validation as creation. The first-riser foot, placements, riser/tread counts, identities, type relationships and shared source/style leaves stay fixed. Changing riser height changes the total rise; changing tread length changes the total run. It does not refit the stair to the upper storey. Omitted fields keep their existing values; waist thickness can be added to a solid-to-base flight. Unsupported bodies, invalid dimensions and late unreadable styles refuse atomically without writes. The Model inspector exposes these edits for the actual selected flight and its parent, each as one Undo step and one remesh of the stair and flight.
+`editStairDimensionsInStore(dataStore, editor, stairOrFlightExpressId, patch)` accepts the four length fields and `NumberOfRisers` (a whole number; the tread count follows it). It rebuilds only that flight's occurrence body through the same geometry emitter and validation as creation, and removes the replaced shape when nothing else uses it. The first-riser foot, placements, identities, type relationships and shared source/style leaves stay fixed. Changing riser height or the riser count changes the total rise; changing tread length changes the total run. The editor itself does not refit a stair to the storey above; a storey edit does, through this editor (see "Storey authoring"). Omitted fields keep their existing values; waist thickness can be added to a solid-to-base flight. Unsupported bodies, invalid dimensions and late unreadable styles refuse atomically without writes. The Model inspector exposes these edits for the actual selected flight and its parent, each as one Undo step and one remesh of the stair and flight.
 
 [Native viewer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/6232-stair-inspector/README.md) records the four dimension edits, each Undo and Redo, and the unchanged neighboring wall and windows.
 
@@ -794,6 +794,8 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 
 `copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
+A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement`) binds to the grid crossing it lands on, within a millimetre, among the crossings of the grids on its storey or its spatial ancestors. It gets a new `IfcGridPlacement` in the model's schema, with a local placement under it holding its height, heading and any offset. Landing on no crossing, it comes free as a plain storey-placed element. `CopyProductResult.boundToGrid` and `cameFree` list which is which, including a part on the grid in its own right. A part placed under a copied placement follows that copy and isn't listed. The viewer tells the person how many came free.
+
 ## Key Types
 
 | Type | Description |
@@ -1027,3 +1029,65 @@ function reassignProducts(dataStore: IfcDataStore, editor: StoreEditor,
 ```
 
 Select 1–200 distinct roots; the complete dependency closure is bounded to 5,000 products and the effective relationship inventory to 2,000,000 references. Missing or duplicate identities/ownership, detached hosted or assembly children, cycles, shared placements, unsupported or unreadable world frames, and spatial roots such as sites/buildings/storeys refuse. IFC2X3 requires OwnerHistory; IFC4 and IFC4X3 allow it to be omitted. Native grids and grid-based product placements are unsupported; ordinary local placements may include translated, rotated or tilted frames. A refusal or late transaction failure preserves the graph, journal and allocation state. Recorded Undo restores the complete graph and journal; the native ID allocator remains monotonic after a successful operation.
+
+### Storey authoring
+
+`@ifc-lite/create` adds, renames, re-levels and deletes `IfcBuildingStorey` in a parsed model (#9013). `bim.store` runs the same functions. Lengths are metres, in the frame the parsed spatial hierarchy reports storey elevations in, and are written in the file's own length unit. Storeys form one sequence per spatial parent (their building, or the site or project when the file aggregates them there): neighbours, floor-to-floor shifts, elevation clashes and suggested names are taken within it. A storey nothing aggregates has no neighbours; its elevation can be edited, but a floor-to-floor edit is refused. An element another storey contains but this storey's elements host (a window filling an opening in a wall here) belongs to its own storey: an edit that would separate it from its host is refused.
+
+- `addStoreyInStore(dataStore, editor, { Name, Elevation })` copies the nearest storey's conventions. It joins the spatial element that aggregates `referenceStoreyId` (usually the building; a file that aggregates its storeys under the site or the project keeps that). Without a reference, it joins the one spatial element the storeys share, or `buildingId`, which a model with several buildings requires. The new storey is aggregated under the same spatial parent, which extends that parent's existing `IfcRelAggregates` instead of adding a second decomposition. Its `IfcLocalPlacement` hangs from the same `PlacementRelTo` with the same axes, lifted by the elevation difference. Any offset the file keeps between `Elevation` and placement Z is kept. It is refused when the name is empty, the elevation is already taken, the `GlobalId` is already carried by a live entity, or `buildingId` disagrees with `referenceStoreyId`'s building. `suggestStorey(inventory, storeyId, 'above' | 'below', fallbackName)` proposes a name, elevation and height from the neighbouring storeys.
+- `planStoreyLevelEdit(inventory, edit)` is a dry run, and `applyStoreyLevelEdit(dataStore, editor, edit, expected?)` writes it atomically. With `expected`, the reviewed plan, it refuses (code `stale`) a model that changed since: a point moved, an axis turned, a product attached or a storey re-levelled. The plan's `fingerprint` hashes the moved storeys and every written placement chain. Edits:
+  - `{ kind: 'elevation', storeyId, Elevation }` moves one storey.
+  - `{ kind: 'floorHeight', storeyId, Height }` shifts every storey above by the same delta.
+- Geometry follows storeys. Everything a moved storey holds moves with it, and nothing else does:
+  - Contents hanging from the storey placement need no write of their own.
+  - Contents placed relative to the building or the world, which is common in exported files, get their own root placement lifted.
+  - A product of another storey that hangs from a moved placement is compensated so it stays put.
+  - A product bound to a grid (`IfcGridPlacement`) follows the grid's placement: it moves with a grid on its own storey, and a grid-bound product of another storey under a moved grid is refused, because a grid placement cannot be compensated.
+  - Every move is a fresh `IfcCartesianPoint` and `IfcAxis2Placement3D`, so a shared origin point is never moved.
+- An edit is refused before anything is written, with a specific `code` and `message`, when it would:
+  - leave no height between storeys (`spacing`);
+  - pass a neighbour (`crossing`);
+  - measure floor-to-floor on the top storey (`topStorey`);
+  - move a placement that elements on another storey share (`sharedPlacement`);
+  - meet a placement that cannot be read;
+  - move a storey holding more than 50,000 products (`tooLarge`).
+- `planStoreyDelete` / `applyStoreyDelete(dataStore, editor, storeyId, mode, expected?)` delete a storey without orphaning anything. With `expected`, it refuses (code `stale`, checked before any other refusal) when contents were added after the review, or the storey or a reviewed product was edited or moved since; the plan's `fingerprint` hashes the contents' records and placement chains. Modes:
+  - `{ kind: 'empty' }` is refused while the storey holds elements.
+  - `{ kind: 'move', targetStoreyId }` moves them through the same-identity reassignment above. It is refused for a storey that nests products through `IfcRelNests`, which have no spatial owner to move.
+  - `{ kind: 'deleteContents' }` removes them with the storey. It is refused while another storey's element fills or stands on one of them (an opening's filling, a grid's column).
+
+  The storey's placement is kept, and relationships listing it are narrowed. A model always keeps one storey.
+
+```ts
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
+import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+
+// Two writes, two Undo steps: the storey is added even if the raise is then refused,
+// so the caller reports the refusal (and can undo the add) rather than retrying the add.
+function addLevelAndRaise(dataStore: IfcDataStore, editor: StoreEditor, groundId: number) {
+  const view = editor.getMutationView();
+  const { storeyId } = recordCompoundMutation(view, (draft) =>
+    addStoreyInStore(dataStore, new StoreEditor(dataStore, draft), { Name: 'Level 2', Elevation: 3 }));
+  const edit = { kind: 'floorHeight', storeyId: groundId, Height: 3.5 } as const;
+  const plan = planStoreyLevelEdit(readStoreyInventory(dataStore, view), edit);
+  if (plan.refusals.length) return { storeyId, raised: false, refusals: plan.refusals };
+  recordCompoundMutation(view, (draft) => applyStoreyLevelEdit(dataStore, new StoreEditor(dataStore, draft), edit, plan));
+  return { storeyId, raised: true, refusals: [] };
+}
+```
+
+Elements whose shape depends on storey spacing follow the edit in the same transaction:
+
+- **Attached walls.** A wall whose top is attached to a storey above takes `height + Δabove − Δown`, through the same section edit the inspector uses. That edit refuses an opening that would end above the new top. An existing `Qto_WallBaseQuantities` is kept true (a wall with more than one such set has only the first updated, and the plan says so in `notices`, `wallQuantitiesPartial`): Height and the gross side area and volume scale with the height, and the net values change by the same amount as the gross ones (converted between their units when a quantity carries its own, and taken from the set's Length, Height and Width when the gross value is missing). Attachment is recorded, never inferred from a height that happens to match the spacing:
+  - `IfcLite_StoreyAttachment.TopConstraint` (IfcLabel) holds the target storey's GlobalId. It holds `NextStoreyAbove` for a wall drawn attached before any storey existed above; the first storey added directly above binds it, and `addStoreyInStore` resizes the wall to reach that storey. A wall whose body or placement it cannot read is still bound and returned in `unresizedWalls`, so later edits list it as not resized.
+  - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as written.
+  - A wall with neither record keeps its height. `Fixed` in the IfcLite record is an explicit fixed-height wall and overrides a Revit record; `clearTopAttachment` writes it for a wall Revit recorded as attached.
+  - A record that names no single live storey (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys) is not guessed at: the wall keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
+  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record.
+- **Stairs.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused.
+- **What is left alone.** Attached walls that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
+
+`planStoreyLevelEdit` runs the complete write in a discarded draft, so its `refusals` include late ones such as an opening above a wall's new top. The plan's `walls`, `stairs` and `movedElementCount` are what an impact summary shows.
+
+The SDK's headless backend exposes the same operations on `bim.store`: `listStoreyLevels`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. The viewer and its script sandbox gain them with the storey manager (#9037) and the CLI work (#9121). `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products.

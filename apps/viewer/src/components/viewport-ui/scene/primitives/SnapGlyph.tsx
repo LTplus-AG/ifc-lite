@@ -26,7 +26,8 @@ export type SnapGlyphKind =
   | 'edge'
   | 'extension'
   | 'parallel'
-  | 'grid';
+  | 'grid'
+  | 'workplane';
 
 const SIZE = 9;
 const H = SIZE / 2;
@@ -74,6 +75,15 @@ function shapeFor(kind: SnapGlyphKind) {
     case 'parallel':
       // //: two slanted strokes.
       return stroked(`M${-H} ${H} L${-H * 0.1} ${-H} M${H * 0.1} ${H} L${H} ${-H}`);
+    case 'workplane':
+      // A ring with ticks past it: a sight on the plane, through whatever stands in front.
+      return (
+        <>
+          <circle r={H} className="fill-none stroke-overlay-halo" strokeWidth={4} />
+          {stroked(`M${-SIZE} 0 H${-H} M${H} 0 H${SIZE} M0 ${-SIZE} V${-H} M0 ${H} V${SIZE}`)}
+          <circle r={H} className="fill-none stroke-overlay-accent" strokeWidth={2} />
+        </>
+      );
     case 'grid':
     default:
       // A dot, deliberately the smallest mark: the grid is the weakest snap.

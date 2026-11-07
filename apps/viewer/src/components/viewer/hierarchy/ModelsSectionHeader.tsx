@@ -24,7 +24,6 @@ import { Eye, FileBox, Tag } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { SectionHeader } from './SectionHeader';
@@ -39,11 +38,7 @@ export function useModelTagView(nodes: TreeNode[]): TreeNode[] {
   return useMemo(() => applyModelTagView(nodes, view, tags, assignments), [nodes, view, tags, assignments]);
 }
 
-const chipClass = (active: boolean) =>
-  cn(
-    'h-5 rounded-none px-1.5 text-2xs uppercase tracking-wider',
-    !active && 'text-zinc-600 dark:text-zinc-400',
-  );
+const CHIP_CLASS = 'h-5 rounded-none px-1.5 text-2xs uppercase tracking-wider';
 
 export function ModelsSectionHeader({ count }: { count: number }) {
   const { t, locale } = useTranslation();
@@ -89,10 +84,10 @@ export function ModelsSectionHeader({ count }: { count: number }) {
       {(inUse.length > 0 || filterActive || view.groupByTag) && (
         <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950" data-model-tag-controls>
           <Button
-            variant={view.groupByTag ? 'default' : 'outline'}
+            variant="toggle"
             size="sm"
             aria-pressed={view.groupByTag}
-            className={chipClass(view.groupByTag)}
+            className={CHIP_CLASS}
             onClick={() => setModelTagView({ groupByTag: !view.groupByTag })}
             title={t('hierarchy.modelsSection.byTagTooltip')}
           >
@@ -104,13 +99,13 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             return (
               <Button
                 key={tag.id}
-                variant={active ? 'default' : 'outline'}
+                variant="toggle"
                 size="sm"
                 aria-pressed={active}
                 aria-label={t(active
                   ? 'hierarchy.modelsSection.tagFilterActiveAriaLabel'
                   : 'hierarchy.modelsSection.tagFilterInactiveAriaLabel', { name: tag.name })}
-                className={chipClass(active)}
+                className={CHIP_CLASS}
                 onClick={() => toggleTag(tag.id)}
                 title={t('hierarchy.modelsSection.tagFilterTooltip', { name: tag.name })}
               >
@@ -119,13 +114,13 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             );
           })}
           <Button
-            variant={view.filterUntagged ? 'default' : 'outline'}
+            variant="toggle"
             size="sm"
             aria-pressed={view.filterUntagged}
             aria-label={t(view.filterUntagged
               ? 'hierarchy.modelsSection.untaggedFilterActiveAriaLabel'
               : 'hierarchy.modelsSection.untaggedFilterInactiveAriaLabel')}
-            className={chipClass(view.filterUntagged)}
+            className={CHIP_CLASS}
             onClick={() => setModelTagView({ filterUntagged: !view.filterUntagged })}
             title={t('hierarchy.modelsSection.untaggedFilterTooltip')}
           >
@@ -136,7 +131,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
               <Button
                 variant="outline"
                 size="sm"
-                className={chipClass(false)}
+                className={`${CHIP_CLASS} text-muted-foreground`}
                 onClick={() => isolateModels(matching)}
                 title={t('hierarchy.modelsSection.isolateMatchingTooltip')}
               >
@@ -145,7 +140,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={chipClass(false)}
+                className={`${CHIP_CLASS} text-muted-foreground`}
                 aria-label={t('hierarchy.modelsSection.clearFilterAriaLabel')}
                 onClick={() => setModelTagView({ filterTagIds: [], filterUntagged: false })}
               >

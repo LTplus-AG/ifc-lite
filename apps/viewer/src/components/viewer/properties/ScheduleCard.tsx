@@ -80,7 +80,7 @@ export function ScheduleCard({
             className="flex items-center gap-1 text-2xs font-medium bg-warn-surface px-1.5 py-0.5 border border-warn-border text-warn shrink-0"
             title={t('properties.schedule.pendingTooltip')}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+            <span className="h-1.5 w-1.5 rounded-full bg-warn-solid" aria-hidden />
             {t('properties.schedule.pendingBadge')}
           </span>
         )}

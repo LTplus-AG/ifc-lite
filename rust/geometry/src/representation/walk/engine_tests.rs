@@ -48,6 +48,7 @@ fn first_chain_neither_checks_nor_increments_expansion_meters() {
         path: smallvec::SmallVec::new(),
         levels: u32::MAX,
         items: u32::MAX,
+        seen: Default::default(),
     };
     let walk = RepresentationWalk {
         select: Select::Any,

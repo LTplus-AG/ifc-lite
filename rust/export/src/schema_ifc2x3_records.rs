@@ -111,11 +111,13 @@ pub(crate) struct Records<'a> {
     pub(crate) list: Vec<Option<Rec<'a>>>,
     by_id: HashMap<u32, usize>,
     pub(crate) max_id: u32,
+    /// Each grid axis's first listing grid's `ObjectPlacement`, read once.
+    owners: std::cell::OnceCell<HashMap<u32, Option<u32>>>,
 }
 
 impl<'a> Records<'a> {
     pub(crate) fn scan(body: &'a str) -> Self {
-        let mut records = Records { list: Vec::new(), by_id: HashMap::new(), max_id: 0 };
+        let mut records = Records { list: Vec::new(), by_id: HashMap::new(), max_id: 0, owners: std::cell::OnceCell::new() };
         let mut scanner = ifc_lite_core::EntityScanner::new(body.as_bytes());
         while let Some((id, _, start, end)) = scanner.next_entity() {
             let text = &body[start..end];
@@ -230,13 +232,29 @@ impl<'a> Records<'a> {
         let axis = Self::slots(self.get(intersection, Some(INTERSECTION)))
             .and_then(|s| list(s.first().copied()))
             .and_then(|axes| ref_id(axes.first().copied()));
-        for rec in self.list.iter().flatten().filter(|r| r.ty == "IFCGRID") {
-            let Some(s) = Self::slots(Some(rec)) else { continue };
-            let lists = |i: &usize| list(s.get(*i).copied()).is_some_and(|m| m.iter().any(|t| ref_id(Some(t)) == axis));
-            if axis.is_some() && GRID_AXIS_SLOTS.iter().any(lists) {
-                return ref_id(s.get(OBJECT_PLACEMENT).copied()).map_or("$".to_string(), |p| format!("#{p}"));
-            }
+        match axis.and_then(|a| self.axis_owners().get(&a).copied().flatten()) {
+            Some(p) => format!("#{p}"),
+            None => "$".to_string(),
         }
-        "$".to_string()
+    }
+
+    /// Each grid axis's first listing grid's `ObjectPlacement`, read once: a
+    /// pass may free many grid placements.
+    fn axis_owners(&self) -> &HashMap<u32, Option<u32>> {
+        self.owners.get_or_init(|| {
+            let mut owners = HashMap::new();
+            for rec in self.list.iter().flatten().filter(|r| r.ty == "IFCGRID") {
+                let Some(s) = Self::slots(Some(rec)) else { continue };
+                let placement = ref_id(s.get(OBJECT_PLACEMENT).copied());
+                for i in GRID_AXIS_SLOTS {
+                    for t in list(s.get(i).copied()).unwrap_or_default() {
+                        if let Some(axis) = ref_id(Some(t)) {
+                            owners.entry(axis).or_insert(placement);
+                        }
+                    }
+                }
+            }
+            owners
+        })
     }
 }

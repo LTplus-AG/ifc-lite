@@ -65,6 +65,7 @@ export class Records {
   readonly list: (Rec | null)[];
   private readonly byId = new Map<number, Rec>();
   private readonly split = new Map<number, string[] | null>();
+  private owners: Map<number, number | null> | null = null;
   maxId = 0;
 
   constructor(lines: readonly string[]) {
@@ -157,13 +158,26 @@ export class Records {
   /** The `ObjectPlacement` of the first grid listing an axis of the intersection, as a slot value. */
   gridPlacementOf(intersection: number | null): string {
     const axis = refId(list(this.slots(this.get(intersection, INTERSECTION))?.[0])?.[0]);
+    const placement = axis === null ? undefined : this.axisOwners().get(axis);
+    return placement === undefined || placement === null ? '$' : `#${placement}`;
+  }
+
+  /** Each grid axis's first listing grid's `ObjectPlacement`, read once: a pass may free many grid placements. */
+  private axisOwners(): Map<number, number | null> {
+    if (this.owners) return this.owners;
+    this.owners = new Map();
     for (const rec of this.list) {
       if (rec?.type !== 'IFCGRID') continue;
       const s = this.slots(rec);
-      if (axis !== null && s && GRID_AXIS_SLOTS.some((i) => list(s[i])?.some((m) => refId(m) === axis))) {
-        return refId(s[OBJECT_PLACEMENT]) === null ? '$' : `#${refId(s[OBJECT_PLACEMENT])}`;
+      if (!s) continue;
+      const placement = refId(s[OBJECT_PLACEMENT]);
+      for (const i of GRID_AXIS_SLOTS) {
+        for (const m of list(s[i]) ?? []) {
+          const axis = refId(m);
+          if (axis !== null && !this.owners.has(axis)) this.owners.set(axis, placement);
+        }
       }
     }
-    return '$';
+    return this.owners;
   }
 }

@@ -20,7 +20,7 @@ import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/mode
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import '@/lib/commands/modeling/builtin.js';
-import { commandPointerDown, commandPointerMove } from '@/lib/commands/modeling/runtime';
+import { commandPointerDown, commandPointerMove, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 
@@ -200,6 +200,19 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
     assert.deepEqual(rows, [[40, [41]], [900, [901]]]);
   });
 
+  it('a level a partial tree never had keeps its row when another storey is edited', async () => {
+    const m = await storey();
+    const level = { expressId: 40, type: IfcTypeEnum.IfcBuildingStorey, name: 'L0', children: [], elements: [41] };
+    const gone = { expressId: 50, type: IfcTypeEnum.IfcBuildingStorey, name: 'L1', children: [], elements: [51] };
+    const project = { expressId: 1, type: IfcTypeEnum.IfcProject, name: 'P', children: [level, gone], elements: [] };
+    const edited = { ...project, children: [{ ...level, name: 'Ground' }] };
+    // 60 is listed by the source but absent from its tree; 50 was in the tree and is now deleted.
+    const hierarchy = { project, byStorey: new Map([[40, [41]], [50, [51]], [60, [61]]]) } as unknown as SpatialHierarchy;
+    const index = new Map([[40, edited.children[0]]]);
+    const rows = m.effectiveStoreyRows(hierarchy, edited, index).map(([id, elements]) => [id, [...elements]]);
+    assert.deepEqual(rows, [[40, [41]], [60, [61]]]);
+  });
+
   it('typing a height in the inspector makes an attached wall fixed-height, in one undo step', async () => {
     const m = await storey();
     void m;
@@ -219,6 +232,15 @@ describe('the hierarchy and the inspector follow storey edits (#9037 review)', (
     const added = (s.undoStacks.get(MODEL_ID) ?? []).slice(before).map((record) => s.mutationBatchTags.get(record.id));
     assert.ok(added.length > 1 && added.every((tag) => tag !== undefined), 'every new record carries a batch tag');
     assert.equal(new Set(added).size, 1, 'one undo step');
+  });
+});
+
+describe('bim.store storey reads in the viewer (#9037 review)', () => {
+  it('listStoreyLevels fails for a model with no editable data instead of reporting no storeys', async () => {
+    const { storeyMethods } = await requiredModule(() => import('@/sdk/adapters/store-adapter-storey-impl'), 'the viewer storey adapter exists');
+    const methods = storeyMethods(useViewerStore);
+    assert.ok(methods.listStoreyLevels(MODEL_ID).length >= 2);
+    assert.throws(() => methods.listStoreyLevels('missing-model'), /No model loaded/);
   });
 });
 
@@ -262,5 +284,16 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     const added = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(added.ok);
     assert.equal(attachment(wall)?.targetStoreyId, added.storeyId);
+  });
+
+  it('a height typed on the top storey makes the wall fixed instead of waiting for the storey above', () => {
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    useViewerStore.getState().setSessionStorey(UPPER_STOREY);
+    useViewerStore.getState().startCommand('wall.place');
+    writeCommandField(3, 2.4); // Height
+    assert.equal(useViewerStore.getState().authoringDefaults.wallTop, 'fixed');
+    const wall = draw(0);
+    assert.equal(attachment(wall), null, 'no NextStoreyAbove is recorded');
+    assert.equal(Math.round(height(wall)! * 1000), 2400);
   });
 });

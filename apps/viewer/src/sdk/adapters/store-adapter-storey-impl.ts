@@ -11,11 +11,10 @@
  * not part of the viewer's boot bundle.
  */
 
-import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory, summarizeStoreys } from '@ifc-lite/create';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, type StoreyOp } from '@/store/slices/mutation-storey';
-import { storeyRows } from '@/lib/storeys/storey-actions';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 
@@ -41,7 +40,8 @@ export function storeyMethods(store: StoreApi): StoreyMethods {
   };
   const refs = (modelId: string, ids: readonly number[]): EntityRef[] => [...new Set(ids)].map((expressId) => ({ modelId, expressId }));
   return {
-    listStoreyLevels: (modelId) => storeyRows(store.getState(), normalizeMutationModelId(store.getState(), modelId)),
+    // A model with no editable data is a failed read, not an empty model.
+    listStoreyLevels: (modelId) => summarizeStoreys(inventory(modelId)),
     addStorey(modelId, params) {
       const { normalized, outcome } = commit('addStorey', modelId, { kind: 'add', params });
       if (outcome.storeyId === null) throw new Error('bim.store.addStorey: the storey was not written');

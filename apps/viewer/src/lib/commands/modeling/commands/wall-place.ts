@@ -56,7 +56,10 @@ const FIELDS: readonly CommandField<WallPlaceGesture>[] = [
       if (!(v > 0)) return g;
       const s = ctx.get();
       s.setAuthoringDims('wall', { Height: v });
-      if (wallTopOf(ctx).above !== null && Math.abs(wallTopOf(ctx).Height - v) > 1e-9) s.setAuthoringDefaults({ wallTop: 'fixed' });
+      // On the top storey the wall would wait for the next storey above
+      // (`NextStoreyAbove`): a typed height is fixed there too.
+      const top = wallTopOf(ctx);
+      if (top.attachTo !== null && (top.above === null || Math.abs(top.Height - v) > 1e-9)) s.setAuthoringDefaults({ wallTop: 'fixed' });
       return g;
     },
   },

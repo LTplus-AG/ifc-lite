@@ -94,6 +94,24 @@ export function effectiveStoreyRows(
 ): Array<[number, readonly number[], SpatialNode | undefined]> {
   if (!project || project === hierarchy.project) return [...hierarchy.byStorey.entries()].map(([id, elements]) => [id, elements, undefined]);
   // Every level the parsed rows had (IFC4.3 facility parts included), plus storeys added this session.
-  return [...index.values()].filter((node) => node.type === IfcTypeEnum.IfcBuildingStorey || hierarchy.byStorey.has(node.expressId))
+  const rows: Array<[number, readonly number[], SpatialNode | undefined]> = [...index.values()]
+    .filter((node) => node.type === IfcTypeEnum.IfcBuildingStorey || hierarchy.byStorey.has(node.expressId))
     .map((node) => [node.expressId, node.type === IfcTypeEnum.IfcBuildingStorey ? node.elements : hierarchy.byStorey.get(node.expressId) ?? [], node]);
+  // A partial source can list a level in `byStorey` that its tree never had.
+  // Only a level the parsed tree had can have been deleted; the others stay.
+  const parsed = treeIds(hierarchy.project);
+  for (const [id, elements] of hierarchy.byStorey) {
+    if (!index.has(id) && !parsed.has(id)) rows.push([id, elements, undefined]);
+  }
+  return rows;
+}
+
+function treeIds(root: SpatialNode | undefined): Set<number> {
+  const ids = new Set<number>();
+  const stack = root ? [root] : [];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    ids.add(node.expressId);
+    stack.push(...node.children);
+  }
+  return ids;
 }

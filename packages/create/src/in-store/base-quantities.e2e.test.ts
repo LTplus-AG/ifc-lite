@@ -149,6 +149,27 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(values(s.view, wall, WALL_QTO)).toMatchObject({ NetSideArea: 12, NetVolume: 2.4, NetFootprintArea: 0.8 });
   });
 
+  it('an opening moved clear of its host cuts nothing', async () => {
+    const s = await session();
+    const wall = wallAt(s).wallId;
+    const opening = addOpeningToStore(s.editor, resolveHostAnchor(s.store, wall, s.view), { Offset: 1.5, Width: 1, Height: 2 });
+    expect(values(s.view, wall, WALL_QTO).NetSideArea).toBe(13);
+    // Slide it 2 m sideways out of the wall's thickness: still over the wall in X and Z.
+    const placement = s.view.getNewEntity(opening.placementId)!.attributes[1] as string;
+    const point = s.view.getNewEntity(Number(placement.slice(1)))!.attributes[0] as string;
+    const at = s.view.getNewEntity(Number(point.slice(1)))!.attributes[0] as number[];
+    s.view.setPositionalAttribute(Number(point.slice(1)), 0, [at[0], at[1] + 2, at[2]]);
+    expect(values(s.view, wall, WALL_QTO)).toMatchObject({ NetSideArea: 15, NetVolume: 3, NetFootprintArea: 1 });
+
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 10, 0], Width: 8, Depth: 6, Thickness: 0.25 }).slabId;
+    const hole = addOpeningToStore(s.editor, resolveHostAnchor(s.store, slab, s.view), { Position: [4, 3], Width: 2, Depth: 1 });
+    const holePlacement = s.view.getNewEntity(hole.placementId)!.attributes[1] as string;
+    const holePoint = Number((s.view.getNewEntity(Number(holePlacement.slice(1)))!.attributes[0] as string).slice(1));
+    const holeAt = s.view.getNewEntity(holePoint)!.attributes[0] as number[];
+    s.view.setPositionalAttribute(holePoint, 0, [holeAt[0], holeAt[1], holeAt[2] + 5]);
+    expect(values(s.view, slab, 'Qto_SlabBaseQuantities')).toMatchObject({ NetArea: 48, NetVolume: 12 });
+  });
+
   it('subtracts a slab opening, clipped to the outline', async () => {
     const s = await session();
     const slab = addSlabToStore(s.editor, s.anchor, { Position: [2, 3, 0], Width: 8, Depth: 6, Thickness: 0.25 });
@@ -215,18 +236,20 @@ describe('deriveAuthoredBaseQuantities', () => {
     expect(fileQuantities(await parse(exportText(s)), copy, WALL_QTO).Length).toBe(2);
   });
 
-  it('reads a mitred wall, whose body is no longer a rectangle', async () => {
+  it('reads a joined wall\'s trimmed body, not the rectangle it was drawn as', async () => {
     const s = await session();
-    const a = addWallToStore(s.editor, s.anchor, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
-    const b = addWallToStore(s.editor, s.anchor, { Start: [4, 0, 0], End: [4, 3, 0], Thickness: 0.2, Height: 3 });
-    applyWallJoinToStore(s.editor, s.anchor,
-      wallJoinTargetFromBuild(a, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 }),
-      wallJoinTargetFromBuild(b, { Start: [4, 0, 0], End: [4, 3, 0], Thickness: 0.2, Height: 3 }),
-      {});
-    const set = values(s.view, a.wallId, WALL_QTO);
-    expect(set.Height).toBe(3);
-    expect(set.GrossVolume).toBeCloseTo(set.GrossFootprintArea * 3, 9);
-    expect(set.GrossFootprintArea).toBeGreaterThan(0.75);
+    const aParams = { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 } satisfies Parameters<typeof addWallToStore>[2];
+    const bParams = { Start: [4, -3, 0], End: [4, 3, 0], Thickness: 0.2, Height: 3 } satisfies Parameters<typeof addWallToStore>[2];
+    const a = addWallToStore(s.editor, s.anchor, aParams);
+    const b = addWallToStore(s.editor, s.anchor, bParams);
+    const before = values(s.view, a.wallId, WALL_QTO).GrossFootprintArea;
+    applyWallJoinToStore(s.editor, s.anchor, wallJoinTargetFromBuild(a, aParams), wallJoinTargetFromBuild(b, bParams), {});
+    const after = values(s.view, a.wallId, WALL_QTO);
+    // A T: the abutting wall stops at the face of the one it meets, 0.1 m short of its axis.
+    expect(before).toBe(0.8);
+    expect(after.GrossFootprintArea).toBeCloseTo(0.78, 9);
+    expect(after.GrossVolume).toBeCloseTo(2.34, 9);
+    expect(values(s.view, b.wallId, WALL_QTO).GrossFootprintArea).toBeCloseTo(1.2, 9);
   });
 
   it('answers for the class a retype gave the element', async () => {

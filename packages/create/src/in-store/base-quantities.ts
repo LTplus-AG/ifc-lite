@@ -176,6 +176,8 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
       const x = axisOverlap(box, body!, 0);
       const y = axisOverlap(box, body!, 1);
       const z = axisOverlap(box, body!, 2);
+      // An opening moved clear of the body in any direction cuts nothing.
+      if (x * y * z === 0) continue;
       netSide -= x * z;
       netVolume -= x * y * z;
       if (box.min[2] <= body!.min[2] + 1e-6) netFootprint -= x * y;
@@ -200,7 +202,9 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
   const readable = boxes !== null && (boxes.length === 0 || body !== null);
-  const cuts = readable ? boxes.map((box) => ({ area: clippedPolygonArea(local, box), depth: body ? axisOverlap(box, body, 2) : 0 })) : [];
+  // An opening clear of the body, above or below it, cuts nothing even where its plan overlaps.
+  const cuts = readable ? boxes.map((box) => ({ area: clippedPolygonArea(local, box), depth: body ? axisOverlap(box, body, 2) : 0 }))
+    .filter((cut) => cut.area > 0 && cut.depth > 0) : [];
   const netArea = readable ? Math.max(0, area - cuts.reduce((sum, cut) => sum + cut.area, 0)) : null;
   if (isRoof) {
     const rows: Row[] = [['GrossArea', QuantityType.Area, area], ['ProjectedArea', QuantityType.Area, area]];

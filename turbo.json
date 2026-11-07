@@ -109,7 +109,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
+      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "IFCLITE_TEST_CHROME_EXECUTABLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
       "cache": false,
       "env": [
         "TEST_PATTERN",

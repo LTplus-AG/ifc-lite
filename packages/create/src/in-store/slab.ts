@@ -140,7 +140,8 @@ export function addSlabToStore(
   if (params.Position !== undefined) {
     assertFinitePoint3({ Position: params.Position }, 'addSlabToStore');
   }
-  if (params.ExtrudedDirection && Math.abs(params.ExtrudedDirection[2]) !== 1) {
+  const direction = params.ExtrudedDirection;
+  if (direction && !(direction[0] === 0 && direction[1] === 0 && Math.abs(direction[2]) === 1)) {
     throw new Error('addSlabToStore: ExtrudedDirection must be [0, 0, 1] or [0, 0, -1]');
   }
   if (!isPolygonParams(params)) {

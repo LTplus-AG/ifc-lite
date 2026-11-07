@@ -59,3 +59,13 @@ fn the_held_body_passes_other_schemas_straight_through() {
     assert_eq!(body.finish().unwrap(), -2);
     assert!(!String::from_utf8(out).unwrap().contains("IFCGRIDPLACEMENT"));
 }
+
+#[test]
+fn ids_with_no_room_for_new_records_leave_the_file_as_it_was() {
+    let body = "#4294967290=IFCLOCALPLACEMENT($,$);\n\
+                #4294967291=IFCWALL('a',$,$,$,$,#4294967290,$,$);\n\
+                #4294967292=IFCWALL('b',$,$,$,$,#4294967290,$,$);\n";
+    assert!(place_each_object_once(body).is_none());
+    let room = body.replace("42949672", "1");
+    assert_eq!(place_each_object_once(&room).expect("the second wall gets a copy").added, 1);
+}

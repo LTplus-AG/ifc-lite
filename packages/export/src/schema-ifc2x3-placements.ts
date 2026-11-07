@@ -120,6 +120,9 @@ function users(records: Records): Users {
  */
 export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
   const records = new Records(lines);
+  // A record adds at most four (a freed child's point, two directions and
+  // axes); a file whose ids leave no room for them is left as it was.
+  if (records.maxId + 4 * records.list.length >= 0xffffffff) return null;
   const { children, products, others, crossings } = users(records);
   const rewrites = new Map<number, string>();
   /** New records, in id order: written after the last record, where a re-read writes them back. */

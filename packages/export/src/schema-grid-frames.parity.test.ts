@@ -69,3 +69,16 @@ describe('IfcGridPlacement across IFC4X3 matches the shared vectors (#9026 item 
     expect(convertStepLine('#40=IFCGRIDPLACEMENT(#30,$);', 'IFC4', 'IFC4X3')).toBe('#40=IFCGRIDPLACEMENT($,#30,$);');
   });
 });
+
+describe('IFC2X3 placement pass id space (#9209)', () => {
+  it('leaves a file as it was when its ids leave no room for new records', () => {
+    const lines = [
+      '#4294967290=IFCLOCALPLACEMENT($,$);',
+      "#4294967291=IFCWALL('a',$,$,$,$,#4294967290,$,$);",
+      "#4294967292=IFCWALL('b',$,$,$,$,#4294967290,$,$);",
+    ];
+    expect(placeEachObjectOnce(lines)).toBeNull();
+    const room = lines.map((line) => line.replaceAll('42949672', '1'));
+    expect(placeEachObjectOnce(room)).toHaveLength(4);
+  });
+});

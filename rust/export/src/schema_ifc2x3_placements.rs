@@ -226,6 +226,11 @@ pub(crate) struct Placed {
 #[inline(never)]
 pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     let records = Records::scan(body);
+    // A record adds at most four (a freed child's point, two directions and
+    // axes); a file whose ids leave no room for them is left as it was.
+    if u64::from(records.max_id) + 4 * records.list.len() as u64 >= u64::from(u32::MAX) {
+        return None;
+    }
     let Users { children, products, others, crossings } = users(&records);
     let mut rewrites: HashMap<u32, String> = HashMap::new();
     // New records, in id order: written after the last record, where a re-read writes them back.

@@ -19,6 +19,9 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { capturePreAlignment } from '@/hooks/ingest/federationRealign';
+import { findReferenceSpatialModel } from '@/hooks/ingest/federationAlign';
 import { disposeRemeshClient, requestRemesh, setRemeshClientFactory, watchModelUnloads, type RemeshClientLike } from './remesh-service';
 
 const MODEL_ID = 'ifc';
@@ -259,4 +262,58 @@ describe('requestRemesh (#6232)', () => {
     assert.deepEqual(await requestRemesh(useViewerStore.getState, MODEL_ID, [merged], 'shape'), { status: 'refused', reason: 'colourMerged' });
     assert.equal(clients.flatMap((c) => c.calls).length, 0, 'nothing was sent to a worker');
   });
+
+  /*
+   * An aligned model's re-meshed element lands in the frame its other meshes
+   * were re-baked into (#9229). "Make anchor" pins another anchor but moves
+   * no mesh until a re-align.
+   */
+  it('a re-mesh after pinning another anchor stays in the frame the meshes were aligned into; a re-align moves it (#9229)', async () => {
+    const crs = { id: 3, name: 'EPSG:2056', verticalDatum: 'EPSG:5729', mapUnitScale: 1 } as ProjectedCRS;
+    const georeference = (store: object, eastings: number) => Object.assign(store, { lengthUnitScale: 1,
+      georeferencing: { hasGeoreference: true, projectedCRS: crs, mapConversion: { id: 1, sourceCRS: 2, targetCRS: 3,
+        eastings, northings: 1_200_000, orthogonalHeight: 400, xAxisAbscissa: 1, xAxisOrdinate: 0,
+        factorX: 1, factorY: 1, factorZ: 1 } as MapConversion } });
+    const frameModel = (id: string, idOffset: number, eastings: number, loadedAt: number) => {
+      const model = Object.assign(fixtureModel(id, { idOffset }), { loadedAt });
+      model.geometryResult = { meshes: [], totalTriangles: 0, totalVertices: 0,
+        coordinateInfo: structuredClone(useViewerStore.getState().models.get(MODEL_ID)!.geometryResult!.coordinateInfo) };
+      georeference(model.ifcDataStore!, eastings);
+      return model;
+    };
+    // `ifc` (10 m east of `anchor`) was aligned into `anchor` on load; `third` lies 100 m east.
+    const ifc = useViewerStore.getState().models.get(MODEL_ID)!;
+    georeference(ifc.ifcDataStore!, 2_600_010);
+    const anchor = Object.assign(frameModel('anchor', 1_000_000, 2_600_000, 1), { federationAlignmentStatus: 'anchor' as const });
+    const third = frameModel('third', 2_000_000, 2_600_100, 3);
+    useViewerStore.setState({ models: new Map<string, FederatedModel>([[MODEL_ID, { ...ifc, loadedAt: 2,
+      federationAlignmentStatus: 'same-crs', preAlignment: capturePreAlignment(ifc.geometryResult!) }],
+    ['anchor', anchor], ['third', third]]), georefMutations: new Map(), anchorModelIdOverride: null });
+    useViewerStore.getState().updateModel(MODEL_ID, { alignmentReference: findReferenceSpatialModel()!.placement });
+    const wall = await addWall();
+
+    /** The world x (local-frame origin + position) the re-meshed wall lands at when the worker meshes it at source x 7. */
+    const remeshed = async (): Promise<number> => {
+      const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
+      await flush();
+      const calls = clients.flatMap((client) => client.calls.splice(0));
+      assert.equal(calls.length, 1);
+      calls[0].resolve(answer([mesh(wall, 7)]));
+      assert.equal((await pending).status, 'applied');
+      const [placed] = wallMeshes(wall);
+      return (placed.origin?.[0] ?? 0) + placed.positions[0];
+    };
+    const aligned = await remeshed();
+    assert.ok(Math.abs(aligned - 7) > 1, `the re-mesh is moved into the anchor frame (x ${aligned})`);
+
+    useViewerStore.getState().setAnchorModelIdOverride('third');
+    assert.equal(findReferenceSpatialModel()?.modelId, 'third', 'fixture: the federation now picks the pinned anchor');
+    assert.equal(await remeshed(), aligned, 'no mesh moved on the pin, so the re-meshed wall stays with them');
+
+    // A re-align re-bakes `ifc` into `third`'s frame and records it.
+    useViewerStore.getState().updateModel(MODEL_ID, { alignmentReference: findReferenceSpatialModel()!.placement });
+    const realigned = await remeshed();
+    assert.ok(Math.abs(Math.abs(realigned - aligned) - 100) < 0.01, `the re-mesh follows the re-align 100 m (x ${aligned} -> ${realigned})`);
+  });
 });
+

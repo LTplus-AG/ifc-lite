@@ -47,6 +47,8 @@ const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
   'Command palette': 'commandPalette.ariaLabel',
+  'Bulk Property Editor': 'bulkPropertyEditor.title',
+  'Data Connector': 'dataConnector.dialogTitle',
   'Compare models': 'comparePanel.panel.title',
   'Clash panel': 'clashPanel.title',
   'Linked records panel': 'semantic.title',

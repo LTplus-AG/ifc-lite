@@ -16,6 +16,23 @@ Targets the Dalux **API Identities** auth model (legacy API keys expired
 2026-02-28). The API base URL is fixed at `https://node1.field.dalux.com/service/api`
 — it's not company-specific, so there's no base URL setting.
 
+## Revision history
+
+Dalux has no endpoint that lists a file's revisions directly. `listRevisions`
+answers from **version sets** instead: a named, lockable snapshot that pins
+one revision of every file in a file area. Sweeping a project's version sets
+(`GET /2.1/projects/{p}/version_sets` then `GET /3.0/.../version_sets/{vs}/files`,
+`src/commit-index.ts`) reconstructs each covered file's revision history —
+which is also the only per-file history Dalux exposes at all, so a file in no
+version set has none to show. The sweep is cached per project for a few
+minutes and shared across every call, so opening "Versions" on several files
+costs it once.
+
+Two sets pinning the same revision collapse into one entry (the model did not
+change between them); ordering prefers Dalux's own revision number over
+timestamps, because `lastModified` is date-only and every same-day revision
+would otherwise tie.
+
 ## CORS
 
 The Dalux API does not send CORS headers, so direct browser fetches to it

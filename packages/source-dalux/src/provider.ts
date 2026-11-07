@@ -33,6 +33,7 @@ import type {
   SourceFile,
   SourceFileRef,
   SourceProject,
+  SourceRevision,
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';
@@ -49,6 +50,7 @@ import {
   nonEmptyString,
   toSourceFile,
 } from './mapping.js';
+import { listVersionSetRevisions } from './revision-methods.js';
 
 const DEFAULT_BASE_URL = 'https://node1.field.dalux.com/service/api';
 
@@ -234,6 +236,21 @@ export class DaluxBuildProvider implements FileSourceProvider {
     }
 
     return client.getBinary(downloadLink, options, metadata.data.fileSize);
+  }
+
+  /**
+   * The file's revisions, newest first — reconstructed from the project's
+   * version sets, the only per-file history Dalux exposes at all. See
+   * `revision-methods.ts` for why, and for the sweep this shares with
+   * every other `listRevisions` call against the same project.
+   */
+  async listRevisions(
+    ctx: PluginContext,
+    ref: SourceFileRef,
+    options?: ListOptions,
+  ): Promise<Page<SourceRevision>> {
+    const client = await this.createClient(ctx);
+    return listVersionSetRevisions(client, ref, options);
   }
 
   /**

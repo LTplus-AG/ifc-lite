@@ -99,8 +99,16 @@ const fixtures: ConformanceFixtures = {
   containerWithChildrenId: fileAreaContainerId('fa-docs'),
   containerWithFilesId: fileAreaContainerId('fa-docs'),
   secondProjectId: 'p-beta',
-  // No revision-history endpoint exists (capabilities.revisionHistory is
-  // false), so there is no `fileWithRevisions` to point the suite at.
+  // Deliberately unset even though `capabilities.revisionHistory` is now
+  // true. `listRevisions` answers from an in-memory, per-project index
+  // (`commit-index.ts`) built by sweeping version sets, not from a paged
+  // server endpoint, so there is no server page boundary for the
+  // cursor-following check this fixture would also arm
+  // ("listRevisions: a real page boundary forces cursor-following to
+  // work") to cross — that check requires `limit` to force more than one
+  // request, and this provider always answers in one. The property it
+  // WOULD have bought instead — a listed revision downloading different
+  // bytes than another — is asserted directly in `commit-index.test.ts`.
 };
 
 /**

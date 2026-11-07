@@ -50,10 +50,19 @@ export const DALUX_MANIFEST: PluginManifest = {
     // sweep for this provider only; see `eagerFileSweep`'s doc comment in
     // `@ifc-lite/plugin-api` for why new providers should default off.
     eagerFileSweep: true,
-    // No endpoint returns revision history for a file — only "fetch this
-    // exact revision's content" if you already have its id.
-    revisionHistory: false,
-    // No history endpoint to enumerate, but a known revision id downloads fine.
+    /**
+     * Dalux has no per-file revision endpoint — only "fetch this exact
+     * revision's content" if you already have its id. What it has is
+     * version sets: `GET /2.1/projects/{p}/version_sets` plus
+     * `GET /3.0/.../version_sets/{vs}/files` enumerate every revision a
+     * project's snapshots pinned, which `listRevisions` sweeps and
+     * reconstructs per file (`commit-index.ts`). The capability describes
+     * what the provider can answer, not which single endpoint the upstream
+     * API happens to publish for it.
+     */
+    revisionHistory: true,
+    // A known revision id downloads fine, which is what makes the
+    // reconstructed history above usable rather than merely informative.
     downloadHistoricalRevisions: true,
     // No delta feed either; `watchRevisions` polls the tracked refs.
     changeDetection: true,

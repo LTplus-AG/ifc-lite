@@ -8,24 +8,27 @@
  * the mark would be out of date until the pointer next moves, and the click
  * would land somewhere the HUD wasn't showing (#9201). Whichever view the
  * pointer is in (`commandPointer.ts`, `PlanPointer.ts`) keeps it current.
- * The snap toggle replays it too, with Alt as it last was.
+ * The snap toggle replays it too, with the keys as they last were.
  */
 
-type Replay = (altKey: boolean) => void;
+/** The modifiers a replay resolves with: the keys as they are now, not at the last move. */
+export interface ReplayKeys { altKey: boolean; shiftKey: boolean }
+type Replay = (keys: ReplayKeys) => void;
 
 let replay: Replay | null = null;
-let alt = false;
+let keys: ReplayKeys = { altKey: false, shiftKey: false };
 
-export function rememberCommandPointer(next: Replay, altKey: boolean): void {
+/** After every pointer event a command took, so a key press reads where the pointer is now. */
+export function rememberCommandPointer(next: Replay, now: ReplayKeys): void {
   replay = next;
-  alt = altKey;
+  keys = { altKey: now.altKey, shiftKey: now.shiftKey };
 }
 
-/** The pointer left the view: a key press has no position to read any more. */
+/** The pointer left the view, or the command changed: a key press has no position to read any more. */
 export function forgetCommandPointer(): void {
   replay = null;
 }
 
-export function replayCommandPointer(altKey: boolean = alt): void {
-  replay?.(altKey);
+export function replayCommandPointer(now: ReplayKeys = keys): void {
+  replay?.(now);
 }

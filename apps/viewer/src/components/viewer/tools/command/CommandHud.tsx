@@ -41,7 +41,7 @@ export function CommandBar() {
   const { command, ctx, gesture, snap } = useCommandRuntime();
   const { measureRef, tier } = useHudBarTier(TIER_STACKED);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
-  useAimKey(command !== null);
+  useAimKey(command);
   if (!command || !ctx) return null;
   const hint = command.hud.hint?.(gesture);
   const aim = aimHint(command, gesture, ctx.workplane, snapEnabled, snap);

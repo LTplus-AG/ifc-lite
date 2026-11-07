@@ -28,6 +28,7 @@ import type { SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import {
   commandDoubleClick,
   commandPointerDown,
+  commandPointerMissed,
   commandPointerMove,
   commandPointerUp,
   getCommandRuntime,
@@ -155,6 +156,7 @@ export function routeCommandPointer(
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
+  rememberCommandPointer((keys) => { routeCommandPointer(ctx, 'move', x, y, keys); }, mods);
   if (kind !== 'move') {
     cancelCommandPointer(ctx);
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
@@ -162,8 +164,6 @@ export function routeCommandPointer(
     return true;
   }
   latest.set(ctx, { x, y, mods, runtime });
-  const { shiftKey } = mods;
-  rememberCommandPointer((altKey) => { routeCommandPointer(ctx, 'move', x, y, { shiftKey, altKey }); }, mods.altKey);
   if (ctx.measureRaycastPendingRef.current) return true;
   ctx.measureRaycastPendingRef.current = true;
   ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
@@ -176,6 +176,7 @@ export function routeCommandPointer(
     if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
+    else commandPointerMissed();
   });
   return true;
 }

@@ -19,7 +19,7 @@ import '@/lib/commands/modeling/builtin';
 import { aimHint } from '@/lib/commands/modeling/aim-hint';
 import { forgetCommandPointer, replayCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { getModelingCommand } from '@/lib/commands/modeling/registry';
-import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { getCommandRuntime, useCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { pointerAim } from '@/lib/commands/modeling/snap-solve';
 import { resolve as translate } from '@/i18n/registry';
 import { routeCommandPointer } from './commandPointer.js';
@@ -39,12 +39,13 @@ type Surface = (x: number, y: number) => { x: number; y: number; z: number };
 /** By default a slab top: 0.3 m up and 0.5 m off the floor point the ray reaches. */
 const SLAB_TOP: Surface = (x, y) => ({ x: x / 100 + 0.5, y: 0.3, z: y / 100 });
 
-function pointer(surface: Surface = SLAB_TOP, snapEnabled = true) {
+function pointer(surface: Surface = SLAB_TOP, snapEnabled = true, up = false) {
   const canvas = { width: 1000, height: 1000, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 }) };
   const intersection = (x: number, y: number) => ({ point: surface(x, y), expressId: 1 });
   return {
     renderer: {
-      getCamera: () => ({ unprojectToRay: (sx: number, sy: number) => ({ origin: { x: sx / 100, y: 20, z: sy / 100 }, direction: { x: 0, y: -1, z: 0 } }) }),
+      // `up`: the ray climbs away from the plane, as past the horizon.
+      getCamera: () => ({ unprojectToRay: (sx: number, sy: number) => ({ origin: { x: sx / 100, y: 20, z: sy / 100 }, direction: { x: 0, y: up ? 1 : -1, z: 0 } }) }),
       getCanvas: () => canvas,
       raycastScene: (x: number, y: number) => ({ intersection: intersection(x, y) }),
       raycastSceneMagnetic: (x: number, y: number) => ({ snapTarget: null, intersection: intersection(x, y), edgeLock: NO_LOCK }),
@@ -211,12 +212,49 @@ describe('the Alt key while a command runs (#9201)', () => {
     assert.deepEqual(landed(), { local: [2.3, 2.2], winner: 'workplane' });
   });
 
+  it('Alt replays Shift as it is now, not as it was at the last move', async () => {
+    render(<Key />);
+    routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: false });
+    await nextFrame();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', shiftKey: true, bubbles: true, cancelable: true }));
+    await nextFrame();
+    assert.deepEqual(getCommandRuntime().snap?.modifiers, { shift: true, alt: true });
+  });
+
+  it('a new command forgets the last pointer, and replays from its own click', async () => {
+    function Live() { useAimKey(useCommandRuntime().command); return null; }
+    render(<Live />);
+    routeCommandPointer(pointer(), 'move', 700, -700, { shiftKey: false, altKey: false });
+    await nextFrame();
+    useViewerStore.getState().startCommand('column.place');
+    await nextFrame();
+    fire('keydown', 'Alt');
+    await nextFrame();
+    assert.equal(getCommandRuntime().snap, null, 'the old command\'s pointer is not replayed into the new one');
+    fire('keyup', 'Alt');
+    useViewerStore.getState().startCommand('wall.place');
+    await nextFrame();
+    click(pointer(), 300, -300);
+    fire('keydown', 'Alt');
+    await nextFrame();
+    assert.deepEqual(landed(), { local: [3, 3], winner: 'workplane' });
+  });
+
+  it('a ray that misses the plane clears the mark instead of leaving the last one', async () => {
+    routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: true });
+    await nextFrame();
+    assert.equal(landed().winner, 'workplane');
+    routeCommandPointer(pointer(SLAB_TOP, true, true), 'move', 300, -200, { shiftKey: false, altKey: true });
+    await nextFrame();
+    assert.equal(getCommandRuntime().snap, null);
+  });
+
   it('after the pointer has left, Alt moves nothing', async () => {
     render(<Key />);
     routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: false });
     await nextFrame();
     forgetCommandPointer();
-    replayCommandPointer(true);
+    replayCommandPointer({ altKey: true, shiftKey: false });
     await nextFrame();
     assert.equal(landed().winner, 'face');
   });

@@ -70,7 +70,7 @@ export function routePlanPointer(kind: 'move' | 'down' | 'up', input: PlanPointe
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
   // The toggle is read again on replay, as `PlanView` does for each new event.
-  if (kind === 'move') rememberCommandPointer((altKey) => { routePlanPointer('move', { ...input, snapping: useViewerStore.getState().snapEnabled, mods: { ...input.mods, altKey } }); }, input.mods.altKey);
+  rememberCommandPointer((keys) => { routePlanPointer('move', { ...input, snapping: useViewerStore.getState().snapEnabled, mods: { ...keys, detail: 1 } }); }, input.mods);
   // The second click of a double-click (detail 2) closes a polygon, as in 3D.
   if (kind === 'down') ((input.mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
   else if (kind === 'up') commandPointerUp(snap);

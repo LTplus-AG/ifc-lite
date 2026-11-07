@@ -18,11 +18,19 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { readStoreyInventory } from '@ifc-lite/create';
 import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
 
-const cache = new WeakMap<SpatialNode, { view: MutablePropertyView; revision: number; project: SpatialNode }>();
+const cache = new WeakMap<SpatialNode, { view: MutablePropertyView; revision: string; project: SpatialNode }>();
 
-/** A cheap revision of the overlay: storey edits always add mutations or entities. */
-function revision(view: MutablePropertyView): number {
-  return view.getMutations().length * 1_000_003 + view.getNewEntities().length * 7 + view.getTombstones().size;
+/**
+ * A cheap revision of the overlay. Counts alone collide: a preview undone and
+ * replaced by another adds as many mutations and entities as the first. The
+ * last mutation's id and the highest authored express id never repeat, so
+ * two different overlay states never share a revision.
+ */
+function revision(view: MutablePropertyView): string {
+  const mutations = view.getMutations();
+  let newest = 0, entities = 0;
+  for (const entity of view.getNewEntities()) { entities++; if (entity.expressId > newest) newest = entity.expressId; }
+  return `${mutations.length}:${mutations.at(-1)?.id ?? ''}:${entities}:${newest}:${view.getTombstones().size}`;
 }
 
 export function effectiveSpatialProject(store: IfcDataStore, view: MutablePropertyView | null | undefined): SpatialNode | undefined {

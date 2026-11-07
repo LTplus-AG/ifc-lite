@@ -9,7 +9,7 @@
  */
 
 import {
-  planStoreyDelete, readStoreyInventory, suggestStorey, summarizeStoreys,
+  planStoreyDelete, readStoreyInventory, storeyDeletePlanSignature, suggestStorey, summarizeStoreys,
   type StoreyDeleteMode, type StoreyDeletePlan, type StoreySuggestion, type StoreySummary,
 } from '@ifc-lite/create';
 import type { TransactionStore } from '@/lib/commands/modeling/transaction';
@@ -77,20 +77,36 @@ export function reviewStoreyDeletion(s: ViewerState, modelId: string, storeyId: 
 /**
  * Delete a storey. When it is the one being drawn on, the session moves to
  * the storey below it (or above, for the lowest) first, so it never points
- * at a deleted storey.
+ * at a deleted storey; if the deletion is then refused, the session moves back.
+ *
+ * `reviewed` is the plan the delete panel showed (`reviewStoreyDeletion`).
+ * Deleting the contents passes it to the write, which refuses a model that
+ * changed since; moving them checks it here, since a move is a different
+ * plan: contents that changed since the panel opened are refused as stale.
  */
 export function deleteStorey(
-  store: TransactionStore, modelId: string, storeyId: number, mode: StoreyDeleteMode, expected?: StoreyDeletePlan,
+  store: TransactionStore, modelId: string, storeyId: number, mode: StoreyDeleteMode, reviewed?: StoreyDeletePlan,
 ): StoreyOpOutcome {
   const s = store.getState();
-  const op = { kind: 'delete', storeyId, mode, expected } as const;
+  if (reviewed && mode.kind !== reviewed.mode.kind) {
+    const now = reviewStoreyDeletion(s, modelId, storeyId);
+    if (!now || storeyDeletePlanSignature(now) !== storeyDeletePlanSignature(reviewed)) {
+      const stale = { code: 'stale', message: 'The storey changed since the deletion was reviewed; review it again' } as const;
+      return { ok: false, reason: stale.message, refusals: [stale] };
+    }
+  }
+  const op = { kind: 'delete', storeyId, mode, expected: reviewed && mode.kind === reviewed.mode.kind ? reviewed : undefined } as const;
   const refusals = storeyOpRefusals(s, modelId, op);
   if (refusals.length) return { ok: false, reason: refusals.map((r) => r.message).join('; '), refusals };
-  if (s.session?.modelId === modelId && s.session.storeyId === storeyId) {
+  const previous = s.session?.modelId === modelId ? s.session.storeyId : null;
+  if (previous === storeyId) {
     const rows = storeyRows(s, modelId);
     const index = rows.findIndex((row) => row.expressId === storeyId);
     const next = rows[index + 1] ?? rows[index - 1];
     if (next) s.setSessionStorey(next.expressId);
   }
-  return commitStoreyOp(store, modelId, op);
+  const outcome = commitStoreyOp(store, modelId, op);
+  // A refused write leaves the storey in place: so is the session.
+  if (!outcome.ok && previous === storeyId) store.getState().setSessionStorey(storeyId);
+  return outcome;
 }

@@ -106,7 +106,9 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       assert.equal(firstView.getNewEntities().length, 0, 'the first model stays untouched');
       // One undo step: the wall and its recorded top (#9013) share one batch.
       const stack = useViewerStore.getState().undoStacks.get(second.id) ?? [];
-      assert.equal(new Set(stack.map((mutation) => useViewerStore.getState().mutationBatchTags.get(mutation.id))).size, 1);
+      const tags = stack.map((mutation) => useViewerStore.getState().mutationBatchTags.get(mutation.id));
+      assert.ok(stack.length > 1 && tags.every((tag) => tag !== undefined), 'every record of the wall carries a batch tag');
+      assert.equal(new Set(tags).size, 1);
       act(() => { useViewerStore.getState().undo(second.id); });
       assert.equal(secondView.getNewEntities().filter((entity) => entity.type === 'IfcWall').length, 0);
     } finally {

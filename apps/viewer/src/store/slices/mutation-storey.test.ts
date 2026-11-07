@@ -79,6 +79,10 @@ describe('storey ops in the viewer (#9013)', () => {
     const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
     const inventory = readStoreyInventory(target.dataStore, target.view);
     assert.equal(inventory.storeys.find((s) => s.expressId === outcome.storeyId)?.elevation, 6);
+    // Contained by the new storey itself, not merely placed at its height.
+    const contained = (inventory.outgoing.get(outcome.storeyId!) ?? [])
+      .filter((rel) => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE').flatMap((rel) => rel.children);
+    assert.ok(contained.includes(wall.expressId), 'the new storey contains the wall');
   });
 
   it('re-levels as one undo step and re-meshes what moved', async () => {
@@ -123,6 +127,11 @@ describe('storey ops in the viewer (#9013)', () => {
     m.previewStoreyLevel(useViewerStore, MODEL_ID, { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.6 });
     assert.ok(m.keepStoreyPreview());
     assert.deepEqual(storeys().map(([, e]) => e), [0, 3.6]);
+    // The hierarchy follows each preview, though every one adds as many records as the last (#9037 review).
+    const s = useViewerStore.getState();
+    const project = m.effectiveSpatialProject(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID));
+    const find = (node: NonNullable<typeof project>): typeof project => node.expressId === UPPER_STOREY ? node : node.children.map(find).find(Boolean);
+    assert.equal(find(project!)?.elevation, 3.6, 'the tree shows the kept elevation, not a cached earlier preview');
     assert.equal(batches(), 1, 'typing two values then Enter is one undo step');
   });
 
@@ -144,9 +153,16 @@ describe('storey ops in the viewer (#9013)', () => {
     const late = editor.addEntity('IfcWall', ['3JUHrTM_j3UxZiBnyBfByx', null, 'Late', null, null, null, null, null, null]).expressId;
     editor.addEntity('IfcRelContainedInSpatialStructure', ['3tI3d7B1T4ivX8X0SA4yuM', null, null, null, [`#${late}`], `#${UPPER_STOREY}`]);
     const depth = undoDepth();
+    // Drawing on the storey being deleted: a refused deletion leaves the session where it was.
+    useViewerStore.getState().setSessionStorey(UPPER_STOREY);
     const outcome = m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'deleteContents' }, reviewed);
     assert.ok(!outcome.ok);
     assert.equal(outcome.refusals[0]?.code, 'stale');
+    assert.equal(useViewerStore.getState().session?.storeyId, UPPER_STOREY, 'the session is back on the storey that stays');
+    // Moving the contents is held to the same review: the wall added since is not moved unseen.
+    const moved = m.deleteStorey(useViewerStore, MODEL_ID, UPPER_STOREY, { kind: 'move', targetStoreyId: STOREY }, reviewed);
+    assert.ok(!moved.ok);
+    assert.equal(moved.refusals[0]?.code, 'stale');
     assert.equal(target.view.isDeleted(late), false, 'the wall added after the review survives');
     assert.equal(undoDepth(), depth);
     assert.equal(storeys().length, 2);

@@ -14,7 +14,6 @@ import { ArrowDownToLine, ArrowUpToLine, Check, Trash2 } from 'lucide-react';
 import type { StoreySummary } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
 import { IconButton } from '@/components/ui/icon-button';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatElevation, formatHeight } from '@/lib/storeys/storey-length';
 import { METRE_SYMBOL } from '@/components/viewer/model-inspector/inspector-fields';
@@ -72,23 +71,21 @@ export function StoreyRow({
       )}
     >
       <div className="flex items-center gap-1">
-        {/* The design-system Button carries radio semantics in the roving radiogroup (arrow keys move the active storey). */}
-        <Button
+        {/* The design-system IconButton carries radio semantics in the roving radiogroup (arrow keys move the active storey). */}
+        <IconButton
           ref={radioRef}
-          type="button"
           // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
           role="radio"
-          variant="ghost"
           size="icon-xs"
           aria-checked={active}
-          aria-label={t('storeyManager.activate', { storey })}
+          label={t('storeyManager.activate', { storey })}
           tabIndex={tabbable ? 0 : -1}
           onClick={onActivate}
           onKeyDown={onRadioKey}
           className={cn('h-6 w-6 shrink-0 rounded-full border', active ? 'border-overlay-accent text-overlay-accent' : 'border-input text-transparent')}
         >
           <Check aria-hidden className="h-3 w-3" />
-        </Button>
+        </IconButton>
         <StoreyInlineField
           className="flex-1"
           value={row.Name}

@@ -193,7 +193,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
                     others={rows.filter((other) => other.expressId !== row.expressId)}
                     defaultTargetId={(rows[index + 1] ?? rows[index - 1])?.expressId ?? null}
                     error={deleting?.error ?? null}
-                    onMove={(targetStoreyId) => remove(row.expressId, { kind: 'move', targetStoreyId })}
+                    onMove={(targetStoreyId) => remove(row.expressId, { kind: 'move', targetStoreyId }, deleting?.reviewed ?? undefined)}
                     onDeleteContents={() => remove(row.expressId, { kind: 'deleteContents' }, deleting?.reviewed ?? undefined)}
                     onCancel={() => setDeleting(null)}
                   />

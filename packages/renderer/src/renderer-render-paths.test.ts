@@ -1714,7 +1714,7 @@ describe('a partial-only parent releases its own GPU buffers but keeps its CPU p
                 const glass = seedMergedGlass(h, [triangle(6, TRANSPARENT)]);
                 clearFrame(h);
                 h.render({ hiddenIds: new Set([6]) });
-                assert.deepStrictEqual(subBatchesOf(h, glass), [], 'no :promoted / :remaining slots');
+                assert.deepStrictEqual(subBatchKeys(h).filter((k) => k.startsWith(`${glass.colorKey}:${glass.id}:`)), [], 'no :promoted / :remaining slots');
                 const slot = scene['partialBatchCacheKeys'].get(`${glass.colorKey}:${glass.id}`);
                 assert.ok(slot !== undefined, 'one sub-batch for the visible subset');
                 const sub = scene['partialBatchCache'].get(slot) as BatchedMesh;

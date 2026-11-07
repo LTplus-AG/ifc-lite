@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 (globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, click, render, type as typeInto, advance } from '@/test/render.js';
+import { cleanup, click, render, type as typeInto, advance, waitFor } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -31,13 +31,16 @@ afterEach(() => {
   });
 });
 
-test('the visible ribbon Commands button opens the palette (#5862)', () => {
+test('the visible ribbon Commands button opens the palette (#5862)', async () => {
   const layout = renderViewerLayout();
   const button = [...layout.querySelectorAll('button')]
     .find((candidate) => candidate.textContent?.includes('Commands…'));
   assert.ok(button, 'the ribbon exposes the Commands button');
   click(button);
-  assert.ok(document.body.querySelector('[role="dialog"][aria-label="Command palette"]'));
+  await waitFor(() => document.body.querySelector('[role="dialog"][aria-label="Command palette"]') !== null,
+    'the first Commands activation must load and open the palette');
+  await waitFor(() => document.activeElement?.getAttribute('role') === 'combobox',
+    'the lazily mounted search input must receive keyboard focus');
 });
 
 test('Cost and AI Chat palette rows open their panels (#5862)', async () => {

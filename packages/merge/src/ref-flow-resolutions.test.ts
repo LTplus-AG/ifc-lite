@@ -9,12 +9,16 @@
  * partially-addressed plans surface the leftovers as conflicts.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { computeLayerId, computeStackHash, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { extractStackState } from './component-state.js';
 import { mergeIntoRef } from './ref-flow.js';
 import type { LayerRefStore, RefEntry } from './ref-flow.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 const SOUND = 'bsi::ifc::v5a::Pset_Acoustic::Rw';

@@ -74,6 +74,8 @@ test('native load panel action produces portable conversation and native report 
   useViewerStore.getState().showWorkspacePanel('loadReport');
   useAssistantPlacement.setState({ placement: 'split' });
   const ui = render(createElement(SidebarPanelHost));
+  // The Load report panel is lazy-loaded, so its section mounts after the chunk resolves.
+  await waitFor(() => !!ui.querySelector('section[aria-label="Load report"]'), 'Load report panel mounts');
   const region = ui.querySelector('section[aria-label="Load report"]');
   assert.ok(region);
   const button = region.querySelector('button[aria-label="Discuss with AI"]');

@@ -26,8 +26,8 @@
 //!       thickness axis hit ZERO wall triangles — i.e. the void cut
 //!       reached the post-clip mesh.
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_core::{build_entity_index, EntityDecoder};
+use ifc_lite_geometry::{void_index_from_content, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
 /// Catalogued fixture or `None` (skip); a missing one panics under
@@ -36,22 +36,10 @@ fn load_fixture(relative: &str) -> Option<String> {
     ifc_lite_testkit::fixture_text(relative)
 }
 
-/// Build the void index the same way production does.
+/// The production void index (`void_index_from_content`, #8341 C4-15).
 fn build_void_index_like_production(content: &str) -> FxHashMap<u32, Vec<u32>> {
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut scanner = EntityScanner::new(content);
     let mut decoder = EntityDecoder::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCRELVOIDSELEMENT" {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(host_id), Some(opening_id)) = (entity.get_ref(4), entity.get_ref(5)) {
-                    void_index.entry(host_id).or_default().push(opening_id);
-                }
-            }
-        }
-    }
-    let _ = propagate_voids_to_parts(&mut void_index, content, &mut decoder);
-    void_index
+    void_index_from_content(content, &mut decoder)
 }
 
 fn process_host_like_production(

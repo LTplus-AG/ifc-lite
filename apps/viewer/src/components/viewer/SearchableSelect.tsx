@@ -89,8 +89,8 @@ export function SearchableSelect({
           type="button"
           className={cn(
             'w-full flex items-center justify-between gap-1 text-left',
-            'text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm',
-            !value && 'text-zinc-400 dark:text-zinc-500',
+            'text-xs px-1.5 py-1 bg-white border border-zinc-300 dark:border-zinc-600 text-foreground rounded-sm',
+            !value && 'text-muted-foreground',
             className,
           )}
         >
@@ -132,11 +132,11 @@ export function SearchableSelect({
           // an opaque background and disables the `backdrop-filter` that would
           // otherwise create a stacking context and invert paint order.
           // Removing this class silently reopens #1924.
-          className="popover-surface z-[120] p-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
+          className="popover-surface z-[120] p-0 bg-white border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg flex flex-col"
         >
           {options.length > 8 && (
-            <div className="flex items-center gap-1 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-700">
-              <Search className="h-3 w-3 text-zinc-400 flex-shrink-0" />
+            <div className="flex items-center gap-1 px-1.5 py-1 border-b border-border">
+              <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               <input
                 // eslint-disable-next-line jsx-a11y/no-autofocus -- keeps the filter typeable the instant the popup opens, matching the pre-#5817 focus timing.
                 autoFocus
@@ -145,7 +145,7 @@ export function SearchableSelect({
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={t('searchableSelect.searchPlaceholder')}
                 aria-label={t('searchableSelect.filterOptionsLabel')}
-                className="flex-1 text-xs bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+                className="flex-1 text-xs bg-transparent border-0 outline-none text-foreground placeholder:text-muted-foreground"
               />
             </div>
           )}

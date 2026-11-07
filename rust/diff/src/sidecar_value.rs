@@ -2,32 +2,83 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Lossless JavaScript strings and ordered JSON values for sidecar documents.
-use std::{fmt, ops::Index};
+use std::{cmp::Ordering, fmt, hash::{Hash, Hasher}, ops::Index, sync::{Arc, OnceLock}};
 
 /// JavaScript strings are UTF-16 sequences, including unpaired surrogates.
 /// Keep a scalar view only when it exists; equality, hashing and ordering use
 /// the original code units, never a replacement-character projection.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JsString {
+#[derive(Debug, Clone)]
+pub struct JsString(Arc<StringData>);
+#[derive(Debug)]
+struct StringData {
+    /// Immutable digest of `units`, fixed at construction (#8351). Hashed maps
+    /// then hash one word instead of every code unit, and unequal strings are
+    /// usually rejected without reading their unit buffers.
+    hash: u64,
     units: Vec<u16>,
-    scalar: Option<String>,
+    scalar: OnceLock<Option<String>>,
+}
+impl StringData {
+    fn new(units: Vec<u16>, scalar: OnceLock<Option<String>>) -> Self {
+        Self { hash: digest(&units), units, scalar }
+    }
+}
+/// Keyed once per process, so crafted collisions are no easier than with std's
+/// per-map keys. Maps keyed by `JsString` then reuse the digest via [`JsHash`].
+fn digest(units: &[u16]) -> u64 {
+    static KEYS: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
+    use std::hash::BuildHasher;
+    KEYS.get_or_init(Default::default).hash_one(units)
+}
+/// Pass-through hashing for maps keyed by [`JsString`] (#8351): its digest is
+/// already keyed, so a second keyed round per probe buys nothing.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct JsHash;
+impl std::hash::BuildHasher for JsHash {
+    type Hasher = JsHasher;
+    fn build_hasher(&self) -> JsHasher { JsHasher(0) }
+}
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct JsHasher(u64);
+impl Hasher for JsHasher {
+    fn finish(&self) -> u64 { self.0 }
+    fn write_u64(&mut self, value: u64) { self.0 = self.0.rotate_left(26) ^ value; }
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes { self.0 = (self.0.rotate_left(5) ^ u64::from(byte)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95); }
+    }
+}
+// The lazy scalar view must never affect identity or ordering (#8042).
+impl PartialEq for JsString {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) || (self.0.hash == other.0.hash && self.units() == other.units())
+    }
+}
+impl Eq for JsString {}
+impl PartialOrd for JsString {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+}
+impl Ord for JsString {
+    fn cmp(&self, other: &Self) -> Ordering { self.units().cmp(other.units()) }
+}
+impl Hash for JsString {
+    fn hash<H: Hasher>(&self, state: &mut H) { state.write_u64(self.0.hash); }
 }
 impl Default for JsString {
     fn default() -> Self { Self::from("") }
 }
 impl JsString {
     pub fn from_units(units: Vec<u16>) -> Self {
-        let scalar = String::from_utf16(&units).ok();
-        Self { units, scalar }
+        Self(Arc::new(StringData::new(units, OnceLock::new())))
     }
-    pub fn units(&self) -> &[u16] { &self.units }
+    pub fn units(&self) -> &[u16] { &self.0.units }
     pub fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
-        Self::from_units(prefix.encode_utf16().chain(value.units.iter().copied()).chain(suffix.encode_utf16()).collect())
+        Self::from_units(prefix.encode_utf16().chain(value.0.units.iter().copied()).chain(suffix.encode_utf16()).collect())
     }
-    pub fn as_str(&self) -> Option<&str> { self.scalar.as_deref() }
-    pub fn is_empty(&self) -> bool { self.units.is_empty() }
+    pub fn as_str(&self) -> Option<&str> { self.0.scalar.get_or_init(|| String::from_utf16(self.units()).ok()).as_deref() }
+    pub fn is_empty(&self) -> bool { self.0.units.is_empty() }
     pub fn is_blank(&self) -> bool {
-        self.units.iter().all(|&unit| char::from_u32(u32::from(unit))
+        self.0.units.iter().all(|&unit| char::from_u32(u32::from(unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace))
     }
     /// Concatenate without projecting unpaired units into a scalar string.
@@ -40,7 +91,7 @@ impl JsString {
         Self::from_units(units)
     }
     pub fn starts_with(&self, prefix: &str) -> bool {
-        self.units.iter().copied().take(prefix.encode_utf16().count()).eq(prefix.encode_utf16())
+        self.0.units.iter().copied().take(prefix.encode_utf16().count()).eq(prefix.encode_utf16())
     }
     /// ECMAScript trim followed by Unicode default uppercase mapping. Surrogate
     /// code units remain unchanged and valid pairs are mapped as one scalar.
@@ -49,10 +100,10 @@ impl JsString {
         if let Some(normalized) = crate::class_normalization::lookup(self) { return normalized; }
         let whitespace = |unit: &u16| char::from_u32(u32::from(*unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace);
-        let start = self.units.iter().position(|u| !whitespace(u)).unwrap_or(self.units.len());
-        let end = self.units.iter().rposition(|u| !whitespace(u)).map_or(start, |i| i + 1);
+        let start = self.0.units.iter().position(|u| !whitespace(u)).unwrap_or(self.0.units.len());
+        let end = self.0.units.iter().rposition(|u| !whitespace(u)).map_or(start, |i| i + 1);
         let mut units = Vec::new();
-        for ch in char::decode_utf16(self.units[start..end].iter().copied()) {
+        for ch in char::decode_utf16(self.0.units[start..end].iter().copied()) {
             match ch {
                 Err(error) => units.push(error.unpaired_surrogate()),
                 Ok(ch) => for upper in ch.to_uppercase() {
@@ -64,7 +115,7 @@ impl JsString {
     }
     pub fn write_json(&self, out: &mut String) {
         out.push('"');
-        for ch in char::decode_utf16(self.units.iter().copied()) {
+        for ch in char::decode_utf16(self.0.units.iter().copied()) {
             match ch {
                 Err(error) => out.push_str(&format!("\\u{:04x}", error.unpaired_surrogate())),
                 Ok('"') => out.push_str("\\\""),
@@ -82,14 +133,14 @@ impl JsString {
     }
 }
 impl From<&str> for JsString {
-    fn from(value: &str) -> Self { Self { units: value.encode_utf16().collect(), scalar: Some(value.into()) } }
+    fn from(value: &str) -> Self { Self::from(value.to_owned()) }
 }
 impl From<String> for JsString {
-    fn from(value: String) -> Self { Self { units: value.encode_utf16().collect(), scalar: Some(value) } }
+    fn from(value: String) -> Self { Self(Arc::new(StringData::new(value.encode_utf16().collect(), OnceLock::from(Some(value))))) }
 }
 impl fmt::Display for JsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for ch in char::decode_utf16(self.units.iter().copied()) {
+        for ch in char::decode_utf16(self.0.units.iter().copied()) {
             match ch {
                 Ok(c) => write!(f, "{c}")?,
                 // Native error messages are scalar strings; make an invalid
@@ -169,7 +220,7 @@ impl From<&JsString> for JsString {
     fn from(value: &JsString) -> Self { value.clone() }
 }
 impl PartialEq<str> for JsString {
-    fn eq(&self, value: &str) -> bool { self.units.iter().copied().eq(value.encode_utf16()) }
+    fn eq(&self, value: &str) -> bool { self.0.units.iter().copied().eq(value.encode_utf16()) }
 }
 impl PartialEq<&str> for JsString {
     fn eq(&self, value: &&str) -> bool { self == *value }
@@ -192,4 +243,33 @@ impl std::ops::IndexMut<&str> for DocumentValue {
 }
 impl PartialEq<bool> for DocumentValue {
     fn eq(&self, value: &bool) -> bool { matches!(self, Self::Bool(b) if b == value) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn issue_8351_cached_digest_agrees_with_code_unit_equality() {
+        // Separate allocations of equal code units, including a lone surrogate
+        // and a scalar-backed copy, must hash and compare equal.
+        let lone = JsString::from_units(vec![0x61, 0xd800]);
+        let lone_copy = JsString::from_units(vec![0x61, 0xd800]);
+        let scalar = JsString::from("attr:core");
+        let scalar_units = JsString::from_units("attr:core".encode_utf16().collect());
+        assert_eq!(lone, lone_copy);
+        assert_eq!(scalar, scalar_units);
+        assert_ne!(lone, JsString::from_units(vec![0x61, 0xdc00]));
+        let build = std::collections::hash_map::RandomState::new();
+        use std::hash::BuildHasher;
+        assert_eq!(build.hash_one(&lone), build.hash_one(&lone_copy));
+        assert_eq!(JsHash.hash_one(&scalar), JsHash.hash_one(&scalar_units));
+        let map: HashMap<_, _, JsHash> = [(lone.clone(), 1), (scalar.clone(), 2)].into_iter().collect();
+        assert_eq!(map.get(&lone_copy), Some(&1));
+        assert_eq!(map.get(&scalar_units), Some(&2));
+        assert_eq!(map.get(&JsString::from("attr:cor")), None);
+        let distinct: HashSet<_, JsHash> = (0..4096u16).map(|unit| JsString::from_units(vec![unit])).collect();
+        assert_eq!(distinct.len(), 4096);
+    }
 }

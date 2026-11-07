@@ -21,13 +21,15 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
-import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { reprojectMeasurementsForCamera, type MeasureCameraState } from './measureCameraState';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-import { registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
+import { noteLiveFrameSubmitted, registerViewportCapture, viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 import { viewportRenderOptions } from './viewport-render-options';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
+import { GpuFramePacer } from './gpuFramePacer';
+import { ContinuousRenderThrottle } from './continuousRenderThrottle';
 /** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -43,6 +45,8 @@ export interface UseAnimationLoopParams {
   lastFrameTimeRef: MutableRefObject<number>;
   mouseIsDraggingRef: MutableRefObject<boolean>;
   activeToolRef: MutableRefObject<string>;
+  /** Whether a Measure pick snaps: the measurement pass compares it (#8998). */
+  snapEnabledRef: MutableRefObject<boolean>;
   /** When set, clips model below this Y value (terrain clipping for Cesium overlay). */
   terrainClipYRef: MutableRefObject<number | null>;
   hiddenEntitiesRef: MutableRefObject<Set<number>>;
@@ -72,16 +76,10 @@ export interface UseAnimationLoopParams {
   clashHighlightColorsRef: MutableRefObject<Map<number, [number, number, number, number]> | null | undefined>;
   coordinateInfoRef: MutableRefObject<CoordinateInfo | undefined>;
   isInteractingRef: MutableRefObject<boolean>;
-  lastCameraStateRef: MutableRefObject<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>;
+  lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
   updateCameraRotationRealtime: (rotation: { azimuth: number; elevation: number }) => void;
   calculateScale: () => void;
-  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
+  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
   hasPendingMeasurements: () => boolean;
 }
 
@@ -96,7 +94,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     activeToolRef,
     modelBoundsRef,
     isInteractingRef,
-    lastCameraStateRef,
     updateCameraRotationRealtime,
     calculateScale,
     updateMeasurementScreenCoords,
@@ -110,6 +107,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
 
     const camera = renderer.getCamera();
     const scene = renderer.getScene();
+    const measurePass = { ...params, renderer };
     let aborted = false;
     const unregisterCapture = registerViewportCapture(renderer, canvas, () => viewportRenderOptions(renderer, params, false));
 
@@ -127,34 +125,17 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let wasInteracting = false;
     let residencyRestoreErrorLogged = false;
     let renderErrorLogged = false;
+    /** Frames since a capture that asked again for the live frame its picks wait on (#9031). */
+    let liveFrameRetries = 0;
 
-    // Adaptive render throttle: cap the continuous-render cadence (interaction
-    // + inertia) from the MEASURED cost of recent renders, not a triangle-count
-    // guess. The old tiers (25ms above 1M triangles, 33ms above 5M) capped
-    // orbiting at 40/30 fps even when frames were cheap — culling means a 6M-
-    // triangle model can render in a few ms, and the cap itself was the
-    // choppiness on CATIA-class models. renderer.render() wall time covers
-    // encoder work AND swap-chain backpressure (getCurrentTexture blocks when
-    // the GPU falls behind), so genuinely heavy scenes still degrade to the
-    // same 40/30 fps floors within a few frames; a 200K-mesh model that takes
-    // 30ms a frame cannot overwhelm the main thread any more than before.
-    let continuousThrottleMs = 0; // 0 = no throttle
-    let emaRenderMs = 0;          // EMA of render() wall time, rendered frames only
-
-    function updateThrottle(renderMs: number) {
-      emaRenderMs = emaRenderMs === 0 ? renderMs : renderMs * 0.2 + emaRenderMs * 0.8;
-      // Hysteresis ladder — engage above, release below, hold in between,
-      // so the cadence doesn't flap around a band edge mid-gesture.
-      if (emaRenderMs >= 26) {
-        continuousThrottleMs = 33; // ~30 fps
-      } else if (emaRenderMs >= 14) {
-        if (continuousThrottleMs !== 33 || emaRenderMs < 20) {
-          continuousThrottleMs = 25; // ~40 fps
-        }
-      } else if (emaRenderMs <= 10) {
-        continuousThrottleMs = 0;
-      }
-    }
+    // Adaptive render throttle (continuousRenderThrottle.ts): caps the
+    // continuous-render cadence (interaction + inertia) from the measured
+    // main-thread cost of recent renders, snapped to whole refresh intervals.
+    const throttle = new ContinuousRenderThrottle();
+    // render() cost is CPU-side only: queue.submit() returns at once, so a
+    // GPU slower than the loop (software WebGPU) never shows up above and frames
+    // queue without bound, delaying every pick readback behind them (#5865).
+    const framePacer = new GpuFramePacer();
 
     const animate = (currentTime: number) => {
       if (aborted) return;
@@ -166,6 +147,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         return;
       }
       fieldTelemetry?.noteNavigateFrame(deltaTime, isInteractingRef.current); // #6961 ifc_navigate (null until a load)
+      throttle.noteFrameInterval(deltaTime);
 
       // 1. Drain mesh queue (streaming GPU uploads)
       let queueFlushed = false;
@@ -219,9 +201,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // for large models. Without this, 200K+ mesh models at 60fps overwhelm
       // the main thread and freeze the tab. Inertia alone can run 60+ frames
       // after mouseup, each requiring a full GPU render pass.
-      const throttled = isContinuousRender &&
-        continuousThrottleMs > 0 &&
-        (currentTime - lastRenderTime) < continuousThrottleMs;
+      const throttled = isContinuousRender && !throttle.allows(currentTime - lastRenderTime);
       // Render continuously while the user is interacting (issue #1394), not
       // just when a pointermove happens to set the dirty flag. Pointer events
       // can arrive sparsely (coalesced / slow drag), which left the swap chain
@@ -229,8 +209,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // preserve canvas contents between frames then show BLANK while orbiting
       // and only "reappear" on release — the reported bug. The large-model
       // interaction throttle still caps the cadence via `throttled`.
-      const willRender =
-        (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
+      const wantsRender = (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
+      const gpuBacklogged = wantsRender && framePacer.saturated(renderer.getGPUDevice(), performance.now());
+      // A held-back frame keeps its request; queueFlushed is per-iteration only.
+      if (gpuBacklogged && queueFlushed) renderer.requestRender();
+      const willRender = wantsRender && !gpuBacklogged;
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
@@ -241,9 +224,12 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         // requestAnimationFrame(animate) below, and the viewer freezes for the
         // rest of the session with nothing on screen to say why. Latched to one
         // warning per session — a dead device fails every frame.
+        let submitted = false;
+        let threw = false;
         try {
-          renderer.render(viewportRenderOptions(renderer, params, isContinuousRender, continuousThrottleMs, contributionCull, lod));
+          submitted = renderer.renderWithResult(viewportRenderOptions(renderer, params, isContinuousRender, throttle.intervalMs(), contributionCull, lod));
         } catch (err) {
+          threw = true;
           if (!renderErrorLogged) {
             renderErrorLogged = true;
             offerErrorReport({ errorCode: 'renderer_frame_failed' });
@@ -273,7 +259,22 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             );
           }
         }
-        updateThrottle(performance.now() - renderStart);
+        // Encode cost only (FrameStats.cpuMs excludes the swap-chain wait);
+        // wall time when this call produced no frame stats.
+        const stats = renderer.getFrameStats();
+        throttle.noteRenderCost(stats && stats.timestamp >= renderStart ? stats.cpuMs : performance.now() - renderStart);
+        // Only a frame that really reached the queue can owe the page a completion.
+        if (submitted) {
+          framePacer.noteSubmit(renderer.getGPUDevice(), performance.now());
+          noteLiveFrameSubmitted(renderer); // the measure pass below may compare picks again (#9031)
+          liveFrameRetries = 0;
+        } else if (!threw && viewportPicksAwaitLiveFrame(renderer) && liveFrameRetries++ < LIVE_FRAME_RETRIES) {
+          // The pickers still mirror a capture, and the measure pass waits on
+          // a live frame: ask again, a few times (#9031). A frame that keeps
+          // failing is the renderer's own bounded retry, and device recovery
+          // and a resize ask for their frame; a throw keeps its single retry above.
+          renderer.requestRender();
+        }
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback
@@ -307,38 +308,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
         hasPendingMeasurements()
       ) {
-        const cameraPos = camera.getPosition();
-        const cameraRot = camera.getRotation();
-        const cameraDist = camera.getDistance();
-        const currentCameraState = {
-          position: cameraPos,
-          rotation: cameraRot,
-          distance: cameraDist,
-          canvasWidth: canvas.width,
-          canvasHeight: canvas.height,
-        };
-
-        const lastState = lastCameraStateRef.current;
-        const cameraChanged =
-          !lastState ||
-          lastState.position.x !== currentCameraState.position.x ||
-          lastState.position.y !== currentCameraState.position.y ||
-          lastState.position.z !== currentCameraState.position.z ||
-          lastState.rotation.azimuth !== currentCameraState.rotation.azimuth ||
-          lastState.rotation.elevation !== currentCameraState.rotation.elevation ||
-          lastState.distance !== currentCameraState.distance ||
-          lastState.canvasWidth !== currentCameraState.canvasWidth ||
-          lastState.canvasHeight !== currentCameraState.canvasHeight;
-
-        if (cameraChanged) {
-          lastCameraStateRef.current = currentCameraState;
-          updateMeasurementScreenCoords((worldPos) => {
-            // CSS-space coords so the measure line/labels track the geometry
-            // under the cursor (raw coords are drawing-buffer device px, not
-            // CSS px — issues #1107, #5383).
-            return projectToCssScreen(camera, canvas, worldPos);
-          });
-        }
+        reprojectMeasurementsForCamera(camera, canvas, measurePass, updateMeasurementScreenCoords);
       }
 
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -357,5 +327,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     };
   }, [isInitialized]);
 }
+
+/** Like the renderer's own degraded-frame retries: a transient miss, not a permanent one. */
+const LIVE_FRAME_RETRIES = 3;
 
 export default useAnimationLoop;

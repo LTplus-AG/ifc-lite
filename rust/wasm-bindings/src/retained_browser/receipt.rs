@@ -9,6 +9,13 @@ use wasm_bindgen::JsValue;
 
 pub enum BrowserReceipt {
     Construction(BrowserRealization),
+    /// An uncut source-exact face set (#8291): authored triangles, no SDK object.
+    SourceFaceSet {
+        domain: BrowserCancellation,
+        completion: ifc_lite_geometry::document::RetainedCompletion,
+        /// The closed solid, built only when a Boolean or copy first consumes it.
+        realized: Box<std::cell::OnceCell<BrowserRealization>>,
+    },
     Affine {
         lease: Lease,
         input: JsValue,
@@ -50,7 +57,7 @@ impl ReceiptDomain for BrowserCancellation {
 impl BrowserReceipt {
     pub(super) fn operations(&self) -> usize {
         match self {
-            Self::Construction(_) => 0,
+            Self::Construction(_) | Self::SourceFaceSet { .. } => 0,
             Self::Affine { lease, .. } | Self::Boolean { lease, .. } => lease.operations,
         }
     }
@@ -58,6 +65,7 @@ impl BrowserReceipt {
     pub(super) fn mesh(&self) -> Option<&RetainedTessellation> {
         match self {
             Self::Construction(value) => Some(&value.completion.tessellation),
+            Self::SourceFaceSet { completion, .. } => Some(&completion.tessellation),
             Self::Boolean { mesh, .. } => mesh.as_ref(),
             Self::Affine { .. } => None,
         }
@@ -100,17 +108,22 @@ impl NumericalReceipt for BrowserReceipt {
     fn object(&self) -> JsValue {
         match self {
             Self::Construction(value) => value.object.clone(),
+            Self::SourceFaceSet { realized, .. } => realized.get().map_or(JsValue::NULL, |value| value.object.clone()),
             Self::Affine { lease, .. } | Self::Boolean { lease, .. } => lease.object.clone(),
         }
     }
     fn domain(&self) -> &BrowserCancellation {
         match self {
             Self::Construction(value) => &value.domain,
+            Self::SourceFaceSet { domain, .. } => domain,
             Self::Affine { lease, .. } | Self::Boolean { lease, .. } => &lease.domain,
         }
     }
     fn validate_live(&self) -> Result<(), BrowserError> {
         self.domain().owner.validate()?;
+        if matches!(self, Self::SourceFaceSet { realized, .. } if realized.get().is_none()) {
+            return Ok(());
+        }
         if !self.domain().owner.driver.object_live(&self.object()) {
             return Err(BrowserError::WrongWorker);
         }
@@ -119,6 +132,7 @@ impl NumericalReceipt for BrowserReceipt {
     fn evidence(&self) -> ReceiptEvidence<'_, JsValue> {
         match self {
             Self::Construction(value) => ReceiptEvidence::Construction(value.completion()),
+            Self::SourceFaceSet { completion, .. } => ReceiptEvidence::Construction(completion),
             Self::Affine { input, matrix, .. } => ReceiptEvidence::Affine {
                 input: input.clone(),
                 column_major: matrix,

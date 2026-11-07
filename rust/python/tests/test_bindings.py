@@ -696,6 +696,13 @@ def test_entity_data_keys_join_against_geometry():
         assert geom["elements"][step_id]["ifc_type"] == ents["entities"][step_id]["ifc_type"]
 
 
+def test_issue_7782_entity_data_includes_bare_type_map_row():
+    source = read(REPO / "rust/processing/tests/fixtures/c4_bare_type_map_7782.ifc")
+    rows = ifclite_geom.entity_data(source)["entities"]
+    assert rows[43]["ifc_type"] == "IfcBoilerType"
+    assert rows[43]["has_geometry"] is True
+
+
 def test_placements_are_opt_in_and_do_not_disturb_properties():
     ifc = read(WALLS)
     without = ifclite_geom.entity_data(ifc)
@@ -955,3 +962,14 @@ def test_each_property_says_whether_it_was_inherited():
 
     assert flags() == {"Shared": False, "TypeOnly": True}
     assert flags(type_properties=False) == {"Shared": False}
+
+
+def test_issue_7782_d66_layer_slicing_is_opt_in():
+    content = (REPO / "rust/processing/tests/fixtures/c4_native_unsliced_layers_7782.ifc").read_bytes()
+    default = ifclite_geom.geometry_data_buffers(content)
+    assert default == ifclite_geom.geometry_data_buffers(content, layer_slicing=False)
+    assert sum(len(e["faces"]) // 12 for e in default["elements"].values()) == 12
+    sliced = ifclite_geom.geometry_data_buffers(content, layer_slicing=True)
+    assert sum(len(e["faces"]) // 12 for e in sliced["elements"].values()) == 52
+    encoded = json.loads(ifclite_geom.geometry_data_json(content, layer_slicing=True))
+    assert sum(len(e["faces"]) for e in encoded["elements"].values()) == 52

@@ -44,6 +44,11 @@ impl LayerSkip {
 }
 
 impl LayerProgram {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) fn retained_parameters(self) -> (Vec<(u32, f64)>, LayerAxis, f64, f64) {
+        (self.layers.into_iter().map(|l| (l.material_id, l.thickness_m)).collect(),
+            self.axis, self.direction_sense, self.offset)
+    }
     /// Eligibility, evaluated before any host callback runs. `Ok(None)` means
     /// the buildup is not sliceable at all (no diagnostic).
     pub(crate) fn admit(

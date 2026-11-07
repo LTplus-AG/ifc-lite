@@ -8,8 +8,8 @@
 //! variants, payloads unchanged). [`Cutter`] is the uniform read of one kind:
 //! its mesh, its bounds, its penetration direction and its oriented frame.
 //! Before this module each consumer re-derived those from a `match` of its own
-//! (ROUTER-32); strategy-local projections remain for C2-7. Callers differ on
-//! whether a diagonal cutter's bounds fold in the mesh origin.
+//! (ROUTER-32), the wall-frame stage's reclassification included. Callers
+//! differ on whether a diagonal cutter's bounds fold in the mesh origin.
 
 use super::geom::is_axis_aligned_direction;
 use super::malformed_opening_repair::translate_cutter_mesh;
@@ -66,6 +66,15 @@ impl OpeningFrame {
             && is_axis_aligned_direction(&self.cross_a)
             && is_axis_aligned_direction(&self.cross_b)
     }
+
+    /// [`Self::is_axis_aligned`] with every axis first expressed in `axes`
+    /// (its components along them), evaluated in the same short-circuit order.
+    pub(super) fn is_axis_aligned_in(&self, axes: &[Vector3<f64>; 3]) -> bool {
+        let in_axes = |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
+        is_axis_aligned_direction(&in_axes(self.depth))
+            && is_axis_aligned_direction(&in_axes(self.cross_a))
+            && is_axis_aligned_direction(&in_axes(self.cross_b))
+    }
 }
 
 /// A uniform, borrowed read of one [`CutterKind`].
@@ -109,6 +118,14 @@ impl<'a> Cutter<'a> {
         match self.kind {
             CutterKind::Rectangular(..) => None,
             CutterKind::DiagonalRectangular(m, _) | CutterKind::NonRectangular(m, ..) => Some(m),
+        }
+    }
+
+    /// The oriented frame of a diagonal cutter; `None` for the other kinds.
+    pub(super) fn frame(&self) -> Option<&'a OpeningFrame> {
+        match self.kind {
+            CutterKind::DiagonalRectangular(_, frame) => Some(frame),
+            _ => None,
         }
     }
 

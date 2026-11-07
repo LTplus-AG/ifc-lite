@@ -172,6 +172,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     if (g.mode === 'edit') return { anchor: g.edit.drag?.from ?? g.edit.cut ?? null, chain: [], locks: {} };
     return { anchor: null, chain: [], locks: {} };
   },
+  aimsAtRegion: (g) => g.mode === 'pick',
   pointerMove(g, s, ctx) {
     rememberRoomGesture(ctx, g);
     if (g.mode === 'draw') return { ...withDraw(g, { cursor: s.local, square: s.modifiers?.shift ?? false }), action: 'place' };

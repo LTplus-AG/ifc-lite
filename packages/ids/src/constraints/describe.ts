@@ -213,6 +213,38 @@ const FORMAT_CACHE = new WeakMap<IDSConstraint, string>();
 /**
  * Format a constraint for display
  */
+/**
+ * The one literal a constraint admits (a simple value, or a single-value
+ * enumeration with no conjunctive facets), else `undefined`.
+ */
+export function exactConstraintValue(constraint: IDSConstraint): string | undefined {
+  if (constraint.type === 'simpleValue') return constraint.value;
+  if (constraint.type === 'enumeration' && constraint.values.length === 1 && (conjunctiveFacetsOf(constraint)?.length ?? 0) === 0) {
+    return constraint.values[0];
+  }
+  return undefined;
+}
+
+/**
+ * A name constraint as `IDSFailureDetail.field` carries it: the bare
+ * name when the facet names one, else the constraint's description.
+ */
+export function constraintName(constraint: IDSConstraint): string {
+  return exactConstraintValue(constraint) ?? formatConstraint(constraint);
+}
+
+/**
+ * A property path for display. Constraint renderings carry their own
+ * quotes, so two exact names join inside one pair (`"Pset.Prop"`) and
+ * anything else joins its renderings as they are (#8306).
+ */
+export function formatPropertyPath(propertySet: IDSConstraint, baseName: IDSConstraint): string {
+  const pset = exactConstraintValue(propertySet);
+  const prop = exactConstraintValue(baseName);
+  if (pset !== undefined && prop !== undefined) return `"${pset}.${prop}"`;
+  return `${formatConstraint(propertySet)}.${formatConstraint(baseName)}`;
+}
+
 export function formatConstraint(constraint: IDSConstraint): string {
   let formatted = FORMAT_CACHE.get(constraint);
   if (formatted === undefined) {

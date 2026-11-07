@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { DoorSymbolGenerator } from './door-symbol.js';
-import type { DoorSwingParameters } from '../types.js';
+import type { DoorSwingParameters, OpeningInfo, Point2D } from '../types.js';
 
 describe('DoorSymbolGenerator.generateSymbol (single swing)', () => {
   const generator = new DoorSymbolGenerator();
@@ -100,5 +100,57 @@ describe('DoorSymbolGenerator: swing arc must agree with the leaf line', () => {
       expectPointCloseTo(svgStart, expectedArcStart);
       expectPointCloseTo(svgEnd, expectedLeafEnd);
     }
+  });
+});
+
+// #8232: hinge side from the door's own frame (IFC4.3 IfcDoorTypeOperationEnum: LEFT hinges on
+// local -X seen along +Y; the leaf opens to +Y), so a mirrored placement flips the hand.
+describe('DoorSymbolGenerator.generateFromOpening with the door frame (#8232)', () => {
+  const generator = new DoorSymbolGenerator();
+  const bounds = { min: { x: 9, y: -0.1 }, max: { x: 11, y: 0.1 } };
+  const opening = (doorOperation: 'SINGLE_SWING_LEFT' | 'SINGLE_SWING_RIGHT') =>
+    ({ type: 'door', openingId: 1, hostElementId: 2, width: 2, height: 2.1, doorOperation }) as unknown as OpeningInfo;
+  const X = { x: 1, y: 0 };
+  const Y = { x: 0, y: 1 };
+  const hinge = (op: 'SINGLE_SWING_LEFT' | 'SINGLE_SWING_RIGHT', x: Point2D, y: Point2D) => {
+    const r = generator.generateFromOpening(opening(op), bounds, X, { x, y });
+    const lines = r.lines;
+    const p = r.symbol.parameters as DoorSwingParameters;
+    // leaf is lines[0]: hinge -> tip; the tip must agree with the arc's last point.
+    const tip = lines[0].end;
+    const arcEnd = lines[lines.length - 1].end;
+    return { hinge: p.hingePoint, tip, arcEnd, arcStart: lines[1].start };
+  };
+
+  it('right-handed frame: LEFT hinges on -X, RIGHT on +X, both swing to +Y', () => {
+    expect(hinge('SINGLE_SWING_LEFT', X, Y).hinge.x).toBeCloseTo(9);
+    expect(hinge('SINGLE_SWING_RIGHT', X, Y).hinge.x).toBeCloseTo(11);
+    expect(hinge('SINGLE_SWING_LEFT', X, Y).tip.y).toBeGreaterThan(0);
+  });
+
+  it('mirrored frame (X reversed, negative determinant) flips the hand', () => {
+    const mirrored = { x: -1, y: 0 };
+    expect(hinge('SINGLE_SWING_LEFT', mirrored, Y).hinge.x).toBeCloseTo(11);
+    expect(hinge('SINGLE_SWING_RIGHT', mirrored, Y).hinge.x).toBeCloseTo(9);
+  });
+
+  it('mirrored frame (Y reversed) swings to -Y, with the arc still closing on the leaf tip and the opposite jamb', () => {
+    const r = hinge('SINGLE_SWING_LEFT', X, { x: 0, y: -1 });
+    expect(r.tip.y).toBeLessThan(0);
+    expect(r.arcEnd.x).toBeCloseTo(r.tip.x, 9);
+    expect(r.arcEnd.y).toBeCloseTo(r.tip.y, 9);
+    expect(r.arcStart.x).toBeCloseTo(11, 9); // closed leaf lies along the wall to the far jamb
+    expect(r.arcStart.y).toBeCloseTo(0, 9);
+  });
+
+  it('without a frame it keeps using wallDirection', () => {
+    const r = generator.generateFromOpening(opening('SINGLE_SWING_RIGHT'), bounds, X);
+    expect((r.symbol.parameters as DoorSwingParameters).hingePoint.x).toBeCloseTo(11);
+  });
+
+  it('a non-finite frame falls back to wallDirection', () => {
+    const nan = { x: { x: Number.NaN, y: 0 }, y: { x: 0, y: 1 } };
+    const r = generator.generateFromOpening(opening('SINGLE_SWING_RIGHT'), bounds, X, nan);
+    expect((r.symbol.parameters as DoorSwingParameters).hingePoint.x).toBeCloseTo(11);
   });
 });

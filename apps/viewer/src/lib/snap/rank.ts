@@ -6,7 +6,8 @@
  * Ranking of projected snap candidates: tier first, then distance, then
  * collection order, with hysteresis against the previous winner so ±1px cursor
  * jitter at a radius boundary or between two equidistant targets cannot make
- * the snap flip-flop.
+ * the snap flip-flop. A profile's aimed kinds step outside the tiers when the
+ * pointer is on one (`aimedOr`).
  *
  * Hysteresis is the classic enter/leave split: a target ENTERS at `radius` but
  * a held target only LEAVES beyond `radius + hysteresis`, and a same-tier
@@ -30,6 +31,8 @@ export const MODELING_SNAP_PROFILE: SnapProfile = {
   sources: ['mesh', 'semantic', 'grid', 'ifc-grid'],
   angleStepDeg: 15,
   hysteresisPx: 3,
+  aimedKinds: ['gridIntersection'],
+  aimedPx: 2,
 };
 
 export const DEFAULT_HYSTERESIS_PX = 3;
@@ -111,4 +114,55 @@ export function pickWinner(
   if (best.tier !== held.tier) return best.tier < held.tier ? best : held;
   // Same tier: a challenger must beat the held target by the hysteresis margin.
   return best.dist < held.dist - hysteresis ? best : held;
+}
+
+/** Two targets this close are one spot: a computed crossing and a file's wall end differ by rounding. */
+const SAME_SPOT_M = 1e-3;
+
+const gap = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+/**
+ * Where a target physically is: a point target's own position, or an edge-like
+ * target's landing point, because its `local` follows the cursor. Under a lock
+ * that landing point sits on the lock. No shipped profile ranks an edge-like kind
+ * above an aimed kind, so an edge never reaches this comparison beside a crossing.
+ */
+const targetOf = (r: Ranked): Vec2 => (r.cand.guide ? r.point : r.cand.local);
+
+/**
+ * The ladder's winner, unless the pointer is ON a target of an aimed kind: then
+ * that target wins, whatever outranks it nearby. A column on a grid crossing
+ * puts four corners, which rank higher, within the radius of the crossing, so
+ * without this a click dead on the crossing lands on a corner.
+ *
+ * The ladder stands when its winner is nearer than the aimed target, so a
+ * pointer on the corner keeps the corner, or lands on the same spot, so a wall
+ * end on the crossing keeps naming its wall. A held aimed target stays through
+ * the hysteresis band: ±1px at the edge of `aimed` must not swap the landing.
+ *
+ * All of this is measured from the raw pointer to the targets themselves, not
+ * along the active lock: under a lock, distinct targets can project onto one
+ * point, and a pointer far off the lock can project right onto a target.
+ */
+export function aimedOr(
+  winner: Ranked | null,
+  items: readonly Ranked[],
+  kinds: readonly SnapKind[],
+  aimed: number,
+  hysteresis: number,
+  prev: SnapCandidate | null,
+  cursor: Vec2,
+): Ranked | null {
+  let on: Ranked | null = null;
+  let onDist = Infinity;
+  for (const r of items) {
+    if (!kinds.includes(r.cand.kind)) continue;
+    const reach = prev !== null && sameTarget(r.cand, prev) ? aimed + hysteresis : aimed;
+    const toTarget = gap(cursor, r.cand.local);
+    if (toTarget <= reach && toTarget < onDist) { on = r; onDist = toTarget; }
+  }
+  if (!on || !winner || winner === on) return winner;
+  const winnerAt = targetOf(winner);
+  if (gap(cursor, winnerAt) < onDist) return winner;
+  return gap(winnerAt, on.cand.local) <= SAME_SPOT_M ? winner : on;
 }

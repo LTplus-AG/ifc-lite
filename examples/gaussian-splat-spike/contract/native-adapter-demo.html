@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Internal unqualified Gaussian adapter preview — not production (#8564)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #11181c; color: #e6ece9; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  .overlay { position: fixed; z-index: 1; pointer-events: none; }
+  #banner { top: 0; left: 0; right: 0; padding: 8px 14px; background: #f2b33dee; color: #1b1405; font-weight: 700; font-size: 15px; }
+  #banner small { display: block; font-weight: 500; font-size: 12px; }
+  #controls { top: 76px; left: 12px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+  #controls button { font: inherit; padding: 6px 10px; border-radius: 4px; border: 1px solid #5a6b66; background: #1d282cdd; color: inherit; cursor: pointer; text-align: left; }
+  #controls button[aria-pressed="true"] { background: #2f5249dd; border-color: #91d6bb; }
+  #status { top: 76px; right: 12px; max-width: 380px; padding: 8px 10px; background: #0b1013cc; border-radius: 4px; white-space: pre-wrap; font: 12px/1.35 ui-monospace, monospace; }
+  #diagnostics { bottom: 58px; right: 12px; padding: 6px 10px; background: #0b1013cc; border-radius: 4px; white-space: pre; font: 12px/1.35 ui-monospace, monospace; }
+  #diagnostics b { font-family: system-ui, sans-serif; }
+  #attribution { bottom: 0; left: 0; right: 0; padding: 6px 14px; background: #0b1013dd; font-size: 13px; }
+  #attribution strong { color: #ffffff; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="IFC model with Gaussian splat captures"></canvas>
+<div id="banner" class="overlay" role="note">
+  Internal unqualified Gaussian adapter preview — not production
+  <small>Approximate composition over IFC glass: Gaussians draw in their own pass after the main pass. Centre clipping: section planes and clip boxes remove whole Gaussians by their centre, never per fragment. Gaussians are not pickable. Readiness stays “blocked”.</small>
+</div>
+<div id="controls" class="overlay" role="toolbar" aria-label="Demo controls">
+  <button id="toggle-splats" type="button" aria-pressed="true">Gaussian splats</button>
+  <button id="toggle-section" type="button" aria-pressed="false">Section plane (centre clipping)</button>
+  <button id="toggle-projection" type="button" aria-pressed="false">Orthographic</button>
+  <button id="toggle-journey" type="button" aria-pressed="false">Play 30 s journey</button>
+  <button id="reset-view" type="button">Reset view</button>
+</div>
+<div id="status" class="overlay" role="status" aria-live="polite">Starting…</div>
+<div id="diagnostics" class="overlay" aria-label="Gaussian diagnostics"><b>Diagnostics — diagnostic timing, not a benchmark</b>
+waiting for the adapter…</div>
+<div id="attribution" class="overlay">
+  <strong id="attribution-credit">Captures: Marcel Padilla, CC-BY-4.0 (artificially placed)</strong>
+  — <span id="attribution-detail">houseplant and textile ball from github.com/marcelpadilla/splats @ c3e5ec0; non-metric, SH degree 0.</span>
+  <span id="placement-note">Demo placement: 180° about X, scale 2, beside the model's +Z face; artificially placed, not aligned, no metric scale.</span>
+  IFC: AC20-FZK-Haus test fixture, meshed by published @ifc-lite/wasm 10.6.1.
+</div>
+<script type="module" src="./native-adapter-demo.mjs"></script>
+</body>
+</html>

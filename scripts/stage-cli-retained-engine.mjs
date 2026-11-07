@@ -81,6 +81,7 @@ export async function stageCliRetainedEngine({ build, sdk, pkgRetained, out, too
       await copy(join(temporary, 'smlib', name), `LICENSES/SMLib/${name}`);
     }
     await copy(join(repoRoot, 'LICENSE'), 'LICENSES/ifc-lite/LICENSE');
+    await copy(join(repoRoot, 'licenses/retained/THIRD_PARTY_NOTICES.txt'), 'THIRD_PARTY_NOTICES.txt');
     const toolchainInventory = [];
     for (const [name, bytes] of [...notices].sort(([a], [b]) => a.localeCompare(b))) {
       const path = `LICENSES/toolchain/${name}`;

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test, vi } from 'vitest';
-import * as oracle from './fingerprint.js';
+import * as oracle from '../test/oracle/fingerprint.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 const glue = new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url);

@@ -63,6 +63,13 @@ runs:
         path: tests/models
         key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
 
+    # The cache holds all of tests/models but its key hashes only the manifest,
+    # so a change to a tracked file beside it (README.md) restores a stale copy.
+    # The oracle refuses a dirty tree, which would fail every PR with test changes.
+    - name: Restore tracked fixture files
+      shell: bash
+      run: git checkout HEAD -- tests/models
+
     - name: Fetch fixtures
       if: ${{ steps.fixtures-cache.outputs.cache-hit != 'true' }}
       shell: bash

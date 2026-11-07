@@ -46,12 +46,15 @@ type ChunkErrorTone = 'panel' | 'night';
 const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
+  'Command palette': 'commandPalette.ariaLabel',
   'Compare models': 'comparePanel.panel.title',
+  'Clash panel': 'clashPanel.title',
   'Linked records panel': 'semantic.title',
   'Appearance panel': 'viewerShell.chunkLabel.appearancePanel',
   'Charts panel': 'viewerShell.chunkLabel.chartsPanel',
   'Assistant panel': 'assistant.title',
   'Point cloud panel': 'pointCloudPanel.title',
+  'Load report panel': 'loadReportPanel.title',
   'Review panel': 'reviewWorkspace.title',
   'IDS Studio panel': 'idsStudio.title',
   'Script panel': 'scriptPanel.header.defaultTitle',
@@ -59,6 +62,7 @@ const CHUNK_LABEL_KEYS = {
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',
   'Document panel': 'viewerShell.chunkLabel.documentPanel',
   'Presentation panel': 'viewerShell.chunkLabel.presentationPanel',
+  'InfluxDB 2': 'influx.title',
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
@@ -74,6 +78,8 @@ interface ChunkErrorBoundaryProps {
   label: ChunkLabel;
   tone?: ChunkErrorTone;
   children: ReactNode;
+  /** Keep an overlay failure inside its dismissible overlay instead of panel flow. */
+  renderFallback?: (fallback: ReactNode) => ReactNode;
 }
 
 interface ChunkErrorBoundaryState {
@@ -117,13 +123,14 @@ export class ChunkErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
-    return (
+    const fallback = (
       <ChunkErrorFallback
         label={this.props.label}
         tone={this.props.tone}
         chunk={isStaleDeploymentError(error)}
       />
     );
+    return this.props.renderFallback ? this.props.renderFallback(fallback) : fallback;
   }
 }
 

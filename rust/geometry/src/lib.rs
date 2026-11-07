@@ -206,6 +206,7 @@ pub mod space_dcel;
 pub(crate) mod triangulation;
 mod union_find;
 pub(crate) mod void_index;
+mod void_rels;
 /// World-frame test fixture corpus: far-from-origin placements whose offset
 /// axis differs from the axis under test, plus the normal-projected f32
 /// noise bound they demand (the #2598/#2600/#2529 defect class).
@@ -252,7 +253,7 @@ pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVe
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    binary_textures_refused, build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
+    binary_textures_refused, build_texture_index, build_texture_index_with_vertex_lists, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
     ResolvedTextureMap, RevolvedAreaSolidProcessor, TextureAttachment, TextureSource, SurfaceOfLinearExtrusionProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
@@ -304,6 +305,7 @@ pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
     propagate_voids_via_aggregates, VoidIndex,
 };
+pub use void_rels::{compute_parts_to_skip_with_index, resolve_void_index, void_index_from_content};
 
 mod exact_topology;
 

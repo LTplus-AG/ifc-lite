@@ -3,8 +3,46 @@
 use super::{unwrap_solid, GeometryRouter, RectParam, UnwrapPolicy};
 use crate::placement::Axis2Placement;
 use crate::{Point3, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix3, Matrix4};
+
+/// The in-plane frame `(off_x, off_y, cos, sin)` of a parameterized profile's
+/// optional Position (attribute 2, an `IfcAxis2Placement2D`), read through the
+/// canonical [`Axis2Placement::read_2d`]. `$` is the identity frame, as IFC
+/// defines it.
+///
+/// `None` defers the opening to the exact kernel instead of inventing a frame:
+/// a dangling or non-reference Position, a record other than
+/// `IfcAxis2Placement2D`, or a refused read (a `$` Location, a missing or
+/// non-numeric component). The hand reader this replaces read each of those as
+/// the origin, and a missing RefDirection x ratio as 1.0 (X2, #8385).
+///
+/// Refusal counting: only `read_2d` counts, and only for the records the exact
+/// kernel's `ProfileProcessor` (`Axis2Placement::read`) refuses and counts when
+/// it meshes the deferred profile, so the distinct-record count does not move.
+/// The type gate runs first because the kernel skips another type uncounted.
+fn rect_profile_position(profile: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<(f64, f64, f64, f64)> {
+    let attr = match profile.get(slot::IfcParameterizedProfileDef::POSITION.index()) {
+        Some(attr) if !attr.is_null() => attr,
+        _ => return Some((0.0, 0.0, 1.0, 0.0)),
+    };
+    let position = decoder.resolve_ref(attr).ok()??;
+    if position.ifc_type != IfcType::IfcAxis2Placement2D {
+        return None;
+    }
+    let frame = Axis2Placement::read_2d(&position, decoder).ok()?;
+    // The probe's own degenerate-axis policy, unchanged: a zero-length
+    // RefDirection keeps +X. Valid input is bit-identical to the old reader.
+    let (mut cos_t, mut sin_t) = (1.0, 0.0);
+    if let Some([dx, dy, _]) = frame.ref_direction {
+        let n = (dx * dx + dy * dy).sqrt();
+        if n > 1e-12 {
+            cos_t = dx / n;
+            sin_t = dy / n;
+        }
+    }
+    Some((frame.location[0], frame.location[1], cos_t, sin_t))
+}
 
 impl GeometryRouter {
     /// Read a rectangular swept area as `(x_dim, y_dim, off_x, off_y, cos, sin)` in the
@@ -21,37 +59,7 @@ impl GeometryRouter {
             IfcType::IfcRectangleProfileDef => {
                 let x_dim = profile.get_float(3)?;
                 let y_dim = profile.get_float(4)?;
-                // Position (attr 2 = IfcAxis2Placement2D): in-plane rotation + offset.
-                let (mut cos_t, mut sin_t, mut off_x, mut off_y) = (1.0, 0.0, 0.0, 0.0);
-                if let Some(pos_attr) = profile.get(2) {
-                    if !pos_attr.is_null() {
-                        if let Ok(Some(pos)) = decoder.resolve_ref(pos_attr) {
-                            if let Some(loc_attr) = pos.get(0) {
-                                if let Ok(Some(loc)) = decoder.resolve_ref(loc_attr) {
-                                    if let Some(c) = loc.get(0).and_then(|x| x.as_list()) {
-                                        off_x = c.first().and_then(|x| x.as_float()).unwrap_or(0.0);
-                                        off_y = c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
-                                    }
-                                }
-                            }
-                            if let Some(rd_attr) = pos.get(1) {
-                                if !rd_attr.is_null() {
-                                    if let Ok(Some(rd)) = decoder.resolve_ref(rd_attr) {
-                                        if let Some(c) = rd.get(0).and_then(|x| x.as_list()) {
-                                            let dx = c.first().and_then(|x| x.as_float()).unwrap_or(1.0);
-                                            let dy = c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
-                                            let n = (dx * dx + dy * dy).sqrt();
-                                            if n > 1e-12 {
-                                                cos_t = dx / n;
-                                                sin_t = dy / n;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                let (off_x, off_y, cos_t, sin_t) = rect_profile_position(profile, decoder)?;
                 Some((x_dim, y_dim, off_x, off_y, cos_t, sin_t))
             }
             IfcType::IfcArbitraryClosedProfileDef => {
@@ -124,6 +132,7 @@ impl GeometryRouter {
         if !(x_dim.is_finite() && y_dim.is_finite() && depth.is_finite() && x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
             return None;
         }
+        // A refused solid Position defers to the exact kernel, like the profile's.
         let solid_pos = match solid.get(1) {
             Some(a) if !a.is_null() => {
                 let e = decoder.resolve_ref(a).ok()??;
@@ -179,3 +188,7 @@ impl GeometryRouter {
 #[cfg(test)]
 #[path = "../probe_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "placement_tests.rs"]
+mod placement_tests;

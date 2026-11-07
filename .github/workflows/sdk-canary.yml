@@ -55,6 +55,7 @@ on:
       - 'packages/mcp/**'
       - 'packages/merge/**'
       - 'packages/mutations/**'
+      - 'packages/oci/**'
       - 'packages/opencde-foundation/**'
       - 'packages/parser/**'
       - 'packages/pointcloud/**'

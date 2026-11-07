@@ -1,5 +1,18 @@
 # @ifc-lite/ifcx
 
+## 4.6.0
+
+### Minor Changes
+
+- [#8195](https://github.com/LTplus-AG/ifc-lite/pull/8195) [`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0) Thanks [@petruconduraru](https://github.com/petruconduraru)! - IFCX models are read the way the equivalent IFC is. The window type in `hello-wall.ifcx` (a node of class `IfcWindow` that the windows inherit as `windowType`) becomes an `IfcWindowType` related to its windows by `DefinesByType`, so it is no longer a third window on no storey. The class-less material nodes the wall and the window type inherit as `material` become `IfcMaterial` rows named by their `bsi::ifc::material` code, related by `AssociatesMaterial`. `ComposedNode.inherits` keeps the reference composition used to forget. An occurrence is named by its own `Name`, then by the edge it hangs under, and only then by its type's `TypeName`; the converter's `_001` uniqueness suffix is dropped only when the unsuffixed sibling edge exists. The entity table and the spatial tree now share one name lookup, so a space is named alike in both. A storey's spaces are mapped to the storey in `elementToStorey`, and a storey with no `Elevation` takes the Z of its placement chain, as the STEP builder does. The parse result carries `lengthUnitScale` (new export `IFCX_LENGTH_UNIT_SCALE`, 1: IFCX declares no unit and this reader applies no scale, so metres is an assumption stated in one place) and `derivedEntities` (the rows the reader derived, so the writer emits the file's own class for the window type and nothing for the added materials).
+
+- [#8244](https://github.com/LTplus-AG/ifc-lite/pull/8244) [`934eb31`](https://github.com/LTplus-AG/ifc-lite/commit/934eb3192eaf6fa3ea685f4e7bdac1c5dba3f622) Thanks [@louistrue](https://github.com/louistrue)! - Federated composition can keep every layer's own value per attribute, not only the winning one. Pass `retainOpinions: true` to `composeFederated`, `parseFederatedIfcx` or `addIfcxOverlay`; composed nodes then carry `opinions` (weakest first, strongest last, matching the buildingSMART `GetOpinions` shape) and the parse result carries `attributeOpinions`. `findDivergentAttributes` lists the attributes where layers hold different values, so a disagreement such as two layers setting different fire ratings is no longer silently decided by stack order. Off by default; ordinary composition is unchanged. `@ifc-lite/parser` re-exports `findDivergentAttributes` and the opinion types alongside its other IFCX exports.
+
+### Patch Changes
+
+- Updated dependencies [[`169c75f`](https://github.com/LTplus-AG/ifc-lite/commit/169c75f39ebd52d70e4d80c0fe58a2a4721b8cf0)]:
+  - @ifc-lite/data@6.4.0
+
 ## 4.5.1
 
 ### Patch Changes

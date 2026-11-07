@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette command controls: registered rows take an id; runtime rows carry their own content. */
+import { useId } from 'react';
+import { MatchHighlight } from '@/components/ui/match-highlight';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
@@ -35,10 +37,14 @@ function paletteDefinition(id: RegisteredPaletteId): SurfaceCommandDefinition {
 }
 
 interface OptionPlacement {
+  id?: string;
   index: number;
   selected: boolean;
+  /** Query highlighting uses the shared active ink. */
+  query: string;
   onActivate: () => void;
   onHover: () => void;
+  categoryLabel?: string;
 }
 
 interface OptionChromeProps extends OptionPlacement {
@@ -46,26 +52,41 @@ interface OptionChromeProps extends OptionPlacement {
   icon: Command['icon'];
   label: string;
   detail?: string;
+  disabled?: boolean;
+  reason?: string;
+  state?: string;
   shortcut?: KeyCommandId;
 }
 
-function OptionChrome({ owner, icon: Icon, label, detail, shortcut, index, selected, onActivate, onHover }: OptionChromeProps) {
+function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, state, shortcut, categoryLabel, id, index, selected, query, onActivate, onHover }: OptionChromeProps) {
+  const fallbackId = useId();
+  const reasonId = `${id ?? fallbackId}-reason`;
   const registered = 'commandId' in owner;
   return (
-    // The option remains a button so Enter and click use the same command action.
+    // Focus stays on the combobox; pointer activation still uses the native click.
     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-    <button type="button" role="option" data-index={index}
+    <button id={id ?? fallbackId} type="button" role="option" tabIndex={-1} data-index={index}
       data-command-id={registered ? owner.commandId : undefined}
       data-runtime-source={registered ? undefined : owner.runtimeSource}
       data-runtime-command-id={registered ? undefined : owner.runtimeCommandId}
       aria-label={registered ? label : undefined}
       aria-selected={selected}
-      className={cn('flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-        selected ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50')}
-      onClick={onActivate} onMouseMove={onHover}>
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {detail && <span className="text-xs text-muted-foreground shrink-0">{detail}</span>}
+      aria-disabled={disabled || undefined}
+      aria-describedby={reason ? reasonId : undefined}
+      className={cn('relative flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
+        selected && 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full',
+        selected ? (disabled ? 'bg-accent before:bg-muted-foreground' : 'bg-active-surface before:bg-active') : 'hover:bg-accent/50',
+        disabled ? 'text-muted-foreground cursor-not-allowed' : 'text-foreground')}
+      onMouseDown={event => event.preventDefault()}
+      onClick={() => { if (!disabled) onActivate(); }} onMouseMove={onHover}>
+      <Icon className={cn("h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
+      <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+        <span data-command-label className="block truncate sm:min-w-0 sm:flex-1"><MatchHighlight text={label} query={disabled ? '' : query} /></span>
+        {reason && <span id={reasonId} className="block text-xs text-muted-foreground">{reason}</span>}
+        {categoryLabel && <span className="block truncate text-xs text-muted-foreground sm:max-w-[28%] sm:shrink-0 sm:text-right">{categoryLabel}</span>}
+      </span>
+      {state && <span className="text-xs text-muted-foreground">{state}</span>}
+      {detail && <span title={detail} className="max-w-[30%] truncate text-xs text-muted-foreground">{detail}</span>}
       {shortcut && <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
         {shortcutLabel(shortcut)}
       </kbd>}
@@ -73,14 +94,19 @@ function OptionChrome({ owner, icon: Icon, label, detail, shortcut, index, selec
   );
 }
 
-export type RegisteredPaletteOptionProps = OptionPlacement & { commandId: RegisteredPaletteId };
+export type RegisteredPaletteOptionProps = OptionPlacement & { commandId: RegisteredPaletteId;
+  projection?: Pick<Command, 'availability' | 'stateKey' | 'detail' | 'detailKey' | 'detailKeyParams'> };
 
 /** A registry command's name, icon and shortcut come from its definition, never the row. */
-export function RegisteredPaletteOption({ commandId, ...placement }: RegisteredPaletteOptionProps) {
+export function RegisteredPaletteOption({ commandId, projection, ...placement }: RegisteredPaletteOptionProps) {
   const { t } = useTranslation();
   const command = paletteDefinition(commandId);
   return <OptionChrome {...placement} owner={{ commandId }} icon={command.icon}
-    label={t(command.labelKey)} shortcut={command.shortcut} />;
+    label={t(command.labelKey)} shortcut={command.shortcut}
+    disabled={projection?.availability?.status === 'disabled'}
+    reason={projection?.availability?.status === 'disabled' ? t(projection.availability.reasonKey) : undefined}
+    state={projection?.stateKey ? t(projection.stateKey) : undefined}
+    detail={projection?.detailKey ? t(projection.detailKey, projection.detailKeyParams) : projection?.detail} />;
 }
 
 export type DynamicPaletteOptionProps = OptionPlacement & { command: RuntimeCommand };
@@ -95,6 +121,9 @@ export function DynamicPaletteOption({ command, ...placement }: DynamicPaletteOp
     owner={{ runtimeSource: command.runtimeSource, runtimeCommandId: command.id }} icon={command.icon}
     label={command.labelKey ? t(command.labelKey, command.labelKeyParams) : command.label}
     detail={command.detail ? (command.detailKey ? t(command.detailKey, command.detailKeyParams) : command.detail) : undefined}
+    disabled={command.availability?.status === 'disabled'}
+    reason={command.availability?.status === 'disabled' ? t(command.availability.reasonKey) : undefined}
+    state={command.stateKey ? t(command.stateKey) : undefined}
     shortcut={command.shortcut} />;
 }
 

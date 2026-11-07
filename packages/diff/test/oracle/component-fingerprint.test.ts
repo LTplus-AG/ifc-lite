@@ -1,0 +1,281 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, expect, it } from 'vitest';
+import { buildComponentFingerprints, buildDataFingerprint } from './fingerprint.js';
+import type { DataFingerprintInput } from './fingerprint.js';
+import { diffModels } from './diff.js';
+import type { EntityFingerprint } from './types.js';
+
+const wall: DataFingerprintInput = {
+  ifcType: 'IfcWall',
+  name: 'W1',
+  propertySets: [
+    { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+    { name: 'Pset_FireSafety', properties: [{ name: 'FireRating', value: 'REI60' }] },
+  ],
+  quantitySets: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 1.2 }] }],
+  typeAssignments: [{ globalId: 'type-1', name: 'WT', type: 'IfcWallType' }],
+};
+
+describe('buildComponentFingerprints', () => {
+  it('emits one key per component the entity carries', () => {
+    const components = buildComponentFingerprints(wall);
+    expect(Object.keys(components).sort()).toEqual([
+      'attr:core',
+      'pset:Pset_FireSafety',
+      'pset:Pset_WallCommon',
+      'qset:Qto_WallBaseQuantities',
+      'type-assignment',
+    ]);
+  });
+
+  it('is order-independent within and across sets', () => {
+    const reordered: DataFingerprintInput = {
+      ...wall,
+      propertySets: [
+        { name: 'Pset_FireSafety', properties: [{ name: 'FireRating', value: 'REI60' }] },
+        { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+      ],
+    };
+    expect(buildComponentFingerprints(reordered)).toEqual(buildComponentFingerprints(wall));
+  });
+
+  it('changes only the touched component sub-hash', () => {
+    const edited: DataFingerprintInput = {
+      ...wall,
+      propertySets: [
+        { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+        { name: 'Pset_FireSafety', properties: [{ name: 'FireRating', value: 'REI90' }] },
+      ],
+    };
+    const before = buildComponentFingerprints(wall);
+    const after = buildComponentFingerprints(edited);
+    expect(after['pset:Pset_FireSafety']).not.toBe(before['pset:Pset_FireSafety']);
+    expect(after['pset:Pset_WallCommon']).toBe(before['pset:Pset_WallCommon']);
+    expect(after['attr:core']).toBe(before['attr:core']);
+    expect(after['qset:Qto_WallBaseQuantities']).toBe(before['qset:Qto_WallBaseQuantities']);
+    expect(after['type-assignment']).toBe(before['type-assignment']);
+  });
+
+  it('projects type assignments exactly as buildDataFingerprint does — no GlobalId', () => {
+    // Not a stylistic duplication: `componentsAgree` in the content pass is a
+    // collision guard justified by "a component hashes a slice of what
+    // `dataHash` hashes whole". Keeping the type's GlobalId here while
+    // `dataHash` drops it would break that justification and make the guard
+    // veto genuine re-export matches.
+    const reGuided: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-2-after-re-export', name: 'WT', type: 'IfcWallType' }],
+    };
+    expect(buildComponentFingerprints(reGuided)['type-assignment']).toBe(
+      buildComponentFingerprints(wall)['type-assignment'],
+    );
+    expect(buildDataFingerprint(reGuided)).toBe(buildDataFingerprint(wall));
+
+    // A different type name is still a different sub-hash.
+    const retyped: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-1', name: 'WT-OTHER', type: 'IfcWallType' }],
+    };
+    expect(buildComponentFingerprints(retyped)['type-assignment']).not.toBe(
+      buildComponentFingerprints(wall)['type-assignment'],
+    );
+  });
+
+  it('carries Tag in attr:core, exactly as buildDataFingerprint does (issue #2021)', () => {
+    // Same collision-guard argument as the type-assignment case above, in the
+    // other direction: `dataHash` now hashes `Tag`, so `attr:core` must too. If
+    // it did not, two type objects differing only in Tag would disagree on
+    // `dataHash` (no match, fine) but a colliding pair would agree on every
+    // sub-hash, and the guard would have lost the only slice that saw the Tag.
+    const retagged: DataFingerprintInput = { ...wall, tag: '157607' };
+    const before = buildComponentFingerprints({ ...wall, tag: '157200' });
+    const after = buildComponentFingerprints(retagged);
+    expect(after['attr:core']).not.toBe(before['attr:core']);
+    expect(after['pset:Pset_WallCommon']).toBe(before['pset:Pset_WallCommon']);
+    expect(after['type-assignment']).toBe(before['type-assignment']);
+    expect(buildDataFingerprint(retagged)).not.toBe(
+      buildDataFingerprint({ ...wall, tag: '157200' }),
+    );
+  });
+
+  it('leaves the default whole-blob fingerprint untouched', () => {
+    // Existing dataHash behaviour is protected: sub-hash mode is additive.
+    expect(buildDataFingerprint(wall)).toBe(buildDataFingerprint({ ...wall }));
+  });
+});
+
+describe('same-named sets on one entity (#8136)', () => {
+  const twice = (second: string): DataFingerprintInput => ({
+    ifcType: 'IfcWall',
+    propertySets: [
+      { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: second }] },
+    ],
+    quantitySets: [
+      { name: 'Qto', quantities: [{ name: 'A', value: 1 }] },
+      { name: 'Qto', quantities: [{ name: 'A', value: 2 }] },
+    ],
+  });
+
+  it('keys every set, ordinal in the prefix, instead of letting the last overwrite', () => {
+    const components = buildComponentFingerprints(twice('REI60'));
+    expect(Object.keys(components)).toEqual(['attr:core', 'pset:Pset_WallCommon', 'pset#2:Pset_WallCommon', 'qset:Qto', 'qset#2:Qto']);
+    // Each key carries its own set's hash, the one that set gets on its own.
+    const { propertySets = [], quantitySets = [] } = twice('REI60');
+    const alone = (set: number) => buildComponentFingerprints({
+      ifcType: 'IfcWall', propertySets: [propertySets[set]], quantitySets: [quantitySets[set]],
+    });
+    // Content order: FireRating sorts before IsExternal, A=1 before A=2.
+    expect(components['pset:Pset_WallCommon']).toBe(alone(1)['pset:Pset_WallCommon']);
+    expect(components['pset#2:Pset_WallCommon']).toBe(alone(0)['pset:Pset_WallCommon']);
+    expect(components['qset:Qto']).toBe(alone(0)['qset:Qto']);
+    expect(components['qset#2:Qto']).toBe(alone(1)['qset:Qto']);
+    expect(components['qset:Qto']).not.toBe(components['qset#2:Qto']);
+  });
+
+  it('cannot be forged by a set whose name contains # or :', () => {
+    const components = buildComponentFingerprints({
+      ifcType: 'IfcWall',
+      propertySets: [
+        { name: 'X', properties: [{ name: 'p', value: 1 }] },
+        { name: 'X', properties: [{ name: 'p', value: 2 }] },
+        { name: 'X#2', properties: [{ name: 'p', value: 1 }] },
+        { name: '2:X', properties: [{ name: 'p', value: 1 }] },
+      ],
+    });
+    expect(Object.keys(components)).toEqual(['attr:core', 'pset:2:X', 'pset:X', 'pset#2:X', 'pset:X#2']);
+  });
+
+  it('a modified entity names the duplicate that changed, never an empty list', () => {
+    const fp = (input: DataFingerprintInput): EntityFingerprint<null> => ({
+      key: 'w', ifcType: input.ifcType, dataHash: buildDataFingerprint(input),
+      components: buildComponentFingerprints(input), ref: null,
+    });
+    const entry = diffModels([fp(twice('REI60'))], [fp(twice('REI90'))]).byKey.get('w');
+    expect(entry?.state).toBe('modified');
+    // Ordinals follow content order: the FireRating set sorts before the
+    // IsExternal one, so the edited set is the unnumbered first occurrence.
+    expect(entry?.changedComponents).toEqual(['pset:Pset_WallCommon']);
+  });
+});
+
+describe('diffModels with component sub-hashes', () => {
+  function fp(key: string, input: DataFingerprintInput): EntityFingerprint<null> {
+    return {
+      key,
+      ifcType: input.ifcType,
+      dataHash: buildDataFingerprint(input),
+      components: buildComponentFingerprints(input),
+      ref: null,
+    };
+  }
+
+  it('reports changedComponents per modified entity', () => {
+    const edited: DataFingerprintInput = {
+      ...wall,
+      propertySets: [
+        { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] },
+        { name: 'Pset_FireSafety', properties: [{ name: 'FireRating', value: 'REI90' }] },
+      ],
+    };
+    const diff = diffModels([fp('w', wall)], [fp('w', edited)]);
+    const entry = diff.byKey.get('w');
+    expect(entry?.state).toBe('modified');
+    expect(entry?.changedComponents).toEqual(['pset:Pset_FireSafety']);
+  });
+
+  it('counts a component added on one side as changed', () => {
+    const withoutFire: DataFingerprintInput = {
+      ...wall,
+      propertySets: [{ name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] }],
+    };
+    const diff = diffModels([fp('w', withoutFire)], [fp('w', wall)]);
+    expect(diff.byKey.get('w')?.changedComponents).toEqual(['pset:Pset_FireSafety']);
+  });
+
+  it('does not report a re-GUIDed type as a changed component on a kept key', () => {
+    // The key-based pass reads `state` off `dataHash` and `changedComponents`
+    // off the sub-hashes. If only one of the two ignored the type's GlobalId,
+    // an element that kept its own GlobalId across a re-export would come out
+    // `unchanged` while listing `type-assignment` as changed — a
+    // self-contradictory entry. One projection, one answer.
+    const reGuided: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-2-after-re-export', name: 'WT', type: 'IfcWallType' }],
+    };
+    const diff = diffModels([fp('w', wall)], [fp('w', reGuided)]);
+    const entry = diff.byKey.get('w');
+    expect(entry?.state).toBe('unchanged');
+    expect(entry?.changedComponents).toEqual([]);
+  });
+
+  it('omits changedComponents when fingerprints lack sub-hashes', () => {
+    const bare: EntityFingerprint<null> = {
+      key: 'w',
+      ifcType: 'IfcWall',
+      dataHash: buildDataFingerprint(wall),
+      ref: null,
+    };
+    const diff = diffModels([bare], [bare]);
+    // Assert the ENTRY, not just the field: `undefined?.changedComponents` is
+    // also `undefined`, so a bare `expect(get('w')?.changedComponents)
+    // .toBeUndefined()` passes just as well when diffModels drops the entity
+    // entirely — a different, worse bug than the one being pinned.
+    const entry = diff.byKey.get('w');
+    expect(entry).toMatchObject({ key: 'w', state: 'unchanged' });
+    expect(entry?.changedComponents).toBeUndefined();
+  });
+
+  it('omits changedComponents when only ONE side carries sub-hashes, not both', () => {
+    // `components` is opt-in per-fingerprint (docs on `DiffEntry.changedComponents`:
+    // "Present only when both fingerprints carry `components`"). A caller that
+    // supplies sub-hashes for the head revision only — a partial rollout of the
+    // sub-hash adapter, or a base fingerprint computed before this field existed —
+    // must not have the missing side read as an EMPTY component map: that would
+    // report every one of the present side's component keys as "changed" when
+    // there is no evidence either way, contradicting the documented contract and
+    // the identical abstention `componentsAgree` (content-match pass) already
+    // takes for exactly this asymmetry.
+    const base: EntityFingerprint<null> = {
+      key: 'w',
+      ifcType: 'IfcWall',
+      dataHash: buildDataFingerprint(wall),
+      // no `components` on this side
+      ref: null,
+    };
+    const head = fp('w', wall);
+    const diff = diffModels([base], [head]);
+    // Same reason as the test above: pin that the entity is PRESENT and
+    // unchanged, then that the field is absent. Optional chaining alone would
+    // let "the entity vanished from the diff" satisfy this assertion.
+    const entry = diff.byKey.get('w');
+    expect(entry).toMatchObject({ key: 'w', state: 'unchanged' });
+    expect(entry?.changedComponents).toBeUndefined();
+  });
+
+  it('sorts changedComponents when multiple keys differ, regardless of object insertion order', () => {
+    // Object key insertion order here is deliberately the REVERSE of alphabetical
+    // ('pset:Z...' before 'pset:A...'), so a build that returns the union in
+    // encounter order (base keys first, then head-only keys) rather than
+    // `.sort()`-ed order would still pass every OTHER test in this file — every
+    // existing changedComponents assertion has exactly one entry, where
+    // encounter order and sorted order are indistinguishable. This pins the
+    // sorted contract with two entries whose natural order differs from sorted.
+    const before: EntityFingerprint<null> = {
+      key: 'w',
+      ifcType: 'IfcWall',
+      dataHash: 'd0',
+      components: { 'pset:Zeta': 'z1', 'pset:Alpha': 'a1' },
+      ref: null,
+    };
+    const after: EntityFingerprint<null> = {
+      ...before,
+      components: { 'pset:Zeta': 'z2', 'pset:Alpha': 'a2' },
+    };
+    const diff = diffModels([before], [after]);
+    expect(diff.byKey.get('w')?.changedComponents).toEqual(['pset:Alpha', 'pset:Zeta']);
+  });
+});

@@ -26,6 +26,11 @@
  *    through the scene, top-hash plates and annotation lines just beyond the
  *    far plane stay clipped, just inside the near plane stay drawn, and a
  *    plate crossing the far plane is cut where the plane is.
+ * 4. Perspective (#7955): facade panels whose visible face is 10 mm in front
+ *    of a wall, every wall at the top of the hash range and every panel at the
+ *    bottom, stay drawn from 12 m and when zoomed out to 70 and 100 m, also
+ *    with the orbit target 5 m ahead of the camera. The unbounded perspective
+ *    nudge moved the wall 2.5 cm forward at 100 m.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -276,6 +281,35 @@ const isYellow: Classify = (r, g, b) => r > 120 && g > 120 && b < Math.min(r, g)
 /** Annotation ink, blended into the face it lies on: well darker than any plate. */
 const isInk: Classify = (r, g, b) => r + g + b < 220;
 
+/**
+ * Columns of a thin line drawn across the capture-space box spanned by two
+ * points, over a plain backdrop. A one-pixel line lands on one row or, at
+ * another sub-pixel phase, splits its coverage over two (#8802 R1: a shorter
+ * ribbon moved the canvas so the clip-plane line straddled a row boundary
+ * and no single pixel read as `isInk` although the line was drawn). So each
+ * column sums how far its pixels fall below the column's brightest one (the
+ * backdrop), which is the same for either phase, and counts as drawn when
+ * that is at least half of a crisp line's 500-600 (a near-black line on the
+ * light canvas).
+ */
+const LINE_COLUMN_DARKENING = 300;
+function lineColumns(frame: Frame, corner: Point, opposite: Point): number {
+  const a = frame.px(corner), b = frame.px(opposite);
+  const x0 = Math.max(0, Math.ceil(Math.min(a.x, b.x))), x1 = Math.min(frame.width - 1, Math.floor(Math.max(a.x, b.x)));
+  const y0 = Math.max(0, Math.ceil(Math.min(a.y, b.y))), y1 = Math.min(frame.height - 1, Math.floor(Math.max(a.y, b.y)));
+  let drawn = 0;
+  for (let x = x0; x <= x1; x++) {
+    const sums: number[] = [];
+    for (let y = y0; y <= y1; y++) {
+      const i = (y * frame.width + x) * 4;
+      sums.push(frame.rgba[i]! + frame.rgba[i + 1]! + frame.rgba[i + 2]!);
+    }
+    const backdrop = Math.max(...sums);
+    if (sums.reduce((total, sum) => total + (backdrop - sum), 0) >= LINE_COLUMN_DARKENING) drawn++;
+  }
+  return drawn;
+}
+
 /** Classified pixel counts in the capture-space box spanned by two points, shrunk by `inset` px. */
 function count(frame: Frame, corner: Point, opposite: Point, inset: number, ...classes: Classify[]): number[] {
   const a = frame.px(corner), b = frame.px(opposite);
@@ -480,9 +514,9 @@ test.describe('clip planes', () => {
       const [nearGreen] = count(ahead, ...face(1, yNear + sliver, 0), 0, isGreen);
       expect(nearGreen, 'a top-hash plate just inside the near plane stays drawn').toBeGreaterThan(5000);
       const lineBand = (x0: number, x1: number, y: number): [Point, Point] => [[x0 + 0.05, y, 0.9 - 0.03], [x1 - 0.05, y, 0.9 + 0.03]];
-      const [farInk] = count(ahead, ...lineBand(-1.2, -0.4, yFar + sliver), 0, isInk);
+      const farInk = lineColumns(ahead, ...lineBand(-1.2, -0.4, yFar + sliver));
       expect(farInk, 'an annotation line just beyond the far plane stays clipped').toBe(0);
-      const [nearInk] = count(ahead, ...lineBand(0.4, 1.2, yNear + sliver), 0, isInk);
+      const nearInk = lineColumns(ahead, ...lineBand(0.4, 1.2, yNear + sliver));
       expect(nearInk, 'an annotation line just inside the near plane stays drawn').toBeGreaterThan(50);
       const [controlYellow] = count(ahead, ...face(0, 0, -1.2), 0, isYellow);
       expect(controlYellow, 'a plate mid-range is drawn').toBeGreaterThan(5000);
@@ -505,5 +539,87 @@ test.describe('clip planes', () => {
       }
       expect(Math.abs(topmost - predicted.y), `the crossing plate is cut at the far plane (row ${topmost}, predicted ${predicted.y.toFixed(1)})`).toBeLessThanOrEqual(2);
     });
+  });
+});
+
+/**
+ * Look from `eye` at `target` (IFC, Z up) in perspective, then read the
+ * renderer's colour frame. The camera's near plane, and so the perspective
+ * nudge bound, follows the eye-to-target distance.
+ */
+async function perspectiveFrame(page: Page, gpu: GpuDeviceLossWatch, name: string, eye: Point, target: Point): Promise<Frame> {
+  const state = await page.evaluate(async ({ position, target }) => {
+    const store = globalThis.__ifc_lite_viewer_store__.getState();
+    store.setProjectionMode('perspective');
+    store.cameraCallbacks.applyViewpoint?.({ position, target, up: { x: 0, y: 1, z: 0 }, fov: Math.PI / 4, projectionMode: 'perspective' }, false);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]')!;
+    return { width: canvas.width, height: canvas.height, viewProj: globalThis.__ifc_lite_view_projection__!() };
+  }, { position: viewer(eye), target: viewer(target) });
+  const png = await gpu.requireLiveGpu(name, () => rendererColorFrame(page));
+  await test.info().attach(`${name}.png`, { body: png, contentType: 'image/png' });
+  const decoded = decodePng(png);
+  const m = state.viewProj;
+  const cropX = Math.floor((state.width - decoded.width) / 2), cropY = Math.floor((state.height - decoded.height) / 2);
+  const clip = (point: Point) => {
+    const { x, y, z } = viewer(point);
+    return [0, 1, 2, 3].map(r => m[r]! * x + m[4 + r]! * y + m[8 + r]! * z + m[12 + r]!) as [number, number, number, number];
+  };
+  return {
+    ...decoded,
+    depthRange: Number.POSITIVE_INFINITY,
+    levels: 0,
+    depth(point) { const c = clip(point); return c[2] / c[3]; },
+    px(point) {
+      const c = clip(point);
+      return { x: ((c[0] / c[3] + 1) / 2) * state.width - cropX, y: ((1 - c[1] / c[3]) / 2) * state.height - cropY };
+    },
+  };
+}
+
+test('perspective: facade panels 10 mm in front of a wall stay drawn when zoomed out, adverse hashes (#7955)', async ({ page }) => {
+  // A 30 m x 8 m wall with its face at IFC y = 0, and eight 3 m x 1.6 m panels
+  // whose visible face is 10 mm in front of it (4 mm air gap, 6 mm thick):
+  // the spandrel cladding that vanished in the #7955 report. Every wall hashes
+  // to the top of the range and every panel to the bottom, so an unbounded
+  // entity nudge works against geometry everywhere.
+  const PANEL_W = 3, PANEL_H = 1.6, GAP = 0.004, THICK = 0.006;
+  const scene = new IfcScene();
+  scene.product('IFCSLAB', '.BASESLAB.', [0, 20, -0.3], scene.rectangle(60, 60), 0.3, GREY);
+  const wall = scene.product('IFCWALL', '.SOLIDWALL.', [0, 0, 4], scene.rectangle(30, 8), 0.3, BLUE, hash => hash >= 240, 'y');
+  const panelProfile = scene.rectangle(PANEL_W, PANEL_H);
+  const panels: Array<{ id: number; x: number; z: number }> = [];
+  for (let row = 0; row < 2; row++) for (let k = 0; k < 4; k++) {
+    const x = (k - 1.5) * 6, z = 2 + row * 3.5;
+    panels.push({ id: scene.product('IFCPLATE', '.CURTAIN_PANEL.', [x, -(GAP + THICK), z], panelProfile, THICK, GREEN, hash => hash <= 15, 'y'), x, z });
+  }
+  const gpu = await watchGpuDeviceLoss(page);
+  await gpu.requireLiveGpu('perspective geometry and pixel assertions', async () => {
+    await loadScene(page, gpu, scene.toString());
+    expect(await drawnHash(page, wall), 'the wall hashes to the top of the range').toBeGreaterThanOrEqual(240);
+    for (const { id } of panels) expect(await drawnHash(page, id), `panel #${id} hashes to the bottom of the range`).toBeLessThanOrEqual(15);
+
+    const facade: Point = [0, 0, 4];
+    // Near (where the old nudge was under 3 mm), zoomed out to 70 and 100 m,
+    // and at 100 m with the orbit target only 5 m ahead of the camera, as walk
+    // mode, fast zoom or a pan after a close zoom leave it.
+    for (const [distance, azimuth, ahead] of [[12, 0, 0], [100, 0, 0], [100, 55, 0], [70, 30, 0], [100, 20, 5]] as const) {
+      const a = (azimuth * Math.PI) / 180;
+      const eye: Point = [distance * Math.sin(a), -distance * Math.cos(a), 4 + distance * 0.15];
+      const t = ahead ? ahead / distance : 1;
+      const target: Point = [eye[0] + (facade[0] - eye[0]) * t, eye[1] + (facade[1] - eye[1]) * t, eye[2] + (facade[2] - eye[2]) * t];
+      const frame = await perspectiveFrame(page, gpu, `facade-${distance}-${azimuth}${ahead ? '-target-near-camera' : ''}`, eye, target);
+      const pose = `${distance} m / ${azimuth}°${ahead ? ` / target ${ahead} m ahead` : ''}`;
+      // The inner 60% of each panel face, so silhouette pixels never count.
+      const face = -(GAP + THICK), w = 0.3 * PANEL_W, h = 0.3 * PANEL_H;
+      const inside = (point: Point) => { const p = frame.px(point); return p.x >= 0 && p.x < frame.width && p.y >= 0 && p.y < frame.height; };
+      const visible = panels.filter(({ x, z }) => inside([x - w, face, z - h]) && inside([x + w, face, z + h]));
+      expect(visible.length, `${pose}: panels in frame`).toBeGreaterThan(0);
+      for (const { id, x, z } of visible) {
+        const [green, blue] = count(frame, [x - w, face, z - h], [x + w, face, z + h], 1, isGreen, isBlue);
+        expect(green, `${pose}: panel #${id} is drawn`).toBeGreaterThan(4);
+        expect(blue, `${pose}: the wall behind panel #${id} never shows through it`).toBe(0);
+      }
+    }
   });
 });

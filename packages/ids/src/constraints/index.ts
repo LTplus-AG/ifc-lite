@@ -64,4 +64,7 @@ export function matchConstraint(
 export {
   getConstraintMismatchReason,
   formatConstraint,
+  exactConstraintValue,
+  constraintName,
+  formatPropertyPath,
 } from './describe.js';

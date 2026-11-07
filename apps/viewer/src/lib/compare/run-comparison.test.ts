@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -11,6 +11,10 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { prepareComparison, comparePreparedPair } from './run-comparison';
+import type { BuiltPair } from '@/hooks/compare/comparePairCache';
+
+const owned: BuiltPair[] = [];
+afterEach(() => { for (const pair of owned.splice(0)) pair.dispose(); });
 
 async function parse(): Promise<IfcDataStore> {
   const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('0WallA0000000000000001',$,'Wall A',$,$,$,$,$,.STANDARD.);\nENDSEC;\nEND-ISO-10303-21;";
@@ -29,6 +33,7 @@ describe('explicit comparison execution (#6612)', () => {
     view.setAttribute(1, 'Name', 'Edited wall', 'Wall A');
     const built = await prepareComparison({ baseModel: base, headModel: head,
       getMutationView: (id) => id === 'B' ? view : null, mutationVersion: 7, contentVersion: 3 });
+    owned.push(built);
     const data = comparePreparedPair(built, { scope: 'data', excludedTypes: [], matchByContent: false });
     assert.equal(data.diff.counts.modified, 1);
     assert.equal(data.comparedStores?.get('B')?.entities.getName(1), 'Edited wall');
@@ -43,6 +48,7 @@ describe('explicit comparison execution (#6612)', () => {
     base.geometryResult = null; head.geometryResult = null;
     const built = await prepareComparison({ baseModel: base, headModel: head, getMutationView: () => null,
       mutationVersion: 0, contentVersion: 0 });
+    owned.push(built);
     const result = comparePreparedPair(built, { scope: 'data', excludedTypes: [], matchByContent: false });
     assert.equal(result.diff.counts.unchanged, 1);
   });

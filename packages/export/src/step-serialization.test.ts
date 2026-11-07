@@ -14,6 +14,7 @@ import {
   toStepInteger,
   escapeStepString,
 } from './step-serialization.js';
+import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
 import { serializePropertyValue } from './property-value-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
@@ -252,5 +253,41 @@ describe('serializeAttributeValue (the shared number grammar)', () => {
     ['5', '$', "'5'"],
   ])('%j over %j is %j', (value, current, expected) => {
     expect(serializeAttributeValue(value, current)).toBe(expected);
+  });
+});
+
+describe('serializeTypedMarker type-name guard', () => {
+  it('refuses a type name that would break out of the attribute list', () => {
+    for (const bad of ["IfcLabel('x'));\n#999=IFCWALL(", 'IfcLabel(', 'Ifc Label', 'Ifc;', '', '1abc']) {
+      expect(() => serializeTypedMarker(bad, 'x')).toThrow(/not an IFC identifier/);
+    }
+    expect(serializeTypedMarker('IfcLabel', 'x')).toBe("IFCLABEL('x')");
+  });
+});
+
+describe('defined-type base lookup ignores spelling (#8312)', () => {
+  it('resolves upper-case and prefix-less names to the same base', () => {
+    for (const name of ['IfcLengthMeasure', 'IFCLENGTHMEASURE', 'ifclengthmeasure', 'LengthMeasure', 'LENGTHMEASURE']) {
+      expect(resolveExpressBase(name)).toBe('REAL');
+    }
+    expect(resolveExpressBase('IFCPOSITIVELENGTHMEASURE')).toBe('REAL');
+    expect(resolveExpressBase('IFCNOSUCHTYPE')).toBeNull();
+    expect(resolveExpressBase('CONSTRUCTOR')).toBeNull();
+  });
+
+  it('sees a type added to a registry after an earlier lookup', () => {
+    const registry = { ...SCHEMA_REGISTRY, types: { ...SCHEMA_REGISTRY.types } };
+    expect(resolveExpressBase('IFCCUSTOMMEASURE', registry)).toBeNull();
+    registry.types.IfcCustomMeasure = 'REAL';
+    expect(resolveExpressBase('IFCCUSTOMMEASURE', registry)).toBe('REAL');
+  });
+
+  it('encodes the inner value from the base, not the JSON shape', () => {
+    for (const name of ['IfcLengthMeasure', 'IFCLENGTHMEASURE', 'LengthMeasure']) {
+      expect(serializeTypedMarker(name, 3)).toBe('IFCLENGTHMEASURE(3.)');
+    }
+    expect(serializeTypedMarker('LABEL', 42)).toBe("IFCLABEL('42')");
+    expect(serializeTypedMarker('ifcboolean', 'false')).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('COUNTMEASURE', 3)).toBe('IFCCOUNTMEASURE(3.)');
   });
 });

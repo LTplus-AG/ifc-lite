@@ -15,10 +15,14 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
 import { routeCommandPointer } from './commandPointer.js';
+import { runToolAt } from './toolTap.js';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
+import { handlePointClick } from './measurePointMode.js';
+import { pressOutlivedReset } from './distanceClick.js';
+import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 
@@ -28,6 +32,7 @@ export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: num
   if (mode === 'polyline') handlePolylineClick(ctx, x, y);
   else if (mode === 'angle') handleAngleClick(ctx, x, y);
   else if (mode === 'radius') handleRadiusClick(ctx, x, y);
+  else if (mode === 'point') handlePointClick(ctx, x, y);
 }
 
 export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEvent): Promise<void> {
@@ -59,51 +64,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // opposite — it does nothing on mousedown/drag, so a click is the ONLY
   // gesture that adds a point, which is what makes the two modes unable to
   // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
-  if (tool === 'measure') return handleMeasureClickAt(ctx, x, y);
+  // A press from before Esc or a mode or tool switch belongs to the gesture that was reset (#8786).
+  if (tool === 'measure') return pressOutlivedReset(mouseState) ? undefined : handleMeasureClickAt(ctx, x, y);
 
-  // Section-tool face-pick (issue #243): clicking any visible face places
-  // the clip plane through it. Intercept BEFORE the generic select path
-  // so the click doesn't also flip the selection.
-  //
-  // Camera-aware orientation: we flip the picked normal if it faces away
-  // from the camera, so the kept half-space is the one the user is looking
-  // at by default (the most common expectation; if the cut goes the wrong
-  // way the existing Flip button still works). This addresses the
-  // CodeRabbit minor on PR #581 about face-pick not being camera-aware.
-  if (tool === 'section' && ctx.sectionPickModeRef?.current) {
-    const hit = renderer.raycastScene(x, y, {
-      hiddenIds:   ctx.hiddenEntitiesRef.current,
-      isolatedIds: ctx.isolatedEntitiesRef.current,
-    });
-    if (hit?.intersection) {
-      const n = hit.intersection.normal;
-      const p = hit.intersection.point;
-      const cam = renderer.getCamera().getPosition();
-      // View vector = camera → hit. If `dot(view, normal) > 0` the normal
-      // points away from the camera; invert so the cut keeps the side
-      // facing the user.
-      const vx = cam.x - p.x, vy = cam.y - p.y, vz = cam.z - p.z;
-      const dot = vx * n.x + vy * n.y + vz * n.z;
-      const sign = dot < 0 ? -1 : 1;
-      const bounds = ctx.modelBoundsRef?.current;
-      ctx.setSectionPlaneFromFace?.(
-        [sign * n.x, sign * n.y, sign * n.z],
-        [p.x, p.y, p.z],
-        bounds ? {
-          min: [bounds.min.x, bounds.min.y, bounds.min.z],
-          max: [bounds.max.x, bounds.max.y, bounds.max.z],
-        } : undefined,
-      );
-    } else {
-      // Missed geometry — disarm so the user isn't stuck in pick mode
-      // after an errant background click.
-      ctx.setSectionPickMode?.(false);
-    }
-    return;
-  }
-
-  // A running modeling command takes the click (#6232, commandPointer.ts).
-  if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y, e); return; }
+  // Section face-pick (#243) and a running modeling command (#6232) take the
+  // click BEFORE the generic select path, so it doesn't also flip the selection.
+  if (runToolAt(ctx, tool, x, y, () => routeCommandPointer(ctx, 'down', x, y, e))) return;
 
   // Annotate tool — drop a pin at the cursor's world point.
   // Raycasts the scene; if the click misses geometry the draft is
@@ -166,9 +132,10 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
  *     ≥3 points already placed) → close the loop, finishing as a perimeter.
  *   - otherwise → append the clicked point.
  *
- * Finishing an OPEN polyline is a different gesture entirely (double-click
- * or Enter — see `finishOpenPolyline`'s call sites in useMouseControls.ts /
- * useKeyboardShortcuts.ts), so a click never finishes anything but a closed
+ * Finishing an OPEN polyline is a different gesture entirely (double-click,
+ * Enter, or the Measurements list's Finish on touch — see
+ * `finishPolylineFromDoubleClick` and store/finishMeasureSequence.ts, #8991),
+ * so a click never finishes anything but a closed
  * loop. A miss (no raycast hit) is a no-op — it neither starts nor extends
  * a sequence, matching how a drag-mode click into empty space does nothing.
  */
@@ -177,21 +144,24 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
   if (!picked) return;
 
   const state = useViewerStore.getState();
-  ctx.setSnapTarget(picked.snapTarget);
-
   const active = state.activePolyline;
+  // A press away from the last vertex that snapped back onto it takes the surface hit (#8866).
+  const point = active ? unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y }) : picked.point;
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
   if (!active) {
-    state.startPolyline(picked.point);
+    state.startPolyline(point);
+    rememberVertexPress(ctx, point, { x, y });
     return;
   }
 
   const first = active.points[0];
-  if (active.points.length >= 3 && isNearPolylineStart(picked.point, first)) {
+  if (active.points.length >= 3 && isNearPolylineStart(point, first)) {
     state.finishPolyline(true);
     return;
   }
 
-  state.addPolylinePoint(picked.point);
+  state.addPolylinePoint(point);
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**
@@ -203,9 +173,9 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
  *   - no sequence in progress → start one at the clicked point.
  *   - otherwise → append the clicked point.
  *
- * Finishing is double-click or Enter (`finishRadiusFromDoubleClick`'s call
- * sites in useMouseControls.ts / useKeyboardShortcuts.ts), the same gesture
- * polyline uses and for the same reason: with an unbounded pick count there
+ * Finishing is double-click, Enter or the Measurements list's Finish
+ * (`finishRadiusFromDoubleClick`, store/finishMeasureSequence.ts, #8991), the
+ * same gestures polyline uses and for the same reason: with an unbounded pick count there
  * is no "last pick" for the store to recognise and finish itself on, unlike
  * angle's fixed count. A miss (no raycast hit) is a no-op.
  */
@@ -214,15 +184,13 @@ export function handleRadiusClick(ctx: MouseHandlerContext, x: number, y: number
   if (!picked) return;
 
   const state = useViewerStore.getState();
-  ctx.setSnapTarget(picked.snapTarget);
-
   const active = state.activeRadius;
-  if (!active) {
-    state.startRadius(picked.point);
-    return;
-  }
-
-  state.addRadiusPoint(picked.point);
+  // As for polyline: a press away from the last vertex that snapped back onto it takes the surface hit (#8866).
+  const point = active ? unsnapFromPrevious(ctx, active.points[active.points.length - 1], picked.point, { x, y }) : picked.point;
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
+  if (active) state.addRadiusPoint(point);
+  else state.startRadius(point);
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**
@@ -319,11 +287,16 @@ export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number)
   // pick 4 to coincide with pick 3, and that is still caught below.
   const prior = state.activeAngle?.picks ?? [];
   const startsNewShape = kind === 'edges' && prior.length % 2 === 0;
-  const last = !startsNewShape && prior.length > 0 ? prior[prior.length - 1].point : null;
-  if (last && isDuplicateClickPoint(last, picked.point)) return;
+  const previous = prior.length > 0 ? prior[prior.length - 1].point : null;
+  const last = !startsNewShape ? previous : null;
+  // A press away from the last pick that snapped back onto it takes the surface hit (#8866). Across
+  // the edge boundary only a double-press is caught, so a shared corner keeps its snap.
+  const point = previous ? unsnapFromPrevious(ctx, previous, picked.point, { x, y }, startsNewShape) : picked.point;
+  if (last && isDuplicateClickPoint(last, point)) return;
 
-  ctx.setSnapTarget(picked.snapTarget);
-  state.addAnglePick({ kind, point: picked.point });
+  ctx.setSnapTarget(point === picked.point ? picked.snapTarget : null);
+  state.addAnglePick({ kind, point });
+  rememberVertexPress(ctx, point, { x, y }, point !== picked.point);
 }
 
 /**

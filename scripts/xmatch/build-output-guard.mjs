@@ -6,7 +6,7 @@
  * Test support (#7030), shared by the xmatch test files whose subjects import built `@ifc-lite/*`
  * packages (`guards.mjs`, `mutate-support.mjs` and `merge-base-split.mjs` read
  * `packages/{parser,encoding}/dist`, `successor-mutations.mjs` reads
- * `packages/diff/dist`). Without that build output a static import fails the
+ * the test-only diff oracle via tsx). Without that build output a static import fails the
  * whole file before any test registers, which reads as a failure of the code
  * under test rather than a missing `pnpm build`. CI restores the build output
  * first, and `skipUnlessFilesExist` never skips there.
@@ -32,7 +32,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const SKIP_MISSING_BUILD_OUTPUT = skipUnlessFilesExist(
   ROOT,
-  ['packages/parser/dist/index.js', 'packages/encoding/dist/index.js', 'packages/diff/dist/class-families.js'],
+  ['packages/parser/dist/index.js', 'packages/encoding/dist/index.js'],
   'pnpm build',
 );
 

@@ -367,7 +367,7 @@ const metadata = await client.getMetadata(file);
 // Returns:
 // - schema_version: string (e.g. 'IFC2X3', 'IFC4', 'IFC4X3')
 // - entity_count: number
-// - geometry_count: number
+// - geometry_count: number  // geometry jobs a default parse schedules (#8341)
 // - file_size: number
 // - oversized_id_count?: number  // records the scan refused (#3395)
 // - malformed_record_found?: boolean  // a record was dropped (#3695)
@@ -1227,3 +1227,5 @@ Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
 to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
 a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
 Older symbol JSON remains decodable with unknown item provenance.
+
+Parse endpoints accept `?layer_slicing=true` to opt into material-layer wall slicing; omitted or false preserves unsliced geometry and its cache entries.

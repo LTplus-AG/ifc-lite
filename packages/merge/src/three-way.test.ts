@@ -7,13 +7,17 @@
  * partition fuzz: random op partitions over a model must never lose ops.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
 import { planThreeWayMerge } from './three-way.js';
 import { opsToNodes } from './merge-layer.js';
 import { extractStackState } from './component-state.js';
 import type { MergeOp } from './types.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 export function makeLayer(data: IfcxNode[], id = 'layer'): IfcxFile {
   return {

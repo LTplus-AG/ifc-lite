@@ -1,0 +1,423 @@
+{
+  "fixture": "f-m11a-appearance.ifc",
+  "products": [
+    {
+      "id": 29,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 19,
+          "materialName": null,
+          "rgba": [
+            0.2,
+            0.4,
+            0.6,
+            0.7
+          ]
+        }
+      ],
+      "role": "a-styled"
+    },
+    {
+      "id": 39,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 33,
+          "materialName": null,
+          "rgba": [
+            0.9,
+            0.8,
+            0.1,
+            1
+          ]
+        }
+      ],
+      "role": "b-material"
+    },
+    {
+      "id": 68,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c1"
+    },
+    {
+      "id": 79,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c2"
+    },
+    {
+      "id": 90,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c3"
+    },
+    {
+      "id": 101,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c4"
+    },
+    {
+      "id": 112,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c5"
+    },
+    {
+      "id": 123,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c6"
+    },
+    {
+      "id": 134,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c7"
+    },
+    {
+      "id": 145,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c8"
+    },
+    {
+      "id": 156,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 51,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.2,
+            0.2,
+            1
+          ]
+        }
+      ],
+      "role": "c9"
+    },
+    {
+      "id": 166,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 160,
+          "materialName": null,
+          "rgba": [
+            0.7,
+            0.7,
+            0.7,
+            1
+          ]
+        }
+      ],
+      "role": "d-default"
+    },
+    {
+      "id": 180,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 170,
+          "materialName": null,
+          "rgba": [
+            0.5,
+            0.5,
+            0.9,
+            1
+          ]
+        }
+      ],
+      "role": "e-host"
+    },
+    {
+      "id": 194,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 184,
+          "materialName": null,
+          "rgba": [
+            1.0,
+            0.42,
+            0.29,
+            0.4
+          ]
+        }
+      ],
+      "role": "e-opening"
+    },
+    {
+      "id": 209,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 199,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.6,
+            0.8,
+            1.0,
+            0.35
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 203,
+          "materialName": "Window_Frame_203",
+          "rgba": [
+            0.3,
+            0.2,
+            0.1,
+            1
+          ]
+        }
+      ],
+      "role": "f-window"
+    },
+    {
+      "id": 265,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 240,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.25
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 244,
+          "materialName": "Window_Frame_244",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "h-window-map"
+    },
+    {
+      "id": 286,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 269,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.5
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 273,
+          "materialName": "Window_Frame_273",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "i-window-map-materials"
+    },
+    {
+      "id": 331,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 306,
+          "materialName": null,
+          "rgba": [
+            0.75,
+            0.25,
+            0.25,
+            1
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 310,
+          "materialName": null,
+          "rgba": [
+            0.25,
+            0.25,
+            0.75,
+            1
+          ]
+        }
+      ],
+      "role": "j-mapped-item-style"
+    },
+    {
+      "id": 374,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 335,
+          "materialName": null,
+          "rgba": [
+            0.25,
+            0.75,
+            0.25,
+            1
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 339,
+          "materialName": null,
+          "rgba": [
+            0.75,
+            0.75,
+            0.25,
+            1
+          ]
+        }
+      ],
+      "role": "k-nested-map"
+    },
+    {
+      "id": 396,
+      "parts": [
+        {
+          "geometryClass": 0,
+          "geometryItemId": 378,
+          "materialName": "Window_Glass",
+          "rgba": [
+            0.5,
+            0.75,
+            1.0,
+            0.5
+          ]
+        },
+        {
+          "geometryClass": 0,
+          "geometryItemId": 378,
+          "materialName": "Window_Frame_378",
+          "rgba": [
+            0.25,
+            0.125,
+            0.0625,
+            1
+          ]
+        }
+      ],
+      "role": "l-window-twice"
+    }
+  ],
+  "typeMap": {
+    "geometryClass": 1,
+    "item": 229,
+    "map": 235,
+    "rgba": [
+      0.3,
+      0.6,
+      0.9,
+      0.5
+    ],
+    "type": 236
+  }
+}

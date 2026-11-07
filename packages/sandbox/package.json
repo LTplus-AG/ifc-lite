@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/sandbox",
-  "version": "2.12.0",
+  "version": "2.12.1",
   "description": "QuickJS-in-WASM sandboxed script execution for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,8 +36,9 @@
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

@@ -69,9 +69,15 @@ fi
 # sharing target/ with probe.sh would rebuild (and relink with LTO) on every
 # switch, and would swap the binary under a concurrent probe.sh run.
 MARKER_TARGET="$ROOT/target/phase-markers"
+# `-z norelro` leaves perf_probe one writable PT_LOAD. With two, valgrind 3.22
+# can merge their mappings, read no perf_probe symbols at all, and so fire no
+# phase marker (#8359; scripts/perf/elf-rw-loads.mjs). `cargo rustc` hands the
+# flag to the example's link only, so cached dependencies are not rebuilt.
 CARGO_TARGET_DIR="$MARKER_TARGET" \
-  cargo build --profile profiling -p ifc-lite-processing --example perf_probe --features phase-markers >&2
+  cargo rustc --profile profiling -p ifc-lite-processing --example perf_probe --features phase-markers \
+  -- -C link-arg=-Wl,-z,norelro >&2
 BIN="$MARKER_TARGET/profiling/examples/perf_probe"
+node "$ROOT/scripts/perf/elf-rw-loads.mjs" "$BIN"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ifc-instructions.XXXXXX")"
 cleanup() { rm -rf "$WORK"; }

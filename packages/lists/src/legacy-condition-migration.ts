@@ -13,7 +13,7 @@ import {
   type FilterGroup, type FilterRule,
 } from '@ifc-lite/rules';
 import { isNamePattern } from './name-pattern.js';
-import type { ListDefinition, PropertyCondition, UnreadableListCondition } from './types.js';
+import { COLUMN_SOURCES, type ListDefinition, type PropertyCondition, type UnreadableListCondition } from './types.js';
 
 type MigrationResult = { groups: FilterGroup[]; unreadableConditions: UnreadableListCondition[] };
 type Converted = { rule: FilterRule } | { unreadable: UnreadableListCondition };
@@ -21,7 +21,7 @@ type Converted = { rule: FilterRule } | { unreadable: UnreadableListCondition };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const COLUMN_SOURCES = new Set(['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone', 'geometry']);
+const COLUMN_SOURCE_SET: ReadonlySet<string> = new Set(COLUMN_SOURCES);
 const UNREADABLE_REASONS = new Set(['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'invalid-value', 'mixed-groups']);
 const OPERATORS: ReadonlySet<string> = new Set(LIST_CONDITION_OPERATORS);
 const SOURCES: ReadonlySet<string> = new Set(LIST_CONDITION_SOURCES);
@@ -35,7 +35,7 @@ export function isSavedListShape(value: unknown): value is Record<string, unknow
     || typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt)
     || !Array.isArray(value.entityTypes) || !value.entityTypes.every((item) => typeof item === 'number' && Number.isInteger(item))
     || !Array.isArray(value.columns) || !value.columns.every((column) => isRecord(column)
-      && typeof column.id === 'string' && typeof column.source === 'string' && COLUMN_SOURCES.has(column.source)
+      && typeof column.id === 'string' && typeof column.source === 'string' && COLUMN_SOURCE_SET.has(column.source)
       && typeof column.propertyName === 'string')) return false;
   if (value.groups !== undefined && !Array.isArray(value.groups)) return false;
   if (value.capturedScope !== undefined && !isCapturedEntityScope(value.capturedScope)) return false;

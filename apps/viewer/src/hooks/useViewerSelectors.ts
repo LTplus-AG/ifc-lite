@@ -89,12 +89,9 @@ export function useToolState() {
 export function useMeasurementState() {
   // Basic measurement state
   const measurements = useViewerStore((state) => state.measurements);
-  const pendingMeasurePoint = useViewerStore((state) => state.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((state) => state.activeMeasurement);
 
   // Measurement actions
-  const addMeasurePoint = useViewerStore((state) => state.addMeasurePoint);
-  const completeMeasurement = useViewerStore((state) => state.completeMeasurement);
   const startMeasurement = useViewerStore((state) => state.startMeasurement);
   const updateMeasurement = useViewerStore((state) => state.updateMeasurement);
   const finalizeMeasurement = useViewerStore((state) => state.finalizeMeasurement);
@@ -122,15 +119,12 @@ export function useMeasurementState() {
   return {
     // State
     measurements,
-    pendingMeasurePoint,
     activeMeasurement,
     snapEnabled,
     edgeLockState,
     measurementConstraintEdge,
 
     // Actions
-    addMeasurePoint,
-    completeMeasurement,
     startMeasurement,
     updateMeasurement,
     finalizeMeasurement,

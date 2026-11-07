@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { runSkipVoidsContracts } from './lib/wasm-skip-voids-contracts.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -35,6 +36,7 @@ import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs
 import { finishContractRun } from './lib/wasm-landxml-contracts.mjs';
 import { runEarlyContracts } from './lib/wasm-early-contracts.mjs';
 import { runScanOutlineContracts } from './lib/wasm-scan-outline-contracts.mjs';
+import { runPipelineDiagnosticsContracts } from './lib/wasm-pipeline-diagnostics-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -73,7 +75,6 @@ const GEOREF_AVAILABLE = fixtureAvailable(GEOREF_IFC, 'georef', 'Georef tests');
 const LAYERED_AVAILABLE = fixtureAvailable(LAYERED_IFC, 'layered-wall', 'geometryClass pin');
 const SPACES_AVAILABLE = fixtureAvailable(SPACES_IFC, 'spaces', 'Energy-model tests');
 
-// Initialize WASM
 console.log('📦 Loading WASM...');
 const wasmBuffer = readFileSync(WASM_BIN);
 const ownershipWasmExports = initSync(wasmBuffer);
@@ -81,12 +82,12 @@ console.log('✅ WASM initialized\n');
 
 const columnContent = COLUMN_AVAILABLE ? readFileSync(COLUMN_IFC, 'utf-8') : '';
 
-// Create API
 const api = new IfcAPI();
 
 let passed = 0;
 let failed = 0;
 let skipped = 0;
+runSkipVoidsContracts({ test, skip, IfcAPI });
 
 /**
  * A test (or a whole fixture-gated block of them) that did NOT run.
@@ -795,16 +796,16 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
   assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
   assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
   assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
-  // Guard that the export actually carried geometry. The IFC source must cross
-  // the boundary as a Uint8Array; if it ever arrived empty (e.g. a string coerced
-  // to zero bytes), the GLB would still be structurally valid yet declare zero
-  // meshes — caught here.
+  // Guard that the export carried geometry. The IFC source must cross the boundary
+  // as a Uint8Array; arriving empty (e.g. a string coerced to zero bytes), the GLB
+  // would still be structurally valid yet declare zero meshes — caught here.
   const dv = new DataView(glbBytes.buffer, glbBytes.byteOffset, glbBytes.byteLength);
   const jsonLen = dv.getUint32(12, true);
   const gltf = JSON.parse(Buffer.from(glbBytes.buffer, glbBytes.byteOffset + 20, jsonLen).toString('utf-8'));
   assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
+(await import('./lib/wasm-glb-element-node-contracts.mjs')).runGlbElementNodeContracts(api, test, assert, columnContent, glbBytes); // #9011
 // exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
 // GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
 // boundary, since the Rust-level tests can't prove the JS throw contract.
@@ -1468,76 +1469,7 @@ if (existsSync(HELLO_WALL)) {
     `apps/landing/samples/hello-wall.ifc missing — ${FIXTURES_HINT}`);
 }
 
-// ===== Pipeline diagnostics channel (wasm boundary) =====
-// This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
-// (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
-// the lane that DOES gate (node-tests -> the required Build+WASM+Rust+Node
-// check). It pins the versioned wire shape across the real serde-wasm-bindgen
-// boundary, mirroring the Rust serde-key stability test.
-test('getPipelineDiagnostics: undefined before load, accumulates across batches, versioned, persists post-load, resets on the next load', () => {
-  const diagApi = new IfcAPI();
-  const bytes = new TextEncoder().encode(columnContent);
-  try {
-    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
-      'diagnostics must be undefined before any batch runs');
-
-    // One load = one buildPrePassOnce (which resets the accumulator) followed by
-    // N processGeometryBatch calls (the viewer's per-batch loop).
-    const pre = diagApi.buildPrePassOnce(bytes);
-    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
-    const runBatch = () => {
-      const c = diagApi.processGeometryBatch(
-        bytes, pre.jobs, pre.unitScale,
-        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
-        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-      );
-      c.free();
-    };
-
-    runBatch();
-    const one = diagApi.getPipelineDiagnostics();
-    assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
-    // Versioned wire shape: the schema-stability contract on the real boundary.
-    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
-    assert.equal(one.batches, 1, 'exactly one batch recorded');
-    // Real VALUES, not just key presence: the column fixture has geometry, so a
-    // serde bug emitting zero/wrong counts would be caught.
-    assert.ok(one.meshCount > 0, 'meshCount > 0');
-    assert.ok(one.triangleCount > 0, 'triangleCount > 0');
-    assert.ok(one.elementCount > 0, 'elementCount > 0');
-    for (const key of ['backstopCount', 'totalCsgFailures', 'productsWithFailures',
-      'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
-      assert.ok(key in one, `diagnostics must carry ${key}`);
-    }
-    for (const key of ['entityScanMs', 'lookupMs', 'preprocessMs', 'parseMs', 'geometryMs', 'totalMs']) {
-      assert.ok(key in one.phaseMs, `phaseMs must carry ${key}`);
-    }
-
-    // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
-    // sums per batch, so batches increments and the counts never decrease.
-    runBatch();
-    const two = diagApi.getPipelineDiagnostics();
-    assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
-    assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');
-    assert.ok(two.elementCount >= one.elementCount, 'elementCount accumulates (monotonic)');
-    assert.ok(two.triangleCount >= one.triangleCount, 'triangleCount accumulates (monotonic)');
-
-    // Diagnostics survive clearPrePassCache: it runs at end-of-load, and a host
-    // reads the per-load diagnostics AFTER it (see IfcAPI::clear_pre_pass_cache,
-    // which clears the entity/parts caches but NOT the accumulator).
-    diagApi.clearPrePassCache();
-    assert.ok(diagApi.getPipelineDiagnostics(), 'diagnostics persist for reading after clearPrePassCache');
-
-    // The next load resets the accumulator (buildPrePassOnce calls
-    // reset_pipeline_diagnostics before the new batch runs).
-    diagApi.buildPrePassOnce(bytes);
-    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
-      'a new load (buildPrePassOnce) resets the accumulator until its first batch');
-  } finally {
-    diagApi.clearPrePassCache();
-    diagApi.free();
-  }
-});
+await runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent });
 
 // ===== setEntityIndex (production load-start reset path, #1551) =====
 // The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce

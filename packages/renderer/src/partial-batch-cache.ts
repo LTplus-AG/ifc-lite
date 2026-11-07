@@ -59,7 +59,8 @@ export function dropPartialCacheForBatch(caches: PartialBatchCaches, batch: Batc
   // Deleting the CURRENT key during a Map iteration is well-defined (the
   // iterator skips removed entries) and nothing is added here, so no copy.
   for (const sourceBatchKey of caches.keys.keys()) {
-    if (!sourceBatchKey.startsWith(prefix)) continue;
+    // Exact or `prefix:` only: batch 12 must not take batch 125's slots.
+    if (sourceBatchKey !== prefix && !sourceBatchKey.startsWith(`${prefix}:`)) continue;
     releaseSlot(caches, sourceBatchKey);
   }
 }

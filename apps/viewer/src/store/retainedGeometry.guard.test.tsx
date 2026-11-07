@@ -16,7 +16,7 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture.js';
 import { useViewerStore } from '@/store';
-import { RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
+import { RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON, type RetainedGeometrySummary } from './retainedGeometry';
 import { useExportCommands, type ResolvedExportCommand } from '@/components/viewer/toolbar/useExportCommands';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 // The retained module registers the shape-only reason's English text.
@@ -24,13 +24,20 @@ import '@/lib/retained/retainedLoad';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { get: () => 600, configurable: true });
+// @tanstack/virtual-core 3.19+ reads the scroll viewport from clientWidth/clientHeight
+// (rows are still measured with offsetHeight), so stub both channels.
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { get: () => 800, configurable: true });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { get: () => 600, configurable: true });
 
 const SUMMARY: RetainedGeometrySummary = {
-  kernel: 'retained', candidates: 2, published: 2, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'complete',
+  kernel: 'retained', candidates: 2, published: 2, refused: [], cancelled: 0, obligationsUnmet: ['IfcAppearance'], completeness: 'complete',
 };
 
 async function seed(retained: boolean): Promise<void> {
   await seedCoincidentWalls(1);
+  // #8415: ion's pre-existing dataStore requirement is independent of retained gating.
+  // Model seeding alone does not populate the legacy active-model slot.
+  act(() => useViewerStore.setState({ ifcDataStore: useViewerStore.getState().models.get('A')!.ifcDataStore }));
   if (!retained) return;
   const models = new Map(useViewerStore.getState().models);
   for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: SUMMARY });
@@ -61,8 +68,7 @@ describe('#7955 M2 shape-only guard', () => {
       for (const id of ['glb', 'kmz', 'ion', 'usd']) {
         const state = exportState(id);
         assert.equal(state.reason, retained ? RETAINED_SHAPE_ONLY_REASON : undefined, id);
-        // Cesium ion also needs the legacy single-model store, which this fixture leaves empty.
-        if (retained || id !== 'ion') assert.equal(state.disabled, retained, id);
+        assert.equal(state.disabled, retained, id);
       }
       assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'the source-based IFC export is unaffected');
     });
@@ -79,7 +85,7 @@ describe('#7955 M2 shape-only guard', () => {
       const detect = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Detect all clashes');
       assert.ok(detect);
       assert.equal(detect.disabled, retained);
-      const reason = 'Unavailable on a Retained · shape-only model: its meshes have no openings, layers or appearance. Reload it with the exact kernel to use this.';
+      const reason = 'Unavailable while retained geometry or presentation is incomplete. Reload it with the exact kernel to use this.';
       assert.equal(detect.title, retained ? reason : '');
       for (const label of ['Find duplicates', 'Discipline matrix']) {
         const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
@@ -90,3 +96,45 @@ describe('#7955 M2 shape-only guard', () => {
     });
   }
 });
+
+// #7955 M11-Z: a complete, fully presented retained model has the required authority.
+it('M11-Z enables mesh exports on a complete final retained model', async () => {
+  await seed(true);
+  const models = new Map(useViewerStore.getState().models);
+  for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+  act(() => useViewerStore.setState({ models }));
+  render(<ExportProbe />);
+  assert.equal(exportState('glb').disabled, false);
+});
+
+// #7955: USD, the energy models and Cesium ion (which uploads the STEP for Cesium to re-mesh) re-mesh the FILE with the exact engine, which is not the geometry a retained model
+// shows even when it is complete and final. Refused with their own reason; the exact model keeps them.
+for (const retained of [false, true]) {
+  it(`USD, energy and Cesium ion exports are ${retained ? 'refused with the exact-engine reason' : 'available'} (complete ${retained ? 'retained' : 'exact'} model)`, async () => {
+    await seed(retained);
+    if (retained) {
+      const models = new Map(useViewerStore.getState().models);
+      for (const [id, model] of models) models.set(id, { ...model, retainedGeometry: { ...SUMMARY, obligationsUnmet: [] } });
+      act(() => useViewerStore.setState({ models }));
+    }
+    render(<ExportProbe />);
+    for (const id of ['usd', 'energy', 'ion']) {
+      assert.deepEqual(exportState(id), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined }, id);
+    }
+    // A complete, final retained model still exports what the viewer holds.
+    for (const id of ['glb', 'kmz']) assert.equal(exportState(id).disabled, false, id);
+  });
+}
+
+// #8415: the dialog offers source STEP and property-only IFC5 even with a visible cut.
+// Its live submission guard refuses only sectioned STEP, so launch must stay available.
+for (const retained of [false, true]) {
+  it(`IFC dialog launch stays available with an active section (${retained ? 'retained' : 'exact'})`, async () => {
+    await seed(retained);
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true } }));
+    render(<ExportProbe />);
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined });
+    act(() => useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false }, inactiveSectionPlanes: [] }));
+    assert.deepEqual(exportState('ifc'), { disabled: false, reason: undefined }, 'unsectioned STEP remains available');
+  });
+}

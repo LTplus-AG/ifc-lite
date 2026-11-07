@@ -21,6 +21,7 @@ impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
         let value = RuntimeRealization {
             kind, empty, definition: self.definition().clone(), _permit: permit, _buffers: buffers,
             _source: match self { Self::Construction { backing, .. } => Some(backing.clone()), _ => None },
+            opening: match self { Self::Boolean { opening, .. } => *opening, _ => None },
             _inputs: match self {
                 Self::Construction { .. } => [None, None],
                 Self::Affine { input, .. } => [Some(input.clone()), None],

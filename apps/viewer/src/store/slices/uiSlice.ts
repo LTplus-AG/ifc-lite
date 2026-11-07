@@ -21,11 +21,11 @@ import {
   type GeometryLoadSettingsState,
 } from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
-import type { FederatedModel } from '../types.js';
+import type { FederatedModel, PointerInput } from '../types.js';
 import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
-import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
+import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
@@ -97,7 +97,14 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // State
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  /** Runtime only: an explicit panel action lifted that side's empty-start-screen
+   *  fold (`useEmptyStartFold.ts`) instead of writing the stored layout. */
+  startFoldLifted: { left: boolean; right: boolean };
   activeTool: string;
+  /** The input the viewport saw last, which words the Measure hint (#8879). */
+  pointerInput: PointerInput;
+  /** Note the input the viewport saw; a no-op when it is unchanged. */
+  setPointerInput: (input: PointerInput) => void;
   /**
    * Global edit mode. When `true`, all in-place editing affordances (inline
    * property/attribute editors, future geometry manipulators, georeference
@@ -151,6 +158,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setStartFoldLifted: (lifted: { left: boolean; right: boolean }) => void;
   setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
@@ -201,7 +209,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
+  startFoldLifted: { left: false, right: false },
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+  pointerInput: initialPointerInput(),
+  setPointerInput: (input) => { if (get().pointerInput !== input) set({ pointerInput: input }); },
   editEnabled: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
@@ -232,6 +243,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
+  setStartFoldLifted: (startFoldLifted) => set({ startFoldLifted }),
   setActiveTool: (activeTool) => {
     // Authoring tools require edit mode; entering one flips the global
     // toggle on so the rest of the UI (Properties panel, future
@@ -240,10 +252,12 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // Leaving 'measure' must discard any in-progress gesture — MeasureOverlay
     // only mounts while activeTool === 'measure' (ToolOverlays.tsx), so this
     // is the one place a stray drag/polyline sequence could be left stranded.
+    // Entering it resets too, so a press begun in another tool places no
+    // Measure point on release (#8786).
     // Routed through measurementSlice's resetMeasureGesture instead of
     // duplicating the clear here, keeping one place that knows what
     // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
-    const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
+    const crossingMeasure = (get().activeTool === 'measure') !== (activeTool === 'measure');
     // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
     const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
     if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
@@ -253,13 +267,13 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       // tools, so we only block the authoring branch.
       const cross = get() as unknown as WorkspaceCrossSlice;
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
-      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
       // Authoring happens in the Model workspace; no editable model, no tool.
       if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
       set({ activeTool, editEnabled: true });
       return;
     }
-    if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+    if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {

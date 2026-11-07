@@ -18,24 +18,24 @@ import { Command } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 
-const CHIP = 'text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors';
+const CHIP = 'text-xs text-zinc-500 dark:text-[#9aa3c7] hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded';
 
 export function WelcomeFooterChips() {
   const { t } = useTranslation();
   return (
-    <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
+    <div className="mt-12 hidden w-full items-center justify-between gap-4 md:flex">
       <a href="https://ifclite.dev" target="_blank" rel="noopener noreferrer" className={`group inline-flex items-center gap-2 ${CHIP}`}>
         <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
-        <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
+        <span className="font-semibold text-primary">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
       </a>
       <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'shortcuts' } }))}
-        className={`flex items-center gap-2 cursor-pointer ${CHIP}`}
+        className={`flex min-h-6 items-center gap-2 cursor-pointer ${CHIP}`}
       >
         <Command className="h-3 w-3" aria-hidden="true" />
         <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>
-        <span className="px-1.5 ml-1 font-bold text-primary bg-primary/20" aria-hidden="true">?</span>
+        <kbd className="ml-1 rounded border border-zinc-300 px-1 font-mono text-2xs text-zinc-600 dark:border-[#3b4261] dark:text-[#a9b1d6]" aria-hidden="true">?</kbd>
       </button>
     </div>
   );

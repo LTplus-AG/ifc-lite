@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { plyClassification } from './ply-scalar.js';
 import type { PlyPropertyDecl } from './ply.js';
 
 interface FixedBinaryLayout {
@@ -15,6 +16,7 @@ export function decodeFixedBinaryPlyBody(
   colors: Float32Array | undefined, normals: Float32Array | undefined,
   intensities: Uint16Array | undefined, littleEndian: boolean,
   originOffset?: readonly [number, number, number],
+  classifications?: Uint8Array,
 ): void {
   const offX = originOffset?.[0] ?? 0;
   const offY = originOffset?.[1] ?? 0;
@@ -31,6 +33,7 @@ export function decodeFixedBinaryPlyBody(
   const nzProp = normals ? find('nz') : undefined;
   const iProp = intensities ? find('intensity') ?? find('scalar_Intensity') : undefined;
 
+  const classProp = find('classification');
   for (let i = 0; i < vertex.count; i++) {
     const base = i * vertex.recordSize;
     positions[i * 3] = readScalar(view, base + xProp.offset, xProp.type, littleEndian) - offX;
@@ -46,6 +49,7 @@ export function decodeFixedBinaryPlyBody(
       normals[i * 3 + 1] = readScalar(view, base + nyProp.offset, nyProp.type, littleEndian);
       normals[i * 3 + 2] = readScalar(view, base + nzProp.offset, nzProp.type, littleEndian);
     }
+    if (classifications && classProp) classifications[i] = plyClassification(readScalar(view, base + classProp.offset, classProp.type, littleEndian));
     if (intensities && iProp) {
       intensities[i] = Math.min(65535, Math.max(0, readScalar(view, base + iProp.offset, iProp.type, littleEndian) | 0));
     }

@@ -13,6 +13,7 @@ use crate::plan::add_types::{ClassSpec, NewObject, NewType, Representation, Type
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::{ObjectRef, SurfaceColour};
 use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::nest::Nest;
 use super::mapped::MapPlan;
 use super::same_as::ReusedRepresentation;
 use super::units::CheckedUnits;
@@ -25,6 +26,7 @@ pub(super) struct Checked {
     pub(super) predefined: Option<String>,
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
+    pub(super) nest: Option<(u32, Nest)>,
     pub(super) existing_type: Option<u32>,
     /// Class, `PredefinedType` and value units of a new type.
     pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
@@ -123,7 +125,7 @@ impl AddState<'_, '_> {
         added.ok_or_else(|| if deleted { format!("{r} is deleted by this plan") } else { format!("{r} not found") })
     }
 
-    fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
+    pub(super) fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
         if let Some(&placement) = self.placement_of_added.get(&id) {
             return placement;
         }
@@ -235,6 +237,7 @@ impl AddState<'_, '_> {
             }
         }
         let spatial = self.is_structure_element(&class);
+        let nest = obj.nest_in.as_ref().map(|r| self.check_nest(r, &class, spatial, obj.container.is_some())).transpose()?;
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
@@ -286,7 +289,8 @@ impl AddState<'_, '_> {
                     Some(self.placement_of(id, &c).ok_or_else(|| format!("placement parent {r} ({c}) has no ObjectPlacement"))?)
                 }
             }
-            None => container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)),
+            // The host's placement, else the container's.
+            None => nest.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)).or_else(|| container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c))),
         };
         // The placement patch's rule, checked before any id is allocated.
         crate::plan::placement::check_matrix(&obj.placement.matrix)?;
@@ -352,6 +356,7 @@ impl AddState<'_, '_> {
             predefined,
             parent_placement,
             container: container.map(|(id, kind, _)| (id, kind)),
+            nest: nest.map(|(id, n, _)| (id, n)),
             existing_type,
             new_type,
             host,

@@ -5,11 +5,32 @@ revisions as **added / modified / deleted / unchanged**, with separable
 **data vs geometry** scope — the engine behind the viewer's "compare two
 versions" mode.
 
-The public comparison API is **pure and store-agnostic**: it consumes adapter
-fingerprints without invoking a parser or renderer. The package also depends on
-`@ifc-lite/wasm` for the staged Rust backend being qualified under #8042;
-public entry points retain their current synchronous initialization contract. Adapters (the CLI, the viewer) extract a fingerprint per
+The public comparison API consumes adapter fingerprints without invoking a
+parser or renderer. The operations run in the independent
+`@ifc-lite/wasm/diff` Rust module. Initialize once with `await initDiff()` or
+`initDiffSync(...)` before calling synchronous comparison, fingerprint, lineage,
+or sidecar operations. Adapters (the CLI and viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
+
+## Initialization
+
+`initDiff` and `initDiffSync` are the two new initialization exports. Existing
+operation names and signatures remain intact and synchronous after initialization.
+Calling an operation before initialization throws an error naming `initDiff`.
+Repeated initialization is safe, and failed asynchronous initialization can be
+retried. While asynchronous initialization is in progress, `initDiffSync` throws;
+await `initDiff()` instead. Once initialized, either initializer is a no-op.
+Initialize at your application’s async startup boundary.
+
+`initDiff()` loads the independent diff WASM asset in a browser. Explicit bytes
+can be supplied as `await initDiff({ module_or_path: bytes })`; Node callers can
+read the WASM asset into a `Uint8Array` or `Buffer`. For synchronous startup use
+`initDiffSync({ module: bytes })`. No geometry engine initialization is required.
+The module is built with `pnpm build:wasm`; committed generated declarations
+support typechecking without a Rust toolchain.
+
+The historical TypeScript engine is a private test oracle outside `src` and is
+excluded from published `dist`. It is never selected as a runtime fallback.
 
 ## Installation
 
@@ -20,7 +41,9 @@ npm install @ifc-lite/diff
 ## Usage
 
 ```ts
-import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+import { initDiff, diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+
+await initDiff();
 
 // Your adapter walks a store and emits one fingerprint per entity, per model.
 declare function extractFingerprints(model: unknown): EntityFingerprint<number>[];
@@ -40,6 +63,46 @@ const diff = diffModels(base, head, { scope: 'both' }); // 'data' | 'geometry' |
 diff.counts;            // { added, modified, deleted, unchanged }
 diff.byKey.get(gid);    // O(1) lookup for picking — { state, changeKinds, base?, head? }
 ```
+
+### Repeated comparisons and ownership
+
+`prepareDiffModel(entities)` returns a public `DiffModelHandle<TRef>`. It takes
+an immutable fingerprint snapshot and transfers it into Rust once. Reuse the
+same pair with different options; no model is marshalled again during compare.
+Opaque `ref` objects keep their identity. Source edits require a new handle.
+There is no implicit cache.
+
+```ts
+import { prepareDiffModel } from '@ifc-lite/diff';
+
+const left = prepareDiffModel(base);
+try {
+  const right = prepareDiffModel(head);
+  try {
+    const dataDiff = left.compare(right, { scope: 'data' });
+    const fullDiff = left.compare(right, { scope: 'both' });
+  } finally { right.dispose(); }
+} finally { left.dispose(); }
+```
+
+Call `dispose()` in `finally`, or use `using` on platforms supporting explicit
+resource management (`Symbol.dispose`). Release is idempotent; comparing a
+released handle throws. Returned results remain valid after release and refer
+to the owned snapshots. `diffModels` is a one-shot convenience: every call
+transfers and frees both models, so use handles for repeated comparisons.
+
+For mixed mesh capability (exactly one full input has a non-`p:` geometry hash),
+pass `stripPlacementGeometry: true`. Rust ignores `p:` placement hashes on both
+sides, allowing geometry capability abstention to work. Results expose those
+hashes as `undefined`, exactly like stripping in JS first. Mesh hashes, bounding
+boxes, volumes and refs are preserved. Keep the default `false` for symmetric
+pairs, including two placement-only models, to retain placement move detection.
+Decide whether to set it from the full inputs, before your exclusions and key
+deduplication; the comparison's own capability check still ignores excluded
+types. The option never
+changes either handle's snapshot. A handle lazily owns a frozen stripped view:
+only placement rows are shallow-copied, refs remain identical, and repeated
+stripped comparisons return the same row objects. Disposal releases both views.
 
 ### Scope — what counts as a change
 
@@ -221,8 +284,17 @@ never registers as a change) and tolerance-quantized. This package only
 See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 [API Reference](https://ifclite.dev/docs/api/typescript/).
 
+`@ifc-lite/diff/internal` is for in-repository consumers only and has no semver
+stability guarantee. `buildFingerprintBatch` snapshots fresh adapter DTOs once
+and computes data and component fingerprints together. It never caches inputs;
+call it again after changes. Public unary fingerprint APIs remain supported.
+
+The public `DiffModelHandle` and `prepareDiffModel` are also re-exported from
+`@ifc-lite/diff/internal` for compatibility; the historical `PreparedDiffModel`
+type name remains available there. Handles return owned snapshots, while
+one-shot `diffModels` preserves original input objects unless placement stripping
+requires a projected record.
+
 ## License
 
 MPL-2.0
-
-The staged runtime initializes the independent `@ifc-lite/wasm/diff` module. It does not initialize the geometry engine. The diff module is built with `pnpm build:wasm`; its generated declarations are committed for wasm-free typechecking.

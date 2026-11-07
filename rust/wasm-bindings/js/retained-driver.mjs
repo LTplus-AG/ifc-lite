@@ -21,7 +21,14 @@ export class RetainedDriver {
   #releases = [];
   #cleanup;
   #dispatchListeners = [];
-  constructor() {
+  constructor(observeForTests = false) {
+    // Only the cfg(test) Rust constructor enables handle observation. Ordinary
+    // retained instances do not expose this test-support method.
+    if (observeForTests) this.liveObjectCount = async () => {
+      await this.#awaitCleanup();
+      if (!this.live()) throw new Error('retired retained worker');
+      return this.#objects.size;
+    };
     // Called only by explicit BrowserWorker construction. Importing the IFC
     // wasm package, or loading a model, never reaches this constructor.
     this.#ready = loadSdkModule('/smlib/client.mjs').then(({ SmlibWorkerTransport }) => {
@@ -153,7 +160,7 @@ export class RetainedDriver {
   async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
     // Own every coefficient before awaiting initialization or asset loading.
     const recipe = new Uint8Array(bytes);
-    if (![0, 1, 2].includes(qualification)) throw new Error('invalid retained qualification');
+    if (![0, 1, 2, 3].includes(qualification)) throw new Error('invalid retained qualification');
     if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 || angle > 180 ||
         !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
     await this.#acquire();

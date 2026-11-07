@@ -468,6 +468,12 @@ fn resolve_layer_set_usage(usage: &DecodedEntity, decoder: &mut EntityDecoder) -
     }
 }
 
+// #7955: retain exact's private helper; expose reuse only in retained builds.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn resolve_retained_buildup(id: u32, decoder: &mut EntityDecoder) -> LayerBuildup {
+    resolve_buildup(id, decoder)
+}
+
 #[cfg(test)]
 mod flat_roundtrip_tests {
     use super::*;

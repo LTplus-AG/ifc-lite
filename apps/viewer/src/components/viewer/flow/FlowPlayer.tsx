@@ -29,8 +29,9 @@ import { loadPlayerValues, savePlayerValues } from '@/lib/flow/player-values';
 import { FlowPlayerField } from './FlowPlayerField';
 import { FlowValuePreview } from './FlowValuePreview';
 import { useFlowRunner } from './useFlowRunner';
+import { FLOW_BUTTON, FLOW_PRIMARY_BUTTON } from './flow-button';
 
-const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
+const button = FLOW_BUTTON;
 
 export interface FlowPlayerProps {
   readonly doc: FlowDocument;
@@ -121,7 +122,7 @@ export function FlowPlayer({ doc, registry, lastRun, lastError, onDocChange }: F
       </fieldset>
       <button
         type="button"
-        className={`${button} inline-flex w-fit items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`}
+        className={`${FLOW_PRIMARY_BUTTON} inline-flex w-fit items-center gap-1`}
         disabled={!canRun || !validated.ok}
         onClick={onRun}
       >
@@ -130,11 +131,11 @@ export function FlowPlayer({ doc, registry, lastRun, lastError, onDocChange }: F
 
       {running && <button type="button" className={button} onClick={cancel}>{t('automationEditor.cancel')}</button>}
       {progress && <output aria-live="polite">{progress}</output>}
-      {storageError && <output className="text-amber-500">{t('automationEditor.storageError', { reason: storageError })}</output>}
+      {storageError && <output className="text-warn">{t('automationEditor.storageError', { reason: storageError })}</output>}
       {warnings.length > 0 && <ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {artifacts.map((artifact) => <button key={artifact.id} type="button" className={button}
         onClick={() => downloadBlob(artifact.blob, artifact.name)}>{t('automationEditor.download', { name: artifact.name })}</button>)}
-      {lastError && <div className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</div>}
+      {lastError && <div className="text-danger">{t('flowPanel.run.failed')}: {lastError}</div>}
 
       {doc.outputs.length > 0 && (
         <div>

@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { RetainedProductOutcome } from '../../../wasm/pkg-retained/ifc-lite.js';
 import type { RetainedEngine } from './engine.js';
-import { partVolume, worldPoints } from './obj.js';
+import { ARTIFACT_CHUNK_CHARS, partVolume, productVolume, worldPoints } from './obj.js';
 
-export function retainedReport(engine: RetainedEngine, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
+export function retainedReport(engine: RetainedEngine, instanceMinOccurrences: number, outcomes: RetainedProductOutcome[], globalId: (id: number) => string | null, ids?: Uint32Array) {
   const byCode: Record<string, number> = {};
+  // Report byte-identical candidates; OBJ keeps every occurrence baked. The
+  // viewer additionally verifies f32 pairings within each bounded host window.
+  const groups = new Map<string, { templateProductId: number; count: number }>();
+  for (const p of outcomes) {
+    if (p.status !== 'published' || !p.instanceKey) continue;
+    const group = groups.get(p.instanceKey) ?? { templateProductId: p.expressId, count: 0 };
+    group.count++;
+    group.templateProductId = Math.min(group.templateProductId, p.expressId);
+    groups.set(p.instanceKey, group);
+  }
   const products = [...outcomes].sort((a, b) => a.expressId - b.expressId).map(p => {
     const common = { id: p.expressId, globalId: globalId(p.expressId), ifcType: p.ifcType, status: p.status };
     if (p.status === 'refused') {
@@ -12,33 +22,59 @@ export function retainedReport(engine: RetainedEngine, outcomes: RetainedProduct
       return { ...common, code: p.code, origin: p.origin ?? null, ...(p.kernelStatus === undefined ? {} : { kernelStatus: p.kernelStatus }) };
     }
     const parts = p.parts.map(part => ({ vertices: part.positions.length / 3, triangles: part.indices.length / 3,
-      curved: part.curved, volumeM3: partVolume(part),
+      curved: part.curved, ...(part.layer ? { layer: part.layer } : {}), volumeM3: partVolume(part),
       ...(part.color ? { color: part.color } : {}),
       ...(part.materialName === undefined ? {} : { materialName: part.materialName }),
       ...(part.geometryItemId === undefined ? {} : { geometryItemId: part.geometryItemId }),
       ...(part.materialId === undefined ? {} : { materialId: part.materialId }),
-      ...(part.normals ? { normals: Array.from(part.normals) } : {}),
-      ...(part.faces ? { faces: faceReport(part) } : {}) }));
-    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: parts.reduce((sum, part) => sum + part.volumeM3, 0),
+      // JSON has no negative zero; canonicalise so the written report round-trips exactly.
+      ...(part.normals ? { normals: Array.from(part.normals, v => v + 0) } : {}),
+      ...(part.faces ? { faces: faceReport(part) } : {}),
+      ...(part.palette ? { palette: { mapId: part.palette.mapId, colors: Array.from(part.palette.colors), triangles: Array.from(part.palette.triangles) } } : {}),
+      ...(part.texture ? { texture: { textureId: part.texture.textureId, uvs: Array.from(part.texture.uvs, v => v + 0), textured: Array.from(part.texture.textured) } } : {}) }));
+    return { ...common, cuts: p.cuts, consumedParts: p.consumedParts, parts, volumeM3: productVolume(p.parts),
       obligationsUnmet: p.obligationsUnmet, marker: p.marker,
-      ...(p.instanceGroup ? { instanceGroup: p.instanceGroup } : {}) };
+      ...(p.instanceKey && (groups.get(p.instanceKey)?.count ?? 0) >= instanceMinOccurrences
+        ? { instanceGroup: { templateProductId: groups.get(p.instanceKey)!.templateProductId, key: p.instanceKey } }
+        : {}) };
   });
   const published = outcomes.filter(p => p.status === 'published').length;
+  const layered = outcomes.filter(p => p.status === 'published' && p.parts.some(part => part.layer));
+  const bands = layered.reduce((sum, p) => sum + (p.status === 'published' ? p.parts.filter(part => part.layer).length : 0), 0);
   return { format: 'ifc-lite.retained-report/1',
     engine: { sdk: engine.sdk, manifestSha256: engine.manifestSha256, capabilities: engine.capabilities },
     settings: { kernel: 'retained', chordMetres: 0.001, angleDegrees: 5, maxBytes: 16 * 1024 * 1024,
       maxRestarts: 3, ids: ids ? Array.from(ids).sort((a, b) => a - b) : null },
-    summary: { candidates: outcomes.length, published, coverage: outcomes.length ? published / outcomes.length : 0, byCode }, products };
+    summary: { layeredProducts: layered.length, bands, candidates: outcomes.length, published, coverage: outcomes.length ? published / outcomes.length : 0, byCode }, products };
 }
 
-/** Stable keys throughout, with products already sorted by numeric id. */
-export function reportJson(report: unknown): string {
-  return `${JSON.stringify(report, (_key, value: unknown) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
-    }
-    return value;
-  }, 2)}\n`;
+const stableJson = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => {
+  if (item && typeof item === 'object' && !Array.isArray(item)) {
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  }
+  return item;
+}, 2);
+
+/**
+ * Stable keys throughout, with products already sorted by numeric id. Bytes equal one
+ * two-space `JSON.stringify`, serialized a product at a time: a whole-model report can
+ * exceed V8's maximum string length (Holter: >1 GB).
+ */
+export function reportJson(report: { products: unknown[] }): Buffer[] {
+  const [head, tail] = stableJson({ ...report, products: '\u0000products' }).split(`"products": ${JSON.stringify('\u0000products')}`);
+  if (tail === undefined) throw new Error('Unserializable retained report');
+  if (!report.products.length) return [Buffer.from(`${head}"products": []${tail}\n`)];
+  const chunks: Buffer[] = [];
+  let text = `${head}"products": [`;
+  report.products.forEach((product, index) => {
+    // A JSON string never holds a raw newline, so this only re-indents structure.
+    text += `${index ? ',' : ''}\n    ${stableJson(product).replace(/\n/g, '\n    ')}`;
+    if (text.length < ARTIFACT_CHUNK_CHARS) return;
+    chunks.push(Buffer.from(text));
+    text = '';
+  });
+  chunks.push(Buffer.from(`${text}\n  ]${tail}\n`));
+  return chunks;
 }
 
 function faceReport(part: import('../../../wasm/pkg-retained/ifc-lite.js').RetainedShapePart) {

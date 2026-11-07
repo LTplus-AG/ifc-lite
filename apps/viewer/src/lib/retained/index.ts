@@ -3,16 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The retained kernel as the viewer sees it (#7955 M2). Only a
+ * The retained kernel as the viewer sees it (#7955 M2). A
  * `VITE_RETAINED_GEOMETRY=on` build resolves `@ifc-lite/viewer-retained` here;
- * the default build gets `off.ts` (`null`). Importing this module does no work
- * and fetches nothing: the host Worker and engine load on the first retained
- * load.
+ * a `lazy` build resolves it to `lazy.tsx`, which imports this module
+ * dynamically; the default build gets `off.ts` (`null`). Importing this module
+ * does no work and fetches nothing: the host Worker and engine load on the
+ * first retained load.
  */
 
 import { useViewerStore } from '@/store';
 import { requestedGeometryKernel } from '@/store/geometryKernel';
-import { hasRetainedShapeOnlyModel } from '@/store/retainedGeometry';
+import { hasRetainedGeometryModel } from '@/store/retainedGeometry';
 import { RetainedGeometryChip } from '@/components/viewer/RetainedGeometryChip';
 import { GeometryKernelSetting } from '@/components/viewer/settings/GeometryKernelSetting';
 import { RetainedClient } from './retained-client';
@@ -26,11 +27,11 @@ const client = new RetainedClient();
 // synchronous step that clears the models, so it is checked a tick later.
 let retainedOpen = false;
 useViewerStore.subscribe((state) => {
-  const open = hasRetainedShapeOnlyModel(state.models);
+  const open = hasRetainedGeometryModel(state.models);
   if (retainedOpen && !open) {
     setTimeout(() => {
       const now = useViewerStore.getState();
-      if (!now.loading && !hasRetainedShapeOnlyModel(now.models)) client.unload();
+      if (!now.loading && !hasRetainedGeometryModel(now.models)) client.unload();
     }, 0);
   }
   retainedOpen = open;

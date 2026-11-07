@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { showAllFromStore } from '@/store/homeView';
 import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
 import { hideSelectionFromStore } from '@/store/hideSelection';
+import { finishOpenMeasureSequence } from '@/store/finishMeasureSequence';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -54,29 +55,15 @@ function rotateSelected(event: KeyboardEvent): boolean {
   return true;
 }
 
-function finishMeasurement(): boolean {
-  const state = useViewerStore.getState();
-  if (state.activePolyline) {
-    if (!state.finishPolyline(false)) {
-      void import('@/components/ui/toast').then(({ toast }) => toast.error('Polyline needs at least 2 points'));
-    }
-    return true;
-  }
-  if (state.activeRadius) {
-    if (!state.finishRadius()) {
-      void import('@/components/ui/toast').then(({ toast }) => toast.error('Radius needs at least 3 points'));
-    }
-    return true;
-  }
-  return false;
-}
-
 function cancelMeasurement(): boolean {
   const state = useViewerStore.getState();
-  if (state.activeMeasurement) { state.cancelMeasurement(); return true; }
-  if (state.activePolyline) { state.cancelPolyline(); return true; }
-  if (state.activeAngle) { state.cancelAngle(); return true; }
-  if (state.activeRadius) { state.cancelRadius(); return true; }
+  const inProgress = !!(state.activeMeasurement || state.activePolyline || state.activeAngle || state.activeRadius);
+  // Esc is a gesture reset in every mode, even with nothing placed yet: it drops the
+  // lock, the snap glyph and a press still held (#8786). It holds Esc only if it cancelled something.
+  state.resetMeasureGesture();
+  if (inProgress) return true;
+  // The hover preview alone does not hold Esc: it is cursor feedback, like the snap glyph.
+  if (state.measurePointLast) { state.clearMeasurePoint(); return true; }
   return false;
 }
 
@@ -148,7 +135,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
     showAllFromStore('a');
   }],
   ['measure.cancel', cancelMeasurement],
-  ['measure.finish', finishMeasurement],
+  ['measure.finish', finishOpenMeasureSequence],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['section.previousPlane', () => stepSectionPlane(-1)],
   ['section.nextPlane', () => stepSectionPlane(1)],

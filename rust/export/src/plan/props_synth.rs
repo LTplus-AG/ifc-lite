@@ -67,7 +67,7 @@ pub(crate) fn build_value_record(schema: &str, id: u32, entity_type: &str, name:
             _ => {}
         }
     }
-    format!("#{id}={entity_type}({});", slots.join(","))
+    super::attrs::record_text(id, entity_type, &slots)
 }
 
 /// The slot a value record carries its value in ([`VALUE_RECORDS`]);

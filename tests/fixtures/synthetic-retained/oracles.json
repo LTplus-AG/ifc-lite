@@ -4,6 +4,15 @@
   "provenance": "SYNTHETIC; no external authoring tool",
   "tolerances": "tolerances.json",
   "cases": {
+    "m4-band-appearance.ifc": {
+      "product_id": 22,
+      "material_ids": [
+        23,
+        31,
+        33
+      ],
+      "note": "Compare exact and retained by product/material key; air gap uses the transparent material fallback."
+    },
     "f-a-curved.ifc": {
       "products": [
         {
@@ -1478,6 +1487,10 @@
     "checker.png": {
       "sha256": "d801db93c50885d337e1908537586b99fa40594f6f80810a44725c259330ae18",
       "bytes": 138
+    },
+    "m4-band-appearance.ifc": {
+      "sha256": "87c4f0eedcdf01b97790dd29a80726773b48c8920c694ecdeb49f3cbaf39345c",
+      "bytes": 2579
     },
     "f-a-curved.ifc": {
       "sha256": "5e5f92069a9b8200f30d3f9fdf696417261477a1c898c7c124b860565e1df36f",

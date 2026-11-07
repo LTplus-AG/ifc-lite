@@ -138,7 +138,7 @@ export function RawStepRow({
        *  IFC attribute tables and STEP documentation (GlobalId = #1).
        *  The `index` prop stays 0-based for store/overlay addressing. */}
       <span
-        className="text-2xs font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
+        className="text-2xs font-mono text-muted-foreground tabular-nums tracking-wide"
         aria-label={t('properties.rawStepRow.positionalIndexAriaLabel', { index: index + 1 })}
       >
         [{index + 1}]
@@ -147,7 +147,7 @@ export function RawStepRow({
       {/* Schema attribute name */}
       <span
         id={nameId}
-        className="text-zinc-600 dark:text-zinc-400 truncate font-mono text-xs"
+        className="text-muted-foreground truncate font-mono text-xs"
         title={name}
       >
         {name}
@@ -172,9 +172,9 @@ export function RawStepRow({
               if (next?.dataset.rawStepAction) return;
               saveEdit();
             }}
-            className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-white dark:bg-zinc-900 border outline-none focus:ring-1 ${
+            className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-white border outline-none focus:ring-1 ${
               error
-                ? 'border-red-400 dark:border-red-500 focus:ring-red-400'
+                ? 'border-danger-border focus:ring-red-400'
                 : 'border-overlay-accent/40 focus:ring-overlay-accent'
             }`}
             spellCheck={false}
@@ -206,12 +206,12 @@ export function RawStepRow({
           onClick={startEdit}
           className={`min-w-0 text-left font-mono text-xs truncate px-1.5 py-0.5 rounded ${
             editable
-              ? 'cursor-text hover:bg-zinc-100 dark:hover:bg-zinc-800'
-              : 'cursor-default text-zinc-500 dark:text-zinc-500'
+              ?'cursor-text hover:bg-muted'
+              :'cursor-default text-muted-foreground'
           } ${
             display === '$'
-              ? 'text-zinc-400 dark:text-zinc-600'
-              : 'text-zinc-800 dark:text-zinc-200'
+              ? 'text-muted-foreground dark:text-zinc-600'
+              : 'text-foreground'
           }`}
           title={editable ? t('properties.rawStepRow.clickToEditTooltip') : t('properties.rawStepRow.notInlineEditableTooltip')}
         >
@@ -240,18 +240,18 @@ export function RawStepRow({
               data-raw-step-action="save"
               onMouseDown={(e) => e.preventDefault()}
               onClick={saveEdit}
-              className="h-6 w-6 p-0 hover:bg-emerald-100 dark:hover:bg-emerald-950/30"
+              className="h-6 w-6 p-0 hover:bg-ok-surface"
             >
-              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <Check className="h-3.5 w-3.5 text-ok" />
             </IconButton>
             <IconButton
               label={t('properties.rawStepRow.cancelTooltip')}
               data-raw-step-action="cancel"
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancelEdit}
-              className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
+              className="h-6 w-6 p-0 hover:bg-danger-surface"
             >
-              <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
+              <X className="h-3.5 w-3.5 text-danger" />
             </IconButton>
           </>
         ) : editable ? (
@@ -271,7 +271,7 @@ export function RawStepRow({
       {error && (
         <p
           id={`raw-step-err-${entityId}-${index}`}
-          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-2xs text-red-600 dark:text-red-400"
+          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-2xs text-danger"
         >
           <AlertCircle className="h-3 w-3 shrink-0" />
           <span>{error}</span>

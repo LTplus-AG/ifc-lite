@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
-import { buildPanelCommands } from './commandPaletteCommandsPanels.js';
+import { buildCommandPaletteCommands } from './commandPaletteCommands.js';
 import { paletteSurfaceCommands, surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes.js';
 
 const PANEL_IDS = [
   'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
   'panel:document', 'panel:drawing', 'panel:properties', 'panel:tree',
-  'panel:assistant', 'panel:bcf', 'panel:ids', 'panel:idsStudio', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:review', 'panel:semantic', 'panel:changeSets',
+  'panel:assistant', 'panel:bcf', 'panel:ids', 'panel:idsStudio', 'panel:influx', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:review', 'panel:semantic', 'panel:changeSets',
   'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources',
   'panel:zones', 'panel:loadReport', 'panel:pointclouds', 'panel:measurements',
   'panel:appearance', 'panel:collab', 'panel:extensions',
@@ -49,7 +49,7 @@ describe('shared panel command homes (#5870)', () => {
     assert.deepEqual(hidden.map((command) => command.id), PANEL_IDS.filter((id) => id !== 'panel:collab'));
     assert.deepEqual(available.map((command) => command.id), PANEL_IDS);
 
-    const rendered = buildPanelCommands(params()).filter((command) => command.id.startsWith('panel:'));
+    const rendered = buildCommandPaletteCommands(params()).filter((command) => command.id.startsWith('panel:'));
     assert.deepEqual(rendered.map((command) => command.id), hidden.map((command) => command.id),
       'the real palette builder renders every enabled table row exactly once');
     for (const row of rendered) {

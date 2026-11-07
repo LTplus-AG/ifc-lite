@@ -922,7 +922,7 @@ export class IfcServerClient {
    * @example
    * ```typescript
    * const meta = await client.getMetadata(file);
-   * console.log(`${meta.entity_count} entities, ${meta.geometry_count} with geometry`);
+   * console.log(`${meta.entity_count} entities, ${meta.geometry_count} geometry jobs`);
    * console.log(`Schema: ${meta.schema_version}`);
    * ```
    */

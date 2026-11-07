@@ -30,6 +30,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
+import { carriedCopyRefusal, gridBoundRefusal } from './copy-grid-refusal.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
 import {
   IDENTITY_FRAME, applyRigid, composeRigid, frameInAncestor, invertRigid, readOwnPlacement,
@@ -138,15 +139,18 @@ export function createCopyContext(store: IfcDataStore, editor: StoreEditor, opti
   };
 }
 
-/** Why `sourceId` cannot be copied on its own, or null when it can. */
+/** Why `sourceId` cannot be copied, or null when it can. Throws when what it carries is too large to walk. */
 export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
-  const type = ctx.read(sourceId)?.type.toUpperCase();
-  if (!type) return `#${sourceId} is not in the model`;
+  const source = ctx.read(sourceId);
+  const type = source?.type.toUpperCase();
+  if (!type) return 'This element is no longer in the model';
+  const onGrid = gridBoundRefusal(ctx, sourceId);
+  if (onGrid) return onGrid;
   if (HOSTED_TYPES.has(type)) return 'An opening is copied with the element it is cut into: copy that element';
   if (ctx.filledBy.has(sourceId)) return 'A door or window is copied with its wall: copy the wall';
   if (ctx.partOf.has(sourceId)) return 'A part is copied with its assembly: copy the assembly';
   if (SPATIAL_TYPES.has(type)) return 'Spaces and spatial structure are not copied: copy the elements';
-  return null;
+  return carriedCopyRefusal(ctx, sourceId);
 }
 
 /** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
@@ -231,13 +235,13 @@ function storeyPlacementId(read: LiveRead, storeyId: number | null): number | nu
 function parentFrameInStorey(read: LiveRead, source: SourceAttributes, fromStorey: number | null): RigidFrame {
   if (fromStorey === null) return IDENTITY_FRAME;
   const parent = frameInAncestor(read, source.parentPlacementId, fromStorey);
-  if (!parent) throw new Error(`#${source.placementExpressId}: its placement is not tied to its storey's, so it cannot be copied`);
+  if (!parent) throw new Error("Its placement is not tied to its storey's, so it cannot be copied");
   return parent;
 }
 
 function placeOnStorey(read: LiveRead, source: SourceAttributes, targetStoreyId: number | null, move: RigidFrame): Placed {
   const own = readOwnPlacement(read, source.placementExpressId);
-  if (!own) throw new Error(`#${source.placementExpressId}: the placement does not read as a local placement`);
+  if (!own) throw new Error('Its placement could not be read, so it cannot be copied');
   const fromStorey = storeyPlacementId(read, source.storeyId);
   const parent = parentFrameInStorey(read, source, fromStorey);
   if (targetStoreyId === source.storeyId) {
@@ -246,7 +250,7 @@ function placeOnStorey(read: LiveRead, source: SourceAttributes, targetStoreyId:
   }
   const toStorey = storeyPlacementId(read, targetStoreyId);
   if (toStorey === null) {
-    throw new Error(`#${source.placementExpressId}: the storey it is copied to has no placement to copy under`);
+    throw new Error('The storey it is copied to has no placement to copy under');
   }
   // Same plan position and height above the floor, now under the other storey's placement.
   return { parentPlacementId: toStorey, location: applyRigid(move, applyRigid(parent, own.location)), turn: composeRigid(move, parent) };

@@ -1,0 +1,25 @@
+{
+  "fixture": "f-m11a-pixel-grey.ifc",
+  "products": [
+    {
+      "id": 29,
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1
+      ],
+      "role": "pixel-red"
+    },
+    {
+      "id": 39,
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1
+      ],
+      "role": "pixel-yellow"
+    }
+  ]
+}

@@ -72,6 +72,23 @@ describe('hierarchy models selector (#6232)', () => {
       assert.equal(select(due), due.models, 'refreshed');
     });
 
+    // #7955: a retained load publishes its summary on the model four times a second.
+    // Each one released the hold, so Holter's tree rebuilt with every report.
+    it('holds a streaming model whose retained summary changed, and releases when the load ends', () => {
+      const summary = (published: number) => ({ kernel: 'retained', candidates: 9, published, refused: [], cancelled: 0,
+        obligationsUnmet: [], completeness: 'running' }) as NonNullable<FederatedModel['retainedGeometry']>;
+      const select = createHierarchyModelsSelector();
+      const first = streaming({ geometryResult: geometry(1), retainedGeometry: summary(1) });
+      assert.equal(select(first), first.models);
+      clock = 1;
+      assert.equal(select(streaming({ geometryResult: geometry(1), retainedGeometry: summary(2) })), first.models, 'summary alone');
+      clock = 2;
+      assert.equal(select(streaming({ geometryResult: geometry(1, 2), retainedGeometry: summary(3) })), first.models, 'summary and geometry');
+      clock = 3;
+      const done = state(model({ loadState: 'complete', geometryResult: geometry(1, 2), retainedGeometry: summary(3) }));
+      assert.equal(select(done), done.models, 'the load ending still passes');
+    });
+
     it('holds a batch whose frame object is new, as every streamed batch is', () => {
       const select = createHierarchyModelsSelector();
       const first = streaming({ geometryResult: geometry(1) });

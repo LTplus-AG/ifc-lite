@@ -3,53 +3,65 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { loadRetainedEngine, type RetainedEngine } from '../../../../../packages/wasm/retained.js';
-import { convertMeshCollectionToBatch } from '../../../../../packages/geometry/src/geometry-coordinate';
+import { RetainedInstancing } from './retainedInstancing';
 import type { RetainedModelSession } from '../../../../../packages/wasm/pkg-retained/ifc-lite.js';
+import { hostFailure, RETAINED_PANIC_STASH_KEY, watchUncaught, type HostPhase } from './retained-protocol';
 import type { RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 let engine: RetainedEngine | undefined;
 let session: RetainedModelSession | undefined;
-let running = false;
 const send = (message: RetainedHostResponse, transfer: Transferable[] = []) => self.postMessage(message, { transfer });
+const realm = globalThis as Record<string, unknown>;
+
+/** The run in progress; `reported` once its one terminal message is posted. */
+let current: { runId: number; phase: HostPhase; reported: boolean } | undefined;
+
+function report(run: NonNullable<typeof current>, error: unknown): void {
+  if (run.reported) return;
+  run.reported = true;
+  const failure = hostFailure(error, run.phase, realm[RETAINED_PANIC_STASH_KEY] !== undefined);
+  // The trapped instance is unusable; the client terminates this Worker on any error.
+  if (failure.code === 'out_of_memory' && engine) send({ runId: run.runId, kind: 'workerMemory', wasmHeapBytes: engine.get_memory().buffer.byteLength });
+  send({ runId: run.runId, kind: 'error', ...failure });
+}
+
+watchUncaught(self, (error) => {
+  if (!current || current.reported) return false;
+  report(current, error);
+  return true;
+});
 
 self.onmessage = async ({ data }: MessageEvent<RetainedHostRequest>) => {
   const { runId, options } = data;
-  if (running) {
+  if (current) {
     send({ runId, kind: 'error', code: 'busy', message: 'A retained model is already running' });
     return;
   }
-  running = true;
-  let phase: 'engine_missing' | 'startup' | 'worker_crash' = 'engine_missing';
+  const run = { runId, phase: 'engine_missing' as HostPhase, reported: false };
+  current = run;
+  // A panic records its location here; a failed allocation never does (isAllocationFailure).
+  delete realm[RETAINED_PANIC_STASH_KEY];
   try {
     engine ??= await loadRetainedEngine({ moduleUrl: '/retained-engine/pkg-retained/ifc-lite.js' });
-    phase = 'startup';
+    run.phase = 'startup';
     session ??= new engine.RetainedModelSession();
+    const instancing = new RetainedInstancing(engine.encodeInstancedShard, runId, send);
     const pending = session.run(data.bytes, options, (event) => {
-      phase = 'worker_crash';
-      if (event.kind === 'published') {
-        if (!('meshes' in event)) throw new Error('Retained session published shape parts on a view run');
-        // Frees every MeshDataJs and the collection, including on throw.
-        const meshes = convertMeshCollectionToBatch(event.meshes);
-        const buffers = new Set<ArrayBuffer>();
-        for (const mesh of meshes) {
-          for (const array of [mesh.positions, mesh.normals, mesh.indices, mesh.uvs, mesh.texture?.rgba]) {
-            if (array?.buffer instanceof ArrayBuffer) buffers.add(array.buffer);
-          }
-        }
-        send({ ...event, runId, meshes }, [...buffers]);
-      } else {
-        send({ ...event, runId });
-      }
+      run.phase = 'worker_crash';
+      instancing.event(event);
     });
     // wasm-bindgen copied the input synchronously; retain no JS source during
     // the awaited product stream. The caller keeps its own original buffer.
     data.bytes = new Uint8Array();
     await pending;
+    if (run.reported) return;
+    instancing.flush();
     send({ runId, kind: 'workerMemory', wasmHeapBytes: engine.get_memory().buffer.byteLength });
+    run.reported = true;
     send({ runId, kind: 'complete', cancelled: false });
   } catch (error) {
-    send({ runId, kind: 'error', code: phase, message: error instanceof Error ? error.message : String(error) });
+    report(run, error);
   } finally {
-    running = false;
+    if (current === run) current = undefined;
   }
 };

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Native M1 coverage and independent numerical comparison. Never repairs meshes.
+#[path = "compare/affine.rs"]
+mod affine;
 #[path = "compare/metrics.rs"]
 mod metrics;
 #[path = "compare/openings.rs"]
@@ -10,14 +12,28 @@ mod options;
 mod precision;
 #[path = "compare/report.rs"]
 mod report;
+#[path = "compare/layer_report.rs"]
+mod layer_report;
 #[path = "compare/source.rs"]
 mod source;
+#[path = "compare/analytic_sources.rs"]
+mod analytic_sources;
 #[path = "compare/tolerances.rs"]
 mod tolerances;
 #[path = "compare/registry.rs"]
 mod registry;
 #[path = "compare/checks/mod.rs"]
 mod checks;
+#[path = "compare/hand_volumes.rs"]
+mod hand_volumes;
+#[path = "compare/exact_area.rs"]
+mod exact_area;
+#[cfg(test)]
+#[path="compare/checks/bounded_tests.rs"]
+mod bounded_tests;
+#[cfg(test)]
+#[path = "compare/checks/face_sets_tests.rs"]
+mod face_sets_tests;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{canonical_element_jobs, canonical_type_maps};
 use ifc_lite_processing::element::retained_runtime::RetainedProductRefusal;
@@ -34,12 +50,14 @@ type Error = Box<dyn std::error::Error>;
 fn main() -> Result<(), Error> {
     let options = options::options()?;
     let tolerances = tolerances::registered()?;
+    let mut hand = hand_volumes::HandVolumes::parse(hand_volumes::REGISTERED)?;
     // Fail before reporting coverage if no qualified numerical engine exists.
     let startup = Instant::now();
     let qualified = ifc_lite_retained_native::NativeWorker::spawn(&options.worker)
         .map_err(|error| format!("native engine startup/qualification failed: {error}"))?;
     let mut report = report::Report {
         startup_ms: startup.elapsed().as_secs_f64() * 1000.,
+        area_authorities: exact_area::ExactAreaAuthorities::parse(exact_area::REGISTERED)?,
         ..Default::default()
     };
     let mut driver = NativeModelDriver::with_worker(&options.worker, qualified);
@@ -50,9 +68,10 @@ fn main() -> Result<(), Error> {
                 .push(format!("{}: absent; run pnpm fixtures", path.display()));
             continue;
         }
-        compare(path, &mut driver, &tolerances, &mut report)?;
+        compare(path, &mut driver, &tolerances, &mut report, &mut hand)?;
         write_report(&options, &mut report, false)?;
     }
+    if let Err(error) = hand.finish() { report.violations.push(error); }
     report.rows.sort();
     report.coverage.sort();
     if options.bless && (!report.violations.is_empty() || !report.universe_mismatch.is_empty() || !report.skipped.is_empty()) {
@@ -92,34 +111,27 @@ fn compare(
     driver: &mut NativeModelDriver,
     tolerances: &serde_json::Value,
     report: &mut report::Report,
+    hand: &mut hand_volumes::HandVolumes,
 ) -> Result<(), Error> {
     let bytes = std::fs::read(path)?;
     let model = path.to_string_lossy();
+    hand.visit(&model);
     let start = Instant::now();
     let exact = ifc_lite_processing::process_geometry(&bytes);
     let exact_ms = start.elapsed().as_secs_f64() * 1000.;
     report.exact_ms += exact_ms;
     let exact_rss = report::rss(false)?;
-    let mut exact_metrics: BTreeMap<u32, Metrics> = BTreeMap::new();
-    let mut exact_origins: BTreeMap<u32, Vec<[f64; 3]>> = BTreeMap::new();
+    let mut exact_items: BTreeMap<u32, (BTreeSet<u32>, bool)> = BTreeMap::new();
+    let layer_candidates = layer_report::candidates(&bytes);
+    let exact_metrics = measure_exact(&exact, &layer_candidates)?;
+    // #7955 ruling 2: the gated retained-vs-exact rows use exact before its world
+    // f32 rounding. The default run above keeps owning the universe and reports.
+    let unrounded_start = Instant::now();
+    let unrounded = measure_exact(&precision::exact_unrounded(&bytes), &layer_candidates)?;
+    report.exact_unrounded_ms += unrounded_start.elapsed().as_secs_f64() * 1000.;
     for mesh in &exact.meshes {
-        exact_origins
-            .entry(mesh.express_id)
-            .or_default()
-            .push(mesh.origin);
-        let points: Vec<_> = mesh
-            .positions
-            .chunks_exact(3)
-            .map(|p| {
-                exact.frame.to_world([
-                    mesh.origin[0] + p[0] as f64,
-                    mesh.origin[1] + p[1] as f64,
-                    mesh.origin[2] + p[2] as f64,
-                ])
-            })
-            .collect();
-        let measurement = exact_metrics.entry(mesh.express_id).or_default();
-        measurement.add_mesh(&points, &mesh.indices)?;
+        let items = exact_items.entry(mesh.express_id).or_default();
+        match mesh.geometry_item_id { Some(item) => { items.0.insert(item); } None => items.1 = true }
     }
     let source = SourceBundle::new(bytes.clone());
     let candidates: BTreeSet<_> = canonical_element_jobs(&source)
@@ -146,15 +158,31 @@ fn compare(
         }
     }
     drop(decoder);
-    let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
+    let sources = analytic_sources::analytic_sources(&bytes);
     let type_maps = canonical_type_maps(&source);
     report.type_candidates += type_maps.len();
+    let oracle_source = source.clone();
+    let model_source = checks::ModelSource::new(&bytes, &oracle_source);
     let type_expectations: BTreeMap<_, _> = type_maps.iter().map(|(&id, maps)| {
-        ifc_lite_retained_native::oracle::type_maps::expected(&bytes, &sources, maps).map(|value| (id, value))
+        ifc_lite_retained_native::oracle::type_maps::expected_with(model_source.decoder(), &sources, maps).map(|value| (id, value))
     }).collect::<Result<_, _>>()?;
-    let opening_expectations = openings::expectations(&bytes, &sources)?;
+    let retraced = source::retraced(path, &sources, &mut source.decoder(), tolerances)?;
+    let (mut opening_expectations, opening_gaps) = openings::expectations_and_gaps(&bytes, &sources)?;
+    report.opening_gaps = opening_gaps;
+    let retraced_opening = source::retraced_opening(path, &sources, &mut source.decoder(), tolerances)?;
+    let has_retraced_opening = retraced_opening.is_some();
+    if let Some(expected) = retraced_opening {
+        opening_expectations.insert(72209, Some(expected));
+    }
+    for (host, expected) in source::face_set_openings(path)? {
+        opening_expectations.insert(host, Some(expected));
+    }
     let opening_inventory = ifc_lite_retained_native::oracle::inventory::opening_inventory(&bytes, &sources);
     let mut seen = BTreeSet::new();
+    // Stderr only, never the report: a long model must show how far it is (#7955).
+    let mut progress = Progress::new(&model, candidates.len());
+    let mut affine_oracle = ifc_lite_retained_native::oracle::affine::AffineOracle::new(&oracle_source);
+    let clip_oracle = ifc_lite_retained_native::oracle::clips::ClipOracle::new(&oracle_source, &sources);
     let (summary, timings) = driver.run_model(
         source,
         &ModelOptions::default(),
@@ -169,9 +197,15 @@ fn compare(
                     .push(format!("{model}:{id}: duplicate outcome"));
             }
             report.candidates += 1;
+            progress.tick(seen.len());
             match outcome {
                 ProductOutcome::Published(shape) => {
-                    let mut actual = Metrics::default();
+                    report.layers.outcome(&layer_candidates, id, "published");
+                    if let Err(error) = report.layers.published(&model, &shape, &exact) {
+                        report.violations.push(format!("{model}:{id}: layer report: {error}"));
+                    }
+                    let layered = shape.parts.iter().any(|p| p.layer.is_some());
+                    let mut actual = if layered { Metrics::assembly() } else { Metrics::default() };
                     for part in &shape.parts {
                         let points: Vec<_> = part
                             .positions
@@ -182,30 +216,47 @@ fn compare(
                             report.violations.push(format!("{model}:{id}: {e}"));
                         }
                     }
-                    let rounded = exact_origins.get(&id).and_then(|origins| {
-                        match precision::measure(&shape, exact.frame, origins) {
-                            Ok(metrics) => Some(metrics),
-                            Err(error) => { report.violations.push(format!("{model}:{id}: {error}")); None }
-                        }
-                    });
+                    if exact_metrics.contains_key(&id) && !unrounded.contains_key(&id) {
+                        report.violations.push(format!("{model}:{id}: exact has no mesh before f32 rounding"));
+                    }
+                    // Closure stays gated on authored sets too (#7955 rulings 12, 13): `checks::face_sets`
+                    // names the ones whose source rows are open or whose zero-area rows explain a gap.
+                    let closed_shell = actual.defects == 0;
+                    let retraced = (shape.product_id == 72245).then_some(retraced).flatten();
                     let expectation = if let Some(value) = type_expectations.get(&id) {
-                        if value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
+                        // A face set has no analytic quantity: its authored-row oracle is the authority.
+                        let face_sets = shape.parts.iter().all(|part| part.source_exact);
+                        if !face_sets && value.as_ref().is_none_or(|v| v.parts != shape.parts.len()) {
                             report.violations.push(format!("{model}:{id}: missing or incomplete type source oracle"));
                         }
                         value.as_ref().map(|v| (v.volume, v.bbox))
-                    } else { source::expected(&sources, id, shape.parts.len()) };
+                    } else {
+                        // Bands partition one admitted source host.
+                        retraced.or_else(|| source::expected(&sources, id, if layered { 1 } else { shape.parts.len() }))
+                            .or_else(|| closed_shell.then(|| source::face_set_volume(&shape, &model_source)).flatten())
+                    };
+
+                    let m6 = ifc_lite_retained_native::oracle::bounded::applies_in(&oracle_source, id);
+                    let bounded = m6.then(|| ifc_lite_retained_native::oracle::bounded::expected_in(&oracle_source, &sources, id)).flatten();
                     report.published(
                         &model,
                         &shape,
                         &actual,
-                        rounded.as_ref(),
-                        exact_metrics.get(&id),
+                        Some(&actual),
+                        exact_metrics.get(&id).and(unrounded.get(&id)),
                         expectation,
                         tolerances,
                         ms,
                         opening_expectations.get(&id),
-                        &sources,
+                        &checks::SourceContext { model: &model_source, product_id: id, analytic: &sources, clips: &clip_oracle, hand_volume: bounded.as_ref().and_then(|_| hand.take(&model, id)) },
+                        // Exact splits a palette into separately measured patches (#858), so its
+                        // quantities are not one solid's; the authored-row oracles gate these parts.
+                        retraced.is_some() || (id == 72209 && has_retraced_opening)
+                            || shape.parts.iter().any(|part| part.surface.as_ref().is_some_and(|s| s.palette.is_some())),
+                        bounded.as_ref(),
                     );
+                    affine::record(report, &mut affine_oracle, &shape, tolerances);
+                    report.face_projection.push(checks::faces::exact_projection(&model, &shape, exact_items.get(&id)));
                 }
                 ProductOutcome::Refused {
                     ifc_type,
@@ -216,6 +267,7 @@ fn compare(
                     ..
                 } => {
                     let code = refusal.code();
+                    report.layers.outcome(&layer_candidates, id, code);
                     let cuts = cut_times_ms.len();
                     let cut_ms = cut_times_ms.iter().sum::<f64>();
                     report.cuts += cuts as u64;
@@ -239,6 +291,7 @@ fn compare(
                         origin.map_or("", |o| o.site),
                         origin.and_then(|o| o.entity).map(|id| id.to_string()).unwrap_or_default(),
                     ));
+                    affine::refusal(report, &mut affine_oracle, id, code);
                     report
                         .coverage
                         .push(format!("{model}\t{id}\trefused\t{code}"));
@@ -246,6 +299,7 @@ fn compare(
             }
         },
     )?;
+    progress.finish(seen.len());
     let retained_ms = timings.total_ms;
     report.retained_ms += retained_ms;
     report.startup_ms += timings.startup_and_qualification_ms;
@@ -261,4 +315,63 @@ fn compare(
         "openingCounters":"M3-A: cuts/cutMs include attempted cuts of refused products; any consumed part refuses the whole product",
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
+}
+
+/// Periodic per-model progress on stderr, so the remaining time of a long run is estimable.
+struct Progress<'a> { model: &'a str, total: usize, start: Instant, last: Instant }
+impl<'a> Progress<'a> {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+    fn new(model: &'a str, total: usize) -> Self {
+        eprintln!("[retained_compare] {model}: comparing {total} candidates");
+        Self { model, total, start: Instant::now(), last: Instant::now() }
+    }
+    fn tick(&mut self, done: usize) {
+        if self.last.elapsed() >= Self::EVERY { self.last = Instant::now(); self.print(done, "progress"); }
+    }
+    fn finish(&self, done: usize) { self.print(done, "done"); }
+    fn print(&self, done: usize, label: &str) {
+        let elapsed = self.start.elapsed().as_secs_f64();
+        let remaining = if done == 0 { f64::NAN } else { elapsed / done as f64 * self.total.saturating_sub(done) as f64 };
+        eprintln!("[retained_compare] {}: {label} {done}/{} candidates, {elapsed:.0} s elapsed, ~{remaining:.0} s remaining",
+            self.model, self.total);
+    }
+}
+
+// Exact's sliced layer meshes are OPEN bands whose union is the closed skin, like
+// retained's: a layered product's band meshes share one assembly edge ledger.
+// (Measured on m4-band-appearance: assembly 0 defects / 3.6 m3; per-mesh 40 / 2.4.)
+fn measure_exact(exact: &ifc_lite_processing::ProcessingResult, layer_candidates: &BTreeSet<u32>)
+    -> Result<BTreeMap<u32, Metrics>, String> {
+    let mut measured: BTreeMap<u32, Metrics> = BTreeMap::new();
+    for mesh in &exact.meshes {
+        let points: Vec<_> = mesh.positions.chunks_exact(3).map(|p| {
+            exact.frame.to_world(std::array::from_fn(|i| mesh.origin[i] + f64::from(p[i])))
+        }).collect();
+        measured.entry(mesh.express_id).or_insert_with(|| {
+            if layer_candidates.contains(&mesh.express_id) { Metrics::assembly() } else { Metrics::default() }
+        }).add_mesh(&points, &mesh.indices)?;
+    }
+    Ok(measured)
+}
+
+// #7955 / PR #8324: exact's sliced bands are open; only their union is closed.
+#[test]
+fn exact_sliced_layer_bands_close_only_as_an_assembly() {
+    let text = include_str!("../../../tests/fixtures/synthetic-retained/m4-band-appearance.ifc");
+    let exact = ifc_lite_processing::process(text.as_bytes(),
+        &ifc_lite_processing::ProcessingRequest::full_pass().layer_slicing(true), &mut ());
+    assert_eq!(exact.meshes.iter().filter(|mesh| mesh.express_id == 22).count(), 3);
+    let measured = measure_exact(&exact, &BTreeSet::from([22])).unwrap();
+    let wall = measured.get(&22).unwrap();
+    assert_eq!(wall.defects, 0, "the assembled band skin is closed");
+    assert!((wall.volume - 3.6).abs() < 1e-6);
+    // Per-mesh counting would report each open band as defective and lose volume.
+    let mut separate = Metrics::default();
+    for mesh in exact.meshes.iter().filter(|mesh| mesh.express_id == 22) {
+        let points: Vec<_> = mesh.positions.chunks_exact(3).map(|p| {
+            exact.frame.to_world(std::array::from_fn(|i| mesh.origin[i] + f64::from(p[i])))
+        }).collect();
+        separate.add_mesh(&points, &mesh.indices).unwrap();
+    }
+    assert!(separate.defects > 0, "individual sliced bands are open");
 }

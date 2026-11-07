@@ -42,11 +42,21 @@ export interface ActiveMeasurement {
  * (#2735) accumulates a FIXED number of clicks and finishes itself. `'radius'`
  * (#2737 item 2) accumulates an UNBOUNDED number of clicks (three minimum)
  * and finishes on the same gesture polyline uses — double-click or Enter —
- * because there is no natural "last pick" the way angle has one. All four are
- * mutually exclusive so a sequence started in one can never leak state into
- * another (see `setMeasureMode` in measurementSlice.ts).
+ * because there is no natural "last pick" the way angle has one. `'point'`
+ * (#8770) takes ONE click and reads that point's coordinates; it records no
+ * measurement. All five are mutually exclusive so a sequence started in one
+ * can never leak state into another (see `setMeasureMode` in
+ * measurementSlice.ts).
  */
-export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius';
+export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius' | 'point';
+
+/**
+ * The input the viewport saw last (#8879): `'touch'` for a finger or a pen,
+ * `'mouse'` for a mouse. The Measure hint words itself for it, so a hybrid
+ * device (a touch laptop with a mouse) shows the wording for whichever was
+ * used last.
+ */
+export type PointerInput = 'mouse' | 'touch';
 
 /** A multi-click sequence in progress, not yet finished or cancelled. */
 export interface ActivePolyline {
@@ -218,6 +228,7 @@ export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 import type { LandXmlGeorefAssumption } from '../hooks/ingest/landXmlGeorefAssumptions.js';
+import type { GaussianSplatModel } from '../hooks/ingest/gaussianIngest.js';
 export type { CustomSectionPlane, SectionPlane, SectionBox, SectionBoxFace } from './section-types';
 
 // ============================================================================
@@ -405,6 +416,13 @@ export interface CameraCallbacks {
   toggleProjectionMode?: () => void;
   getProjectionMode?: () => ProjectionMode;
   getViewpoint?: () => CameraViewpoint | null;
+  /**
+   * True while a timed camera tween (preset view, frame, home) has started and
+   * its final pose has not been applied yet. Unlike comparing two
+   * `getViewpoint()` reads, it cannot mistake an intermediate pose for the
+   * final one when the render loop is stalled (#5841).
+   */
+  isCameraTweening?: () => boolean;
   applyViewpoint?: (viewpoint: CameraViewpoint, animate?: boolean, durationMs?: number) => void;
 }
 
@@ -527,6 +545,8 @@ export interface FederatedModel extends ModelLoadReportFields {
    * on declared CRSs alone, even if assumptions were enabled.
    */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
+  /** IFC shared-height choice: true for omitted datums, unresolved for an unrecognized authored declaration. */
+  ifcSharedVerticalDatumAssumed?: true | 'unresolved';
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */
@@ -580,6 +600,9 @@ export interface FederatedModel extends ModelLoadReportFields {
    * when the model is dropped from the store.
    */
   pointCloudHandleId?: number;
+  /** Resident Gaussian capture (#8565): the exact renderer-issued handle with its
+   * uncalibrated placement and summary. Freed by `gaussianAssets` with the model. */
+  gaussianSplat?: GaussianSplatModel;
   /**
    * This model's geometry as it stood before federation alignment re-baked it
    * into the anchor's viewer frame, or `undefined` when no alignment is applied

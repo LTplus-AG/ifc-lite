@@ -6,6 +6,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     include: ['test/**/*.test.ts'],
     // `types.test.ts` is entirely `expectTypeOf`, which is erased at runtime —
     // without this the file "passes" no matter what it asserts. That is not

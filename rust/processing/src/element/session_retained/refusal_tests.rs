@@ -29,11 +29,10 @@ fn issue_7955_opening_strategy() {
 }
 #[test]
 fn issue_7955_material_layer_strategy() {
-    check(
-        RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy),
-        Refusal::MaterialLayerStrategy,
-        "material_layer_strategy",
-    );
+    let (actual, origin) = RetainedExecutionError::LayerStrategy("layer_axis_family").refusal();
+    assert_eq!(actual, Refusal::MaterialLayerStrategy);
+    assert_eq!(actual.code(), "material_layer_strategy");
+    assert_eq!(origin.map(|o| (o.site, o.cause)), Some(("layer_band", "layer_axis_family")));
 }
 #[test]
 fn issue_7955_operation_unsupported() {
@@ -382,5 +381,15 @@ fn issue_7955_opening_wrapper_only_reclassifies_unsupported() {
     ] {
         let error = RetainedExecutionError::Opening { opening: 50, inner: Box::new(inner) };
         assert_eq!(error.refusal().0, expected);
+    }
+}
+
+/// A clip-sliver refusal is settled after every invocation, like the chordal one beside it:
+/// the worker stays healthy and the product is refused once, not retried (#7955).
+#[test]
+fn issue_7955_clip_sliver_is_settled_and_terminal() {
+    for error in [RetainedExecutionError::ChordalVolume { entity: Some(25) }, RetainedExecutionError::ClipSliver { entity: Some(25) }] {
+        assert!(error.controller_cancelled(), "{error:?}");
+        assert!(error.terminal(), "{error:?}");
     }
 }

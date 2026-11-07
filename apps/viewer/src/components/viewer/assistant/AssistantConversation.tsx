@@ -102,7 +102,7 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
   const declared = proposal.kind === 'invalid' || proposal.kind === 'checks' ? proposal.declared : proposal.kind;
   const Icon = PROPOSAL_ICON[declared];
   const invalid = proposal.kind === 'invalid';
-  return <div className={invalid ? 'rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1' : 'rounded border border-primary/30 bg-primary/5 p-2 space-y-1'}>
+  return <div className={invalid ? 'rounded border border-warn-border bg-warn-surface p-2 space-y-1' : 'rounded border border-primary/30 bg-primary/5 p-2 space-y-1'}>
     <p className="flex items-center gap-1.5 font-semibold"><Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
       {t(PROPOSAL_TITLE[declared])}</p>
     {proposal.kind === 'invalid' ? <>

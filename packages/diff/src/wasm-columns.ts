@@ -6,6 +6,7 @@ import type { EntityFingerprint } from './types.js';
 /** Column contract shared with rust/diff/src/columns.rs; refs stay in JS. */
 export function fingerprintColumns<TRef>(entities: readonly EntityFingerprint<TRef>[]) {
   const strings: string[] = [];
+  const keys: string[] = [];
   const dictionary = new Map<string, number>();
   const intern = (value: string): number => {
     const existing = dictionary.get(value);
@@ -24,7 +25,9 @@ export function fingerprintColumns<TRef>(entities: readonly EntityFingerprint<TR
   const pairs: number[] = [];
   for (let row = 0; row < entities.length; row++) {
     const entity = entities[row];
-    fields[row * 5] = intern(entity.key);
+    const key = entity.key;
+    keys.push(key);
+    fields[row * 5] = intern(key);
     fields[row * 5 + 1] = intern(entity.ifcType);
     fields[row * 5 + 2] = intern(entity.dataHash);
     fields[row * 5 + 3] = entity.geometryHash === undefined ? absent : intern(String(entity.geometryHash));
@@ -46,5 +49,5 @@ export function fingerprintColumns<TRef>(entities: readonly EntityFingerprint<TR
     }
     componentOffsets[row + 1] = pairs.length / 2;
   }
-  return { strings, fields, flags, boxes, volumes, componentOffsets, componentPairs: new Uint32Array(pairs) };
+  return { keys, strings, fields, flags, boxes, volumes, componentOffsets, componentPairs: new Uint32Array(pairs) };
 }

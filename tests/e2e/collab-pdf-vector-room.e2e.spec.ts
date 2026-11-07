@@ -20,7 +20,7 @@ declare global {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TARGET = join(ROOT, 'tests/models/various/issue-604-door.ifc');
-const PDF = join(ROOT, 'docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.pdf');
+const PDF = join(ROOT, 'tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.pdf');
 const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR;
 const RENDERER_CHUNK = readdirSync(join(ROOT, 'apps/viewer/dist/assets')).find(name => /^useBCF-.*\.js$/.test(name));
 

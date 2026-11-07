@@ -21,11 +21,18 @@ large result groups scroll within a virtual list without truncating their rows.
 
 ## What the engine does
 
+Initialize the independent diff WASM module once with `await initDiff()` before
+calling synchronous diff APIs, or use `initDiffSync({ module: bytes })` with
+preloaded WASM bytes. If asynchronous initialization is in progress,
+`initDiffSync` throws: await `initDiff()` instead. Failed initialization may be
+retried; after success, both initializers are no-ops.
+
 `diffModels(base, head, options?)` takes two iterables of `EntityFingerprint`s and returns a `ModelDiff`:
 
 ```ts
-import { diffModels } from '@ifc-lite/diff';
+import { diffModels, initDiff } from '@ifc-lite/diff';
 
+await initDiff();
 const diff = diffModels(baseFingerprints, headFingerprints, { scope: 'both' });
 
 console.log(diff.counts); // { added, modified, deleted, unchanged }
@@ -37,6 +44,44 @@ for (const entry of diff.entries) {
 ```
 
 Entities are matched across revisions by a stable `key`, typically the IFC `GlobalId`. The result carries every entry, a `byKey` map for O(1) lookup (picking in a viewer), and the aggregate `counts`.
+
+### Resident model handles
+
+For repeated comparisons, prepare each model once. `DiffModelHandle<TRef>` owns
+an immutable snapshot in Rust; `compare` only sends options across the boundary.
+Opaque refs retain their identity, and source edits require preparing a new
+handle. There is no hidden identity cache.
+
+```ts
+import { prepareDiffModel } from '@ifc-lite/diff';
+
+const baseHandle = prepareDiffModel(baseFingerprints);
+try {
+  const headHandle = prepareDiffModel(headFingerprints);
+  try {
+    const data = baseHandle.compare(headHandle, { scope: 'data' });
+    const both = baseHandle.compare(headHandle, { scope: 'both' });
+  } finally { headHandle.dispose(); }
+} finally { baseHandle.dispose(); }
+```
+
+Release with `dispose()` or `Symbol.dispose` (`using` where supported). Release
+is idempotent, use after release throws, and returned results remain valid.
+`diffModels` remains a one-shot wrapper that transfers and frees both models on
+every call; handles avoid that repeated cost.
+
+`stripPlacementGeometry: true` ignores `p:` placement hashes on both sides and
+returns those fingerprints with `geometryHash: undefined`, exactly like JS
+stripping before comparison. It keeps mesh hashes, boxes, volumes and refs.
+Set it when exactly one full input has mesh hashes (judged before your
+exclusions or key deduplication), so placements cannot defeat geometry
+capability abstention. The comparison's own capability check still ignores
+excluded types.
+Keep its default `false` for symmetric pairs (including two placement-only
+models) so placement moves remain detectable. Changing the option leaves the
+resident snapshots intact. Each handle lazily owns a frozen stripped view;
+placement rows alone are shallow-copied and reused across comparisons, while
+other rows and opaque refs retain their identity. Disposal releases both views.
 
 ### Classification
 
@@ -68,6 +113,8 @@ Each `EntityFingerprint` carries two independent hashes, so data and geometry ch
 - type assignments — **by the assigned type's name and IFC class only**
 
 Property sets, quantity sets, their members, and type assignments are all sorted before hashing, so collection ordering never produces a spurious "modified", and two semantically equal entities in the base and head hash identically. The sort is **total**: records are ordered by name and then by their own serialized content, because sorting on name alone leaves same-named records in whatever order the adapter walked them (`Array.prototype.sort` is stable), which would put the adapter's iteration order into the hash. Same-named property sets are ordinary in IFC (a type pset and an occurrence pset of one name), so this is a reachable case rather than a theoretical one.
+
+The opt-in per-component sub-hashes (`buildComponentFingerprints`) keep both sets too. The first set of a name is keyed `pset:<Name>`, and each later one gets an ordinal in the prefix, `pset#2:<Name>`, `pset#3:<Name>` (likewise `qset#2:<Name>`), numbered in the same name-then-content order. Earlier versions keyed by name alone, so the last set overwrote the others, and an entity could come back `modified` with an empty `changedComponents` ([#8136](https://github.com/LTplus-AG/ifc-lite/issues/8136)). The ordinal goes in the prefix rather than after the name because a set name may itself contain `#` or `:`; everything after the first `:` is the name. The numbering follows content order, so editing one of two same-named sets can swap which of them is `#2`, and both keys then show as changed.
 
 Both the viewer and CLI fingerprint a type object's own property and quantity sets attached directly through `HasPropertySets`, as well as relationship-attached definitions. Editing those values is a data change even when the type has no occurrences or geometry.
 

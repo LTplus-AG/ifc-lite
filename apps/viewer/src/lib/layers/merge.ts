@@ -11,6 +11,7 @@
  * server can load it.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { getProvenance } from '@ifc-lite/ifcx';
 import { mergeIntoRef } from '@ifc-lite/merge';
@@ -103,6 +104,7 @@ export async function previewMergeInto(
   candidateId: string,
 ): Promise<ViewerMergeResult> {
   if (target.kind === 'local') {
+    await initDiff();
     return fromLocal(mergeIntoRef(store, { candidateId, into: target.refName, preview: true }));
   }
   await ensureCandidateOnRegistry(target.client, store, candidateId);
@@ -118,6 +120,7 @@ export async function executeMergeInto(
   waivers: Waiver[] = [],
 ): Promise<ViewerMergeResult> {
   if (target.kind === 'local') {
+    await initDiff();
     return fromLocal(
       mergeIntoRef(store, {
         candidateId,

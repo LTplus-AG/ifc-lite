@@ -17,7 +17,9 @@
  * form `addGridToStore`, Revit and most exporters write), or an IfcTrimmedCurve
  * over an IfcLine trimmed by points or by parameters (ArchiCAD). Other curves
  * (arcs of a radial grid) are skipped and counted, never guessed at.
- * `IfcGridAxis.SameSense` is ignored, as everywhere else the grid is read.
+ * `IfcGridAxis.SameSense` is honoured by `readGridAxisEnds`: `.F.` means the
+ * axis runs against its curve, so the ends are returned swapped and `a` is the
+ * authored start. The curve's own `IfcTrimmedCurve.SenseAgreement` is not read.
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -158,6 +160,28 @@ export function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null
   return ends.every((point) => point.every(Number.isFinite)) ? ends : null;
 }
 
+/** True only for an explicit `.F.`; absent or unreadable reads as the default (agreeing). */
+function isOpposedSense(value: unknown): boolean {
+  const scalar = authoredScalar(value as never);
+  return scalar === false || scalar === 'F' || scalar === '.F.';
+}
+
+/**
+ * The ends of an IfcGridAxis in authored order, in the grid's own frame (raw
+ * units): `SameSense = .F.` means the axis direction opposes its curve, so the
+ * curve's ends are swapped. The one place that decides the order, shared by the
+ * extractor and by consumers that re-read raw ends to certify its output.
+ */
+export function readGridAxisEnds(
+  read: Reader,
+  axis: { attributes: readonly unknown[] },
+): [Vec2, Vec2] | null {
+  const curveId = numericAttr(axis.attributes[1] as never);
+  const ends = curveId === null ? null : readAxisEnds(read, curveId);
+  if (!ends) return null;
+  return isOpposedSense(axis.attributes[2]) ? [ends[1], ends[0]] : ends;
+}
+
 /**
  * The grid axes that apply to `storeyId`, in storey-local metres. Empty (never
  * throwing) for a store without source bytes. An unplaced grid uses identity
@@ -223,8 +247,7 @@ export function extractGridAxesForStorey(
     for (const [family, list] of families) {
       for (const axisId of refList(list)) {
         const axis = read(axisId);
-        const curveId = axis ? numericAttr(axis.attributes[1] as never) : null;
-        const ends = curveId === null ? null : readAxisEnds(read, curveId);
+        const ends = axis ? readGridAxisEnds(read, axis) : null;
         if (!axis || !ends) {
           out.skippedAxes += 1;
           continue;

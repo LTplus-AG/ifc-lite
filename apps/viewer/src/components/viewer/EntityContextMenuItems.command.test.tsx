@@ -49,3 +49,22 @@ it('derives a built-in context item name, icon, and shortcut from its registry i
   click(row);
   assert.equal(invoked, 1);
 });
+
+// #8802: Radix's asChild joins the item's and the button's classes, so a muted
+// focus fill left beside the danger one could win by stylesheet order.
+it('a destructive item focuses in the danger role alone', async () => {
+  const { CommandMenuItem } = await import('./EntityContextMenuItems.js');
+  render(
+    <ContextMenu open modal={false} onOpenChange={() => {}}>
+      <ContextMenuTrigger>Model</ContextMenuTrigger>
+      <ContextMenuContent>
+        <CommandMenuItem commandId="view:frame" commandState={{ canEditInSession: false }} tone="destructive"
+          onClick={() => {}} />
+      </ContextMenuContent>
+    </ContextMenu>,
+  );
+  const row = document.querySelector<HTMLButtonElement>('[data-command-id="view:frame"]');
+  assert.ok(row);
+  assert.ok(row.classList.contains('focus:bg-danger-surface'));
+  assert.ok(!row.classList.contains('focus:bg-muted'));
+});

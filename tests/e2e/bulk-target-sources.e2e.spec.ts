@@ -69,7 +69,7 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
   await dialog.getByPlaceholder('e.g., Pset_WallCommon').fill('Pset_BulkTargetWitness');
   await dialog.getByPlaceholder('e.g., FireRating').fill('Code');
   await dialog.getByPlaceholder('Value').fill('ONLY_THREE');
-  await page.screenshot({ path: 'docs/architecture/evidence/bulk-target-sources-5890/selection-two-models.png' });
+  await page.screenshot({ path: 'test-results/bulk-target-sources/selection-two-models.png' });
   await dialog.getByRole('button', { name: 'Apply to 3 entities' }).click();
   await expect(dialog.getByText('Success', { exact: true })).toBeVisible();
 

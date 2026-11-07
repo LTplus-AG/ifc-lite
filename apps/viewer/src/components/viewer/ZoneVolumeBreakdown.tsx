@@ -204,7 +204,7 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
       {inheritedUnavailable}
       {unitsUnavailable}
       {apportionment.overlapping && (
-        <p className="px-3 pt-2 text-2xs text-amber-600 flex items-center gap-1.5">
+        <p className="px-3 pt-2 text-2xs text-warn flex items-center gap-1.5">
           <TriangleAlert className="h-3.5 w-3.5" />
           {t('zonesPanel.volumeBreakdown.overlapWarning')}
         </p>

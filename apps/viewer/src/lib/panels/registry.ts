@@ -20,7 +20,7 @@
 // lucide only, never `@/icons`: the store imports this module, so it sits in
 // the viewer-embed bundle too, which has no unplugin-icons resolver for the
 // `~icons/viewer/*` virtual modules (#6315 broke that build).
-import { BarChart3, Box, CalendarRange, ClipboardCheck, ClipboardPen, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListChecks, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Bot, Box, CalendarRange, ChartLine, ClipboardCheck, ClipboardPen, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListChecks, ListTree, MessageSquare, Move3d, Paintbrush, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -62,7 +62,8 @@ export type WorkspacePanelId =
   | 'semantic'
   | 'review'
   | 'assistant'
-  | 'idsStudio';
+  | 'idsStudio'
+  | 'influx';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
 export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
@@ -138,7 +139,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // `loadReportPanelVisible` boolean; `openWorkspacePanel`'s generic
   // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
   { id: 'loadReport', titleKey: 'loadReportPanel.title', Icon: FileWarning, group: 'check', region: 'side' },
-  { id: 'appearance', titleKey: 'appearance.panelView.heading', Icon: Palette, group: 'site', region: 'side' },
+  { id: 'appearance', titleKey: 'appearance.panelView.heading', Icon: Paintbrush, group: 'site', region: 'side' },
   // Charts bound to the model, bidirectional with the 3D view (#3944). Bottom
   // strip like Lists / Schedule; the table in `bottom-panels.ts` carries it.
   { id: 'charts', titleKey: 'workspacePanels.bottom.charts', Icon: BarChart3, group: 'quantify', region: 'bottom', prefersWide: true },
@@ -204,13 +205,14 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Named change sets (#6232 D4): the active set collects new edits; export /
   // import as files. Flag-free like 'changes' / 'model'. APPENDED (no Alt shortcut).
   { id: 'changeSets', titleKey: 'changeSets.panel.title', Icon: GitBranch, group: 'author', region: 'side' },
-  { id: 'assistant', titleKey: 'assistant.title', Icon: MessageSquare, group: 'coordinate', region: 'side', prefersWide: true },
+  { id: 'assistant', titleKey: 'assistant.title', Icon: Bot, group: 'coordinate', region: 'side', prefersWide: true },
   { id: 'semantic', titleKey: 'semantic.title', Icon: Link2, group: 'coordinate', region: 'side', prefersWide: true },
   { id: 'review', titleKey: 'reviewWorkspace.title', Icon: ListChecks, group: 'coordinate', region: 'side', prefersWide: true },
   // IDS Studio (IDS-030): authoring of IDS documents through the typed ops of
   // `@ifc-lite/ids-authoring`. Results stay in Data validation. APPENDED (no
   // Alt shortcut). Flag-free like 'review'; no model gate, an IDS is
   // authored before any model is loaded.
+  { id: 'influx', titleKey: 'influx.title', Icon: ChartLine, group: 'site', region: 'side' },
   { id: 'idsStudio', titleKey: 'idsStudio.title', Icon: ClipboardPen, group: 'check', region: 'side', prefersWide: true },
 ];
 

@@ -60,6 +60,16 @@ import type { TranslationValue } from '../types';
  * rule as an IFC class/property/tag NAME anywhere else in this sweep.
  */
 export const miscPanelsBEn = {
+  "federationSetupControls.saved": "Federation setup saved.",
+  "federationSetupControls.invalid": "Not a valid federation setup file: {reason}",
+  "federationSetupControls.pickSources": "Loaded a setup with {count} model slots — now pick the source files to match.",
+  "federationSetupControls.result.restored": "Restored {restored}/{total} models",
+  "federationSetupControls.result.missing": "source files missing: {names}",
+  "federationSetupControls.result.mismatched": "same name, different content: {names}",
+  "federationSetupControls.result.anchorMissing": "alignment anchor could not be restored",
+  "federationSetupControls.result.tagsMissing": "tags not restored for missing sources: {names}",
+  "federationSetupControls.result.failed": "source files found but not loaded: {slots}",
+  "federationSetupControls.result.failedSlot": "{name} ({reason})",
   // ---- PointCloudPanel.tsx --------------------------------------------
   'pointCloudPanel.title': 'Point Cloud',
   'pointCloudPanel.close': 'Close point cloud panel',
@@ -213,6 +223,12 @@ export const miscPanelsBEn = {
   'loadReportPanel.status.unavailable': 'Diagnostics unavailable',
   'loadReportPanel.status.clean': 'Clean',
   'loadReportPanel.status.issuesFound': 'Issues found',
+  // #8341: type records the decoder could not read; only their type geometry is affected.
+  // One message for the load notice and the report line (eager-bundle budget).
+  'loadReportPanel.omittedTypeRecords': {
+    one: '"{name}": {count} type definition could not be read, so its type geometry was left out.',
+    other: '"{name}": {count} type definitions could not be read, so their type geometry was left out.',
+  },
 
   // ---- GeometryModeBanner.tsx ---------------------------------------------
   'geometryModeBanner.detailPinRemoved': 'Detail pin removed',

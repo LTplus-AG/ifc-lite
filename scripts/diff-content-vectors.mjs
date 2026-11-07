@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { diffModels } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const { diffModels } = await loadDiffOracle();
 
 // Reuse the key-pass input combinations, then exercise the content-only tiers.
 const core = JSON.parse(readFileSync(new URL('../rust/diff/tests/core_vectors.json', import.meta.url), 'utf8'));
-const cases = core.map(({ expected, ...input }) => ({ ...input, name: `content-${input.name}` }));
+const cases = core.map(({ expected: _expected, ...input }) => ({ ...input, name: `content-${input.name}` }));
 const e = (key, dataHash, geometryHash, x, extra = {}) => ({
   key, ref: key, ifcType: 'IfcWall', dataHash,
   ...(geometryHash === undefined ? {} : { geometryHash }),
@@ -44,6 +45,6 @@ const vectors=cases.map(input=>{
 const path=new URL('../rust/diff/tests/content_vectors.json',import.meta.url);
 const text=`[\n${vectors.map(vector=>JSON.stringify(vector)).join(',\n')}\n]\n`;
 if(process.argv.includes('--check')) {
-  if(readFileSync(path,'utf8')!==text) throw new Error('Content vectors differ from the built TypeScript engine');
+  if(readFileSync(path,'utf8')!==text) throw new Error('Content vectors differ from the test-only TypeScript oracle');
 } else writeFileSync(path,text);
 console.log(`Content parity: ${vectors.length} cases`);

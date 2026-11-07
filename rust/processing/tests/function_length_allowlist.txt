@@ -24,8 +24,8 @@
    184 rust/export/src/collada.rs try_export_collada_from_meshes
    186 rust/export/src/collada_document.rs write_dae
    373 rust/export/src/gltf.rs build_gltf
-   211 rust/export/src/gltf.rs export_gltf_streaming_impl
-   634 rust/export/src/gltf.rs plan_bounded_glb
+   190 rust/export/src/gltf.rs export_gltf_streaming_impl
+   619 rust/export/src/gltf.rs plan_bounded_glb
    159 rust/export/src/gltf.rs push_mesh_quantized
    158 rust/export/src/gltf.rs write_bounded_glb
    260 rust/export/src/merged/mod.rs export_merged_models
@@ -46,12 +46,10 @@
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    224 rust/geometry/src/router/voids/aabb_clip.rs Execution::clip_triangle_against_box
    168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
-   715 rust/geometry/src/router/voids/mod.rs Execution::apply_void_context_inner
-   182 rust/geometry/src/router/voids/mod.rs Execution::try_cut_wall_local_frame
-   297 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
-   161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
-   233 rust/geometry/src/router/voids/prism_cut.rs cut_prism
-   185 rust/geometry/src/router/voids/prism_cut.rs detect_prism
+   161 rust/geometry/src/router/voids/prism_cut/caps.rs build_face_cap
+   233 rust/geometry/src/router/voids/prism_cut/cut.rs cut_prism
+   185 rust/geometry/src/router/voids/prism_cut/detect.rs detect_prism
+   297 rust/geometry/src/router/voids/prism_cut/driver.rs Execution::try_prism_cut
    197 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
    163 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities
@@ -67,11 +65,5 @@
    250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
    158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
-   248 rust/processing/src/processor/jobs.rs process_entity_job
-   746 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    296 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
-   296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
-   158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
-   589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch
-   563 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs IfcAPI::pre_pass_streaming_impl

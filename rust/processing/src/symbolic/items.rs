@@ -66,23 +66,7 @@ pub(super) fn extract_symbolic_item_inner(
             let Some(source_id) = item.get_ref(0) else { return };
             let Ok(rep_map) = decoder.decode_by_id(source_id) else { return };
 
-            // MappingOrigin (rep_map attr 0) is MANDATORY on IfcRepresentationMap
-            // (unlike ObjectPlacement's optional PlacementRelTo): a dangling ref
-            // or an absent/null attribute is malformed data, not a legitimate
-            // zero, so both become `unresolved()` (#2256).
-            let mapping_origin_transform = match rep_map.get_ref(0) {
-                Some(origin_id) => match decoder.decode_by_id(origin_id) {
-                    Ok(origin)
-                        if origin.ifc_type == IfcType::IfcAxis2Placement2D
-                            || origin.ifc_type == IfcType::IfcAxis2Placement3D =>
-                    {
-                        parse_axis2_placement_2d(&origin, decoder, unit_scale)
-                    }
-                    Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
-                    Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
-                },
-                None => Transform2D::unresolved(), // mandatory attr absent (#2256)
-            };
+            let mapping_origin_transform = resolve_mapping_origin(&rep_map, decoder, unit_scale);
             // MappingTarget (item attr 1) is likewise MANDATORY on
             // IfcMappedItem — same failure/absence treatment as above.
             let mapping_target_transform = match item.get_ref(1) {
@@ -319,5 +303,33 @@ pub(super) fn extract_symbolic_item_inner(
         _ => {
             // Unknown / unsupported curve type — skip silently.
         }
+    }
+}
+
+/// `IfcRepresentationMap.MappingOrigin` as a transform. Shared by the
+/// `IfcMappedItem` walk and the type-level symbol fallback (#8233) so both
+/// read the origin identically.
+///
+/// MappingOrigin (attr 0) is MANDATORY on IfcRepresentationMap (unlike
+/// ObjectPlacement's optional PlacementRelTo): a dangling ref or an
+/// absent/null attribute is malformed data, not a legitimate zero, so both
+/// become `unresolved()` (#2256).
+pub(super) fn resolve_mapping_origin(
+    rep_map: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    unit_scale: f64,
+) -> Transform2D {
+    match rep_map.get_ref(0) {
+        Some(origin_id) => match decoder.decode_by_id(origin_id) {
+            Ok(origin)
+                if origin.ifc_type == IfcType::IfcAxis2Placement2D
+                    || origin.ifc_type == IfcType::IfcAxis2Placement3D =>
+            {
+                parse_axis2_placement_2d(&origin, decoder, unit_scale)
+            }
+            Ok(_) => Transform2D::unresolved(), // wrong type (#2355)
+            Err(e) => Transform2D::undecodable(&e), // refused (#7678), or dangling (#2256)
+        },
+        None => Transform2D::unresolved(), // mandatory attr absent (#2256)
     }
 }

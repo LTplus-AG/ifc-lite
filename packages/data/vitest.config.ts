@@ -12,6 +12,11 @@ const BUILT_SIBLING = new RegExp(
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     environment: 'node',
     // The EPSG dataset is a ~4.4 MB generated TypeScript module that vite
     // transforms on first import. Locally that runs in ~3-5s; on CI with a

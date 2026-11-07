@@ -231,8 +231,9 @@ export function runOwnedShardedPrepassContracts(IfcAPI, test, memory, BaselineIf
           assert.equal(seen.at(-1), phase);
           assert.equal(api.getPipelineDiagnostics(), undefined, 'successful input resets before any callback');
           const actual = geometry(api, other, expected.pre);
-          if (phase === 'meta') assert.equal(actual.length, 0, 'meta throw precedes new cache installation');
-          else assert.deepEqual(actual, expected.meshes, 'jobs/complete throw follows new cache installation');
+          // C4-11a: meta failure leaves no old index; the next batch lazily
+          // scans the new bytes. Later failures keep the completed new index.
+          assert.deepEqual(actual, expected.meshes, 'failed new load must never expose the old index');
           // A subsequent complete call must remain usable after every exception.
           const events = [];
           call(api, method, other, otherColumns, event => events.push(event));

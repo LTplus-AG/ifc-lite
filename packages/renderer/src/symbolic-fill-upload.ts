@@ -4,7 +4,7 @@
 
 /** Transfer one fill partition only after every resource and its owner registration succeed. */
 export function uploadFillPartition(
-  device: GPUDevice, layout: GPUBindGroupLayout, data: Float32Array,
+  device: GPUDevice, layout: GPUBindGroupLayout, data: Float32Array, uniformBytes: number,
   register: (vertex: GPUBuffer, uniform: GPUBuffer, group: GPUBindGroup) => void,
 ): void {
   const vertex = device.createBuffer({
@@ -15,7 +15,7 @@ export function uploadFillPartition(
   try {
     device.queue.writeBuffer(vertex, 0, data);
     uniform = device.createBuffer({
-      label: 'symbolic-fill-partition-camera', size: 160,
+      label: 'symbolic-fill-partition-camera', size: uniformBytes,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     const group = device.createBindGroup({

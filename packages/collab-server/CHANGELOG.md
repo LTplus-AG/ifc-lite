@@ -1,5 +1,14 @@
 # @ifc-lite/collab-server
 
+## 0.9.1
+
+### Patch Changes
+
+- [#8344](https://github.com/LTplus-AG/ifc-lite/pull/8344) [`659f787`](https://github.com/LTplus-AG/ifc-lite/commit/659f7878922efabcbde1879f093d881f554147ea) Thanks [@louistrue](https://github.com/louistrue)! - Initialize the shared diff runtime internally before the content comparison and layer merge operations that call the synchronous Rust facade. Initialization failures propagate and subsequent requests can retry through the shared runtime. Users of this package need no new setup.
+- Updated dependencies [[`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65), [`b46c759`](https://github.com/LTplus-AG/ifc-lite/commit/b46c759601838b5d91dd54e4355feec2fea047af), [`c0acc2d`](https://github.com/LTplus-AG/ifc-lite/commit/c0acc2d4ab9f5d6944183fc45fbc6d9154f448c1), [`f2271ec`](https://github.com/LTplus-AG/ifc-lite/commit/f2271ec4fb5b9bd59fedb7802b3438bbdf0b18ba), [`3474815`](https://github.com/LTplus-AG/ifc-lite/commit/347481535c31077ffbd2f39ea0e38fc446778b65)]:
+  - @ifc-lite/merge@0.5.0
+  - @ifc-lite/diff@0.13.0
+
 ## 0.9.0
 
 ### Minor Changes

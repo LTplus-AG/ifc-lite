@@ -117,6 +117,11 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
+File-writing tools refuse to overwrite models loaded in the caller's session,
+including symlink and hard-link aliases. Choose a separate output path, even for IFC exports.
+Source identity is captured when the model loads, so this protection survives
+a deleted or replaced source path and a retargeted source symlink.
+
 IFC, IFCX, USD, GLB, and OBJ exports include pending session creates, edits,
 and deletions. Exporting and reloading an IFC file first is unnecessary.
 

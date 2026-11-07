@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
+import { isAllocationFailure, RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
 import type { RetainedHostEvent, RetainedHostRequest, RetainedHostResponse } from './retained-protocol';
 
 /** Small Worker boundary so protocol fixtures can observe termination. */
@@ -41,7 +41,7 @@ export class RetainedClient {
   async *run(bytes: Uint8Array, options: { ids?: Uint32Array; signal?: AbortSignal } = {}): AsyncGenerator<RetainedHostEvent> {
     if (this.active) throw new RetainedHostError('busy', 'A retained model is already running');
     if (bytes.byteLength > RETAINED_MAX_SOURCE_BYTES) {
-      throw new RetainedHostError('source_too_large', 'Retained geometry supports sources up to 256 MiB');
+      throw new RetainedHostError('source_too_large', 'The retained engine cannot hold a source of 2 GiB or more');
     }
     if (options.signal?.aborted) return;
     clearTimeout(this.idle);
@@ -64,7 +64,8 @@ export class RetainedClient {
         // Deliberately clone, never transfer the loader's source buffer.
         this.worker.postMessage({ runId: run.id, bytes, options: { ids: options.ids, detail: 'view' } });
       } catch (error) {
-        this.fail(new RetainedHostError('startup', error instanceof Error ? error.message : String(error)));
+        // A source too big to clone into the host fails here ("Data cannot be cloned, out of memory").
+        this.fail(new RetainedHostError(isAllocationFailure(error, false) ? 'out_of_memory' : 'startup', error instanceof Error ? error.message : String(error)));
       }
       while (true) {
         while (run.queue.length) yield run.queue.shift()!;
@@ -129,6 +130,9 @@ export class RetainedClient {
     }
     if (message.kind === 'start') run.candidates = message.candidateIds;
     if (message.kind === 'published' || message.kind === 'refused') run.received.add(message.expressId);
+    if (message.kind === 'published') {
+      for (const product of message.instanceProducts ?? []) run.received.add(product.expressId);
+    }
     if (message.kind === 'complete') run.done = true;
     run.queue.push(message);
     run.wake?.();

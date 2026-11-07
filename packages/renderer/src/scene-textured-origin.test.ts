@@ -290,7 +290,9 @@ describe('#4406 multi-part authored owner staging', () => {
     const scene = new Scene(), { device } = fakeDevice();
     let allocations = 0, releases = 0;
     device.createBuffer = ((desc: GPUBufferDescriptor) => {
-      if (++allocations === 4) throw new Error('second colour allocation failed');
+      // The shared uniform arena page outlives any one batch (its slot is released instead).
+      if (desc.label === 'mesh-uniform-arena') return { destroy() {}, size: desc.size, getMappedRange: () => new ArrayBuffer(desc.size), unmap() {} };
+      if (++allocations === 3) throw new Error('second colour allocation failed');
       return { destroy() { releases++; }, size: desc.size, getMappedRange: () => new ArrayBuffer(desc.size), unmap() {} };
     }) as GPUDevice['createBuffer'];
     const first = meshData(84, ORIGIN, false), second = { ...first, color: [0, 0, 1, 1] as [number, number, number, number] };

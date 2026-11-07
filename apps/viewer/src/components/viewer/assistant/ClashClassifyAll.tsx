@@ -69,7 +69,7 @@ export function ClashClassifyAll({ result, enabled, onResult, limits = CLASSIFY_
     {plan.chunks.length === 0 ? <p>{t('clashClassify.noFindings')}</p> : <p>{t('clashClassify.estimate', {
       findings: plan.clashes.length, chunks: estimate.chunks, tokens: estimate.outputTokens.toLocaleString(),
       maxRequests: limits.maxRequests, maxTokens: limits.maxOutputTokens.toLocaleString() })}</p>}
-    {plan.chunks.length > 0 && !estimate.fits && <p role="alert" className="text-amber-700 dark:text-amber-400">{t('clashClassify.overBudget')}</p>}
+    {plan.chunks.length > 0 && !estimate.fits && <p role="alert" className="text-warn">{t('clashClassify.overBudget')}</p>}
     <label className="flex items-start gap-1.5">
       <input type="checkbox" className="mt-0.5" checked={consent} disabled={running} onChange={event => setConsent(event.target.checked)} />
       {t('clashClassify.consent')}
@@ -87,7 +87,7 @@ export function ClashClassifyAll({ result, enabled, onResult, limits = CLASSIFY_
       </details>
     </div>}
     {run && <div aria-live="polite" className="space-y-1">
-      {run.stale && <p role="alert" className="text-amber-700 dark:text-amber-400">{t('clashClassify.stale')}</p>}
+      {run.stale && <p role="alert" className="text-warn">{t('clashClassify.stale')}</p>}
       {run.partial && <p>{t('clashClassify.partial', { failed: run.accounting.failed, notRun: run.accounting.notRun })}</p>}
       {run.chunks.filter(chunk => chunk.adjustments).map(chunk => <p key={chunk.index} role="note">{t('clashClassify.adjusted', {
         index: chunk.index + 1, repeats: chunk.adjustments!.repeats, unknown: chunk.adjustments!.unknown, groups: chunk.adjustments!.groups })}</p>)}

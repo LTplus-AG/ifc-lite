@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "totals": {
+    "arbitrary-value": 381,
+    "bw-class": 191,
+    "hex-literal": 264,
+    "native-control": 1048,
+    "palette-class": 1044
+  }
+}

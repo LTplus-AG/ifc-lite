@@ -10,6 +10,7 @@ import { useSectionExport, sectionMergeInputs } from '@/lib/export/section-expor
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
 import { lostPropertyCollisionsNote, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
+import { exportableModels } from '@/lib/export/capture-export';
 
 /**
  * Export Dialog for IFC export with property mutations
@@ -30,6 +31,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
+import { stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
@@ -56,6 +58,7 @@ import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
+import { hasRetainedSectionExport, RETAINED_EXACT_ONLY_REASON, hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
@@ -289,6 +292,9 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!isIfc5 && !changesOnly && visibleOnly && includeGeometry && hasRetainedSectionExport(useViewerStore.getState(), exportScope === 'merged' ? models.keys() : [selectedModelId])) {
+      return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
+    }
     if (!schema || (exportScope === 'single' && !selectedModel)) {
       return { success: false, message: t('exportDialog.notReadyError') };
     }
@@ -319,10 +325,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     // STEP vs changes-JSON branch), not just the schema-derived extension.
     let exportedFormat: ExportFormat | null = null;
     try {
-      // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
-        assertPortableMergeSupported(models.keys());
-        const hydratedModels = await Promise.all(Array.from(models.values()).map(async (model) => ({
+        const mergeModels = exportableModels(models), mergeModelIds = mergeModels.map(model => model.id);
+        assertPortableMergeSupported(mergeModelIds);
+        const hydratedModels = await Promise.all(mergeModels.map(async (model) => ({
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
@@ -341,7 +347,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         }
 
         const visibility = visibleOnly
-          ? roomMergeVisibility(models.keys(), portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
+          ? roomMergeVisibility(mergeModelIds, portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
         const prepared = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
@@ -408,7 +414,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
+        // IFC5 carries the meshes the viewer holds; a retained model that is incomplete or shape-only would export
+        // them as if they were the model (the same guard the GLB/KMZ/USD ribbon commands use).
         const federatedModel = models.get(selectedModelId);
+        if (includeGeometry && !changesOnly && federatedModel && hasRetainedShapeOnlyModel(new Map([[selectedModelId, federatedModel]]))) {
+          return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+        }
         const idOffset = federatedModel?.idOffset ?? 0;
 
         // Include GPU-instanced occurrences (absent from geometryResult.meshes) so
@@ -514,11 +525,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         });
         setExportProgress(null);
 
-        const suffix = visibleOnly ? '_visible' : '_export';
         const artifact = await packagePortableIfcAsync(selectedModelId, result.content, result.resources);
-        downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, suffix), artifact.mime);
+        downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, visibleOnly ? '_visible' : '_export'), artifact.mime);
 
-        const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
+        const stepMsg = stepExportSummary({ entityCount: result.stats.entityCount, pendingChanges: modifiedCount, applyMutations, visibleOnly });
         exportedFormat = artifact.ext;
         toast.success(stepMsg);
         return { success: true, message: stepMsg };

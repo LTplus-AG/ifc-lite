@@ -19,11 +19,12 @@ import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useDxfUnderlaysForDrawing } from '@/hooks/useDxfUnderlay';
-import { drawingWithDxfBounds } from '@/hooks/dxfDrawingBounds';
+import { drawingWithDxfBounds, referenceOnlyBounds } from '@/hooks/dxfDrawingBounds';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveDrawingPaperTheme } from './paper-theme';
+import { toggledConstructionProjection } from '@/lib/drawing/construction-projection';
 
 /** The settings panels beside the canvas, as inspector tabs (#5495); they
  *  share one slot. Re-exported for the drawing/ subtree's existing imports. */
@@ -34,7 +35,7 @@ export function useDrawingViewModel() {
   const { geometryResult } = runtime;
 
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
-  const { drawing: rasterDrawing, hasReferences: hasRasterReferences, referenceCount: visibleRasterReferenceCount } = useDrawingWithReferences(sourceDrawing);
+  const { drawing: rasterDrawing, hasReferences: hasRasterReferences, referenceCount: visibleRasterReferenceCount, referenceCorners } = useDrawingWithReferences(sourceDrawing);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const status = useViewerStore((s) => s.drawing2DStatus);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
@@ -107,6 +108,8 @@ export function useDrawingViewModel() {
     sectionAxis:sectionPlane.axis,isCustomPlane:sectionPlane.custom!==undefined,flipped:sectionPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
   const drawing = useMemo(()=>drawingWithDxfBounds(rasterDrawing,dxfUnderlayData,hasRasterReferences),[rasterDrawing,dxfUnderlayData,hasRasterReferences]);
   const hasReferences = hasRasterReferences || dxfUnderlayData.some(r=>r.lines.length>0 || r.fills.length>0 || r.texts.length>0);
+  // The references' own extent, which Fit always frames (#8802).
+  const referenceBounds = useMemo(() => referenceOnlyBounds(sourceDrawing, referenceCorners, dxfUnderlayData), [sourceDrawing, referenceCorners, dxfUnderlayData]);
 
 
   const [isPinned, setIsPinned] = useState(true); // Default ON: keep position on regenerate
@@ -149,7 +152,7 @@ export function useDrawingViewModel() {
     drawing, sectionPlane, containerRef,
     // Mounted means on screen: the host only renders this view while it shows.
     panelVisible: true, status, sheetEnabled, activeSheet,
-    isPinned, cachedSheetTransformRef,
+    isPinned, cachedSheetTransformRef, referenceBounds,
   });
 
   const measureHandlers = useMeasure2D({
@@ -218,10 +221,11 @@ export function useDrawingViewModel() {
   }, [displayOptions.showIfcAnnotations, updateDisplayOptions]);
 
   const toggleConstructionProjection = useCallback(() => {
-    updateDisplayOptions({ showConstructionProjection: !displayOptions.showConstructionProjection });
+    // An explicit choice: it holds on every cut, unlike the plan-only default.
+    updateDisplayOptions({ showConstructionProjection: toggledConstructionProjection(displayOptions.showConstructionProjection, sectionPlane) });
     setDrawing(null);
     setDrawingStatus('idle');
-  }, [displayOptions.showConstructionProjection, updateDisplayOptions, setDrawing, setDrawingStatus]);
+  }, [displayOptions.showConstructionProjection, sectionPlane, updateDisplayOptions, setDrawing, setDrawingStatus]);
 
   const toggle3DOverlay = useCallback(() => {
     updateDisplayOptions({ show3DOverlay: !displayOptions.show3DOverlay });

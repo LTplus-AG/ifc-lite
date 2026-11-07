@@ -11,6 +11,7 @@
  * cluster in that corner.
  */
 
+import { PositionedDownload } from './PositionedDownload';
 import { Scan, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
@@ -24,6 +25,7 @@ import { DeviationPanel } from './DeviationPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 import { ScanDetectionSection } from './scan-detection/ScanDetectionSection';
 import { applyPointCloudAlignmentToggle } from '@/hooks/ingest/pointCloudAlignment';
+import { syncPointCloudRenderFrame } from '@/hooks/ingest/pointCloudFrameSync';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; labelKey: TranslationKey; hintKey: TranslationKey }> = [
@@ -54,6 +56,7 @@ export interface PointCloudPanelProps {
 
 export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointCloudPanelProps) {
   const { t } = useTranslation();
+  const models = useViewerStore(s => s.models);
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
   const sizeMode = useViewerStore((s) => s.pointCloudSizeMode);
@@ -108,6 +111,11 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
       {header}
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
 
+      {[...models.values()].filter(model => model.pointCloudHandleId !== undefined).map(model => (
+        <div key={model.id} className="flex items-center gap-2 text-xs">
+          <span className="truncate">{model.name}</span><PositionedDownload modelId={model.id} />
+        </div>
+      ))}
       {/* Color mode */}
       <div className="flex flex-col gap-0.5">
         <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.colourSectionLabel')}</span>
@@ -137,7 +145,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           // compare. Until "Compute deviation" runs, that buffer is all
           // zeros, so every point maps to the ramp centre (grey). Nudge
           // the user toward the compute button below.
-          <span className="text-2xs text-amber-500 px-2 leading-tight">
+          <span className="text-2xs text-warn px-2 leading-tight">
             {triangleCount > 0
               ? t('pointCloudPanel.deviation.computeHint')
               : t('pointCloudPanel.deviation.needsModelHint')}
@@ -179,6 +187,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
             onChange={(e) => {
               const enabled = e.target.checked;
               setAlignmentEnabled(enabled);
+              syncPointCloudRenderFrame(getGlobalRenderer());
               applyPointCloudAlignmentToggle(getGlobalRenderer(), enabled);
             }}
             className="accent-teal-600"

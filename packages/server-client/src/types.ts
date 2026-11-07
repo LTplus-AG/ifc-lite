@@ -113,7 +113,7 @@ export interface ModelMetadata {
   schema_version: string;
   /** Total number of entities in the file */
   entity_count: number;
-  /** Number of geometry-bearing entities */
+  /** Geometry jobs scheduled: one per geometry-bearing product and one per type-only representation map (#8341). */
   geometry_entity_count: number;
   /** Coordinate system information */
   coordinate_info: CoordinateInfo;
@@ -246,7 +246,7 @@ export interface ParseResponse {
 export interface MetadataResponse {
   /** Total number of entities */
   entity_count: number;
-  /** Number of geometry-bearing entities */
+  /** Geometry jobs a default parse schedules, equal to that parse's `metadata.geometry_entity_count` (#8341). Counts IfcBuildingStorey, IfcFacility and IfcFacilityPart (and subtypes) only when they carry a Representation, and one job per type-only representation map. */
   geometry_count: number;
   /** IFC schema version */
   schema_version: string;

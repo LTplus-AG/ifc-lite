@@ -19,12 +19,16 @@
  *    layer, so such candidates do reach the merge flow.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { computeLayerId, computeStackHash, createProvenanceManifest, getProvenance, setProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode, ProvenanceBase } from '@ifc-lite/ifcx';
 import { extractStackState } from './component-state.js';
 import { checkRefPolicy, mergeIntoRef, resolveAncestor } from './ref-flow.js';
 import type { LayerRefStore, RefEntry } from './ref-flow.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 const SOUND = 'bsi::ifc::v5a::Pset_Acoustic::Rw';

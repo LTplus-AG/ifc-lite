@@ -6,8 +6,10 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
-import { quantizeInterleaved } from './quantize.js';
+import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
+import type { MergedBatchBytes } from './scene-snapshot-batches.js';
+import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import {
   simplifyIndicesByClustering,
@@ -29,6 +31,8 @@ export function createSceneBatch(
     /** See `BatchQuantization`; derived batches pass their source's decision (#4832). */
     quantized: BatchQuantization;
     lod: boolean;
+    /** Handed the exact arrays this batch uploads (scene-snapshot-batches.ts). */
+    onMerged?: (bytes: MergedBatchBytes) => void;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -64,6 +68,7 @@ export function createSceneBatch(
   // `DeviationPipeline.uploadBvh` (see paired-buffer-leak.test.ts), generalised
   // to a run of N instead of a pair.
   const allocated: GPUBuffer[] = [];
+  let uniformSlot: MeshUniformSlot | undefined;
   const track = (buffer: GPUBuffer): GPUBuffer => {
     allocated.push(buffer);
     return buffer;
@@ -71,7 +76,10 @@ export function createSceneBatch(
   try {
     let quantized: { min: [number, number, number]; step: number } | undefined;
     let vertexBuffer: GPUBuffer;
-    const quantizedData = options.quantized !== 'off'
+    // `auto` also stays f32 when the ~1 mm lattice would collapse an entity's
+    // shape (#9068); `required` keeps its source batch's decision (#4832).
+    const quantizedData = options.quantized === 'required' || (options.quantized === 'auto'
+      && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices))
       ? quantizeInterleaved(
           merged.vertexData,
           BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
@@ -97,19 +105,15 @@ export function createSceneBatch(
     // Create index buffer
     const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
 
-    // Create uniform buffer for this batch
-    const uniformBuffer = track(device.createBuffer({
-      size: pipeline.getUniformBufferSize(),
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    }));
-
-    // Create bind group
+    // This batch's uniform block: a slice of the shared per-device arena, so
+    // the frame uploads every drawn batch in one write (mesh-uniform-arena.ts).
+    uniformSlot = meshUniformArena(device, pipeline.getUniformBufferSize()).allocate();
     const bindGroup = device.createBindGroup({
       layout: pipeline.getBindGroupLayout(),
       entries: [
         {
           binding: 0,
-          resource: { buffer: uniformBuffer },
+          resource: { buffer: uniformSlot.buffer, offset: uniformSlot.offset, size: uniformSlot.size },
         },
       ],
     });
@@ -122,6 +126,7 @@ export function createSceneBatch(
     // the cell size comes from the same-space bounds extent.
     let lod1IndexBuffer: GPUBuffer | undefined;
     let lod1IndexCount: number | undefined;
+    let lodIndices: Uint32Array | null | undefined;
     if (
       options.lod &&
       bucketKey !== undefined &&
@@ -132,7 +137,7 @@ export function createSceneBatch(
         merged.bounds.min,
         merged.bounds.max,
       );
-      const lodIndices = simplifyIndicesByClustering(
+      lodIndices = simplifyIndicesByClustering(
         merged.vertexData,
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
@@ -143,6 +148,7 @@ export function createSceneBatch(
         lod1IndexCount = lodIndices.length;
       }
     }
+    options.onMerged?.({ vertexData: quantizedData?.vertexData ?? merged.vertexData, indices: merged.indices, ...(lodIndices ? { lod1Indices: lodIndices } : {}) });
 
     return {
       id: options.id,
@@ -156,7 +162,7 @@ export function createSceneBatch(
       ...(meshDataArray[0]?.material ? { finish: meshDataArray[0].material } : {}),
       expressIds,
       bindGroup,
-      uniformBuffer,
+      uniformSlot,
       bounds: merged.bounds,
       modelIndices,
       // Per-batch local frame: positions are stored relative to this; the draw
@@ -166,6 +172,7 @@ export function createSceneBatch(
       ...(quantized ? { quantized } : {}),
     };
   } catch (error) {
+    uniformSlot?.release();
     for (const buffer of allocated) {
       try {
         buffer.destroy();

@@ -29,7 +29,7 @@ IFC data and geometry tools for developers.
 
 Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and modular npm packages let you pick the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
-Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
+Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Beside IFC, the web viewer opens glTF/GLB, LandXML, point clouds (LAS/LAZ, E57, PLY, PCD, PTS, XYZ) and [Gaussian splat captures](https://ifclite.dev/docs/guide/gaussian-captures/) (Gaussian PLY, `.splat`). Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
 ## Get Started
 
@@ -303,7 +303,7 @@ Ready-to-run projects in [`examples/`](examples/):
 |---|---|
 | **Start here** | [Quick Start](https://ifclite.dev/docs/guide/quickstart/) · [Installation](https://ifclite.dev/docs/guide/installation/) · [CLI Toolkit](https://ifclite.dev/docs/guide/cli/) · [Browser Requirements](https://ifclite.dev/docs/guide/browser-requirements/) |
 | **Guides** | [Parsing](https://ifclite.dev/docs/guide/parsing/) · [Geometry](https://ifclite.dev/docs/guide/geometry/) · [Rendering](https://ifclite.dev/docs/guide/rendering/) · [Querying](https://ifclite.dev/docs/guide/querying/) · [Exporting](https://ifclite.dev/docs/guide/exporting/) |
-| **BIM features** | [Federation](https://ifclite.dev/docs/guide/federation/) · [BCF](https://ifclite.dev/docs/guide/bcf/) · [IDS Validation](https://ifclite.dev/docs/guide/ids/) · [2D Drawings](https://ifclite.dev/docs/guide/drawing-2d/) · [Property Editing](https://ifclite.dev/docs/guide/mutations/) |
+| **BIM features** | [Federation](https://ifclite.dev/docs/guide/federation/) · [Gaussian Captures](https://ifclite.dev/docs/guide/gaussian-captures/) · [BCF](https://ifclite.dev/docs/guide/bcf/) · [IDS Validation](https://ifclite.dev/docs/guide/ids/) · [2D Drawings](https://ifclite.dev/docs/guide/drawing-2d/) · [Property Editing](https://ifclite.dev/docs/guide/mutations/) |
 | **Customization** | [Extensions](https://ifclite.dev/docs/guide/extensions/) · [Authoring Extensions](https://ifclite.dev/docs/guide/extension-authoring/) · [Flavors](https://ifclite.dev/docs/guide/flavors/) |
 | **Tutorials** | [Build a Viewer](https://ifclite.dev/docs/tutorials/building-viewer/) · [Three.js](https://ifclite.dev/docs/tutorials/threejs-integration/) · [Babylon.js](https://ifclite.dev/docs/tutorials/babylonjs-integration/) · [Custom Queries](https://ifclite.dev/docs/tutorials/custom-queries/) · [Extending the Parser](https://ifclite.dev/docs/tutorials/extending-parser/) |
 | **Deep dives** | [Architecture](https://ifclite.dev/docs/architecture/overview/) · [Data Flow](https://ifclite.dev/docs/architecture/data-flow/) · [Performance](https://ifclite.dev/docs/guide/performance/) |
@@ -343,6 +343,7 @@ See the [Contributing Guide](https://ifclite.dev/docs/contributing/setup/) and [
 
 ## Community
 
+- [Discord](https://discord.gg/NtGyhM9pCX) - share apps and demos, ask integration questions, and meet other builders
 - [GitHub Discussions](https://github.com/LTplus-AG/ifc-lite/discussions) - questions, ideas, show-and-tell
 - [Issues](https://github.com/LTplus-AG/ifc-lite/issues) - bug reports and feature requests
 - [Releases](https://github.com/LTplus-AG/ifc-lite/releases) - changelog and version notes

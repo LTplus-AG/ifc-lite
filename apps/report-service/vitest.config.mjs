@@ -5,6 +5,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     // #7495: suites migrate the shared integration database. Serialize files
     // so DDL cannot overlap another suite's live upload transactions. Race
     // tests retain their explicit concurrent operations within each test.

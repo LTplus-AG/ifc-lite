@@ -1,3 +1,43 @@
 // SPDX-License-Identifier: MPL-2.0
-//! CUT-0 registration; this slice has no admitted product behavior yet.
-pub(super) fn check(_: &super::ShapeOnlyProduct, _: &super::AnalyticQuantitySources, _: &serde_json::Value) -> Vec<super::OracleResult> { Vec::new() }
+//! Source gates never consume the retained cutter recipe.
+use ifc_lite_retained_native::oracle::bounded::Expectation;
+use super::OracleResult;
+pub(crate) fn check(product:&super::ShapeOnlyProduct,e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>,bundle:&std::sync::Arc<ifc_lite_core::SourceBundle>)->Vec<OracleResult> {
+    check_parts(product.product_id,&product.parts,e,t,hand,bundle)
+}
+/// Checks the published product as ONE solid: the union of its parts. Layer bands
+/// are open, so only their union can be closed or carry the section volume; the
+/// per-band split is the M4 layer report's (`layers.rs`), never this oracle's.
+pub(crate) fn check_parts(product_id:u32,parts:&[ifc_lite_retained_native::ShapePart],e:Option<&Expectation>,t:&serde_json::Value,hand:Option<f64>,bundle:&std::sync::Arc<ifc_lite_core::SourceBundle>)->Vec<OracleResult> {
+    let Some(e)=e else {
+        use ifc_lite_retained_native::oracle::bounded;
+        if !bounded::applies_in(bundle,product_id){return Vec::new();}
+        let mut unavailable=row("bounded_chain_unmodelled",f64::INFINITY,0.);
+        unavailable.reason=Some(bounded::unmodelled_reason_in(bundle,product_id)
+            .unwrap_or_else(||"unsupported source node or unavailable host/clip expectation".into()));
+        return vec![unavailable];
+    };
+    // Layer bands are open; only their union is the closed skin (#7955, as for exact in #8324).
+    let layered=parts.iter().any(|p|p.layer.is_some());
+    let mut m=if layered {crate::metrics::Metrics::assembly()} else {crate::metrics::Metrics::default()};let mut outside=0f64;
+    for part in parts {
+        let points=part.positions.chunks_exact(3).map(|p|crate::metrics::transform(&part.world_from_object,[p[0],p[1],p[2]])).collect::<Vec<_>>();
+        for &p in &points {outside=outside.max(e.removed_clearance(p));}
+        if m.add_mesh(&points,&part.indices).is_err(){return vec![row("bounded_measurement",f64::INFINITY,0.)];}
+    }
+    let key=if e.curved{"curved"}else{"linear"};
+    let extent=(0..3).map(|i|m.bbox[i+3]-m.bbox[i]).fold(0.,f64::max);
+    let mut rows=vec![
+        row("bounded_outside_material",outside,t["boundedOutsideMaterialMetres"]["absolute"].as_f64().unwrap()+extent*t["boundedOutsideMaterialMetres"]["extentFactor"].as_f64().unwrap()),
+        row("bounded_volume_bounds",(-m.volume).max(m.volume-e.host_volume).max(0.)/e.host_volume,t["boundedVolumeBoundsRelative"][key].as_f64().unwrap()),
+        row("bounded_closure",m.defects as f64,0.),
+    ];
+    if let Some(volume)=e.section_volume {rows.push(row("bounded_section_volume",crate::metrics::relative(m.volume,volume),t["boundedSectionVolumeRelative"][key].as_f64().unwrap()));}
+    if let Some(volume)=hand {rows.push(row("bounded_hand_volume",crate::metrics::relative(m.volume,volume),t["boundedSectionVolumeRelative"][key].as_f64().unwrap()));}
+    if e.section_volume.is_none() && hand.is_none() {
+        let mut unavailable=row(if e.curved {"bounded_curved_volume_unavailable"}else{"bounded_linear_volume_unavailable"},f64::INFINITY,0.);
+        unavailable.reason=e.section_unavailable.clone();rows.push(unavailable);
+    }
+    rows
+}
+fn row(family:&'static str,value:f64,limit:f64)->OracleResult {OracleResult{family,value,limit,pass:value.is_finite()&&value<=limit,gated:true,..Default::default()}}

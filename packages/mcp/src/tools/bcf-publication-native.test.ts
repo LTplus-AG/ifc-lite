@@ -18,7 +18,7 @@ import { BCF_PUBLICATION_PROBE_PATH } from '../test/bcf-publication-worker-path.
 type Entry = { id: string; state: string; intent: unknown; receipt?: { remoteGuid: string }; check?: { candidates: { guid: string }[] } };
 type Probe = { result?: { structuredContent?: { ok?: boolean; entries?: Entry[]; nextCursor?: string; entry?: Entry; outputs?: { key: string; data: unknown }[] } }; error?: { code?: string; message: string } };
 const cleanup: (() => Promise<unknown>)[] = [];
-afterEach(async () => { for (const dispose of cleanup.splice(0)) await dispose(); });
+afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 async function probe(directory: string, baseUrl: string, tool: string, input: Record<string, unknown>, principal?: string, remoteUnidentified = false, disconnectBeforeWrite = false, token = LOCAL_BCF_TOKEN): Promise<Probe> {
   return new Promise((resolveResult, reject) => {
     const config = { baseUrl, tool, input, principal, remoteUnidentified, disconnectBeforeWrite, model: resolve('../../apps/viewer/public/samples/building-architecture.ifc') };
@@ -46,7 +46,7 @@ function flow(params: Record<string, unknown>, capabilities = ['network.fetch:bc
 async function fixture(options: Parameters<typeof startLocalBcfServer>[0] = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'ifc-mcp-bcf-'));
   const peer = await startLocalBcfServer(options);
-  cleanup.push(peer.close, () => rm(directory, { recursive: true, force: true }));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }), peer.close);
   return { directory, peer };
 }
 

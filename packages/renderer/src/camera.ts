@@ -16,13 +16,14 @@ import type { CameraInternalState, ProjectionMode } from './camera-state.js';
 import { CameraAnimator } from './camera-animation.js';
 import { CameraProjection } from './camera-projection.js';
 import { FirstPersonNavigator } from './camera-first-person.js';
-import { updateCameraMatrices, updateCameraRelativeFrame } from './camera-matrices.js';
+import { activeLensShift, updateCameraMatrices, updateCameraRelativeFrame } from './camera-matrices.js';
 import { CameraOrientation } from './camera-orientation.js';
 import { pickFitPolicy, type Bounds3, type FitPolicy, type PickFitPolicyOptions } from './camera-fit-policy.js';
 import {
   DEFAULT_ORTHO_SIZE,
   isUsableBounds,
   isUsableDistance,
+  isUsableLensShift,
   usableOrthoSize,
 } from './camera-guards.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
@@ -61,6 +62,8 @@ export class Camera {
       orthoSize: DEFAULT_ORTHO_SIZE, // Half-height in world units
       sceneBounds: null,
       orbitAnchorBounds: null,
+      depthOnlyBounds: null,
+      lensShift: { x: 0, y: 0 },
     };
 
     // All pose writers publish the ordinary and relative frames together.
@@ -134,6 +137,40 @@ export class Camera {
     if (!Number.isFinite(fov)) return;
     this.state.camera.fov = Math.max(0.01, Math.min(Math.PI - 0.01, fov));
     this.updateMatrices();
+  }
+
+  /**
+   * Shift the perspective image by `(x, y)` in normalised device coordinates
+   * without turning the camera, the "shift lens" of architectural photography
+   * (issue #8688). A point that would project to NDC `p` projects to `p + (x, y)`.
+   * Keep the camera level and shift vertically for two-point perspective, so
+   * world-vertical edges stay vertical on screen: to frame what a camera
+   * pitched up by `pitch` would centre, use `y = -tan(pitch) / tan(fov / 2)`.
+   * `(0, 0)`, the default, is the ordinary centred frustum. Orthographic
+   * projection ignores the shift (see {@link getActiveLensShift}).
+   *
+   * Picking, sections, overlays, AO/edges, the sky and shadows follow the
+   * shift. Fit-to-view, BCF viewpoints and the shift itself are independent:
+   * a fit still centres the target in the unshifted frustum, and restoring a
+   * viewpoint keeps the current shift. Non-finite values and components beyond
+   * `MAX_LENS_SHIFT` are rejected and the previous shift is kept.
+   */
+  setLensShift(x: number, y: number): void {
+    if (!isUsableLensShift(x) || !isUsableLensShift(y)) return;
+    const shift = this.state.lensShift;
+    if (shift.x === x && shift.y === y) return;
+    this.state.lensShift = { x, y };
+    this.updateMatrices();
+  }
+
+  /** The stored lens shift in NDC, as set; a copy. */
+  getLensShift(): { x: number; y: number } {
+    return { ...this.state.lensShift };
+  }
+
+  /** The lens shift the current projection applies: {@link getLensShift} in perspective, zero in orthographic. */
+  getActiveLensShift(): { x: number; y: number } {
+    return { ...activeLensShift(this.state) };
   }
 
   /**
@@ -242,6 +279,15 @@ export class Camera {
    */
   update(deltaTime: number): boolean {
     return this.animator.update(deltaTime);
+  }
+
+  /**
+   * Whether a timed pose tween (preset view, frame, home) has started and its
+   * final pose has not yet been applied by `update()`. Independent of whether
+   * any frame has run since, so it is safe for a host to wait on.
+   */
+  isTweening(): boolean {
+    return this.animator.isTweening();
   }
 
   /**
@@ -576,6 +622,12 @@ export class Camera {
    */
   getSceneBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
     return this.state.sceneBounds;
+  }
+
+  /** Widen only the orthographic depth range by this extent (never fitting or pivots); null clears it. */
+  setDepthOnlyBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null): void {
+    this.state.depthOnlyBounds = bounds;
+    this.updateMatrices();
   }
 
   /**

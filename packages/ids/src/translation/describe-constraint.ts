@@ -11,6 +11,7 @@
  */
 
 import type { IDSConstraint } from '../types.js';
+import { exactConstraintValue } from '../constraints/index.js';
 import type { en } from './locales/en.js';
 
 type Translations = typeof en;
@@ -50,6 +51,24 @@ export function describeConstraint(
       }),
     own
   );
+}
+
+/**
+ * A property path in the report locale. Constraint descriptions carry
+ * their own quotes, so two exact names share one pair (`"Pset.Prop"`)
+ * and anything else joins the descriptions as they are (#8306).
+ */
+export function describePropertyPath(
+  propertySet: IDSConstraint,
+  baseName: IDSConstraint,
+  t: Translations
+): string {
+  const pset = exactConstraintValue(propertySet);
+  const prop = exactConstraintValue(baseName);
+  if (pset !== undefined && prop !== undefined) {
+    return interpolate(t.constraints.simpleValue, { value: `${pset}.${prop}` });
+  }
+  return `${describeConstraint(propertySet, t)}.${describeConstraint(baseName, t)}`;
 }
 
 function describeOneFamily(constraint: IDSConstraint, t: Translations): string {

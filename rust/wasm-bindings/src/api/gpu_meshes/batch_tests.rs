@@ -2,13 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Tests for the parts of `batch.rs` decidable without a file or a JS runtime.
-//!
-//! `produce_batch` itself needs a decoder, a geometry router and `Date::now`,
-//! so the coverage here is the element record it emits: the diff-engine
-//! fingerprint, whose whole point is that the two push sites (flat and
-//! partitioned) build it in ONE place and so cannot fill different subsets of
-//! the index-parallel arrays.
+//! Output-record and routing invariants. Production/source adapters are exercised
+//! by batch_adapter_tests.rs and the native/browser parity corpus; batch_host
+//! supplies the native clock for those tests.
 
 use super::ElementMeshOutput;
 
@@ -91,4 +87,27 @@ fn rejected_members_are_taken_back_for_the_flat_path_and_sorted() {
     assert_eq!(rejected_to_flat(&[6, 1, 5], 5), vec![1]);
     // Nothing refused: nothing leaves the shard.
     assert_eq!(rejected_to_flat(&[], 5), Vec::<usize>::new());
+}
+
+// #7782 / #8317: the canonical producer can compute a fingerprint while a
+// scheduler adapter loses it. Check the actual public flat output, not only
+// ElementMeshOutput::fingerprint or native/browser mesh payload parity.
+#[test]
+fn c4_10b_public_flat_batch_retains_diff_metadata_8317() {
+    let source = include_bytes!("../../../../processing/tests/fixtures/c4_0_refusal_parity_7782.ifc");
+    let api = crate::api::IfcAPI::new();
+    let pre = api.build_prepass_once_data(source);
+    api.set_compute_geometry_hashes(Some(1e-5));
+    let mut jobs = vec![0; pre.total_jobs() * 3];
+    pre.write_jobs(|i, v| jobs[i as usize] = v);
+    let flat = api.process_geometry_batch(
+        source, &jobs, 1.0, 10.0, 20.0, 30.0, true,
+        &pre.void_keys, &pre.void_counts, &pre.void_values,
+        &pre.style_ids, &pre.style_colors,
+        Some(pre.meta.plane_angle_to_radians), None, None, None,
+    );
+    assert_eq!(flat.length(), 1, "valid neighbour survives refused leaves");
+    assert!(flat.total_triangles() > 0);
+    assert_eq!(flat.get(0).unwrap().express_id(), 300);
+    assert_eq!(flat.geometry_hash_count(), 1, "diff metadata survives output routing");
 }

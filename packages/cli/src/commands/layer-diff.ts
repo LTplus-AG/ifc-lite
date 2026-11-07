@@ -9,6 +9,7 @@
  * (state-diff.ts): CLI, MCP, and the review UI emit the identical JSON.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { diffLayerStacks } from '@ifc-lite/merge';
 import { getFlag, hasFlag, printJson } from '../output.js';
 import { resolveSide, storeFromArgs } from './layer-store.js';
@@ -35,6 +36,7 @@ export async function layerDiffCommand(args: string[]): Promise<void> {
   const from = againstSpec
     ? resolveSide(store, againstSpec)
     : { kind: 'ref' as const, layers: [], label: '(empty)' };
+  await initDiff();
   const result = diffLayerStacks(from.layers, to.layers);
 
   if (hasFlag(args, '--json')) {

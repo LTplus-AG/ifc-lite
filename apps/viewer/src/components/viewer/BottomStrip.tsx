@@ -17,12 +17,11 @@ import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { BottomStripHeader } from './BottomStripHeader';
+import { BottomStripHeaderSlotContext } from './bottom-strip-header-slot';
+import { useBottomStripHeight } from './useBottomStripHeight';
 import {
   BOTTOM_STRIP_MIN_HEIGHT,
-  BOTTOM_STRIP_DEFAULT_HEIGHT,
   BOTTOM_STRIP_MAX_RATIO,
-  loadBottomStripHeight,
-  persistBottomStripHeight,
   loadBottomStripTabs,
   persistBottomStripTabs,
   type BottomStripOrientation,
@@ -50,7 +49,10 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   // Pixel height, persisted; kept in local state during the drag to avoid
   // writing to localStorage on every pointer move (#1208's rect debounce
   // does the same for floating panels, but a resize-end write is simpler here).
-  const [bottomHeight, setBottomHeight] = useState(() => loadBottomStripHeight());
+  // The Drawing keeps its own height, half the layout by default (#8802 R3b).
+  const { height: bottomHeight, setHeight: setBottomHeight, commitHeight, resetHeights } = useBottomStripHeight(dockedPanel, containerRef);
+  // The tab-row slot a docked panel may portal its header into (#8802 R3b).
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   const [tabs, setTabs] = useState<BottomPanelId[]>(() => loadBottomStripTabs());
   const [isMaximized, setIsMaximized] = useState(false);
   const isDraggingRef = useRef(false);
@@ -64,10 +66,9 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   const mountEpochRef = useRef(layoutResetEpoch);
   useEffect(() => {
     if (layoutResetEpoch === mountEpochRef.current) return;
-    setBottomHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
+    resetHeights();
     setIsMaximized(false);
-    persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
-  }, [layoutResetEpoch]);
+  }, [layoutResetEpoch, resetHeights]);
 
   // Cleanup drag listeners on unmount
   useEffect(() => {
@@ -118,7 +119,7 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
 
     const onMouseUp = () => {
       cleanup();
-      persistBottomStripHeight(latestHeight);
+      commitHeight(latestHeight);
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -126,7 +127,7 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
     cleanupRef.current = cleanup;
-  }, [bottomHeight, containerRef]);
+  }, [bottomHeight, containerRef, setBottomHeight, commitHeight]);
 
   // Switching tabs re-docks (undoing a float / pop-out) and flips the
   // exclusive flag — the same `openInHome` the sidebar rail / Alt+N use.
@@ -170,11 +171,12 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
           maximized: restore first. */}
       {!isMaximized && !isSide && (
         <div
-          className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
+          className="shell-splitter-h absolute inset-x-0 top-0 z-10 cursor-row-resize"
           onMouseDown={handleResizeStart}
         />
       )}
-      <div className={`h-full w-full overflow-hidden pt-1.5 flex flex-col ${isSide ? 'border-l' : 'border-t'}`}>
+      {/* Side-docked, the host's 1px splitter is this strip's edge (#8802 R1). */}
+      <div className={`h-full w-full overflow-hidden flex flex-col border-divider ${isSide ? '' : 'border-t'}`}>
         {/* Hidden for analysis extensions, which own their chrome. */}
         {!analysisExtension && dockedPanel && (
           <BottomStripHeader
@@ -186,6 +188,7 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
             onToggleMaximize={handleToggleMaximize}
             orientation={orientation}
             onToggleOrientation={onToggleOrientation}
+            slotRef={setHeaderSlot}
           />
         )}
         <div
@@ -194,9 +197,11 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
           id={!analysisExtension && dockedPanel ? `bottom-strip-panel-${dockedPanel}` : undefined}
           aria-labelledby={!analysisExtension && dockedPanel ? `bottom-strip-tab-${dockedPanel}` : undefined}
         >
-          {analysisExtension
-            ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-            : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}
+          <BottomStripHeaderSlotContext.Provider value={analysisExtension ? null : headerSlot}>
+            {analysisExtension
+              ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+              : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}
+          </BottomStripHeaderSlotContext.Provider>
         </div>
       </div>
     </div>

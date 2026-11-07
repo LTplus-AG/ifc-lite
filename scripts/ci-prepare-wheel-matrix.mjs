@@ -8,8 +8,8 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 export const EXPECTED_WHEEL_ARTIFACTS = [
   'wheels-ubuntu-latest-x86_64',
   'wheels-ubuntu-latest-aarch64',
-  'wheels-macos-14-aarch64',
-  'wheels-macos-14-x86_64',
+  'wheels-macos-15-aarch64',
+  'wheels-macos-15-x86_64',
   'wheels-windows-latest-x64',
 ];
 

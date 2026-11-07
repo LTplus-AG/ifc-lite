@@ -45,6 +45,7 @@ import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/vie
 import { focusedClashComponents } from './bcf/focused-clash-components';
 import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, clippingSectionPlanes, showSectionCuts } from '@/store/section-active';
 import { SectionRestoreSession } from './bcf/section-restore';
+import { applyCameraState } from './bcf/apply-camera-state';
 
 // ============================================================================
 // Types
@@ -174,21 +175,6 @@ export function clearGlobalRefs(): void {
   globalRendererRef = null;
 }
 
-/** Apply extracted BCF camera state without touching selection, visibility, or section plane. */
-function applyCameraState(
-  renderer: Renderer,
-  camera: NonNullable<ReturnType<typeof extractViewpointState>['camera']>,
-  animate: boolean,
-): void {
-  const rendererCamera = renderer.getCamera();
-  if (animate) {
-    rendererCamera.animateTo(camera.position, camera.target, 300);
-  } else {
-    rendererCamera.setPosition(camera.position.x, camera.position.y, camera.position.z);
-    rendererCamera.setTarget(camera.target.x, camera.target.y, camera.target.z);
-  }
-}
-
 // ============================================================================
 // Hook
 // ============================================================================
@@ -272,7 +258,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       target,
       up, // Use actual camera up vector
       fov,
-      isOrthographic: false,
+      isOrthographic: camera.getProjectionMode() === 'orthographic',
+      orthoScale: camera.getOrthoSize() * 2,
       aspectRatio,
     };
   }, [getRenderer]);

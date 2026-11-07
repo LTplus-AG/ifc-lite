@@ -129,7 +129,7 @@ pub use schema_family::SchemaFamily;
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use typed_value::Logical;
 pub use schema_helpers::{
-    geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
+    geometry_flags_by_name, is_geometry_job, has_geometry_by_name, is_representationless_spatial_container_by_name,
     ifc_type_from_keyword, ifc_type_from_record, is_simple_geometry_type, type_product_ifc_type,
 };
 pub use step_encoding::{decode_ifc_string, decode_step_binary, optional_text};

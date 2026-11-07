@@ -8,11 +8,11 @@ pub(super) enum OpeningPhase {
     Cuts,
 }
 pub(super) fn decoded_openings(context: &OwnedMeshProductionContext, id: u32,
-    decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<Vec<DecodedEntity>, RetainedExecutionError> {
+    layers: &super::layers::ProductLayers, decoder: &mut EntityDecoder, router: &GeometryRouter)
+    -> Result<Vec<DecodedEntity>, RetainedExecutionError> {
     let mut openings = Vec::new();
-    // The canonical plan uses this same layer predicate. Let begin report its
-    // layer refusal before looking at a malformed related opening.
-    if router.is_material_layer_sliceable(id) { return Ok(openings); }
+    // Let begin report a layer refusal before looking at a malformed related opening.
+    if matches!(layers, Some(Err(_))) { return Ok(openings); }
     if let Some(ids) = context.borrowed().void_index.get(&id) {
         OwnedResourceContext::capture_current().reserve_headers(&mut openings, ids.len())
             .map_err(RetainedExecutionError::Stopped)?.retain();
@@ -85,8 +85,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 Ok(true)
             }
             Some(OpeningPhase::Cuts) => {
-                self.plan = Some(plan);
-                self.state.stage = Stage::Complete;
+                self.complete_layers(plan)?;
                 Ok(true)
             }
             None if matches!(kind, WorkKind::Primary { strategy: PrimaryStrategy::VoidedSubmeshes, .. }) => {

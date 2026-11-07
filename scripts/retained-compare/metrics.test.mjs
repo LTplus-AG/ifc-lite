@@ -39,3 +39,59 @@ test('#7955 coverage fragments preserve codes and unique model ownership', async
   await writeFile(`${base}.d/cut-0.tsv`, `${header}clips.ifc\t2\trefused\toperation_unsupported\nclips.ifc\t2\tpublished\t\n`);
   await assert.rejects(coverageRows(base), /Duplicate coverage row/);
 });
+
+// #7955 M5 round 6: the exception is source-curved AND clipped, never the
+// conservative runtime curved flag (which is true for planar Booleans too).
+import { loadTolerances } from './tolerances.mjs';
+test('#7955 M5 planar injected 1e-8 gap still fails the scoped parity gate', () => {
+  const t = loadTolerances();
+  assert.equal(t.nativeWasmVolumeRelative, 1e-9);
+  const scoped = t.nativeWasmClippedCurvedVolumeRelative.value;
+  const check = (sourceCurved, clipped, gap, pass = true) => {
+    const native = [{ model: 'source.ifc', id: 7, status: 'published', code: '',
+      volume_m3: '1', curved: 'true', src_oracle: JSON.stringify(clipped ? [{
+        family: 'clipSectionVolumeRelative', sourceCurved, gated: true, pass,
+        value: 0, limit: sourceCurved ? 2e-3 : 1e-6,
+      }, { family: 'clipPart', part: 0, sourceCurved, clipExecuted: true, pass: true, gated: false }] : []) }];
+    const actual = [{ model: 'source.ifc', id: 7, status: 'published', volumeM3: 1 + gap }];
+    return compare(native, actual, native, t.nativeWasmVolumeRelative, scoped);
+  };
+  assert.ok(check(false, true, 1e-8).violations.length, 'planar clipped row stays strict');
+  assert.ok(check(true, false, 1e-8).violations.length, 'unclipped curve stays strict');
+  assert.ok(check(false, false, 1e-8).violations.length, 'unclipped planar row stays strict');
+  assert.ok(check(true, true, 1e-8, false).violations.length, 'failed source oracle cannot qualify');
+  const accepted = check(true, true, 2.85e-8);
+  assert.deepEqual(accepted.violations, []);
+  assert.deepEqual(accepted.scopedVolumeRows.map(r => [r.product, r.limit]), [['source.ifc#7', 1e-7]]);
+  assert.ok(check(true, true, 2e-7).violations.length, 'curved clip remains bounded');
+});
+
+// #7955 round 7: product-level mixtures and skipped operations cannot inherit
+// the exception from unrelated source geometry or a merely authored plane.
+for (const [name, parts] of [
+  ['unclipped round plus clipped planar box', [
+    { sourceCurved: true, clipExecuted: false },
+    { sourceCurved: false, clipExecuted: true },
+  ]],
+  ['curved host with bounds-skipped clip', [{ sourceCurved: true, clipExecuted: false }]],
+  // A product volume cannot attribute its gap to the one qualified part, so
+  // a qualified curved clip beside an unclipped round part must not widen.
+  ['clipped round plus unclipped round', [
+    { sourceCurved: true, clipExecuted: true },
+    { sourceCurved: true, clipExecuted: false },
+  ]],
+]) {
+  test(`#7955 M5 ${name} stays at 1e-9`, () => {
+    const checks = parts.map((part, index) => ({ family: 'clipPart', part: index,
+      ...part, gated: false, pass: true, value: 0, limit: 0 }));
+    // Even a passing curved section result cannot widen these products.
+    checks.push({ family: 'clipSectionVolumeRelative', sourceCurved: true,
+      gated: true, pass: true, value: 0, limit: 2e-3 });
+    const native = [{ model: 'mixed.ifc', id: 13, status: 'published', code: '',
+      volume_m3: '1', src_oracle: JSON.stringify(checks) }];
+    const actual = [{ model: 'mixed.ifc', id: 13, status: 'published', volumeM3: 1 + 1e-8 }];
+    const result = compare(native, actual, native, 1e-9, 1e-7);
+    assert.match(result.violations.join('\n'), /volume relative/);
+    assert.deepEqual(result.scopedVolumeRows, []);
+  });
+}

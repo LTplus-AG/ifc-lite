@@ -12,7 +12,8 @@
 import type { Ray, Vec3 } from './raycaster.js';
 import type { MagneticSnapResult, SnapOptions, SnapTarget } from './snap-detector.js';
 import { screenToWorldRadius } from './snap-geometry-utils.js';
-import type { PickOptions } from './types.js';
+import type { PickClipState, PickOptions } from './types.js';
+import { clipIsActive, pointClipped } from './scene-raycaster.js';
 import type { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
 import { toLocalFrameRay } from './pointcloud/point-cloud-ray-transform.js';
 
@@ -128,12 +129,17 @@ export function queryPointClouds(
   camera: PointCloudSnapCamera,
   maxDistance: number,
   options?: PickOptions,
+  clip?: PickClipState | null,
 ): PointCloudRayResult | null {
   if (!provider || maxDistance <= 0) return null;
   const sources = provider();
   if (sources.length === 0) return null;
 
   const toleranceAt = (t: number): number => pointCloudSnapToleranceAt(t, camera);
+  // The point shader discards these same points, and exempts no asset from a section.
+  const visible = clipIsActive(clip)
+    ? (p: Vec3) => !pointClipped(clip, p.x, p.y, p.z)
+    : undefined;
 
   let best: PointCloudRayResult | null = null;
   // A streamed COPC asset contributes one source per resident node, all
@@ -167,7 +173,7 @@ export function queryPointClouds(
     }
     const local = lastLocal;
     if (!local) {
-      const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask);
+      const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask, visible);
       if (hit && (!best || hit.distance < best.distance)) {
         best = { position: hit.position, expressId: src.expressId, modelIndex: src.modelIndex, distance: hit.distance };
       }
@@ -181,6 +187,7 @@ export function queryPointClouds(
       bound / s,
       (tLocal: number) => toleranceAt(tLocal * s) / s,
       src.classMask,
+      visible && ((p: Vec3) => visible(local.toWorld(p))),
     );
     if (hit) {
       const worldDistance = hit.distance * s;

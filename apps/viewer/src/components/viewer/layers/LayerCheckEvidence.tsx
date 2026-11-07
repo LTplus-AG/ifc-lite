@@ -115,7 +115,7 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
   if (state.kind === 'missing') {
     return <p className="text-2xs text-muted-foreground">{t('layersPanel.checkEvidence.missing')}</p>;
   }
-  if (state.kind === 'error') return <p className="text-2xs text-red-500">{state.message}</p>;
+  if (state.kind === 'error') return <p className="text-2xs text-danger">{state.message}</p>;
 
   const specs = state.parsed?.report?.specificationResults ?? [];
   const failures = specs.flatMap((spec) =>

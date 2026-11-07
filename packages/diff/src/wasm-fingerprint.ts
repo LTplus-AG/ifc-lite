@@ -26,9 +26,16 @@ export function normalizeValue(value: unknown): string | number | boolean | null
   }
 }
 
+// Primitive tokens need no host callback. Rust normalizes nonfinite numbers
+// after decoding; composite values retain live host traversal and exceptions.
+function projectValue(value: unknown): unknown {
+  return value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? value : normalizeValue(value);
+}
+
 // Read only adapter fields consumed by the engine. Property values are unknown
 // host values: normalization runs in Rust before the scalar DTO is transported.
-function projectInput(input: DataFingerprintInput, components: boolean): DataFingerprintInput {
+export function projectInput(input: DataFingerprintInput, components: boolean): DataFingerprintInput {
   const attributes = () => ({ ifcType: input.ifcType, name: input.name, description: input.description,
     objectType: input.objectType, predefinedType: input.predefinedType, tag: input.tag });
   // map calls back only for present slots, so fewer calls than the fresh
@@ -50,7 +57,7 @@ function projectInput(input: DataFingerprintInput, components: boolean): DataFin
     };
   };
   const entries = (values: PropertyEntryInput[]) => {
-    const entry = counted((value: PropertyEntryInput) => ({ name: value.name, value: normalizeValue(value.value) }));
+    const entry = counted((value: PropertyEntryInput) => ({ name: value.name, value: projectValue(value.value) }));
     return entry.settle(values.map(entry.each));
   };
   // The oracle sorts each collection (stableSerialize tiebreaks) and, for

@@ -177,7 +177,7 @@ impl Walk<'_, '_> {
 /// never a fabricated zero. Product placement is applied after map-space volume
 /// integration, preserving small cuts at survey coordinates.
 pub fn expected(bytes: &[u8], product: u32) -> Option<MappedExpectation> {
-    evaluate(bytes, product, &[])
+    evaluate(&SourceBundle::new(bytes.to_vec()), product, &[])
 }
 /// Compose the caller's canonical cut set with a bounded Boolean host tree.
 /// Unsupported frames, units or leaves remain unverified rather than guessed.
@@ -186,14 +186,22 @@ pub fn opened(
     host: u32,
     cutters: &[u32],
 ) -> Option<super::openings::OpeningExpectation> {
+    opened_in(&SourceBundle::new(bytes.to_vec()), host, cutters)
+}
+/// [`opened`] over the caller's model-wide source, so each host does not re-index the model.
+pub fn opened_in(
+    bundle: &std::sync::Arc<SourceBundle>,
+    host: u32,
+    cutters: &[u32],
+) -> Option<super::openings::OpeningExpectation> {
     if cutters.len() > 8 {
         return None;
     }
-    let nominal = expected(bytes, host)?;
-    let result = evaluate(bytes, host, cutters)?;
+    let nominal = evaluate(bundle, host, &[])?;
+    let result = evaluate(bundle, host, cutters)?;
     let cutter_volume = cutters
         .iter()
-        .try_fold(0., |v, id| Some(v + expected(bytes, *id)?.volume))?;
+        .try_fold(0., |v, id| Some(v + evaluate(bundle, *id, &[])?.volume))?;
     Some(super::openings::OpeningExpectation {
         nominal_host_volume: nominal.volume,
         volume_bounds: [(nominal.volume - cutter_volume).max(0.), nominal.volume],
@@ -202,8 +210,7 @@ pub fn opened(
         curved: result.curved,
     })
 }
-fn evaluate(bytes: &[u8], product: u32, cutters: &[u32]) -> Option<MappedExpectation> {
-    let bundle = SourceBundle::new(bytes.to_vec());
+fn evaluate(bundle: &std::sync::Arc<SourceBundle>, product: u32, cutters: &[u32]) -> Option<MappedExpectation> {
     let mut decoder = bundle.decoder();
     if decoder.length_unit_scale() != 1. {
         return None;

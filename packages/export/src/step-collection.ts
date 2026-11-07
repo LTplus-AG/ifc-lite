@@ -35,6 +35,7 @@ import { collectGeoreferencingEntities } from './georef-closure.js';
 import { getSubsetEntityIds } from './subset-roots.js';
 import { buildRelDefinesByPropertiesIndex } from './step-property-set-index.js';
 import { collectPropertyAndQuantitySetMutations } from './step-property-set-collection.js';
+import { nominateViewBaseQuantitySets } from './step-derived-quantities.js';
 import { type PropertySetContext } from './step-property-set-readers.js';
 import { applyGeoreferencingMutations, type GeorefContext } from './step-georeferencing.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
@@ -142,6 +143,7 @@ export function collectModifications(
       }
       targetMap.get(mutation.entityId)!.add(mutation.psetName);
     }
+    if (options.includeQuantities !== false) nominateViewBaseQuantitySets(mutationView, entityQuantMutations);
 
     // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
     // pairs keyed on each related entity. The two property/quantity loops

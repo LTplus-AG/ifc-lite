@@ -26,7 +26,7 @@ import { HIERARCHY_ROW_HEIGHT, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
-import { effectiveRowType, overlayViewFor } from './hierarchy/treeOverlay';
+import { revealMembershipSpatialTypes } from './hierarchy/nodeVisibility';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
@@ -93,8 +93,6 @@ export function HierarchyPanel() {
   const sourceTags = useViewerStore((s) => s.sourceTags);
 
   // Explicit group isolation reveals hidden-by-default spaces and zones.
-  const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
 
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const hideEntities = useViewerStore((s) => s.hideEntities);
@@ -217,6 +215,7 @@ export function HierarchyPanel() {
         clearSelection();
       }
     } else {
+      revealMembershipSpatialTypes(node, elements);
       showEntities(elements);
     }
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection]);
@@ -340,24 +339,7 @@ export function HierarchyPanel() {
     if (action === 'isolate') {
       const elements = getNodeElements(node);
       if (elements.length === 0) return;
-      if (node.type === 'group' || node.id.startsWith('presentation-layer-')) {
-        // Explicit membership isolation also reveals hidden-by-default spatial
-        // products. Include resolved descendants for nested groups (#7870),
-        // alongside direct members whose geometry may be substituted by parts.
-        const state = useViewerStore.getState();
-        const memberIds = new Set([...(node.memberGlobalIds ?? []), ...elements]);
-        const memberTypes = new Set([...memberIds].flatMap((globalId) => {
-          const ref = resolveEntityRef(globalId);
-          if (!ref) return [];
-          const dataStore = models.get(ref.modelId)?.ifcDataStore ?? ifcDataStore;
-          if (!dataStore) return [];
-          const view = overlayViewFor((id) => state.mutationViews.get(id), ref.modelId);
-          const type = effectiveRowType(dataStore, view, ref.expressId);
-          return type ? [type] : [];
-        }));
-        if (!typeVisibility.spaces && memberTypes.has('IfcSpace')) toggleTypeVisibility('spaces');
-        if (!typeVisibility.spatialZones && memberTypes.has('IfcSpatialZone')) toggleTypeVisibility('spatialZones');
-      }
+      revealMembershipSpatialTypes(node, elements);
       isolateEntities(elements);
       return;
     }
@@ -376,7 +358,7 @@ export function HierarchyPanel() {
     } else if (isStorey) {
       upsertSearchRule((rule) => rule.kind === 'storey', Rule.storey([node.name], 'in', storeyRefs));
     }
-  }, [getNodeElements, models, ifcDataStore, typeVisibility, toggleTypeVisibility, isolateEntities, setClassFilter, upsertSearchRule]);
+  }, [getNodeElements, isolateEntities, setClassFilter, upsertSearchRule]);
 
   const rowActions = useCallback((node: TreeNode): HierarchyRowAction[] => {
     return hierarchyRowActions(node, getNodeElements(node).length > 0);

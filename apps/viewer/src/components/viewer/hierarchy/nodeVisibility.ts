@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { FederatedModel } from '@/store';
+import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { resolveTreeGlobalId } from './productTree';
-import { overlayViewFor, type TreeOverlay } from './treeOverlay';
+import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
 
 export type HierarchyVisibilityAction = 'show' | 'hide';
@@ -90,4 +90,22 @@ export function hierarchyNodeAppearance(
     outsideIsolation = elements.length + subtree.length > 0 && subtree.every((id) => !isolation.has(id));
   }
   return { ...hierarchyNodeVisibility(node, elements, hidden), outsideIsolation };
+}
+
+/** #9272: Show and Isolate must reveal default-hidden member geometry too. */
+export function revealMembershipSpatialTypes(node: TreeNode, elements: readonly number[]): void {
+  if (node.type !== 'group' && !node.id.startsWith('presentation-layer-')) return;
+  const state = useViewerStore.getState();
+  const memberTypes = new Set<string>();
+  for (const globalId of new Set([...(node.memberGlobalIds ?? []), ...elements])) {
+    const ref = resolveEntityRef(globalId);
+    if (!ref) continue;
+    const store = state.models.get(ref.modelId)?.ifcDataStore ?? state.ifcDataStore;
+    if (!store) continue;
+    const view = overlayViewFor((id) => state.mutationViews.get(id), ref.modelId);
+    const type = effectiveRowType(store, view, ref.expressId);
+    if (type) memberTypes.add(type);
+  }
+  if (!state.typeVisibility.spaces && memberTypes.has('IfcSpace')) state.toggleTypeVisibility('spaces');
+  if (!state.typeVisibility.spatialZones && memberTypes.has('IfcSpatialZone')) state.toggleTypeVisibility('spatialZones');
 }

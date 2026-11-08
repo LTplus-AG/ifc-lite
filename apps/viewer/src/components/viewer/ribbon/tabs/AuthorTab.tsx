@@ -101,9 +101,15 @@ export function AuthorTab() {
       <RibbonGroup label={t('ribbon.author.propertiesGroup')}>
         <RibbonSmallStack>
           <RibbonCommandSmallButton commandId="author:bulk-properties" icon={EditProperty}
-            disabled={!hasData || !canEditInSession || !toolHosts.openBulkProperties} commandContext={toolHosts} />
+            disabled={!hasData || !canEditInSession || !toolHosts.openBulkProperties} commandContext={event => {
+              const launcher = event.currentTarget;
+              return { ...toolHosts, openBulkProperties: () => toolHosts.openBulkProperties?.(launcher) };
+            }} />
           <RibbonCommandSmallButton commandId="author:import-data" icon={ImportData}
-            disabled={!hasData || !canEditInSession || !toolHosts.openImportData} commandContext={toolHosts} />
+            disabled={!hasData || !canEditInSession || !toolHosts.openImportData} commandContext={event => {
+              const launcher = event.currentTarget;
+              return { ...toolHosts, openImportData: () => toolHosts.openImportData?.(launcher) };
+            }} />
         </RibbonSmallStack>
       </RibbonGroup>
 

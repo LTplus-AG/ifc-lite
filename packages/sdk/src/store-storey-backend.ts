@@ -4,7 +4,7 @@
 
 import {
   addStoreyInStore, applyStoreyDelete, applyStoreyLevelEdit, planStoreyDelete, planStoreyLevelEdit,
-  readStoreyInventory, renameStoreyInStore, summarizeStoreys,
+  readStoreyInventory, renameStoreyInStore, suggestStorey, summarizeStoreys,
 } from '@ifc-lite/create';
 import type { ModellingStoreModelResolver } from './store-modelling-backend.js';
 import type { StoreyStoreBackendMethods } from './store-storey-types.js';
@@ -20,6 +20,10 @@ export function createStoreyStoreBackend(resolve: ModellingStoreModelResolver): 
   return {
     listStoreyLevels(modelId) {
       return summarizeStoreys(inventory(modelId).inventory);
+    },
+    suggestStorey(modelId, referenceStoreyId, side) {
+      // The fallback name is English, like every other SDK default; the viewer localises its own.
+      return suggestStorey(inventory(modelId).inventory, referenceStoreyId, side, (index) => `Level ${index}`);
     },
     addStorey(modelId, params) {
       const model = resolve(modelId);

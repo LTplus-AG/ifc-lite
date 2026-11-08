@@ -27,14 +27,16 @@ test('Italian locale formats real numbers, dates and counted model elements', as
 
 
 // IT-S2-ASTRA-001: Undo reverses changes retained by a cancelled bulk operation.
-test('Italian partial cancellation guidance returns to the state before applied edits', async () => {
+// #8905: cancellation preserves applied edits; undo is a separate command.
+test('Italian partial cancellation guidance distinguishes stopping from undoing edits', async () => {
   const it = await requiredModule(() => import('./locales/it').then(module => module.default), 'Italian shipping catalogue must be available');
   registerLocale('it', it);
   setLocale('it');
   try {
     const warning = resolve('bulkPropertyEditor.cancelledAfter', { done: 500, total: 1000 });
     assert.match(warning, /500 di 1000 entità/);
-    assert.match(warning, /Annulla annulla le modifiche già applicate/);
+    assert.match(warning, /Le modifiche già applicate restano attive/);
+    assert.match(warning, /ripristinare lo stato precedente.*comando di annullamento delle modifiche/);
     assert.doesNotMatch(warning, /ripristina le modifiche già applicate/i);
   } finally { setLocale('en'); }
 });

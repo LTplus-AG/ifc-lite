@@ -182,11 +182,10 @@ export const extensionsPanelsEn = {
     '{subject} appear once a workflow shows up repeatedly in your local activity log (model loads, lens applies, exports). Thresholds relax while the log is sparse so something appears early; tightens as data accumulates.',
   'extensionsPanels.ideasPanel.helpActions':
     'Click {tryIt} to send the idea to the AI chat assistant — chat opens and you answer follow-ups. Click {customize} if you want to prune capabilities or rename the command before chat sees it.',
-  'extensionsPanels.ideasPanel.helpPrivacy': 'The action log is local. Nothing here leaves your device.',
+  "extensionsPanels.ideasPanel.helpPrivacy": "The action log stays local. Ideas you choose to send to AI chat are included in messages sent to the configured AI provider.",
   'extensionsPanels.ideasPanel.remineAriaLabel': 'Re-mine now',
   'extensionsPanels.ideasPanel.remineButton': 'Re-mine',
-  'extensionsPanels.ideasPanel.footerPrivacy':
-    'Recurring sequences in your local activity log. Nothing here leaves your device.',
+  "extensionsPanels.ideasPanel.footerPrivacy": "The action log stays local. Ideas you choose to send to AI chat are included in messages sent to the configured AI provider.",
   'extensionsPanels.ideasPanel.recurringHeading': 'Recurring in your activity',
   'extensionsPanels.ideasPanel.occurrenceSummary': {
     one: '{occurrences}× across {sessions} session · last {date} · score {score}',

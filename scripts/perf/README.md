@@ -8,6 +8,60 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## First selection reads typing relationships from the graph (#9192)
+
+**Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
+`IfcRelDefinesByType`/`IfcRelDefinesByProperties` record from block-compressed source on the
+first selection, so the cost was decode and inflate per record, multiplied by the model's
+relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
+the reads. The parsed graph already records which relationship names which element (with
+repeats as shadowed ids), so the read now walks effective rows from the index only and
+decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
+edge of it has the wrong class on its relating side (the byte reader misread the record, or a
+definition set names a non-definition), or it names the element or type being read. A
+definition relationship an edit over-counts enters the reference budget at its graph count, an
+upper bound, and is decoded only if that bound would cross it.
+Answers were compared against base by digest,
+under edits, on five large fixtures. That included raised-limit copies of the two models
+whose row count passes `MAX_RELATIONSHIPS`, and a probe quantity on every type so each digest
+compares the assigned type.
+
+Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
+did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
+work the read no longer does, so raising it is a behaviour change, not a perf lever.
+
+## Right-sized in-circle scratch restores the large instruction ceiling (#9016)
+
+**Shipped: the CDT's adaptive in-circle test no longer zeroes stage-C scratch
+it does not use.** The scheduled lane reported correctly. Bisected on one host,
+the whole geometry overage came from #8421, a correctness fix that closes slab
+footprint T-junctions on ISSUE_129 and legitimately changed its output. The
+vertices it adds sit exactly on constraint edges, so CDT point insertion met
+about 21k more nearly cocircular in-circle tests. Each one fell through to
+`geometry_predicates::incircleadapt`, which declares every stage's scratch up
+front and zeroes two 1152-entry `fin` buffers per call. About 85% of that
+predicate's instructions were the memset, not arithmetic.
+
+What won: `cdt/incircle.rs` runs stage A, stage B and the exact zero-tail
+return itself, with the crate's public expansion routines in the crate's order
+and 96 entries of scratch, and hands only stage C back to the crate. It returns
+the same bits as the crate on every path, so the triangulation is unchanged by
+construction; a unit test pins that across all three paths. About 23% of the
+adaptive calls still reach stage C and pay the full zeroing, which leaves a
+further lever if this budget tightens again.
+
+Lesson: when a correctness fix moves an instruction budget, attribute the
+increase before calling it inherent. Here the extra work was real but its cost
+sat in a dependency's buffer initialisation, not in the geometry. The memset
+cost about one instruction per byte zeroed: glibc's ERMS memset uses
+`rep stosb` for large blocks, and Callgrind counts each iteration of it. So
+memset-heavy code reads larger in instructions than in time, and glibc's memset
+strategy makes the size of such a delta differ between hosts. This one measured
++1.28% on the bisect host against +1.04% in CI. Bisect on one host and compare
+deltas, not absolute counts. This is an instruction verdict; the paired native
+wall-time cohort and the per-commit bisect table are in the PR.
+
 ## Opt-in gross host geometry (#8875)
 
 **Default worker-pool path qualified: no material regression within the preset

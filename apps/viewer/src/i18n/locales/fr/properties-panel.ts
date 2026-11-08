@@ -46,8 +46,8 @@ export const propertiesPanelFr = {
   "properties.panel.multiEntity.elevationMeters": "{sign}{value} m",
   "properties.panel.multiEntity.attributesHeading": "Attributs",
   "properties.panel.multiEntity.propertiesHeading": "Propriétés",
-  "properties.panel.multiEntity.propertySetsCount": "{count} jeux",
+  "properties.panel.multiEntity.propertySetsCount": {"one": "{count} jeu", "many": "{count} jeux", "other": "{count} jeux"},
   "properties.panel.multiEntity.quantitiesHeading": "Quantités",
-  "properties.panel.multiEntity.quantitySetsCount": "{count} jeux",
+  "properties.panel.multiEntity.quantitySetsCount": {"one": "{count} jeu", "many": "{count} jeux", "other": "{count} jeux"},
   "properties.panel.saveAttributeLabel": "Enregistrer {attrName}",
 } satisfies Catalogue;

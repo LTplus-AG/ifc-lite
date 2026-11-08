@@ -8,7 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, MoreHorizontal } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -25,12 +25,9 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { useIfc } from '@/hooks/useIfc';
+import { useFileCommands } from './toolbar/useFileCommands';
 import { useExportRunner } from './useExportRunner';
 import { buildExportCommands } from './commandPaletteExports';
-import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
-import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
-import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 import { ActivityTrayDialog } from './activity/ActivityTray';
@@ -43,56 +40,19 @@ const PHONE_TARGET = 'relative h-9 w-9 mx-1 flex-shrink-0 after:absolute after:-
 export function MobileToolbar() {
   const { t } = useTranslation();
   const [activityOpen, setActivityOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const addModelInputRef = useRef<HTMLInputElement>(null);
-  const {
-    loadFile,
-    loading,
-    geometryResult,
-    models,
-    loadFilesSequentially,
-  } = useIfc();
+  const fileCommands = useFileCommands();
+  const loading = useViewerStore(state => state.loading);
   const activeProgress = useViewerStore(selectActiveLoadProgress);
   const loadPercent = Math.round(activeProgress?.percent ?? 0);
 
-  const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
+  const { hasModelsLoaded } = fileCommands;
   const activeTool = useViewerStore((state) => state.activeTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const resetViewerState = useViewerStore((state) => state.resetViewerState);
-  const clearAllModels = useViewerStore((state) => state.clearAllModels);
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const theme = useViewerStore((state) => state.theme);
 
   // Multi-selection counts too (#5852): Hide acts on it even with no primary.
   const hasSelection = useViewerStore((state) => state.selectedEntityIds.size > 0) || selectedEntityId !== null;
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    if (supportedFiles.length === 1) {
-      loadFile(supportedFiles[0]);
-    } else {
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
-    e.target.value = '';
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels]);
-
-  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    loadFilesSequentially(supportedFiles);
-    e.target.value = '';
-  }, [loadFilesSequentially]);
 
   // Every export the toolbars and the palette offer, from the same registry
   // rows and through the same handlers and dialogs (#5842). The dialog is
@@ -132,23 +92,7 @@ export function MobileToolbar() {
     // `box-content`: the bar's content box is the full 44px target height, so
     // no target is clipped by the bottom border.
     <div data-command-surface="mobile" className="flex items-center box-content px-1 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
-      {/* Hidden file inputs */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={MOBILE_FILE_ACCEPT}
-        multiple
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-      <input
-        ref={addModelInputRef}
-        type="file"
-        accept={MOBILE_FILE_ACCEPT}
-        multiple
-        onChange={handleAddModelSelect}
-        className="hidden"
-      />
+      {fileCommands.fileInputs}
 
       {/* Open File */}
       <Button
@@ -156,7 +100,7 @@ export function MobileToolbar() {
         size="icon-sm"
         className={PHONE_TARGET}
         data-command-id={openFile.id}
-        onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: () => fileInputRef.current?.click() })}
+        onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: fileCommands.handleOpenClick })}
         disabled={loading}
         aria-label={mobileLabel(openFile)}
       >
@@ -260,7 +204,7 @@ export function MobileToolbar() {
               <DropdownMenuItem
                 data-command-id={addModel.id}
                 disabled={loading}
-                onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
+                onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: fileCommands.handleAddModelClick })}
               >
                 <AddModelIcon className="h-4 w-4 mr-2" />
                 {mobileLabel(addModel)}

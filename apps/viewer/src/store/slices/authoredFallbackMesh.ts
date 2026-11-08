@@ -165,8 +165,12 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
       const p = element.params;
       return { type: 'window', params: { Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness ?? 0.05 }, position: p.Position };
     }
-    case 'slab':
-      return { type: 'slab', params: { Width: 0, Depth: 0, Thickness: element.params.Thickness }, corners: profileCorners(element.params) };
+    case 'slab': {
+      // A slab hung from its Position has its underside a thickness below it.
+      const drop = element.params.ExtrudedDirection?.[2] === -1 ? element.params.Thickness : 0;
+      const corners = profileCorners(element.params).map(([x, y, z]): Vec3 => [x, y, z - drop]);
+      return { type: 'slab', params: { Width: 0, Depth: 0, Thickness: element.params.Thickness }, corners };
+    }
     case 'space':
       return { type: 'space', params: { Width: 0, Depth: 0, Height: element.params.Height }, corners: profileCorners(element.params) };
     case 'roof':

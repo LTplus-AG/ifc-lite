@@ -17,6 +17,8 @@ import { advance, cleanup, click, press, render, type as typeInto } from '@/test
 import { CommandPalette } from './CommandPalette.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SURFACE_COMMANDS } from './surface-commands.js';
+import { registerMountedFileHost } from './toolbar/mounted-file-host';
+import { retryWebGPU } from '@/hooks/useWebGPU';
 import { RECENT_KEY } from './commandPaletteSearch.js';
 
 const originalState = useViewerStore.getState();
@@ -132,10 +134,17 @@ test('live command changes preserve surviving selection and recover a removed se
   assert.equal(active(input), rows()[0], 'reappearing commands do not steal selection');
 });
 
-test('IME confirmation cannot run commands; ordinary Enter and click keep file activation synchronous (#8946)', () => {
+test('IME confirmation cannot run commands; ordinary Enter and click keep file activation synchronous (#8946)', async () => {
   let opened = 0;
   let closes = 0;
   const onFiles = () => { opened++; };
+  const gpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+  Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({}) } });
+  await act(async () => { await retryWebGPU(); });
+  const retire = registerMountedFileHost({
+    openFiles: () => window.dispatchEvent(new CustomEvent('ifc-lite:open-files')),
+    addModel() {}, async refreshModels() {},
+  });
   window.addEventListener('ifc-lite:open-files', onFiles);
   try {
     const input = mount(() => { closes++; });
@@ -152,6 +161,9 @@ test('IME confirmation cannot run commands; ordinary Enter and click keep file a
     assert.equal(opened, 2, 'pointer activation is synchronous too');
   } finally {
     window.removeEventListener('ifc-lite:open-files', onFiles);
+    act(retire);
+    if (gpu) Object.defineProperty(navigator, 'gpu', gpu);
+    else Reflect.deleteProperty(navigator, 'gpu');
   }
 });
 

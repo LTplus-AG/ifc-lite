@@ -18,8 +18,9 @@
  *     last-point-of-first-point is appended only if the input doesn't
  *     already end where it started.
  *
- * Both modes extrude upward along local +Z by `Thickness`. Pure: no
- * I/O, no parser access.
+ * Both modes extrude by `Thickness` along `ExtrudedDirection`: local +Z
+ * unless the caller asks for -Z, which hangs the slab from `Position` so its
+ * top stays there when the depth changes. Pure: no I/O, no parser access.
  */
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -30,7 +31,15 @@ import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-help
 
 export type SlabInStoreParams = SlabRectangleParams | SlabPolygonParams;
 
-export interface SlabRectangleParams {
+interface SlabExtrusionParams {
+  /**
+   * IfcExtrudedAreaSolid.ExtrudedDirection. Defaults to `[0, 0, 1]`: the slab
+   * sits on `Position`. `[0, 0, -1]` hangs it from `Position`.
+   */
+  ExtrudedDirection?: [0, 0, 1] | [0, 0, -1];
+}
+
+export interface SlabRectangleParams extends SlabExtrusionParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
@@ -45,7 +54,7 @@ export interface SlabRectangleParams {
   GlobalId?: string;
 }
 
-export interface SlabPolygonParams {
+export interface SlabPolygonParams extends SlabExtrusionParams {
   /** `'polygon'` discriminator selects the IfcArbitraryClosedProfileDef path. */
   Profile: 'polygon';
   /**
@@ -131,6 +140,10 @@ export function addSlabToStore(
   if (params.Position !== undefined) {
     assertFinitePoint3({ Position: params.Position }, 'addSlabToStore');
   }
+  const direction = params.ExtrudedDirection;
+  if (direction && !(direction[0] === 0 && direction[1] === 0 && Math.abs(direction[2]) === 1)) {
+    throw new Error('addSlabToStore: ExtrudedDirection must be [0, 0, 1] or [0, 0, -1]');
+  }
   if (!isPolygonParams(params)) {
     assertPositiveFinite(
       [params.Width, params.Depth],
@@ -175,10 +188,10 @@ export function addSlabToStore(
     ? emitPolygonProfile(editor, p.OuterCurve)
     : emitRectangleProfile(editor, p.Width, p.Depth);
 
-  // Extruded along +Z by Thickness.
+  // Extruded along ExtrudedDirection by Thickness.
   const solidOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
   const solidAxis = editor.addEntity('IfcAxis2Placement3D', [`#${solidOriginPt}`, null, null]).expressId;
-  const extrudeDirection = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+  const extrudeDirection = editor.addEntity('IfcDirection', [params.ExtrudedDirection ?? [0, 0, 1]]).expressId;
   const solidId = editor.addEntity('IfcExtrudedAreaSolid', [
     `#${profileId}`,
     `#${solidAxis}`,

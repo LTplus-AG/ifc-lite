@@ -12,18 +12,18 @@
  * unmounts it and nothing is left in the renderer.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { Vec2 } from '@/lib/snap/types';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
-import { PlaneOutline, SnapGlyph } from '../../viewport-ui/scene';
+import { PlaneOutline, SnapGlyph, useSceneProjector } from '../../viewport-ui/scene';
 import type { Vec3 as SceneVec3 } from '../../viewport-ui/scene/types';
 
 const MARGIN_M = 1;
-/** A storey with nothing to measure gets a 12 m square round its origin. */
-const EMPTY_HALF_M = 6;
+/** A storey with nothing to measure gets a 10 m square round its origin. */
+const EMPTY_HALF_M = 5;
 
 interface Box { min: Vec2; max: Vec2 }
 
@@ -84,6 +84,11 @@ export function WorkplaneScene() {
   const models = useViewerStore((s) => s.models);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const placement = useViewerStore((s) => s.modelPlacement);
+  const projector = useSceneProjector();
+  // Draw on also re-seats an identical plane after a programmatic camera move.
+  useEffect(() => {
+    if (session?.workplane) projector?.notifyAnchorsChanged();
+  }, [projector, session?.workplane]);
   const outline = useMemo(() => {
     void mutationVersion; // walls drawn or moved change the extent
     void placement;

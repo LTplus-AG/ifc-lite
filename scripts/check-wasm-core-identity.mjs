@@ -23,7 +23,6 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
-import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -37,28 +36,54 @@ async function loadEngine(dir) {
   return { glue, binary };
 }
 
-// FNV-1a 64 over every field the geometry package copies out of a mesh.
-function digest(meshes) {
-  let h = 0xcbf29ce484222325n;
-  const prime = 0x100000001b3n, mask = 0xffffffffffffffffn;
-  const eat = (bytes) => { for (const b of bytes) h = ((h ^ BigInt(b)) * prime) & mask; };
-  const enc = new TextEncoder();
-  for (const m of meshes) {
-    eat(enc.encode(JSON.stringify([m.expressId, m.ifcType, m.geometryClass, m.geometryItemId,
-      m.materialId, Array.from(m.color ?? []), m.origin ?? null, m.vertexCount, m.triangleCount])));
-    for (const a of [m.positions, m.normals, m.indices]) eat(new Uint8Array(a.buffer, a.byteOffset, a.byteLength));
-  }
-  return h.toString(16).padStart(16, '0');
+// FNV-1a 64 over every getter a `MeshDataJs` exposes (positions, normals,
+// indices, uvs, colour, ids, origin, ...), read off the wasm-bindgen class
+// prototype so a field added later is compared without editing this list.
+function digestInto(state, value) {
+  const eat = (bytes) => { for (const b of bytes) state.h = ((state.h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn; };
+  if (ArrayBuffer.isView(value)) eat(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+  else eat(new TextEncoder().encode(JSON.stringify(value === undefined ? null : value, (_, v) => (typeof v === 'bigint' ? String(v) : v))));
 }
 
+function meshGetters(mesh) {
+  const names = [];
+  for (let proto = Object.getPrototypeOf(mesh); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    for (const [name, d] of Object.entries(Object.getOwnPropertyDescriptors(proto))) if (d.get) names.push(name);
+  }
+  return names.sort();
+}
+
+// The canonical path (`buildPrePassOnce` + one `processGeometryBatch`), as
+// scripts/lib/mesh-via-prepass.mjs runs it, but digesting the wasm meshes
+// themselves rather than that facade's copied subset.
 function mesh(api, content) {
+  const bytes = new TextEncoder().encode(content);
   try {
-    const col = parseMeshesViaPrePass(api, content);
-    const meshes = [];
-    for (let i = 0; i < col.length; i++) meshes.push(col.get(i));
-    return { meshes: meshes.length, triangles: col.totalTriangles, digest: digest(meshes) };
+    const pre = api.buildPrePassOnce(bytes);
+    const state = { h: 0xcbf29ce484222325n };
+    let meshes = 0, triangles = 0, fields = 0;
+    if (pre && pre.jobs && pre.totalJobs > 0) {
+      const [x, y, z] = pre.rtcOffset ? [pre.rtcOffset[0] || 0, pre.rtcOffset[1] || 0, pre.rtcOffset[2] || 0] : [0, 0, 0];
+      const col = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, x, y, z, pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+      try {
+        for (let i = 0; i < col.length; i++) {
+          const m = col.get(i);
+          if (!m) continue;
+          try {
+            const names = meshGetters(m);
+            fields = Math.max(fields, names.length);
+            for (const name of names) { digestInto(state, name); digestInto(state, m[name]); }
+            meshes++; triangles += m.triangleCount;
+          } finally { m.free(); }
+        }
+      } finally { col.free(); }
+    }
+    return { meshes, triangles, fields, digest: state.h.toString(16).padStart(16, '0') };
   } catch (error) {
     return { error: String(error?.message ?? error) };
+  } finally {
+    api.clearPrePassCache?.();
   }
 }
 
@@ -91,7 +116,7 @@ for (const [label, { binary }] of [['full', full], ['core', core]]) {
 }
 
 const files = args.length ? args : fixtures(join(ROOT, 'tests/models'));
-let same = 0, differ = 0, meshed = 0;
+let same = 0, differ = 0, meshed = 0, failedBoth = 0;
 for (const file of files) {
   const content = readFileSync(file, 'utf8');
   const fullApi = new full.glue.IfcAPI(), coreApi = new core.glue.IfcAPI();
@@ -100,7 +125,12 @@ for (const file of files) {
   const ok = JSON.stringify(a) === JSON.stringify(b);
   if (ok) same++; else differ++;
   if (!a.error && a.meshes > 0) meshed++;
+  if (a.error && b.error) failedBoth++;
   if (!ok) console.log(`DIFF ${relative(ROOT, file)} full=${JSON.stringify(a)} core=${JSON.stringify(b)}`);
 }
-console.log(`identity: ${same} identical, ${differ} different, ${meshed} with meshes, of ${files.length} fixtures`);
-process.exit(differ === 0 && files.length > 0 ? 0 : 1);
+console.log(`identity: ${same} identical, ${differ} different, ${meshed} with meshes, ${failedBoth} failing on both, of ${files.length} fixtures`);
+// Identical errors compare equal, so a run in which nothing meshed proves
+// nothing: require meshes, and that most fixtures produced them.
+const vacuous = meshed === 0 || meshed < files.length / 2;
+if (vacuous) console.error(`only ${meshed} of ${files.length} fixtures produced meshes: no identity evidence`);
+process.exit(differ === 0 && !vacuous ? 0 : 1);

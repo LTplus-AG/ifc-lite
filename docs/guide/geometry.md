@@ -764,7 +764,11 @@ export default defineConfig({
 // resolve: { alias: { '@ifc-lite/wasm$': '@ifc-lite/wasm/core' } }
 ```
 
-Match the bare specifier only: `@ifc-lite/wasm/diff` and the other subpaths
+A page that passes explicit `wasmUrls: { wasm }` (see the geometry README's
+Vite setup) must point that URL at the core binary too,
+`@ifc-lite/wasm/core_bg.wasm?url`: an explicit URL wins over the glue's own,
+and the alias does not rewrite the `ifc-lite_bg.wasm` subpath. Match the bare
+specifier only: `@ifc-lite/wasm/diff` and the other subpaths
 must keep resolving to themselves. The core engine is typed with the full engine's
 TypeScript declarations, so a method from a left-out family still type-checks
 but throws `TypeError: … is not a function` at run time

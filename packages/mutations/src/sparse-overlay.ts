@@ -37,6 +37,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   const target = base instanceof NewEntityMap ? new NewEntityMap() : new Map<K, V>();
   const value = new Proxy(target, { get(_target, name) {
     if (name === 'size') return size;
+    if (name === 'positionOf' && base instanceof NewEntityMap) return (id: number) => base.positionOf(id);
     if (name === 'get') return get;
     if (name === 'has') return has;
     if (name === 'set') return (key: K, next: V) => {
@@ -75,7 +76,11 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   materializers.set(value, () => new Map(entries()));
   return { value, changes() {
     const before = new Map<K, V>(), after = new Map<K, V>();
-    for (const key of new Set([...reads.keys(), ...removed])) {
+    const candidates = [...new Set([...reads.keys(), ...removed])];
+    // Inverse replay re-inserts forgotten records. Preserve their original
+    // insertion order, independently of the callback's access/delete order.
+    if (base instanceof NewEntityMap) candidates.sort((a, b) => base.positionOf(a as number) - base.positionOf(b as number));
+    for (const key of candidates) {
       const old = base.get(key), next = get(key);
       if (base.has(key) === has(key) && sameOverlayValue(old, next) && !removed.has(key)) continue;
       if (base.has(key)) before.set(key, structuredClone(old!));

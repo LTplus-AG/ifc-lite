@@ -7,13 +7,13 @@
  * Modelling parity UI run (#9296): probes, exercise runs and council frames
  * on the real GPU.
  *
- *   ifc-gpu-check --limit 15 -- node tests/modelling-parity/ui/run.mjs --dist apps/viewer/dist \
+ *   IFC_GPU_CDP_URL=<chrome cdp url> node tests/modelling-parity/ui/run.mjs --dist apps/viewer/dist \
  *     [--out <dir>] [--only ui.storeys,ui.roof] [--exercises F1,F2] [--no-probes] [--no-frames]
- *     [--themes light,dark] [--label <name>] [--cdp <url>] [--baseline <file>]
+ *     [--themes light,dark] [--label <name>] [--cdp <url>] [--baseline <file>] [--dist-commit <sha>]
  *
  * Serves `--dist` with `vite preview` (as tests/ui-scenes/capture.mjs does)
  * and connects to the Chrome given by `--cdp` or `IFC_GPU_CDP_URL`, which
- * `ifc-gpu-check` starts on the RTX GPU. A browser without a hardware WebGPU
+ * a GPU-check helper starts on the machine's GPU. A browser without a hardware WebGPU
  * adapter is refused: an empty model canvas would read as a UI failure.
  *
  * Writes to `--out` (default `$PARITY_OUT`, else tests/modelling-parity/.out/ui):
@@ -24,7 +24,8 @@
  * - `artifacts/<capability or exercise>/`: the files the UI produced (exported IFC,
  *   drawing SVG/DXF/PDF, sheet PDF), listed in each result's `artifacts` and
  *   `evidence`, for the output probes to validate.
- * `--baseline <file>` also writes the combined result file to commit.
+ * `--baseline <file>` also writes the combined result file to commit, with
+ * `--dist-commit` naming the commit the dist was built from.
  *
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the parity loop, not CI.
  */
@@ -59,11 +60,12 @@ function parseArgs(argv) {
     else if (key === '--label') args.label = value();
     else if (key === '--cdp') args.cdp = value();
     else if (key === '--baseline') args.baseline = resolve(value());
+    else if (key === '--dist-commit') args.distCommit = value();
     else throw new Error(`unknown argument ${key}`);
   }
   if (!args.dist) throw new Error('usage: run.mjs --dist <built viewer dist> [--out dir] [--only ids] [--exercises F1,F2] [--cdp url]');
   args.cdp ??= process.env.IFC_GPU_CDP_URL;
-  if (!args.cdp) throw new Error('no browser: run under ifc-gpu-check (it exports IFC_GPU_CDP_URL) or pass --cdp');
+  if (!args.cdp) throw new Error('no browser: set IFC_GPU_CDP_URL (a GPU-check helper exports it) or pass --cdp');
   args.out ??= resolve(process.env.PARITY_OUT ?? join(ROOT, 'tests/modelling-parity/.out/ui'));
   for (const id of args.only ?? []) if (!PROBES.some((p) => p.id === id)) throw new Error(`unknown probe ${id}`);
   for (const id of args.exercises) if (!EXERCISES[id]) throw new Error(`unknown exercise ${id}`);
@@ -85,7 +87,9 @@ async function main() {
   };
   const source = gitSource(ROOT);
   const distIndexSha256 = sha256(await readFile(join(args.dist, 'index.html')));
-  const runner = `node tests/modelling-parity/ui/run.mjs ${process.argv.slice(2).join(' ')}`.trim();
+  // Machine paths stay out of results that may be committed: --dist and --out become placeholders.
+  const argv = process.argv.slice(2).map((a, i, all) => (['--dist', '--out', '--cdp'].includes(all[i - 1]) ? `<${all[i - 1].slice(2)}>` : a));
+  const runner = `node tests/modelling-parity/ui/run.mjs ${argv.join(' ')}`.trim();
   const base = { schema: SCHEMA, source, runner };
 
   const preview = startPreview(ROOT, args.dist);
@@ -156,6 +160,7 @@ async function main() {
       label: args.label,
       source,
       distIndexSha256,
+      ...(args.distCommit ? { distSource: { commit: args.distCommit, build: 'pnpm turbo build --filter=@ifc-lite/viewer' } } : {}),
       adapter: { vendor: adapter?.vendor ?? null, architecture: adapter?.architecture ?? null },
       viewport: VIEWPORT,
       runner,

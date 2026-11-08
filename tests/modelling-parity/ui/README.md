@@ -27,15 +27,18 @@ the plan shapes and the section drawing.
 
 ## Run
 
-Build the viewer, then run under `ifc-gpu-check`. In WSL it starts Windows
-Chrome on the RTX GPU and exports `IFC_GPU_CDP_URL`. WSL Chromium and the T3
-preview have no hardware WebGPU, and the run refuses a software adapter.
+Build the viewer, then point the run at a Chrome with a hardware WebGPU
+adapter through `--cdp <url>` or `IFC_GPU_CDP_URL`. A GPU-check helper that
+starts Chrome on the machine's GPU and exports that variable is the usual way.
+In WSL that means Windows Chrome, because WSL's bundled Chromium only has a
+software adapter, as `tests/ui-scenes/capture.mjs` notes. The run refuses a
+software adapter: an empty model canvas would read as a UI failure.
 
 ```sh
 pnpm install --frozen-lockfile && pnpm build:wasm:fetch
 NODE_OPTIONS=--max-old-space-size=8192 pnpm turbo build --filter=@ifc-lite/viewer --concurrency=2
-cp -r apps/viewer/dist /tmp/dist-candidate   # later builds overwrite apps/viewer/dist
-~/build-workers/ifc-gpu-check --limit 15 -- pnpm parity:ui --dist /tmp/dist-candidate
+cp -r apps/viewer/dist ../dist-candidate   # later builds overwrite apps/viewer/dist
+IFC_GPU_CDP_URL=http://127.0.0.1:<port> pnpm parity:ui --dist ../dist-candidate
 ```
 
 Options:
@@ -62,7 +65,7 @@ unset. Nothing there is committed.
 - `frames/` holds the council checkpoints with a `manifest.json` in the
   `tests/ui-scenes/capture.mjs` format.
 
-A full run takes about five minutes.
+A full run (16 probes, F1 and F2 in both themes) takes about seven minutes on one GPU.
 
 ## How actions and time are counted
 

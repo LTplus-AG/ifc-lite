@@ -223,10 +223,7 @@ fn issue_7873_armed_nested_map_stays_flat_and_does_not_eligibility_decode_its_ch
     assert!(parts.is_empty());
     assert!(decoder.get_cached(26).is_none());
     assert!(decoder.get_cached(4).is_none());
-    assert_eq!(
-        router.take_unsupported_items().get("IfcMappedItem"),
-        Some(&1)
-    );
+    assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
     let parts = GeometryProgram::styled_item(
         &root,
         crate::SubMeshCollection::new(),

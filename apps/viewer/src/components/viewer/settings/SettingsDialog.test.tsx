@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, type ComponentType } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { advance, cleanup, click, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 
 // Dynamic: the revert oracle deletes these modules, and a static import would
@@ -98,5 +98,58 @@ describe('Settings dialog (#5857)', () => {
     click(trackpad);
     assert.equal(useViewerStore.getState().navigationPreset, 'trackpad');
     assert.equal(localStorage.getItem('ifc-lite-navigation-preset'), 'trackpad');
+  });
+  // #8802: on a phone the sections are a horizontal strip, so Left/Right move
+  // between them; the desktop side list keeps Up/Down. Both stay real tabs.
+  for (const { width, orientation, next } of [
+    { width: 390, orientation: 'horizontal', next: 'ArrowRight' },
+    { width: 1024, orientation: 'vertical', next: 'ArrowDown' },
+  ] as const) {
+    it(`section tabs follow the ${orientation} layout at ${width}px with ${next} (#8802)`, async () => {
+      const original = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: /min-width:\s*(\d+)px/.test(query) ? width >= Number(/min-width:\s*(\d+)px/.exec(query)![1]) : false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+      try {
+        const dialog = mountAndOpen('general');
+        const list = dialog.querySelector<HTMLElement>('[role="tablist"]');
+        assert.equal(list?.getAttribute('aria-orientation'), orientation);
+        const active = dialog.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+        assert.ok(active, 'a selected tab');
+        active.focus();
+        press(active, next);
+        await advance(0);
+        assert.equal(activeSection(dialog), settingsEn['settings.sections.display'], `${next} selects the next section`);
+        assert.equal(document.activeElement?.getAttribute('role'), 'tab');
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+  }
+  // #8802: the phone strip fades the edge that hides more tabs, so a strip
+  // that ends exactly at a tab boundary still reads as scrollable.
+  it('the section strip fades whichever edge hides tabs (#8802)', () => {
+    const proto = HTMLElement.prototype;
+    const saved = ['scrollWidth', 'clientWidth'].map((key) => [key, Object.getOwnPropertyDescriptor(proto, key)] as const);
+    Object.defineProperty(proto, 'scrollWidth', { configurable: true, get() { return this.getAttribute('role') === 'tablist' ? 600 : 0; } });
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get() { return this.getAttribute('role') === 'tablist' ? 300 : 0; } });
+    try {
+      const dialog = mountAndOpen('general');
+      const list = dialog.querySelector<HTMLElement>('[role="tablist"]');
+      assert.ok(list, 'the section tab list');
+      assert.equal(list.getAttribute('data-scroll-fade'), 'end', 'at the start, the end edge hides tabs');
+      act(() => { list.scrollLeft = 150; list.dispatchEvent(new Event('scroll')); });
+      assert.equal(list.getAttribute('data-scroll-fade'), 'both');
+      act(() => { list.scrollLeft = 300; list.dispatchEvent(new Event('scroll')); });
+      assert.equal(list.getAttribute('data-scroll-fade'), 'start');
+    } finally {
+      for (const [key, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(proto, key, descriptor);
+        else delete (proto as unknown as Record<string, unknown>)[key];
+      }
+    }
   });
 });

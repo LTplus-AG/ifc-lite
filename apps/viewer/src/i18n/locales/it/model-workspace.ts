@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const modelWorkspaceIt = {
+  "modelWorkspace.rail.aria": "Strumenti del modello",
+  "modelWorkspace.rail.hosted": "Aperture, porte e finestre",
+  "modelWorkspace.rail.circulation": "Scale e parapetti",
+  "modelWorkspace.rail.active": "Strumento attivo",
+  "modelWorkspace.tool.select": "Seleziona",
+  "modelWorkspace.tool.wall": "Muro",
+  "modelWorkspace.tool.slab": "Solaio",
+  "modelWorkspace.tool.column": "Colonna",
+  "modelWorkspace.tool.beam": "Trave",
+  "modelWorkspace.tool.split": "Dividi",
+  "modelWorkspace.tool.leave": "Esci dallo spazio Modello",
+  "modelWorkspace.tool.shortcutHint": "· {key}",
+  "modelWorkspace.blocked.noStorey": "Questo modello non ha un piano su cui disegnare",
+  "modelWorkspace.blocked.split": "Seleziona prima un elemento da dividere",
+  "modelWorkspace.storey.none": "Nessun piano",
+  "modelWorkspace.storey.withModel": "{model} · {storey}",
+  "modelWorkspace.storey.elevation": "{elevation} m",
+  "modelWorkspace.storey.pick": "Scegli il piano su cui disegnare",
+  "modelWorkspace.storey.listAria": "Piani",
+  "modelWorkspace.storey.isolate": "Mostra solo questo piano",
+  "modelWorkspace.storey.showAll": "Mostra tutti i piani",
+  "modelWorkspace.noStorey.title": "Nessun piano su cui disegnare",
+  "modelWorkspace.noStorey.description": "Questo modello non ha IfcBuildingStorey, quindi i muri non hanno un piano su cui poggiare.",
+  "modelWorkspace.plan.title": "Pianta",
+  "modelWorkspace.plan.show": "Mostra la pianta",
+  "modelWorkspace.plan.hide": "Nascondi la pianta",
+  "modelWorkspace.plan.noRoom": "Spazio insufficiente per la pianta accanto al 3D: allarga la finestra o chiudi un pannello laterale",
+  "modelWorkspace.plan.noPlane": "Questo piano non ha un piano geometrico su cui disegnare una pianta.",
+  "modelWorkspace.plan.cutting": "Sezionamento…",
+  "modelWorkspace.plan.cutFailed": "Sezionamento non riuscito",
+  "modelWorkspace.plan.retry": "Riprova",
+  "modelWorkspace.plan.simplified": "Pianta semplificata",
+  "modelWorkspace.plan.simplifiedTitle": "Questo modello è troppo grande per essere sezionato a ogni modifica, quindi la pianta mostra solo gli assi dei muri",
+  "modelWorkspace.plan.grid": "Griglia",
+  "modelWorkspace.plan.fit": "Adatta la pianta alla vista",
+  "modelWorkspace.layout.aria": "Disposizione",
+  "modelWorkspace.layout.plan": "Pianta",
+  "modelWorkspace.layout.split": "Affiancata",
+  "modelWorkspace.layout.3d": "3D",
+  "modelWorkspace.hint.onboarding": "W muro · Shift+S solaio · fai clic su un elemento per modificarlo · E per uscire"
+} satisfies Catalogue;

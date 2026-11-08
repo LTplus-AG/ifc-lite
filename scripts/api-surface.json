@@ -5074,6 +5074,7 @@
     "generateSpacesFromWalls: function",
     "gridAxisIntersections: function",
     "gridIntersectionPlacement: function",
+    "hasRefreshableBaseQuantities: function",
     "hostPlanFrame: function",
     "isAlignmentRecord: function",
     "isMappableSurface: function",
@@ -5118,6 +5119,8 @@
     "reassignElementsToStoreyInStore: function",
     "reassignHostedOpeningsInStore: function",
     "rectangularGridAxes: function",
+    "refreshedBaseQuantitySet: function",
+    "refreshedBaseQuantitySets: function",
     "refusalReason: function",
     "removeCostEntityInStore: function",
     "removeGroupInStore: function",
@@ -5164,6 +5167,7 @@
     "wallJoinTargetFromBuild: function",
     "wallJoinWallFromParams: function",
     "wallRectsFromMeshes: function",
+    "withRefreshedBaseQuantities: function",
     "writeTopAttachment: function"
   ],
   "@ifc-lite/data": [
@@ -7756,6 +7760,7 @@
     "PropertyMapping: interface",
     "PropertyMutation: interface",
     "PropertyValue: type",
+    "QuantityBaseRevision: type",
     "QuantityExtractor: type",
     "QuantityMutation: interface",
     "SelectionCriteria: interface",

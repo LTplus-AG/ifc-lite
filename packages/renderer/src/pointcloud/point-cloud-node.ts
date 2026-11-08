@@ -12,7 +12,7 @@
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { PointRenderPipeline } from './point-pipeline.js';
-import { POINT_VERTEX_BYTES } from './point-pipeline.js';
+import { POINT_VERTEX_BYTES } from './point-vertex-layout.js';
 import { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
 import { disposeKeyedIndexes, keyedSpatialIndex } from './point-cloud-keyed-chunks.js';
 

@@ -260,7 +260,7 @@
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
    467 packages/renderer/src/raycast-engine.ts
-  3688 packages/renderer/src/renderer.ts
+  3679 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
   4106 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts

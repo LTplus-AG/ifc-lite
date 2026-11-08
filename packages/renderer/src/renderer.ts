@@ -7,7 +7,12 @@ import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './sect
 import { PickClipRevision } from './pick-clip-revision.js';
 import { PickSourceRevision } from './pick-source-revision.js';
 /**
- * @ifc-lite/renderer - WebGPU renderer
+ * The `Renderer` and the surface both package entries publish. The root entry
+ * (`index.ts`) adds point-cloud rendering and scan deviation on top;
+ * `core.ts` (`@ifc-lite/renderer/core`) publishes this module alone, so a
+ * mesh-only consumer's bundle never contains the point-cloud pipelines.
+ * Keep point-cloud VALUE imports out of this module: the two collaborators
+ * the Renderer constructs are reached through `point-cloud-support.ts`.
  */
 
 export { WebGPUDevice, ADAPTER_REQUEST_TIMEOUT_MS, requestAdapterWithTimeout } from './device.js';
@@ -126,8 +131,9 @@ export { PointPicker, decodePickSample } from './point-picker.js';
 export type { PointPickNode, DecodedPickSample } from './point-picker.js';
 export type { PointPickSizing } from './picker.js';
 
-// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ)
-export { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
+// Point cloud rendering (Phase 0: IFCx inline; Phase 1+: streaming LAS/LAZ).
+// The `PointCloudRenderer` / `PointRenderPipeline` classes are exported by the
+// root entry only (index.ts); the types stay here for the Renderer's methods.
 export * from './gaussian/gaussian-public.js';
 import { GaussianSplatLayer, type GaussianSplatApi } from './gaussian/gaussian-splat-layer.js';
 import { unionBounds } from './gaussian/gaussian-frame.js';
@@ -138,7 +144,6 @@ export type {
     PointSizeMode,
     ResolvedSectionPlane as PointResolvedSectionPlane,
 } from './pointcloud/point-cloud-renderer.js';
-export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
 export type {
     PointCloudChunkInput,
     PointCloudNode,
@@ -222,7 +227,8 @@ import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from '
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { uploadIndividualMesh, type IndividualMeshFrame } from './individual-mesh-upload.js';
-import { PointCloudRenderer, type PointCloudAssetHandle, type ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
+import type { PointCloudRenderer, PointCloudAssetHandle, ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
+import { pointCloudSupport, pointCloudsUnavailableError } from './point-cloud-support.js';
 import {
     appendPointCloudChunk as appendPointCloudChunkImpl,
     beginPointCloudStream as beginPointCloudStreamImpl,
@@ -231,11 +237,10 @@ import {
     type PointCloudStreamHost,
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { DeviationComputer, type DeviationComputeContext, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+import type { DeviationComputer, DeviationComputeContext, DeviationComputeOptions, DeviationComputeResult } from './deviation/deviation-computer.js';
 export type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationDistances } from './deviation/deviation-statistics.js';
-export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
@@ -405,8 +410,8 @@ export class Renderer {
     private readonly recovery = {
         inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
     };
-    /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
-    private readonly deviationComputer = new DeviationComputer();
+    /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. Null under `@ifc-lite/renderer/core`. */
+    private readonly deviationComputer: DeviationComputer | null = pointCloudSupport()?.createDeviationComputer() ?? null;
     private readonly gaussianLayer = new GaussianSplatLayer({ lifetime: () => ({ ready: this.isReady(), lost: this.deviceLost, disposed: this.destroyed, generation: this.initGeneration }), // #8564
         device: () => this.getGPUDevice(), adapter: () => this.device.getAdapter(), modelTranslation: (i) => this.scene.getModelTranslation(i), requestRender: () => this.requestRender(),
         extentChanged: (b) => this.camera.setDepthOnlyBounds(b && { min: { x: b.min[0], y: b.min[1], z: b.min[2] }, max: { x: b.max[0], y: b.max[1], z: b.max[2] } }) }); // depth range only; never model/fit bounds
@@ -677,17 +682,18 @@ export class Renderer {
             this.pipeline.getSampleCount(),
         );
         this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
-        this.pointCloudRenderer = new PointCloudRenderer(
+        // Null under `@ifc-lite/renderer/core`, which ships no point-cloud pipeline.
+        this.pointCloudRenderer = pointCloudSupport()?.createPointCloudRenderer(
             this.device.getDevice(),
             this.device.getFormat(),
             'depth24plus-stencil8',
             this.pipeline.getSampleCount(),
             this.pointCloudNextHandleId,
-        );
+        ) ?? null;
         // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
         // owns the per-triangle BVH GPU buffers; idle until the first
         // `computeDeviations` call.
-        this.deviationComputer.init(this.device.getDevice());
+        this.deviationComputer?.init(this.device.getDevice());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
@@ -1013,7 +1019,7 @@ export class Renderer {
     /** Replace the embedded clouds with single-chunk inline IFCx `assets` (`pcd::base64`, `points::array`, `points::base64`); streamed scans stay. */
     setPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
         if (!this.pointCloudRenderer) {
-            throw new Error('Renderer not initialized. Call init() first.');
+            throw pointCloudSupport() ? new Error('Renderer not initialized. Call init() first.') : pointCloudsUnavailableError();
         }
         for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
         this.pickSources.setEmbeddedClouds(this.pointCloudRenderer, assets);
@@ -1023,7 +1029,7 @@ export class Renderer {
     /** Append additional point clouds without clearing existing ones. */
     addPointClouds(assets: ReadonlyArray<PointCloudAsset>): void {
         if (!this.pointCloudRenderer) {
-            throw new Error('Renderer not initialized. Call init() first.');
+            throw pointCloudSupport() ? new Error('Renderer not initialized. Call init() first.') : pointCloudsUnavailableError();
         }
         this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
         for (const asset of assets) {
@@ -1057,6 +1063,7 @@ export class Renderer {
      * chunks will arrive (currently a no-op but kept for symmetry).
      */
     beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): PointCloudAssetHandle {
+        if (!pointCloudSupport()) throw pointCloudsUnavailableError();
         return beginPointCloudStreamImpl(this as unknown as PointCloudStreamHost, meta);
     }
 
@@ -1173,17 +1180,22 @@ export class Renderer {
      * `deviation/deviation-computer.ts` for the full contract.
      */
     async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
-        return this.deviationComputer.compute(opts, this.deviationContext());
+        return this.requireDeviationComputer().compute(opts, this.deviationContext());
     }
 
     /** Read per-scan-asset signed-distance statistics after a completed run. */
     async readDeviationAssetStats(): Promise<DeviationAssetStats[]> {
-        return this.deviationComputer.readAssetStats(this.deviationContext());
+        return this.requireDeviationComputer().readAssetStats(this.deviationContext());
     }
 
     /** Read every computed point's signed distance (4 B/point) for summary statistics (#6872). */
     async readDeviationDistances(): Promise<DeviationDistances> {
-        return this.deviationComputer.readDistances(this.deviationContext());
+        return this.requireDeviationComputer().readDistances(this.deviationContext());
+    }
+
+    private requireDeviationComputer(): DeviationComputer {
+        if (!this.deviationComputer) throw pointCloudsUnavailableError();
+        return this.deviationComputer;
     }
 
     private readonly deviationContext = (): DeviationComputeContext => ({ device: this.device, scene: this.scene, pointCloudRenderer: this.pointCloudRenderer, requestRender: () => this.requestRender() });
@@ -3643,7 +3655,7 @@ export class Renderer {
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.
         // Done before queue.destroy() so the GPU calls inside
         // `destroy()` still have a valid device.
-        this.deviationComputer.destroy();
+        this.deviationComputer?.destroy();
         this.gaussianLayer.release(clearScene, this.destroyed); // upstream allocations only; never the device destroyed below
 
         // Snap detector geometry cache

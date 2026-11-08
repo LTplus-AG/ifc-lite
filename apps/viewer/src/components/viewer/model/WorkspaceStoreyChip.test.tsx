@@ -30,6 +30,7 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { StoreyPicker } from './StoreyPicker';
 import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
+import { Toaster } from '@/components/ui/toast';
 
 const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
 const chipButton = () => document.querySelector('[data-workspace-storey-chip]') as HTMLButtonElement | null;
@@ -54,6 +55,24 @@ afterEach(() => {
 });
 
 describe('Workspace storey chip (#6232 M2.1)', () => {
+  it('#9334 the picker add toast cannot draw on a storey whose creation was undone', async () => {
+    act(() => useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }));
+    const notices = render(<Toaster />);
+    for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+    openList();
+    click([...document.body.querySelectorAll('[data-storey-picker-actions] button')].find(button => button.textContent?.includes('Add storey above'))!);
+    await import('./storeys/add-storey');
+    await waitFor(() => modelStoreys(useViewerStore.getState(), MODEL_ID).length === 3 && [...notices.querySelectorAll('button')].some(button => button.textContent === 'Draw on'), 'the picker adds a storey and shows its action');
+    const draw = [...notices.querySelectorAll('button')].find(button => button.textContent === 'Draw on')!;
+    assert.ok(draw);
+    act(() => useViewerStore.getState().undo(MODEL_ID));
+    const plane = useViewerStore.getState().session!.workplane;
+    click(draw);
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
+    assert.equal(useViewerStore.getState().session?.workplane, plane);
+    assert.equal(draw.isConnected, false);
+  });
+
   it('names the session storey and its elevation, only while the workspace is open', () => {
     assert.equal(chipButton(), null);
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: UPPER_STOREY }); });

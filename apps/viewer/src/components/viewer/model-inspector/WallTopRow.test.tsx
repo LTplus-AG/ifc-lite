@@ -65,6 +65,24 @@ it('#9334 a storey-derived height is read-only and names the level that drives i
   assert.match(ui.textContent ?? '', /from L1/);
 });
 
+for (const typed of ['string', 'array'] as const) {
+  it(`#9334 a typed IfcLabel ${typed} target selects attached mode and makes its derived height read-only`, () => {
+    const s = useViewerStore.getState();
+    const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+    assert.ok('expressId' in wall);
+    const guid = s.models.get(MODEL_ID)!.ifcDataStore!.entities.getGlobalId(UPPER_STOREY)!;
+    const value = typed === 'array' ? ['IFCLABEL', guid] : `IFCLABEL,${guid}`;
+    s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', value, PropertyValueType.Label);
+    s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopBinding', 'Explicit', PropertyValueType.Label);
+    s.setSelectedEntityId(wall.expressId);
+    const ui = render(<ModelInspectorPanel />);
+    assert.match(ui.textContent ?? '', /To L1 \(\+3.00 m\)/);
+    assert.equal(ui.querySelector<HTMLInputElement>('input[type="radio"][value="storeyAbove"]')?.checked, true);
+    assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Height in metres"]')?.readOnly, true);
+    assert.match(ui.textContent ?? '', /from L1/);
+  });
+}
+
 it('#9334 a relative top resolves the current next storey after insertion, not the recorded old GUID', () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });

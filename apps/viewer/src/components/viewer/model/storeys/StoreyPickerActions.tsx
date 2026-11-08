@@ -8,7 +8,6 @@
  * (the toast offers Draw on), or open the storey manager.
  */
 
-import { activateStorey } from '@/lib/storeys/storey-session';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -36,7 +35,7 @@ export function StoreyPickerActions() {
     const state = useViewerStore.getState();
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
-    void import('./add-storey').then(({ addStoreyKeepingSession }) => {
+    void import('./add-storey').then(({ addStoreyKeepingSession, drawOnAddedStorey }) => {
       // The model may have changed while the module loaded: re-read its live topmost storey,
       // and nothing at all once the session that was clicked in has ended, even if a new
       // one has since opened on the same model.
@@ -50,7 +49,7 @@ export function StoreyPickerActions() {
         const createdId = outcome.storeyId;
         const level = modelStoreys(useViewerStore.getState(), modelId).find(s => s.expressId === createdId);
         toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: String(level?.elevation ?? '') }), {
-          label: t('storeyManager.drawOn'), onClick: () => activateStorey(useViewerStore.getState(), modelId, createdId),
+          label: t('storeyManager.drawOn'), onClick: () => drawOnAddedStorey(modelId, createdId),
         }, `storey-added:${modelId}`);
       }
     }, (error: unknown) => {

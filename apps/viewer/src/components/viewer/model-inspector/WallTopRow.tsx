@@ -36,7 +36,9 @@ export function readWallTop(modelId: string, wallId: number): { top: WallTop; ta
   const constraint = parsePropertyValue(raw).displayValue;
   const value = raw ?? inventory.storeys.find(storey => storey.expressId === attachment?.targetStoreyId)?.GlobalId;
   const display = storeyAttachmentDisplay(s, modelId, wallId, value);
-  return { top: attachment || constraint === NEXT_STOREY_ABOVE ? 'storeyAbove' : 'fixed', target: constraint === 'Fixed' ? null : display ?? (raw !== null && raw !== undefined && raw !== '' ? { text: constraint, raw: constraint } : null) };
+  // The shared resolver decodes typed IfcLabels before resolving a storey.
+  const resolvedStorey = display?.from !== undefined;
+  return { top: attachment || resolvedStorey || constraint === NEXT_STOREY_ABOVE ? 'storeyAbove' : 'fixed', target: constraint === 'Fixed' ? null : display ?? (raw !== null && raw !== undefined && raw !== '' ? { text: constraint, raw: constraint } : null) };
 }
 
 /**

@@ -26,7 +26,7 @@ import { activateStorey, deleteStorey, reviewStoreyDeletion } from '@/lib/storey
 import { formatElevation, formatHeight } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { addStoreyKeepingSession } from './add-storey';
+import { addStoreyKeepingSession, drawOnAddedStorey } from './add-storey';
 import { StoreyRow } from './StoreyRow';
 import { StoreyDeletePanel } from './StoreyDeletePanel';
 import { StoreySectionStrip } from './StoreySectionStrip';
@@ -84,7 +84,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     const elevation = store ? formatElevation(effectiveStoreyElevation(store, state.mutationViews.get(modelId), storeyId)) : '';
     toast.success(t('storeyManager.added', { storey: name, elevation }), {
       label: t('storeyManager.drawOn'),
-      onClick: () => activateStorey(useViewerStore.getState(), modelId, storeyId),
+      onClick: () => drawOnAddedStorey(modelId, storeyId),
     }, `storey-added:${modelId}`);
     focusName(storeyId);
   };

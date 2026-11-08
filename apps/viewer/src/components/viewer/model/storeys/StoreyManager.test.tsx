@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import '@/lib/commands/modeling/builtin';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { strict as assert } from 'node:assert';
@@ -23,6 +24,7 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { Toaster } from '@/components/ui/toast';
+import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { reviewStoreyInsertion, commitStoreyInsertion } from './insert-storey';
 import { PropertyValueType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -395,6 +397,42 @@ it('#9334 Draw on the already active storey re-seats the workplane', async () =>
   click(rows(ui).at(-1)!.querySelector('[role="radio"]')!);
   assert.deepEqual(useViewerStore.getState().session?.workplane, { kind: 'storey', storeyId: STOREY, offset: 0 });
 });
+
+it('#9334 the added-storey Draw on toast still activates a live drawable target', async () => {
+  const ui = await mount();
+  const notices = render(<Toaster />);
+  for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Add storey above')!);
+  await waitFor(() => rows(ui).length === 3, 'the added storey appears');
+  const created = modelStoreys(useViewerStore.getState(), MODEL_ID).at(-1)!.expressId;
+  click([...notices.querySelectorAll('button')].find(button => button.textContent === 'Draw on')!);
+  assert.equal(useViewerStore.getState().session?.storeyId, created);
+  assert.deepEqual(useViewerStore.getState().session?.workplane, { kind: 'storey', storeyId: created, offset: 0 });
+});
+
+for (const invalidation of ['undo', 'delete', 'reprojection'] as const) {
+  it(`#9334 the added-storey Draw on toast refuses a target after ${invalidation}`, async () => {
+    const ui = await mount();
+    const notices = render(<Toaster />);
+    for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+    click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Add storey above')!);
+    await waitFor(() => rows(ui).length === 3, 'the added storey appears');
+    const created = modelStoreys(useViewerStore.getState(), MODEL_ID).at(-1)!.expressId;
+    const draw = [...notices.querySelectorAll('button')].find(button => button.textContent === 'Draw on')!;
+    assert.ok(draw, 'the add toast offers Draw on');
+    act(() => {
+      const s = useViewerStore.getState();
+      if (invalidation === 'undo') s.undo(MODEL_ID);
+      else if (invalidation === 'delete') assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'delete', storeyId: created, mode: { kind: 'empty' } }).ok);
+      else useViewerStore.setState({ models: new Map([...s.models].map(([id, model]) => [id, id === MODEL_ID ? { ...model, federationAlignmentStatus: 'reprojected' } : model])) });
+    });
+    const plane = useViewerStore.getState().session!.workplane;
+    click(draw);
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'a stale or undrawable target cannot become active');
+    assert.equal(useViewerStore.getState().session?.workplane, plane, 'the existing drawing plane stays intact');
+    assert.equal(draw.isConnected, false, 'the stale toast action dismisses itself');
+  });
+}
 
 it('#9334 a refused insertion rolls back the preceding floor-height edit', () => {
   const reviewed = reviewStoreyInsertion(MODEL_ID, STOREY, index => `Level ${index}`)!;

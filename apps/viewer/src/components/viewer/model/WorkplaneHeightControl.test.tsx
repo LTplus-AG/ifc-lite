@@ -15,7 +15,7 @@ import { act } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { cleanup, click, press, render, type } from '@/test/render.js';
-import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import type { CommandContext } from '@/lib/commands/modeling/types';
 import '@/lib/commands/modeling/builtin';
@@ -108,6 +108,17 @@ describe('the height control (#9202)', () => {
     click(top);
     assert.equal(offset(), 0);
     assert.equal(state().session?.planeHeightPinned, true, 'unlike Floor, it keeps the height the user picked');
+  });
+
+  it('on a top storey with no walls, Top of walls follows the default wall height', () => {
+    act(() => { state().setSessionStorey(UPPER_STOREY); });
+    act(() => { state().setAuthoringDims('wall', { Thickness: 0.2, Height: 3 }); });
+    const ui = mount();
+    open(planButton(ui));
+    const top = () => picker()?.querySelector('[data-workplane-height-preset="top-of-walls"]')?.textContent ?? '';
+    assert.match(top(), /Top of walls \+3\.00 m/);
+    act(() => { state().setAuthoringDims('wall', { Thickness: 0.2, Height: 4 }); });
+    assert.match(top(), /Top of walls \+4\.00 m/, 'the open picker reads the new default');
   });
 
   it('a typed height reaches the running command', () => {

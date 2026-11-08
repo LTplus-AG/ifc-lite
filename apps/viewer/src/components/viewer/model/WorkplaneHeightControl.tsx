@@ -37,10 +37,13 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
   const { t } = useTranslation();
   const modelId = useViewerStore((s) => s.session?.modelId ?? null);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  // With no walls on the storey, the top falls back to the default wall height.
+  const authoringDefaults = useViewerStore((s) => s.authoringDefaults);
   const top = useMemo(() => {
     void mutationVersion; // a wall drawn or resized moves it
+    void authoringDefaults;
     return modelId === null ? null : resolveRoofHeight(useViewerStore.getState(), modelId, plane.storeyId);
-  }, [modelId, plane.storeyId, mutationVersion]);
+  }, [modelId, plane.storeyId, mutationVersion, authoringDefaults]);
   const preset = 'h-auto justify-start rounded-sm px-1.5 py-1 text-left text-xs font-normal tabular-nums';
 
   return (

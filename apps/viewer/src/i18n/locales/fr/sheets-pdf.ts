@@ -51,7 +51,7 @@ export const sheetsPdfFr = {
   "sheetsPdf.sheetSetup.layoutExtended": "Étendu (pleine largeur)",
   "sheetsPdf.sheetSetup.layoutCompact": "Compact (plus petit)",
   "sheetsPdf.sheetSetup.titleBlockDimensions": "{width} × {height} mm",
-  "sheetsPdf.sheetSetup.fieldsConfigured": "{count} champs configurés",
+  "sheetsPdf.sheetSetup.fieldsConfigured": {"one": "{count} champ configuré", "many": "{count} champs configurés", "other": "{count} champs configurés"},
   "sheetsPdf.sheetSetup.editTitleBlockFieldsButton": "Modifier les champs du cartouche",
   "sheetsPdf.sheetSetup.scaleBarNorthArrowHeading": "Échelle graphique et flèche du nord",
   "sheetsPdf.sheetSetup.scaleBarLabel": "Échelle graphique",

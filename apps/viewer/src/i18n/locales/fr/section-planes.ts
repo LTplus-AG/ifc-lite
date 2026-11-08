@@ -38,7 +38,7 @@ export const sectionPlanesFr = {
   'sectionPlanes.undo.action': 'Annuler',
   'sectionPlanes.hint.empty': 'Choisissez un plan ou une boîte pour commencer la coupe · Échap pour terminer',
   'sectionPlanes.hint.addPick': 'Cliquez sur une face pour couper à travers · Échap pour annuler',
-  'sectionPlanes.parked.count': '{count} coupes',
+  "sectionPlanes.parked.count": {"one": "{count} coupe", "many": "{count} coupes", "other": "{count} coupes"},
   'sectionPlanes.offset.label': 'Décalage',
   'sectionPlanes.offset.datum.face': 'depuis la face',
   'sectionPlanes.offset.datum.level': 'niveau',

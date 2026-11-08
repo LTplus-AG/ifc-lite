@@ -765,7 +765,7 @@ export default defineConfig({
 ```
 
 Match the bare specifier only: `@ifc-lite/wasm/diff` and the other subpaths
-must keep resolving to themselves. The core engine has the full engine's
+must keep resolving to themselves. The core engine is typed with the full engine's
 TypeScript declarations, so a method from a left-out family still type-checks
 but throws `TypeError: … is not a function` at run time
 (`exportGlb`, `exportStep`, the LandXML, clash, scan-segmentation and PDF

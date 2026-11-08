@@ -39,14 +39,14 @@ describe('source relationship lookup #8452', () => {
     const material = editor.addEntity('IfcMaterial', ['Concrete']).expressId;
     const rel = editor.addEntity('IfcRelAssociatesMaterial', ['guid', null, null, null, ['#1222'], `#${material}`]).expressId;
     editor.setPositionalAttribute(rel, 4, [`#${column.columnId}`]);
-    expect(resolveDuplicateSource(store, column.columnId, editor).associations.some(a => a.relatingExpressId === material)).toBe(true);
+    expect((resolveDuplicateSource(store, column.columnId, editor).associations ?? []).some(a => a.relatingExpressId === material)).toBe(true);
     editor.setAttribute(rel, 'RelatedObjects', '#1222');
     // Positional slots win over named edits, as export does.
-    expect(resolveDuplicateSource(store, column.columnId, editor).associations.some(a => a.relatingExpressId === material)).toBe(true);
+    expect((resolveDuplicateSource(store, column.columnId, editor).associations ?? []).some(a => a.relatingExpressId === material)).toBe(true);
     editor.setPositionalAttribute(column.relContainedId, 5, `#${other}`);
     expect(resolveDuplicateSource(store, column.columnId, editor).storeyId).toBe(other);
     view.setEntityType(rel, 'IfcRelAssociatesDocument', null);
-    expect(resolveDuplicateSource(store, column.columnId, editor).associations.some(a => a.relType.toUpperCase() === 'IFCRELASSOCIATESMATERIAL')).toBe(false);
+    expect((resolveDuplicateSource(store, column.columnId, editor).associations ?? []).some(a => a.relType.toUpperCase() === 'IFCRELASSOCIATESMATERIAL')).toBe(false);
     editor.removeEntity(column.relContainedId);
     expect(resolveDuplicateSource(store, column.columnId, editor).storeyId).toBeNull();
   });

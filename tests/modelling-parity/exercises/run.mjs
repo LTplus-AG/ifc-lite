@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { compareFzk } from './fzk-oracle.mjs';
+import { boundedNode } from './process.mjs';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, appendFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -28,18 +29,10 @@ export async function run(id,args=process.argv.slice(2)) {
     const r={schema:'ifclite-parity-result/1',capability,probe:'exercise',id:`${id}${id==='F5'?`-${floors}`:''}.${name}`,status,...(reason?{reason}:{}),metrics:{ms:0,...metrics},evidence,source,runner};
     results.push(r); appendFileSync(resolve(out,'results.jsonl'),JSON.stringify(r)+'\n');
   };
-  const command=(argv,env={})=>new Promise((done,reject)=>{
-    const remaining=deadline-performance.now(); if(remaining<=0) return reject(new Error('Exercise budget exceeded'));
-    const child=spawn(process.execPath,argv,{cwd:root,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});
-    let stdout='',stderr='',expired=false;
-    child.stdout.on('data',b=>{stdout+=b;});child.stderr.on('data',b=>{stderr+=b;});
-    const timer=setTimeout(()=>{expired=true;child.kill('SIGKILL');},remaining);
-    child.on('error',e=>{clearTimeout(timer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);if(expired) reject(new Error(`Budget ${budget}s exceeded; elapsed ${((performance.now()-start)/1000).toFixed(1)}s`));else if(code!==0) reject(new Error(`${argv[1]} exited ${code}: ${stderr.slice(-1500)} ${stdout.slice(-500)}`));else done(stdout);});
-  });
+  const command=(argv,env={})=>boundedNode(argv,{cwd:root,env:{...process.env,...env},deadline,budget,start});
   let meta={elements:0,peakHeap:0,ms:0};
   try {
-    if(id==='F3') { emit('reference','psets-classification-valid-ifc4','skip','reference not yet sourced'); return results; }
+    if(id==='F3') { emit('reference','psets-classification-valid-ifc4','skip','deferred to R1'); return results; }
     let input=option('--fixture',null);
     if(id==='F6'&&!input) {
       const manifest=JSON.parse(readFileSync(resolve(root,'tests/models/manifest.json'),'utf8'));
@@ -83,6 +76,11 @@ export async function run(id,args=process.argv.slice(2)) {
       const same=meta.levels.every(e=>levels.some(s=>s.Name===e.Name&&Math.abs(s.elevation-e.elevation)<1e-6));
       emit(`reopen-${schema}`,'storeys',same?'pass':'fail',same?null:'Exported storey elevations differ from edited SDK model',{ms:performance.now()-t,storeys:levels.length});
       const text=readFileSync(file,'utf8');
+      if(schema==='IFC4') {
+        const contained=new Set();
+        for(const rel of text.matchAll(/IFCRELCONTAINEDINSPATIALSTRUCTURE\([^;]*?\(([^()]*)\),#\d+\);/g)) for(const m of rel[1].matchAll(/#(\d+)/g)) contained.add(Number(m[1]));
+        meta.elements=contained.size; meta.elementCountMeaning='products contained in exported storeys';
+      }
       const qty=(text.match(/IFCELEMENTQUANTITY\(/g)||[]).length;
       const qtIds=new Set([...text.matchAll(/#(\d+)\s*=\s*IFCELEMENTQUANTITY\([^;]*BaseQuantities[^;]*;/g)].map(m=>m[1]));
       const covered=new Set();
@@ -90,7 +88,12 @@ export async function run(id,args=process.argv.slice(2)) {
       const needed=meta.quantityIds?.length?meta.quantityIds.map(expressId=>({expressId})):meta.expected.filter(e=>e.kind!=='copied');
       const missing=needed.filter(e=>!covered.has(e.expressId));
       emit(`quantities-${schema}`,'schedules-quantities',needed.length&&!missing.length?'pass':needed.length>missing.length?'partial':'fail',missing.length?`Missing base quantities on ${missing.length}/${needed.length} checked elements`:!needed.length?'No checked geometry elements with base quantities':null,{quantities:qty,covered:needed.length-missing.length,missing:missing.length,totalQuantityOwners:covered.size});
-      if(id==='F2') emit(`hip-${schema}`,'roof-by-footprint',/\.HIP_ROOF\./.test(text)?'partial':'fail',/\.HIP_ROOF\./.test(text)?'Hip designation present; slopes not verified':'Hip roof request produced no HIP_ROOF; SDK emits flat roof');
+      if(id==='F1') {
+        const area=20;
+        const areas=[...text.matchAll(/IFCQUANTITYAREA\('NetFloorArea',\$,\$,([-+.0-9eE]+)[,)]/g)].map(m=>Number(m[1]));
+        const ok=areas.length>=floors&&areas.every(v=>Math.abs(v-area)<1e-6);
+        emit(`space-area-${schema}`,'rooms-with-area',ok?'pass':'fail',ok?null:`Expected ${floors} space areas of ${area}m²; got ${areas.join(',')}`,{area,spaces:areas.length});
+      }
     }
     if(id==='F6') await command([resolve(dir,'export-glb.mjs'),input,resolve(out,'before.glb')]);
     const t=performance.now(), glb=resolve(out,'model.glb');
@@ -114,9 +117,35 @@ export async function run(id,args=process.argv.slice(2)) {
       const common=[0,1,2].map(k=>shifts.map(v=>v[k]).sort((a,b)=>a-b)[Math.floor(shifts.length/2)]||0);
       const delta=before&&after?after.min.map((v,i)=>v-before.min[i]-common[i]):null;
       const ok=delta&&Math.abs(Math.hypot(delta[0],delta[2])-1)<0.06&&Math.abs(delta[1])<0.06;
-      emit('fixture-door-cut','hosted-doors-windows-from-types','partial','Door authored on third-party wall; opening cut not independently checked');
+      const doorId=meta.quantityIds?.find(n=>new RegExp(`#${n}\\s*=\\s*IFCDOOR\\(`).test(text));
+      const door=doorId&&find(doorId), dx=after&&after.max[0]-after.min[0], dz=after&&after.max[2]-after.min[2];
+      if(!door||!after||Math.min(dx,dz)/Math.max(dx,dz)>0.1) {
+        emit('fixture-door-cut','hosted-doors-windows-from-types','partial','Door or axis-aligned host mesh unavailable for independent cut rays');
+      } else {
+        const axis=dx>dz?0:2, center=(door.min[axis]+door.max[axis])/2, height=(door.min[1]+door.max[1])/2;
+        const projected=axis===0?after:{triangles:after.triangles.map(t=>t.map(p=>[p[2],p[1],p[0]]))};
+        const width=door.max[axis]-door.min[axis];
+        const adjacent=[center-width*1.5,center+width*1.5].some(x=>x>after.min[axis]&&x<after.max[axis]&&wallHit(projected,x,height));
+        const cut=!wallHit(projected,center,height)&&adjacent;
+        emit('fixture-door-cut','hosted-doors-windows-from-types',cut?'pass':'fail',cut?null:'GLB ray at actual door centre must miss host, with solid wall beside it',{center,height});
+      }
       emit('moved-wall-oracle','transforms-move-copy-rotate-mirror-array',ok?'pass':'fail',ok?null:`Expected 1m horizontal move; got ${JSON.stringify(delta)}`,{...(delta?{delta}:{})});
     }
+    // Copy returns refs in its own order. Derive copied geometry types and levels
+    // from exported containment, never by zipping return values with source ids.
+    if(id==='F2') compareFzk({text,find,levels:meta.levels,emit});
+    const originalExpected=meta.expected.filter(e=>e.kind!=='copied'&&!e.copied);
+    const kindFor={IFCWALL:'wall',IFCCOLUMN:'column',IFCCURTAINWALL:'curtain',IFCSTAIR:'stair'};
+    for(const rel of text.matchAll(/IFCRELCONTAINEDINSPATIALSTRUCTURE\([^;]*?\(([^()]*)\),#(\d+)\);/g)) {
+      const level=meta.levels.findIndex(s=>s.expressId===Number(rel[2]));
+      if(id==='F2'||level<=0||level>=meta.levels.length-1) continue;
+      for(const m of rel[1].matchAll(/#(\d+)/g)) {
+        const expressId=Number(m[1]), type=text.match(new RegExp(`#${expressId}\\s*=\\s*([A-Z0-9]+)`))?.[1], kind=kindFor[type];
+        if(type==='IFCSLAB'&&meta.shafts?.length) meta.shafts.push({...meta.shafts[0],expressId});
+        if(kind) originalExpected.push({expressId,kind,copied:true,level,min:meta.levels[level].elevation,max:meta.levels[level+1].elevation});
+      }
+    }
+    meta.expected=originalExpected;
     for(const e of meta.expected) {
       if(e.kind==='copied') continue;
       const mesh=find(e.expressId), axis=1;
@@ -130,8 +159,8 @@ export async function run(id,args=process.argv.slice(2)) {
       emit(`shaft-${e.expressId}`,'slab-with-openings',ok?'pass':'fail',ok?null:'Vertical GLB ray at shaft centre must miss floor and adjacent ray must hit');
     }
     for(const e of meta.openings) {
-      const mesh=find(e.expressId), ok=mesh&&!wallHit(mesh,e.x,e.z)&&wallHit(mesh,e.x+1,e.z);
-      emit(`opening-${e.expressId}`,'hosted-doors-windows-from-types',ok?'pass':'fail',ok?null:'GLB ray at door centre must miss host and adjacent ray must hit');
+      const mesh=find(e.expressId), ok=mesh&&!wallHit(mesh,e.x,e.z)&&wallHit(mesh,e.x+(e.adjacentOffset||1),e.z);
+      emit(`opening-${e.expressId}`,'hosted-doors-windows-from-types',ok?'pass':'fail',ok?null:'GLB ray at hosted opening centre must miss host and adjacent ray must hit');
     }
     const records=new Map([...text.matchAll(/#(\d+)\s*=\s*([^;]+);/g)].map(m=>[Number(m[1]),m[2]]));
     let checked=0, wrong=0;
@@ -153,7 +182,7 @@ export async function run(id,args=process.argv.slice(2)) {
   } catch(e) {if(existsSync(resolve(out,'progress.state'))) meta=JSON.parse(readFileSync(resolve(out,'progress.state'),'utf8'))||meta; emit('execution','large-tall-model-performance','fail',e.message,{ms:performance.now()-start,completedSteps:results.length});}
   finally {
     const failed=results.filter(r=>['fail','error','partial'].includes(r.status)).length;
-    emit('summary','large-tall-model-performance',results.some(r=>r.id.endsWith('.execution'))?'fail':failed?'partial':id==='F3'?'skip':'pass',failed?`${failed} failed or partial steps; see individual results`:id==='F3'?'reference not yet sourced':null,{ms:(reuse?meta.ms+performance.now()-start:performance.now()-start),completedSteps:results.filter(r=>r.status==='pass').length,totalSteps:results.length,elements:meta.elements,peakHeap:meta.peakHeap});
+    emit('summary','large-tall-model-performance',results.some(r=>r.id.endsWith('.execution'))?'fail':failed?'partial':id==='F3'?'skip':'pass',failed?`${failed} failed or partial steps; see individual results`:id==='F3'?'deferred to R1':null,{ms:(reuse?meta.ms+performance.now()-start:performance.now()-start),completedSteps:results.filter(r=>r.status==='pass').length,totalSteps:results.length,elements:meta.elements,peakHeap:meta.peakHeap,elementCountMeaning:meta.elementCountMeaning||'completed SDK mutation counter; lower bound when interrupted'});
     writeFileSync(resolve(out,'results.json'),JSON.stringify(results,null,2)+'\n');
     console.log(`${id} (${floors} floors): ${results.filter(r=>r.status==='pass').length} pass, ${failed} fail/partial, ${((performance.now()-start)/1000).toFixed(1)}s`);
   }

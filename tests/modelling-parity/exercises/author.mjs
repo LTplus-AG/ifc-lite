@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { buildFzk } from './fzk.mjs';
 import { writeFileSync, appendFileSync } from 'node:fs';
 
 // Executed by the real CLI run command; every mutation uses its headless SDK.
@@ -32,10 +33,12 @@ export async function author(bim) {
       return bim.store.transformElements(M, [wall.expressId], { kind:'move', delta:[1,0] });
     });
     add('door', 'hosted-doors-windows-from-types', () => bim.store.addHostedDoor(M, wall.expressId, { Offset:1, Width:0.9, Height:2.1 }));
+  } else if(id==='F2') {
+    buildFzk(bim,{M,step,add,expected,openings});
   } else {
     const tall = id === 'F4' || id === 'F5';
-    const W = id==='F1'?5:id==='F2'?10:id==='F4'?24:36;
-    const D = id==='F1'?4:id==='F2'?8:id==='F4'?18:36;
+    const W = id==='F1'?5:id==='F4'?24:36;
+    const D = id==='F1'?4:id==='F4'?18:36;
     const h = tall ? 3.8 : 3;
     for (let i=1;i<=floors;i++) step(`storey-${i}`, 'storeys', () => bim.store.addStorey(M, { Name:i===floors?'Roof':`L${i}`, Elevation:i*h }));
     const ls = levels(), typical = [];
@@ -88,14 +91,9 @@ export async function author(bim) {
       if(copies) {
         elements+=copies.length;
         // A copied wall must follow its own next level, not the original GUID.
-        for(let k=0;k<copies.length;k++) {
-          const origin=expected.find(e=>e.expressId===typical[k]);
-          if(origin) expected.push({...origin,expressId:copies[k].expressId,min:i*h+(tall?6:3.3)-h,max:(i+1)*h+(tall?6:3.3)-h,copied:true});
-        }
+        for(const c of copies) expected.push({expressId:c.expressId,kind:'copied',level:i});
       }
     }
-    if(id==='F2') make('upper-space','rooms-with-area',()=>bim.store.addSpace(M,ls[1].expressId,{Position:[0,0,0],Width:W,Depth:D,Height:h}));
-    if(id==='F2') add('hip-roof-attempt','roof-by-footprint',()=>bim.store.addRoof(M,ls.at(-1).expressId,{Profile:'polygon',OuterCurve:[[-0.3,-0.3],[W+0.3,-0.3],[W+0.3,D+0.3],[-0.3,D+0.3]],Thickness:0.3,RoofType:'HIP_ROOF',Slope:30}));
     step('raise-floor','storeys',()=>bim.store.editStorey(M,{kind:'floorHeight',storeyId:s,Height:tall?6:3.3}));
     const actual=levels();
     step('storey-elevations-oracle','storeys',()=>{

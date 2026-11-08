@@ -20,3 +20,14 @@ test('#9296 F5 watchdog publishes a failed summary and exits within the bound',(
     assert.ok(results.every(r=>r.schema==='ifclite-parity-result/1'&&r.probe==='exercise'));
   } finally { rmSync(out,{recursive:true,force:true}); }
 });
+
+// A real CPU-bound child cannot service a JavaScript timer of its own.
+// The parent must terminate it; no SDK return value or mock is involved.
+test('#9296 deadline terminates a synchronously blocked child',async()=>{
+  const { boundedNode }=await import('./process.mjs');
+  const start=performance.now();
+  await assert.rejects(boundedNode(['-e','const end=Date.now()+5000; while (Date.now()<end) {}'],{
+    cwd:process.cwd(),env:process.env,start,deadline:start+150,budget:0.15,
+  }),/Budget 0.15s exceeded/);
+  assert.ok(performance.now()-start<10000);
+});

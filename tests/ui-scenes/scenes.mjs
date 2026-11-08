@@ -77,15 +77,33 @@ async function planCutAtGroundStorey(page) {
 async function openSettingsDialog(page, { toEnd = false } = {}) {
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-settings', { detail: { section: 'general' } })));
   await page.waitForSelector('[role="dialog"]');
+  // General's lazily loaded groups are network chunks: let them arrive before
+  // either scene is captured, so neither shows partial content.
+  await page.waitForLoadState('networkidle');
   if (!toEnd) return;
-  await page.evaluate(() => {
-    const dialog = document.querySelector('[role="dialog"]');
-    for (const el of [dialog, ...dialog.querySelectorAll('*')]) {
+  // General loads two groups lazily (null Suspense fallbacks), so content can
+  // grow after the first scroll. Scroll, wait two frames, and repeat until
+  // nothing grows and every scroller rests at its end (bounded, ~3 s).
+  await page.evaluate(async () => {
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const scrollers = () => {
+      const dialog = document.querySelector('[role="dialog"]');
       // Only what a user could scroll: `overflow: hidden` can still be
       // scrolled from code, which would show settings a phone cannot reach.
-      const { overflowY } = getComputedStyle(el);
-      const userScrollable = overflowY === 'auto' || overflowY === 'scroll';
-      if (userScrollable && el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
+      return [dialog, ...dialog.querySelectorAll('*')].filter((el) => {
+        const { overflowY } = getComputedStyle(el);
+        return (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 1;
+      });
+    };
+    let stable = 0;
+    let last = '';
+    for (let i = 0; i < 90 && stable < 3; i += 1) {
+      for (const el of scrollers()) el.scrollTop = el.scrollHeight;
+      await frames();
+      const now = scrollers().map((el) => `${el.scrollHeight}:${Math.round(el.scrollTop + el.clientHeight)}`).join('|');
+      const atEnd = scrollers().every((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+      stable = now === last && atEnd ? stable + 1 : 0;
+      last = now;
     }
   });
 }

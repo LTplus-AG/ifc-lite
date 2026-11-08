@@ -23,11 +23,19 @@ counts engine match groups (an ambiguous group may contain several entities).
 A new file seeds a revision chain; deletion ends it. Path renames start a new
 chain. Merge commits compare their resulting tree along the first parent, so
 merged deliveries are exercised once rather than comparing unrelated branches.
-Uncommitted files are ignored. Git or diff failures stop the walk with a nonzero
-exit; pair failures identify the full commit and path. Invalid JSON/counts fail
-as well. No persistence or CLI verb is added.
+Uncommitted files and symlinked `.ifc` entries are ignored. Repository paths
+are relative to the repository root even when invoked from a subdirectory. Git or diff failures stop the walk with a nonzero
+exit; pair failures identify both full commit IDs and the path. Invalid JSON/counts fail
+as well. CLI calls time out after five minutes. SIGINT removes the scratch directory
+and interrupts the active diff process. No persistence or CLI verb is added.
 
 Tests use the checked-in synthetic `tests/fixtures/cli-retained/layered-wall.ifc`,
 not the local corpus. After a root `pnpm build --filter=@ifc-lite/cli` (including
 current diff WASM), run `node --test tools/ifc-history/*.test.mjs`. CI runs this
-suite in the Node tests job against its built package artifact.
+suite once in the fast-lane Node guards job against its built package artifact.
+
+Blob bytes stream directly to temporary files through Git smudge filters (including
+Git LFS). An unresolved LFS pointer stops with an explicit LFS diagnostic; install
+and configure Git LFS and fetch the referenced objects first. Diff JSON has a
+256 MiB output limit; exceeding it reports that output was truncated. History
+scans use IFC-only tree deltas rather than listing every file at every commit.

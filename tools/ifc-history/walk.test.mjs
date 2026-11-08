@@ -2,12 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, symlinkSync, mkdirSync, appendFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { once } from 'node:events';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
+// Keep temporary Git repositories independent of the invoking checkout/user.
+process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete process.env[key];
 // A reverted new tool must fail on an assertion, rather than module loading.
 const walker = await import('./walk.mjs').catch(error => {
   if (error.code === 'ERR_MODULE_NOT_FOUND') return {};
@@ -22,7 +27,7 @@ function history(t) {
   const repo = mkdtempSync(join(tmpdir(), 'ifc-history-test-'));
   t.after(() => rmSync(repo, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], {
-    encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1',
+    encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid',
       GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
   }).trim();
@@ -48,11 +53,11 @@ function history(t) {
   return { repo, git, path, base, same, modified, renamed, commit, regenerated };
 }
 
-test('#9332 real CLI: consecutive revisions distinguish unchanged, modified and re-GUIDed', (t) => {
+test('#9332 real CLI: consecutive revisions distinguish unchanged, modified and re-GUIDed', async (t) => {
   assert.equal(typeof walker.walkHistory, 'function');
   const h = history(t);
   const lines = [];
-  walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
   assert.equal(lines.length, 3);
   const counts = [
     '5 unchanged, 0 modified, 0 added, 0 deleted, 0 content-matches',
@@ -65,20 +70,21 @@ test('#9332 real CLI: consecutive revisions distinguish unchanged, modified and 
   // The walk must ignore dirty working files and support a pinned tip.
   writeFileSync(join(h.repo, h.path), 'not IFC');
   const pinned = [];
-  walker.walkHistory({ repository: h.repo, ref: h.same, command: [process.execPath, cli], out: line => pinned.push(line) });
+  await walker.walkHistory({ repository: h.repo, ref: h.same, command: [process.execPath, cli], out: line => pinned.push(line) });
   assert.deepEqual(pinned, lines.slice(0, 1));
   assert.ok(h.git('status', '--porcelain').includes(h.path));
 });
 
-test('#9332 failed pair exits nonzero and identifies the commit and path', (t) => {
+test('#9332 failed pair exits nonzero and identifies the commit and path', async (t) => {
   const h = history(t);
   const result = spawnSync(process.execPath, [script, h.repo, '--ifc-lite', join(h.repo, 'missing-binary')], { encoding: 'utf8' });
   assert.equal(result.status, 1);
+  assert.ok(result.stderr.includes(h.base));
   assert.ok(result.stderr.includes(h.same));
   assert.ok(result.stderr.includes(h.path));
 });
 
-test('#9332 real CLI counts added/deleted entities and aggregates files per commit', (t) => {
+test('#9332 real CLI counts added/deleted entities and aggregates files per commit', async (t) => {
   assert.equal(typeof walker.walkHistory, 'function');
   const h = history(t);
   h.commit(fixture, 'restore original identities before independent add/delete checks');
@@ -94,7 +100,7 @@ test('#9332 real CLI counts added/deleted entities and aggregates files per comm
   h.git('add', 'second.ifc');
   const both = h.commit(fixture.replace('stable-box', 'first-edit'), 'two models edited');
   const lines = [];
-  walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
   assert.ok(lines.find(line => line.startsWith(added.slice(0, 12))).includes('1 added, 0 deleted'));
   assert.ok(lines.find(line => line.startsWith(deleted.slice(0, 12))).includes('0 added, 1 deleted'));
   const aggregate = lines.filter(line => line.startsWith(both.slice(0, 12)));
@@ -106,6 +112,128 @@ test('#9332 real CLI counts added/deleted entities and aggregates files per comm
   h.git('-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'delete model');
   h.commit(fixture, 'new model at old path');
   const after = [];
-  walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => after.push(line) });
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => after.push(line) });
   assert.deepEqual(after, lines);
+});
+
+test('#9332 first-parent merge, blob reuse, non-IFC commits, subdirectories and symlinks', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  h.git('branch', 'side', h.base);
+  h.git('checkout', '--quiet', 'side');
+  h.commit(fixture.replace('stable-box', 'side-edit'), 'side revision');
+  h.git('checkout', '--quiet', '-');
+  writeFileSync(join(h.repo, 'notes.txt'), 'not a model');
+  symlinkSync(h.path, join(h.repo, 'link.ifc'));
+  h.git('add', 'notes.txt', 'link.ifc');
+  h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'no IFC blob changes');
+  h.git('-c', 'commit.gpgsign=false', 'merge', '--quiet', '--no-ff', '-s', 'ours', 'side', '-m', 'retain first-parent delivery');
+  const next = h.commit(h.regenerated.replace('edited-box', 'after-merge'), 'next delivery');
+  const lines = [];
+  mkdirSync(join(h.repo, 'nested'));
+  await walker.walkHistory({ repository: join(h.repo, 'nested'), command: [process.execPath, cli], out: line => lines.push(line) });
+  assert.equal(lines.length, 4, 'side branch, symlink and non-IFC commits must print nothing');
+  assert.ok(lines[3].includes(`${h.renamed.slice(0, 12)} -> ${next.slice(0, 12)}`), 'reuse the commit introducing the blob, not the intervening merge');
+  assert.ok(lines[3].includes('4 unchanged, 1 modified'));
+});
+
+test('#9332 unresolved LFS pointers fail explicitly without requiring Git LFS', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const bad = h.commit('version https://git-lfs.github.com/spec/v1\noid sha256:' + 'a'.repeat(64) + '\nsize 123\n', 'pointer only');
+  await assert.rejects(walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out() {} }), error => {
+    assert.ok(error.message.includes('Unresolved Git LFS pointer'));
+    assert.ok(error.message.includes(h.renamed));
+    assert.ok(error.message.includes(bad));
+    return true;
+  });
+});
+
+test('#9332 invalid IFC revision fails through the real CLI and names both revisions', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const bad = h.commit('This delivery is not IFC.', 'invalid delivery');
+  await assert.rejects(walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out() {} }), error => {
+    assert.ok(error.message.includes(h.renamed));
+    assert.ok(error.message.includes(bad));
+    assert.ok(error.message.includes(h.path));
+    assert.match(error.message, /IFC|STEP/);
+    return true;
+  });
+});
+
+test('#9332 smudge filters supply revision bytes instead of raw stored blobs', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const filter = join(h.repo, 'smudge.mjs');
+  writeFileSync(filter, "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(" + JSON.stringify(fixture) + "));\n");
+  h.git('config', 'filter.model.smudge', `"${process.execPath}" "${filter}"`);
+  writeFileSync(join(h.repo, '.gitattributes'), '*.ifc filter=model\n');
+  h.git('add', '.gitattributes');
+  const filtered = h.commit('Stored transport representation', 'filtered delivery');
+  const lines = [];
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
+  assert.equal(lines.length, 4);
+  assert.ok(lines[3].startsWith(filtered.slice(0, 12)));
+  assert.ok(lines[3].includes('5 unchanged, 0 modified, 0 added, 0 deleted'));
+});
+
+test('#9332 blobs larger than 256 MiB reach the consumer without buffering or truncation', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const block = Buffer.alloc(1024 * 1024, 120);
+  const file = join(h.repo, h.path);
+  for (let i = 0; i < 257; i++) appendFileSync(file, block);
+  h.git('add', '--', h.path);
+  h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'large transport blob');
+  const checker = join(h.repo, 'check-bytes.mjs');
+  const size = Buffer.byteLength(h.regenerated) + 257 * block.length;
+  // This consumer checks the actual transported file, not the diff algorithm:
+  // its success requires both the exact size and last byte of the large blob.
+  writeFileSync(checker, `import {statSync,openSync,readSync,closeSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const path=process.argv[4], size=statSync(path).size;
+if(size>256*1024*1024){assert.equal(size,${size});const fd=openSync(path,'r');const b=Buffer.alloc(1);readSync(fd,b,0,1,size-1);closeSync(fd);assert.equal(b[0],120);}
+console.log(JSON.stringify({counts:{unchanged:5,modified:0,added:0,deleted:0},contentMatches:[]}));`);
+  const lines = [];
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, checker], out: line => lines.push(line) });
+  assert.equal(lines.length, 4);
+});
+
+test('#9332 SIGINT removes scratch files while a diff is active', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const marker = join(h.repo, 'ready.json');
+  const consumer = join(h.repo, 'wait.mjs');
+  writeFileSync(consumer, `import {writeFileSync} from 'node:fs';
+writeFileSync(${JSON.stringify(marker)}, JSON.stringify({path:process.argv[3]}));
+setInterval(()=>{},1000);`);
+  const child = spawn(process.execPath, ['--input-type=module', '-e',
+    `const {walkHistory}=await import(${JSON.stringify(pathToFileURL(script).href)}); await walkHistory({repository:${JSON.stringify(h.repo)},command:${JSON.stringify([process.execPath, consumer])}});`], { stdio: 'ignore' });
+  t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
+  const exited = once(child, 'exit');
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(marker) && Date.now() < deadline && child.exitCode === null) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(existsSync(marker), 'diff must have started before sending SIGINT');
+  const { path } = JSON.parse(readFileSync(marker, 'utf8'));
+  assert.ok(existsSync(path));
+  child.kill('SIGINT');
+  const [code] = await exited;
+  assert.equal(code, 130);
+  assert.equal(existsSync(path), false);
+});
+
+test('#9332 CLI calls have a bounded timeout', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const consumer = join(h.repo, 'timeout.mjs');
+  writeFileSync(consumer, 'setInterval(()=>{},1000);');
+  await assert.rejects(walker.walkHistory({ repository: h.repo, command: [process.execPath, consumer], timeout: 100 }), error => {
+    assert.ok(error.message.includes(h.base));
+    assert.ok(error.message.includes(h.same));
+    assert.equal(error.cause.killed, true);
+    return true;
+  });
 });

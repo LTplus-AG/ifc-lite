@@ -3,11 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { mkdtempSync, openSync, closeSync, readSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { parseArgs } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 
 const help = `Usage: node tools/ifc-history/walk.mjs <repository> [--ref HEAD] [--ifc-lite executable]
@@ -16,7 +16,7 @@ Only pairs at the same path are compared; file creation seeds a chain, deletion 
 One line per commit with pairs; content matches (including renamed) stay separate from unchanged.`;
 
 /** Walk a local repository without checking out or changing its working tree. */
-export function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], out = console.log }) {
+export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], out = console.log, timeout = 300_000 }) {
   const git = (...args) => execFileSync('git', ['-C', resolve(repository), ...args], {
     maxBuffer: 256 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -25,30 +25,74 @@ export function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], 
   const tip = git('rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`).toString().trim();
   const commits = git('rev-list', '--first-parent', '--reverse', tip).toString().trim().split('\n');
   const scratch = mkdtempSync(join(tmpdir(), 'ifc-history-'));
-  let previous = new Map();
+  const previous = new Map();
+  let parent;
+  let activeChild;
+  const cleanup = () => rmSync(scratch, { recursive: true, force: true });
+  const interrupt = () => {
+    activeChild?.kill('SIGINT');
+    cleanup();
+    process.exit(130);
+  };
+  process.once('SIGINT', interrupt);
+  const extract = (blob, path, destination) => {
+    const stream = (args) => {
+      const fd = openSync(destination, 'w');
+      try {
+        execFileSync('git', ['-C', resolve(repository), 'cat-file', ...args], {
+          stdio: ['ignore', fd, 'pipe'], timeout,
+        });
+      } finally { closeSync(fd); }
+    };
+    let filterError;
+    try { stream(['--filters', `--path=${path}`, blob]); }
+    catch (error) {
+      filterError = error;
+      // Diagnose an unresolved pointer even when a required smudge filter fails.
+      stream(['blob', blob]);
+    }
+    const input = openSync(destination, 'r');
+    const header = Buffer.alloc(128);
+    let length;
+    try { length = readSync(input, header, 0, header.length, 0); }
+    finally { closeSync(input); }
+    if (header.subarray(0, length).toString().startsWith('version https://git-lfs.github.com/spec/v1')) {
+      throw new Error('Unresolved Git LFS pointer: install/configure Git LFS and fetch the required objects before walking this repository');
+    }
+    if (filterError) throw filterError;
+  };
   try {
     for (const commit of commits) {
-      const current = new Map();
       const pairs = [];
       const totals = { unchanged: 0, modified: 0, added: 0, deleted: 0 };
       const matches = new Map();
-      for (const entry of git('ls-tree', '-r', '-z', commit).toString().split('\0')) {
-        if (!entry) continue;
-        const tab = entry.indexOf('\t');
-        const [mode, type, blob] = entry.slice(0, tab).split(' ');
-        const path = entry.slice(tab + 1);
-        if (type !== 'blob' || mode === '120000' || !path.toLowerCase().endsWith('.ifc')) continue;
+      // Explicit parent comparison includes merge results once. The top-level
+      // pathspec and --no-relative keep paths stable even from a subdirectory.
+      const delta = git('diff-tree', '--root', '--no-commit-id', '--raw', '-r', '-z',
+        '--no-renames', '--no-relative', ...(parent ? [parent, commit] : [commit]),
+        '--', ':(top,icase,glob)**/*.ifc').toString().split('\0');
+      for (let i = 0; i < delta.length - 1; i += 2) {
+        const [, mode, , blob] = delta[i].slice(1).split(' ');
+        const path = delta[i + 1];
         const old = previous.get(path);
-        current.set(path, old?.blob === blob ? old : { blob, commit });
+        if (mode === '000000' || mode === '120000') {
+          previous.delete(path);
+          continue;
+        }
+        if (!old || old.blob !== blob) previous.set(path, { blob, commit });
         if (!old || old.blob === blob) continue;
         try {
           const base = join(scratch, 'base.ifc');
           const head = join(scratch, 'head.ifc');
-          writeFileSync(base, git('cat-file', 'blob', old.blob));
-          writeFileSync(head, git('cat-file', 'blob', blob));
-          const result = JSON.parse(execFileSync(command[0], [
+          extract(old.blob, path, base);
+          extract(blob, path, head);
+          const pending = promisify(execFile)(command[0], [
             ...command.slice(1), 'diff', base, head, '--by-content', '--json',
-          ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
+          ], { encoding: 'utf8', timeout, maxBuffer: 256 * 1024 * 1024 });
+          activeChild = pending.child;
+          const { stdout } = await pending;
+          activeChild = undefined;
+          const result = JSON.parse(stdout);
           for (const key of Object.keys(totals)) {
             const count = result.counts?.[key];
             if (!Number.isSafeInteger(count) || count < 0) throw new Error(`Invalid diff count: ${key}`);
@@ -62,7 +106,9 @@ export function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], 
           pairs.push(`${old.commit.slice(0, 12)} -> ${commit.slice(0, 12)} ${JSON.stringify(path)}`);
         } catch (error) {
           const stderr = error.stderr?.toString().trim();
-          throw new Error(`Commit ${commit}, file ${JSON.stringify(path)}: ${stderr || error.message}`, { cause: error });
+          const detail = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || error.code === 'ENOBUFS'
+            ? 'Diff output was truncated: exceeded the 256 MiB output limit' : stderr || error.message;
+          throw new Error(`Pair ${old.commit} -> ${commit}, file ${JSON.stringify(path)}: ${detail}`, { cause: error });
         }
       }
       if (pairs.length) {
@@ -72,10 +118,11 @@ export function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], 
         const matchTotal = [...matches.values()].reduce((sum, count) => sum + count, 0);
         out(`${commit.slice(0, 12)}: ${counts.join(', ')}, ${matchTotal} content-matches${matchCounts.length ? ` (${matchCounts.join(', ')})` : ''}; ${pairs.join('; ')}`);
       }
-      previous = current;
+      parent = commit;
     }
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    process.removeListener('SIGINT', interrupt);
+    cleanup();
   }
 }
 
@@ -89,7 +136,7 @@ if (isMainEntry(import.meta.url)) {
     if (values.help) console.log(help);
     else {
       if (positionals.length !== 1) throw new Error(help);
-      walkHistory({ repository: positionals[0], ref: values.ref, command: [values['ifc-lite']] });
+      await walkHistory({ repository: positionals[0], ref: values.ref, command: [values['ifc-lite']] });
     }
   } catch (error) {
     console.error(error.message);

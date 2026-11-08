@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #9268: real walk refusal through the public native processing API.
-use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::{process, ProcessingRequest};
 fn source(items: usize) -> String {
     let ids: Vec<String> = (0..items).map(|i| format!("#{}", 1000 + i)).collect();
     let members: String = ids
@@ -42,7 +42,7 @@ END-ISO-10303-21;
 fn issue_9268_budget_refusal_is_not_an_unsupported_mapped_item() {
     let members = vec!["#22"; 65_538].join(",");
     let content = source(1).replace("MappedRepresentation',(#22)", &format!("MappedRepresentation',({members})"));
-    let result = process_geometry(content.as_bytes());
+    let result = process(content.as_bytes(), &ProcessingRequest::default(), &mut ());
     let diag = result.stats.geometry_diagnostics.expect("budget refusal is diagnostic-worthy");
     let json = serde_json::to_value(&diag).unwrap();
     assert_eq!(json["totalUnsupportedItems"], 0, "budget refusal is not unsupported");
@@ -62,10 +62,15 @@ fn issue_9268_budget_refusal_is_not_an_unsupported_mapped_item() {
 #[test]
 fn issue_9268_real_unsupported_item_stays_unsupported() {
     let content = source(1).replace("#1000=IFCSHELLBASEDSURFACEMODEL((#7));", "#1000=IFCCARTESIANPOINT((0.,0.,0.));");
-    let result = process_geometry(content.as_bytes());
+    // A second product hits the budget, so reverting the fix also fails this
+    // negative control: its refusal must not inflate the genuine drop count.
+    let members = vec!["#22"; 65_538].join(",");
+    let content = content.replace("ENDSEC;\nEND-ISO", &format!(
+        "#123=IFCSHAPEREPRESENTATION(#11,'Body','MappedRepresentation',({members}));\n#124=IFCPRODUCTDEFINITIONSHAPE($,$,(#123));\n#125=IFCFLOWTERMINAL('0000000000000000000002',$,'budget',$,$,$,#124,$);\nENDSEC;\nEND-ISO"));
+    let result = process(content.as_bytes(), &ProcessingRequest::default(), &mut ());
     let diag = result.stats.geometry_diagnostics.expect("unsupported item diagnostic");
     assert_eq!(diag.total_unsupported_items, 1);
     assert_eq!(diag.unsupported_items_by_type[0].reason, "IfcCartesianPoint");
     let json = serde_json::to_value(diag).unwrap();
-    assert!(json.get("budgetRefusals").is_none());
+    assert_eq!(json["budgetRefusals"][0]["productId"], 125);
 }

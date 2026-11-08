@@ -42,7 +42,7 @@ export function commitStoreyInsertion(modelId: string, reviewed: StoreyInsertion
         storeyId = added.storeyId;
         return [...new Set([...shifted.plan.moved, ...shifted.reshaped, ...added.reshaped])];
       }), tx.batchId);
-      return { created: [], remesh };
+      return { created: [], deleted: [], remesh };
     },
   };
   const get = useViewerStore.getState;

@@ -14,7 +14,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { ModelInspectorPanel } from './ModelInspectorPanel';
-import { WallTopRow } from './WallTopRow';
+import { WallTopRow, readWallTop } from './WallTopRow';
 import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 let restoreRemesh = () => {};
 beforeEach(async () => { await seedModelingSession(); restoreRemesh = setRequestRemesh(() => {}); useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
@@ -63,6 +63,19 @@ it('#9334 a storey-derived height is read-only and names the level that drives i
   const ui = render(<ModelInspectorPanel />);
   assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Height in metres"]')?.readOnly, true);
   assert.match(ui.textContent ?? '', /from L1/);
+});
+
+it('#9334 an attached wall stays read-only when its resolved target storey has an empty name', () => {
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+  assert.ok('expressId' in wall);
+  const guid = s.models.get(MODEL_ID)!.ifcDataStore!.entities.getGlobalId(UPPER_STOREY)!;
+  s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', guid, PropertyValueType.Label);
+  s.setAttribute(MODEL_ID, UPPER_STOREY, 'Name', '');
+  assert.equal(readWallTop(MODEL_ID, wall.expressId).target?.from, `#${UPPER_STOREY}`, 'the inventory supplies a nonempty name for the unnamed target');
+  s.setSelectedEntityId(wall.expressId);
+  const ui = render(<ModelInspectorPanel />);
+  assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Height in metres"]')?.readOnly, true);
 });
 
 for (const typed of ['string', 'array'] as const) {

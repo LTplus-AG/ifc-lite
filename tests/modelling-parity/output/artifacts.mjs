@@ -87,23 +87,37 @@ export function artifactSets(results, capability, { root }) {
 
 const sanity = (kind) => `${kind.toUpperCase()} sanity check`;
 
-/** SVG: well-formed tags with an <svg> root and at least one line/path element. */
+/**
+ * SVG: one root element holding well-formed tags, nothing but whitespace (or comments) before
+ * or after it, no stray '<', an <svg> root and at least one line/path element.
+ */
 export function checkSvg(buf) {
   const name = sanity('svg');
   const text = buf.toString('utf8').replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[^>]*>/gi, '');
   if (!text.trim()) return { name, status: 'fail', detail: 'empty file' };
+  const TAG = /<(\/?)([A-Za-z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+  if (text.replace(TAG, '').includes('<')) return { name, status: 'fail', detail: "malformed: a '<' that starts no complete tag (truncated or broken markup)" };
   const stack = [], counts = {};
-  for (const m of text.matchAll(/<(\/?)([A-Za-z][\w:.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g)) {
-    const [, close, tag, , self] = m;
+  let root = null, rootEnd = -1;
+  for (const m of text.matchAll(TAG)) {
+    const [whole, close, tag, , self] = m;
+    if (rootEnd !== -1) return { name, status: 'fail', detail: `malformed: <${close}${tag}> after the root element closed` };
+    if (!root) {
+      if (close) return { name, status: 'fail', detail: `malformed: </${tag}> before any element opened` };
+      if (text.slice(0, m.index).trim()) return { name, status: 'fail', detail: 'malformed: text before the root element' };
+      root = tag;
+    }
     if (close) {
       if (stack.pop() !== tag) return { name, status: 'fail', detail: `malformed: </${tag}> does not close the open element` };
     } else {
       counts[tag] = (counts[tag] ?? 0) + 1;
       if (!self) stack.push(tag);
     }
+    if (!stack.length) rootEnd = m.index + whole.length;
   }
   if (stack.length) return { name, status: 'fail', detail: `malformed: <${stack[stack.length - 1]}> is never closed` };
-  if (!counts.svg) return { name, status: 'fail', detail: 'no <svg> root element' };
+  if (rootEnd !== -1 && text.slice(rootEnd).trim()) return { name, status: 'fail', detail: 'malformed: content after the root element' };
+  if (root !== 'svg') return { name, status: 'fail', detail: `no <svg> root element (root is ${root ? `<${root}>` : 'missing'})` };
   const strokes = ['path', 'line', 'polyline', 'polygon'].reduce((n, t) => n + (counts[t] ?? 0), 0);
   if (!strokes) return { name, status: 'fail', detail: 'no path, line, polyline or polygon element: the drawing is empty' };
   return { name, status: 'pass', detail: `${strokes} line/path elements` };

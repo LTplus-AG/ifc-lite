@@ -42,8 +42,18 @@ const CLI = join(BUILD, 'packages/cli/dist/index.js');
 
 const OUT = resolve(arg('--out', process.env.PARITY_OUT ?? join(ROOT, 'tests/modelling-parity/.out/L1')));
 const ONLY = arg('--only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
-const JOBS = Math.max(1, Number(arg('--jobs', '4')));
-const TIMEOUT_MS = Number(arg('--timeout', '180000'));
+/** An integer option within [min, max]; anything else exits 2 instead of running a different suite. */
+export function intOption(name, raw, { min, max }) {
+  const n = Number(raw);
+  if (!/^\s*\d+\s*$/.test(String(raw)) || !Number.isSafeInteger(n) || n < min || n > max) {
+    return { error: `${name} must be an integer from ${min} to ${max}, got ${JSON.stringify(raw)}` };
+  }
+  return { value: n };
+}
+const jobsOpt = intOption('--jobs', arg('--jobs', '4'), { min: 1, max: 32 });
+const timeoutOpt = intOption('--timeout', arg('--timeout', '180000'), { min: 1000, max: 3600000 });
+const JOBS = jobsOpt.value ?? 1;
+const TIMEOUT_MS = timeoutOpt.value ?? 180000;
 /** Timing probes run alone, after the rest, so parallel probes do not distort them. */
 const SERIAL = new Set(['large-tall-model-performance']);
 
@@ -140,6 +150,7 @@ function runOne(capability, script, blank, work, source) {
 }
 
 async function main() {
+  for (const o of [jobsOpt, timeoutOpt]) if (o.error) { console.error(`SDK probes: ${o.error}`); process.exit(2); }
   if (!existsSync(CLI)) {
     console.error(`SDK probes need a built CLI at ${rel(CLI)}: run pnpm build:wasm:fetch && pnpm turbo build --filter=@ifc-lite/cli...`);
     process.exit(2);

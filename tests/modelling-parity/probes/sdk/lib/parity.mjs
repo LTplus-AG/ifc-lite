@@ -142,7 +142,8 @@ export function containsPoint(parts, p) {
  * non-rooted entities such as IfcGridAxis count too). */
 export const CENSUS_CLASSES = ['IfcBuildingStorey', 'IfcWall', 'IfcSlab', 'IfcRoof', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcPlate',
   'IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcStair', 'IfcStairFlight', 'IfcRailing', 'IfcCurtainWall', 'IfcSpace', 'IfcGrid',
-  'IfcGridAxis', 'IfcCovering', 'IfcFooting', 'IfcRamp', 'IfcBuildingElementProxy', 'IfcMaterial', 'IfcWallType', 'IfcDoorType', 'IfcWindowType'];
+  'IfcGridAxis', 'IfcCovering', 'IfcFooting', 'IfcRamp', 'IfcBuildingElementProxy', 'IfcAnnotation', 'IfcMaterial', 'IfcWallType', 'IfcDoorType',
+  'IfcWindowType'];
 export function census(bim) {
   const counts = {};
   for (const c of CENSUS_CLASSES) { const n = bim.query().byType(c).toArray().length; if (n) counts[c] = n; }

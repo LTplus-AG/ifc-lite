@@ -311,3 +311,32 @@ test('a UI export is judged on the classes it contains', () => {
   const ifc = "ISO-10303-21;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCBUILDINGSTOREY('1YvctVUKr0kugbFTf53O9L',$,'L1',$,$,$,$,$,.ELEMENT.,0.);\n#3=IFCWALLSTANDARDCASE('2YvctVUKr0kugbFTf53O9L',$,'W',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
   assert.deepEqual(ART.fileClasses(ifc), ['IfcBuildingStorey'], 'exact census classes only; no IfcWall for a file without IFCWALL');
 });
+
+test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, --summary follows --root', () => {
+  const ifc = "ISO-10303-21;\nDATA;\n#1=IFCBUILDINGSTOREY('1YvctVUKr0kugbFTf53O9L',$,'L1',$,$,$,$,$,.ELEMENT.,0.);\n#2=IFCANNOTATION('3YvctVUKr0kugbFTf53O9L',$,'Dim',$,'IfcLite:Measure',$,$);\nENDSEC;\n";
+  assert.deepEqual(ART.fileClasses(ifc), ['IfcAnnotation', 'IfcBuildingStorey'], 'a UI dimensions-tags IFC keys its annotations');
+
+  const RUN = join(ROOT, 'tests/modelling-parity/probes/sdk/run.mjs');
+  for (const bad of ['nope', '0', '1.5', '-2', '999']) {
+    const r = spawnSync(process.execPath, [RUN, '--jobs', bad, '--out', join(tmpdir(), 'parity-never-used')], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `--jobs ${bad}: ${r.stderr}`);
+    assert.match(r.stderr, /--jobs must be an integer from 1 to 32/); // @source-text-assertion-ok asserts on the runner's own stderr, not on unexecuted source text
+  }
+
+  for (const [label, text] of [['trailing <', '<svg><line/></svg><'], ['element after root', '<svg><line/></svg><g/>'], ['text after root', '<svg><line/></svg>junk'], ['text before root', 'x<svg><line/></svg>'], ['truncated tag', '<svg><line/><path d="M0 0"</svg>']]) {
+    assert.equal(ART.checkSvg(Buffer.from(text)).status, 'fail', label);
+  }
+  assert.equal(ART.checkSvg(Buffer.from('<svg><line/></svg>\n<!-- end -->\n  ')).status, 'pass', 'trailing whitespace and comments are fine');
+
+  const good = summaryOf([result('storeys', 'sdk', 'pass')], '2026-01-01T00:00:00.000Z');
+  const dir = tree({});
+  try {
+    mkdirSync(join(dir, 'elsewhere'));
+    writeFileSync(join(dir, 'elsewhere', 'only-here.json'), JSON.stringify(good));
+    const r = spawnSync(process.execPath, [GENERATOR, '--root', dir, '--summary', 'elsewhere/only-here.json'], { encoding: 'utf8', cwd: tmpdir() });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(readFileSync(join(dir, 'docs/architecture/modelling-parity-ledger.md'), 'utf8'), /Summary: `elsewhere\/only-here\.json`/); // @source-text-assertion-ok asserts on the generator's emitted ledger, not on unexecuted source text
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

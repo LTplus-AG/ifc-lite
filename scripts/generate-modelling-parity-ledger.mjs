@@ -23,7 +23,8 @@
  *   node scripts/generate-modelling-parity-ledger.mjs             # regenerate + write
  *   node scripts/generate-modelling-parity-ledger.mjs --check     # fail if the committed ledger is stale
  *   node scripts/generate-modelling-parity-ledger.mjs --summary tests/modelling-parity/.out/summary.json
- *   --root <dir> points every read and the write at another tree (used by the test).
+ *   --root <dir> points every read (catalogue, baseline directory, a relative --summary) and the
+ *   write at another tree (used by the test).
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -62,7 +63,7 @@ function latestSummary() {
 
 const catalogue = readJson(join(ROOT, CATALOGUE_REL));
 const { path: summaryPath, summary } = flag('--summary')
-  ? { path: relative(ROOT, resolve(flag('--summary'))).split('\\').join('/'), summary: readJson(resolve(flag('--summary'))) }
+  ? { path: relative(ROOT, resolve(ROOT, flag('--summary'))).split('\\').join('/'), summary: readJson(resolve(ROOT, flag('--summary'))) }
   : latestSummary();
 
 if (!Array.isArray(catalogue.capabilities) || catalogue.capabilities.length === 0) fail('the catalogue lists no capabilities');

@@ -25,8 +25,11 @@ t.check('a wall schedule lists every wall', () => (rows.length === 4 && ['W0', '
 t.check('wall quantities match the geometry', () => {
   const bad = walls.map((w, i) => {
     const r = rows.find((row) => row.Name === `W${i}`) ?? {};
-    const v = x.volume(w), len = Number(r.Length), nv = Number(r.NetVolume);
-    return Number.isFinite(nv) && Math.abs(nv - v) / v < 0.01 && Number.isFinite(len) && len >= (i % 2 ? 8 : 10) - 0.3 ? null : `W${i} Length=${r.Length ?? '∅'} NetVolume=${r.NetVolume ?? '∅'} (mesh ${P.fmt(v)} m³)`;
+    // Length within 1 % of the wall's location-line length (10 / 8 m) or of its joined outer-face length
+    // (+ the 0.25 m thickness), the two conventions authoring tools report; both ends are bounded.
+    const v = x.volume(w), len = Number(r.Length), nv = Number(r.NetVolume), axis = i % 2 ? 8 : 10;
+    const lengthOk = Number.isFinite(len) && [axis, axis + 0.25].some((want) => Math.abs(len - want) / want < 0.01);
+    return Number.isFinite(nv) && Math.abs(nv - v) / v < 0.01 && lengthOk ? null : `W${i} Length=${r.Length ?? '∅'} NetVolume=${r.NetVolume ?? '∅'} (mesh ${P.fmt(v)} m³)`;
   }).filter(Boolean);
   return bad.length === 0 || bad.join('; ');
 }, { core: true });

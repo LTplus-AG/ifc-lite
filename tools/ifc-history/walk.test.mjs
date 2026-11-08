@@ -8,7 +8,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import * as walker from './walk.mjs';
+// A reverted new tool must fail on an assertion, rather than module loading.
+const walker = await import('./walk.mjs').catch(error => {
+  if (error.code === 'ERR_MODULE_NOT_FOUND') return {};
+  throw error;
+});
 
 const script = fileURLToPath(new URL('./walk.mjs', import.meta.url));
 const cli = fileURLToPath(new URL('../../packages/cli/dist/index.js', import.meta.url));
@@ -51,9 +55,9 @@ test('#9332 real CLI: consecutive revisions distinguish unchanged, modified and 
   walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
   assert.equal(lines.length, 3);
   const counts = [
-    '1 unchanged, 0 modified, 0 added, 0 deleted, 0 content-matches',
-    '0 unchanged, 1 modified, 0 added, 0 deleted, 0 content-matches',
-    '0 unchanged, 0 modified, 0 added, 0 deleted, 1 content-matches (1 renamed)',
+    '5 unchanged, 0 modified, 0 added, 0 deleted, 0 content-matches',
+    '4 unchanged, 1 modified, 0 added, 0 deleted, 0 content-matches',
+    '0 unchanged, 0 modified, 0 added, 0 deleted, 5 content-matches (5 renamed)',
   ];
   for (const [i, [base, head]] of [[h.base, h.same], [h.same, h.modified], [h.modified, h.renamed]].entries()) {
     assert.equal(lines[i], `${head.slice(0, 12)}: ${counts[i]}; ${base.slice(0, 12)} -> ${head.slice(0, 12)} ${JSON.stringify(h.path)}`);
@@ -72,4 +76,35 @@ test('#9332 failed pair exits nonzero and identifies the commit and path', (t) =
   assert.equal(result.status, 1);
   assert.ok(result.stderr.includes(h.same));
   assert.ok(result.stderr.includes(h.path));
+});
+
+test('#9332 real CLI counts added/deleted entities and aggregates files per commit', (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  const extra = "#90=IFCWALL('0000000000000000000090',$,'extra-wall',$,$,#24,#26,$,.NOTDEFINED.);\n";
+  const withExtra = fixture.replace('ENDSEC;\nEND-ISO', extra + 'ENDSEC;\nEND-ISO');
+  const added = h.commit(withExtra, 'extra wall and original identities');
+  const deleted = h.commit(fixture, 'remove extra wall');
+  // Seed a second chain, then edit both files in one commit.
+  writeFileSync(join(h.repo, 'second.ifc'), fixture);
+  h.git('add', 'second.ifc');
+  h.commit(fixture.replace('synthetic.ifc', 'seed.ifc'), 'second model');
+  writeFileSync(join(h.repo, 'second.ifc'), fixture.replace('stable-box', 'second-edit'));
+  h.git('add', 'second.ifc');
+  const both = h.commit(fixture.replace('stable-box', 'first-edit'), 'two models edited');
+  const lines = [];
+  walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
+  assert.ok(lines.find(line => line.startsWith(added.slice(0, 12))).includes('1 added, 0 deleted'));
+  assert.ok(lines.find(line => line.startsWith(deleted.slice(0, 12))).includes('0 added, 1 deleted'));
+  const aggregate = lines.filter(line => line.startsWith(both.slice(0, 12)));
+  assert.equal(aggregate.length, 1);
+  assert.ok(aggregate[0].includes('8 unchanged, 2 modified, 0 added, 0 deleted'));
+  assert.ok(aggregate[0].includes('"second.ifc"'));
+  // Deletion and re-creation start a new chain, never compare across absence.
+  h.git('rm', '--', h.path);
+  h.git('-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'delete model');
+  h.commit(fixture, 'new model at old path');
+  const after = [];
+  walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => after.push(line) });
+  assert.deepEqual(after, lines);
 });

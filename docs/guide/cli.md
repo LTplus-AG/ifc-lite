@@ -930,6 +930,7 @@ ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out me
 |------|-------------|
 | `--out <file>` | Output IFC (omit with `--dry-run`) |
 | `--name <n>` / `--elevation <m>` | Name and elevation of a storey to add; `--name` also renames |
+| `--building <id>` | The building a `--name`/`--elevation` storey joins, in a model with several (`--from` uses its storey's building) |
 | `--from <storey>` / `--below` | Add above (or below) a storey with its neighbours' naming and spacing |
 | `--storey <storey>` | The storey to rename, edit or delete |
 | `--floor-height <m>` | New floor-to-floor height of `--storey` |

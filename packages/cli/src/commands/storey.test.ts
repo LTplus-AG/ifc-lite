@@ -9,7 +9,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -181,6 +181,26 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     await expect(run([two, 'delete', '--storey', 'Upper', '--move-to', 'My Storey', '--delete-contents', '--out', out])).rejects.toThrow('exit 1');
     expect(stderr).toMatch(/not both/);
     expect(existsSync(out)).toBe(false);
+  });
+
+  it('in a model with two buildings, --building picks the one a new storey joins (#9121 review)', async () => {
+    const run = await storey();
+    const source = await readFile(SAMPLE, 'utf8');
+    // A second building, so the model no longer has a sole building to add into.
+    const twoBuildings = join(dir, 'two-buildings.ifc');
+    // A second building with a storey of its own, so storeys belong to two buildings.
+    const annex = [
+      "#900001=IFCBUILDING('2O2Fr$t4X7Zf8NOew3FLOH',$,'Annex',$,$,$,$,$,$,$,$,$);",
+      "#900002=IFCBUILDINGSTOREY('1kTvXnbbzCWw8lcMd1dR4o',$,'Annex L0',$,$,$,$,$,.ELEMENT.,0.);",
+      "#900003=IFCRELAGGREGATES('0Fh0gWbKP0Mw9tYpUZ2Kq3',$,$,$,#900001,(#900002));",
+    ].join('\n');
+    await writeFile(twoBuildings, source.replace(/\nENDSEC;\s*\nEND-ISO-10303-21;/, `\n${annex}\nENDSEC;\nEND-ISO-10303-21;`));
+    const out = join(dir, 'never.ifc');
+    await expect(run([twoBuildings, 'add', '--name', 'Upper', '--elevation', '3', '--out', out])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/2 buildings/);
+    const added = join(dir, 'added.ifc');
+    await run([twoBuildings, 'add', '--name', 'Upper', '--elevation', '3', '--building', '36', '--out', added]);
+    expect(await storeysOf(added)).toEqual([['My Storey', 0, 36], ['Annex L0', 0, 900001], ['Upper', 3, 36]]);
   });
 
   it('storey --help lists the actions (#9121 review)', async () => {

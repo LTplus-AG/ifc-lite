@@ -22,7 +22,9 @@ export const STOREY_USAGE = `Usage: ifc-lite storey <file.ifc> <action> [options
 
 Actions:
   list                                       Storeys, highest first: id, name, elevation, floor-to-floor, elements
-  add --name N --elevation M --out F         Add a storey (copies the neighbouring storeys' placement)
+  add --name N --elevation M [--building ID] --out F
+                                             Add a storey (copies the neighbouring storeys' placement);
+                                             --building picks the building in a model with several
   add --from <storey> [--below] --out F      Add above (or below) a storey with its neighbours' naming and spacing
   rename --storey <storey> --name N --out F  Rename a storey
   edit --storey <storey> --elevation M --out F
@@ -142,8 +144,12 @@ export async function storeyCommand(args: string[]): Promise<void> {
         Elevation ??= suggestion.Elevation;
       }
       if (!Name || Elevation === undefined) fatal('add needs --name and --elevation, or --from <storey>');
+      // A model with several buildings needs to be told which one (or a --from storey, whose building it joins).
+      const building = flagValue(args, '--building');
+      const buildingId = building === undefined ? undefined : Number(building.replace(/^#/, ''));
+      if (buildingId !== undefined && !Number.isInteger(buildingId)) fatal('--building must be the express id of an IfcBuilding');
       // A dry run makes the same add in memory, so it is refused exactly as the real one; only the file is not written.
-      const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId }), { Name, Elevation });
+      const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId, buildingId }), { Name, Elevation });
       if (dryRun) { report({ action, Name, Elevation }, json); return; }
       if (!json) process.stderr.write(`Added ${Name} at ${Elevation!.toFixed(3)} m as #${ref.expressId}\n`);
       await save({ action, added: ref.expressId });

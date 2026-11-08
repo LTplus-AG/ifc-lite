@@ -145,7 +145,7 @@ export const measureFr = {
   "measure.source.modified": "Opérande CSG : la géométrie finale diffère de cette source.",
   "measure.source.unplaced": "Les valeurs source utilisent les unités du fichier converties en unités d'affichage ; les transformations d'occurrence sont exclues.",
   "measure.visuals.polylineSoFar": "{basis} jusqu'ici - {count} pts",
-  "measure.chip.label": "{count} mesure(s)",
+  "measure.chip.label": {"one": "{count} mesure", "many": "{count} mesures", "other": "{count} mesures"},
   "measure.chip.hideAria": "Masquer les mesures",
   "measure.chip.hideTitle": "Masquer les mesures sans les supprimer",
   "measure.chip.showAria": "Afficher les mesures",

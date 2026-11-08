@@ -34,7 +34,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.webgpuBanner.heading': 'WebGPU Not Available',
   'viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport': 'Check Browser Support',
   'viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers':
-    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+',
+    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+',
   'viewportLighting.container.emptyState.webgpuBanner.hideTroubleshooting': 'Hide Troubleshooting',
   'viewportLighting.container.emptyState.webgpuBanner.showTroubleshooting': 'Show Troubleshooting',
   'viewportLighting.container.emptyState.heading': 'Open a model',
@@ -117,7 +117,7 @@ export const viewportLightingEn = {
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',
   'viewportLighting.viewport.renderFailed.browserHint':
-    'Try using Chrome 113+, Edge 113+, or Safari 18+ with WebGPU support.',
+    'Try using Chrome 113+, Edge 113+, or Safari 26+ with WebGPU support.',
 
   // ── FlySpeedIndicator.tsx — fly-mode speed HUD ───────────────────────
   'viewportLighting.flySpeed.label': 'Fly speed {level}/{total}',

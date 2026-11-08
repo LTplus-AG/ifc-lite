@@ -101,13 +101,18 @@ export async function openSession(browser, baseUrl, { theme = 'light', shotsDir,
       style.textContent = css;
       document.head.appendChild(style);
     });
-    // Capture downloads: the export writes a blob through an <a download> click.
+    // Capture downloads: every viewer export ends in an <a download> click on a blob: or data: URL.
+    // Bytes are kept as base64 so binary files (PDF) survive the trip out of the page.
     globalThis.__parity_downloads__ = [];
     const original = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function click() {
-      if (this.download && this.href.startsWith('blob:')) {
+      if (this.download && /^(blob|data):/.test(this.href)) {
         const name = this.download;
-        fetch(this.href).then((r) => r.text()).then((text) => globalThis.__parity_downloads__.push({ name, text }));
+        fetch(this.href).then((r) => r.blob()).then((blob) => new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ type: blob.type, b64: String(reader.result).split(',')[1] ?? '' });
+          reader.readAsDataURL(blob);
+        })).then(({ type, b64 }) => globalThis.__parity_downloads__.push({ name, type, b64 }));
         return undefined;
       }
       return original.call(this);
@@ -177,6 +182,17 @@ export async function openSession(browser, baseUrl, { theme = 'light', shotsDir,
       await page.mouse.click(x, y, { modifiers: opts.modifiers });
       counters.clicks++;
       await page.waitForTimeout(opts.settle ?? 150);
+    },
+    /** Press, drag and release between two client pixels (one action). */
+    async drag(from, to, opts = {}) {
+      await page.mouse.move(from[0], from[1], { steps: 3 });
+      await page.waitForTimeout(opts.hover ?? 120);
+      await page.mouse.down();
+      await page.mouse.move(to[0], to[1], { steps: opts.steps ?? 12 });
+      await page.waitForTimeout(80);
+      await page.mouse.up();
+      counters.clicks++;
+      await page.waitForTimeout(opts.settle ?? 200);
     },
     /** Move the pointer to a world point without clicking (hover feedback). Not an action. */
     async hoverWorld(p) {
@@ -265,6 +281,16 @@ function describeError(error) {
   const waiting = lines.find((l) => /waiting for/.test(l))?.trim();
   return [lines[0], waiting].filter(Boolean).join(' | ').slice(0, 400);
 }
+
+/** Wait for a download after `before` captured ones; returns `{ name, type, bytes, text }`. */
+export async function nextDownload(page, before, timeout = 60000) {
+  await page.waitForFunction((n) => globalThis.__parity_downloads__.length > n, before, { timeout });
+  const d = await page.evaluate(() => globalThis.__parity_downloads__.at(-1));
+  const bytes = Buffer.from(d.b64, 'base64');
+  return { name: d.name, type: d.type, bytes, text: bytes.toString('utf8') };
+}
+
+export const downloadCount = (page) => page.evaluate(() => globalThis.__parity_downloads__.length);
 
 export function gitSource(root) {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();

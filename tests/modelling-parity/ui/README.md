@@ -3,7 +3,8 @@
 These scripts measure what a modeller experiences in the real viewer on a real
 GPU. Every probe starts from "Start blank" and does its task with real input:
 
-- tool shortcuts (W, Shift+S, Shift+D …);
+- tool shortcuts (W, Shift+S, Shift+D …) and the Drawing panel's tools and
+  Export menu;
 - clicks on the canvas at world points;
 - typed lengths and angles in the drawing HUD;
 - named controls such as the storey chip, the storey manager, the Defaults
@@ -51,8 +52,13 @@ unset. Nothing there is committed.
 
 - `probes.json` and `exercises.json` hold results in the contract format
   (`ifclite-parity-result/1`, with `probe: "ui"` or `"exercise"`).
-- `shots/` holds screenshots, and `exports/` the IFC from every probe and
-  exercise.
+- `shots/` holds screenshots.
+- `artifacts/<capability-id>/` (or `artifacts/F1/`, `artifacts/F2/` for the
+  exercises) holds the files the UI produced: the exported IFC, the section
+  drawing as SVG, DXF and PDF, the sheet PDF, and the dimensioned SVG. Each
+  result lists them in `evidence` and in `artifacts`
+  (`{"ifc", "svg", "pdf", "dxf"}`, only the keys that exist). Lane L1's output
+  probes validate them.
 - `frames/` holds the council checkpoints with a `manifest.json` in the
   `tests/ui-scenes/capture.mjs` format.
 
@@ -63,6 +69,7 @@ A full run takes about five minutes.
 - Each click and each key press is one action.
 - A chord such as Ctrl+Shift+V is one action.
 - A click with Alt held ("ignore snaps and surfaces") is one action.
+- A press-drag-release (a 2D distance) is one action.
 - Typed text counts one action per character.
 
 `metrics.ms` is the wall time of the counted tasks, including the viewer's

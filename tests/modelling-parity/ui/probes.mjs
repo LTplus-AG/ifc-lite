@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { task } from './lib/driver.mjs';
+import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
 } from './lib/model-ui.mjs';
@@ -67,6 +67,47 @@ const wallsOn = (step, storeyName) => {
   const contained = step.containment();
   return step.wallAxes().filter((w) => contained.get(w.id) === storey?.id);
 };
+
+/** Section tool (X) -> New cut: Front -> the "2D section" toggle opens the Drawing panel. */
+async function openFrontSection(s) {
+  await escape(s);
+  await s.ui.key('x', { settle: 600 });
+  await s.ui.click(s.page.getByRole('button', { name: 'Front (Y)', exact: true }).first(), { settle: 800 });
+  await s.ui.click(s.page.getByRole('button', { name: '2D section', exact: true }).first(), { settle: 3000 });
+}
+
+const drawingState = (s) => s.state(() => {
+  const st = globalThis.__ifc_lite_viewer_store__.getState();
+  return {
+    status: st.drawing2DStatus ?? null, panel: !!st.drawing2DPanelVisible,
+    cutPolygons: st.drawing2D?.cutPolygons?.length ?? 0, lines: st.drawing2D?.lines?.length ?? 0,
+    sheetEnabled: !!st.sheetEnabled, activeSheet: !!st.activeSheet,
+  };
+});
+
+/**
+ * Drawing panel > Export > one format. Returns the download `{ name, type, bytes, text }`.
+ * `count: false` is the harness's own export (not a modeller action).
+ */
+async function exportDrawing(s, format, { count = true } = {}) {
+  const { page } = s;
+  const click = (loc) => (count ? s.ui.click(loc) : loc.click({ timeout: 5000 }));
+  const before = await downloadCount(page);
+  await click(page.getByRole('button', { name: 'Export', exact: true }).last());
+  const item = { svg: 'Download SVG', dxf: 'Download DXF', pdf: /^Download PDF/ }[format];
+  await click(page.getByRole('menuitem', { name: item }));
+  if (format === 'pdf') await click(page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }));
+  if (format === 'dxf') {
+    // DXF asks first when it would leave markups out.
+    const anyway = page.getByRole('button', { name: 'Export anyway' });
+    if (await anyway.isVisible({ timeout: 800 }).catch(() => false)) await click(anyway);
+  }
+  return nextDownload(page, before, 30000);
+}
+
+const isPdf = (d) => !!d && d.bytes.subarray(0, 5).toString() === '%PDF-';
+const isDxf = (d) => !!d && /\bSECTION\b/.test(d.text) && /\bEOF\b/.test(d.text);
+const svgShapes = (d) => (d?.text.match(/<(path|polygon|polyline|line|rect)\b/g) ?? []).length;
 
 export const PROBES = [
   {
@@ -523,23 +564,99 @@ export const PROBES = [
         planPaths = await s.state(() => document.querySelectorAll('svg[data-plan-canvas] path, svg[data-plan-canvas] polygon, svg[data-plan-canvas] line, svg[data-plan-canvas] polyline, svg[data-plan-canvas] rect').length);
       }));
       const planShot = await s.shot('plan');
-      let section = { status: null, panel: false, cutPolygons: 0, lines: 0 };
-      tasks.push(await task(s, 'Section tool (X), New cut: Front, then the 2D section toggle', async () => {
-        await escape(s);
-        await s.ui.key('x', { settle: 600 });
-        await s.ui.click(s.page.getByRole('button', { name: 'Front (Y)', exact: true }).first(), { settle: 800 });
-        await s.ui.click(s.page.getByRole('button', { name: '2D section', exact: true }).first(), { settle: 3000 });
-        section = await s.state(() => {
-          const st = globalThis.__ifc_lite_viewer_store__.getState();
-          return { status: st.drawing2DStatus ?? null, panel: !!st.drawing2DPanelVisible, cutPolygons: st.drawing2D?.cutPolygons?.length ?? 0, lines: st.drawing2D?.lines?.length ?? 0 };
-        });
-      }));
+      tasks.push(await task(s, 'Section tool (X), New cut: Front, then the 2D section toggle', () => openFrontSection(s)));
+      const section = await drawingState(s);
       const sectionShot = await s.shot('section');
+      const files = {};
+      for (const format of ['svg', 'dxf', 'pdf']) {
+        tasks.push(await task(s, `Drawing > Export > ${format.toUpperCase()}`, async () => { files[format] = await exportDrawing(s, format); }));
+      }
       return {
-        tasks, notes, evidence: [planShot, sectionShot],
+        tasks, notes, evidence: [planShot, sectionShot], artifacts: files,
         checks: [
           { name: 'plan view shows the walls', ok: planPaths >= 4, detail: `${planPaths} plan shapes` },
           { name: '2D section drawing shows the cut walls', ok: section.panel && section.cutPolygons >= 2, detail: `status ${section.status}, panel ${section.panel}, ${section.cutPolygons} cut polygons, ${section.lines} lines` },
+          { name: 'section exported as SVG with geometry', ok: svgShapes(files.svg) >= 2, detail: files.svg ? `${files.svg.name}, ${svgShapes(files.svg)} shapes` : 'no SVG' },
+          { name: 'section exported as DXF', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
+          { name: 'section exported as PDF (to scale)', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
+        ],
+      };
+    },
+  },
+  {
+    id: 'ui.drawing-dims',
+    capability: 'dimensions-tags',
+    title: 'A Distance dimension on the 2D section, exported to SVG; element tags',
+    async run(s) {
+      const tasks = [await setupRoom(s)];
+      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then((t) => ({ ...t, setup: true })));
+      const plain = await exportDrawing(s, 'svg', { count: false }).catch(() => null);
+      let toolbar = [];
+      let canvas = null;
+      tasks.push(await task(s, 'Distance tool, drag from wall to wall, Esc', async () => {
+        const { page } = s;
+        toolbar = await s.state(() => [...document.querySelectorAll('button,[role=radio]')].filter((b) => b.offsetParent && b.getBoundingClientRect().top > innerHeight * 0.55 && b.getBoundingClientRect().top < innerHeight * 0.65).map((b) => b.innerText.trim()).filter(Boolean));
+        // The Drawing toolbar's markup tool (the section HUD has its own "distance" field, hence the exact text).
+        await s.ui.click(page.getByText('Distance', { exact: true }).last());
+        const active = await s.state(() => globalThis.__ifc_lite_viewer_store__.getState().measure2DMode ?? null);
+        if (!active) throw new Error('the Distance tool did not become active');
+        // The drawing canvas fills the panel; the fitted front section puts the two cut walls at
+        // these fractions of its width (measured at 1600x900 on the baseline).
+        canvas = await s.state(() => {
+          const c = [...document.querySelectorAll('canvas, svg')].filter((x) => x.getBoundingClientRect().top > innerHeight * 0.58 && x.getBoundingClientRect().width > 600)
+            .sort((a, b) => b.getBoundingClientRect().width * b.getBoundingClientRect().height - a.getBoundingClientRect().width * a.getBoundingClientRect().height)[0];
+          if (!c) return null;
+          const r = c.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height, tag: c.tagName };
+        });
+        if (!canvas) throw new Error('no drawing canvas found');
+        const y = canvas.y + canvas.h * 0.5;
+        // A 2D distance is one press-drag-release from wall to wall.
+        await s.ui.drag([canvas.x + canvas.w * 0.351, y], [canvas.x + canvas.w * 0.649, y]);
+        await s.ui.key('Escape');
+      }));
+      const shot = await s.shot('dimension');
+      const annotations = await s.state(() => {
+        const st = globalThis.__ifc_lite_viewer_store__.getState();
+        return Object.entries(st).filter(([k, v]) => /measure2D|annotation/i.test(k) && Array.isArray(v)).reduce((n, [, v]) => n + v.length, 0);
+      });
+      let svg = null;
+      tasks.push(await task(s, 'Drawing > Export > SVG', async () => { svg = await exportDrawing(s, 'svg'); }));
+      const added = svg && plain ? svg.text.length - plain.text.length : 0;
+      const numbers = (svg?.text.match(/<text[^>]*>[^<]*\d+[.,]\d+[^<]*<\/text>/g) ?? []).length;
+      const tagTool = toolbar.some((t) => /tag|label/i.test(t));
+      return {
+        tasks, notes: tagTool ? [] : [`The Drawing toolbar has no tag tool (${toolbar.join(', ')}).`], evidence: [shot], artifacts: { svg },
+        checks: [
+          { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
+          { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
+          { name: 'a tag tool for elements (door, window, room tags)', ok: tagTool, detail: `toolbar: ${toolbar.join(', ')}` },
+        ],
+      };
+    },
+  },
+  {
+    id: 'ui.sheet',
+    capability: 'sheets-pdf-dwg',
+    title: 'Put the 2D section on a sheet and export the sheet as PDF and DXF',
+    async run(s) {
+      const tasks = [await setupRoom(s)];
+      tasks.push(await task(s, 'setup: 2D section of the room', () => openFrontSection(s)).then((t) => ({ ...t, setup: true })));
+      tasks.push(await task(s, 'Sheet, Enable Sheet', async () => {
+        await s.ui.click(s.page.getByRole('button', { name: 'Sheet', exact: true }).first(), { settle: 800 });
+        await s.ui.click(s.page.getByRole('button', { name: 'Enable Sheet' }), { settle: 1500 });
+      }));
+      const state = await drawingState(s);
+      const shot = await s.shot('sheet');
+      const files = {};
+      tasks.push(await task(s, 'Drawing > Export > PDF (the sheet)', async () => { files.pdf = await exportDrawing(s, 'pdf'); }));
+      tasks.push(await task(s, 'Drawing > Export > DXF', async () => { files.dxf = await exportDrawing(s, 'dxf'); }));
+      return {
+        tasks, notes: ['The drawing exports DXF; there is no DWG export.'], evidence: [shot], artifacts: files,
+        checks: [
+          { name: 'a sheet is active (paper, frame, title block)', ok: state.sheetEnabled && state.activeSheet, detail: `sheetEnabled ${state.sheetEnabled}, activeSheet ${state.activeSheet}` },
+          { name: 'sheet exported as PDF', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
+          { name: 'drawing exported as DXF (no DWG export exists)', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
         ],
       };
     },
@@ -553,7 +670,7 @@ export const PROBES = [
       let dl = null;
       tasks.push(await task(s, 'File > Export IFC, schema IFC4, Export', async () => {
         const { page } = s;
-        const before = await page.evaluate(() => globalThis.__parity_downloads__.length);
+        const before = await downloadCount(page);
         await s.ui.click(page.getByRole('tab', { name: 'File' }));
         await s.ui.click(page.locator('[data-export-command="ifc"]'));
         const dialog = page.getByRole('dialog');
@@ -561,8 +678,7 @@ export const PROBES = [
         await s.ui.click(dialog.getByRole('combobox').nth(1));
         await s.ui.click(page.getByRole('option', { name: /^IFC4( \(current\))?$/ }));
         await s.ui.click(dialog.getByRole('button', { name: /^Export$/ }).last());
-        await page.waitForFunction((n) => globalThis.__parity_downloads__.length > n, before, { timeout: 60000 });
-        dl = await page.evaluate(() => globalThis.__parity_downloads__.at(-1));
+        dl = await nextDownload(page, before);
       }));
       const step = dl ? readStep(dl.text) : null;
       const wall = step?.of('IFCWALL')[0];
@@ -645,7 +761,7 @@ export const PROBES = [
 ];
 
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
-export async function runProbe(probe, openFresh, base) {
+export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   const s = await openFresh(probe.id);
   const t0 = Date.now();
   let out;
@@ -699,6 +815,20 @@ export async function runProbe(probe, openFresh, base) {
     evidenceSha256: Object.fromEntries((out.evidence ?? []).filter(Boolean).map((e) => [`shots/${e.file}`, e.sha256])),
   };
   await s.close();
-  return { result, exportText: out.exportText ?? s.lastExport?.text ?? null };
+  // Files the probe produced, for the output probes (L1): the exported IFC and any drawing files.
+  const files = { ...out.artifacts };
+  const ifcText = out.exportText ?? s.lastExport?.text ?? null;
+  if (ifcText) files.ifc = { name: `${probe.id}.ifc`, bytes: Buffer.from(ifcText, 'utf8') };
+  if (saveArtifact) {
+    const artifacts = {};
+    for (const [kind, file] of Object.entries(files)) {
+      if (file?.bytes) artifacts[kind] = await saveArtifact(probe.capability, file.name, file.bytes);
+    }
+    if (Object.keys(artifacts).length) {
+      result.artifacts = artifacts;
+      result.evidence.push(...Object.values(artifacts));
+    }
+  }
+  return { result };
 }
 

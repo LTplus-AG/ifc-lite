@@ -21,7 +21,9 @@
  * - `shots/`: probe and exercise screenshots;
  * - `frames/`: the council checkpoint set with a `manifest.json` that
  *   `tests/ui-scenes/pair.mjs` reads (candidate vs baseline);
- * - `exports/`: the IFC each exercise exported.
+ * - `artifacts/<capability or exercise>/`: the files the UI produced (exported IFC,
+ *   drawing SVG/DXF/PDF, sheet PDF), listed in each result's `artifacts` and
+ *   `evidence`, for the output probes to validate.
  * `--baseline <file>` also writes the combined result file to commit.
  *
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the parity loop, not CI.
@@ -73,8 +75,14 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const shots = join(args.out, 'shots');
   const frames = join(args.out, 'frames');
-  const exportsDir = join(args.out, 'exports');
-  await Promise.all([shots, frames, exportsDir].map((d) => mkdir(d, { recursive: true })));
+  await Promise.all([shots, frames].map((d) => mkdir(d, { recursive: true })));
+  /** Write a produced file to artifacts/<group>/<name>; returns its path relative to --out. */
+  const saveArtifact = async (group, name, bytes) => {
+    const rel = `artifacts/${group}/${name}`;
+    await mkdir(join(args.out, 'artifacts', group), { recursive: true });
+    await writeFile(join(args.out, rel), bytes);
+    return rel;
+  };
   const source = gitSource(ROOT);
   const distIndexSha256 = sha256(await readFile(join(args.dist, 'index.html')));
   const runner = `node tests/modelling-parity/ui/run.mjs ${process.argv.slice(2).join(' ')}`.trim();
@@ -105,8 +113,7 @@ async function main() {
 
     if (args.probes) {
       for (const p of PROBES.filter((x) => !args.only || args.only.includes(x.id))) {
-        const { result, exportText } = await runProbe(p, openFresh, base);
-        if (exportText) await writeFile(join(exportsDir, `${p.id}.ifc`), exportText);
+        const { result } = await runProbe(p, openFresh, base, { saveArtifact });
         probeResults.push(result);
         console.log(`${result.status.padEnd(7)} ${p.id.padEnd(20)} actions ${String(result.metrics.actions).padStart(3)}  ${String(result.metrics.ms).padStart(6)} ms${result.reason ? `  ${result.reason.slice(0, 160)}` : ''}`);
       }
@@ -117,7 +124,7 @@ async function main() {
       // The first theme's run is the measured one; every theme's run writes council frames.
       for (const [i, theme] of args.themes.entries()) {
         if (!args.frames && i > 0) break;
-        const run = await runExercise(EXERCISES[id], { openFresh, theme, shots, frames: args.frames ? frames : null, exportsDir, base, measured: i === 0 });
+        const run = await runExercise(EXERCISES[id], { openFresh, theme, shots, frames: args.frames ? frames : null, saveArtifact, base, measured: i === 0 });
         if (i === 0) {
           exerciseResults.push(run.result);
           console.log(`${run.result.status.padEnd(7)} ${run.result.id.padEnd(20)} actions ${String(run.result.metrics.actions).padStart(3)}  ${String(run.result.metrics.ms).padStart(6)} ms${run.result.reason ? `  ${run.result.reason.slice(0, 160)}` : ''}`);

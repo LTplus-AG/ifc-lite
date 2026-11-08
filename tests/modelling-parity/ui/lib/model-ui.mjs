@@ -11,6 +11,7 @@
  * renames one, the probe fails loudly at that step instead of passing quietly.
  */
 
+import { downloadCount, nextDownload } from './driver.mjs';
 import { readStep } from './step.mjs';
 
 /** Tool shortcuts as the rail menus show them. */
@@ -120,15 +121,14 @@ export const readStoreyManager = (s) => s.state(() => document.querySelector('[d
 export async function exportIfc(s, { count = true, schema } = {}) {
   const { page } = s;
   const click = async (loc) => (count ? s.ui.click(loc) : loc.click({ timeout: 5000 }));
-  const before = await page.evaluate(() => globalThis.__parity_downloads__.length);
+  const before = await downloadCount(page);
   await click(page.getByRole('tab', { name: 'File' }));
   await click(page.getByRole('button', { name: /Export modified IFC/ }).first());
   const dialog = page.getByRole('dialog');
   await dialog.waitFor({ timeout: 8000 });
   if (schema) await click(dialog.getByRole('radio', { name: schema }).or(dialog.getByRole('button', { name: schema, exact: true })).first());
   await click(dialog.getByRole('button', { name: /^Export/ }).last());
-  await page.waitForFunction((n) => globalThis.__parity_downloads__.length > n, before, { timeout: 60000 });
-  const dl = await page.evaluate(() => globalThis.__parity_downloads__.at(-1));
+  const dl = await nextDownload(page, before);
   // Back to the Author tab so the next step sees the Model workspace chrome.
   await page.getByRole('tab', { name: 'Author' }).click({ timeout: 3000 }).catch(() => {});
   return dl;

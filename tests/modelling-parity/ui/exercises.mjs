@@ -20,7 +20,7 @@
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { sha256, task } from './lib/driver.mjs';
+import { downloadCount, nextDownload, sha256, task } from './lib/driver.mjs';
 import { escape, openStoreyManager, readSession, startBlank, switchStorey, toasts, tool, typeFields } from './lib/model-ui.mjs';
 import { readStep } from './lib/step.mjs';
 
@@ -107,10 +107,9 @@ async function openExportReview(s) {
 
 async function confirmExport(s) {
   const { page } = s;
-  const before = await page.evaluate(() => globalThis.__parity_downloads__.length);
+  const before = await downloadCount(page);
   await s.ui.click(page.getByRole('dialog').getByRole('button', { name: /^Export$/ }).last());
-  await page.waitForFunction((n) => globalThis.__parity_downloads__.length > n, before, { timeout: 60000 });
-  return page.evaluate(() => globalThis.__parity_downloads__.at(-1));
+  return nextDownload(page, before);
 }
 
 function commonChecks(step, want) {
@@ -364,7 +363,7 @@ export const EXERCISES = {
  * Run one exercise in a fresh page. `measured` marks the run whose actions
  * and timings are reported; the other theme's run only writes frames.
  */
-export async function runExercise(ex, { openFresh, theme, shots, frames, exportsDir, base, measured }) {
+export async function runExercise(ex, { openFresh, theme, shots, frames, saveArtifact, base, measured }) {
   const s = await openFresh(`${ex.id}-${theme}`, theme, shots);
   const tasks = [];
   const notes = [];
@@ -410,8 +409,9 @@ export async function runExercise(ex, { openFresh, theme, shots, frames, exports
   }
   let checks = [];
   let targetFrom = null;
+  let ifcPath = null;
   if (s.download?.text) {
-    if (measured) await writeFile(join(exportsDir, `${ex.id}.ui.ifc`), s.download.text);
+    if (measured && saveArtifact) ifcPath = await saveArtifact(ex.id, `${ex.id}.ui.ifc`, s.download.bytes);
     const judged = ex.oracle(readStep(s.download.text));
     checks = Array.isArray(judged) ? judged : judged.checks;
     if (!Array.isArray(judged)) targetFrom = judged.target;
@@ -450,7 +450,8 @@ export async function runExercise(ex, { openFresh, theme, shots, frames, exports
     scripted: s.scriptedSteps,
     pageErrors: s.pageErrors,
     finalSession: session,
-    evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(measured && s.download ? [`exports/${ex.id}.ui.ifc`] : [])],
+    evidence: [...evidence.map((e) => `shots/${e.file}`), ...frameResults.map((f) => `frames/${f.file}`), ...(ifcPath ? [ifcPath] : [])],
+    ...(ifcPath ? { artifacts: { ifc: ifcPath } } : {}),
   };
   return { result, frames: frameResults, frameFailures };
 }

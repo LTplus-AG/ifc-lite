@@ -273,7 +273,10 @@ for (const id of ['author:bulk-properties', 'author:import-data']) {
       launcher = button('Palette'); activate(launcher); await advance(30); await launch(id);
     }
     closeDialog(); await advance(30);
-    assert.equal(document.activeElement, launcher);
+    // Keep DOM identity failures bounded: inspecting Happy DOM's element graph
+    // obscures the focus mismatch and can exhaust the test process (#8962).
+    assert.ok(document.activeElement === launcher,
+      `${id} via ${from}: expected launcher focus, got ${document.activeElement?.tagName} ${document.activeElement?.getAttribute('data-command-id') ?? ''}`);
     activate(launcher); await advance(30);
     if (from === 'palette') assert.ok(document.querySelector('[role="combobox"]'));
     else await waitForAuthor(id);

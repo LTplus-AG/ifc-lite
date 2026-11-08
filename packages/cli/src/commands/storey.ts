@@ -40,13 +40,24 @@ Options:
   --dry-run   Plan an edit or delete and report it (refusals, moves, resized walls, refit stairs); write nothing
   --json      Machine-readable output`;
 
+/**
+ * With `--json`, a failure is still one JSON document on stdout (what a
+ * machine reads), naming the problem, before the usual exit; every storey
+ * failure that does not already print its own goes through here.
+ */
+let jsonFailure: ((message: string) => void) | null = null;
+function refuse(message: string): never {
+  jsonFailure?.(message);
+  return fatal(message);
+}
+
 function resolveStorey(rows: readonly StoreySummary[], value: string | undefined, flag: string): number {
-  if (!value) fatal(`${flag} <storey> is required`);
+  if (!value) refuse(`${flag} <storey> is required`);
   const available = () => rows.map((row) => `${row.Name} (#${row.expressId})`).join(', ') || '(none)';
   // `#36` is always the express id.
   if (/^#\d+$/.test(value!)) {
     const byId = rows.find((row) => row.expressId === Number(value!.slice(1)));
-    return byId ? byId.expressId : fatal(`No storey has express id ${value}. Available: ${available()}`);
+    return byId ? byId.expressId : refuse(`No storey has express id ${value}. Available: ${available()}`);
   }
   // The exact name first; letter case is only a fallback, so "Level 1" still names
   // one storey in a file that also has "level 1".
@@ -56,11 +67,11 @@ function resolveStorey(rows: readonly StoreySummary[], value: string | undefined
   const byId = /^\d+$/.test(value!) ? rows.find((row) => row.expressId === id) : undefined;
   // A bare number that is both one storey's id and another's name says neither: refuse it.
   if (byId && named.some((row) => row.expressId !== byId.expressId)) {
-    return fatal(`"${value}" is #${byId.expressId}'s express id and also a storey name: write #${byId.expressId} for the id, or use the other storey's id`);
+    return refuse(`"${value}" is #${byId.expressId}'s express id and also a storey name: write #${byId.expressId} for the id, or use the other storey's id`);
   }
   if (byId) return byId.expressId;
   if (named.length === 1) return named[0].expressId;
-  return fatal(named.length > 1 ? `More than one storey is named "${value}": use #<express id>` : `Storey "${value}" not found. Available: ${available()}`);
+  return refuse(named.length > 1 ? `More than one storey is named "${value}": use #<express id>` : `Storey "${value}" not found. Available: ${available()}`);
 }
 
 /**
@@ -72,23 +83,25 @@ function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   if (index === -1) return undefined;
   // Given twice, one copy would be silently ignored (perhaps one with no value).
-  if (args.indexOf(flag, index + 1) !== -1) return fatal(`${flag} is given more than once`);
+  if (args.indexOf(flag, index + 1) !== -1) return refuse(`${flag} is given more than once`);
   const value = args[index + 1];
-  if (value === undefined || value.startsWith('--')) return fatal(`${flag} needs a value`);
+  if (value === undefined || value.startsWith('--')) return refuse(`${flag} needs a value`);
   return value;
 }
 
 function metres(value: string | undefined, flag: string): number {
   // `Number('')` is 0: a blank value must not read as ground level.
   const parsed = Number(value?.replace(',', '.'));
-  if (value === undefined || value.trim() === '' || !Number.isFinite(parsed)) fatal(`${flag} must be a number of metres`);
+  if (value === undefined || value.trim() === '' || !Number.isFinite(parsed)) refuse(`${flag} must be a number of metres`);
   return parsed;
 }
 
 export async function storeyCommand(args: string[]): Promise<void> {
   const [filePath, action] = args.filter((a) => !a.startsWith('-') && !isFlagValue(args, a));
-  if (!filePath || !action) fatal(STOREY_USAGE);
+  if (!filePath || !action) refuse(STOREY_USAGE);
   const json = hasFlag(args, '--json');
+  // Set on every run (a test or a long-lived caller may run several).
+  jsonFailure = json ? (message) => printJson({ action, refusals: [{ message }] }) : null;
   const dryRun = hasFlag(args, '--dry-run');
   const out = flagValue(args, '--out');
   const { bim, store, backend } = await createHeadlessContext(filePath!);
@@ -114,7 +127,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
   }
 
   const save = async (summary: Record<string, unknown>) => {
-    if (!out) fatal('--out <file.ifc> is required (or use --dry-run)');
+    if (!out) refuse('--out <file.ifc> is required (or use --dry-run)');
     const schema = (store.schemaVersion ?? 'IFC4') as Schema;
     const exported = new StepExporter(store, backend.getMutationView() ?? undefined).export({ schema, applyMutations: true });
     await writeFile(out!, exported.content);
@@ -143,11 +156,11 @@ export async function storeyCommand(args: string[]): Promise<void> {
         Name ??= suggestion.Name;
         Elevation ??= suggestion.Elevation;
       }
-      if (!Name || Elevation === undefined) fatal('add needs --name and --elevation, or --from <storey>');
+      if (!Name || Elevation === undefined) refuse('add needs --name and --elevation, or --from <storey>');
       // A model with several buildings needs to be told which one (or a --from storey, whose building it joins).
       const building = flagValue(args, '--building');
       const buildingId = building === undefined ? undefined : Number(building.replace(/^#/, ''));
-      if (buildingId !== undefined && !Number.isInteger(buildingId)) fatal('--building must be the express id of an IfcBuilding');
+      if (buildingId !== undefined && !Number.isInteger(buildingId)) refuse('--building must be the express id of an IfcBuilding');
       // A dry run makes the same add in memory, so it is refused exactly as the real one; only the file is not written.
       const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId, buildingId }), { Name, Elevation });
       if (dryRun) { report({ action, Name, Elevation }, json); return; }
@@ -157,7 +170,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
     }
     case 'rename': {
       const storeyId = resolveStorey(rows(), flagValue(args, '--storey'), '--storey');
-      const Name = flagValue(args, '--name') ?? fatal('rename needs --name');
+      const Name = flagValue(args, '--name') ?? refuse('rename needs --name');
       run(() => s.renameStorey({ modelId, expressId: storeyId }, Name), { storey: storeyId, Name });
       if (dryRun) { report({ action, storey: storeyId, Name }, json); return; }
       await save({ action, storey: storeyId, Name });
@@ -167,7 +180,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       const storeyId = resolveStorey(rows(), flagValue(args, '--storey'), '--storey');
       const elevation = flagValue(args, '--elevation');
       const height = flagValue(args, '--floor-height');
-      if ((elevation === undefined) === (height === undefined)) fatal('edit needs exactly one of --elevation or --floor-height');
+      if ((elevation === undefined) === (height === undefined)) refuse('edit needs exactly one of --elevation or --floor-height');
       const edit: StoreyLevelEdit = elevation !== undefined
         ? { kind: 'elevation', storeyId, Elevation: metres(elevation, '--elevation') }
         : { kind: 'floorHeight', storeyId, Height: metres(height, '--floor-height') };
@@ -194,7 +207,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       const list = rows();
       const storeyId = resolveStorey(list, flagValue(args, '--storey'), '--storey');
       const moveTo = flagValue(args, '--move-to');
-      if (moveTo !== undefined && hasFlag(args, '--delete-contents')) fatal('delete takes --move-to or --delete-contents, not both');
+      if (moveTo !== undefined && hasFlag(args, '--delete-contents')) refuse('delete takes --move-to or --delete-contents, not both');
       const mode: StoreyDeleteMode = moveTo !== undefined
         ? { kind: 'move', targetStoreyId: resolveStorey(list, moveTo, '--move-to') }
         : hasFlag(args, '--delete-contents') ? { kind: 'deleteContents' } : { kind: 'empty' };
@@ -210,7 +223,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       return;
     }
     default:
-      fatal(`Unknown storey action "${action}".\n\n${STOREY_USAGE}`);
+      refuse(`Unknown storey action "${action}".\n\n${STOREY_USAGE}`);
   }
 }
 

@@ -203,6 +203,15 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(await storeysOf(added)).toEqual([['My Storey', 0, 36], ['Annex L0', 0, 900001], ['Upper', 3, 36]]);
   });
 
+  it('with --json every failure is a JSON document, even one found before the edit is planned (#9121 review)', async () => {
+    const run = await storey();
+    stdout = '';
+    await expect(run([SAMPLE, 'edit', '--storey', 'Missing', '--elevation', '3', '--json'])).rejects.toThrow('exit 1');
+    const report = JSON.parse(stdout);
+    expect(report.action).toBe('edit');
+    expect(report.refusals[0].message).toMatch(/Storey "Missing" not found/);
+  });
+
   it('storey --help lists the actions (#9121 review)', async () => {
     const { buildCommandHelp } = await import('../help.js');
     const help = buildCommandHelp('0.0.0', 'storey') ?? '';

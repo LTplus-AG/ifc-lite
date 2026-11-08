@@ -181,7 +181,7 @@ impl RepresentationWalk {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
             if run.levels >= max_levels {
                 let reached = u64::from(run.levels) + 1;
-                refuse(run, WalkRefusal::Budget { max_levels, budget: "walk mapped attempts", reached: Box::new(reached) });
+                refuse(run, WalkRefusal::work_budget(max_levels, "walk mapped attempts", reached));
                 return Flow::Stop;
             }
             run.levels += 1;
@@ -276,7 +276,7 @@ impl RepresentationWalk {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
             let charge = seen.price(&[], rep.id, members);
             if charge.cost > (max_levels - *used) as usize {
-                return Err(WalkRefusal::Budget { max_levels, budget: "walk Items members", reached: Box::new(u64::from(*used).saturating_add(charge.cost as u64)) });
+                return Err(WalkRefusal::work_budget(max_levels, "walk Items members", u64::from(*used).saturating_add(charge.cost as u64)));
             }
             *used += charge.cost as u32; // bounded by the u32 allowance above
             seen.admit(charge);

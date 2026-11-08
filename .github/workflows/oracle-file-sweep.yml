@@ -83,6 +83,9 @@ jobs:
       workflow_name: Oracle file sweep
       jobs: sweep
       result: sweep=${{ needs.sweep.result }}
+    # A reusable workflow cannot get more than its caller grants: the reporter
+    # declares actions: read, and without it the whole run fails to start.
     permissions:
+      actions: read
       contents: read
       issues: write

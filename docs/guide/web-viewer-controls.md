@@ -27,6 +27,15 @@ Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,
 middle, and right-button navigation keep the controls above.
 
+**Roof** on the Model rail (Shift + Y) draws a roof at the top of the storey's
+walls: the plane rises there while the tool runs, the roof sits on it, and the
+plane comes back down when the tool ends. The **Plane** chip on the 3D view and
+in the plan header shows how far above the storey floor new elements land, and
+sets it for any drawing tool: type a height, or pick Top of walls. A height you
+type, 0 included, stays until you change it or move to another storey. Floor
+puts the plane on the floor and hands the height back: a roof drawn now lands
+there, and the next time Roof starts it raises the plane again.
+
 A plain click on a surface above or below the workplane lands on the point you
 see, so you can draw on top of a slab. Hold **Alt** (⌥ on a Mac), or turn
 snapping off with **S**, to ignore snaps and surfaces: the point lands where

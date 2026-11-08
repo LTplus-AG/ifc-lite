@@ -44,6 +44,7 @@ export const commandsIt = {
   "commands.command.columnRotate": "Ruota la colonna di 15° (posizionamento di una colonna)",
   "commands.model.wall": "Disegna muri (spazio Modello)",
   "commands.model.slab": "Disegna solai, tetti e piastre (spazio Modello)",
+  "commands.model.roof": "Disegna tetti alla sommità dei muri (spazio Modello)",
   "commands.model.column": "Posiziona colonne (spazio Modello)",
   "commands.model.beam": "Disegna travi e membrature (spazio Modello)",
   "commands.model.storeyUp": "Lavora al piano superiore (spazio Modello)",

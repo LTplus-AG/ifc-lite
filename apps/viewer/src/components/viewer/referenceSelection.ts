@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import type { PickOptions, PickResult, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
@@ -46,6 +47,7 @@ export async function selectViewportTarget(options: {
   getPickOptions: () => PickOptions;
   onIfc: (pick: PickResult | null) => void;
   onReference?: () => void;
+  onRefused?: () => void;
 }): Promise<void> {
   const { renderer, x, y } = options;
   const { before, pickOptions, rect, camera, current } = captureViewportPick({
@@ -64,6 +66,7 @@ export async function selectViewportTarget(options: {
       }
     }
   }
+  if (refuseCaptureHeldPick(renderer)) { options.onRefused?.(); return; }
   const pick = await renderer.pick(x, y, pickOptions);
   if (!current()) return;
   useViewerStore.getState().selectAppearanceReference(null);

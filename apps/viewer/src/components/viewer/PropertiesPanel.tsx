@@ -36,7 +36,7 @@ import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
-import { QuantitySetCard } from './properties/QuantitySetCard';
+import { EditedQuantitiesSwitch, QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
@@ -1517,6 +1517,7 @@ export function PropertiesPanel() {
           <TabsContent value="quantities" className="m-0 p-0 overflow-hidden">
             {occurrenceQuantities.status === 'unavailable' ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('properties.panel.occurrenceUnavailable', { reason: occurrenceQuantities.reason ?? '' })}</output> : null}
             <div className="p-2 empty:hidden"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
+            <EditedQuantitiesSwitch entity={selectedEntity} />
             <div className="p-2 empty:hidden"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {quantityUnitContext.status === 'unavailable' ? (
               <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
@@ -1533,7 +1534,7 @@ export function PropertiesPanel() {
                   <section key={scope} aria-label={t(heading)}>
                     <InspectorGroupLabel as="h3">{t(heading)}</InspectorGroupLabel>
                     {sets.map((qset: QuantitySet, index: number) => (
-                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
+                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} entity={scope === 'occurrence' ? selectedEntity : null} />
                     ))}
                   </section>
                 ) : null)}

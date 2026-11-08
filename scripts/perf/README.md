@@ -16,9 +16,9 @@ first selection, so the cost was decode and inflate per record, multiplied by th
 relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
 the reads. The parsed graph already records which relationship names which element (with
 repeats as shadowed ids), so the read now walks effective rows from the index only and
-decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
-edge of it has the wrong class on its relating side (the byte reader misread the record, or a
-definition set names a non-definition), or it names the element or type being read. A
+decodes a relationship only when an edit touched it, the parser recorded no edge for it (the
+byte reader records none for a record it cannot read cleanly), a definition set names a
+non-definition, or it names the element or type being read. A
 definition relationship an edit over-counts enters the reference budget at its graph count, an
 upper bound, and is decoded only if that bound would cross it.
 Answers were compared against base by digest,
@@ -28,8 +28,15 @@ compares the assigned type.
 
 Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
 did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
-edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
-work the read no longer does, so raising it is a behaviour change, not a perf lever.
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit
+bounded work the read no longer does, so it was then raised to 131,072 rows: Holter (80,276)
+and BWK (92,432) now answer, with a first read of about 0.1 s through the graph, and answers
+matching a full read by probed digest. A store the graph cannot vouch for still reads every
+row (about 45 us each), which is what the bound now caps. One store is not covered by that:
+the one the viewer shows at spatial-ready time has typing edges but no definition edges yet,
+and the panel reads synchronously in render, so a first click there read every definition
+relationship from source (Holter 1.6 s, slower than base's refusal). Past 65,536 rows that
+store now refuses as still loading without reading a relationship; the full store answers.
 
 ## Right-sized in-circle scratch restores the large instruction ceiling (#9016)
 

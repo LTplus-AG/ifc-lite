@@ -28,6 +28,7 @@ import { BOX, authoredSpaces, ensureRoomWasm, setWallMeshes, spaceQuantity } fro
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from './tools/command/RoomPlaceBar';
+import { forgetTouchLongPress } from './touchLongPress';
 import { getCommandRuntime, updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import { getModelingCommand, registerModelingCommand } from '@/lib/commands/modeling/registry';
 import type { CommandId } from '@/lib/commands/modeling/types';
@@ -380,6 +381,60 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     assert.equal(menus.length, 0, 'BUG: resting on a grab opened the context menu');
     assert.deepEqual(calls, ['down 4', 'up 5'], 'BUG: the long press took the drag from the command');
     assert.equal(pose(camera), before);
+  });
+
+  /** A platform's own menu for a held touch, `touch`-typed (Chromium) or untyped (an engine whose contextmenu is no PointerEvent). */
+  const nativeMenu = (x: number, y: number, pointerType?: 'touch') => {
+    const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    if (pointerType) Object.defineProperty(e, 'pointerType', { value: pointerType });
+    return e;
+  };
+  /** Microtasks only: the mouse side's menu pick resolves in them, and a `setTimeout` would hang under mock timers. */
+  const flushPick = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+  it('#9228: the native menu of a grabbing press\'s rest opens no viewer menu under the drag', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const calls = pressDriven(t, true);
+    const { canvas, menus } = commandRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]])); });
+    act(() => { t.mock.timers.tick(700); });
+    // Android Chrome sends a resting finger's menu, iPadOS a resting Pencil's, before the drag starts
+    await act(async () => {
+      canvas.dispatchEvent(nativeMenu(402, 301, 'touch'));
+      canvas.dispatchEvent(nativeMenu(402, 301));
+      await flushPick();
+    });
+    act(() => {
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touchEvent('touchmove', canvas, [[400 + 20 * i, 300]]));
+    });
+    await lift(canvas);
+    await act(flushPick);
+    assert.deepEqual(menus, [], 'BUG: the touch\'s native menu opened the viewer menu under the drag');
+    assert.deepEqual(calls, ['down 4', 'up 5'], 'the drag is still the command\'s');
+  });
+
+  it('#9228: a grabbing press held in place and lifted: the menu Windows sends at the lift opens nothing', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const calls = pressDriven(t, true);
+    const { canvas, menus } = commandRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]])); });
+    act(() => { t.mock.timers.tick(700); });
+    await lift(canvas);
+    await act(async () => { canvas.dispatchEvent(nativeMenu(400, 300, 'touch')); await flushPick(); });
+    assert.deepEqual(menus, [], 'BUG: the held touch\'s menu at its lift opened the viewer menu');
+    assert.deepEqual(calls, ['down 4', 'up 4'], 'the held press is still a press and a release in place');
+  });
+
+  it('#9228: a grab muted by a right-press beside it and held in place is still a press and a release', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const calls = pressDriven(t, true);
+    const { canvas } = commandRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]])); });
+    // A mouse or trackpad right-press next to the finger (a hybrid device) mutes the press's hold
+    forgetTouchLongPress(canvas, new MouseEvent('pointerdown', { button: 2, clientX: 404, clientY: 300 }));
+    act(() => { t.mock.timers.tick(700); });
+    await lift(canvas);
+    assert.deepEqual(calls, ['down 4', 'up 4'], 'BUG: the muted grab\'s lift was taken for a long press and cancelled');
   });
 
   it('a touchcancel during a command drag cancels it, as a cancelled mouse press', (t) => {

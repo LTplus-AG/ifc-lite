@@ -77,7 +77,7 @@
  */
 
 import type { Vec3 } from '../raycaster.js';
-import { isUsableModelMatrix } from './point-cloud-node.js';
+import { isUsableModelMatrix } from './point-cloud-model-matrix.js';
 
 /** The subset of a `PointCloudNode` the snap-source snapshot reads. */
 export interface RayQueryNodeLike<I extends { pointCount: number } = { pointCount: number }> {

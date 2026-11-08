@@ -152,7 +152,22 @@ function computeSlotPlan(registry: SchemaRegistry, entityName: string): Relation
     return { relating, related };
 }
 
-const PLAN_CACHE = new Map<string, RelationshipSlotPlan | undefined>();
+/**
+ * What the byte reader (`extractRelFast`) needs per class: the two slots in
+ * the order they are written, and the position of the class's last declared
+ * attribute. A slot there must be followed by the record's own `)`, not by
+ * another value, or the record was misread (#9192).
+ */
+export interface RelationshipReadPlan {
+    slots: RelationshipSlotPlan;
+    /** The relating and related slots, sorted by attribute position. */
+    order: readonly [RelationshipReadSlot, RelationshipReadSlot];
+    /** Position of the last declared attribute, counted like `RelationshipSlot.index`. */
+    lastIndex: number;
+}
+export interface RelationshipReadSlot extends RelationshipSlot { relating: boolean }
+
+const PLAN_CACHE = new Map<string, RelationshipReadPlan | undefined>();
 
 /**
  * The relating/related attribute slots for a STEP relationship keyword
@@ -165,11 +180,19 @@ export function getRelationshipSlotPlan(
     typeUpper: string,
     schemaVersion?: SchemaVersionWithRegistry | string,
 ): RelationshipSlotPlan | undefined {
+    return getRelationshipReadPlan(typeUpper, schemaVersion)?.slots;
+}
+
+/** {@link getRelationshipSlotPlan} with what the byte reader checks the record against. */
+export function getRelationshipReadPlan(
+    typeUpper: string,
+    schemaVersion?: SchemaVersionWithRegistry | string,
+): RelationshipReadPlan | undefined {
     const cacheKey = `${schemaVersion ?? '*'}:${typeUpper}`;
     const cached = PLAN_CACHE.get(cacheKey);
     if (cached !== undefined || PLAN_CACHE.has(cacheKey)) return cached;
 
-    let plan: RelationshipSlotPlan | undefined;
+    let plan: RelationshipReadPlan | undefined;
     const versions = VERSIONS.includes(schemaVersion as SchemaVersionWithRegistry)
         ? [schemaVersion as SchemaVersionWithRegistry]
         : VERSIONS;
@@ -177,8 +200,16 @@ export function getRelationshipSlotPlan(
         const registry = getSchemaRegistryForVersion(version);
         const canonical = getCanonicalEntityName(registry, typeUpper);
         if (!canonical) continue;
-        plan = computeSlotPlan(registry, canonical);
-        if (plan) break;
+        const slots = computeSlotPlan(registry, canonical);
+        if (!slots) continue;
+        const relating = { ...slots.relating, relating: true };
+        const related = { ...slots.related, relating: false };
+        plan = {
+            slots,
+            order: relating.index < related.index ? [relating, related] : [related, relating],
+            lastIndex: (registry.entities[canonical]?.allAttributes?.length ?? 0) - 1 - ROOT_ATTR_COUNT,
+        };
+        break;
     }
     PLAN_CACHE.set(cacheKey, plan);
     return plan;

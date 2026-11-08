@@ -29,6 +29,32 @@ const measureMemory = page => page.evaluate(async () => {
   catch (error) { return { bytes: null, reason: String(error) }; }
 });
 
+/** Corpus mode runs each model in a fresh page: WASM linear memory never
+ * shrinks, so one page accumulates every model's heap until the renderer is
+ * killed. A crashed page is returned as `{ error }`, never thrown, so one model
+ * cannot abort the corpus; the page is always closed. */
+export async function runModelInFreshPage(browser, setupPage, model, pageErrors) {
+  let page;
+  try {
+    page = await browser.newPage();
+    await setupPage(page);
+    const result = await page.evaluate(model => window.harness.runModel(model), model);
+    const browserMemory = await measureMemory(page);
+    await page.evaluate(() => window.harness.dispose());
+    return { result, browserMemory };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    await page?.close().catch(error => pageErrors.push(String(error)));
+  }
+}
+
+/** Corpus-mode browser memory: the largest per-model fresh-page measurement. */
+export function corpusBrowserMemory(models) {
+  const bytes = models.filter(m => !m.crashed).map(m => m.browserMemory?.bytes).filter(Number.isFinite);
+  return { bytes: bytes.length ? Math.max(...bytes) : null, basis: 'max over per-model fresh pages (corpus mode)' };
+}
+
 export async function runBrowserComparison({ engine, native, out, corpus = false }) {
   const { validateEngine } = await import('../../packages/cli/dist/retained/engine.js');
   const { retainedReport } = await import('../../packages/cli/dist/retained/report.js');
@@ -57,34 +83,26 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     const bindings = await readFile(join(validated.directory, 'pkg-retained/ifc-lite.js'), 'utf8');
     const driver = bindings.match(/from ['"](\.\/snippets\/[^'"]+\/retained-driver\.mjs)['"]/);
     if (!driver) throw new Error('Built retained package has no driver import to observe');
-    async function setupPage(page) {
+    const setupPage = async page => {
       page.on('pageerror', error => pageErrors.push(String(error)));
       await page.goto(`http://127.0.0.1:${server.address().port}/page/index.html`);
       await page.evaluate(async driverUrl => {
         window.harness = await import('/harness/browser-page.mjs');
         await window.harness.initialize(driverUrl);
       }, `/pkg/${driver[1].slice(2)}`);
-    }
+    };
     if (!corpus) await setupPage(page);
     for (const model of [...new Set(blessed.map(p => p.model))].sort()) {
       let result, browserMemory;
       if (corpus) {
-        // WASM linear memory cannot shrink: release the entire page per model.
-        let modelPage;
-        try {
-          modelPage = await browser.newPage();
-          await setupPage(modelPage);
-          result = await modelPage.evaluate(model => window.harness.runModel(model), model);
-          browserMemory = await measureMemory(modelPage);
-          await modelPage.evaluate(() => window.harness.dispose());
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          crashViolations.push(`${model}: browser page crashed: ${message}`);
-          models.push({ model, crashed: true, error: message });
+        const run = await runModelInFreshPage(browser, setupPage, model, pageErrors);
+        if (run.error !== undefined) {
+          crashViolations.push(`${model}: browser page crashed: ${run.error}`);
+          models.push({ model, crashed: true, error: run.error });
+          console.log(`${model}: browser page crashed: ${run.error}`);
           continue;
-        } finally {
-          await modelPage?.close().catch(error => pageErrors.push(String(error)));
         }
+        ({ result, browserMemory } = run);
       } else {
         result = await page.evaluate(model => window.harness.runModel(model), model);
       }
@@ -105,11 +123,7 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       console.log(`${model}: ${report.summary.published}/${report.summary.candidates} published; view violations=${view.violations.length}`);
     }
     const successfulModels = models.filter(m => !m.crashed);
-    const memoryBytes = corpus ? successfulModels.map(m => m.browserMemory.bytes).filter(Number.isFinite) : [];
-    const memory = corpus ? {
-      bytes: memoryBytes.length ? Math.max(...memoryBytes) : null,
-      basis: 'max over per-model fresh pages (corpus mode)',
-    } : await measureMemory(page);
+    const memory = corpus ? corpusBrowserMemory(models) : await measureMemory(page);
     if (!corpus) await page.evaluate(() => window.harness.dispose());
     const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative,
       tolerances.nativeWasmClippedCurvedVolumeRelative?.value);

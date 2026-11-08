@@ -189,8 +189,9 @@ export function extractWallSegmentsForStorey(
     const rep = numericAttr(wall?.attributes[6]);
     const points = rep === null ? null : gatherBodyFootprintPoints(store, extractor, overlay, rep);
     if (!points?.length) return undefined;
-    const ys = points.map(p => p[1]);
-    const thickness = (Math.max(...ys) - Math.min(...ys)) * lengthUnitScale;
+    let min = Infinity, max = -Infinity;
+    for (const p of points) { min = Math.min(min, p[1]); max = Math.max(max, p[1]); }
+    const thickness = (max - min) * lengthUnitScale;
     return thickness > 0 && Number.isFinite(thickness) ? thickness : undefined;
   };
 

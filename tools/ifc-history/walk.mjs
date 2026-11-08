@@ -35,11 +35,13 @@ export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-li
     process.exit(130);
   };
   process.once('SIGINT', interrupt);
-  const extract = (blob, path, destination) => {
+  const extract = (blob, path, destination, commit) => {
     const stream = (args) => {
       const fd = openSync(destination, 'w');
       try {
-        execFileSync('git', ['-C', resolve(repository), 'cat-file', ...args], {
+        execFileSync('git', ['-C', resolve(repository),
+          ...(args.includes('--filters') ? [`--attr-source=${commit}`] : []),
+          'cat-file', ...args], {
           stdio: ['ignore', fd, 'pipe'], timeout,
         });
       } finally { closeSync(fd); }
@@ -84,8 +86,8 @@ export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-li
         try {
           const base = join(scratch, 'base.ifc');
           const head = join(scratch, 'head.ifc');
-          extract(old.blob, path, base);
-          extract(blob, path, head);
+          extract(old.blob, path, base, old.commit);
+          extract(blob, path, head, commit);
           const pending = promisify(execFile)(command[0], [
             ...command.slice(1), 'diff', base, head, '--by-content', '--json',
           ], { encoding: 'utf8', timeout, maxBuffer: 256 * 1024 * 1024 });

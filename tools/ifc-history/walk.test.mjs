@@ -132,6 +132,12 @@ test('#9332 first-parent merge, blob reuse, non-IFC commits, subdirectories and 
   h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'no IFC blob changes');
   // A gitlink named .ifc is a directory, not a model blob.
   for (const target of [h.base, h.same]) {
+    if (target === h.same) {
+      rmSync(join(h.repo, 'link.ifc'));
+      symlinkSync('notes.txt', join(h.repo, 'link.ifc'));
+      writeFileSync(join(h.repo, 'notes.txt'), 'changed non-model content');
+      h.git('add', 'link.ifc', 'notes.txt');
+    }
     h.git('update-index', '--add', '--cacheinfo', `160000,${target},module.ifc`);
     h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'submodule revision');
   }
@@ -173,6 +179,7 @@ test('#9332 invalid IFC revision fails through the real CLI and names both revis
 test('#9332 smudge filters supply revision bytes instead of raw stored blobs', async (t) => {
   assert.equal(typeof walker.walkHistory, 'function');
   const h = history(t);
+  h.commit(fixture, 'restore canonical delivery');
   const filter = join(h.repo, 'smudge.mjs');
   writeFileSync(filter, "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(" + JSON.stringify(fixture) + "));\n");
   h.git('config', 'filter.model.smudge', `"${process.execPath}" "${filter}"`);
@@ -181,9 +188,9 @@ test('#9332 smudge filters supply revision bytes instead of raw stored blobs', a
   const filtered = h.commit('Stored transport representation', 'filtered delivery');
   const lines = [];
   await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
-  assert.equal(lines.length, 4);
-  assert.ok(lines[3].startsWith(filtered.slice(0, 12)));
-  assert.ok(lines[3].includes('5 unchanged, 0 modified, 0 added, 0 deleted'));
+  assert.equal(lines.length, 5);
+  assert.ok(lines[4].startsWith(filtered.slice(0, 12)));
+  assert.ok(lines[4].includes('5 unchanged, 0 modified, 0 added, 0 deleted'));
 });
 
 test('#9332 blobs larger than 256 MiB reach the consumer without buffering or truncation', async (t) => {
@@ -196,16 +203,31 @@ test('#9332 blobs larger than 256 MiB reach the consumer without buffering or tr
   h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'large transport blob');
   const checker = join(h.repo, 'check-bytes.mjs');
   const size = Buffer.byteLength(h.regenerated) + 257 * block.length;
-  // This consumer checks the actual transported file, not the diff algorithm:
-  // its success requires both the exact size and last byte of the large blob.
-  writeFileSync(checker, `import {statSync,openSync,readSync,closeSync} from 'node:fs';
+  const counter = join(h.repo, 'checked-revisions.txt');
+  const expected = [
+    fixture.replace('synthetic.ifc', 'delivery.ifc'),
+    fixture.replace('stable-box', 'edited-box'),
+    h.regenerated,
+  ].map(bytes => ({ size: Buffer.byteLength(bytes), tail: [...Buffer.from(bytes).subarray(-16)] }));
+  expected.push({ size, tail: Array(16).fill(120) });
+  // Each invocation has an independent expected length and tail, including
+  // the large revision. Truncating below the old threshold cannot skip checks.
+  writeFileSync(checker, `import {statSync,openSync,readSync,closeSync,existsSync,readFileSync,writeFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
+const counter=${JSON.stringify(counter)}, expected=${JSON.stringify(expected)};
+const index=existsSync(counter)?Number(readFileSync(counter,'utf8')):0;
+assert.ok(index<expected.length);
 const path=process.argv[4], size=statSync(path).size;
-if(size>256*1024*1024){assert.equal(size,${size});const fd=openSync(path,'r');const b=Buffer.alloc(1);readSync(fd,b,0,1,size-1);closeSync(fd);assert.equal(b[0],120);}
+assert.equal(size,expected[index].size);
+const fd=openSync(path,'r'), tail=Buffer.alloc(16);
+try { assert.equal(readSync(fd,tail,0,16,size-16),16); } finally { closeSync(fd); }
+assert.deepEqual([...tail],expected[index].tail);
+writeFileSync(counter,String(index+1));
 console.log(JSON.stringify({counts:{unchanged:5,modified:0,added:0,deleted:0},contentMatches:[]}));`);
   const lines = [];
   await walker.walkHistory({ repository: h.repo, command: [process.execPath, checker], out: line => lines.push(line) });
   assert.equal(lines.length, 4);
+  assert.equal(readFileSync(counter, 'utf8'), '4');
 });
 
 test('#9332 SIGINT removes scratch files while a diff is active', async (t) => {
@@ -249,4 +271,28 @@ test('#9332 CLI calls have a bounded timeout', async (t) => {
     assert.equal(error.cause.killed, true);
     return true;
   });
+});
+
+test('#9332 historical LFS attributes survive a later rule removal', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  h.commit(fixture, 'restore canonical delivery');
+  const filter = join(h.repo, 'lfs-smudge.mjs');
+  writeFileSync(filter, `let input=''; process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input+=chunk);
+process.stdin.on('end', () => process.stdout.write(input.startsWith('version https://git-lfs.github.com/spec/v1') ? ${JSON.stringify(fixture)} : input));`);
+  h.git('config', 'filter.lfs.smudge', `"${process.execPath}" "${filter}"`);
+  h.git('config', 'filter.lfs.required', 'true');
+  writeFileSync(join(h.repo, '.gitattributes'), '*.ifc filter=lfs\n');
+  h.git('add', '.gitattributes');
+  const pointer = oid => 'version https://git-lfs.github.com/spec/v1\noid sha256:' + oid.repeat(64) + '\nsize ' + Buffer.byteLength(fixture) + '\n';
+  h.commit(pointer('a'), 'first pointer delivery');
+  h.commit(pointer('b'), 'second pointer delivery');
+  h.git('rm', '.gitattributes');
+  const removed = h.commit(fixture, 'remove rule and store plain IFC');
+  const lines = [];
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => lines.push(line) });
+  assert.equal(lines.length, 7);
+  for (const line of lines.slice(-3)) assert.ok(line.includes('5 unchanged, 0 modified, 0 added, 0 deleted'));
+  assert.ok(lines.at(-1).startsWith(removed.slice(0, 12)));
 });

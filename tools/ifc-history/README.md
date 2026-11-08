@@ -35,7 +35,8 @@ current diff WASM), run `node --test tools/ifc-history/*.test.mjs`. CI runs this
 suite once in the fast-lane Node guards job against its built package artifact.
 
 Blob bytes stream directly to temporary files through Git smudge filters (including
-Git LFS). An unresolved LFS pointer stops with an explicit LFS diagnostic; install
+Git LFS), using Git's `--attr-source` option to resolve attributes from each
+revision rather than the current checkout. An unresolved LFS pointer stops with an explicit LFS diagnostic; install
 and configure Git LFS and fetch the referenced objects first. Diff JSON has a
 256 MiB output limit; exceeding it reports that output was truncated. History
 scans use IFC-only tree deltas rather than listing every file at every commit.

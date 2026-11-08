@@ -53,16 +53,16 @@ try {
   for (let i = 1; i < 10; i++) levels.push(bim.store.addStorey(M, { Name: `L${i + 1}`, Elevation: i * 3 }).expressId);
   // Count authored architectural elements, excluding storeys and implementation
   // records (placements, representations, opening voids). No bulk overlay bypass.
-  function column(i, level = levels[i % 10]) {
+  const column = (i, level = levels[i % 10]) => {
     const value = bim.store.addColumn(M, level, { Position: [i % 100, Math.floor(i / 100), 0], Width: 0.3, Depth: 0.3, Height: 3 });
     state.after++;
     return value.expressId;
-  }
-  function wall(x, perpendicular = false) {
+  };
+  const wall = (x, perpendicular = false) => {
     const value = bim.store.addWall(M, levels[0], { Start: [x, 0, 0], End: perpendicular ? [x, 10, 0] : [x + 10, 0, 0], Thickness: 0.3, Height: 3 });
     state.after++;
     return value.expressId;
-  }
+  };
   const floor = [];
   for (let i = 0; i < 40; i++) floor.push(column(i, levels[0]));
   for (let i = 0; i < 9; i++) floor.push(wall(100 + i * 20));

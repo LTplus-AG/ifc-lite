@@ -80,6 +80,7 @@ export function useScanWorkbench() {
       down = null; event.preventDefault(); event.stopImmediatePropagation();
       try {
         const rect = canvas.getBoundingClientRect(), target = targetLandmark(session, renderer, event.clientX - rect.left, event.clientY - rect.top);
+        if (!target) return;
         const existing = rows.current;
         if (existing.some(row => row.correspondence.sourceObservation === pending.point.observation || row.correspondence.targetFeature === target.feature)) throw new ScanValidationError('appearance.scan.error.duplicateLandmark');
         if (existing.filter(row => row.partition === pending.partition).length >= 256) throw new ScanValidationError('appearance.scan.error.pairLimit');

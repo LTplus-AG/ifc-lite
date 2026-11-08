@@ -11,10 +11,11 @@ import { deriveSplitGlobalId } from '../../../create/src/in-store/edit/split-gui
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { placedBodyExtent, readWallJoinTarget, readWallJoinRels } from '@ifc-lite/create';
 import { AnchorEntityReader } from '../../../create/src/in-store/resolve-anchor.js';
+import { canonicalQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 async function graph(content: string | Uint8Array) {
-  const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+  const bytes = new TextEncoder().encode(canonicalQuantityIds(content));
   const store = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => {

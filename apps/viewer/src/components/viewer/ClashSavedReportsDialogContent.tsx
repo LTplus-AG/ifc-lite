@@ -49,7 +49,7 @@ function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted, onDocum
       const document = qualityGateDocument(report, t);
       if (!await state().upsertDocument(document)) throw new Error('Document storage refused the report');
       state().setActiveDocumentId(document.id);
-      state().setDocumentPanelVisible(true);
+      state().showWorkspacePanel('document');
       onDocumentAdded();
     } catch (error) {
       console.warn('[clash] Quality gate document could not be saved', error);

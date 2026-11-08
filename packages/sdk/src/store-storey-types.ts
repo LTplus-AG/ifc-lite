@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type {
-  AddStoreyParams, StoreyDeleteMode, StoreyDeletePlan, StoreyLevelEdit, StoreyLevelPlan, StoreySummary,
+  AddStoreyParams, StoreyDeleteMode, StoreyDeletePlan, StoreyLevelEdit, StoreyLevelPlan, StoreySuggestion, StoreySummary,
 } from '@ifc-lite/create';
 import type { EntityRef } from './types.js';
 
@@ -15,6 +15,8 @@ import type { EntityRef } from './types.js';
 export interface StoreyStoreBackendMethods {
   /** Live storeys, highest first, with floor-to-floor height and element count. */
   listStoreyLevels?(modelId: string): StoreySummary[];
+  /** The default Name, Elevation and height for a storey above or below `referenceStoreyId`, from its neighbours. Reads only. */
+  suggestStorey?(modelId: string, referenceStoreyId: number, side: 'above' | 'below'): StoreySuggestion;
   addStorey?(modelId: string, params: AddStoreyParams): EntityRef;
   renameStorey?(ref: EntityRef, Name: string): EntityRef;
   /** Dry run: what an elevation or floor-to-floor edit would move, and any refusal. Writes nothing. */

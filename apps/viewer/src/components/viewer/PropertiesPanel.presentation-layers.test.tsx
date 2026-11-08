@@ -16,7 +16,7 @@ import { useViewerStore } from '@/store';
 import * as layerIndex from '@/lib/presentation-layers.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
-import * as presentationSection from './properties/PresentationLayersSection.js';
+import { requiredModule } from '@/i18n/__tests__/required-module.js';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -284,6 +284,8 @@ it('#9273 a failed lazy download displays an error and retry loads real layer me
   let attempts = 0;
   const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
     : import('@/lib/presentation-layer-selection.js');
+  const presentationSection = await requiredModule(() => import('./properties/PresentationLayersSection.js'),
+    '#9273 the inspector layer section is available');
   assert.equal(typeof presentationSection.PresentationLayersSection, 'function');
   const LayersSection = presentationSection.PresentationLayersSection;
   const ui = render(<LayersSection entityRef={{ modelId: 'own', expressId: 7 }} loadLookup={loadLookup} />);
@@ -302,6 +304,8 @@ it('#9273 changing selection retries a failed layer download without retaining t
   let attempts = 0;
   const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
     : import('@/lib/presentation-layer-selection.js');
+  const presentationSection = await requiredModule(() => import('./properties/PresentationLayersSection.js'),
+    '#9273 the inspector layer section is available');
   assert.equal(typeof presentationSection.PresentationLayersSection, 'function');
   const LayersSection = presentationSection.PresentationLayersSection;
   function SelectedLayers() {

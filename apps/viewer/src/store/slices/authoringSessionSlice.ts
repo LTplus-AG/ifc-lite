@@ -126,7 +126,8 @@ function settleRoofPlane(set: Set, get: Get): void {
   if (drawingRoof(s)) {
     if (session.planeHeightPinned) return;
     const offset = resolveRoofHeight(s, session.modelId, session.storeyId);
-    if (offset > 0) moveWorkplane(set, get, { workplane: { ...workplane, offset }, planeRaisedForRoof: true });
+    // Walls can top out below the floor; only no height at all leaves the plane where it is.
+    if (Number.isFinite(offset) && offset !== 0) moveWorkplane(set, get, { workplane: { ...workplane, offset }, planeRaisedForRoof: true });
   } else if (session.planeRaisedForRoof) {
     moveWorkplane(set, get, { workplane: { ...workplane, offset: 0 }, planeRaisedForRoof: false });
   }

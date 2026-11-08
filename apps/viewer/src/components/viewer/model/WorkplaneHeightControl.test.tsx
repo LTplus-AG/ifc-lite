@@ -84,6 +84,20 @@ describe('the height control (#9202)', () => {
     assert.equal(state().session?.planeHeightPinned, false, 'Floor hands the height back to the Roof tool');
   });
 
+  it('walls that top out below the floor give Top of walls and Roof that height', () => {
+    state().addWall(MODEL_ID, STOREY, { Start: [0, 0, -2], End: [4, 0, -2], Thickness: 0.2, Height: 1 });
+    const ui = mount();
+    open(planButton(ui));
+    const top = picker()?.querySelector('[data-workplane-height-preset="top-of-walls"]') as HTMLButtonElement | null;
+    assert.ok(top, 'offered below the floor too');
+    assert.match(top.textContent ?? '', /Top of walls −1\.00 m/);
+    act(() => {
+      state().setAuthoringDefaults({ slabClass: 'roof' });
+      state().startCommand('slab.place');
+    });
+    assert.ok(Math.abs(offset()! + 1) < 1e-9, 'Roof takes the unpinned plane down to the wall top');
+  });
+
   it('a typed height reaches the running command', () => {
     const ui = mount();
     act(() => { state().startCommand('wall.place'); });

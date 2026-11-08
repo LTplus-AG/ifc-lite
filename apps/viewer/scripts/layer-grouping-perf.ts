@@ -8,7 +8,7 @@ import '../src/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
@@ -77,6 +77,7 @@ async function idleSample() {
   return busy;
 }
 
+assert.ok(!existsSync(parserCopy) && !existsSync(builderCopy), 'baseline files already exist; inspect their owner');
 try {
   writeFileSync(parserCopy, show('packages/parser/src/classification-resolver.ts'));
   const parserImport = relative(dirname(builderCopy), parserCopy).replace(/\.ts$/, '.js');
@@ -122,5 +123,5 @@ try {
   }
   console.log(JSON.stringify(result));
 } finally {
-  for (const path of [builderCopy, parserCopy]) unlinkSync(path);
+  for (const path of [builderCopy, parserCopy]) rmSync(path, { force: true });
 }

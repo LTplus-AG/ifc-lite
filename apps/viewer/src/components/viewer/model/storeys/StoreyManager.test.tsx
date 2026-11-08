@@ -4,7 +4,7 @@
 
 /**
  * #9013: the storey manager as a person uses it. Highest first with the
- * active storey marked; add above in one click and draw on it; inline edits
+ * active storey marked; add above without changing the drawing plane; inline edits
  * commit on Enter, cancel on Escape and explain a refusal next to the field;
  * an empty storey deletes straight away, one with elements asks first.
  */

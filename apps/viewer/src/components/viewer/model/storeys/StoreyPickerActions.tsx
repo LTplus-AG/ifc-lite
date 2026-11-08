@@ -4,8 +4,8 @@
 
 /**
  * The storey picker's own actions (#9013), under its list in the storey chip
- * and the plan header: add a storey above the one being drawn on (it becomes
- * active at once, ready to draw on), or open the storey manager.
+ * and the plan header: add above the drawing storey without changing planes
+ * (the toast offers Draw on), or open the storey manager.
  */
 
 import { activateStorey } from '@/lib/storeys/storey-session';

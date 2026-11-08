@@ -33,7 +33,9 @@ it('#9296 copies a selection to a set of storeys atomically and undoes all copie
   await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
   const stack = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
   click(button(ui, 'Copy now'));
-  assert.equal(walls().length, before + 2);
+  assert.match(ui.textContent ?? '', /Copying…/, '#9296 busy feedback is visible before the atomic write');
+  assert.equal(walls().length, before);
+  await waitFor(() => walls().length === before + 2, 'copies committed after busy feedback');
   // The store adapter tags every created product as a single undo batch.
   assert.ok(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length > stack);
   act(() => { useViewerStore.getState().undo(MODEL_ID); });
@@ -81,6 +83,20 @@ it('#9334 read-only copy controls explain the denial and discard a prepared batc
   assert.equal(button(ui, 'Copy now'), undefined, 'revocation discards preparation');
   assert.equal(button(ui, 'Prepare copies').disabled, true);
   click(button(ui, 'Prepare copies'));
+  assert.equal(walls().length, before);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, stack);
+});
+
+it('#9296 closing the picker before the painted commit writes no copies', async () => {
+  const ui = render(<CopyToStoreys />);
+  const before = walls().length;
+  const stack = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
+  click(button(ui, 'Select all storeys'));
+  click(button(ui, 'Prepare copies'));
+  await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
+  click(button(ui, 'Copy now'));
+  cleanup();
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   assert.equal(walls().length, before);
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, stack);
 });

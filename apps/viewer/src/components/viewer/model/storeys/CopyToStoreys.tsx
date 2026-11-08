@@ -7,6 +7,7 @@ import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workp
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -40,6 +41,7 @@ export function CopyToStoreys() {
     prepared.current = [];
     setProgress(null);
     setReady(false);
+    setBusy(false);
   }, [denial]);
   const chooseRange = (start: string | undefined, end: string | undefined) => {
     setRangeStart(start); setRangeEnd(end);
@@ -48,7 +50,7 @@ export function CopyToStoreys() {
     const b = levels.findIndex(level => String(level.expressId) === end);
     setPicked(new Set(levels.slice(Math.min(a, b), Math.max(a, b) + 1).map(level => level.expressId)));
   };
-  const cancel = () => { generation.current++; setProgress(null); setReady(false); prepared.current = []; };
+  const cancel = () => { generation.current++; setProgress(null); setReady(false); setBusy(false); prepared.current = []; };
   const prepare = async () => {
     if (!selection || denial !== null) return;
     const token = ++generation.current;
@@ -72,20 +74,28 @@ export function CopyToStoreys() {
       cancel();
     }
   };
-  const commit = () => {
+  const commit = async () => {
     if (!selection || denial !== null) return;
+    const token = generation.current;
+    const entry = useViewerStore.getState().session?.entry;
+    setBusy(true);
     try {
+      // Paint a real busy state before the synchronous, atomic store operation.
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (token !== generation.current) return;
+      if (useViewerStore.getState().session?.entry !== entry) { cancel(); return; }
+      const refused = mutationDenial(useViewerStore.getState(), selection.modelId);
+      if (refused) throw new Error(refused);
       if (version.current !== useViewerStore.getState().mutationVersion) throw new Error(t('storeyManager.copy.stale'));
       const sources = copySources(useViewerStore.getState(), selection.modelId, selection.ids);
       if ('refusal' in sources) throw new Error(sources.refusal);
-      setBusy(true);
       const copies = createStoreAdapter(useViewerStore).copyElements!(selection.modelId, sources.ids, prepared.current);
       toast.success(t('storeyManager.copy.done', { count: copies.length }));
       cancel();
     } catch (error) {
       toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));
       cancel();
-    } finally { setBusy(false); }
+    } finally { if (token === generation.current) setBusy(false); }
   };
   return <div data-copy-to-storeys className="flex w-64 flex-col gap-2 p-2">
     <p className="text-xs font-medium">{t('storeyManager.copy.title')}</p>
@@ -101,9 +111,10 @@ export function CopyToStoreys() {
       <div className="max-h-48 space-y-1 overflow-y-auto">
         {levels.map(level => <Checkbox key={level.expressId} disabled={denial !== null || progress !== null} checked={picked.has(level.expressId)} label={t('storeyManager.copy.level', { storey: level.name, elevation: formatStoreyElevation(level.elevation) })} onCheckedChange={checked => setPicked(current => { const next = new Set(current); if (checked) next.add(level.expressId); else next.delete(level.expressId); return next; })} />)}
       </div>
-      {progress !== null && <output className="text-xs" aria-live="polite">{t(ready ? 'storeyManager.copy.ready' : 'storeyManager.copy.progress', { count: picked.size, progress: progress ?? 0, elements: selection.ids.length * picked.size })}</output>}
+      {busy && <output className="flex items-center gap-2 text-xs" aria-live="polite"><Spinner className="h-3.5 w-3.5" />{t('storeyManager.copy.working')}</output>}
+      {progress !== null && !busy && <output className="text-xs" aria-live="polite">{t(ready ? 'storeyManager.copy.ready' : 'storeyManager.copy.progress', { count: picked.size, progress: progress ?? 0, elements: selection.ids.length * picked.size })}</output>}
       <div className="flex gap-2">
-        <Button size="sm" disabled={denial !== null || !picked.size || busy || (progress !== null && !ready)} onClick={() => { if (ready) commit(); else void prepare(); }}>{t(ready ? 'storeyManager.copy.commit' : 'storeyManager.copy.prepare')}</Button>
+        <Button size="sm" disabled={denial !== null || !picked.size || busy || (progress !== null && !ready)} onClick={() => { if (ready) void commit(); else void prepare(); }}>{t(ready ? 'storeyManager.copy.commit' : 'storeyManager.copy.prepare')}</Button>
         {progress !== null && <Button size="sm" variant="ghost" disabled={busy} onClick={cancel}>{t('storeyManager.copy.cancel')}</Button>}
       </div>
     </>}

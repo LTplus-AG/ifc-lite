@@ -254,3 +254,5 @@ export {
   type GroupRootIdentity, type GroupSnapshot, type GroupMembershipSnapshot,
 } from './group.js';
 export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';
+
+export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';

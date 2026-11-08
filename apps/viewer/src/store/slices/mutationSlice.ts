@@ -8,6 +8,7 @@
 
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { createRoofIn } from './mutation-roof-create.js';
+import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -1303,6 +1304,8 @@ export const createMutationSlice: StateCreator<
     const [x, y, z] = chain.coordinates;
     const [nx, ny, nz] = pointToNative(dataStore, delta);
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
+    const attached = moveAttachedTargetIn(api, modelId, expressId, nativeNext, batchId);
+    if (attached) return attached.ok ? { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) } : attached;
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
@@ -1380,6 +1383,8 @@ export const createMutationSlice: StateCreator<
     // Push the IFC → renderer delta for the rendered mesh. Same
     // Z-up → Y-up conversion as `translateEntity` above. `position` is
     // metres; the point holds the file's native unit (#6233).
+    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
+    if (attached) return attached.ok ? { ok: true, newCoordinates: position } : attached;
     const [oldX, oldY, oldZ] = pointToMetres(dataStore, chain.coordinates);
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;

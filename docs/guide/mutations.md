@@ -1130,7 +1130,7 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
   - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as an explicit binding.
   - An element with neither record keeps its height. `Fixed` in the IfcLite record is an explicit fixed height and overrides a Revit record; `clearTopAttachment` writes it for an element Revit recorded as attached.
   - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, a roof) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
-  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }` or `{ kind: 'fixed' }`.
+  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }`, `{ kind: 'roof', roofId }` (walls) or `{ kind: 'fixed' }`.
 - **Stairs and their railings.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused. A railing that runs up the stair (the railing builder's layout on the stair's storey, from its foot to its top tread, beside or over the flight) is stretched with it: along the new run and up the new rise, keeping its height above the pitch.
 - **What is left alone.** Attached elements that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
 
@@ -1141,6 +1141,18 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above. A level beam or member lands with its top face, the way a storey edit lifts it whole. The viewer's `bim.store` applies the constraint the same way as headless, curtain walls and grid columns included.
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+
+A wall attached to an authored footprint roof is trimmed to its actual underside,
+including ridges and valleys. The roof must cover the whole wall, and both
+placements must be upright. A roof or slab translation, a roof shape edit, and a
+storey edit refit the attached tops in the same atomic edit. An invalid fit leaves
+the original model unchanged. Fixed detaches the top and keeps its last shape;
+attaching to a storey or slab restores a planar top.
+
+Custom hosts writing placements directly can call
+`refreshTopAttachmentsInStore({ dataStore, view, editor }, movedElementIds)` inside
+their transaction and remesh the returned product ids. The shared transform
+operations do this themselves.
 
 Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
 

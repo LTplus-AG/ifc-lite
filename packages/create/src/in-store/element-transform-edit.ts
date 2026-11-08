@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { prepareGeneratedRoomUpdate } from './generated-room-update.js';
+import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
@@ -124,8 +125,9 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     }
   }
   const joined = input.carryJoins ? input.carryJoins(plan, input.editor) : carryWallJoinsInStore(input, plan, input.op.kind === 'rotate' ? input.op.angle : 0);
+  const attached = refreshTopAttachmentsInStore(input, plan.roots.map(root => root.expressId), [...plan.roots.map(root => root.expressId), ...plan.carried, ...joined]);
   return {
-    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...updateRooms()])],
+    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...attached, ...updateRooms()])],
     hostsChanged: joined.length > 0,
     notices,
   };

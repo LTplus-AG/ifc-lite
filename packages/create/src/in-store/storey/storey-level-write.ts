@@ -10,6 +10,7 @@
  * here means nothing is published.
  */
 
+import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
 import type { QuantityType } from '@ifc-lite/data';
@@ -74,6 +75,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
     }
     reshaped.push(stair.stairId, stair.flightId);
   }
+  reshaped.push(...refreshTopAttachmentsInStore(target, plan.moved, plan.walls.map(wall => wall.wallId)));
   return [...new Set(reshaped)];
 }
 

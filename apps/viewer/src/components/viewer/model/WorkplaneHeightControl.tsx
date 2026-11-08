@@ -30,7 +30,7 @@ function useStoreyPlane(): StoreyPlane | null {
 }
 
 const setHeight = (plane: StoreyPlane, offset: number) => useViewerStore.getState().setWorkplane({ ...plane, offset });
-/** Floor hands the height back: the plane is at the floor, and the Roof tool may raise it again. */
+/** Floor hands the height back: the plane is at the floor now, and the next time the Roof tool starts it raises it again. */
 const toFloor = (plane: StoreyPlane) => useViewerStore.getState().setWorkplane({ ...plane, offset: 0 }, { pinned: false });
 
 function HeightPicker({ plane }: { plane: StoreyPlane }) {

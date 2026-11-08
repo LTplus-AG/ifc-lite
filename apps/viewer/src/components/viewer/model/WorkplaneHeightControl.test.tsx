@@ -121,6 +121,22 @@ describe('the height control (#9202)', () => {
     assert.match(top(), /Top of walls \+4\.00 m/, 'the open picker reads the new default');
   });
 
+  it('Floor during Roof draws at the floor now, and the next Roof raises the plane again', () => {
+    state().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    const ui = mount();
+    act(() => {
+      state().setAuthoringDefaults({ slabClass: 'roof' });
+      state().startCommand('slab.place');
+    });
+    assert.ok(Math.abs(offset()! - 3) < 1e-9, 'Roof raises the plane to the wall top');
+    open(planButton(ui));
+    click(picker()!.querySelector('[data-workplane-height-preset="floor"]') as HTMLButtonElement);
+    assert.equal(offset(), 0, 'Floor is a choice: the roof being drawn lands at the floor');
+    act(() => { state().endCommand('cancel'); });
+    act(() => { state().startCommand('slab.place'); });
+    assert.ok(Math.abs(offset()! - 3) < 1e-9, 'handed back, the height is Roof\'s again next time');
+  });
+
   it('a typed height reaches the running command', () => {
     const ui = mount();
     act(() => { state().startCommand('wall.place'); });

@@ -23,7 +23,9 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
+import { registerMountedFileHost } from './mounted-file-host';
 import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
@@ -162,6 +164,7 @@ export function useFileCommands(): FileCommands {
     const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
 
     if (supportedFiles.length === 0) {
+      if (modelFiles.length > 0) reportFileOpenRejected(modelFiles);
       e.target.value = '';
       return;
     }
@@ -207,7 +210,8 @@ export function useFileCommands(): FileCommands {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
     const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
-    prepareAndAdd(supportedFiles);
+    if (supportedFiles.length === 0 && modelFiles.length > 0) reportFileOpenRejected(modelFiles);
+    else prepareAndAdd(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
   }, [prepareAndAdd]);
@@ -215,6 +219,7 @@ export function useFileCommands(): FileCommands {
   // Preferred Add-Model path: the picker captures a handle per file so the
   // resulting federation can be refreshed. Falls back to the hidden <input>.
   const handleAddModelClick = useCallback(async () => {
+    if (useViewerStore.getState().loading) return;
     if (!supportsFileSystemAccess()) {
       addModelInputRef.current?.click();
       return;
@@ -233,6 +238,7 @@ export function useFileCommands(): FileCommands {
   // Refresh button re-read the same file from disk later (issue #1345). Browsers
   // without the API fall back to the hidden <input type="file">.
   const handleOpenClick = useCallback(async () => {
+    if (useViewerStore.getState().loading) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;
@@ -319,14 +325,33 @@ export function useFileCommands(): FileCommands {
     toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
   }, [loadFile, addModel, clearAllModels]);
 
+  const reportError = useCallback((error: unknown) => {
+    console.error('[useFileCommands] File command failed', error);
+    toast.error(error instanceof Error ? error.message : String(error));
+  }, []);
+  useEffect(() => registerMountedFileHost({
+    openFiles: () => {
+      if (!useViewerStore.getState().loading) void handleOpenClick().catch(reportError);
+    },
+    addModel: () => {
+      if (!useViewerStore.getState().loading) void handleAddModelClick().catch(reportError);
+    },
+    refreshModels: async () => {
+      const state = useViewerStore.getState();
+      if (state.loading || !selectCanRefreshModels(state)) return;
+      try { await handleRefresh(); } catch (error) { reportError(error); }
+    },
+    openShareDialog: collabEnabled ? openShareDialog : undefined,
+  }), [handleOpenClick, handleAddModelClick, handleRefresh, openShareDialog, collabEnabled, reportError]);
+
   // The command palette dispatches this (synchronously, inside the click) so the
   // toolbar's handle-capturing open path runs while user activation is still
   // live — required for the file dialog to actually open on Chrome.
   useEffect(() => {
-    const handler = () => { void handleOpenClick(); };
+    const handler = () => { void handleOpenClick().catch(reportError); };
     window.addEventListener('ifc-lite:open-files', handler);
     return () => window.removeEventListener('ifc-lite:open-files', handler);
-  }, [handleOpenClick]);
+  }, [handleOpenClick, reportError]);
 
   const fileInputs = (
     <>

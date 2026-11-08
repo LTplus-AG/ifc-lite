@@ -28,6 +28,7 @@ import { BOX, authoredSpaces, ensureRoomWasm, setWallMeshes, spaceQuantity } fro
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from './tools/command/RoomPlaceBar';
+import { forgetTouchLongPress } from './touchLongPress';
 import { getCommandRuntime, updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import { getModelingCommand, registerModelingCommand } from '@/lib/commands/modeling/registry';
 import type { CommandId } from '@/lib/commands/modeling/types';
@@ -422,6 +423,18 @@ describe('a command that follows the press gets a press-drag (#9092)', () => {
     await act(async () => { canvas.dispatchEvent(nativeMenu(400, 300, 'touch')); await flushPick(); });
     assert.deepEqual(menus, [], 'BUG: the held touch\'s menu at its lift opened the viewer menu');
     assert.deepEqual(calls, ['down 4', 'up 4'], 'the held press is still a press and a release in place');
+  });
+
+  it('#9228: a grab muted by a right-press beside it and held in place is still a press and a release', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    const calls = pressDriven(t, true);
+    const { canvas } = commandRig();
+    act(() => { canvas.dispatchEvent(touchEvent('touchstart', canvas, [[400, 300]])); });
+    // A mouse or trackpad right-press next to the finger (a hybrid device) mutes the press's hold
+    forgetTouchLongPress(canvas, new MouseEvent('pointerdown', { button: 2, clientX: 404, clientY: 300 }));
+    act(() => { t.mock.timers.tick(700); });
+    await lift(canvas);
+    assert.deepEqual(calls, ['down 4', 'up 4'], 'BUG: the muted grab\'s lift was taken for a long press and cancelled');
   });
 
   it('a touchcancel during a command drag cancels it, as a cancelled mouse press', (t) => {

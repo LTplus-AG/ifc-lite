@@ -21,8 +21,8 @@
  *    start a cut, nor leave a hover that Enter would commit. The press waits
  *    for the drag, so the first finger of a pinch presses nothing; a press that
  *    grabs has no long press, so resting on a corner before dragging still
- *    drags it; the touch's own native menu stays suppressed there (#9228). A tap is a press and a release in place, as a mouse press and
- *    release.
+ *    drags it; the touch's own native menu stays suppressed there (#9228). A
+ *    tap is a press and a release in place, as a mouse press and release.
  *  - A press outlives its command when the command or the tool changed before
  *    it lifted (Esc on an untouched command, a keyboard command switch, a tool
  *    switch): it places nothing and selects nothing, as the mouse drops a click

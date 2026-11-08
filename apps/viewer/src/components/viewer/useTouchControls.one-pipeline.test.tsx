@@ -168,6 +168,17 @@ describe('a careful Measure tap has no time limit, as a click (#9228)', () => {
     assert.ok(useViewerStore.getState().activeMeasurement, 'BUG: a 400 ms tap placed no Measure point');
     assert.deepEqual(menus, []);
   });
+
+  it('a 520 ms press places no Measure point, even when the long-press timer has not run yet (#9228)', async (t) => {
+    let now = Date.now();
+    t.mock.method(Date, 'now', () => now);
+    useViewerStore.setState({ measureMode: 'drag', activeMeasurement: null });
+    const { canvas } = rig('measure');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    now += 520; // a long press by the clock; the real timer is still pending, as on a busy main thread
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.equal(useViewerStore.getState().activeMeasurement, null, 'BUG: a press past the long press placed a Measure point');
+  });
 });
 
 describe('a touch that began before a Measure gesture reset places no point (#8786)', () => {

@@ -5,7 +5,7 @@
 /** Single-finger long press without an orbit, tap, or duplicate native menu (#5859). */
 import { TAP_SLOP_PX } from './tapSlop.js';
 
-const HOLD_MS = 500;
+export const HOLD_MS = 500;
 /** How long after a long press fires or lifts, and how near its point (CSS px), the touch's own native menu may still come. */
 const MENU_MS = 1_000, MENU_RADIUS_PX = 24;
 
@@ -109,8 +109,9 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       return true;
     },
     end() {
-      // A muted finger held past the long-press threshold is still a hold: no tool places on its lift (#9223)
-      const held = fired || (muted && start !== null && Date.now() - startedAt >= HOLD_MS);
+      // A muted finger held past the long-press threshold is still a hold: no tool places on its lift (#9223).
+      // A press with no hold (a grab) stays the command's press and release, muted or not (#9228).
+      const held = fired || (holds && muted && start !== null && Date.now() - startedAt >= HOLD_MS);
       // Windows sends a held touch's own menu at the lift, however long the hold, and whether or
       // not a mouse press muted it (#9223): its window runs from the lift.
       if (fired && menuWindow) menuWindow.until = Date.now() + MENU_MS;

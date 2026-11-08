@@ -23,7 +23,7 @@ import { placesOnTap, routeToolTap } from './toolTap.js';
 import { createCommandTouchPress } from './commandTouchPress.js';
 import { applyDragNavigation, dragNavigationFor, type DragNavigation } from './dragNavigation.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
-import { createTouchLongPress } from './touchLongPress.js';
+import { createTouchLongPress, HOLD_MS } from './touchLongPress.js';
 import { withinTapSlop } from './tapSlop.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 
@@ -104,6 +104,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     let drag: DragNavigation = 'orbit'; // a one-finger drag's move, set as a gesture's first finger lands (#9042)
     let disposed = false;
     const command = createCommandTouchPress(canvas, () => activeToolRef.current); // the command tool's press (#9092)
+    let pressGrabs = false; // the current press grabs for the command: it has no long press (#9092)
     const longPress = createTouchLongPress(canvas, (x, y) => {
       void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
         .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
@@ -174,6 +175,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         // A press that grabs for the command has no long press: its drag is the command's (#9092).
         // Its rest still suppresses the touch's own native menu (#9228).
         const grabs = command.begin(touchState.touches[0], e);
+        pressGrabs = grabs;
         longPress.begin(touchState.touches[0], { hold: !grabs });
 
         if (drag !== 'pan') anchorOrbitPivotUnderFinger(touchState.touches[0]); // as the mouse, a pan has no pivot
@@ -307,11 +309,13 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         pivotGesture++; // the gesture ended: a probe still in flight is moot
 
         // A tap: one finger (not after a multi-touch gesture), short of a long press, that didn't move,
-        // and quick (< 300ms), unless the tool places a point, as a click with no time limit (#9092)
+        // and quick (< 300ms), unless the tool places a point, as a click does: then anything short of
+        // the long press, also when a busy main thread runs the long-press timer late (#9092, #9228).
+        // A grab has no long press, so it is a press and a release in place however long it rested.
         const tapDuration = Date.now() - touchState.tapStartTime;
         const tool = activeToolRef.current;
         const tapped = previousTouchCount === 1 && !wasMultiTouch && !wasLongPress && !touchState.didMove
-          && (tapDuration < 300 || placesOnTap(viewportHandlerContext(canvas), tool));
+          && (tapDuration < 300 || ((pressGrabs || tapDuration < HOLD_MS) && placesOnTap(viewportHandlerContext(canvas), tool)));
         // The command tool's press is its own (#9092); Pan and Walk act on no tap
         if (!command.end(tapped, e) && tapped && tool !== 'pan' && tool !== 'walk') {
           const rect = canvas.getBoundingClientRect();

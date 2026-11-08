@@ -158,7 +158,7 @@ export const extensionsPanelsRu = {
   "extensionsPanels.privacyPanel.extractFromChat": "Извлечь из чата",
   "extensionsPanels.privacyPanel.storeHeading": "Что мы храним локально",
   "extensionsPanels.privacyPanel.storeBody1": "ifc-lite ведёт журнал действий без указания содержимого, фиксируя основные выполняемые вами интенты (загрузка модели, применение схемы отображения, экспорт). Мы используем его для выявления повторяющихся шаблонов и предоставления подсказок по использованию инструментов в один клик. В журнале никогда не записывается содержимое модели, содержимое чата, имена файлов или ключи API.",
-  "extensionsPanels.privacyPanel.storeBody2": "Предложения, журнал аудита, дополнение к промпту и библиотека профилей хранятся в IndexedDB вашего браузера — ничего из этого не отправляется за пределы устройства без явного экспорта.",
+  "extensionsPanels.privacyPanel.storeBody2": "Предложения, журнал аудита, дополнение к промпту и библиотека профилей хранятся в IndexedDB вашего браузера. Журнал действий остаётся локальным, если вы его не экспортируете. Заметки дополнения к промпту отправляются вместе с запросами в ИИ-чат.",
   "extensionsPanels.privacyPanel.actionLogHeading": "Журнал действий",
   "extensionsPanels.privacyPanel.actionLogStats": "Событий {events} · {kib} КиБ",
   "extensionsPanels.privacyPanel.exportJsonButton": "Экспортировать JSON",

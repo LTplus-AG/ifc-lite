@@ -63,7 +63,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "pkg/**", "pkg-diff/**"],
+      "outputs": ["dist/**", "pkg/**", "pkg-diff/**", "pkg-core/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "src/**",
@@ -75,6 +75,7 @@
         "index.html"
       ],
       "env": [
+        "BUILD_CORE",
         "VITE_RETAINED_GEOMETRY",
         "IFCLITE_RETAINED_ENGINE",
         "VERCEL",

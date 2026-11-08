@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import {
   EDGE_CREASE_ANGLE_DEG,
   EDGE_CREASE_COS,
+  EDGE_LINE_WEIGHT,
   EDGE_QUALITY_PRESETS,
+  EDGE_SAMPLE_COUNT,
   EDGE_UNIFORM_BYTES,
   EDGE_UNIFORM_LAYOUT,
   packEdgeUniforms,
@@ -123,5 +125,86 @@ describe('EDGE_UNIFORM_LAYOUT matches the WGSL struct', () => {
     assert.deepEqual(fields, byOffset);
     assert.deepEqual(Object.values(EDGE_UNIFORM_LAYOUT).sort((a, b) => a - b), fields.map((_, i) => i * 4));
     assert.equal(EDGE_UNIFORM_BYTES, fields.length * 16);
+  });
+});
+
+/** Body of WGSL function `name` in `src`, braces matched. */
+function wgslFnBody(src: string, name: string): string {
+  const start = src.indexOf(`fn ${name}(`);
+  assert.ok(start >= 0, `fn ${name} not found`);
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let end = open; end < src.length; end++) {
+    if (src[end] === '{') depth++;
+    else if (src[end] === '}' && --depth === 0) return src.slice(open, end + 1);
+  }
+  throw new Error(`fn ${name} is unbalanced`);
+}
+
+/**
+ * Line coverage. The pass used to darken by the mean of its directions' 0/1
+ * votes from MSAA sample 0 alone: on a sloped crease the pixel at each stair
+ * step had two directions across the edge where its neighbours had one, so
+ * the line drew as a row of dark ticks, aliased over antialiased geometry.
+ * WGSL does not run under `tsx --test`, so these read the generated source.
+ */
+describe('edge pass line coverage', () => {
+  const ms = edgeShaderSource(true);
+  const ss = edgeShaderSource(false);
+
+  it('darkens a covered pixel by half the intensity at low and three quarters at high (the old 1.5 ratio)', () => {
+    assert.equal(EDGE_LINE_WEIGHT.low, 0.5);
+    assert.equal(EDGE_LINE_WEIGHT.high, 0.75);
+    for (const src of [ms, ss]) {
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_LOW: f32 = ${EDGE_LINE_WEIGHT.low.toFixed(6)}`));
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_HIGH: f32 = ${EDGE_LINE_WEIGHT.high.toFixed(6)}`));
+    }
+  });
+
+  it('puts a sample on a line when ANY tap crosses an edge, not by the mean of the directions', () => {
+    for (const src of [ms, ss]) {
+      const sample = wgslFnBody(src, 'sampleOnEdge');
+      assert.match(sample, /for \(var i = 0; i < count; [^)]*\) \{\s*if \(tapCrosses\([^;]*\)\) \{\s*return 1\.0;/);
+      assert.doesNotMatch(src, /votes \/ directions/);
+      const fs = wgslFnBody(src, 'fs_edges');
+      assert.match(fs, /onEdge = onEdge \+ sampleOnEdge\(p, s, dims, r, count, d, centre\)/);
+      assert.match(fs, /let coverage = onEdge \/ f32\(EDGE_SAMPLES\);/);
+      assert.match(fs, /coverage \* weight \* params\.edge\.y/);
+    }
+  });
+
+  it('tests every MSAA sample against the same sample of its neighbours on a multisampled target', () => {
+    assert.equal(EDGE_SAMPLE_COUNT, 4);
+    assert.match(ms, new RegExp(`const EDGE_SAMPLES: i32 = ${EDGE_SAMPLE_COUNT};`));
+    assert.match(wgslFnBody(ms, 'fs_edges'), /for \(var s = 0; s < EDGE_SAMPLES; s = s \+ 1\)/);
+    // Every depth/id read of the line test takes the sample index; none uses
+    // the sample-0-only `loadDepth`.
+    for (const name of ['axisStep', 'tapCrosses', 'fs_edges']) {
+      const body = wgslFnBody(ms, name);
+      assert.doesNotMatch(body, /loadDepth\(/, `${name} reads sample 0 only`);
+      assert.match(body, /loadDepthSample\([^)]*, s\)/, `${name} reads sample s`);
+    }
+    assert.match(wgslFnBody(ms, 'loadId'), /textureLoad\(idTex, c, s\)/);
+  });
+
+  it('outlines geometry against the background: a background tap is a crossing', () => {
+    for (const src of [ms, ss]) {
+      assert.match(wgslFnBody(src, 'tapCrosses'), /if \(dq <= BACKGROUND_DEPTH\) \{\s*return true;/);
+      // The background itself draws nothing: its samples are skipped.
+      assert.match(wgslFnBody(src, 'fs_edges'), /if \(d <= BACKGROUND_DEPTH\) \{\s*continue;/);
+    }
+  });
+
+  it('places samples at the standard 4x positions, where a plane\'s depth is extrapolated', () => {
+    assert.match(ms, /vec2<f32>\(0\.375, 0\.125\), vec2<f32>\(0\.875, 0\.375\), vec2<f32>\(0\.125, 0\.625\), vec2<f32>\(0\.625, 0\.875\)/);
+    assert.match(ss, /const SAMPLE_POS = array<vec2<f32>, 1>\(\s*vec2<f32>\(0\.5, 0\.5\),/);
+    // A tap on the centre's plane skips its normal; only one off it fits one.
+    const tap = wgslFnBody(ms, 'tapCrosses');
+    assert.ok(tap.indexOf('onPlane(centre, qc, s, dq)') < tap.indexOf('planeAt(qc, s, dq)'));
+  });
+
+  it('reads only sample 0 on a single-sampled target', () => {
+    assert.match(ss, /const EDGE_SAMPLES: i32 = 1;/);
+    assert.match(ss, /var idTex: texture_2d<f32>;/);
   });
 });

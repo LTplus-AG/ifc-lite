@@ -30,6 +30,13 @@ export function depthTextureWgsl(binding: number, multisampled: boolean, group =
           let dims = vec2<i32>(textureDimensions(depthTex));
           return textureLoad(depthTex, clamp(ip, vec2<i32>(0), dims - 1), 0);
         }
+
+        // Sample \`s\` of a multisampled attachment; on a single-sampled one
+        // the same argument is the mip level, so callers pass 0 there.
+        fn loadDepthSample(ip: vec2<i32>, s: i32) -> f32 {
+          let dims = vec2<i32>(textureDimensions(depthTex));
+          return textureLoad(depthTex, clamp(ip, vec2<i32>(0), dims - 1), s);
+        }
 `;
 }
 

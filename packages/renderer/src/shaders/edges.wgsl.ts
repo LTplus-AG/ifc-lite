@@ -12,27 +12,48 @@
  * two). The entity-id attachment is decoded the same way the old
  * separation-line pass did (`encodeId24`/`decodeId24` in `main.wgsl.ts`).
  *
- * Each of `directions` tap offsets (4 cardinal at `low`, +4 diagonal at
- * `high`) votes 0/1 on three cues — id change, normal crease, depth
- * silhouette — and the pass darkens by the AVERAGE vote across directions.
- * That average is a coverage estimate, not a single hard sample, so a line
- * that only grazes one direction fades instead of dashing on/off between
- * frames of the same seam (the bug this pass replaces, `post-processor.ts`
- * introduced its own version of this coverage trick for the id test alone;
- * this generalises it to all three cues and both new tests).
+ * A sample is ON a line when the tap at `radius` px in ANY of the preset's
+ * directions (4 cardinal at `low`, +4 diagonal at `high`) crosses one of the
+ * cues: id change, normal crease, depth silhouette, or background (so an
+ * object is outlined against the sky; the first version of this pass meant
+ * to skip that edge but drew it on some sides through a sign flip in its
+ * tap normals). The pass runs that
+ * test once per MSAA sample, on the sample grid (sample `s` of a texel
+ * against sample `s` of its neighbours), and darkens by the fraction of
+ * samples on a line. That fraction is the pixel's coverage of a band of
+ * constant width around the geometric edge, so lines are antialiased the
+ * way the MSAA geometry under them is.
+ *
+ * Averaging the 0/1 votes of the directions instead, as this pass first
+ * did, is not coverage: on a sloped line the pixel at each stair step has a
+ * second direction across the edge, so it drew about twice as dark as its
+ * neighbours and a straight crease rendered as a row of ticks, and the
+ * single sample per pixel left the line aliased over the antialiased colour.
+ *
+ * Cost: a pixel fits one plane (normal and device-depth gradient) for its
+ * first sample. A tap whose depth lies on that plane is on the same surface,
+ * so only a tap off it, near an actual edge, reconstructs its own normal,
+ * and the other samples of a texel on the same plane reuse it.
  */
-import { EDGE_CREASE_COS, EDGE_MAX_DARKEN, EDGE_SILHOUETTE_REL_THRESHOLD } from '../edge-params.js';
+import {
+  EDGE_CREASE_COS,
+  EDGE_LINE_WEIGHT,
+  EDGE_MAX_DARKEN,
+  EDGE_SAMPLE_COUNT,
+  EDGE_SILHOUETTE_REL_THRESHOLD,
+} from '../edge-params.js';
 import { OUTLINE_SEARCH_RADIUS, OUTLINE_WIDTH_PX, SELECTION_HIDDEN_ALPHA } from '../outline-params.js';
 import { depthReconstructWgsl, depthTextureWgsl } from './depth-reconstruct.wgsl.js';
 
 export function edgeShaderSource(multisampled: boolean): string {
   // Multisampled and non-multisampled `textureLoad` share this call shape:
   // the third argument is the sample index (MS) or the mip level (non-MS),
-  // both 0, so one call site covers both declarations (`post-processor.ts`
-  // used the same trick).
+  // so one call site covers both declarations, with only sample/level 0
+  // read on a single-sampled target (`post-processor.ts` used the same trick).
   const idTexDecl = multisampled
     ? '@group(0) @binding(1) var idTex: texture_multisampled_2d<f32>;'
     : '@group(0) @binding(1) var idTex: texture_2d<f32>;';
+  const samples = multisampled ? EDGE_SAMPLE_COUNT : 1;
 
   return `
         struct EdgeParams {
@@ -52,6 +73,9 @@ export function edgeShaderSource(multisampled: boolean): string {
         const EDGE_CREASE_COS: f32 = ${EDGE_CREASE_COS.toFixed(6)};
         const EDGE_SILHOUETTE_REL: f32 = ${EDGE_SILHOUETTE_REL_THRESHOLD.toFixed(6)};
         const EDGE_MAX_DARKEN: f32 = ${EDGE_MAX_DARKEN.toFixed(3)};
+        const EDGE_LINE_WEIGHT_LOW: f32 = ${EDGE_LINE_WEIGHT.low.toFixed(6)};
+        const EDGE_LINE_WEIGHT_HIGH: f32 = ${EDGE_LINE_WEIGHT.high.toFixed(6)};
+        const EDGE_SAMPLES: i32 = ${samples};
 
         struct VsOut {
           @builtin(position) pos: vec4<f32>,
@@ -76,86 +100,173 @@ export function edgeShaderSource(multisampled: boolean): string {
           return (r << 16u) | (g << 8u) | b;
         }
 
-        fn loadId(ip: vec2<i32>, dims: vec2<i32>) -> u32 {
+        fn loadId(ip: vec2<i32>, s: i32, dims: vec2<i32>) -> u32 {
           let c = clamp(ip, vec2<i32>(0), dims - 1);
-          return decodeId24(textureLoad(idTex, c, 0));
+          return decodeId24(textureLoad(idTex, c, s));
         }
 
         fn viewPosAt(ip: vec2<i32>, d: f32) -> vec3<f32> {
           return viewPositionFromDepth(ndcFromPixel(ip, params.viewport.zw), d, params.depthParams, params.xyParams, params.shearParams);
         }
 
-        // One tap direction's edge vote in [0, 1]: 1 if the id changes, the
-        // local normal creases past the angle threshold, or the view-space
-        // depth steps past the silhouette threshold.
-        fn tapVote(p: vec2<i32>, q: vec2<i32>, dims: vec2<i32>, centerId: u32, centerP: vec3<f32>, centerN: vec3<f32>) -> f32 {
-          let qc = clamp(q, vec2<i32>(0), dims - 1);
-          let dq = loadDepth(qc);
-          if (dq <= BACKGROUND_DEPTH) {
-            return 0.0;
+        // Where each sample sits in its texel: WebGPU's standard 4x
+        // positions, or the centre on a single-sampled target.
+        const SAMPLE_POS = array<vec2<f32>, ${samples}>(
+          ${samples === 1 ? 'vec2<f32>(0.5, 0.5),' : 'vec2<f32>(0.375, 0.125), vec2<f32>(0.875, 0.375), vec2<f32>(0.125, 0.625), vec2<f32>(0.625, 0.875),'}
+        );
+        const NO_FIT: f32 = 3.0e38;
+
+        // The plane sample \`s\` of a texel lies on: view-space normal, and
+        // device depth \`d\` at pixel position \`at\` with its per-pixel gradient.
+        // Device depth is affine in screen space across a plane, which is
+        // what \`onPlane\` extrapolates.
+        struct Plane {
+          n: vec3<f32>,
+          grad: vec2<f32>,
+          d: f32,
+          at: vec2<f32>,
+        }
+
+        // One tangent axis of the surface at \`ip\` (sample \`s\`, device depth
+        // \`d\`, view position \`P\`): xyz the view-space step to a neighbour along
+        // \`e\`, w its device-depth step. The side whose next step continues this
+        // one (zero second difference: one plane) is on this sample's own
+        // surface; the smaller depth change, \`normalFromNeighbours\`' rule,
+        // picks the side on a silhouette, but on a crease it can take the
+        // other face. Background never counts; with neither neighbour the
+        // step is zero.
+        fn axisStep(P: vec3<f32>, d: f32, ip: vec2<i32>, e: vec2<i32>, s: i32) -> vec4<f32> {
+          let d1p = loadDepthSample(ip + e, s);
+          let d1m = loadDepthSample(ip - e, s);
+          let okPlus = d1p > BACKGROUND_DEPTH;
+          let okMinus = d1m > BACKGROUND_DEPTH;
+          if (!okPlus && !okMinus) {
+            return vec4<f32>(0.0);
           }
-          let neighbourId = loadId(qc, dims);
-          let idVote = f32(neighbourId != centerId && neighbourId != 0u && centerId != 0u);
+          var plus = okPlus;
+          if (okPlus && okMinus) {
+            let d2p = loadDepthSample(ip + e * 2, s);
+            let d2m = loadDepthSample(ip - e * 2, s);
+            let errPlus = select(NO_FIT, abs((d2p - d1p) - (d1p - d)), d2p > BACKGROUND_DEPTH);
+            let errMinus = select(NO_FIT, abs((d1m - d2m) - (d - d1m)), d2m > BACKGROUND_DEPTH);
+            if (errPlus == errMinus) {
+              plus = abs(d1p - d) <= abs(d - d1m);
+            } else {
+              plus = errPlus < errMinus;
+            }
+          }
+          if (plus) {
+            return vec4<f32>(viewPosAt(ip + e, d1p) - P, d1p - d);
+          }
+          return vec4<f32>(P - viewPosAt(ip - e, d1m), d - d1m);
+        }
 
-          let Pq = viewPosAt(qc, dq);
-          let depthRef = max(-centerP.z, 1e-4);
-          let silhouetteVote = f32(abs(Pq.z - centerP.z) / depthRef > EDGE_SILHOUETTE_REL);
+        fn planeAt(ip: vec2<i32>, s: i32, d: f32) -> Plane {
+          let P = viewPosAt(ip, d);
+          let tx = axisStep(P, d, ip, vec2<i32>(1, 0), s);
+          let ty = axisStep(P, d, ip, vec2<i32>(0, 1), s);
+          // Pixel +x is view +x and pixel +y is view -y, so dy x dx faces +z.
+          let n = cross(ty.xyz, tx.xyz);
+          let len2 = dot(n, n);
+          var plane: Plane;
+          plane.n = select(vec3<f32>(0.0, 0.0, 1.0), n * inverseSqrt(max(len2, 1e-30)), len2 >= 1e-30);
+          plane.grad = vec2<f32>(tx.w, ty.w);
+          plane.d = d;
+          plane.at = vec2<f32>(ip) + SAMPLE_POS[s];
+          return plane;
+        }
 
-          // Neighbour normal from ITS OWN neighbours (not just the two
-          // points), so a grazing coplanar surface (large positional slope,
-          // near-zero normal change) does not misread as a crease.
-          let dLeft = loadDepth(clamp(qc + vec2<i32>(-1, 0), vec2<i32>(0), dims - 1));
-          let dRight = loadDepth(clamp(qc + vec2<i32>(1, 0), vec2<i32>(0), dims - 1));
-          let dUp = loadDepth(clamp(qc + vec2<i32>(0, -1), vec2<i32>(0), dims - 1));
-          let dDown = loadDepth(clamp(qc + vec2<i32>(0, 1), vec2<i32>(0), dims - 1));
-          let Nq = normalFromNeighbours(
-            Pq,
-            select(centerP, viewPosAt(qc + vec2<i32>(1, 0), dRight), dRight > BACKGROUND_DEPTH),
-            select(centerP, viewPosAt(qc + vec2<i32>(-1, 0), dLeft), dLeft > BACKGROUND_DEPTH),
-            select(centerP, viewPosAt(qc + vec2<i32>(0, 1), dDown), dDown > BACKGROUND_DEPTH),
-            select(centerP, viewPosAt(qc + vec2<i32>(0, -1), dUp), dUp > BACKGROUND_DEPTH),
-          );
-          let creaseVote = f32(dot(centerN, Nq) < EDGE_CREASE_COS);
+        // Whether sample \`s\` of texel \`ip\`, at device depth \`d\`, lies on
+        // \`plane\`: a tolerance of a hundredth of the plane's depth change per
+        // pixel, so a point a fraction of a pixel across a crease still
+        // counts as off it, plus a few ulps for interpolation roundoff.
+        fn onPlane(plane: Plane, ip: vec2<i32>, s: i32, d: f32) -> bool {
+          let predicted = plane.d + dot(plane.grad, vec2<f32>(ip) + SAMPLE_POS[s] - plane.at);
+          return abs(d - predicted) <= 0.01 * (abs(plane.grad.x) + abs(plane.grad.y)) + 4e-7 * d;
+        }
 
-          return max(idVote, max(creaseVote, silhouetteVote));
+        // Whether the tap at \`q\` (same sample \`s\`) lies across an edge from
+        // the centre sample: the tap is background (the outline against the
+        // sky), the id changes, the view-space depth steps past the
+        // silhouette threshold, or the normal creases past the angle
+        // threshold. A tap on the centre's own plane has its normal, so only
+        // a tap off it reconstructs one, from ITS OWN neighbours (a grazing
+        // coplanar surface, large positional slope and near-zero normal
+        // change, does not misread as a crease).
+        fn tapCrosses(q: vec2<i32>, s: i32, dims: vec2<i32>, centreId: u32, centreZ: f32, centre: Plane) -> bool {
+          let qc = clamp(q, vec2<i32>(0), dims - 1);
+          let dq = loadDepthSample(qc, s);
+          if (dq <= BACKGROUND_DEPTH) {
+            return true;
+          }
+          let neighbourId = loadId(qc, s, dims);
+          if (neighbourId != centreId && neighbourId != 0u && centreId != 0u) {
+            return true;
+          }
+          let zq = viewZFromDepth(dq, params.depthParams);
+          if (abs(zq - centreZ) / max(-centreZ, 1e-4) > EDGE_SILHOUETTE_REL) {
+            return true;
+          }
+          if (onPlane(centre, qc, s, dq)) {
+            return false;
+          }
+          return dot(centre.n, planeAt(qc, s, dq).n) < EDGE_CREASE_COS;
+        }
+
+        const TAPS = array<vec2<i32>, 8>(
+          vec2<i32>( 1,  0), vec2<i32>(-1,  0), vec2<i32>( 0,  1), vec2<i32>( 0, -1),
+          vec2<i32>( 1,  1), vec2<i32>(-1,  1), vec2<i32>( 1, -1), vec2<i32>(-1, -1),
+        );
+
+        // 1.0 when sample \`s\` of texel \`p\`, on plane \`centre\`, is on a
+        // line: ANY tap direction crosses an edge (the maximum, not the mean,
+        // of the directions).
+        fn sampleOnEdge(p: vec2<i32>, s: i32, dims: vec2<i32>, r: i32, count: i32, d: f32, centre: Plane) -> f32 {
+          let centreId = loadId(p, s, dims);
+          let centreZ = viewZFromDepth(d, params.depthParams);
+          for (var i = 0; i < count; i = i + 1) {
+            if (tapCrosses(p + TAPS[i] * r, s, dims, centreId, centreZ, centre)) {
+              return 1.0;
+            }
+          }
+          return 0.0;
         }
 
         @fragment
         fn fs_edges(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
           let dims = vec2<i32>(params.viewport.xy);
           let p = vec2<i32>(fragPos.xy);
-          let d = loadDepth(p);
-          if (d <= BACKGROUND_DEPTH) {
+          let r = i32(round(params.edge.x));
+          let high = params.edge.z > 0.5;
+          let count = select(4, 8, high);
+
+          // Samples of this texel on the plane of the first one reuse it; a
+          // sample on another surface (an edge through the texel) fits its own.
+          var first: Plane;
+          var haveFirst = false;
+          var onEdge = 0.0;
+          for (var s = 0; s < EDGE_SAMPLES; s = s + 1) {
+            let d = loadDepthSample(p, s);
+            if (d <= BACKGROUND_DEPTH) {
+              continue;
+            }
+            var centre = first;
+            if (!haveFirst || !onPlane(first, p, s, d)) {
+              centre = planeAt(p, s, d);
+            }
+            if (!haveFirst) {
+              first = centre;
+              haveFirst = true;
+            }
+            onEdge = onEdge + sampleOnEdge(p, s, dims, r, count, d, centre);
+          }
+          if (onEdge == 0.0) {
             return vec4<f32>(0.0, 0.0, 0.0, 0.0);
           }
-          let centerId = loadId(p, dims);
-          let centerP = viewPosAt(p, d);
-          let centerN = normalFromNeighbours(
-            centerP,
-            viewPosAt(clamp(p + vec2<i32>(1, 0), vec2<i32>(0), dims - 1), loadDepth(p + vec2<i32>(1, 0))),
-            viewPosAt(clamp(p - vec2<i32>(1, 0), vec2<i32>(0), dims - 1), loadDepth(p - vec2<i32>(1, 0))),
-            viewPosAt(clamp(p + vec2<i32>(0, 1), vec2<i32>(0), dims - 1), loadDepth(p + vec2<i32>(0, 1))),
-            viewPosAt(clamp(p - vec2<i32>(0, 1), vec2<i32>(0), dims - 1), loadDepth(p - vec2<i32>(0, 1))),
-          );
 
-          let r = i32(round(params.edge.x));
-          var votes = 0.0;
-          votes = votes + tapVote(p, p + vec2<i32>( r,  0), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>(-r,  0), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>( 0,  r), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>( 0, -r), dims, centerId, centerP, centerN);
-          var directions = 4.0;
-
-          if (params.edge.z > 0.5) {
-            votes = votes + tapVote(p, p + vec2<i32>( r,  r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>(-r,  r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>( r, -r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>(-r, -r), dims, centerId, centerP, centerN);
-            directions = 8.0;
-          }
-
-          let coverage = votes / directions;
-          let darken = clamp(coverage * params.edge.y, 0.0, EDGE_MAX_DARKEN);
+          let coverage = onEdge / f32(EDGE_SAMPLES);
+          let weight = select(EDGE_LINE_WEIGHT_LOW, EDGE_LINE_WEIGHT_HIGH, high);
+          let darken = clamp(coverage * weight * params.edge.y, 0.0, EDGE_MAX_DARKEN);
           return vec4<f32>(0.0, 0.0, 0.0, darken);
         }
 `;

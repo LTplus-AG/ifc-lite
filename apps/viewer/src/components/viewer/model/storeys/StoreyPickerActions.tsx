@@ -8,6 +8,8 @@
  * active at once, ready to draw on), or open the storey manager.
  */
 
+import { addStoreyKeepingSession } from './add-storey';
+import { activateStorey } from '@/lib/storeys/storey-session';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { useViewerStore, type ViewerState } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -35,7 +37,7 @@ export function StoreyPickerActions() {
     const state = useViewerStore.getState();
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
-    void import('@/lib/storeys/storey-actions').then(({ addStoreyNextTo }) => {
+    void import('@/lib/storeys/storey-actions').then(() => {
       // The session may have moved while the module loaded: add above the storey drawn on now,
       // and nothing at all once the session that was clicked in has ended, even if a new
       // one has since opened on the same model.
@@ -43,8 +45,15 @@ export function StoreyPickerActions() {
       if (now.session?.entry !== entry || now.session.modelId !== modelId) return;
       const reference = topReference(now, modelId);
       if (reference === undefined) return;
-      const outcome = addStoreyNextTo(useViewerStore, modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
+      const outcome = addStoreyKeepingSession(modelId, reference, 'above', (index) => t('storeyManager.fallbackName', { index }));
       if (!outcome.ok) toast.error(t('storeyManager.refusal.other', { reason: outcome.reason }));
+      else if (outcome.storeyId !== null) {
+        const createdId = outcome.storeyId;
+        const level = modelStoreys(useViewerStore.getState(), modelId).find(s => s.expressId === createdId);
+        toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: String(level?.elevation ?? '') }), {
+          label: t('storeyManager.drawOn'), onClick: () => activateStorey(useViewerStore.getState(), modelId, createdId),
+        });
+      }
     }, (error: unknown) => {
       toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));
     });

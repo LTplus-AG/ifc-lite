@@ -1,0 +1,53 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { installLayout } from '@/test/dom-layout.js';
+installLayout();
+import assert from 'node:assert/strict';
+import { beforeEach, afterEach, it } from 'node:test';
+import { act } from 'react';
+import { useViewerStore } from '@/store';
+import { seedModelingSession, MODEL_ID, STOREY } from '@/test/modeling-session-fixture';
+import { cleanup, click, render, waitFor } from '@/test/render';
+import { CopyToStoreys } from './CopyToStoreys';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
+let restore = () => {};
+beforeEach(async () => {
+  await seedModelingSession();
+  restore = setRequestRemesh(() => {});
+  const result = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+  assert.ok('expressId' in result);
+  useViewerStore.getState().setSelectedEntityId(result.expressId);
+});
+afterEach(() => { restore(); cleanup(); });
+const button = (ui: HTMLElement, text: string) => [...ui.querySelectorAll('button')].find(b => b.textContent === text)!;
+const walls = () => useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().filter(e => e.type.toUpperCase() === 'IFCWALL');
+it('#9296 copies a selection to a set of storeys atomically and undoes all copies together', async () => {
+  const before = walls().length;
+  const ui = render(<CopyToStoreys />);
+  click(button(ui, 'Select all storeys'));
+  click(button(ui, 'Prepare copies'));
+  await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
+  const stack = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
+  click(button(ui, 'Copy now'));
+  assert.equal(walls().length, before + 2);
+  // The store adapter tags every created product as a single undo batch.
+  assert.ok(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length > stack);
+  act(() => { useViewerStore.getState().undo(MODEL_ID); });
+  const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+  assert.equal(walls().filter(w => !view.isDeleted(w.expressId)).length, before);
+});
+it('#9296 cancelling preparation creates no entities or history', async () => {
+  const ui = render(<CopyToStoreys />);
+  const before = walls().length;
+  const stack = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
+  click(button(ui, 'Select all storeys'));
+  click(button(ui, 'Prepare copies'));
+  click(button(ui, 'Cancel'));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(walls().length, before);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, stack);
+  assert.equal(button(ui, 'Copy now'), undefined);
+});

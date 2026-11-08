@@ -81,7 +81,8 @@ describe('storey manager (#9013)', () => {
     act(() => click(add));
     await waitFor(() => rows(ui).length === 3, 'the new row appears');
     const created = useViewerStore.getState().session!.storeyId!;
-    assert.equal(soloOn(created), true, 'a new storey drawn on straight away is shown too');
+    assert.equal(created, UPPER_STOREY, '#9296 drawing and isolation stay on the previous storey');
+    assert.equal(soloOn(created), true);
   });
 
   it('a model with no editable data is a read error, not a model without storeys (#9037 review)', async () => {
@@ -94,15 +95,15 @@ describe('storey manager (#9013)', () => {
     assert.equal([...ui.querySelectorAll('button')].some((b) => b.textContent?.includes('±0.00')), false, 'no offer to add a first storey');
   });
 
-  it('adds a storey above in one click; it becomes active with the next name and spacing', async () => {
+  it('#9296 adds a storey above without changing the active drawing plane', async () => {
     const ui = await mount();
     const add = [...ui.querySelectorAll('button')].find((b) => b.textContent?.includes('Add storey above'))!;
     act(() => click(add));
     await waitFor(() => rows(ui).length === 3, 'the new row appears');
     assert.deepEqual(elevations(), [0, 1.5, 3], 'above L0, under L1: the gap is split');
     const created = useViewerStore.getState().session?.storeyId;
-    assert.ok(created !== STOREY && created !== UPPER_STOREY);
-    assert.equal(rows(ui)[1].querySelector('[role="radio"]')?.getAttribute('aria-checked'), 'true');
+    assert.equal(created, STOREY, '#9296 adding a level does not move the drawing plane');
+    assert.equal(rows(ui)[2].querySelector('[role="radio"]')?.getAttribute('aria-checked'), 'true');
   });
 
   it('Enter commits a floor-to-floor height; the storeys above move', async () => {

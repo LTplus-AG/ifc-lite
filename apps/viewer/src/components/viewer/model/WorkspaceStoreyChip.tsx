@@ -19,7 +19,7 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
@@ -29,6 +29,9 @@ import { editableModels, modelStoreys, type WorkspaceStorey } from '@/lib/comman
 import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverTrigger } from '../../viewport-ui/hud';
 import { StoreyPickerActions } from './storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
+import { COPY_TO_STOREYS_EVENT } from '@/lib/actions/copy-to-storeys-open';
+import { CopyToStoreys } from './storeys/CopyToStoreys';
+import { Button } from '@/components/ui/button';
 import { StoreyContextControl } from './StoreyContextControl';
 
 /** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
@@ -51,9 +54,16 @@ export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
 
 export function WorkspaceStoreyChip() {
   const { t } = useTranslation();
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const session = useViewerStore((s) => s.session);
   const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isStoreyIsolated(s, s.session.modelId, s.session.storeyId) : false));
   const groups = useWorkspaceStoreyGroups();
+  useEffect(() => {
+    const show = () => { setCopyOpen(true); setOpen(true); };
+    window.addEventListener(COPY_TO_STOREYS_EVENT, show);
+    return () => window.removeEventListener(COPY_TO_STOREYS_EVENT, show);
+  }, []);
 
   if (!session) return null;
   const group = groups.find((g) => g.modelId === session.modelId);
@@ -75,7 +85,7 @@ export function WorkspaceStoreyChip() {
   return (
     <>
       <HudItem region="top-left" order={0}>
-        <HudPopover>
+        <HudPopover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setCopyOpen(false); }}>
           {/* Half a rem inside the 13rem chip cap, so even a long storey name
               (truncated, full name in its tooltip) keeps an 8px gap to the
               top-center lane that starts at 14rem (#6315). */}
@@ -107,8 +117,9 @@ export function WorkspaceStoreyChip() {
               {current && <StoreyContextControl />}
             </span>
           </HudChip>
-          <HudPopoverContent align="start" className="p-1">
-            <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />
+          <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
+            {copyOpen ? <CopyToStoreys /> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={(storey) => { pickWorkspaceStorey(storey); setOpen(false); }} />}
+            <Button size="sm" variant="ghost" onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>
             <StoreyPickerActions />
           </HudPopoverContent>
         </HudPopover>

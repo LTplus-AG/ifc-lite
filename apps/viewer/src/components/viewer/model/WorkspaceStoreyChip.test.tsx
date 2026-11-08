@@ -118,9 +118,9 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     await import('@/lib/storeys/storey-actions');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const created = useViewerStore.getState().session!.storeyId!;
-    assert.ok(created !== STOREY && created !== UPPER_STOREY, 'the new storey is drawn on');
+    assert.equal(created, UPPER_STOREY, '#9296 adding keeps the active drawing storey');
     const elevations = new Map(modelStoreys(useViewerStore.getState(), MODEL_ID).map((st) => [st.expressId, st.elevation]));
-    assert.ok(elevations.get(created)! > elevations.get(UPPER_STOREY)!, 'it sits above L1, the storey drawn on, not between L0 and L1');
+    assert.ok(Math.max(...elevations.values()) > elevations.get(UPPER_STOREY)!, 'the new level sits above the reference');
   });
 
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {
@@ -130,6 +130,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(rows[1].getAttribute('aria-current'), 'true');
     act(() => click(rows[0]));
     const s = useViewerStore.getState();
+    assert.equal(document.querySelector('[data-storey-picker]'), null, '#9296 a pick dismisses the shortcut-blocking list');
     assert.equal(s.session?.storeyId, UPPER_STOREY);
     assert.equal(getCommandRuntime().command?.id, 'wall.place', 'the command keeps running');
     assert.equal(getCommandRuntime().ctx?.storeyId, UPPER_STOREY, '…on the new storey');

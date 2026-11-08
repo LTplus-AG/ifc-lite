@@ -19,20 +19,22 @@ import { effectiveStoreyId } from '@/lib/effective-storey';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 import { InspectorRow } from './InspectorControls';
 import { runInspectorEdit, setWallDimensions } from './inspector-edits';
 import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import { MIN_ATTACHED_HEIGHT } from '@/lib/commands/modeling/wall-top';
 
-function readWallTop(modelId: string, wallId: number): { top: WallTop; target: string | null } {
+function readWallTop(modelId: string, wallId: number): { top: WallTop; target: { text: string; raw: string } | null } {
   const s = useViewerStore.getState();
   const target = modelEditTarget(s, modelId);
   if (!target) return { top: 'fixed', target: null };
   const inventory = readStoreyInventory(target.dataStore, target.view);
+  const raw = target.view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint');
   const attachment = readTopAttachment(inventory, wallId);
-  if (!attachment) return { top: 'fixed', target: null };
-  const storey = inventory.storeys.find((candidate) => candidate.expressId === attachment.targetStoreyId);
-  return { top: 'storeyAbove', target: storey?.Name ?? null };
+  if (!attachment) return { top: 'fixed', target: typeof raw === 'string' && raw !== 'Fixed' ? { text: raw, raw } : null };
+  const display = storeyAttachmentDisplay(s, modelId, wallId, raw);
+  return { top: 'storeyAbove', target: display ?? (typeof raw === 'string' ? { text: raw, raw } : null) };
 }
 
 /**
@@ -84,7 +86,7 @@ export function setWallTop(modelId: string, wallId: number, top: WallTop): boole
 export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: number }) {
   const { t } = useTranslation();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const { top, target } = useMemo(() => { void mutationVersion; return readWallTop(modelId, wallId); }, [modelId, wallId, mutationVersion]);
+  const { top, target } = useMemo(() => { void mutationVersion; return readWallTop(modelId, wallId); }, [modelId, wallId, mutationVersion, t]);
   return (
     <InspectorRow label={t('modelingCommand.wall.top')}>
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -98,7 +100,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
             { value: 'fixed', label: t('modelingCommand.wall.topFixed') },
           ]}
         />
-        {top === 'storeyAbove' && target && <span className="truncate text-2xs text-muted-foreground">{target}</span>}
+        {target && <span title={target.raw} className="truncate text-2xs text-muted-foreground">{target.text}</span>}
       </div>
     </InspectorRow>
   );

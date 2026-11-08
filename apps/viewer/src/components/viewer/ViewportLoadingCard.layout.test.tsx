@@ -47,11 +47,11 @@ for (const [width, height] of [[320, 640], [360, 740], [390, 844], [1280, 800], 
           return page.evaluate(() => {
             const card = document.querySelector('[data-viewport-loading-card]')!;
             const rect = card.getBoundingClientRect();
-            const home = document.querySelector('button[aria-label="Home"]');
+            const home = document.querySelector('button[aria-label="Home view"]');
             const panels = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Panels');
             const cube = document.querySelector('[data-tour="viewcube"]');
             const toolbar = document.querySelector('[data-test-toolbar]')!;
-            const targets = [home?.parentElement?.parentElement, panels, cube, toolbar].filter((el): el is Element => !!el);
+            const targets = [home?.parentElement, panels, cube, toolbar].filter((el): el is Element => !!el);
             const overlaps = targets.map(el => {
               const other = el.getBoundingClientRect();
               return rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top;

@@ -922,7 +922,7 @@ ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
 ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
 ```
 
-`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its express ID or exact name. Lengths are metres.
+`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
 
 **Flags:**
 
@@ -935,7 +935,7 @@ ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out me
 | `--floor-height <m>` | New floor-to-floor height of `--storey` |
 | `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
 | `--delete-contents` | Delete the storey and everything it holds |
-| `--dry-run` | Plan the edit or delete and report it; write nothing |
+| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
 | `--json` | Machine-readable output |
 
 ---

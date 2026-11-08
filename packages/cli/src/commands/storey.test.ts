@@ -110,6 +110,30 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect((await storeysOf(renamed)).map(([name]) => name)).toEqual(['Ground', 'my storey']);
   });
 
+  it('a storey named like another storey\'s id is refused as ambiguous; #<id> picks the id (#9121 review)', async () => {
+    const run = await storey();
+    stdout = '';
+    await run([SAMPLE, 'list', '--json']);
+    const [only] = JSON.parse(stdout) as Array<{ expressId: number }>;
+    const named = join(dir, 'named.ifc');
+    await run([SAMPLE, 'add', '--name', String(only.expressId), '--elevation', '3', '--out', named]);
+    const out = join(dir, 'never.ifc');
+    await expect(run([named, 'rename', '--storey', String(only.expressId), '--name', 'X', '--out', out])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/express id and also a storey name/);
+    expect(existsSync(out)).toBe(false);
+    const renamed = join(dir, 'renamed.ifc');
+    await run([named, 'rename', '--storey', `#${only.expressId}`, '--name', 'Ground', '--out', renamed]);
+    expect((await storeysOf(renamed)).map(([name]) => name)).toEqual(['Ground', String(only.expressId)]);
+  });
+
+  it('a blank length is refused, not read as 0 m (#9121 review)', async () => {
+    const run = await storey();
+    const out = join(dir, 'never.ifc');
+    await expect(run([SAMPLE, 'edit', '--storey', 'My Storey', '--elevation', '', '--out', out])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/--elevation must be a number of metres/);
+    expect(existsSync(out)).toBe(false);
+  });
+
   it('refuses an invalid edit, exits non-zero and writes nothing', async () => {
     const run = await storey();
     const added = join(dir, 'added.ifc');

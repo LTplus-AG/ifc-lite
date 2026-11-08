@@ -32,7 +32,7 @@ Actions:
   delete --storey <storey> --out F [--move-to <storey> | --delete-contents]
                                              Delete a storey; one holding elements needs --move-to or --delete-contents
 
-<storey> is an express id or a storey name. Lengths are metres.
+<storey> is a storey name, or #<express id> (a bare number is the id unless a storey has that name). Lengths are metres.
 
 Options:
   --dry-run   Plan an edit or delete and report it (refusals, moves, resized walls, refit stairs); write nothing
@@ -40,21 +40,31 @@ Options:
 
 function resolveStorey(rows: readonly StoreySummary[], value: string | undefined, flag: string): number {
   if (!value) fatal(`${flag} <storey> is required`);
-  const id = Number(value);
-  const byId = Number.isInteger(id) ? rows.find((row) => row.expressId === id) : undefined;
-  if (byId) return byId.expressId;
+  const available = () => rows.map((row) => `${row.Name} (#${row.expressId})`).join(', ') || '(none)';
+  // `#36` is always the express id.
+  if (/^#\d+$/.test(value!)) {
+    const byId = rows.find((row) => row.expressId === Number(value!.slice(1)));
+    return byId ? byId.expressId : fatal(`No storey has express id ${value}. Available: ${available()}`);
+  }
   // The exact name first; letter case is only a fallback, so "Level 1" still names
   // one storey in a file that also has "level 1".
   const exact = rows.filter((row) => row.Name === value);
   const named = exact.length > 0 ? exact : rows.filter((row) => row.Name.toLowerCase() === value!.toLowerCase());
+  const id = Number(value);
+  const byId = /^\d+$/.test(value!) ? rows.find((row) => row.expressId === id) : undefined;
+  // A bare number that is both one storey's id and another's name says neither: refuse it.
+  if (byId && named.some((row) => row.expressId !== byId.expressId)) {
+    return fatal(`"${value}" is #${byId.expressId}'s express id and also a storey name: write #${byId.expressId} for the id, or use the other storey's id`);
+  }
+  if (byId) return byId.expressId;
   if (named.length === 1) return named[0].expressId;
-  const available = rows.map((row) => `${row.Name} (#${row.expressId})`).join(', ') || '(none)';
-  return fatal(named.length > 1 ? `More than one storey is named "${value}": use its express id` : `Storey "${value}" not found. Available: ${available}`);
+  return fatal(named.length > 1 ? `More than one storey is named "${value}": use #<express id>` : `Storey "${value}" not found. Available: ${available()}`);
 }
 
 function metres(value: string | undefined, flag: string): number {
+  // `Number('')` is 0: a blank value must not read as ground level.
   const parsed = Number(value?.replace(',', '.'));
-  if (value === undefined || !Number.isFinite(parsed)) fatal(`${flag} must be a number of metres`);
+  if (value === undefined || value.trim() === '' || !Number.isFinite(parsed)) fatal(`${flag} must be a number of metres`);
   return parsed;
 }
 

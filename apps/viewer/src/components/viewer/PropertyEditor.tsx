@@ -159,7 +159,7 @@ export function PropertyEditor({
   }, [handleSave, handleCancel, showScopeConfirm]);
 
   const attachment = psetName === 'IfcLite_StoreyAttachment'
-    ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, currentValue, t) : null;
+    ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, currentValue, t, propName) : null;
   const displayValue = attachment?.text ?? formatDisplayValue(currentValue, t);
 
   // Non-editing view: value with pen icon on right (always visible)

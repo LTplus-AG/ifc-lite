@@ -10,7 +10,6 @@ import {
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { openSettings } from '@/lib/settings/open-settings';
 import { resetLayout } from '@/store/layoutReset';
-import { canMutate } from '@/store/mutation-permission';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -23,10 +22,7 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     id: 'model:copy-to-storeys', labelKey: 'storeyManager.copy.title',
     keywords: 'copy levels storeys floors repeat selection',
     category: 'Tools', icon: LayoutTemplate, surfaces: paletteOnly,
-    enabled: (state: SurfaceCommandState) => {
-      const s = useViewerStore.getState();
-      return state.canEditInSession && s.session !== null && canMutate(s, s.session.modelId);
-    },
+    enabled: (state: SurfaceCommandState) => state.canEditInSession,
     run: () => { void import('@/lib/actions/copy-to-storeys-open').then(m => m.openCopyToStoreys()); },
   },
   {

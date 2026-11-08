@@ -4,7 +4,7 @@
 
 /**
  * The storey picker's own actions (#9013), under its list in the storey chip
- * and the plan header: add above the drawing storey without changing planes
+ * and the plan header: add above the topmost storey without changing planes
  * (the toast offers Draw on), or open the storey manager.
  */
 
@@ -19,10 +19,10 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { openStoreyManager } from '@/lib/storeys/storey-manager-open';
 import { HudPopoverClose } from '../../../viewport-ui/hud';
 
-/** The storey a new one goes above: the one drawn on, else the model's top storey. */
+/** A header add always appends above the live topmost storey. */
 function topReference(s: ViewerState, modelId: string): number | undefined {
   const storeys = modelStoreys(s, modelId);
-  return (s.session?.modelId === modelId ? s.session.storeyId : null) ?? storeys[storeys.length - 1]?.expressId;
+  return storeys[storeys.length - 1]?.expressId;
 }
 
 export function StoreyPickerActions() {
@@ -37,7 +37,7 @@ export function StoreyPickerActions() {
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
     void import('./add-storey').then(({ addStoreyKeepingSession }) => {
-      // The session may have moved while the module loaded: add above the storey drawn on now,
+      // The model may have changed while the module loaded: re-read its live topmost storey,
       // and nothing at all once the session that was clicked in has ended, even if a new
       // one has since opened on the same model.
       const now = useViewerStore.getState();
@@ -51,7 +51,7 @@ export function StoreyPickerActions() {
         const level = modelStoreys(useViewerStore.getState(), modelId).find(s => s.expressId === createdId);
         toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: String(level?.elevation ?? '') }), {
           label: t('storeyManager.drawOn'), onClick: () => activateStorey(useViewerStore.getState(), modelId, createdId),
-        });
+        }, `storey-added:${modelId}`);
       }
     }, (error: unknown) => {
       toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));

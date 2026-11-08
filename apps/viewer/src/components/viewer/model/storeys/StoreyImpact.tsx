@@ -20,14 +20,20 @@ import type { LevelDraft } from './useStoreyManager';
 interface StoreyImpactProps {
   draft: LevelDraft;
   rows: readonly StoreySummary[];
+  previewHint?: boolean;
+  insertion?: boolean;
   onSelect: (ids: readonly number[]) => void;
 }
 
-export function StoreyImpact({ draft, rows, onSelect }: StoreyImpactProps) {
+export function StoreyImpact({ draft, rows, onSelect, previewHint = true, insertion = false }: StoreyImpactProps) {
   const { t } = useTranslation();
   const shared = useViewerStore((s) => s.collabSession !== null);
   const storey = rows.find((row) => row.expressId === draft.storeyId)?.Name ?? '';
   const plan = draft.plan;
+  // An insertion expands the gap, then rebinds relative tops into it. Their
+  // final height can stay the same: describe updated tops, not intermediate resizes.
+  const parts = plan ? impactParts(t, insertion ? { ...plan, walls: [] } : plan) : [];
+  if (insertion && plan?.walls.length) parts.push(t('storeyManager.impact.wallTops', { count: plan.walls.length }));
   return (
     <section
       aria-live="polite"
@@ -40,7 +46,7 @@ export function StoreyImpact({ draft, rows, onSelect }: StoreyImpactProps) {
       </p>
       {plan && plan.refusals.length === 0 && (
         <>
-          <p data-storey-impact-summary className="font-medium text-foreground">{impactParts(t, plan).join(' · ')}</p>
+          <p data-storey-impact-summary className="font-medium text-foreground">{parts.join(' · ')}</p>
           {plan.notices.map((notice) => (
             <div key={notice.code} className="flex items-start gap-1.5 text-warn">
               <Info aria-hidden className="mt-px h-3 w-3 shrink-0" />
@@ -50,12 +56,12 @@ export function StoreyImpact({ draft, rows, onSelect }: StoreyImpactProps) {
               </Button>
             </div>
           ))}
-          <p className="flex items-center gap-1 text-muted-foreground">
+          {previewHint && <p className="flex items-center gap-1 text-muted-foreground">
             <Eye aria-hidden className="h-3 w-3" />
             {t(shared ? 'storeyManager.impact.planOnly' : 'storeyManager.impact.preview')}
             <span aria-hidden>·</span>
             {t('storeyManager.field.hint')}
-          </p>
+          </p>}
         </>
       )}
       {draft.error && plan?.refusals[0]?.elementIds?.length ? (

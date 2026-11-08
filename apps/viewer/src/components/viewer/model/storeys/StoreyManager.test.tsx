@@ -23,6 +23,8 @@ import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { Toaster } from '@/components/ui/toast';
+import { reviewStoreyInsertion, commitStoreyInsertion } from './insert-storey';
+import { PropertyValueType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
@@ -100,7 +102,7 @@ describe('storey manager (#9013)', () => {
     const add = [...ui.querySelectorAll('button')].find((b) => b.textContent?.includes('Add storey above'))!;
     act(() => click(add));
     await waitFor(() => rows(ui).length === 3, 'the new row appears');
-    assert.deepEqual(elevations(), [0, 1.5, 3], 'above L0, under L1: the gap is split');
+    assert.deepEqual(elevations(), [0, 3, 6], '#9334 header adds above the topmost storey, preserving the lower floor height');
     const created = useViewerStore.getState().session?.storeyId;
     assert.equal(created, STOREY, '#9296 adding a level does not move the drawing plane');
     assert.equal(rows(ui)[2].querySelector('[role="radio"]')?.getAttribute('aria-checked'), 'true');
@@ -350,4 +352,55 @@ describe('storey manager (#9013)', () => {
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
     assert.equal(view.isDeleted(wall.expressId), false, 'the wall was kept, on the other storey');
   });
+});
+
+it('#9334 explicit insertion reviews the shift, preserves floor heights and undoes as one step', async () => {
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+  assert.ok('expressId' in wall);
+  s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', s.models.get(MODEL_ID)!.ifcDataStore!.entities.getGlobalId(UPPER_STOREY)!, PropertyValueType.Label);
+  const ui = await mount();
+  const ground = rows(ui).at(-1)!;
+  const insert = ground.querySelector<HTMLButtonElement>('[aria-label="Insert storey above L0"]')!;
+  const before = useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+  click(insert);
+  assert.deepEqual(elevations(), [0, 3], 'review writes no history');
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, before);
+  assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
+  assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Updates 1 wall top/);
+  const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
+  click(confirm);
+  await waitFor(() => rows(ui).length === 3, 'inserted floor appears');
+  assert.deepEqual(elevations(), [0, 3, 6]);
+  assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'drawing plane stays on L0');
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(elevations(), [0, 3], 'one Undo restores both the shifted storey and the insertion');
+});
+
+it('#9334 consecutive header adds use the live topmost storey and merge their toasts', async () => {
+  const ui = await mount();
+  const notices = render(<Toaster />);
+  for (const dismiss of notices.querySelectorAll<HTMLButtonElement>('[aria-label="Dismiss notification"]')) click(dismiss);
+  const add = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Add storey above')!;
+  click(add); click(add);
+  await waitFor(() => rows(ui).length === 4, 'both new rows');
+  assert.deepEqual(elevations(), [0, 3, 6, 9]);
+  assert.equal([...notices.querySelectorAll('button')].filter(b => b.textContent === 'Draw on').length, 1);
+  assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
+});
+
+it('#9334 Draw on the already active storey re-seats the workplane', async () => {
+  const ui = await mount();
+  act(() => useViewerStore.getState().setWorkplane({ kind: 'storey', storeyId: STOREY, offset: 4 }));
+  click(rows(ui).at(-1)!.querySelector('[role="radio"]')!);
+  assert.deepEqual(useViewerStore.getState().session?.workplane, { kind: 'storey', storeyId: STOREY, offset: 0 });
+});
+
+it('#9334 a refused insertion rolls back the preceding floor-height edit', () => {
+  const reviewed = reviewStoreyInsertion(MODEL_ID, STOREY, index => `Level ${index}`)!;
+  const depth = useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+  const result = commitStoreyInsertion(MODEL_ID, { ...reviewed, params: { ...reviewed.params, Elevation: NaN } });
+  assert.equal(result.ok, false);
+  assert.deepEqual(elevations(), [0, 3]);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
 });

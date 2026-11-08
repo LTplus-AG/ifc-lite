@@ -109,7 +109,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
             const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable);
             const attachment = pset.name === 'IfcLite_StoreyAttachment' && modelId && entityId !== undefined
-              ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, prop.value, t) : null;
+              ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, prop.value, t, prop.name) : null;
             if (attachment) { display.value = attachment.text; display.full = attachment.text; }
             const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see

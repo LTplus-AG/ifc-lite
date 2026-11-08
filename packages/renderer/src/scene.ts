@@ -658,7 +658,7 @@ export class Scene {
     const budget = this.hostBudgetBytes;
     if (budget === null || !this.coldProvider) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
-    if (this.streamingFragments.length > 0) return;
+    if (this.streamingFragments.length > 0 || this.finalizeInProgress) return; // see enforceGpuBudget
 
     const residentBytes = this.getResidentCpuBytes();
     if (residentBytes <= budget) return;
@@ -805,9 +805,9 @@ export class Scene {
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
     this.subsetResidency.sweep();
-    // During streaming the batch set churns (fragments + finalize rebuild
-    // everything anyway) — start enforcing once the scene is stable.
-    if (this.streamingFragments.length > 0) return;
+    // Start once the scene is stable: not while streaming, nor in a sliced finalize, whose unpublished
+    // batches look never-drawn and whose old fragments still cut subsets from meshDataMap (#9254).
+    if (this.streamingFragments.length > 0 || this.finalizeInProgress) return;
 
     // Sizes only first: this runs after every frame, and under budget (the
     // common case) the eviction bookkeeping below, whose ownership scan is

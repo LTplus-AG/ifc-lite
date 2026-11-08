@@ -298,10 +298,43 @@ describe('a streaming fragment splits per entity like a finalized batch (#9254)'
     assert.deepStrictEqual([...routes.values()], [6], 'one whole draw of the merged mesh, not one per subset');
   });
 
-  it('an ephemeral stream keeps no piece list, so its fragments are not partitioned', () => {
+  it('an ephemeral stream keeps no piece list, so its fragments are drawn whole, once', () => {
     const scene = new Scene();
     scene.setEphemeralStreamingMode(true);
-    stream(scene, [glass(1, 0, 1), glass(2, 2, 2)]);
+    const meshes = [glass(1, 0, 1), glass(2, 2, 2)];
+    stream(scene, meshes);
     for (const fragment of scene.getBatchedMeshes()) assert.strictEqual(scene.canPartitionBatch(fragment), false);
+    const routes = routedIndices(scene, null, new Map([[1, RED]]), new XRayAlpha({}, new Set()));
+    assert.deepStrictEqual([...routes.values()], [9], 'one whole draw of the fragment, not one per subset');
+  });
+
+  it('a time-sliced finalize under tight budgets leaves the old fragments their pieces until the swap', async () => {
+    const scene = new Scene();
+    const T = 1, U = 2, V = 3, W = 4;
+    const TINT: [number, number, number, number] = [0.9, 0.6, 0.3, 0.4];
+    const meshes = [glass(T, 0, 1), glass(U, 2, 2), mesh(V, 4, { triangles: 4, color: TINT }), glass(T, 6, 8), mesh(W, 8, { triangles: 16, color: TINT })];
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+    scene.setGpuResidencyBudget(1);
+    scene.setHostResidencyBudget(1);
+    stream(scene, meshes.slice(0, 3));
+    stream(scene, meshes.slice(3));
+    assertSpread(scene, T);
+
+    // A zero time budget yields after the first rebuilt bucket. Its batch is
+    // built but not yet published, so it has never been drawn: to the budget
+    // passes it looks old enough to evict, then to demote cold, which would
+    // take its meshes out of meshDataMap while the old fragments still cut
+    // their subsets from them.
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    for (let i = 0; i < 200; i++) {
+      scene.beginResidencyFrame();
+      scene.enforceGpuBudget();
+    }
+    const lens: RGBAOverrideMap = new Map([[T, RED], [V, RED]]);
+    assertRoutes(scene, meshes, { 'all visible, T and V promoted': null }, lens);
+    await finalized;
+    assert.strictEqual(scene.isFinalizeInProgress(), false);
+    assert.ok(scene.getBatchedMeshes().every((batch) => batch.gpuResident !== false), 'no batch was evicted before it was published');
   });
 });

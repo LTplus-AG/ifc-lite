@@ -139,14 +139,14 @@ describe('finished-scene snapshot', () => {
     const scene = freshScene();
     scene.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline);
     const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
-    const lens = new Map([[4, [1, 0, 0, 1] as [number, number, number, number]]]);
+    const lens = new Map([[4, [1, 0, 0, 1] as [number, number, number, number]], [7, [1, 0, 0, 1] as [number, number, number, number]]]);
     // Each slot the frame requests comes back as the whole batch while there are no pieces,
     // so a promotion split here would draw it through both :promoted and :remaining.
-    const drawnIndices = (visible: Set<number> | null): number => {
+    const drawnIndices = (visible: Set<number> | null, batch = glass): number => {
       const requests = new PartialBatchRequests(lens, new XRayAlpha({}, new Set()), (b) => scene.canPartitionBatch(b));
       let drawn = 0;
-      if (visible) requests.pushVisible(glass, visible, true);
-      else if (!requests.pushWholeSplit(glass, true)) drawn += glass.indexCount;
+      if (visible) requests.pushVisible(batch, visible, true);
+      else if (!requests.pushWholeSplit(batch, true)) drawn += batch.indexCount;
       for (const r of requests.items) drawn += scene.getOrCreatePartialBatch(r.sourceBatchKey, r.colorKey, r.visibleIds, device, pipeline)?.indexCount ?? 0;
       return drawn;
     };
@@ -160,6 +160,7 @@ describe('finished-scene snapshot', () => {
     const fragment = scene.getBatchedMeshes().find((b) => b.expressIds.includes(7))!;
     assert.notStrictEqual(fragment, glass, 'a separate streaming fragment');
     assert.strictEqual(scene.canPartitionBatch(fragment), false);
+    assert.strictEqual(drawnIndices(null, fragment), 6, 'the fragment, fully visible: drawn whole, once');
   });
 
   it('a later append joins the adopted buckets', async () => {

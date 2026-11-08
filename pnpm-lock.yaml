@@ -1192,6 +1192,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../rules
@@ -1220,6 +1223,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      rhino3dm:
+        specifier: 8.35.0
+        version: 8.35.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1968,6 +1974,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../rules

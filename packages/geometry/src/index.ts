@@ -10,6 +10,8 @@
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
+export { RHINO_SCENE_DEFAULTS, RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, type RhinoSceneExportOptions } from './rhino-export.js';
+import type { RhinoSceneExportOptions } from './rhino-export.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -1175,6 +1177,12 @@ export class GeometryProcessor {
   exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
+  }
+
+  /** Export an encoded Rhino scene. Requires init(); empty scenes throw NO_RENDER_GEOMETRY. */
+  exportRhinoScene(buffer: Uint8Array, options?: RhinoSceneExportOptions): { manifest: string; blob: Uint8Array } {
+    if (!this.bridge) throw new Error('GeometryProcessor is not initialized');
+    return this.bridge.exportRhinoScene(buffer, options);
   }
 
   /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).

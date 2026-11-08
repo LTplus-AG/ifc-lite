@@ -10,6 +10,7 @@
  * diagnostics pass.
  */
 
+import { export3dm, type validateRhinoArgs } from './export-3dm.js';
 import { writeFile } from 'node:fs/promises';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import {
@@ -81,6 +82,7 @@ export async function exportRustFormat(
   refs: Array<{ expressId: number }>,
   filterRequested: boolean,
   wholeModelFormat: boolean,
+  rhinoArgs?: ReturnType<typeof validateRhinoArgs>,
 ): Promise<void> {
   const outPath = getFlag(args, '--out');
   const filterActive = !wholeModelFormat && filterRequested;
@@ -114,7 +116,10 @@ export async function exportRustFormat(
     logger.warn(`--name-by-global-id applies to --format glb/gltf only; ignored for ${format}`);
   }
   try {
-    if (format === 'ifcx') {
+    if (format === '3dm') {
+      if (!rhinoArgs) throw new Error('3DM arguments must be validated before loading the model');
+      await export3dm(gp, bytes, rhinoArgs, filterActive ? Array.from(isolated) : undefined);
+    } else if (format === 'ifcx') {
       const out = gp.exportIfcx(bytes);
       if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
       await writeOutput(out as Uint8Array, outPath);

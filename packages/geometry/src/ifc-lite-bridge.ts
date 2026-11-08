@@ -16,6 +16,7 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
+import { callExportRhinoScene, type RhinoSceneBuffers, type RhinoSceneExportOptions } from './rhino-export.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
 import {
@@ -554,6 +555,7 @@ export class IfcLiteBridge {
     );
   }
 
+  exportRhinoScene(content: Uint8Array, options: RhinoSceneExportOptions = {}): RhinoSceneBuffers { return this.runExport('exportRhinoScene', content, (api) => callExportRhinoScene(api, content, options)); }
   /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).
    * Throws `NO_RENDER_GEOMETRY` for a model with no render geometry. */
   exportUsd(content: Uint8Array): Uint8Array {

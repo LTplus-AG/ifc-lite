@@ -20,7 +20,11 @@ export function buildHelp(version: string): string {
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
+    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson  Export data / geometry / energy model
+              3dm: --units source|meters|millimeters|centimeters|feet|inches
+                   --coordinates local|world --layers spatial-class|class|presentation
+                   --properties all|attributes|none --3dm-version 7|8
+                   --no-instancing --no-spaces --no-normals --layer-slicing
     schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json/md/html)
               [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
               [--where PsetName.Prop=Value] [--format csv|json|md|html]  path = attr | Pset.Prop | Qto.Qty

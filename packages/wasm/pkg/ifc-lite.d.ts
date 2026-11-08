@@ -830,6 +830,10 @@ export class IfcAPI {
      */
     exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated?: Uint32Array | null): Uint8Array;
     /**
+     * Build the shared Rhino scene; archive writing belongs to the adapter.
+     */
+    exportRhinoScene(content: Uint8Array, options_json: string): RhinoSceneJs;
+    /**
      * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
      *
      * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
@@ -1948,6 +1952,17 @@ export class ProfileEntryJs {
 }
 
 /**
+ * Encoded Rhino scene. Getters copy data out so the handle can be freed immediately.
+ */
+export class RhinoSceneJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    readonly blob: Uint8Array;
+    readonly manifest: string;
+}
+
+/**
  * The traced outline. Owns wasm memory: call `free()`.
  */
 export class ScanOutlineJs {
@@ -2643,6 +2658,7 @@ export interface InitOutput {
     readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
     readonly __wbg_profilecollection_free: (a: number, b: number) => void;
     readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+    readonly __wbg_rhinoscenejs_free: (a: number, b: number) => void;
     readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -2723,6 +2739,7 @@ export interface InitOutput {
     readonly ifcapi_exportLandXmlTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly ifcapi_exportRhinoScene: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
@@ -2862,6 +2879,8 @@ export interface InitOutput {
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
+    readonly rhinoscenejs_blob: (a: number) => number;
+    readonly rhinoscenejs_manifest: (a: number) => number;
     readonly scanoutlinejs_coords: (a: number) => number;
     readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
     readonly scanoutlinejs_ringCount: (a: number) => number;

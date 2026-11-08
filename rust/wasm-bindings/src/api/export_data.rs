@@ -107,3 +107,34 @@ impl IfcAPI {
             .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 }
+
+/// Encoded Rhino scene. Getters copy data out so the handle can be freed immediately.
+// Both values are copied into JS once, when the scene is built; a getter hands
+// out the same JS value, so neither read copies wasm memory again.
+#[wasm_bindgen]
+pub struct RhinoSceneJs {
+    manifest: js_sys::JsString,
+    blob: js_sys::Uint8Array,
+}
+
+#[wasm_bindgen]
+impl RhinoSceneJs {
+    #[wasm_bindgen(getter)]
+    pub fn manifest(&self) -> js_sys::JsString { self.manifest.clone() }
+    #[wasm_bindgen(getter)]
+    pub fn blob(&self) -> js_sys::Uint8Array { self.blob.clone() }
+}
+
+#[wasm_bindgen]
+impl IfcAPI {
+    /// Build the shared Rhino scene; archive writing belongs to the adapter.
+    #[wasm_bindgen(js_name = exportRhinoScene)]
+    pub fn export_rhino_scene(&self, content: &[u8], options_json: &str) -> Result<RhinoSceneJs, JsValue> {
+        let options: ifc_lite_export::rhino::RhinoSceneOptions = serde_json::from_str(options_json)
+            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))?;
+        let scene = ifc_lite_export::rhino::build_rhino_scene(content, &options)
+            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))?;
+        let (manifest, blob) = scene.encode();
+        Ok(RhinoSceneJs { manifest: js_sys::JsString::from(manifest), blob: js_sys::Uint8Array::from(blob.as_slice()) })
+    }
+}

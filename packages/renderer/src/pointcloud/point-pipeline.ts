@@ -42,9 +42,8 @@ import { pointShaderSource } from './point-shader.wgsl.js';
 /** Floats before the appended extra-plane block (#7545): the legacy uniform ends with the crop bounds. */
 export const POINT_EXTRA_CLIP_FLOAT_OFFSET = 84;
 export const POINT_UNIFORM_SIZE = POINT_EXTRA_CLIP_FLOAT_OFFSET * 4 + EXTRA_CLIP_BYTES;
-export const POINT_VERTEX_BYTES = 24;
-/** Number of vertices emitted per splat (two triangles forming a quad). */
-export const POINT_QUAD_VERTS = 6;
+import { POINT_VERTEX_BYTES, POINT_QUAD_VERTS } from './point-vertex-layout.js';
+export { POINT_VERTEX_BYTES, POINT_QUAD_VERTS };
 
 export class PointRenderPipeline {
   private device: GPUDevice;

@@ -117,6 +117,17 @@ describe('placed doors and windows are typed occurrences', () => {
     }
   });
 
+  it('a gate and a door of the same size get their own types', async () => {
+    const { bim, S, storey } = await session();
+    const wall = S.addWall('m', storey, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 });
+    const door = S.addHostedDoor('m', wall.expressId, { Offset: 2, Width: 0.9, Height: 2.1, PredefinedType: 'DOOR' });
+    const gate = S.addHostedDoor('m', wall.expressId, { Offset: 5, Width: 0.9, Height: 2.1, PredefinedType: 'GATE' });
+    const typeOf = (ref: { expressId: number }) => bim.query().byType('IfcDoorType').toArray()
+      .find((t) => bim.related(t.ref, 'IfcRelDefinesByType', 'forward').some((o) => o.ref.expressId === ref.expressId));
+    expect(typeOf(door)?.name).toBe('Door 900 × 2100');
+    expect(typeOf(gate)?.name).toBe('Gate 900 × 2100');
+  });
+
   it('a custom door operation types the door as USERDEFINED with that description, as the door itself is', async () => {
     const { S, storey, exported } = await session();
     const wall = S.addWall('m', storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
@@ -149,11 +160,10 @@ describe('a material carries its appearance', () => {
   it('writes IfcMaterialDefinitionRepresentation with the colour on the material', async () => {
     const { S, exported } = await session();
     const concrete = S.addMaterial('m', { Name: 'Concrete C30/37', Category: 'concrete', Color: '#9a9a9a' });
+    S.addMaterial('m', { Name: 'Red herring', Color: '#ff0000' });
     const text = exported();
-    const rep = text.match(/IFCMATERIALDEFINITIONREPRESENTATION\(\$,\$,\(#(\d+)\),#(\d+)\);/);
-    expect(Number(rep?.[2])).toBe(concrete.expressId);
-    expect(text).toMatch(new RegExp(`#${rep?.[1]}=IFCSTYLEDREPRESENTATION\\(#\\d+,'Style','Material',\\(#\\d+\\)\\);`));
-    expect(text).toMatch(/IFCCOLOURRGB\(\$,0\.6039\d*,0\.6039\d*,0\.6039\d*\)/);
+    // Follow Concrete's own chain to its colour, so another material's style cannot satisfy it.
+    expect(materialColour(text, concrete.expressId)).toEqual(['0.6039', '0.6039', '0.6039']);
     expect(() => S.addMaterial('m', { Name: 'Bad', Color: 'grey' })).toThrow(/not a hex colour/);
   });
 
@@ -161,11 +171,26 @@ describe('a material carries its appearance', () => {
     const creator = new IfcCreator({ Schema: 'IFC2X3', Timestamp: 0 });
     creator.addIfcBuildingStorey({ Name: 'L0', Elevation: 0 });
     const { S, exported } = await session(new TextEncoder().encode(creator.toIfc().content));
-    S.addMaterial('m', { Name: 'Brick', Color: '#aa5533' });
+    const brick = S.addMaterial('m', { Name: 'Brick', Color: '#aa5533' });
     const text = exported();
+    expect(materialColour(text, brick.expressId)).toEqual(['0.6667', '0.3333', '0.2000']);
     expect(text).toMatch(/IFCSURFACESTYLESHADING\(#\d+\);/);
     expect(text).toMatch(/IFCSTYLEDITEM\(\$,\(#(\d+)\),\$\);/);
     const assignment = text.match(/IFCSTYLEDITEM\(\$,\(#(\d+)\),\$\);/)?.[1];
     expect(text).toMatch(new RegExp(`#${assignment}=IFCPRESENTATIONSTYLEASSIGNMENT\\(`));
   });
 });
+
+/** The IfcColourRgb channels (4 decimals) a material's IfcMaterialDefinitionRepresentation resolves to. */
+function materialColour(text: string, materialId: number): string[] | null {
+  const record = (id: string | undefined) => (id ? text.match(new RegExp(`^#${id}=([A-Z0-9]+)\\((.*)\\);$`, 'm')) : null);
+  const refs = (args: string) => [...args.matchAll(/#(\d+)/g)].map((m) => m[1]);
+  const mdr = text.match(new RegExp(`^#\\d+=IFCMATERIALDEFINITIONREPRESENTATION\\(\\$,\\$,\\(#(\\d+)\\),#${materialId}\\);$`, 'm'));
+  let next = record(mdr?.[1]);                       // IfcStyledRepresentation(ctx, 'Style', 'Material', (item))
+  next = record(next ? refs(next[2])[1] : undefined); // IfcStyledItem($, (style), $)
+  next = record(next ? refs(next[2])[0] : undefined); // IfcSurfaceStyle, or the IFC2X3 IfcPresentationStyleAssignment
+  if (next?.[1] === 'IFCPRESENTATIONSTYLEASSIGNMENT') next = record(refs(next[2])[0]);
+  next = record(next ? refs(next[2])[0] : undefined); // IfcSurfaceStyleShading / Rendering
+  next = record(next ? refs(next[2])[0] : undefined); // IfcColourRgb($, r, g, b)
+  return next?.[1] === 'IFCCOLOURRGB' ? next[2].split(',').slice(1).map((v) => Number(v).toFixed(4)) : null;
+}

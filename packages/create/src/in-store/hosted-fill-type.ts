@@ -37,10 +37,21 @@ export interface HostedFillTypeParams {
 
 const DEFAULT_OPERATION = 'SINGLE_SWING_LEFT';
 
-/** `Door 900 × 2100`, with a non-default operation or partitioning appended. */
+/** The type's PredefinedType: the fill's own, or DOOR / WINDOW when it names none. */
+function typePredefined(kind: 'door' | 'window', params: HostedFillTypeParams): string {
+  return params.PredefinedType ?? (kind === 'door' ? 'DOOR' : 'WINDOW');
+}
+
+const KIND_LABEL: Readonly<Record<string, string>> = {
+  DOOR: 'Door', GATE: 'Gate', TRAPDOOR: 'Trapdoor', WINDOW: 'Window', SKYLIGHT: 'Skylight', LIGHTDOME: 'Light dome',
+};
+
+/** `Door 900 × 2100` / `Gate 900 × 2100`, with a non-default operation or partitioning appended. */
 export function hostedFillTypeName(kind: 'door' | 'window', params: HostedFillTypeParams): string {
   const mm = (metres: number) => String(Math.round(metres * 1000));
-  const base = `${kind === 'door' ? 'Door' : 'Window'} ${mm(params.Width)} × ${mm(params.Height)}`;
+  const predefined = typePredefined(kind, params);
+  const label = KIND_LABEL[predefined] ?? `${kind === 'door' ? 'Door' : 'Window'} (${predefined.toLowerCase()})`;
+  const base = `${label} ${mm(params.Width)} × ${mm(params.Height)}`;
   const variant = kind === 'door'
     ? (params.OperationType && params.OperationType !== DEFAULT_OPERATION ? params.OperationType : undefined)
     : (params.PartitioningType && params.PartitioningType !== 'NOTDEFINED' ? params.PartitioningType : undefined);
@@ -66,10 +77,11 @@ export function typeHostedFillInStore(
     return null;
   }
   const name = hostedFillTypeName(kind, params);
-  const typeId = params.TypeId ?? findTypeByName(store, view, typeClass, name) ?? addElementTypeToStore(draft, host, kind === 'door'
-    ? { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'DOOR',
+  const predefined = typePredefined(kind, params);
+  const typeId = params.TypeId ?? findType(store, view, typeClass, name, predefined) ?? addElementTypeToStore(draft, host, kind === 'door'
+    ? { Type: typeClass, Name: name, PredefinedType: predefined,
       ...enumOrUserDefined(params.OperationType ?? DEFAULT_OPERATION, params.UserDefinedOperationType, DOOR_OPERATION_ENUM, 'OperationType') }
-    : { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'WINDOW',
+    : { Type: typeClass, Name: name, PredefinedType: predefined,
       ...enumOrUserDefined(params.PartitioningType ?? 'NOTDEFINED', params.UserDefinedPartitioningType, WINDOW_PARTITIONING_ENUM, 'PartitioningType') }).typeId;
   assignTypeInStore(draft, host, typeId, [fillId], readRelatedLists(store, 'IfcRelDefinesByType', view));
   return typeId;
@@ -88,11 +100,14 @@ function enumOrUserDefined<K extends 'OperationType' | 'PartitioningType'>(
   return { [key]: value, [`UserDefined${key}`]: description } as Record<K | `UserDefined${K}`, string | undefined>;
 }
 
-function findTypeByName(store: IfcDataStore, view: MutablePropertyView, typeClass: string, name: string): number | null {
+/** A live type of that name whose PredefinedType is the fill's: a renamed GATE type never types a door. */
+function findType(store: IfcDataStore, view: MutablePropertyView, typeClass: string, name: string, predefined: string): number | null {
   const reader = new AnchorEntityReader(store, view);
   for (const id of reader.ids(typeClass.toUpperCase())) {
     const entity = reader.entity(id);
-    if (entity && text(entity.attributes[entity.names.indexOf('Name')]) === name) return id;
+    if (!entity || text(entity.attributes[entity.names.indexOf('Name')]) !== name) continue;
+    const kind = entity.attributes[entity.names.indexOf('PredefinedType')];
+    if (typeof kind === 'string' && kind.replace(/\./g, '').trim().toUpperCase() === predefined) return id;
   }
   return null;
 }

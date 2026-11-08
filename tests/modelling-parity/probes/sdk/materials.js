@@ -26,9 +26,19 @@ t.check('assignments survive export, reassignment replaces', () => {
   return (holds(s, cm) && holds(c, sm) && !holds(c, cm)) || `slab->concrete ${holds(s, cm)}, column->steel ${holds(c, sm)}, column still concrete ${holds(c, cm)}`;
 }, { core: true });
 t.check('a material carries its appearance', () => {
-  // The colour is the material's own: IfcMaterialDefinitionRepresentation -> styled representation -> IfcColourRgb.
-  const rep = x.content.match(/IFCMATERIALDEFINITIONREPRESENTATION\([^;]*?(#\d+)\);/)?.[1];
-  const ok = rep != null && Number(rep.slice(1)) === x.materialId('Concrete C30/37') && /IFCCOLOURRGB\(\$,0\.60[0-9]*,0\.60[0-9]*,0\.60[0-9]*\)/.test(x.content);
-  return ok || `no IfcMaterialDefinitionRepresentation carrying #9a9a9a on Concrete C30/37 (${x.count('IFCMATERIALDEFINITIONREPRESENTATION')} found)`;
+  // The colour is the material's own: follow Concrete's IfcMaterialDefinitionRepresentation ->
+  // IfcStyledRepresentation -> IfcStyledItem -> IfcSurfaceStyle -> shading -> IfcColourRgb.
+  const rec = (id) => (id ? x.content.match(new RegExp(`^#${id}=([A-Z0-9]+)\\((.*)\\);$`, 'm')) : null);
+  const refs = (r) => [...(r?.[2] ?? '').matchAll(/#(\d+)/g)].map((m) => m[1]);
+  const mat = x.materialId('Concrete C30/37');
+  const mdr = x.content.match(new RegExp(`^#\\d+=IFCMATERIALDEFINITIONREPRESENTATION\\(\\$,\\$,\\(#(\\d+)\\),#${mat}\\);$`, 'm'));
+  let r = rec(mdr?.[1]);
+  r = rec(refs(r)[1]); // styled item
+  r = rec(refs(r)[0]); // surface style (or IFC2X3 style assignment)
+  if (r?.[1] === 'IFCPRESENTATIONSTYLEASSIGNMENT') r = rec(refs(r)[0]);
+  r = rec(refs(r)[0]); // shading
+  r = rec(refs(r)[0]); // colour
+  const rgb = r?.[1] === 'IFCCOLOURRGB' ? r[2].split(',').slice(1).map(Number) : null;
+  return (rgb && rgb.every((v) => P.near(v, 0x9a / 255, 1e-3))) || `Concrete C30/37 carries no #9a9a9a appearance of its own (${x.count('IFCMATERIALDEFINITIONREPRESENTATION')} material representations, resolved colour ${P.fmt(rgb)})`;
 });
 t.done();

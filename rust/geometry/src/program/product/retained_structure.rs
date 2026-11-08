@@ -89,6 +89,7 @@ pub(super) fn validated_product_shape(
                 return Err(StructureError::Budget {
                     entity: rep.id,
                     allowance,
+                    reached: u64::from(roots.items).saturating_add(charge.cost as u64),
                 });
             }
             roots.items += charge.cost as u32;
@@ -181,6 +182,7 @@ pub(super) enum StructureError {
     Budget {
         entity: u32,
         allowance: u32,
+        reached: u64,
     },
     Stop(crate::resource::ProgramStop),
     Origin {
@@ -198,8 +200,10 @@ impl From<crate::resource::ProgramStop> for StructureError {
 impl StructureError {
     pub(super) fn into_common(self, selection: &RetainedSelection) -> Error {
         match self {
-            Self::Budget { entity, allowance } => crate::representation::WalkRefusal::Budget {
+            Self::Budget { entity, allowance, reached } => crate::representation::WalkRefusal::Budget {
                 max_levels: allowance,
+                budget: "walk Items members",
+                reached,
             }
             .into_error(entity),
             Self::Stop(stop) => Error::ProgramStopped(stop),

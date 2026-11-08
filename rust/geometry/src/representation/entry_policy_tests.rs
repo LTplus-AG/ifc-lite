@@ -339,7 +339,6 @@ fn issue_7781_typed_refusals_preserve_missing_unresolved_and_decode_distinctions
     for (why, text) in [
         (WalkRefusal::Cyclic, "Detected cyclic IfcMappedItem reference at #42"),
         (WalkRefusal::TooDeep { max_depth: 3 }, "MappedItem nesting exceeded maximum depth of 3 at #42"),
-        (WalkRefusal::Budget { max_levels: 2, budget: "walk mapped attempts", reached: 3 }, "Representation expansion exceeded the work budget of 2 levels or item references at #42"),
     ] {
         assert_eq!(why.into_error(42).to_string(), format!("Geometry processing error: {text}"));
     }

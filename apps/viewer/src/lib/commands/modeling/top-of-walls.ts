@@ -41,17 +41,21 @@ export function topOfWalls(s: ViewerState, modelId: string, storeyId: number): n
   const target = modelEditTarget(s, modelId);
   let top: number | null = null;
   if (target) {
-    // A wall's own placement may hang from the site or building, not the storey,
-    // as some exporters write it: its base is measured from the storey's frame.
+    // The wall reader gives a wall's start in its placement's parent frame, which
+    // is the storey's only when the placement hangs from it. Some exporters hang
+    // walls from the site or building: the parent's height over the storey's
+    // floor is added, so the reader's own offsets (an axis starting above its
+    // placement, say) stay as they are.
     const read = createStyleEntityReader(target.dataStore, target.editor) as LiveRead;
     const scale = getModelLengthUnitScale(target.dataStore);
     const floor = worldZ(read, asRef(read(storeyId)?.attributes[5]));
     for (const id of extractWallSegmentsForStorey(target.dataStore, storeyId, target.view).contributingWallIds) {
       const wall = readWallMetres(target, id);
       if (!wall) continue;
-      const own = floor === null ? null : worldZ(read, asRef(read(id)?.attributes[5]));
-      const base = own === null || floor === null ? wall.start[2] : (own - floor) * scale;
-      top = Math.max(top ?? -Infinity, base + wall.height);
+      const placement = asRef(read(id)?.attributes[5]);
+      const parent = floor === null || placement === null ? null : worldZ(read, asRef(read(placement)?.attributes[0]));
+      const lift = parent === null || floor === null ? 0 : (parent - floor) * scale;
+      top = Math.max(top ?? -Infinity, wall.start[2] + lift + wall.height);
     }
   }
   if (top !== null) return top;

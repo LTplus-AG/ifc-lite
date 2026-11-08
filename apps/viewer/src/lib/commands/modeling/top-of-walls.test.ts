@@ -32,4 +32,12 @@ describe('topOfWalls (#9202)', () => {
     target.editor.setPositionalAttribute(point, 0, [0, 0, 3]);
     assert.ok(Math.abs(top() - 3) < 1e-9, `still 3 m above its floor, not 6: ${top()}`);
   });
+
+  it('keeps the reader\'s own start height for a wall placed off its storey', async () => {
+    await seedModelingSession({ raisedStorey: true });
+    const added = useViewerStore.getState().addWall(MODEL_ID, RAISED_STOREY, { Start: [0, 0, 1], End: [4, 0, 1], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in added, 'error' in added ? added.error : '');
+    const top = topOfWalls(useViewerStore.getState(), MODEL_ID, RAISED_STOREY);
+    assert.ok(Math.abs(top - 4) < 1e-9, `a wall starting 1 m up its floor reaches 4 m: ${top}`);
+  });
 });

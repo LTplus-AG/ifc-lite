@@ -25,8 +25,10 @@ interface StepHeaderText {
 }
 
 function checkHeaderString(value: string, what: string): string {
-  if (value.length > MAX_HEADER_STRING) {
-    throw new RangeError(`${what} is ${value.length} characters; ISO 10303-21 allows at most ${MAX_HEADER_STRING}`);
+  // Characters, not UTF-16 code units: '🏠' is one character but two code units.
+  const characters = Array.from(value).length;
+  if (characters > MAX_HEADER_STRING) {
+    throw new RangeError(`${what} is ${characters} characters; ISO 10303-21 allows at most ${MAX_HEADER_STRING}`);
   }
   return value;
 }

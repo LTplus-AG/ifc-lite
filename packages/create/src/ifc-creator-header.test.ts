@@ -49,6 +49,13 @@ describe('IfcCreator STEP header file name and description', () => {
     expect(() => header({ FileDescription: ['ok', 'y'.repeat(257)] })).toThrow(/FileDescription\[1\]/);
   });
 
+  it('counts characters, not UTF-16 code units, against the 256 limit', () => {
+    // '🏠' is one character but two UTF-16 code units.
+    expect(() => header({ FileName: '🏠'.repeat(256) })).not.toThrow();
+    expect(() => header({ FileDescription: ['🏠'.repeat(129)] })).not.toThrow();
+    expect(() => header({ FileName: '🏠'.repeat(257) })).toThrow(/257 characters/);
+  });
+
   it('reads back through the parser with the given values', async () => {
     const creator = new IfcCreator({ Timestamp: 0, FileName: 'tiny-house.ifc', FileDescription: ['A', 'B'] });
     const bytes = new TextEncoder().encode(creator.toIfc().content);

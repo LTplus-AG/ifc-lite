@@ -196,20 +196,25 @@ export class Model {
   get(id) { return this.e.get(id); }
 
   detectLengthScale() {
-    for (const id of this.all('IFCSIUNIT')) {
-      const [, unitType, prefix, name] = this.get(id).args;
-      if (enumVal(unitType) === 'LENGTHUNIT' && enumVal(name) === 'METRE') {
-        const p = enumVal(prefix);
-        return { MILLI: 1e-3, CENTI: 1e-2, DECI: 1e-1, KILO: 1e3 }[p] ?? 1;
+    const project = this.get(this.all('IFCPROJECT')[0]);
+    const assignment = this.get(refId(project?.args[8]));
+    const assigned = refList(assignment?.args[0] ?? []);
+    const scale = (id, seen = new Set()) => {
+      if (seen.has(id)) throw new Error('Cyclic length unit');
+      seen.add(id);
+      const unit = this.get(id);
+      if (unit?.type === 'IFCSIUNIT' && enumVal(unit.args[1]) === 'LENGTHUNIT' && enumVal(unit.args[3]) === 'METRE') {
+        return { MILLI: 1e-3, CENTI: 1e-2, DECI: 1e-1, KILO: 1e3 }[enumVal(unit.args[2])] ?? 1;
       }
-    }
-    for (const id of this.all('IFCCONVERSIONBASEDUNIT')) {
-      const a = this.get(id).args;
-      if (enumVal(a[0]) === 'LENGTHUNIT') {
-        const mwu = this.get(refId(a[3]));
-        const f = numVal(mwu?.args?.[0]);
-        if (f) return f;
+      if (unit?.type === 'IFCCONVERSIONBASEDUNIT' && enumVal(unit.args[1]) === 'LENGTHUNIT') {
+        const measure = this.get(refId(unit.args[3]));
+        return numVal(measure?.args[0]) * scale(refId(measure?.args[1]), seen);
       }
+      return null;
+    };
+    for (const id of assigned) {
+      const value = scale(id);
+      if (value !== null) return value;
     }
     return 1;
   }
@@ -484,6 +489,10 @@ export const TOLERANCES = {
   spaceAreaM2: { kind: 'rel', value: 0.05, why: 'net floor area; match spaces by name/number, not by order' },
 };
 
+export function countRoofParts(model, roots) {
+  return new Set(roots.flatMap((id) => model.partsOf.get(id) ?? [])).size;
+}
+
 export async function extract(refId_, entry, file) {
   const buf = readFileSync(file);
   const text = buf.toString('latin1');
@@ -647,7 +656,7 @@ export async function extract(refId_, entry, file) {
     elements: roofRoots.length,
     entityTypes: Object.fromEntries(roofRoots.reduce((m, id) => m.set(model.get(id).type, (m.get(model.get(id).type) ?? 0) + 1), new Map())),
     predefinedTypes: Object.fromEntries(roofRoots.reduce((m, id) => { const k = enumVal(model.get(id).args[8]) ?? 'n/a'; return m.set(k, (m.get(k) ?? 0) + 1); }, new Map())),
-    parts: roofParts.size - roofRoots.length,
+    parts: countRoofParts(model, roofRoots),
     ...(mesh ? roofSlopes(roofTris) : { inferredForm: 'unknown', note: meshError }),
   };
 
@@ -696,6 +705,7 @@ if (isMainEntry(import.meta.url)) {
   const file = resolveReferencePath(entry);
   if (!existsSync(file)) { console.error(`missing ${file}: run fetch-references.mjs first`); process.exit(2); }
   const result = await extract(id, entry, file);
+  if (result.meshPass !== 'ok') throw new Error(result.meshPass);
   const json = JSON.stringify(result, null, 2) + '\n';
   if (args.includes('--check')) {
     if (!out || !existsSync(out) || readFileSync(out, 'utf8') !== json) { console.error(`${out} differs from a fresh extraction`); process.exit(1); }

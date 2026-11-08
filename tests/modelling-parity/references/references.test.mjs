@@ -13,9 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { HERE, MANIFEST_PATH } from './lib.mjs';
-import { elementCountsFromInfo } from './refresh-info.mjs';
+import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -107,4 +107,25 @@ test('#9304 reference CLIs execute through symlinks containing spaces', () => {
       assert.match(run.stdout + run.stderr, output);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('#9304 assigned feet use the conversion rather than its SI dependency', () => {
+  const model = new Model("DATA;#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);#2=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#1);#3=IFCCONVERSIONBASEDUNIT($,.LENGTHUNIT.,'foot',#2);#4=IFCUNITASSIGNMENT((#3));#5=IFCPROJECT('g',$,$,$,$,$,$,$,#4);ENDSEC;");
+  assert.equal(model.lengthScale, 0.3048);
+  assert.equal(model.areaScale, 0.3048 ** 2);
+});
+test('#9304 metadata refresh rejects missing and tampered reference bytes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity-pin-'));
+  try {
+    const file = join(dir, 'missing.ifc');
+    const entry = { id: 'test', bytes: 5, sha256: '0'.repeat(64) };
+    await assert.rejects(requireVerifiedReference(file, entry), /missing/);
+    writeFileSync(file, 'hello');
+    await assert.rejects(requireVerifiedReference(file, entry), /mismatch/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('#9304 roof slabs remain counted as parts when also selected as roots', () => {
+  const model = new Model("DATA;#1=IFCROOF('r');#2=IFCSLAB('a');#3=IFCSLAB('b');#4=IFCRELAGGREGATES('g',$,$,$,#1,(#2,#3));ENDSEC;");
+  assert.equal(countRoofParts(model, [1, 2, 3]), 2);
 });

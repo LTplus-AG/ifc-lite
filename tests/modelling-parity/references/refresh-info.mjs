@@ -15,7 +15,8 @@
 
 import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { verifyPath } from './fetch-references.mjs';
 import { MANIFEST_PATH, ROOT, resolveReferencePath } from './lib.mjs';
 
 // IfcProduct-level classes worth comparing; resource entities (points, loops, styles...) are noise here.
@@ -28,12 +29,17 @@ export function elementCountsFromInfo(info) {
     .sort(([a], [b]) => a.localeCompare(b)));
 }
 
+export async function requireVerifiedReference(file, entry) {
+  const verification = await verifyPath(file, entry);
+  if (verification.state !== 'ok') throw new Error(`${entry.id}: ${verification.state} ${verification.detail ?? ''}; run fetch-references.mjs`);
+}
+
 async function main() {
   const check = process.argv.includes('--check');
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
   for (const entry of manifest.references) {
     const file = resolveReferencePath(entry);
-    if (!existsSync(file)) { console.error(`skip ${entry.id}: not fetched`); continue; }
+    await requireVerifiedReference(file, entry);
     const out = execFileSync(process.execPath, [`${ROOT}/packages/cli/dist/index.js`, 'info', '--json', file], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
     const info = JSON.parse(out.slice(out.indexOf('{')));
     const elementCounts = elementCountsFromInfo(info);

@@ -12,17 +12,17 @@
 
 import type { ComponentType } from 'react';
 import { AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, CopyPlus, LogOut, MousePointer2, Move, RotateCw, ScissorsLineDashed, Slice } from 'lucide-react';
-import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
+import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoofIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import { RailingIcon, StairIcon } from './stair-railing-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
-import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
+import { launchModelCommand, launchSlabTool } from '@/lib/commands/modeling/keys-workspace';
 import { useViewerStore, type ViewerState } from '@/store';
 
 type RailGroup = 'select' | 'build' | 'host' | 'edit' | 'circulation';
 
 export interface RailTool {
-  /** The command id it starts, or `select`. Also its tour anchor. */
+  /** The command id it starts, or what it does (`select`, `roof`: one class of `slab.place`). Also its tour anchor. */
   readonly id: string;
   readonly group: RailGroup;
   readonly labelKey: TranslationKey;
@@ -37,6 +37,7 @@ export interface RailTool {
 }
 
 const commandActive = (id: string) => (s: ViewerState) => s.session?.activeCommandId === id;
+const drawingSlab = commandActive('slab.place');
 
 export const RAIL_TOOLS: readonly RailTool[] = [
   {
@@ -54,8 +55,14 @@ export const RAIL_TOOLS: readonly RailTool[] = [
   {
     id: 'slab.place', group: 'build', labelKey: 'modelWorkspace.tool.slab', Icon: SlabIcon,
     shortcut: 'model.slab', drawsOnWorkplane: true,
-    isActive: commandActive('slab.place'),
-    run: () => { launchModelCommand('slab.place'); },
+    isActive: (s) => drawingSlab(s) && s.authoringDefaults.slabClass !== 'roof',
+    run: () => { launchSlabTool('slab'); },
+  },
+  {
+    id: 'roof', group: 'build', labelKey: 'modelWorkspace.tool.roof', Icon: RoofIcon,
+    shortcut: 'model.roof', drawsOnWorkplane: true,
+    isActive: (s) => drawingSlab(s) && s.authoringDefaults.slabClass === 'roof',
+    run: () => { launchSlabTool('roof'); },
   },
   {
     id: 'column.place', group: 'build', labelKey: 'modelWorkspace.tool.column', Icon: ColumnIcon,

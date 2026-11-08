@@ -45,7 +45,7 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'curtainwall.place', 'grid.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'element.trimExtend', 'change-sets', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'roof', 'column.place', 'beam.place', 'room.place', 'curtainwall.place', 'grid.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'element.trimExtend', 'change-sets', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
   });
 
@@ -57,6 +57,28 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(tool(ui, 'change-sets')?.getAttribute('aria-pressed'), 'true');
     act(() => click(tool(ui, 'change-sets')!));
     assert.notEqual(useViewerStore.getState().sidebarActivePanel, 'changeSets');
+  });
+
+  // #9202: Roof is the roof class of `slab.place`, with its own entry and key.
+  it('Roof starts slab.place as a roof, and only it lights up; Slab leaves the class', () => {
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    act(() => click(tool(ui, 'roof')!));
+    const s = useViewerStore.getState();
+    assert.equal(s.session?.activeCommandId, 'slab.place');
+    assert.equal(s.authoringDefaults.slabClass, 'roof');
+    assert.equal(tool(ui, 'roof')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(tool(ui, 'slab.place')?.getAttribute('aria-pressed'), 'false');
+
+    act(() => click(tool(ui, 'slab.place')!));
+    assert.equal(useViewerStore.getState().authoringDefaults.slabClass, 'slab');
+    assert.equal(tool(ui, 'slab.place')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(tool(ui, 'roof')?.getAttribute('aria-pressed'), 'false');
+
+    const row = TOOL_SURFACE_COMMANDS.find((command) => command.id === 'tool:roof') as { shortcut?: string; run: () => void } | undefined;
+    assert.equal(row?.shortcut, 'model.roof', 'the palette names the rail key');
+    act(() => { row!.run(); });
+    assert.equal(useViewerStore.getState().authoringDefaults.slabClass, 'roof');
   });
 
   it('Wall starts wall.place on the session storey', () => {

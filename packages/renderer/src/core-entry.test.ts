@@ -42,6 +42,7 @@ function runtimeGraph(entry: string): Set<string> {
 
 const POINT_CLOUD_MODULES = [
     'pointcloud/point-cloud-renderer.ts',
+    'pointcloud/point-cloud-node.ts',
     'pointcloud/point-cloud-spatial-index.ts',
     'pointcloud/point-pipeline.ts',
     'pointcloud/point-shader.wgsl.ts',

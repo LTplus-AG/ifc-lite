@@ -22,20 +22,22 @@ t.check('door and window cut real openings', () => {
   return (!d && above && !w && sill && x.count('IFCRELFILLSELEMENT') === 2) || `solid at door ${d}, above door ${above}, at window ${w}, below sill ${sill}; fills ${x.count('IFCRELFILLSELEMENT')}`;
 }, { core: true });
 t.check('door and window are typed occurrences', () => {
-  const rels = x.content.match(/IFCRELDEFINESBYTYPE\([^;]*;/g) ?? [];
   const d = x.exportedId(door), w = x.exportedId(win);
-  return (rels.some((r) => r.includes(`#${d}`)) && rels.some((r) => r.includes(`#${w}`))) || `IfcRelDefinesByType rows: ${rels.length}`;
+  return (x.relates('IFCRELDEFINESBYTYPE', d, x.exportedId(dType)) && x.relates('IFCRELDEFINESBYTYPE', w, x.exportedId(wType))) || `door typed by its IfcDoorType: ${x.relates('IFCRELDEFINESBYTYPE', d, x.exportedId(dType))}, window typed by its IfcWindowType: ${x.relates('IFCRELDEFINESBYTYPE', w, x.exportedId(wType))}`;
 });
 t.step('move host 1 m north', () => S.transformElements(M, [wall.expressId], { kind: 'move', delta: [0, 1] }));
 x = await t.exportModel('hosted-moved');
 t.check('openings and fillings move with the host', () => {
-  const b = x.bbox(door), hole = !x.contains(wall, [2, 1, 1]);
+  const b = x.bbox(door), hole = !x.contains(wall, [2, 1, 1]); // the door's centre before the slide below
   return (b && P.near(b.centre[1], 1, 0.05) && hole) || `door centre y ${P.fmt(b?.centre[1])} (expected 1), hole at the moved door ${hole}`;
 });
 t.step('slide door', () => S.editHostedElement({ modelId: M, expressId: door.expressId }, { Offset: 3 }));
 x = await t.exportModel();
+// Offset is the filling's CENTRE along the wall (hosted-fill.ts HostedPlacementParams): the
+// 0.9 m door at Offset 2 spans 1.55..2.45 m; slid to Offset 3 it spans 2.55..3.45 m. x = 2 is the
+// old centre (void before the slide, checked above at the moved wall) and outside the new span.
 t.check('a door slides along its host', () => {
-  const now = !x.contains(wall, [3, 1, 1]), before = x.contains(wall, [1.6, 1, 1]);
-  return (now && before) || `void at the new offset ${now}, wall closed at the old offset ${before}`;
+  const now = !x.contains(wall, [3, 1, 1]), closed = x.contains(wall, [2, 1, 1]);
+  return (now && closed) || `void at the new centre (x 3) ${now}, wall closed again at the old centre (x 2) ${closed}`;
 });
 t.done();

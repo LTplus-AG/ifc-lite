@@ -17,7 +17,9 @@
  * An IFC file gets three checks:
  *   1. `node packages/cli/dist/index.js validate <file> --json`: no errors;
  *   2. a reopen: `ifc-lite run reopen.js <file>` reproduces the session's
- *      product census (when the result carries one) and the row's key classes,
+ *      product census (when the result carries one) and keeps the row's key
+ *      classes (an SDK export) or the classes the file itself contains (a UI
+ *      export, which models only what its UI probe drew),
  *      and a second export of the reopened model reopens with the same census;
  *   3. IfcOpenShell: `tools/ifcopenshell_reference/validate_export.py <file>`
  *      (express rules) reports no issues.
@@ -42,7 +44,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sourceInfo } from '../probes/sdk/run.mjs';
 import { readResults } from '../score.mjs';
-import { artifactSets, checkDrawing, requiredKinds } from './artifacts.mjs';
+import { artifactSets, checkDrawing, fileClasses, requiredKinds } from './artifacts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -147,7 +149,10 @@ function judge(cap, set, work, tag) {
   }
   for (const [kind, files] of Object.entries(set.files)) {
     for (const [i, file] of files.entries()) {
-      if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, cap.probes.output.keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
+      // SDK exports must keep the row's key classes. A UI export is judged on the classes it
+      // actually contains (its own census): a UI storeys export with no walls is not a defect.
+      const keyTypes = kind !== 'ifc' ? [] : set.source === 'sdk' ? cap.probes.output.keyTypes : existsSync(file) ? fileClasses(readFileSync(file, 'utf8')) : [];
+      if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
       else checks.push({ ...checkDrawing(kind, file), file: rel(file) });
     }
   }

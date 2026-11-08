@@ -16,6 +16,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { CENSUS_CLASSES } from '../probes/sdk/lib/parity.mjs';
 
 export const KINDS = ['ifc', 'svg', 'pdf', 'dxf'];
 const EXT = /\.(ifc|svg|pdf|dxf)$/i;
@@ -26,13 +27,35 @@ export function requiredKinds(cap) {
   return Array.isArray(r) && r.length ? r : [['ifc']];
 }
 
-/** Resolve a handed-over path: absolute (Windows drive paths mapped to /mnt/<drive>), else repo- or result-relative. */
+/**
+ * Resolve a handed-over path. Absolute paths are used as given (Windows drive paths map to
+ * /mnt/<drive>). A relative path is looked up next to the result file, then in each of its
+ * ancestors, nearest first, then at the repository root. The first that exists wins. That
+ * covers both lane layouts: L4's `ui-r0/probes.json` beside `ui-r0/artifacts/<id>/...`, and
+ * `$PARITY_OUT/ui/<file>.json` with the files under `$PARITY_OUT/artifacts/<id>/...`.
+ * When none exists, the result-relative candidate is returned so the failure names it.
+ */
 export function resolveArtifact(path, { root, resultFile }) {
   const win = /^([A-Za-z]):[\\/](.*)$/.exec(path);
   if (win) return `/mnt/${win[1].toLowerCase()}/${win[2].replace(/\\/g, '/')}`;
   if (isAbsolute(path)) return path;
-  const candidates = [resolve(root, path), ...(resultFile ? [resolve(root, dirname(resultFile), path)] : [])];
+  const candidates = [];
+  if (resultFile) {
+    for (let dir = resolve(root, dirname(resultFile)); ; dir = dirname(dir)) {
+      candidates.push(resolve(dir, path));
+      if (dirname(dir) === dir) break;
+    }
+  }
+  candidates.push(resolve(root, path));
   return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+
+/** Census classes an IFC export actually contains, by its own STEP records (exact class names). */
+export function fileClasses(content) {
+  const present = new Set();
+  const byUpper = new Map(CENSUS_CLASSES.map((c) => [c.toUpperCase(), c]));
+  for (const m of content.matchAll(/^#\d+\s*=\s*(IFC[A-Z0-9_]+)\s*\(/gm)) { const c = byUpper.get(m[1]); if (c) present.add(c); }
+  return [...present].sort();
 }
 
 /**
@@ -86,13 +109,25 @@ export function checkSvg(buf) {
   return { name, status: 'pass', detail: `${strokes} line/path elements` };
 }
 
-/** PDF: header, end-of-file marker and at least one page. */
+/**
+ * PDF: header, indirect objects (`n g obj` ... `endobj`), cross-reference data (an `xref`
+ * table or an /XRef stream) with `startxref`, a trailer or /Root, the %%EOF marker, and at
+ * least one page. Still a sanity check: no object is parsed or rendered.
+ */
 export function checkPdf(buf) {
   const name = sanity('pdf');
   if (!buf.length) return { name, status: 'fail', detail: 'empty file' };
   const text = buf.toString('latin1');
-  if (!/^%PDF-[12]\.\d/.test(text)) return { name, status: 'fail', detail: 'no %PDF- header' };
-  if (!text.slice(-2048).includes('%%EOF')) return { name, status: 'fail', detail: 'no %%EOF marker: truncated file' };
+  const missing = [
+    [/^%PDF-[12]\.\d/, '%PDF- header'],
+    [/\b\d+\s+\d+\s+obj\b/, 'indirect objects (n g obj)'],
+    [/\bendobj\b/, 'endobj'],
+    [/\bxref\s+\d+\s+\d+|\/Type\s*\/XRef\b/, 'cross-reference table or /XRef stream'],
+    [/\bstartxref\s+\d+/, 'startxref offset'],
+    [/\btrailer\b|\/Root\s+\d+\s+\d+\s+R\b/, 'trailer or /Root'],
+  ].filter(([re]) => !re.test(text)).map(([, what]) => what);
+  if (!text.slice(-2048).includes('%%EOF')) missing.push('%%EOF marker');
+  if (missing.length) return { name, status: 'fail', detail: `not a PDF file structure: no ${missing.join(', ')}` };
   const pages = (text.match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
   const counted = Math.max(0, ...[...text.matchAll(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages\b/g)].map((m) => Number(m[1] ?? m[2])));
   const n = Math.max(pages, counted);

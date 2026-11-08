@@ -11,7 +11,7 @@
  * (a file may hold one record, an array, or JSON lines), and per catalogue row:
  *   - takes the BEST status per probe level (pass > partial > fail > error > skip);
  *   - combines sdk/ui/output into the row status: met when every APPLICABLE level's
- *     best is pass, partial when any of them is pass or partial, missing otherwise
+ *     best is pass, partial when any APPLICABLE level is pass or partial, missing otherwise
  *     (exercise and perf results are reported alongside, not scored);
  *   - scores table-stakes rows met = 1, partial = 0.5, out of the table-stakes count.
  * `skip` never counts as a pass.
@@ -96,7 +96,7 @@ export function score(catalogue, results, meta = {}) {
     }
     const scored = LEVELS.filter((l) => levels[l].applicable !== false);
     const status = scored.length && scored.every((l) => levels[l].status === 'pass') ? 'met'
-      : LEVELS.some((l) => ['pass', 'partial'].includes(levels[l].status)) ? 'partial' : 'missing';
+      : scored.some((l) => ['pass', 'partial'].includes(levels[l].status)) ? 'partial' : 'missing';
     return { capability: cap.id, title: cap.title, group: cap.group, tableStakes: cap.tableStakes === true, status, levels };
   });
   const stakes = rows.filter((r) => r.tableStakes);

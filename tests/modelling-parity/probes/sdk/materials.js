@@ -22,11 +22,8 @@ t.step('reassign column', () => S.assignMaterial(M, steel.expressId, [col.expres
 t.step('appearance', () => bim.style.apply([slab], '#9a9a9a', { name: 'Concrete C30/37' }));
 const x = await t.exportModel();
 t.check('assignments survive export, reassignment replaces', () => {
-  const rels = x.content.match(/IFCRELASSOCIATESMATERIAL\([^;]*;/g) ?? [];
-  // IfcMaterial has no GlobalId: find it by name in the export.
-  const byName = (n) => `#${x.content.match(new RegExp(`#(\\d+)=IFCMATERIAL\\('${n}'`))?.[1]}`;
-  const s = `#${x.exportedId(slab)}`, c = `#${x.exportedId(col)}`, cm = byName('Concrete C30/37'), sm = byName('Steel S355');
-  const holds = (id, mat) => rels.some((r) => new RegExp(`${id}[,)]`).test(r) && r.includes(`${mat})`));
+  const s = x.exportedId(slab), c = x.exportedId(col), cm = x.materialId('Concrete C30/37'), sm = x.materialId('Steel S355');
+  const holds = (id, mat) => mat != null && x.relates('IFCRELASSOCIATESMATERIAL', id, mat);
   return (holds(s, cm) && holds(c, sm) && !holds(c, cm)) || `slab->concrete ${holds(s, cm)}, column->steel ${holds(c, sm)}, column still concrete ${holds(c, cm)}`;
 }, { core: true });
 t.check('a material carries its appearance', () => x.count('IFCMATERIALDEFINITIONREPRESENTATION') >= 1 || `no IfcMaterialDefinitionRepresentation: colour is per element (bim.style), not a property of the material`);

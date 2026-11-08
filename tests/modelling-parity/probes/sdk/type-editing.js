@@ -21,17 +21,14 @@ let x = await t.exportModel('type-editing-props');
 t.check('editing the type updates all occurrences', () => {
   // Judged on the file: the one type pset carries the edit and every occurrence is defined by that type.
   const psetOnType = /IFCPROPERTYSINGLEVALUE\('FireRating',\$,IFCLABEL\('EI90'\)/.test(x.content) && !/'EI60'/.test(x.content);
-  const rels = x.content.match(/IFCRELDEFINESBYTYPE\([^;]*;/g) ?? [];
-  const typed = walls.every((w) => rels.some((r) => new RegExp(`#${x.exportedId(w)}[,)]`).test(r) && r.includes(`#${x.exportedId(A)})`)));
+  const typed = walls.every((w) => x.relates('IFCRELDEFINESBYTYPE', x.exportedId(w), x.exportedId(A)));
   return (psetOnType && typed) || `edited type pset in export: ${psetOnType}; all occurrences defined by the type: ${typed}`;
 }, { core: true });
 t.step('swap W2 to type B', () => S.assignType(M, B.expressId, [walls[2].expressId]));
 x = await t.exportModel();
 t.check('an occurrence swaps type', () => {
-  const rels = x.content.match(/IFCRELDEFINESBYTYPE\([^;]*;/g) ?? [];
-  const w2 = `#${x.exportedId(walls[2])}`, a = `#${x.exportedId(A)}`, b = `#${x.exportedId(B)}`;
-  const on = (r, id) => new RegExp(`${id}[,)]`).test(r);
-  return (rels.some((r) => on(r, w2) && r.includes(b)) && !rels.some((r) => on(r, w2) && r.includes(a))) || `W2 type relations: ${rels.filter((r) => on(r, w2)).length}`;
+  const w2 = x.exportedId(walls[2]), onB = x.relates('IFCRELDEFINESBYTYPE', w2, x.exportedId(B)), onA = x.relates('IFCRELDEFINESBYTYPE', w2, x.exportedId(A));
+  return (onB && !onA) || `W2 typed by WT-300: ${onB}, still typed by WT-200: ${onA}`;
 });
 t.check('a type parameter drives occurrence geometry', () => {
   // Revit: Edit Type > Structure > thickness 0.3 resizes every WT-300 wall. The SDK has no type-level

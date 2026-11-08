@@ -205,7 +205,7 @@ test('SDK runner: any nonzero exit or timeout after a written result is an error
 
 const ART = await import(pathToFileURL(join(ROOT, 'tests/modelling-parity/output/artifacts.mjs')).href);
 const SVG = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><!-- plan --><g class="cut"><line x1="0" y1="0" x2="1" y2="1"/><path d="M0 0 L1 1"/></g></svg>';
-const PDF = '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 2384 1684] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n';
+const PDF = '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 2384 1684] >> endobj\nxref\n0 4\n0000000000 65535 f \ntrailer << /Size 4 /Root 1 0 R >>\nstartxref\n180\n%%EOF\n';
 const DXF = ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', 'A-WALL', '10', '0', '20', '0', '11', '1', '21', '1', '0', 'ENDSEC', '0', 'EOF'].join('\n') + '\n';
 
 test('drawing sanity checks accept real content and refuse empty or broken files', () => {
@@ -221,6 +221,9 @@ test('drawing sanity checks accept real content and refuse empty or broken files
     ['empty pdf', ART.checkPdf, ''],
     ['truncated pdf', ART.checkPdf, PDF.replace('%%EOF', '')],
     ['pdf without pages', ART.checkPdf, PDF.replace(/\/Type \/Page \//, '/Type /Annot /').replace('/Count 1', '/Count 0')],
+    ['pdf with only tokens', ART.checkPdf, '%PDF-1.4\n/Type /Page\n%%EOF'],
+    ['pdf without cross-reference data', ART.checkPdf, PDF.replace('xref\n0 4\n', '').replace('startxref\n180\n', '')],
+    ['pdf without objects', ART.checkPdf, PDF.replace(/ obj /g, ' ').replace(/endobj/g, '')],
     ['empty dxf', ART.checkDxf, ''],
     ['dxf without EOF', ART.checkDxf, DXF.replace('0\nEOF\n', '')],
     ['dxf without linework', ART.checkDxf, DXF.replace('LINE', 'POINT')],
@@ -253,8 +256,10 @@ test('output runner: documentation rows are judged on UI-handed drawings and can
     writeFileSync(join(art, 'a1.pdf'), PDF);
     writeFileSync(join(art, 'a1.dxf'), DXF);
     writeFileSync(join(dir, 'ui', 'artifacts', 'plan.svg'), SVG);
-    writeFileSync(join(dir, 'ui', 'results.json'), JSON.stringify([
-      result('sheets-pdf-dwg', 'ui', 'pass', { artifacts: { pdf: join(art, 'a1.pdf') }, evidence: [join(art, 'a1.dxf')] }),
+    mkdirSync(join(dir, 'ui', 'ui'));
+    writeFileSync(join(dir, 'ui', 'ui', 'results.json'), JSON.stringify([
+      // Relative to the lane's $PARITY_OUT (an ancestor of the result file), as the Handoffs section writes them.
+      result('sheets-pdf-dwg', 'ui', 'pass', { artifacts: { pdf: 'artifacts/sheets-pdf-dwg/a1.pdf' }, evidence: ['artifacts/sheets-pdf-dwg/a1.dxf'] }),
       result('plans-sections-elevations', 'ui', 'partial', { artifacts: { svg: join(dir, 'ui', 'artifacts', 'plan.svg') } }),
       result('dimensions-tags', 'ui', 'pass', { artifacts: { pdf: join(dir, 'missing.pdf') } }),
     ]));
@@ -274,4 +279,35 @@ test('output runner: documentation rows are judged on UI-handed drawings and can
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('score: an inapplicable level never earns partial', () => {
+  const s = score(CATALOGUE, [result('b', 'sdk', 'pass'), result('b', 'output', 'partial')]);
+  assert.equal(s.rows.find((r) => r.capability === 'b').status, 'missing', 'b is UI-only: sdk/output results do not count');
+  assert.equal(s.score, 0);
+});
+
+test('artifact paths resolve in both lane layouts, nearest result-relative location first', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity-layout-'));
+  try {
+    const put = (p) => { mkdirSync(dirname(join(dir, p)), { recursive: true }); writeFileSync(join(dir, p), PDF); return join(dir, p); };
+    // L4's baseline layout: ui-r0/probes.json beside ui-r0/artifacts/<capability>/...
+    const l4 = put('ui-r0/artifacts/sheets-pdf-dwg/Drawing Sheet-front-50.pdf');
+    assert.equal(ART.resolveArtifact('artifacts/sheets-pdf-dwg/Drawing Sheet-front-50.pdf', { root: ROOT, resultFile: join(dir, 'ui-r0/probes.json') }), l4);
+    // $PARITY_OUT/ui/<result>.json with the files under $PARITY_OUT/artifacts/<capability>/...
+    const lane = put('L4/artifacts/sheets-pdf-dwg/a1.pdf');
+    assert.equal(ART.resolveArtifact('artifacts/sheets-pdf-dwg/a1.pdf', { root: ROOT, resultFile: join(dir, 'L4/ui/sheets.json') }), lane);
+    // A copy next to the result file wins over the ancestor one.
+    const near = put('L4/ui/artifacts/sheets-pdf-dwg/a1.pdf');
+    assert.equal(ART.resolveArtifact('artifacts/sheets-pdf-dwg/a1.pdf', { root: ROOT, resultFile: join(dir, 'L4/ui/sheets.json') }), near);
+    const sets = ART.artifactSets([result('sheets-pdf-dwg', 'ui', 'pass', { file: join(dir, 'ui-r0/probes.json'), artifacts: { pdf: 'artifacts/sheets-pdf-dwg/Drawing Sheet-front-50.pdf' } })], 'sheets-pdf-dwg', { root: ROOT });
+    assert.deepEqual(sets[0].files.pdf, [l4]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a UI export is judged on the classes it contains', () => {
+  const ifc = "ISO-10303-21;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCBUILDINGSTOREY('1YvctVUKr0kugbFTf53O9L',$,'L1',$,$,$,$,$,.ELEMENT.,0.);\n#3=IFCWALLSTANDARDCASE('2YvctVUKr0kugbFTf53O9L',$,'W',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+  assert.deepEqual(ART.fileClasses(ifc), ['IfcBuildingStorey'], 'exact census classes only; no IfcWall for a file without IFCWALL');
 });

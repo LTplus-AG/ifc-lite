@@ -15,8 +15,9 @@ const part = t.step('partition', () => S.addWall(M, L1.expressId, { Start: [5, 0
 const all = [...walls, part].filter(Boolean);
 const inside = (x, p) => all.filter((w) => x.contains(w, p)).length;
 const corners = (x) => C.map(([cx, cy]) => {
-  const sx = cx === 0 ? -1 : 1, sy = cy === 0 ? -1 : 1, d = 0.06;
-  return { outer: inside(x, [cx + sx * d, cy + sy * d, 1.5]), inner: inside(x, [cx - sx * d, cy - sy * d, 1.5]) };
+  // Asymmetric offsets keep both points off the 45° mitre plane, so neither count depends on rounding.
+  const sx = cx === 0 ? -1 : 1, sy = cy === 0 ? -1 : 1, dx = 0.06, dy = 0.03;
+  return { outer: inside(x, [cx + sx * dx, cy + sy * dy, 1.5]), inner: inside(x, [cx - sx * dx, cy - sy * dy, 1.5]) };
 });
 const clean = (cs) => cs.every((c) => c.outer === 1 && c.inner === 1);
 let x = await t.exportModel('wall-chains-drawn');

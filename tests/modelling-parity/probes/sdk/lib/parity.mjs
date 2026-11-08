@@ -279,6 +279,30 @@ export class ExportedModel {
   bbox(ref, deep = false) { return bboxOfParts(this.parts(ref, deep)); }
   volume(ref, deep = false) { return volumeOfParts(this.parts(ref, deep)); }
   contains(ref, point, deep = false) { return containsPoint(this.parts(ref, deep), point); }
+  /**
+   * Parsed relationship records of one upper-case type whose last two attributes are a
+   * RelatedObjects list and a relating ref (IfcRelDefinesByType, IfcRelAssociatesMaterial,
+   * IfcRelContainedInSpatialStructure, ...): [{ id, related: number[], relating: number }].
+   * Numbers, not text, so #8 never matches #84.
+   */
+  relations(type) {
+    const out = [];
+    const re = new RegExp(`^#(\\d+)\\s*=\\s*${type}\\((.*)\\);\\s*$`, 'gm');
+    for (let m; (m = re.exec(this.content));) {
+      const tail = /\(((?:\s*#\d+\s*,?)+)\)\s*,\s*#(\d+)\s*$/.exec(m[2]);
+      if (tail) out.push({ id: Number(m[1]), related: tail[1].split(',').map((r) => Number(r.trim().slice(1))), relating: Number(tail[2]) });
+    }
+    return out;
+  }
+  /** Whether a relationship of `type` relates exported element `elementId` to `relatingId`. */
+  relates(type, elementId, relatingId) {
+    return this.relations(type).some((r) => r.related.includes(elementId) && (relatingId == null || r.relating === relatingId));
+  }
+  /** Exported expressId of the first IfcMaterial with this name (IfcMaterial has no GlobalId). */
+  materialId(name) {
+    const m = new RegExp(`^#(\\d+)\\s*=\\s*IFCMATERIAL\\('${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`, 'm').exec(this.content);
+    return m ? Number(m[1]) : null;
+  }
   /** Exported STEP records of one IFC type (upper-case). */
   count(type) { let n = 0; for (const t of this.index.typeOf.values()) if (t === type) n++; return n; }
   has(re) { return re.test(this.content); }

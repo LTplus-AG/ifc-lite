@@ -13,6 +13,7 @@ import { generatedLayerModel } from '../test/fixtures/presentation-layer-model.j
 // This is a broad latency guard, not a throughput benchmark. Exclusive A/B runs
 // use this exact generated input and report their measurements separately.
 test('#9273 bounds cold and edited selection cost in 20,000 BREP walls with zero/one layer', async () => {
+  assert.equal(typeof presentation.presentationLayersByProduct, 'function', '#9273 selection lookup is available');
   const timings: Record<string, number> = {};
   for (const withLayer of [false, true]) {
     const source = new TextEncoder().encode(generatedLayerModel(20_000, withLayer));

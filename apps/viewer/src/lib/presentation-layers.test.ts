@@ -13,6 +13,7 @@ import * as presentation from './presentation-layers.js';
 // #9273: both traversal directions must agree for every existing ownership fixture.
 function resolvePresentationLayers(...args: Parameters<typeof presentation.resolvePresentationLayers>) {
   const layers = presentation.resolvePresentationLayers(...args);
+  assert.equal(typeof presentation.presentationLayersByProduct, 'function', '#9273 selection lookup is available');
   const selected = presentation.presentationLayersByProduct(...args);
   const [store, view] = args;
   const ids = new Set([...iterateEffectiveEntityIds(store, view,

@@ -35,6 +35,11 @@ import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } 
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 
+/** A phone target (#8802): the 36px face stays, and an invisible 4px
+ * extension on every side makes the hit area 44x44. The 4px margins keep
+ * neighbouring hit areas edge to edge, never overlapping. */
+const PHONE_TARGET = 'relative h-9 w-9 mx-1 flex-shrink-0 after:absolute after:-inset-1 after:content-[""]';
+
 export function MobileToolbar() {
   const { t } = useTranslation();
   const [activityOpen, setActivityOpen] = useState(false);
@@ -104,7 +109,9 @@ export function MobileToolbar() {
   const OpenFileIcon = mobileIcon(openFile);
   const AddModelIcon = mobileIcon(addModel);
   const toolButtons = ['tool:select', 'tool:measure', 'tool:section'] as const;
-  const quickActions = ['view:home', 'view:fit', 'vis:show'] as const;
+  // Seven 44px targets fit a 320px phone in one row (7 x 44 = 308px); nine did
+  // not, so Add model and Show all live in More (#8802, maintainer's call).
+  const quickActions = ['view:home', 'view:fit'] as const;
   const walk = mobileCommand('tool:walk');
   const activity = mobileCommand('ui:activity');
   const ActivityIcon = mobileIcon(activity);
@@ -121,7 +128,9 @@ export function MobileToolbar() {
   };
 
   return (
-    <div data-command-surface="mobile" className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
+    // `box-content`: the bar's content box is the full 44px target height, so
+    // no target is clipped by the bottom border.
+    <div data-command-surface="mobile" className="flex items-center box-content px-1 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
       {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
@@ -144,7 +153,7 @@ export function MobileToolbar() {
       <Button
         variant="ghost"
         size="icon-sm"
-        className="h-9 w-9 flex-shrink-0"
+        className={PHONE_TARGET}
         data-command-id={openFile.id}
         onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: () => fileInputRef.current?.click() })}
         disabled={loading}
@@ -157,23 +166,8 @@ export function MobileToolbar() {
         )}
       </Button>
 
-      {/* Add Model */}
-      {hasModelsLoaded && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="h-9 w-9 flex-shrink-0"
-          data-command-id={addModel.id}
-          onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
-          disabled={loading}
-          aria-label={mobileLabel(addModel)}
-        >
-          <AddModelIcon className="h-4 w-4" />
-        </Button>
-      )}
-
       {/* Divider */}
-      <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
+      <div className="w-px h-5 bg-border flex-shrink-0" />
 
       {/* Tool buttons */}
       {toolButtons.map((id) => {
@@ -190,7 +184,7 @@ export function MobileToolbar() {
             // At rest it keeps the foreground ink of the actions beside it.
             variant="toggle"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0 text-foreground"
+            className={`${PHONE_TARGET} text-foreground`}
             aria-pressed={active}
             onClick={() => runMobile(command)}
             aria-label={mobileLabel(command)}
@@ -201,7 +195,7 @@ export function MobileToolbar() {
       })}
 
       {/* Divider */}
-      <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
+      <div className="w-px h-5 bg-border flex-shrink-0" />
 
       {/* Quick actions: Home, Fit, Show All */}
       {quickActions.map((id) => {
@@ -213,7 +207,7 @@ export function MobileToolbar() {
             data-command-id={id}
             variant="ghost"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0"
+            className={PHONE_TARGET}
             onClick={() => runMobile(command)}
             aria-label={mobileLabel(command)}
           >
@@ -223,7 +217,7 @@ export function MobileToolbar() {
       })}
 
       {/* Spacer */}
-      <div className="flex-1 min-w-2" />
+      <div className="flex-1 min-w-0" />
 
       {/* Loading progress (compact) */}
       {loading && activeProgress && (
@@ -241,7 +235,7 @@ export function MobileToolbar() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0"
+            className={PHONE_TARGET}
             data-command-disclosure="mobile:more"
             aria-label={t('shellChrome.mobileToolbar.moreActionsAriaLabel')}
           >
@@ -249,6 +243,19 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent data-mobile-command-menu align="end" className="w-64 max-h-[80vh] overflow-y-auto">
+          {hasModelsLoaded && (
+            <>
+              <DropdownMenuItem
+                data-command-id={addModel.id}
+                disabled={loading}
+                onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
+              >
+                <AddModelIcon className="h-4 w-4 mr-2" />
+                {mobileLabel(addModel)}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           {menuItem('ui:commands')}
           {menuItem('pref:settings')}
           <DropdownMenuSeparator />
@@ -267,6 +274,7 @@ export function MobileToolbar() {
           {/* Visibility */}
           {menuItem('vis:isolate')}
           {menuItem('vis:hide', !hasSelection)}
+          {menuItem('vis:show')}
           {hasSelection && menuItem('view:frame')}
 
           <DropdownMenuSeparator />

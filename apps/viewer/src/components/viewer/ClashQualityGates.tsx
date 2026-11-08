@@ -16,6 +16,8 @@ export function QualityGateCards({ snapshot, models }: { snapshot: QualityGateSn
     {snapshot.rows.map((row, index) => {
       const band = row.percent === null ? null : qualityBand(row.percent, snapshot.config[row.kind]);
       return <div key={`${row.rule}-${index}`} className="flex items-center gap-3 rounded border border-border p-2" data-quality-rule={row.rule}>
+        {/* Inline SVG keeps the ring and percentage accessible as one named image. */}
+        {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
         <svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label={row.percent === null ? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`) : `${displayQualityPercent(row.percent)}% ${band?.label}`}>
           <circle cx="34" cy="34" r="27" fill="none" stroke="currentColor" className="text-muted" strokeWidth="6" />
           {band && <circle cx="34" cy="34" r="27" fill="none" stroke={band.color} strokeWidth="6" pathLength="100"

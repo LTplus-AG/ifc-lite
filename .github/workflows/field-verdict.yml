@@ -153,5 +153,6 @@ jobs:
       jobs: verdict
       result: verdict=${{ needs.verdict.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

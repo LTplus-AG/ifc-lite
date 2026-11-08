@@ -113,6 +113,7 @@ import { propertiesSelectionDe } from './de/properties-selection';
 import { propertiesDe } from './de/properties';
 import { propertyEditorDe } from './de/property-editor';
 import { pushPullAlignDe } from './de/push-pull-align';
+import { registryDe } from './de/registry';
 import { relationshipCardDe } from './de/relationship-card';
 import { remeshDe } from './de/remesh';
 import { repositionPanelDe } from './de/reposition-panel';
@@ -145,6 +146,7 @@ import { spaceEnvelopeDe } from './de/space-envelope';
 import { splitToolDe } from './de/split-tool';
 import { stairRailingDe } from './de/stair-railing';
 import { storeyContextDe } from './de/storey-context';
+import { storeyManagerDe } from './de/storey-manager';
 import { structuralPropertiesDe } from './de/structural-properties';
 import { structuralReviewDe } from './de/structural-review';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
@@ -273,6 +275,7 @@ export default {
   ...propertiesDe,
   ...propertyEditorDe,
   ...pushPullAlignDe,
+  ...registryDe,
   ...relationshipCardDe,
   ...remeshDe,
   ...repositionPanelDe,
@@ -305,6 +308,7 @@ export default {
   ...splitToolDe,
   ...stairRailingDe,
   ...storeyContextDe,
+  ...storeyManagerDe,
   ...structuralPropertiesDe,
   ...structuralReviewDe,
   ...sweptDiskInspectionDe,

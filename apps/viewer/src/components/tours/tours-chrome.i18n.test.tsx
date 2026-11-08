@@ -178,10 +178,10 @@ describe('TourHost prerequisite card localization (#4918)', () => {
 });
 
 describe('TourInvite localization (#4918)', () => {
-  it('translates the first-run invite prompt, CTA, and dismiss label', () => {
+  it('translates the first-run invite CTA and dismiss label', () => {
+    // No prompt of its own: it sits in the start screen's one "New here?" line (#8802 R6).
     const container = render(<TourInvite />);
     assertTranslates(container, 'tours-invite-pseudo', [
-      'tours.tourInvite.prompt',
       'tours.tourInvite.start',
       'tours.tourInvite.dismissAriaLabel',
     ]);

@@ -7,7 +7,8 @@
  * command is running supplies its bar content, scene layer and hint through
  * `ModelingCommand.hud`; this places them. The bar always names the command,
  * shows its typed fields (`CommandFieldsBar`) and offers a close button for
- * touch users, who have no Escape.
+ * touch users, who have no Escape. The hint also says how to aim through to
+ * the workplane, or that the pointer is doing so (#9201).
  */
 
 import { useEffect } from 'react';
@@ -16,8 +17,11 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { HudHint, HudItem, HudToolbar, useHudBarTier } from '../../../viewport-ui/hud';
 import { useCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { aimHint } from '@/lib/commands/modeling/aim-hint';
+import { isApplePlatform } from '@/lib/commands/chord';
 import { CommandFieldsBar } from './CommandFieldsBar';
 import { SnapHud } from './SnapHud';
+import { useAimKey } from './useAimKey';
 
 /** Tier 0: one row. Tier 1 (the fallback, never measured): stacked rows that wrap inside the lane. */
 const TIER_ROW = 0;
@@ -34,19 +38,29 @@ const OFFSCREEN = { position: 'fixed', top: -9999, left: -9999, visibility: 'hid
  */
 export function CommandBar() {
   const { t } = useTranslation();
-  const { command, ctx, gesture } = useCommandRuntime();
+  const { command, ctx, gesture, snap } = useCommandRuntime();
   const { measureRef, tier } = useHudBarTier(TIER_STACKED);
+  const snapEnabled = useViewerStore((s) => s.snapEnabled);
+  useAimKey(command);
   if (!command || !ctx) return null;
   const hint = command.hud.hint?.(gesture);
+  const aim = aimHint(command, gesture, ctx.workplane, snapEnabled, snap);
   return (
     <>
       <div ref={measureRef(TIER_ROW)} aria-hidden="true" style={OFFSCREEN}>
         <CommandBarContent tier={TIER_ROW} measuring />
       </div>
       <CommandBarContent tier={tier} />
-      {hint && (
+      {(hint || aim) && (
         <HudItem region="bottom-center" order={0}>
-          <HudHint>{t(hint)}</HudHint>
+          <HudHint className="text-center">
+            {hint && <div>{t(hint)}</div>}
+            {aim && (
+              <div className={aim.active ? 'font-medium text-overlay-accent' : undefined} data-aim-hint={aim.active ? 'active' : 'offer'}>
+                {t(aim.key, { key: isApplePlatform() ? '⌥' : 'Alt' })}
+              </div>
+            )}
+          </HudHint>
         </HudItem>
       )}
     </>

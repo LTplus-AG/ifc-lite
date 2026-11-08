@@ -4,6 +4,7 @@
 
 import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
+import { effectiveSpatialProject, liveStoreyRows } from './effectiveStoreyNodes.js';
 export { buildGroupTree, resolveMemberGeometry, type ResolvedMemberGeometry } from './groupTreeBuilder.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
 // from here; the tables themselves live in ./groupEntityTypes.ts.
@@ -150,19 +151,15 @@ export function buildUnifiedStoreys(
     if (!dataStore?.spatialHierarchy) continue;
 
     const hierarchy = dataStore.spatialHierarchy;
-    const { byStorey, storeyElevations } = hierarchy;
     // Partial/native metadata stores can expose the lookup maps before (or
     // without) a project tree. Keep their previous byStorey-only behaviour.
-    const spatialNodes = hierarchy.project
-      ? indexSpatialNodes(hierarchy.project)
-      : new Map<number, SpatialNode>();
+    const view = overlayViewFor(overlay, modelId);
+    const project = effectiveSpatialProject(dataStore, view); // this session's storey edits (#9013)
+    const spatialNodes = project ? indexSpatialNodes(project) : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
-    const view = overlayViewFor(overlay, modelId);
 
-    for (const [storeyId, elements] of byStorey.entries()) {
-      const elevation = storeyElevations.get(storeyId) ?? 0;
-      const name = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
+    for (const { storeyId, elements, name, elevation } of liveStoreyRows(dataStore, view, hierarchy, project, spatialNodes)) {
       const key = elevationKey(elevation);
       const storeyNode = spatialNodes.get(storeyId);
       const directElements = storeyNode
@@ -531,7 +528,7 @@ export function buildTreeData(
         const descendantSpaceCache = new Map<number, Set<number>>();
         const view = overlayViewFor(overlay, modelId);
         buildSpatialNodes(
-          model.ifcDataStore.spatialHierarchy.project,
+          effectiveSpatialProject(model.ifcDataStore, view) ?? model.ifcDataStore.spatialHierarchy.project,
           modelId,
           models,
           model.ifcDataStore,
@@ -563,7 +560,7 @@ export function buildTreeData(
       const descendantSpaceCache = new Map<number, Set<number>>();
       const view = overlayViewFor(overlay, modelId);
       buildSpatialNodes(
-        model.ifcDataStore.spatialHierarchy.project,
+        effectiveSpatialProject(model.ifcDataStore, view) ?? model.ifcDataStore.spatialHierarchy.project,
         modelId,
         models,
         model.ifcDataStore,
@@ -592,7 +589,7 @@ export function buildTreeData(
     const descendantSpaceCache = new Map<number, Set<number>>();
     const view = overlayViewFor(overlay, 'legacy');
     buildSpatialNodes(
-      ifcDataStore.spatialHierarchy.project,
+      effectiveSpatialProject(ifcDataStore, view) ?? ifcDataStore.spatialHierarchy.project,
       'legacy',
       models,
       ifcDataStore,

@@ -197,6 +197,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
+import { addMergedSelectionMeshes, hydrateSelectedEntities, retireStaleSelectionHydration } from './selection-hydration.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -213,10 +214,10 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
-import { batchForWholeDraw } from './residency.js';
+import { batchForWholeDraw, pushWholeSplit } from './residency.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -279,6 +280,7 @@ export class Renderer {
     private postPasses: PostPassChain | null = null;
     /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
     private readonly hoverMeshes = new HoverMeshCache();
+    private readonly warnedHighlightUploads = new Set<string>();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
     private maxPixelRatio = MAX_DRAWING_BUFFER_PIXEL_RATIO;
@@ -1407,6 +1409,22 @@ export class Renderer {
         });
     }
 
+    /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */
+    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): void {
+        this.guardedHighlightUpload('merged selection highlight', () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)));
+    }
+
+    /** A highlight upload that fails leaves nothing behind and is retried next frame; it warns once per kind (#9192). */
+    private guardedHighlightUpload<T>(kind: string, run: () => T): T | undefined {
+        const outcome = runGuardedGpuUpload(() => this.isDeviceLost(), run, (error) => this.reportUploadLoss(error));
+        if (outcome.ok) return outcome.value;
+        if (outcome.reason === 'error' && !this.warnedHighlightUploads.has(kind)) {
+            this.warnedHighlightUploads.add(kind);
+            console.warn(`[Renderer] ${kind} upload failed; it is skipped and retried on a later frame:`, outcome.error);
+        }
+        return undefined;
+    }
+
     /**
      * On a selection change, free the hydrated (pick/selection-highlight)
      * individual meshes whose entity is no longer selected. These duplicate
@@ -1735,7 +1753,7 @@ export class Renderer {
         const xrayActive = (options.transparencyOverrides?.size ?? 0) > 0 || options.ghostExceptIds != null;
         const hasPartialSources = hasVisibilityFiltering || xrayActive;
         if (this._lastHadPartialSources && !hasPartialSources) {
-            this.scene.dropAllPartialCaches();
+            this.scene.dropAllPartialCaches(true); // keeps evicted parents' last subsets: they may stand in (#9227)
         }
         this._lastHadPartialSources = hasPartialSources;
 
@@ -1745,6 +1763,7 @@ export class Renderer {
         // Only acts on a selection change (avoids per-frame buffer churn) and
         // never touches authored (non-hydrated) or batch geometry.
         this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
+        retireStaleSelectionHydration(this.scene, selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
 
         let meshes = this.scene.getMeshes();
 
@@ -2401,45 +2420,30 @@ export class Renderer {
                             // A COLD parent has no CPU meshData, so the sub-batch above comes back
                             // empty: restore its pieces (only them, the subset never reads the parent's
                             // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
-                            if (batch.gpuResident === false) {
-                                this.scene.requestBatchPieces(batch);
-                            }
+                            // Missing this frame, so it counts as not resident (#9227).
+                            if (batch.gpuResident === false && this.scene.requestBatchPieces(batch)) frameBatchesNotResident++;
                             continue; // Don't add batch to render list
                         }
                     }
 
-                    // Fully visible (or no filtering) — this batch draws from its OWN
-                    // GPU buffers. An evicted batch (residency budget, #1682 phase 3a)
-                    // is skipped for a frame while its rebuild is queued; the partial
-                    // path above is unaffected (sub-batches own separate buffers built
-                    // from CPU meshData).
+                    // Fully visible but drawn as sub-batches: per X-Ray alpha (#4129), or
+                    // promoted/remaining for a transparent batch with mixed overrides
+                    // (#677). Decided before the residency step, since the subsets never
+                    // read the parent's own GPU buffers (#9136).
+                    const split = pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent);
+                    if (split !== 'whole') { if (split === 'pieces') frameBatchesNotResident++; continue; }
+
+                    // Drawn from its OWN GPU buffers. An evicted batch (residency budget,
+                    // #1682 phase 3a) is skipped for a frame while its rebuild is queued;
+                    // an evicted parent past the rebuild cap draws last frame's subsets (#9227).
                     const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
-                    if (!whole) { frameBatchesNotResident++; continue; }
+                    if (!whole) {
+                        frameBatchesNotResident++;
+                        for (const sub of this.scene.subsetStandIns(batch)) (shouldRouteBatchTransparent(alphaForBatch(sub, sub.color[3]), sub.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(sub);
+                        continue;
+                    }
                     batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
-
-                    // X-Ray names entities, not batches: a batch whose entities
-                    // resolve to different alphas splits per alpha (#4129) rather
-                    // than fading whole to the minimum.
-                    if (pushAlphaSplit(batch, null)) continue;
-
-                    // Transparent batches with mixed
-                    // override membership must be split so non-overridden batchmates
-                    // stay transparent — see splitVisibleIdsByPromotion / issue #677.
-                    if (nativelyTransparent) {
-                        const split = splitVisibleIdsByPromotion(batch.expressIds, colorOverrides);
-                        if (split != null && split.remaining.size > 0) {
-                            // Mixed promotion — re-route through the partial-batch path
-                            // with distinct sourceBatchKeys for each subset.
-                            pushVisibleAsPartial(batch, new Set(batch.expressIds), true);
-                            continue;
-                        }
-                    }
-
-                    if (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides)) {
-                        transparentBatches.push(batch);
-                    } else {
-                        opaqueBatches.push(batch);
-                    }
+                    (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(batch);
                 }
 
                 // Retire the alpha-split slots this frame's classification did NOT
@@ -2733,7 +2737,7 @@ export class Renderer {
                         );
 
                         if (subBatch) {
-                            this.scene.recordBatchSubsetDrawn(sourceBatch); // keeps its pieces warm, not its own buffers (#9034, #9050)
+                            this.scene.recordBatchSubsetDrawn(sourceBatch, true, sourceBatchKey); // keeps its pieces warm, not its own buffers (#9034, #9050)
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
@@ -2783,33 +2787,11 @@ export class Renderer {
                     visibleSelectedIds.add(selId);
                 }
 
-                // Only build per-mesh piece counts when we actually have selected
-                // elements that need individual mesh rendering. This avoids iterating
-                // 200K+ meshes every frame when nothing is selected.
-                if (visibleSelectedIds.size > 0) {
-                    const allMeshesFromScene = this.scene.getMeshes();
-                    const existingPieceCounts = new Map<string, number>();
-                    for (const mesh of allMeshesFromScene) {
-                        const key = `${mesh.expressId}:${mesh.modelIndex ?? 'any'}`;
-                        existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
-                    }
-
-                    for (const selId of visibleSelectedIds) {
-                        const pieceItemId = selId === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
-                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex, pieceItemId);
-                        if (!pieces || pieces.length === 0) continue;
-
-                        const seenOrdinalsByKey = new Map<string, number>();
-                        for (const piece of pieces) {
-                            const meshKey = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
-                            const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
-                            seenOrdinalsByKey.set(meshKey, ordinal + 1);
-                            const baselineExisting = existingPieceCounts.get(meshKey) ?? 0;
-                            if (ordinal < baselineExisting) continue;
-                            this.createMeshFromData(piece);
-                        }
-                    }
-                }
+                hydrateSelectedEntities(
+                    this.scene, visibleSelectedIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId,
+                    (piece) => { this.createMeshFromData(piece); },
+                    (pieces, merged) => { this.createMergedMeshes(pieces, merged); },
+                );
 
                 const selectedMeshes = visibleSelectedIds.size > 0
                     ? this.scene.getMeshes().filter(mesh => {
@@ -3017,7 +2999,7 @@ export class Renderer {
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
-                ? this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))
+                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,

@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { editOwnershipRefusal } from './edit-ownership.js';
+import { editOwnershipRefusal, effectiveReferencers } from './edit-ownership.js';
 import { expandAffectedSet } from './affected-set.js';
 
 it('#6232 reuses immutable source references while live overlay ownership follows retarget and Undo', async () => {
@@ -85,4 +85,23 @@ it('decodes an edited record over a SharedArrayBuffer-backed source (browser Tex
   } finally {
     globalThis.TextDecoder = NodeDecoder;
   }
+});
+
+it('#9013 an edited deferred property atom keeps its references in the live lookup', async () => {
+  const text = [
+    'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
+    '#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+    "#2=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(1.),#1);",
+    "#3=IFCPROPERTYSET('2O2Fr$t4X7Zf8NOew3FLOH',$,'Pset_Test',$,(#2));",
+    'ENDSEC;', 'END-ISO-10303-21;',
+  ].join('\n');
+  const bytes = new TextEncoder().encode(text);
+  const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true, deferPropertyAtomIndex: true });
+  expect(store.deferredEntityIndex?.has(2), 'the property atom is deferred out of the primary index').toBe(true);
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  expect(effectiveReferencers(store, view)(1)).toEqual([2]);
+  editor.setPositionalAttribute(2, 0, 'Breadth');
+  expect(effectiveReferencers(store, view)(1), 'renaming the atom does not drop its unit reference').toEqual([2]);
+  editor.setPositionalAttribute(2, 3, null);
+  expect(effectiveReferencers(store, view)(1), 'clearing its unit does').toEqual([]);
 });

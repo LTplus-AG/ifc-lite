@@ -190,7 +190,7 @@ const Message = memo(function Message({ message: { role, content, model, receipt
   return <div className={cn('flex gap-2 px-3 py-2 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring', user && 'bg-muted/30')}
     {...(answer ? { 'data-assistant-answer': '', role: 'article', tabIndex: -1, 'aria-label': t('assistantA11y.answer', { index: answerIndex }) } : {})}>
     <div aria-hidden="true" className={cn('shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5',
-      user ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-500')}>
+      user ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
       {user ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
     </div>
     <div className="flex-1 min-w-0 text-xs">
@@ -199,7 +199,7 @@ const Message = memo(function Message({ message: { role, content, model, receipt
         : proposal ? <ProposalCard content={content} proposal={proposal} onRepair={onRepair} />
           // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegates to the native citation <button>s inside
           : <div className="break-words leading-relaxed" onClick={citationClick} dangerouslySetInnerHTML={{ __html: html }} />}
-      {streaming && <span className="inline-block w-1.5 h-3.5 bg-blue-500 motion-safe:animate-pulse ml-0.5 align-text-bottom rounded-sm" aria-hidden="true" />}
+      {streaming && <span className="inline-block w-1.5 h-3.5 bg-foreground motion-safe:animate-pulse ml-0.5 align-text-bottom rounded-sm" aria-hidden="true" />}
       {receipt && !streaming && <ReceiptFooter receipt={receipt} />}
     </div>
   </div>;

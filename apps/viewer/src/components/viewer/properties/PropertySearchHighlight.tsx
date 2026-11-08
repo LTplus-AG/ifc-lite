@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react';
+import { MATCH_MARK_CLASS } from '@/components/ui/match-highlight';
 import { foldPropertySearchText } from './propertySearch';
 
 export function PropertySearchHighlight({ text, query }: { text: string; query?: string }) {
@@ -32,7 +33,7 @@ export function PropertySearchHighlight({ text, query }: { text: string; query?:
     const to = ends[index + foldedQuery.length - 1];
     if (from >= start) {
       fragments.push(text.slice(start, from));
-      fragments.push(<mark key={from} className="bg-yellow-200 text-zinc-900 dark:bg-yellow-700 dark:text-white">{text.slice(from, to)}</mark>);
+      fragments.push(<mark key={from} className={MATCH_MARK_CLASS}>{text.slice(from, to)}</mark>);
       start = to;
     }
     index = lower.indexOf(foldedQuery, index + foldedQuery.length);

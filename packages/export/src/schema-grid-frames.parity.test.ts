@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { convertStepLine } from './schema-converter.js';
 import { StyleFlatten, convertStepLineFlattening } from './schema-style-flatten.js';
+import { placeEachObjectOnce } from './schema-ifc2x3-placements.js';
 
 interface Case { why: string; from: IfcSchemaVersion; to: IfcSchemaVersion; records: string[]; expect: string[] }
 
@@ -29,13 +30,15 @@ const I = '#30=IFCVIRTUALGRIDINTERSECTION((#1,#2),(0.,0.,0.));';
 describe('IfcGridPlacement across IFC4X3 matches the shared vectors (#9026 item 14)', () => {
   it('the fixture is not trivial', () => {
     expect(fixture.cases.length).toBeGreaterThanOrEqual(8);
+    expect(fixture.cases.filter((c) => c.to === 'IFC2X3' && c.records.some((r) => !c.expect.includes(r))).length).toBeGreaterThanOrEqual(8);
   });
 
   for (const c of fixture.cases) {
     it(`${c.from} -> ${c.to}: ${c.why}`, () => {
       const styles = StyleFlatten.applies(c.from, c.to) ? StyleFlatten.fromRecords(c.records) : undefined;
       const out = c.records.map((r) => convertStepLineFlattening(styles, r, c.from, c.to)).filter((r) => r !== null);
-      expect(out).toEqual(c.expect);
+      // Every IFC2X3 output goes through the one-product-per-placement pass (#9209).
+      expect(c.to === 'IFC2X3' ? placeEachObjectOnce(out) ?? out : out).toEqual(c.expect);
     });
   }
 
@@ -64,5 +67,27 @@ describe('IfcGridPlacement across IFC4X3 matches the shared vectors (#9026 item 
 
   it('reshapes the record without the pre-pass as well, so no caller writes the old layout', () => {
     expect(convertStepLine('#40=IFCGRIDPLACEMENT(#30,$);', 'IFC4', 'IFC4X3')).toBe('#40=IFCGRIDPLACEMENT($,#30,$);');
+  });
+});
+
+describe('IFC2X3 placement pass id space (#9209)', () => {
+  it('leaves a file as it was when its ids leave no room for new records', () => {
+    const lines = [
+      '#4294967290=IFCLOCALPLACEMENT($,$);',
+      "#4294967291=IFCWALL('a',$,$,$,$,#4294967290,$,$);",
+      "#4294967292=IFCWALL('b',$,$,$,$,#4294967290,$,$);",
+    ];
+    expect(placeEachObjectOnce(lines)).toBeNull();
+    const room = lines.map((line) => line.replaceAll('42949672', '1'));
+    expect(placeEachObjectOnce(room)).toHaveLength(4);
+  });
+
+  it('writes more new records than one call takes', () => {
+    const walls = 200_000;
+    const lines = ['#1=IFCLOCALPLACEMENT($,$);'];
+    for (let i = 0; i < walls; i++) lines.push(`#${i + 2}=IFCWALL('w${i}',$,$,$,$,#1,$,$);`);
+    const placed = placeEachObjectOnce(lines)!;
+    expect(placed).toHaveLength(1 + walls + (walls - 1));
+    expect(placed[placed.length - 1]).toBe(`#${walls + walls}=IFCLOCALPLACEMENT($,$);`);
   });
 });

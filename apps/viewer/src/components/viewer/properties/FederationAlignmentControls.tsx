@@ -15,6 +15,7 @@ import { Anchor, RefreshCw, AlertTriangle, Check } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -146,15 +147,17 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
           <span>{t(badge.textKey)}</span>
         </div>
         {!isAnchor && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="segment"
             onClick={handleSetAnchor}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+            className="gap-1 px-1.5 [&_svg]:size-2.5"
             title={t('properties.federationAlignment.makeAnchorTooltip')}
           >
-            <Anchor className="h-2.5 w-2.5" />
+            <Anchor />
             {t('properties.federationAlignment.makeAnchor')}
-          </button>
+          </Button>
         )}
         {isAnchor && anchorModelIdOverride === modelId && (
           <button

@@ -182,6 +182,7 @@ export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array
 export type { CopyTransform } from './in-store/copy-product.js';
 
 export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { deriveAuthoredBaseQuantities } from './in-store/base-quantities.js';
 export { resizeWallInStore } from './in-store/wall-size-edit.js';
 
 export { transformElementsInStore, type ElementTransformInput, type StoreyTransformOp } from './in-store/element-transform-edit.js';
@@ -208,3 +209,17 @@ export { alignmentStoreyInStore, alignElementsInStore, type ElementAlignParams }
 
 export { planStoreyReassignment, planStoreyReassignmentCandidates, type StoreyReassignmentPlan } from './in-store/storey-reassignment-plan.js';
 export { reassignElementsToStoreyInStore } from './in-store/storey-reassignment.js';
+export {
+  readStoreyInventory, summarizeStoreys, storeyContents, storeySpacingAbove,
+  addStoreyInStore, addStoreyRefusal, renameStoreyInStore,
+  planStoreyLevelEdit, applyStoreyLevelEdit, storeyLevelPlanSignature,
+  planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, suggestStorey, DEFAULT_STOREY_HEIGHT,
+  planAttachmentBindings, readTopAttachment, writeTopAttachment, clearTopAttachment,
+  STOREY_ATTACHMENT_PSET, NEXT_STOREY_ABOVE, FIXED_HEIGHT, topAttachmentProblem,
+  type StoreyLevelResult, type StoreyLevelPlanOptions, type WallHeightChange, type StairRefit, type TopAttachment,
+  MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,
+  type StoreyInventory, type StoreyRecord, type StoreySummary, type AddStoreyParams, type AddStoreyResult,
+  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,
+  type StoreyDeleteMode, type StoreyDeletePlan, type StoreySuggestion,
+  type StoreyRefusal, type StoreyRefusalCode, type StoreyNotice,
+} from './in-store/storey/index.js';

@@ -9,10 +9,13 @@
  * D7: fresh GlobalIds, hosted openings, doors and windows copied with their
  * host), written through `recordModellingEdit`, which runs the batch
  * atomically, puts every record on the undo stack and, in a shared room,
- * publishes it.
+ * publishes it. Copies of a grid-bound element that land on no crossing come
+ * free of the grid (#9199), and this is where the person is told, once a write.
  */
 
 import { copyBatchInStore, copySourcesInStore, copiedProductsInStore, createCopyContext, type CopyContext, type CopyTransform, type DuplicateInStoreOptions } from '@ifc-lite/create';
+import { toast } from '@/components/ui/toast';
+import { resolve as translate } from '@/i18n/registry';
 import type { ViewerState } from '@/store';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy';
@@ -76,6 +79,8 @@ export function copyElements(
       registerAuthoredElement(hierarchy, result.storeyId, id, record.type.toUpperCase(), typeof name === 'string' ? name : '');
     }
   }
+  const cameFree = results.reduce((count, r) => count + r.cameFree.length, 0);
+  if (cameFree > 0) toast.info(translate('copyArray.cameFree', { count: cameFree, countDisplay: String(cameFree) }));
   const copiedFrom = new Map(results.flatMap((r) => [...r.copiedFrom]));
   for (const [copy, source] of copiedFrom) target.view.setEntityAlias(copy, source);
   return { copies: results.map((r) => r.copyId), meshed: results.flatMap((r) => r.meshed), copiedFrom };

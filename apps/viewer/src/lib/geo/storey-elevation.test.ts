@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { displayStoreyElevationMeters } from './storey-elevation.js';
+import { createStoreyDisplayElevationResolver, displayStoreyElevationMeters } from './storey-elevation.js';
 
 interface FakeEntity {
   type: string;
@@ -50,5 +50,22 @@ describe('displayStoreyElevationMeters - absent RefDirection (#5922)', () => {
     // Local X = (0,1,0), local Y = (1,0,0) x (0,1,0) = (0,0,1).
     const alongY = storeWithParentAxis([1, 0, 0], [0, 5, 0]);
     assert.strictEqual(displayStoreyElevationMeters(0, null, alongY.store, alongY.storeyId), 5);
+  });
+});
+
+describe('createStoreyDisplayElevationResolver - storeys re-levelled this session (#9013)', () => {
+  it('a source storey shows its live elevation, keeping the offsets of its placement chain', () => {
+    // Parsed: the storey's placement chain puts it 5 m up; the hierarchy's relative elevation is 3.
+    const { store, storeyId } = storeWithParentAxis([0, 0, 1], [0, 0, 5]);
+    Object.assign(store, { spatialHierarchy: { storeyElevations: new Map([[storeyId, 3]]) } });
+    const display = createStoreyDisplayElevationResolver(store, undefined, undefined);
+    assert.strictEqual(display(storeyId, 3), 5, 'unchanged: the absolute value from the file');
+    assert.strictEqual(display(storeyId, 3.3), 5.3, 'raised 0.30 m this session: the badge follows');
+  });
+
+  it('a storey with no parsed record shows the live value it is given', () => {
+    const { store } = storeWithParentAxis([0, 0, 1], [0, 0, 5]);
+    Object.assign(store, { spatialHierarchy: { storeyElevations: new Map() } });
+    assert.strictEqual(createStoreyDisplayElevationResolver(store, undefined, undefined)(999, 3.5), 3.5);
   });
 });

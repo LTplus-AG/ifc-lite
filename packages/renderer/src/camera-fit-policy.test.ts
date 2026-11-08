@@ -265,6 +265,69 @@ describe('pickFitPolicy', () => {
     });
   });
 
+  describe('compact branch on a portrait viewport (#8802 R6)', () => {
+    // A phone in portrait: 390 x 800 CSS px under the toolbar. Its horizontal
+    // half-field is tan(22.5deg) * 0.49, about half the vertical one, which the
+    // legacy `longest * 2` standoff was sized against.
+    const PHONE = 390 / 800;
+    // The scene the council saw cropped: a ~16 m house with its site origin
+    // marker a few metres off to one side.
+    const house = bounds(-14, 0, -6, 6, 8, 10);
+
+    /** Largest |x| of the eight corners in normalised device coordinates. */
+    function widestCorner(policy: ReturnType<typeof pickFitPolicy>, b: Bounds3, viewAspect: number): number {
+      const f = { x: policy.target.x - policy.position.x, y: policy.target.y - policy.position.y, z: policy.target.z - policy.position.z };
+      const fl = Math.hypot(f.x, f.y, f.z);
+      const forward = { x: f.x / fl, y: f.y / fl, z: f.z / fl };
+      const rl = Math.hypot(forward.z, forward.x);
+      const right = { x: -forward.z / rl, y: 0, z: forward.x / rl };
+      const tanH = Math.tan(FOV_45 / 2) * viewAspect;
+      let widest = 0;
+      for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+        const d = { x: x - policy.position.x, y: y - policy.position.y, z: z - policy.position.z };
+        const depth = d.x * forward.x + d.y * forward.y + d.z * forward.z;
+        widest = Math.max(widest, Math.abs(d.x * right.x + d.z * right.z) / (depth * tanH));
+      }
+      return widest;
+    }
+
+    it('crops the house at the legacy standoff, which is the defect', () => {
+      const legacy = pickFitPolicy(house, { fovY: FOV_45 });
+      assert.ok(widestCorner(legacy, house, PHONE) > 1, 'the legacy pose must overflow a phone horizontally');
+    });
+
+    it('backs off until every corner fits across the frame, with the stated margin', () => {
+      const policy = pickFitPolicy(house, { fovY: FOV_45, aspect: PHONE });
+      assert.strictEqual(policy.kind, 'compact');
+      assert.ok(policy.distance > 20 * 2, `distance ${policy.distance} should exceed the legacy 40`);
+      // The widest corner sits exactly on the 1 / 1.15 margin: framed whole, not lost in space.
+      assertCloseTo(widestCorner(policy, house, PHONE), 1 / 1.15, 6);
+      // Same view direction and target as the legacy pose: only the standoff changes.
+      assert.deepStrictEqual(policy.target, { x: -4, y: 4, z: 2 });
+      assertCloseTo((policy.position.x - policy.target.x) / policy.distance, 0.6, 9);
+      assertCloseTo((policy.position.y - policy.target.y) / policy.distance, 0.5, 9);
+    });
+
+    it('leaves the pose of a landscape or square viewport exactly as before', () => {
+      for (const b of [house, bounds(0, 0, 0, 10, 10, 10), bounds(0, 0, 0, 50, 100, 30), bounds(0, 0, 0, 50, 5, 50)]) {
+        const legacy = pickFitPolicy(b, { fovY: FOV_45 });
+        for (const viewAspect of [16 / 10, 930 / 890, 1]) {
+          // The pose; `orthoSize` is the orthographic fit, which needs the aspect by definition.
+          const fit = pickFitPolicy(b, { fovY: FOV_45, aspect: viewAspect });
+          const pose = { kind: fit.kind, aspect: fit.aspect, target: fit.target, position: fit.position, up: fit.up, distance: fit.distance };
+          assert.deepStrictEqual(pose, legacy, `aspect ${viewAspect}`);
+        }
+      }
+    });
+
+    it('ignores an unusable aspect rather than writing a non-finite pose', () => {
+      const legacy = pickFitPolicy(house, { fovY: FOV_45 });
+      for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        assert.deepStrictEqual(pickFitPolicy(house, { fovY: FOV_45, aspect: bad }), legacy, `aspect ${bad}`);
+      }
+    });
+  });
+
   it('honours an override threshold (so tests can pin the boundary)', () => {
     // Aspect 5:1 — normally compact. Force linear by lowering threshold.
     const b = bounds(0, 0, 0, 100, 20, 20);

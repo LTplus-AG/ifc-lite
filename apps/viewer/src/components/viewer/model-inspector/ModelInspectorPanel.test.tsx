@@ -72,6 +72,42 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
     });
   }
 
+  it('a wall height typed in the defaults makes the next wall fixed at that height (#9037 review)', () => {
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    const height = input(ui, 'Height in metres');
+    act(() => height.focus());
+    type(height, '2.4');
+    blur(height);
+    assert.equal(s().authoringDefaults.wallTop, 'fixed');
+    assert.equal(s().authoringDefaults.dims.wall.Height, 2.4);
+  });
+
+  it('the defaults show the height the Wall tool will place: the spacing to the storey above (#9037 review)', async () => {
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 4 } }).ok);
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    act(() => s().setAuthoringDims('wall', { Height: 3 }));
+    assert.equal(input(ui, 'Height in metres').value, '4.00', 'not the stored 3.00 default');
+    act(() => s().setAuthoringDefaults({ wallTop: 'fixed' }));
+    assert.equal(input(ui, 'Height in metres').value, '3.00', 'a fixed wall uses the stored height');
+  });
+
+  it('leaving the Model workspace closes the storey manager: the next session opens on the inspector (#9037 review)', () => {
+    act(() => s().setStoreyManagerOpen(true));
+    act(() => s().exitModelWorkspace());
+    assert.equal(s().storeyManagerOpen, false);
+    act(() => { s().enterModelWorkspace(); });
+    const ui = render(<ModelInspectorPanel />);
+    assert.equal(ui.querySelector('[data-storey-manager]'), null, 'not the storey manager');
+    assert.ok(ui.querySelector('[data-model-inspector]'), 'the inspector');
+  });
+
   it('a selection still shows while such a tool runs', () => {
     const ui = render(<ModelInspectorPanel />);
     act(() => s().startCommand('grid.place'));

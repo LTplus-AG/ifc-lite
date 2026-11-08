@@ -87,12 +87,21 @@ function splitSelected(): void {
   state.startCommand('element.split');
 }
 
-function hideSelected(event: KeyboardEvent): boolean {
-  if (event.key === ' ') {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return false;
-  }
+// A focused button keeps Space: the dispatcher yields it before any command runs (#9233).
+function hideSelected(): boolean {
   return hideSelectionFromStore();
+}
+
+/**
+ * The dispatcher yields Enter to a focused button (#9233), so Enter on Cancel
+ * in the Measurements list cancels rather than finishes (#9113); Enter from the
+ * canvas, the list or a row still finishes. A held Enter's repeats finish
+ * nothing: after the first press moves focus off a button (a delete hands it
+ * to the next row), a repeat must not finish the open sequence.
+ */
+function finishMeasurement(event: KeyboardEvent): boolean {
+  if (event.repeat) return false;
+  return finishOpenMeasureSequence();
 }
 
 function walkOwns(event: KeyboardEvent): boolean {
@@ -135,7 +144,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
     showAllFromStore('a');
   }],
   ['measure.cancel', cancelMeasurement],
-  ['measure.finish', finishOpenMeasureSequence],
+  ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['section.previousPlane', () => stepSectionPlane(-1)],
   ['section.nextPlane', () => stepSectionPlane(1)],

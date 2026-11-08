@@ -141,6 +141,7 @@ export {
   type WallExtractionResult,
 } from './extract-walls.js';
 export { extractGridAxesForStorey, type GridAxisSegment, type StoreyGridAxes } from './extract-grids.js';
+export { gridAxisIntersections, type GridCrossing } from './grid-crossings.js';
 export {
   existingSpaceFootprintsByStorey,
   existingSpaceFootprintEntriesByStorey,

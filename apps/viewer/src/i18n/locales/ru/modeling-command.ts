@@ -6,6 +6,10 @@ import type { Catalogue } from '../../registry';
 
 export const modelingCommandRu = {
   "modelingCommand.closeAria": "Выйти из команды",
+  "modelingCommand.aim.tag": "На рабочей плоскости",
+  "modelingCommand.aim.holdAlt": "Удерживайте {key}, чтобы игнорировать привязки и поверхности: точка ляжет на рабочую плоскость",
+  "modelingCommand.aim.altHeld": "{key} удерживается: точка ложится на рабочую плоскость, привязки и поверхности перед ней игнорируются",
+  "modelingCommand.aim.snapOff": "Привязка выключена: точка ложится на рабочую плоскость, поверхности перед ней игнорируются",
   "modelingCommand.unit.m": "м",
   "modelingCommand.unit.deg": "°",
   "modelingCommand.unit.count": "",
@@ -20,6 +24,9 @@ export const modelingCommandRu = {
   "modelingCommand.wall.alignLeft": "Слева",
   "modelingCommand.wall.alignCentre": "Центр",
   "modelingCommand.wall.alignRight": "Справа",
+  "modelingCommand.wall.top": "Где находится верх стены",
+  "modelingCommand.wall.topStoreyAbove": "До этажа выше",
+  "modelingCommand.wall.topFixed": "Фиксированная высота",
   "modelingCommand.field.width": "Ширина",
   "modelingCommand.field.depth": "Глубина",
   "modelingCommand.field.height": "Высота",
